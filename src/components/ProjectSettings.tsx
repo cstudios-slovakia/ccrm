@@ -1,10 +1,18 @@
 import React, { useEffect, useState } from "react";
 import * as Icons from "lucide-react";
-import { Plus, Trash2, ArrowUp, ArrowDown, Save, X, Workflow, LayoutGrid, Rows3, CalendarClock, Paperclip, FileText, SlidersHorizontal, History, ListChecks, GripVertical, Pencil } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, Save, X, Workflow, LayoutGrid, Rows3, CalendarClock, Paperclip, FileText, SlidersHorizontal, History, ListChecks, GripVertical, Pencil, Columns3, Lock } from "lucide-react";
 import { CustomSelect } from "./ui/CustomSelect";
 import { cn } from "../utils/cn";
 import { ColorPicker } from "./ui/ColorPicker";
-import type { ProjectAutoCreateSettings, ProjectType, ProjectAttribute, ProjectAttributeType, ProjectFileField, TimelineEventType } from "../types";
+import type { ProjectAutoCreateSettings, ProjectType, ProjectAttribute, ProjectAttributeType, ProjectFileField, TimelineEventType, ProjectListColumn } from "../types";
+import {
+  BUILTIN_COLUMN_LABELS,
+  LOCKED_PROJECT_COLUMN,
+  moveProjectColumn,
+  resolveProjectColumns,
+  toStoredColumns,
+} from "../utils/projectColumns";
+import type { BuiltinProjectColumnKey } from "../utils/projectColumns";
 import { DEFAULT_PROJECT_AUTO_CREATE, isProjectAutoCreateActive } from "../utils/projectAutoCreate";
 import { DEFAULT_DEADLINE_WARNING_DAYS, normalizeDeadlineWarningDays } from "../utils/projects";
 import type { Language } from "../utils/translations";
@@ -62,7 +70,7 @@ const OPTION_ATTR_TYPES: ProjectAttributeType[] = ["select", "radio", "checkbox"
 const isOptionAttrType = (type: ProjectAttributeType) => OPTION_ATTR_TYPES.includes(type);
 
 /** The sections the project type editor is split into. */
-type EditSection = "general" | "timeline" | "attributes" | "files";
+type EditSection = "general" | "timeline" | "attributes" | "files" | "columns";
 
 /** The light switch that turns a built-in attribute on or off. */
 const Switch: React.FC<{ checked: boolean; onChange: (next: boolean) => void; disabled?: boolean; label: string }> = ({
@@ -129,6 +137,10 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
   const [fileFields, setFileFields] = useState<ProjectFileField[]>([]);
   const [newFileFieldName, setNewFileFieldName] = useState("");
   const [attributes, setAttributes] = useState<ProjectAttribute[]>([]);
+  /* How this type lays out the projects list. Held as saved — the reconciling
+     against the attributes being edited happens on every render below, so a
+     column appears the moment its attribute does. */
+  const [listColumns, setListColumns] = useState<ProjectListColumn[]>([]);
 
   // Timeline Custom Events states
   const [timelineEventTypes, setTimelineEventTypes] = useState<TimelineEventType[]>([]);
@@ -181,6 +193,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setFileFields([]);
     setNewFileFieldName("");
     setAttributes([]);
+    setListColumns([]);
     setTimelineEventTypes([]);
     setSelectedTeTypeId(null);
     setEditSection("general");
@@ -219,6 +232,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setNewFileFieldName("");
     setEditSection("general");
     setAttributes(type.attributes || []);
+    setListColumns(type.listColumns || []);
     setTimelineEventTypes(type.timelineEventTypes || []);
     setSelectedTeTypeId(type.timelineEventTypes && type.timelineEventTypes.length > 0 ? type.timelineEventTypes[0].id : null);
     setIsCreating(false);
@@ -379,6 +393,78 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     });
   };
 
+  /* The projects-list columns, reconciled against the attributes as they are
+     being edited: add an attribute and its column is offered straight away,
+     delete one and its column goes with it — without saving in between. */
+  const resolvedColumns = React.useMemo(
+    () => resolveProjectColumns(attributes, listColumns),
+    [attributes, listColumns]
+  );
+
+  const columnLabel = (col: { key: string; attribute?: ProjectAttribute }) => {
+    if (col.attribute) return col.attribute.name;
+    const label = BUILTIN_COLUMN_LABELS[col.key as BuiltinProjectColumnKey];
+    return label ? t(label[0], label[1], label[2]) : col.key;
+  };
+
+  const handleToggleColumn = (key: string) => {
+    if (!canEdit || key === LOCKED_PROJECT_COLUMN) return;
+    setListColumns(toStoredColumns(
+      resolvedColumns.map(c => c.key === key ? { ...c, visible: !c.visible } : c)
+    ));
+  };
+
+  const handleMoveColumn = (index: number, direction: "up" | "down") => {
+    if (!canEdit) return;
+    const nextIndex = direction === "up" ? index - 1 : index + 1;
+    // Index 0 is the locked name column: nothing moves into or out of it.
+    if (nextIndex < 1 || index < 1 || nextIndex >= resolvedColumns.length) return;
+    const next = [...resolvedColumns];
+    [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+    setListColumns(toStoredColumns(next));
+  };
+
+  /* Drag-and-drop over the column list — the same held-id-plus-edge marker the
+     attribute list above uses, so both read and behave alike. */
+  const [draggedColumnKey, setDraggedColumnKey] = useState<string | null>(null);
+  const [columnDropTarget, setColumnDropTarget] = useState<{ key: string; position: "before" | "after" } | null>(null);
+
+  const endColumnDrag = () => {
+    setDraggedColumnKey(null);
+    setColumnDropTarget(null);
+  };
+
+  const handleColumnDragStart = (e: React.DragEvent<HTMLElement>, key: string) => {
+    if (!canEdit || key === LOCKED_PROJECT_COLUMN) {
+      e.preventDefault();
+      return;
+    }
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", key);
+    setDraggedColumnKey(key);
+  };
+
+  const handleColumnDragOver = (e: React.DragEvent<HTMLElement>, targetKey: string) => {
+    if (!draggedColumnKey || targetKey === LOCKED_PROJECT_COLUMN) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    const rect = e.currentTarget.getBoundingClientRect();
+    const position: "before" | "after" =
+      rect.height && e.clientY - rect.top > rect.height / 2 ? "after" : "before";
+    if (columnDropTarget?.key !== targetKey || columnDropTarget?.position !== position) {
+      setColumnDropTarget({ key: targetKey, position });
+    }
+  };
+
+  const handleColumnDrop = (e: React.DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    const dragKey = draggedColumnKey;
+    const drop = columnDropTarget;
+    endColumnDrag();
+    if (!canEdit || !dragKey || !drop) return;
+    setListColumns(toStoredColumns(moveProjectColumn(resolvedColumns, dragKey, drop.key, drop.position)));
+  };
+
   const handleMoveAttribute = (index: number, direction: "up" | "down") => {
     const nextIndex = direction === "up" ? index - 1 : index + 1;
     if (nextIndex < 0 || nextIndex >= attributes.length) return;
@@ -517,6 +603,9 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
       hasFiles: true,
       fileFields: fileFields.map(({ id, name }) => ({ id, name })),
       attributes,
+      // Stored resolved, hidden columns included: their order is what the list
+      // returns to when one is switched back on.
+      listColumns: toStoredColumns(resolvedColumns),
       timelineEventTypes
     };
 
@@ -600,6 +689,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
             { id: "timeline", Icon: History, label: t("Timeline", "Časová os", "Idővonal"), count: hasTimeline ? timelineEventTypes.length : null },
             { id: "attributes", Icon: ListChecks, label: t("Attributes", "Atribúty", "Attribútumok"), count: attributes.length + (hasDeadline ? 1 : 0) },
             { id: "files", Icon: Paperclip, label: t("Files", "Súbory", "Fájlok"), count: fileFields.length },
+            { id: "columns", Icon: Columns3, label: t("Columns", "Stĺpce", "Oszlopok"), count: resolvedColumns.filter(c => c.visible).length },
           ] as { id: EditSection; Icon: React.ElementType; label: string; count: number | null }[]).map(({ id, Icon, label, count }) => {
             const active = editSection === id;
             return (
@@ -1418,6 +1508,119 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                   <span>{t("Add file", "Pridať súbor", "Fájl hozzáadása")}</span>
                 </button>
               </div>
+            )}
+          </div>
+        )}
+
+        {/* Columns — what the projects list shows for a project of this type,
+            and in what order. Built-in columns and this type's own attributes
+            sit in one list, because to the table they are the same thing. */}
+        {editSection === "columns" && (
+          <div className="space-y-4 max-w-3xl animate-fade-in">
+            <div className="flex flex-col">
+              <h4 className="font-heading font-bold text-sm text-slate-700">
+                {t("List columns", "Stĺpce zoznamu", "Lista oszlopai")}
+              </h4>
+              <p className="text-[11px] font-medium text-slate-400 mt-0.5">
+                {t(
+                  "Choose which columns the projects table shows for this type, and drag them into the order you want. It applies once the list is showing this type alone — filter the list by it, or have no other type. A list of mixed types falls back to the built-in columns, because an attribute means nothing to a project of another type.",
+                  "Vyberte, ktoré stĺpce tabuľka projektov pre tento typ zobrazí, a potiahnutím ich usporiadajte. Platí, keď zoznam zobrazuje iba tento typ — vyfiltrujte ho, alebo nemajte iný typ. Pri zmiešaných typoch sa použijú vstavané stĺpce, pretože atribút nemá pre projekt iného typu význam.",
+                  "Válassza ki, mely oszlopokat mutassa a projekt táblázat ennél a típusnál, és húzással rendezze őket. Akkor érvényes, ha a lista csak ezt a típust mutatja — szűrjön rá, vagy ne legyen másik típus. Vegyes típusoknál a beépített oszlopok érvényesek, mert egy attribútum semmit sem jelent egy másik típusú projektnek.",
+                )}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              {resolvedColumns.map((col, idx) => {
+                const drop = draggedColumnKey && columnDropTarget?.key === col.key ? columnDropTarget.position : null;
+                const locked = col.key === LOCKED_PROJECT_COLUMN;
+                const label = columnLabel(col);
+                return (
+                  <div
+                    key={col.key}
+                    draggable={canEdit && !locked}
+                    onDragStart={e => handleColumnDragStart(e, col.key)}
+                    onDragEnd={endColumnDrag}
+                    onDragOver={e => handleColumnDragOver(e, col.key)}
+                    onDrop={handleColumnDrop}
+                    title={
+                      locked
+                        ? t("The project name always leads the row.", "Názov projektu je vždy prvý v riadku.", "A projekt neve mindig a sor élén áll.")
+                        : canEdit
+                          ? t("Drag to reorder", "Potiahnutím zmeníte poradie", "Húzza az átrendezéshez")
+                          : undefined
+                    }
+                    className={cn(
+                      "group relative flex items-center justify-between gap-3 p-3 bg-white border rounded-2xl shadow-sm text-xs font-semibold transition-[opacity,box-shadow,border-color] duration-150",
+                      col.visible ? "border-slate-200" : "border-slate-200 bg-slate-50/70",
+                      canEdit && !locked && "cursor-grab active:cursor-grabbing",
+                      draggedColumnKey === col.key && "opacity-40"
+                    )}
+                  >
+                    {drop === "before" && (
+                      <span className="pointer-events-none absolute inset-x-2 -top-1 h-0.5 rounded-full bg-indigo-500 animate-in fade-in duration-150" />
+                    )}
+                    {drop === "after" && (
+                      <span className="pointer-events-none absolute inset-x-2 -bottom-1 h-0.5 rounded-full bg-indigo-500 animate-in fade-in duration-150" />
+                    )}
+                    <div className="flex items-center gap-2 min-w-0">
+                      {canEdit && (
+                        locked
+                          ? <Lock className="h-4 w-4 shrink-0 text-slate-300" />
+                          : <GripVertical className="h-4 w-4 shrink-0 text-slate-300 group-hover:text-indigo-500 transition-colors duration-150" />
+                      )}
+                      <div className="flex flex-col min-w-0">
+                        <span className={cn("text-[13px] truncate", col.visible ? "text-slate-800" : "text-slate-400")}>
+                          {label}
+                        </span>
+                        <span className="text-slate-400 font-medium truncate">
+                          {col.attribute
+                            ? `${t("Attribute", "Atribút", "Attribútum")} • ${attributeTypeLabel(col.attribute.type)}`
+                            : t("Built-in column", "Vstavaný stĺpec", "Beépített oszlop")}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <button
+                        type="button"
+                        disabled={!canEdit || locked || idx <= 1}
+                        onClick={() => handleMoveColumn(idx, "up")}
+                        aria-label={t("Move up", "Posunúť hore", "Mozgatás felfelé")}
+                        className="p-1 hover:bg-slate-100 rounded text-slate-500 disabled:opacity-30 transition-colors duration-150 active:scale-95 cursor-pointer disabled:cursor-not-allowed"
+                      >
+                        <ArrowUp className="h-4.5 w-4.5" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!canEdit || locked || idx === resolvedColumns.length - 1}
+                        onClick={() => handleMoveColumn(idx, "down")}
+                        aria-label={t("Move down", "Posunúť dole", "Mozgatás lefelé")}
+                        className="p-1 hover:bg-slate-100 rounded text-slate-500 disabled:opacity-30 transition-colors duration-150 active:scale-95 cursor-pointer disabled:cursor-not-allowed"
+                      >
+                        <ArrowDown className="h-4.5 w-4.5" />
+                      </button>
+                      <span className="ml-1.5">
+                        <Switch
+                          checked={col.visible}
+                          disabled={!canEdit || locked}
+                          onChange={() => handleToggleColumn(col.key)}
+                          label={t(`Show "${label}"`, `Zobraziť „${label}“`, `"${label}" megjelenítése`)}
+                        />
+                      </span>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {attributes.length === 0 && (
+              <p className="text-[11px] font-medium text-slate-400">
+                {t(
+                  "This type has no custom attributes yet. Add one on the Attributes tab and it can be shown as a column here.",
+                  "Tento typ zatiaľ nemá vlastné atribúty. Pridajte ho na karte Atribúty a bude sa dať zobraziť ako stĺpec.",
+                  "Ennek a típusnak még nincsenek egyedi attribútumai. Adjon hozzá egyet az Attribútumok fülön, és itt oszlopként megjeleníthető.",
+                )}
+              </p>
             )}
           </div>
         )}

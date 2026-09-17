@@ -308,6 +308,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `file_fields_json` LONGTEXT NULL,
               `timeline_event_types_json` LONGTEXT NULL,
               `timeline_attributes_json` LONGTEXT NULL,
+              `list_columns_json` LONGTEXT NULL,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
@@ -882,6 +883,13 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         if (!ccrm_column_exists($pdo, 'project_types', 'file_fields_json')) {
             $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `file_fields_json` LONGTEXT NULL AFTER `has_files`");
+        }
+        // How the projects list is laid out for this type: which columns it
+        // shows, in which order, its own attributes included. NULL means the
+        // type has never been arranged and reads as the default layout, so
+        // every existing type keeps exactly the table it has today.
+        if (!ccrm_column_exists($pdo, 'project_types', 'list_columns_json')) {
+            $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `list_columns_json` LONGTEXT NULL AFTER `file_fields_json`");
         }
         // Projects had no name of their own — they borrowed the paired lead's,
         // which left an unpaired project unnameable. NULL on every existing row,

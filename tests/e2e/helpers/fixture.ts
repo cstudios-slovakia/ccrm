@@ -835,13 +835,20 @@ export const DRILLDOWN_CLIENT = 'Silvia';
  * form it finds without touching a real database, and each test starts from the
  * same dataset.
  *
- * One exception, and it is not a convenience: the signed-in user's
- * `metadata_json` is remembered and handed back on the next GET. Every
- * interface preference (the projects sort, a view toggle, a dismissed banner)
- * lives in that blob, and the background poll replaces `currentUser` with the
- * server's copy whenever the two differ — so a discarded write meant any
- * preference set during a test silently reverted a few seconds later. Tests
- * that set one then looked like app bugs, and the bug was here.
+ * Two exceptions, and neither is a convenience — both are display preferences
+ * the app reads back from the server, so discarding the write made the app look
+ * like it had lost the setting:
+ *
+ * 1. The signed-in user's `metadata_json`. Every interface preference (the
+ *    projects sort, a view toggle, a dismissed banner) lives in that blob, and
+ *    the background poll replaces `currentUser` with the server's copy whenever
+ *    the two differ — so a preference set during a test silently reverted a few
+ *    seconds later. Tests that set one then looked like app bugs.
+ * 2. A project type's `listColumns` — how the projects table is laid out for
+ *    that type. It is stored on the type rather than the user, but the problem
+ *    is identical: every navigation in these tests is a real page load, so the
+ *    arrangement would come back from the mock exactly as the dataset declared
+ *    it and never as the test had just saved it.
  */
 export async function installBackendMocks(page: Page) {
   await page.route('**/api/login.php', (route) =>
@@ -854,6 +861,8 @@ export async function installBackendMocks(page: Page) {
 
   /** email -> the metadata_json the app last pushed for that user. */
   const pushedUserMeta = new Map<string, unknown>();
+  /** project type id -> the listColumns the app last pushed for that type. */
+  const pushedListColumns = new Map<string, unknown>();
 
   await page.route('**/sync.php**', (route) => {
     const request = route.request();
@@ -867,13 +876,22 @@ export async function installBackendMocks(page: Page) {
           users: payload.users.map((u) =>
             pushedUserMeta.has(u.email) ? { ...u, metadata_json: pushedUserMeta.get(u.email) } : u,
           ),
+          projectTypes: payload.projectTypes.map((pt) =>
+            pushedListColumns.has(pt.id) ? { ...pt, listColumns: pushedListColumns.get(pt.id) } : pt,
+          ),
         }),
       });
     }
     try {
-      const body = request.postDataJSON() as { users?: { email?: string; metadata_json?: unknown }[] };
+      const body = request.postDataJSON() as {
+        users?: { email?: string; metadata_json?: unknown }[];
+        projectTypes?: { id?: string; listColumns?: unknown }[];
+      };
       for (const u of body?.users ?? []) {
         if (u?.email && u.metadata_json !== undefined) pushedUserMeta.set(u.email, u.metadata_json);
+      }
+      for (const pt of body?.projectTypes ?? []) {
+        if (pt?.id && pt.listColumns !== undefined) pushedListColumns.set(pt.id, pt.listColumns);
       }
     } catch {
       /* not JSON — nothing to remember */

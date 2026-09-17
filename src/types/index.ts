@@ -447,6 +447,19 @@ export interface ProjectAttribute {
   options?: string[];
 }
 
+/**
+ * One column of the projects list, as a project type lays it out.
+ *
+ * `key` is either a built-in column — "name", "type", "client", "managers",
+ * "rating", "deadline", "progress", "status" — or `attr:<attributeId>` for one
+ * of the type's own custom attributes. See utils/projectColumns.ts, which owns
+ * the catalogue and reconciles a saved layout with the columns that exist today.
+ */
+export interface ProjectListColumn {
+  key: string;
+  visible: boolean;
+}
+
 export interface TimelineEventType {
   id: string;
   name: string;
@@ -488,6 +501,16 @@ export interface ProjectType {
   /** The default files: named document slots every project of this type carries (contract, GDPR consent, ...). */
   fileFields?: ProjectFileField[];
   timelineEventTypes?: TimelineEventType[];
+  /**
+   * Which columns the projects list shows for this type, and in what order —
+   * built-in columns and the type's own custom attributes side by side.
+   *
+   * Absent (on every type saved before this existed) means "never arranged",
+   * and reads as the default layout: the eight built-in columns, attributes
+   * off. The list only honours it while it is showing a single project type,
+   * because an attribute column means nothing to a project of another type.
+   */
+  listColumns?: ProjectListColumn[];
 }
 
 /**

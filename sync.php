@@ -1104,6 +1104,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'deadlineRequired' => (int)($row['deadline_required'] ?? 0) === 1,
                 'hasFiles' => (int)($row['has_files'] ?? 0) === 1,
                 'fileFields' => json_decode($row['file_fields_json'] ?? '[]', true) ?: [],
+                // How the projects list is laid out for this type. An empty
+                // array means "never arranged", which the client reads as the
+                // default set of columns.
+                'listColumns' => json_decode($row['list_columns_json'] ?? '[]', true) ?: [],
                 'timelineEventTypes' => json_decode($row['timeline_event_types_json'] ?? '[]', true),
                 'timelineAttributes' => json_decode($row['timeline_attributes_json'] ?? '[]', true)
             ];
@@ -2383,7 +2387,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (isset($payload['projectTypes']) && is_array($payload['projectTypes']) && !$ccrm_skip_writes('general_config', 'projectTypes')) {
             $existingPtIds = $pdo->query("SELECT `id` FROM `project_types`")->fetchAll(PDO::FETCH_COLUMN);
             $processedPtIds = [];
-            $insPt = $pdo->prepare("INSERT INTO `project_types` (`id`, `name`, `description`, `icon`, `color`, `attributes_json`, `has_timeline`, `has_gantt`, `has_deadline`, `deadline_warning_days`, `deadline_required`, `has_files`, `file_fields_json`, `timeline_event_types_json`, `timeline_attributes_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `icon`=VALUES(`icon`), `color`=VALUES(`color`), `attributes_json`=VALUES(`attributes_json`), `has_timeline`=VALUES(`has_timeline`), `has_gantt`=VALUES(`has_gantt`), `has_deadline`=VALUES(`has_deadline`), `deadline_warning_days`=VALUES(`deadline_warning_days`), `deadline_required`=VALUES(`deadline_required`), `has_files`=VALUES(`has_files`), `file_fields_json`=VALUES(`file_fields_json`), `timeline_event_types_json`=VALUES(`timeline_event_types_json`), `timeline_attributes_json`=VALUES(`timeline_attributes_json`)");
+            $insPt = $pdo->prepare("INSERT INTO `project_types` (`id`, `name`, `description`, `icon`, `color`, `attributes_json`, `has_timeline`, `has_gantt`, `has_deadline`, `deadline_warning_days`, `deadline_required`, `has_files`, `file_fields_json`, `list_columns_json`, `timeline_event_types_json`, `timeline_attributes_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `icon`=VALUES(`icon`), `color`=VALUES(`color`), `attributes_json`=VALUES(`attributes_json`), `has_timeline`=VALUES(`has_timeline`), `has_gantt`=VALUES(`has_gantt`), `has_deadline`=VALUES(`has_deadline`), `deadline_warning_days`=VALUES(`deadline_warning_days`), `deadline_required`=VALUES(`deadline_required`), `has_files`=VALUES(`has_files`), `file_fields_json`=VALUES(`file_fields_json`), `list_columns_json`=VALUES(`list_columns_json`), `timeline_event_types_json`=VALUES(`timeline_event_types_json`), `timeline_attributes_json`=VALUES(`timeline_attributes_json`)");
             
             foreach ($payload['projectTypes'] as $pt) {
                 if (!isset($pt['id'])) continue;
@@ -2399,6 +2403,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $ptDeadlineRequired = (int)$prevRow['deadline_required'];
                         $ptHasFiles = (int)$prevRow['has_files'];
                         $ptFileFields = $prevRow['file_fields_json'] ?? '[]';
+                    }
+                }
+                // The projects-list layout, same rule as the file slots above: a
+                // client that predates it sends no `listColumns` at all, and must
+                // not flatten an arrangement somebody made from a newer one.
+                $ptListColumns = json_encode(is_array($pt['listColumns'] ?? null) ? array_values($pt['listColumns']) : []);
+                if (!array_key_exists('listColumns', $pt)) {
+                    $prevCols = $pdo->prepare("SELECT `list_columns_json` FROM `project_types` WHERE `id` = ?");
+                    $prevCols->execute([$pt['id']]);
+                    if ($prevColsRow = $prevCols->fetch(PDO::FETCH_ASSOC)) {
+                        $ptListColumns = $prevColsRow['list_columns_json'] ?? '[]';
                     }
                 }
                 $insPt->execute([
@@ -2417,6 +2432,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $ptDeadlineRequired,
                     $ptHasFiles,
                     $ptFileFields,
+                    $ptListColumns,
                     json_encode($pt['timelineEventTypes'] ?? []),
                     json_encode($pt['timelineAttributes'] ?? [])
                 ]);

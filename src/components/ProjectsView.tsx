@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import * as Icons from "lucide-react";
-import { Plus, Trash2, Settings, Search, Users, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, CalendarClock, Flag, ArrowUp, ArrowDown, ArrowUpDown, Lock, Star } from "lucide-react";
-import type { Project, ProjectAutoCreateSettings, ProjectStatus, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory } from "../types";
+import { Plus, Trash2, Settings, Search, Users, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, CalendarClock, Flag, ArrowUp, ArrowDown, ArrowUpDown, Lock, Star, Check, Minus, Paperclip } from "lucide-react";
+import type { Project, ProjectAttribute, ProjectAutoCreateSettings, ProjectStatus, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory } from "../types";
 import { ProjectDetailsView } from "./ProjectDetailsView";
 import type { Task } from "../types";
 import type { TaskAccess } from "../utils/taskSelectors";
@@ -26,11 +26,20 @@ import {
   projectStatusOrder,
 } from "../utils/projects";
 import type { ProjectDeadlineStatus } from "../utils/projects";
-import { todayLocal, formatDateLocalized } from "../utils/localTime";
+import { todayLocal, formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
 import { useUserPref } from "../utils/userPrefs";
-import { nextProjectSort, normalizeProjectSort, sortProjects } from "../utils/projectSort";
+import { isAttributeSortKey, nextProjectSort, normalizeProjectSort, sortProjects } from "../utils/projectSort";
 import type { ProjectSort, ProjectSortKey } from "../utils/projectSort";
 import { matchesRatingFilter, ratingFilterOptions, ratingValue } from "../utils/rating";
+import {
+  BUILTIN_COLUMN_LABELS,
+  asAttributeList,
+  isBooleanCheckbox,
+  projectAttributeSortValue,
+  visibleProjectColumns,
+} from "../utils/projectColumns";
+import type { BuiltinProjectColumnKey, ResolvedProjectColumn } from "../utils/projectColumns";
+import { currencyForRegion, formatMoney, isMoneyValueEmpty, parseMoneyValue } from "../utils/currency";
 
 /*
   The summary strip's chips. Each tone is written out in full because Tailwind
@@ -416,13 +425,71 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     return Math.round(sum / project.gantt.length);
   };
 
+  /* The currency a money attribute falls back to when it carries none of its
+     own — the workspace default, or the one the language implies. */
+  const defaultCurrency = currencyCode || currencyForRegion(userLanguage);
+
+  /* Which project type's column layout the table follows.
+
+     A custom attribute belongs to one type, so a column showing it means
+     nothing to a project of another: the layout is honoured only where the list
+     is unambiguously about one type — because the type filter picks it, or
+     because the workspace has only that one. A mixed list falls back to the
+     built-in columns, which every project can answer.
+
+     Deliberately not "whatever type the rows happen to all be": that reading
+     would change the table's shape mid-search, as a query narrowed the list to
+     one type and back. */
+  const layoutType = useMemo(() => {
+    if (selectedTypeFilter !== "all") {
+      return projectTypes.find(pt => pt.id === selectedTypeFilter) || null;
+    }
+    return projectTypes.length === 1 ? projectTypes[0] : null;
+  }, [selectedTypeFilter, projectTypes]);
+
+  /** The columns the table draws, in order. */
+  const activeColumns = useMemo<ResolvedProjectColumn[]>(
+    () => visibleProjectColumns(layoutType?.attributes, layoutType?.listColumns),
+    [layoutType]
+  );
+
+  /* Ordering by an attribute column only makes sense while that column is on
+     screen. Switch back to "all types", or to a type that does not carry it,
+     and the stored key would sort every row by a value none of them has — so
+     the list quietly returns to its default order instead. */
+  const effectiveSort = useMemo<ProjectSort>(
+    () => (isAttributeSortKey(sort.key) && !activeColumns.some(c => c.key === sort.key)
+      ? { key: "default", direction: "asc" }
+      : sort),
+    [sort, activeColumns]
+  );
+
+  /* What sorting an attribute column compares, for the columns on screen. Empty
+     while none is shown, which is the usual case. */
+  const sortableAttributes = useMemo(
+    () => activeColumns
+      .filter((c): c is ResolvedProjectColumn & { attribute: ProjectAttribute } => !!c.attribute)
+      .map(c => ({ key: c.key, attribute: c.attribute })),
+    [activeColumns]
+  );
+
   /* The filtered list in the chosen order. A project with no value for the
-     sorted column (no deadline, no roadmap) always goes last. */
+     sorted column (no deadline, no roadmap, a blank attribute) always goes last. */
   const sortedProjects = useMemo(() => {
     const statusOrder = projectStatusOrder() as string[];
-    return sortProjects(filteredProjects, sort, p => {
+    const contactName = (id: string) => leads.find(l => l.id === id)?.name || null;
+    const moneyAmount = (raw: unknown) => parseMoneyValue(raw, defaultCurrency).amount;
+
+    return sortProjects(filteredProjects, effectiveSort, p => {
       const pType = projectTypes.find(pt => pt.id === p.projectTypeId);
       const rank = statusOrder.indexOf(p.status);
+      let attributes: Record<string, string | number | null> | undefined;
+      if (sortableAttributes.length > 0) {
+        attributes = {};
+        for (const { key, attribute } of sortableAttributes) {
+          attributes[key] = projectAttributeSortValue(attribute, p.data?.[attribute.id], { moneyAmount, contactName });
+        }
+      }
       return {
         name: projectDisplayName(p, leads, ""),
         client: leads.find(l => l.id === p.leadId)?.name || "",
@@ -433,11 +500,15 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         deadline: evaluateProjectDeadline(p, pType, today)?.deadline ?? null,
         progress: pType?.hasGantt && p.gantt && p.gantt.length > 0 ? calculateProgress(p) : null,
         statusRank: rank === -1 ? statusOrder.length : rank,
+        attributes,
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredProjects, sort.key, sort.direction, projectTypes, leads, today]);
+  }, [filteredProjects, effectiveSort.key, effectiveSort.direction, projectTypes, leads, today, sortableAttributes, defaultCurrency]);
 
+  /* The dropdown and the table headers write the same preference, so the
+     dropdown offers the attribute columns the table is currently showing —
+     otherwise the cards view could not be ordered by one at all. */
   const sortOptions: { value: ProjectSortKey; label: string }[] = [
     { value: "default", label: t("Default order", "Predvolené poradie", "Alapértelmezett sorrend") },
     { value: "name", label: t("Project name", "Názov projektu", "Projekt neve") },
@@ -448,6 +519,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     { value: "deadline", label: t("Deadline", "Termín", "Határidő") },
     { value: "progress", label: t("Progress", "Postup", "Haladás") },
     { value: "status", label: t("Status", "Stav", "Állapot") },
+    ...sortableAttributes.map(({ key, attribute }) => ({ value: key as ProjectSortKey, label: attribute.name })),
   ];
 
   const renderIcon = (iconName: string, className?: string) => {
@@ -538,6 +610,185 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         <span>{t("Reason missing", "Chýba dôvod", "Hiányzó indoklás")}</span>
       </span>
     );
+  };
+
+  /* -------------------------------------------------------------------- */
+  /* The table's columns                                                   */
+  /* -------------------------------------------------------------------- */
+
+  /** A built-in column's own name, or the attribute's, for one shown as a column. */
+  const columnLabel = (col: ResolvedProjectColumn) => {
+    if (col.attribute) return col.attribute.name;
+    const label = BUILTIN_COLUMN_LABELS[col.key as BuiltinProjectColumnKey];
+    return label ? t(label[0], label[1], label[2]) : col.key;
+  };
+
+  const emptyCell = <span className="text-slate-300 text-xs">—</span>;
+
+  /**
+   * A custom attribute in one table cell: the value in the shape its type
+   * deserves, but compact — a list of files becomes a count, a long text is
+   * truncated with the whole of it on hover. The roomy version lives on the
+   * project itself (renderAttrValue in ProjectDetailsView).
+   */
+  const renderAttributeCell = (attr: ProjectAttribute, rawVal: unknown): React.ReactNode => {
+    switch (attr.type) {
+      case "money": {
+        if (isMoneyValueEmpty(rawVal, defaultCurrency)) return emptyCell;
+        const m = parseMoneyValue(rawVal, defaultCurrency);
+        return (
+          <span className="text-xs font-bold text-slate-700 tabular-nums whitespace-nowrap">
+            {formatMoney(m.amount || 0, m.currency, userLanguage)}
+          </span>
+        );
+      }
+      case "date":
+        return rawVal
+          ? <span className="text-xs font-semibold text-slate-600 whitespace-nowrap">{formatDateLocalized(String(rawVal), userLanguage)}</span>
+          : emptyCell;
+      case "datetime":
+        return rawVal
+          ? <span className="text-xs font-semibold text-slate-600 whitespace-nowrap">{formatTimestampLocalized(String(rawVal).replace("T", " "), userLanguage)}</span>
+          : emptyCell;
+      case "number":
+        return rawVal === "" || rawVal === null || rawVal === undefined
+          ? emptyCell
+          : <span className="text-xs font-semibold text-slate-600 tabular-nums">{String(rawVal)}</span>;
+      case "checkbox": {
+        if (isBooleanCheckbox(attr)) {
+          // A yes/no box is answered either way, so both answers are drawn.
+          return rawVal
+            ? <Check className="h-4 w-4 text-emerald-600" aria-label={t("Yes", "Áno", "Igen")} />
+            : <Minus className="h-4 w-4 text-slate-300" aria-label={t("No", "Nie", "Nem")} />;
+        }
+        const picked = asAttributeList(rawVal).map(String);
+        if (picked.length === 0) return emptyCell;
+        return (
+          <div className="flex flex-wrap items-center gap-1 max-w-[14rem]" title={picked.join(", ")}>
+            {picked.slice(0, 2).map(opt => (
+              <span key={opt} className="px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-[10px] font-bold text-slate-600 truncate max-w-[7rem]">
+                {opt}
+              </span>
+            ))}
+            {picked.length > 2 && (
+              <span className="text-[10px] font-bold text-slate-400 tabular-nums">+{picked.length - 2}</span>
+            )}
+          </div>
+        );
+      }
+      case "files": {
+        const files = asAttributeList(rawVal);
+        if (files.length === 0) return emptyCell;
+        return (
+          <span
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 whitespace-nowrap"
+            title={files.map((f: any) => f?.name).filter(Boolean).join(", ")}
+          >
+            <Paperclip className="h-3.5 w-3.5 shrink-0 text-slate-400" />
+            <span className="tabular-nums">{files.length}</span>
+          </span>
+        );
+      }
+      case "contact": {
+        const contact = typeof rawVal === "string" ? leads.find(l => l.id === rawVal) : undefined;
+        if (!contact) return emptyCell;
+        return (
+          <span className="block truncate max-w-[12rem] text-xs font-semibold text-slate-600" title={contact.name}>
+            {contact.name}
+          </span>
+        );
+      }
+      default: {
+        if (rawVal === "" || rawVal === null || rawVal === undefined) return emptyCell;
+        const text = String(rawVal);
+        return (
+          <span className="block truncate max-w-[14rem] text-xs font-semibold text-slate-600" title={text}>
+            {text}
+          </span>
+        );
+      }
+    }
+  };
+
+  /** Everything a cell can need about the row it sits in, worked out once per row. */
+  interface ProjectRowContext {
+    project: Project;
+    pType: ProjectType;
+    lead: Lead | undefined;
+    title: string;
+    progress: number;
+    dl: ProjectDeadlineStatus | null;
+  }
+
+  const renderColumnCell = (col: ResolvedProjectColumn, row: ProjectRowContext): React.ReactNode => {
+    const { project: p, pType, lead, title, progress, dl } = row;
+
+    if (col.attribute) return renderAttributeCell(col.attribute, p.data?.[col.attribute.id]);
+
+    switch (col.key) {
+      case "name":
+        return (
+          <div className="flex items-center gap-2.5 min-w-0">
+            <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: pType.color }} />
+            <span className="font-heading font-bold text-[13px] text-slate-800 group-hover:text-indigo-600 transition-colors truncate">
+              {title}
+            </span>
+          </div>
+        );
+      case "type":
+        return (
+          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 whitespace-nowrap">
+            {renderIcon(pType.icon, "h-3.5 w-3.5 shrink-0")}
+            {pType.name}
+          </span>
+        );
+      case "client":
+        return lead?.name
+          ? <span className="text-xs font-semibold text-slate-600">{lead.name}</span>
+          : emptyCell;
+      case "managers":
+        return p.managers && p.managers.length > 0
+          ? (
+            <span className="block truncate max-w-[14rem] text-xs font-semibold text-slate-500" title={p.managers.join(", ")}>
+              {p.managers.join(", ")}
+            </span>
+          )
+          : emptyCell;
+      case "rating":
+        /* Rated on the spot, like a lead in its own list. Read-only for a role
+           that cannot edit — the dots still show the priority, they just do not move. */
+        return (
+          <StarRating
+            rating={ratingValue(p.rating)}
+            onChange={canEdit ? (stars) => handleRateProject(p.id, stars) : undefined}
+            userLanguage={userLanguage}
+          />
+        );
+      case "deadline":
+        return dl ? (
+          <div className="flex flex-wrap items-center gap-1.5">
+            {renderDeadlineBadge(dl)}
+            {renderDelayFlag(p, dl)}
+          </div>
+        ) : emptyCell;
+      case "progress":
+        return pType.hasGantt && p.gantt && p.gantt.length > 0 ? (
+          <div className="flex items-center gap-2 min-w-[7rem]">
+            <div className="h-1.5 flex-1 rounded-full bg-slate-100 overflow-hidden border border-slate-200/50">
+              <div className="h-full rounded-full" style={{ width: `${progress}%`, backgroundColor: pType.color }} />
+            </div>
+            <span className="text-[10px] font-bold text-slate-500 tabular-nums">{progress}%</span>
+          </div>
+        ) : emptyCell;
+      case "status":
+        return (
+          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap ${projectStatusBadgeClass(p.status)}`}>
+            {projectStatusLabel(p.status, t)}
+          </span>
+        );
+      default:
+        return emptyCell;
+    }
   };
 
   /* "+ New Project" — the primary action, and since 1.9 the button that sits
@@ -870,20 +1121,20 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 <CustomSelect
                   className="h-10"
                   icon={<ArrowUpDown className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
-                  value={sort.key}
-                  onChange={(v) => setSort({ key: v as ProjectSortKey, direction: v === sort.key ? sort.direction : "asc" })}
+                  value={effectiveSort.key}
+                  onChange={(v) => setSort({ key: v as ProjectSortKey, direction: v === effectiveSort.key ? effectiveSort.direction : "asc" })}
                   options={sortOptions}
                 />
               </div>
-              {sort.key !== "default" && (
+              {effectiveSort.key !== "default" && (
                 <button
                   type="button"
-                  onClick={() => setSort({ ...sort, direction: sort.direction === "asc" ? "desc" : "asc" })}
-                  title={sort.direction === "asc" ? t("Ascending", "Vzostupne", "Növekvő") : t("Descending", "Zostupne", "Csökkenő")}
-                  aria-label={sort.direction === "asc" ? t("Ascending", "Vzostupne", "Növekvő") : t("Descending", "Zostupne", "Csökkenő")}
+                  onClick={() => setSort({ ...effectiveSort, direction: effectiveSort.direction === "asc" ? "desc" : "asc" })}
+                  title={effectiveSort.direction === "asc" ? t("Ascending", "Vzostupne", "Növekvő") : t("Descending", "Zostupne", "Csökkenő")}
+                  aria-label={effectiveSort.direction === "asc" ? t("Ascending", "Vzostupne", "Növekvő") : t("Descending", "Zostupne", "Csökkenő")}
                   className="h-10 w-10 shrink-0 flex items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-indigo-600 hover:border-indigo-200 active:scale-95 transition-all cursor-pointer animate-in fade-in zoom-in-95 duration-150"
                 >
-                  {sort.direction === "asc" ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
+                  {effectiveSort.direction === "asc" ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
                 </button>
               )}
             </div>
@@ -947,35 +1198,31 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass mt-6 overflow-hidden">
               <div className="overflow-x-auto scrollbar-thin">
                 <table className="w-full text-left border-collapse">
+                  {/* The head is drawn from the layout the project type set —
+                      built-in columns and its own attributes alike — so what a
+                      column is, and whether it is here at all, is decided in one
+                      place. See utils/projectColumns.ts. */}
                   <thead>
                     <tr className="border-b border-slate-200 bg-slate-50/70">
-                      {([
-                        { key: "name", label: t("Project", "Projekt", "Projekt") },
-                        { key: "type", label: t("Type", "Typ", "Típus") },
-                        { key: "client", label: t("Client", "Klient", "Ügyfél") },
-                        { key: "managers", label: t("Managers", "Manažéri", "Menedzserek") },
-                        { key: "rating", label: t("Rating", "Hodnotenie", "Értékelés") },
-                        { key: "deadline", label: t("Deadline", "Termín", "Határidő") },
-                        { key: "progress", label: t("Progress", "Postup", "Haladás") },
-                        { key: "status", label: t("Status", "Stav", "Állapot") },
-                      ] as { key: ProjectSortKey; label: string }[]).map(({ key, label }) => {
+                      {activeColumns.map(col => {
+                        const key = col.key as ProjectSortKey;
                         // Click to sort; again to flip; a third time returns to the default order.
-                        const active = sort.key === key;
-                        const SortIcon = !active ? ArrowUpDown : sort.direction === "asc" ? ArrowUp : ArrowDown;
+                        const active = effectiveSort.key === key;
+                        const SortIcon = !active ? ArrowUpDown : effectiveSort.direction === "asc" ? ArrowUp : ArrowDown;
                         return (
                           <th
-                            key={key}
-                            aria-sort={active ? (sort.direction === "asc" ? "ascending" : "descending") : "none"}
+                            key={col.key}
+                            aria-sort={active ? (effectiveSort.direction === "asc" ? "ascending" : "descending") : "none"}
                             className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap"
                           >
                             <button
                               type="button"
-                              onClick={() => setSort(nextProjectSort(sort, key))}
+                              onClick={() => setSort(nextProjectSort(effectiveSort, key))}
                               className={`group/sort inline-flex items-center gap-1 uppercase tracking-widest font-black cursor-pointer transition-colors duration-150 ${
                                 active ? "text-indigo-600" : "hover:text-slate-700"
                               }`}
                             >
-                              {label}
+                              {columnLabel(col)}
                               <SortIcon
                                 className={`h-3 w-3 shrink-0 transition-opacity duration-150 ${
                                   active ? "opacity-100" : "opacity-30 group-hover/sort:opacity-80"
@@ -1007,63 +1254,11 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           }}
                           className="border-b border-slate-100 last:border-0 hover:bg-indigo-50/40 transition-colors cursor-pointer group"
                         >
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-2.5 min-w-0">
-                              <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: pType.color }} />
-                              <span className="font-heading font-bold text-[13px] text-slate-800 group-hover:text-indigo-600 transition-colors truncate">
-                                {title}
-                              </span>
-                            </div>
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 whitespace-nowrap">
-                              {renderIcon(pType.icon, "h-3.5 w-3.5 shrink-0")}
-                              {pType.name}
-                            </span>
-                          </td>
-                          <td className="px-4 py-3 text-xs font-semibold text-slate-600">
-                            {lead?.name || <span className="text-slate-300">—</span>}
-                          </td>
-                          <td className="px-4 py-3 text-xs font-semibold text-slate-500 max-w-[14rem]">
-                            {p.managers && p.managers.length > 0
-                              ? <span className="block truncate" title={p.managers.join(", ")}>{p.managers.join(", ")}</span>
-                              : <span className="text-slate-300">—</span>}
-                          </td>
-                          <td className="px-4 py-3">
-                            {/* Rated on the spot, like a lead in its own list.
-                                Read-only for a role that cannot edit — the dots
-                                still show the priority, they just do not move. */}
-                            <StarRating
-                              rating={ratingValue(p.rating)}
-                              onChange={canEdit ? (stars) => handleRateProject(p.id, stars) : undefined}
-                              userLanguage={userLanguage}
-                            />
-                          </td>
-                          <td className="px-4 py-3">
-                            {dl ? (
-                              <div className="flex flex-wrap items-center gap-1.5">
-                                {renderDeadlineBadge(dl)}
-                                {renderDelayFlag(p, dl)}
-                              </div>
-                            ) : <span className="text-slate-300 text-xs">—</span>}
-                          </td>
-                          <td className="px-4 py-3">
-                            {pType.hasGantt && p.gantt && p.gantt.length > 0 ? (
-                              <div className="flex items-center gap-2 min-w-[7rem]">
-                                <div className="h-1.5 flex-1 rounded-full bg-slate-100 overflow-hidden border border-slate-200/50">
-                                  <div className="h-full rounded-full" style={{ width: `${progress}%`, backgroundColor: pType.color }} />
-                                </div>
-                                <span className="text-[10px] font-bold text-slate-500 tabular-nums">{progress}%</span>
-                              </div>
-                            ) : (
-                              <span className="text-slate-300 text-xs">—</span>
-                            )}
-                          </td>
-                          <td className="px-4 py-3">
-                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap ${projectStatusBadgeClass(p.status)}`}>
-                              {projectStatusLabel(p.status, t)}
-                            </span>
-                          </td>
+                          {activeColumns.map(col => (
+                            <td key={col.key} className="px-4 py-3">
+                              {renderColumnCell(col, { project: p, pType, lead, title, progress, dl })}
+                            </td>
+                          ))}
                           <td className="px-4 py-3">
                             {canDelete && (
                               <button

@@ -2,7 +2,15 @@
 // especially "a project with no value sorts last, whichever way you sort" —
 // are the same in the table, the cards, and the tests.
 
-export type ProjectSortKey = "default" | "name" | "client" | "type" | "managers" | "rating" | "deadline" | "progress" | "status";
+export type BuiltinProjectSortKey = "default" | "name" | "client" | "type" | "managers" | "rating" | "deadline" | "progress" | "status";
+
+/**
+ * A column to order by: one of the built-in ones, or `attr:<attributeId>` for a
+ * custom attribute a project type has put in its list. An attribute column
+ * carries a sort arrow like every other header, so it has to be sortable by the
+ * same route — see ProjectSortValues.attributes.
+ */
+export type ProjectSortKey = BuiltinProjectSortKey | `attr:${string}`;
 export type ProjectSortDirection = "asc" | "desc";
 
 export interface ProjectSort {
@@ -13,7 +21,7 @@ export interface ProjectSort {
 /** The order projects are stored in: newest first, as they are created. */
 export const DEFAULT_PROJECT_SORT: ProjectSort = { key: "default", direction: "asc" };
 
-export const PROJECT_SORT_KEYS: readonly ProjectSortKey[] = [
+export const PROJECT_SORT_KEYS: readonly BuiltinProjectSortKey[] = [
   "default",
   "name",
   "client",
@@ -25,10 +33,20 @@ export const PROJECT_SORT_KEYS: readonly ProjectSortKey[] = [
   "status",
 ];
 
+/** True for `attr:<something>` — an attribute column's key, whose id cannot be checked here. */
+export const isAttributeSortKey = (key: string): key is `attr:${string}` =>
+  key.startsWith("attr:") && key.length > "attr:".length;
+
 /** A stored preference comes back from the database untyped; anything unrecognised is the default. */
 export function normalizeProjectSort(value: unknown): ProjectSort {
   const v = value as Partial<ProjectSort> | null | undefined;
-  const key = PROJECT_SORT_KEYS.includes(v?.key as ProjectSortKey) ? (v!.key as ProjectSortKey) : "default";
+  const raw = v?.key;
+  // An attribute key names an attribute of one project type, which this module
+  // cannot see; the view drops the sort if the column is not on screen.
+  const key: ProjectSortKey =
+    typeof raw === "string" && (PROJECT_SORT_KEYS.includes(raw as BuiltinProjectSortKey) || isAttributeSortKey(raw))
+      ? (raw as ProjectSortKey)
+      : "default";
   const direction = v?.direction === "desc" ? "desc" : "asc";
   return { key, direction };
 }
@@ -62,6 +80,21 @@ export interface ProjectSortValues {
   progress: number | null;
   /** Position of the status in the workflow order. */
   statusRank: number;
+  /**
+   * Comparable values for the custom attribute columns, keyed by the column's
+   * own `attr:<attributeId>`. Absent for a project of a type that does not
+   * carry the attribute, which reads as no value and sorts last — exactly what
+   * a blank cell should do.
+   */
+  attributes?: Record<string, string | number | null>;
+}
+
+/** The one value the sort compares, whichever kind of column it is ordering by. */
+function sortValueFor(values: ProjectSortValues, key: ProjectSortKey): string | number | null {
+  if (isAttributeSortKey(key)) return values.attributes?.[key] ?? null;
+  if (key === "status") return values.statusRank;
+  if (key === "default") return null;
+  return values[key];
 }
 
 const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
@@ -74,11 +107,10 @@ const isEmpty = (v: string | number | null) => v === null || v === "";
  */
 export function sortProjects<T>(items: T[], sort: ProjectSort, valuesOf: (item: T) => ProjectSortValues): T[] {
   if (sort.key === "default") return items.slice();
-  const key = sort.key === "status" ? "statusRank" : sort.key;
   const sign = sort.direction === "desc" ? -1 : 1;
 
   return items
-    .map((item, index) => ({ item, index, value: valuesOf(item)[key] }))
+    .map((item, index) => ({ item, index, value: sortValueFor(valuesOf(item), sort.key) }))
     .sort((a, b) => {
       const aEmpty = isEmpty(a.value);
       const bEmpty = isEmpty(b.value);

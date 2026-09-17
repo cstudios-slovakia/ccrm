@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   DEFAULT_PROJECT_SORT,
+  isAttributeSortKey,
   nextProjectSort,
   normalizeProjectSort,
   sortProjects,
@@ -77,4 +78,47 @@ test("a stored preference is validated", () => {
   assert.deepEqual(normalizeProjectSort({ key: "deadline", direction: "desc" }), { key: "deadline", direction: "desc" });
   assert.deepEqual(normalizeProjectSort({ key: "bogus", direction: "sideways" }), DEFAULT_PROJECT_SORT);
   assert.deepEqual(normalizeProjectSort(null), DEFAULT_PROJECT_SORT);
+});
+
+test("an attribute column's key survives being stored, a bare prefix does not", () => {
+  // This module cannot check that the attribute exists — the view drops the
+  // sort when the column is not on screen.
+  assert.deepEqual(normalizeProjectSort({ key: "attr:a1", direction: "desc" }), { key: "attr:a1", direction: "desc" });
+  assert.deepEqual(normalizeProjectSort({ key: "attr:", direction: "asc" }), DEFAULT_PROJECT_SORT);
+  assert.equal(isAttributeSortKey("attr:a1"), true);
+  assert.equal(isAttributeSortKey("status"), false);
+});
+
+test("an attribute column sorts by its own values, blanks last", () => {
+  const attrRows = [
+    { id: "p1", attributes: { "attr:a1": 20 } },
+    { id: "p2", attributes: {} },
+    { id: "p3", attributes: { "attr:a1": 5 } },
+  ];
+  const attrValues = (r: (typeof attrRows)[number]): ProjectSortValues => ({
+    ...values({ id: r.id }),
+    attributes: r.attributes,
+  });
+
+  assert.deepEqual(
+    sortProjects(attrRows, { key: "attr:a1", direction: "asc" }, attrValues).map(r => r.id),
+    ["p3", "p1", "p2"],
+  );
+  assert.deepEqual(
+    sortProjects(attrRows, { key: "attr:a1", direction: "desc" }, attrValues).map(r => r.id),
+    ["p1", "p3", "p2"],
+  );
+});
+
+test("a project of a type without the attribute sorts as a blank, not a crash", () => {
+  // `attributes` is absent entirely for a row of another project type.
+  const mixed = [{ id: "p1" }, { id: "p2", attributes: { "attr:a1": "x" } }];
+  const mixedValues = (r: (typeof mixed)[number]): ProjectSortValues => ({
+    ...values({ id: r.id }),
+    attributes: (r as any).attributes,
+  });
+  assert.deepEqual(
+    sortProjects(mixed, { key: "attr:a1", direction: "asc" }, mixedValues).map(r => r.id),
+    ["p2", "p1"],
+  );
 });
