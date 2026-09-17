@@ -47,6 +47,13 @@ import {
   EMPTY_FINANCIAL_TREND,
   type FinancialTrendSettings
 } from "../utils/financialTrend";
+import {
+  isoDaysBetween,
+  recurringAmountHistoryAfterChange,
+  recurringCharges,
+  recurringOccurrences,
+  shiftIsoDate
+} from "../utils/recurringExpenses";
 
 // Trend graph forecast horizons. `futureWeeks` is the number of whole weeks the
 // projection runs past the current one — 13 weeks is the usual "3 months".
@@ -1301,6 +1308,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       ...rec,
       id: `fr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       title: `${rec.title} (Copy)`,
+      // The copy is a new rule — it never charged the original's older prices.
+      recurringAmountHistory: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -1386,38 +1395,15 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     return t(`Monthly on day ${day}`, `Mesačne ${day}. dňa`, `Havonta ${day}. napon`);
   };
 
-  // Helper to calculate the next due date for a recurring rule
-  const getNextRecurringDueDate = (rec: FinancialRecord): { dateStr: string; daysLeft: number } => {
-    const today = new Date();
-    const cfg = rec.recurringConfig || {};
-    const freq = rec.recurringFrequency || "monthly";
-
-    let targetDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-
-    if (freq === "monthly") {
-      const dayOfMonth = Math.min(cfg.dayOfMonth ?? 1, 28);
-      targetDate = new Date(today.getFullYear(), today.getMonth(), dayOfMonth);
-      if (targetDate < today) {
-        targetDate = new Date(today.getFullYear(), today.getMonth() + 1, dayOfMonth);
-      }
-    } else if (freq === "weekly") {
-      const targetDay = cfg.dayOfWeek ?? 1; // Monday = 1
-      const currentDay = today.getDay();
-      let diff = targetDay - currentDay;
-      if (diff <= 0) diff += 7;
-      targetDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + diff);
-    } else if (freq === "yearly") {
-      const month = (cfg.month ?? 1) - 1;
-      targetDate = new Date(today.getFullYear(), month, 1);
-      if (targetDate < today) {
-        targetDate = new Date(today.getFullYear() + 1, month, 1);
-      }
-    }
-
-    const diffTime = targetDate.getTime() - today.getTime();
-    const daysLeft = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
-    const dateStr = targetDate.toISOString().split("T")[0];
-    return { dateStr, daysLeft };
+  // The rule's next charge, read off the same calendar the projections use, so
+  // the date in the table is the date the cash-flow week is billed on. Null once
+  // the rule has run past its end date — there is no next charge to show.
+  const getNextRecurringDueDate = (rec: FinancialRecord): { dateStr: string; daysLeft: number } | null => {
+    const today = todayLocal();
+    // Two years ahead covers the longest cadence (yearly) from any starting day.
+    const next = recurringOccurrences(rec, today, shiftIsoDate(today, 731))[0];
+    if (!next) return null;
+    return { dateStr: next, daysLeft: Math.max(0, isoDaysBetween(today, next)) };
   };
 
   // Filtered recurring records list
@@ -1488,9 +1474,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     // Find closest upcoming recurring charge
     let nextUpcoming: { record: FinancialRecord; daysLeft: number; dateStr: string } | null = null;
     activeExpenses.forEach((rec) => {
-      const { dateStr, daysLeft } = getNextRecurringDueDate(rec);
-      if (!nextUpcoming || daysLeft < nextUpcoming.daysLeft) {
-        nextUpcoming = { record: rec, daysLeft, dateStr };
+      const next = getNextRecurringDueDate(rec);
+      if (!next) return;
+      if (!nextUpcoming || next.daysLeft < nextUpcoming.daysLeft) {
+        nextUpcoming = { record: rec, daysLeft: next.daysLeft, dateStr: next.dateStr };
       }
     });
 
@@ -1851,51 +1838,19 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     });
 
     // 2. Project Recurring Movements across the weeks
+    //
+    // Each charge is priced at the amount that was in force on its own date, so
+    // editing a rule's amount today does not rewrite the weeks already behind
+    // us — see utils/recurringExpenses.ts.
     financialRecords.forEach((rec) => {
       if (!rec.isRecurring) return;
-
-      const amt = rec.amountPlanned > 0 ? rec.amountPlanned : (rec.amountReal || 0);
-      if (!amt) return;
-
-      const config: any = rec.recurringConfig || null;
 
       const freq = rec.recurringFrequency || "monthly";
 
       buckets.forEach((b) => {
-        const bStart = new Date(b.startIso);
-        const bEnd = new Date(b.endIso);
+        recurringCharges(rec, b.startIso, b.endIso).forEach(({ amount: amt }) => {
+          if (!amt) return;
 
-        if (rec.recurringStartDate && new Date(rec.recurringStartDate) > bEnd) return;
-        if (rec.recurringEndDate && new Date(rec.recurringEndDate) < bStart) return;
-
-        let occursInWeek = false;
-
-        if (freq === "weekly") {
-          occursInWeek = true;
-        } else if (freq === "monthly") {
-          const targetDay = config?.dayOfMonth || 1;
-          for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
-            const checkDate = new Date(bStart);
-            checkDate.setDate(checkDate.getDate() + dayOffset);
-            if (checkDate.getDate() === targetDay) {
-              occursInWeek = true;
-              break;
-            }
-          }
-        } else if (freq === "yearly") {
-          const targetMonth = (config?.month || 1) - 1;
-          const targetDay = config?.day || 1;
-          for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
-            const checkDate = new Date(bStart);
-            checkDate.setDate(checkDate.getDate() + dayOffset);
-            if (checkDate.getMonth() === targetMonth && checkDate.getDate() === targetDay) {
-              occursInWeek = true;
-              break;
-            }
-          }
-        }
-
-        if (occursInWeek) {
           if (rec.type === "income") {
             if (b.isPast || b.isCurrent) {
               b.incomeReal += amt;
@@ -1917,7 +1872,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             isRecurring: true,
             frequency: freq
           });
-        }
+        });
       });
     });
 
@@ -2209,46 +2164,22 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     });
 
     // Distribute recurring records
+    //
+    // The charges are enumerated off the calendar instead of being estimated
+    // per granularity (a month is not always 4 weeks, and a yearly rule only
+    // lands in one of the quarters), and each one is priced at the amount that
+    // was in force on its date — a rule whose amount changed keeps the old
+    // figure in the columns it was already charged at.
     financialRecords.forEach((rec) => {
       if (!rec.isRecurring || !rec.categoryId) return;
-      const amt = rec.amountPlanned > 0 ? rec.amountPlanned : (rec.amountReal || 0);
-      if (!amt) return;
-
-      const config: any = rec.recurringConfig || null;
-      const freq = rec.recurringFrequency || "monthly";
 
       columns.forEach((col) => {
-        if (rec.recurringStartDate && new Date(rec.recurringStartDate) > col.endDate) return;
-        if (rec.recurringEndDate && new Date(rec.recurringEndDate) < col.startDate) return;
+        const totalAmt = recurringCharges(rec, col.startIso, col.endIso)
+          .reduce((sum, charge) => sum + charge.amount, 0);
+        if (totalAmt <= 0) return;
 
-        let occurrences = 0;
-        if (tableGranularity === "month") {
-          if (freq === "monthly") occurrences = 1;
-          else if (freq === "weekly") occurrences = 4;
-          else if (freq === "yearly" && col.startDate.getMonth() === (config?.month ? config.month - 1 : 0)) occurrences = 1;
-        } else if (tableGranularity === "quarter") {
-          if (freq === "monthly") occurrences = 3;
-          else if (freq === "weekly") occurrences = 13;
-          else if (freq === "yearly") occurrences = 1;
-        } else if (tableGranularity === "half") {
-          if (freq === "monthly") occurrences = 6;
-          else if (freq === "weekly") occurrences = 26;
-          else if (freq === "yearly") occurrences = 1;
-        } else if (tableGranularity === "year") {
-          if (freq === "monthly") occurrences = 12;
-          else if (freq === "weekly") occurrences = 52;
-          else if (freq === "yearly") occurrences = 1;
-        } else {
-          // week
-          if (freq === "weekly") occurrences = 1;
-          else if (freq === "monthly" && col.startDate.getDate() <= 7) occurrences = 1;
-        }
-
-        if (occurrences > 0) {
-          const totalAmt = amt * occurrences;
-          const isReal = !col.isFuture && rec.status === "paid";
-          addDirect(rec.categoryId!, col.id, totalAmt, isReal);
-        }
+        const isReal = !col.isFuture && rec.status === "paid";
+        addDirect(rec.categoryId!, col.id, totalAmt, isReal);
       });
     });
 
@@ -2651,6 +2582,21 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         }
       : null;
 
+    const nextAmounts = {
+      amountPlanned: Number(formAmountPlanned) || 0,
+      amountReal: Number(formAmountReal) || 0
+    };
+
+    // Changing what a recurring rule costs must not re-price the charges it has
+    // already made: the old amount is pinned up to yesterday and the new one
+    // takes over from the next charge. A one-off record has nothing to pin.
+    const amountHistory =
+      editingRecord && editingRecord.isRecurring && formIsRecurring
+        ? recurringAmountHistoryAfterChange(editingRecord, nextAmounts, todayLocal())
+        : formIsRecurring
+          ? editingRecord?.recurringAmountHistory || null
+          : null;
+
     const recordPayload: FinancialRecord = {
       id: editingRecord?.id || `fr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       type: formType,
@@ -2659,8 +2605,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       description: formDescription.trim() || null,
       categoryId: formCategoryId || null,
       categoryPath: path || null,
-      amountPlanned: Number(formAmountPlanned) || 0,
-      amountReal: Number(formAmountReal) || 0,
+      amountPlanned: nextAmounts.amountPlanned,
+      amountReal: nextAmounts.amountReal,
       currency: currencyCode || "EUR",
       status: formStatus,
       issueDate: formIssueDate,
@@ -2672,6 +2618,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       recurringConfig: recConfig,
       recurringStartDate: formIsRecurring ? formRecurringStartDate : null,
       recurringEndDate: formIsRecurring ? formRecurringEndDate || null : null,
+      recurringAmountHistory: amountHistory,
       projectId: formScope === "project" && formProjectId ? formProjectId : null,
       clientId: formScope === "client" && formClientId ? formClientId : (formScope === "project" && formProjectId ? (projects.find(p => p.id === formProjectId)?.clientId || projects.find(p => p.id === formProjectId)?.leadId || null) : null),
       invoiceNumber: formInvoiceNumber.trim() || null,
@@ -2770,6 +2717,13 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     patchMovement(record.id, {
       status: nextStatus,
       amountReal,
+      // On a recurring rule this is a new price, not a correction of the ones
+      // already charged — pin the old figure to the charges behind us.
+      recurringAmountHistory: recurringAmountHistoryAfterChange(
+        record,
+        { amountPlanned: record.amountPlanned || 0, amountReal },
+        todayLocal()
+      ),
       // A settlement without a date would drop out of every month bucket.
       paidDate: record.paidDate || todayLocal()
     });
@@ -3227,6 +3181,54 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             className="w-full px-3.5 py-2 bg-white  border border-slate-200  rounded-xl text-sm font-bold text-slate-900  focus:outline-none focus:ring-2 focus:ring-emerald-500"
           />
         </div>
+
+        {/* A price change on a recurring rule only ever moves forward — say so
+            before the user saves, so nobody expects the past to follow. */}
+        {(() => {
+          if (!editingRecord?.isRecurring || !formIsRecurring) return null;
+
+          const previousAmount =
+            editingRecord.amountPlanned > 0 ? editingRecord.amountPlanned : editingRecord.amountReal || 0;
+          const history = editingRecord.recurringAmountHistory || [];
+          const lastChargedIso = shiftIsoDate(todayLocal(), -1);
+
+          const amountMoved =
+            Math.round((Number(formAmountPlanned) || 0) * 100) !== Math.round((editingRecord.amountPlanned || 0) * 100) ||
+            Math.round((Number(formAmountReal) || 0) * 100) !== Math.round((editingRecord.amountReal || 0) * 100);
+          // A rule that has not charged yet is simply being corrected.
+          const changed = amountMoved && !(formRecurringStartDate && formRecurringStartDate > lastChargedIso);
+          if (!changed && history.length === 0) return null;
+
+          const lastCharged = formatDateLocalized(lastChargedIso, userLanguage);
+
+          return (
+            <div className="sm:col-span-2 flex items-start gap-2 px-3 py-2 rounded-xl bg-purple-50  border border-purple-200  text-[11px] text-purple-800 ">
+              <RefreshCw className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+              <div className="space-y-0.5">
+                {changed && (
+                  <p className="font-semibold">
+                    {t(
+                      `The new amount applies from the next charge — charges up to ${lastCharged} keep ${money(previousAmount)}.`,
+                      `Nová suma platí od najbližšej platby — platby do ${lastCharged} zostávajú na ${money(previousAmount)}.`,
+                      `Az új összeg a következő terheléstől érvényes — a ${lastCharged} előtti tételek ${money(previousAmount)} maradnak.`
+                    )}
+                  </p>
+                )}
+                {history.length > 0 && (
+                  <p className="text-purple-600 ">
+                    {t("Earlier amounts:", "Skoršie sumy:", "Korábbi összegek:")}{" "}
+                    {history
+                      .map(
+                        (period) =>
+                          `${money(period.amountPlanned > 0 ? period.amountPlanned : period.amountReal)} ${t("until", "do", "eddig")} ${formatDateLocalized(period.until, userLanguage)}`
+                      )
+                      .join(" · ")}
+                  </p>
+                )}
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Status, Dates, Payment Method */}
@@ -5594,8 +5596,17 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                       const isPaused = rec.status === "cancelled";
                       const amount = rec.amountReal > 0 ? rec.amountReal : rec.amountPlanned;
                       const monthlyCost = getMonthlyEquivalent(amount, rec.recurringFrequency);
-                      const { dateStr, daysLeft } = getNextRecurringDueDate(rec);
+                      const nextCharge = getNextRecurringDueDate(rec);
                       const cadenceText = getRecurrenceDescription(rec);
+                      // Amounts the rule used to charge, so a price rise reads
+                      // as "600 since 17.9." instead of silently restating the
+                      // months that were paid at 500.
+                      const pinnedAmounts = [...(rec.recurringAmountHistory || [])].sort((a, b) =>
+                        a.until.localeCompare(b.until)
+                      );
+                      const priceSince = pinnedAmounts.length
+                        ? shiftIsoDate(pinnedAmounts[pinnedAmounts.length - 1].until, 1)
+                        : null;
 
                       return (
                         <tr
@@ -5642,12 +5653,16 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                             </div>
                             <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-1">
                               <Clock className="h-3 w-3 text-slate-400 shrink-0" />
-                              <span>
-                                {t("Next:", "Najbližšie:", "Következő:")} {formatDateLocalized(dateStr, userLanguage)}{" "}
-                                <span className={daysLeft <= 3 ? "text-rose-500 font-bold" : "text-slate-500"}>
-                                  ({daysLeft === 0 ? t("Today", "Dnes", "Ma") : t(`in ${daysLeft}d`, `o ${daysLeft} dní`, `${daysLeft} nap múlva`)})
+                              {nextCharge ? (
+                                <span>
+                                  {t("Next:", "Najbližšie:", "Következő:")} {formatDateLocalized(nextCharge.dateStr, userLanguage)}{" "}
+                                  <span className={nextCharge.daysLeft <= 3 ? "text-rose-500 font-bold" : "text-slate-500"}>
+                                    ({nextCharge.daysLeft === 0 ? t("Today", "Dnes", "Ma") : t(`in ${nextCharge.daysLeft}d`, `o ${nextCharge.daysLeft} dní`, `${nextCharge.daysLeft} nap múlva`)})
+                                  </span>
                                 </span>
-                              </span>
+                              ) : (
+                                <span>{t("No further charges", "Už sa neúčtuje", "Nincs több terhelés")}</span>
+                              )}
                             </div>
                           </td>
 
@@ -5726,6 +5741,19 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                             <div className="text-[10px] text-slate-400 font-medium mt-0.5">
                               ≈ -{money(monthlyCost)} / {t("month", "mesiac", "hónap")}
                             </div>
+                            {priceSince && (
+                              <div
+                                className="text-[10px] text-purple-600  font-semibold mt-0.5"
+                                title={pinnedAmounts
+                                  .map(
+                                    (period) =>
+                                      `${money(period.amountPlanned > 0 ? period.amountPlanned : period.amountReal)} ${t("until", "do", "eddig")} ${formatDateLocalized(period.until, userLanguage)}`
+                                  )
+                                  .join("\n")}
+                              >
+                                {t("since", "od", "ettől")} {formatDateLocalized(priceSince, userLanguage)}
+                              </div>
+                            )}
                           </td>
 
                           {/* 6. Active / Paused Switch */}

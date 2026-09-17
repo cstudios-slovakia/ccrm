@@ -793,6 +793,23 @@ export interface FinancialRecurrenceConfig {
   month?: number; // 1-12 (for yearly)
 }
 
+/**
+ * One closed chapter in a recurring rule's price history.
+ *
+ * A recurring movement is stored as a single rule, not as one row per charge,
+ * so every report derives its past occurrences from the rule. Without this the
+ * rule's current amount would be applied backwards: raising the rent from 500
+ * to 600 would rewrite every month already paid at 500. An entry pins what was
+ * really charged — occurrences dated `until` or earlier (but after the previous
+ * entry) cost this much; anything later uses the record's own amounts.
+ */
+export interface FinancialRecurringAmountPeriod {
+  /** Last occurrence date charged this amount, inclusive, `YYYY-MM-DD`. */
+  until: string;
+  amountPlanned: number;
+  amountReal: number;
+}
+
 export interface FinancialRecord {
   id: string;
   type: FinancialType;
@@ -814,6 +831,13 @@ export interface FinancialRecord {
   recurringConfig?: FinancialRecurrenceConfig | null;
   recurringStartDate?: string | null;
   recurringEndDate?: string | null;
+  /**
+   * Superseded amounts of a recurring rule, oldest first. `amountPlanned` /
+   * `amountReal` above are always the figures in force now; this is what the
+   * occurrences before the last change were charged. See
+   * `utils/recurringExpenses.ts`.
+   */
+  recurringAmountHistory?: FinancialRecurringAmountPeriod[] | null;
   projectId?: string | null; // NULL for Global Company-Wide record
   clientId?: string | null;  // NULL for Global Company-Wide record
   invoiceNumber?: string | null;

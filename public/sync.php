@@ -1443,6 +1443,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'recurringConfig' => !empty($row['recurring_config_json']) ? json_decode($row['recurring_config_json'], true) : null,
                     'recurringStartDate' => $row['recurring_start_date'],
                     'recurringEndDate' => $row['recurring_end_date'],
+                    'recurringAmountHistory' => !empty($row['recurring_amount_history_json']) ? json_decode($row['recurring_amount_history_json'], true) : null,
                     'projectId' => $row['project_id'],
                     'clientId' => $row['client_id'],
                     'invoiceNumber' => $row['invoice_number'],
@@ -3823,7 +3824,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingFrIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedFrIds = [];
 
-            $insFr = $pdo->prepare("INSERT INTO `financial_records` (`id`, `type`, `subtype`, `title`, `description`, `category_id`, `category_path`, `amount_planned`, `amount_real`, `currency`, `status`, `issue_date`, `due_date`, `paid_date`, `payment_method`, `is_recurring`, `recurring_frequency`, `recurring_config_json`, `recurring_start_date`, `recurring_end_date`, `project_id`, `client_id`, `invoice_number`, `tax_rate`, `attachments_json`, `created_by`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `type` = VALUES(`type`), `subtype` = VALUES(`subtype`), `title` = VALUES(`title`), `description` = VALUES(`description`), `category_id` = VALUES(`category_id`), `category_path` = VALUES(`category_path`), `amount_planned` = VALUES(`amount_planned`), `amount_real` = VALUES(`amount_real`), `currency` = VALUES(`currency`), `status` = VALUES(`status`), `issue_date` = VALUES(`issue_date`), `due_date` = VALUES(`due_date`), `paid_date` = VALUES(`paid_date`), `payment_method` = VALUES(`payment_method`), `is_recurring` = VALUES(`is_recurring`), `recurring_frequency` = VALUES(`recurring_frequency`), `recurring_config_json` = VALUES(`recurring_config_json`), `recurring_start_date` = VALUES(`recurring_start_date`), `recurring_end_date` = VALUES(`recurring_end_date`), `project_id` = VALUES(`project_id`), `client_id` = VALUES(`client_id`), `invoice_number` = VALUES(`invoice_number`), `tax_rate` = VALUES(`tax_rate`), `attachments_json` = VALUES(`attachments_json`), `created_by` = VALUES(`created_by`)");
+            $insFr = $pdo->prepare("INSERT INTO `financial_records` (`id`, `type`, `subtype`, `title`, `description`, `category_id`, `category_path`, `amount_planned`, `amount_real`, `currency`, `status`, `issue_date`, `due_date`, `paid_date`, `payment_method`, `is_recurring`, `recurring_frequency`, `recurring_config_json`, `recurring_start_date`, `recurring_end_date`, `recurring_amount_history_json`, `project_id`, `client_id`, `invoice_number`, `tax_rate`, `attachments_json`, `created_by`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `type` = VALUES(`type`), `subtype` = VALUES(`subtype`), `title` = VALUES(`title`), `description` = VALUES(`description`), `category_id` = VALUES(`category_id`), `category_path` = VALUES(`category_path`), `amount_planned` = VALUES(`amount_planned`), `amount_real` = VALUES(`amount_real`), `currency` = VALUES(`currency`), `status` = VALUES(`status`), `issue_date` = VALUES(`issue_date`), `due_date` = VALUES(`due_date`), `paid_date` = VALUES(`paid_date`), `payment_method` = VALUES(`payment_method`), `is_recurring` = VALUES(`is_recurring`), `recurring_frequency` = VALUES(`recurring_frequency`), `recurring_config_json` = VALUES(`recurring_config_json`), `recurring_start_date` = VALUES(`recurring_start_date`), `recurring_end_date` = VALUES(`recurring_end_date`), `recurring_amount_history_json` = VALUES(`recurring_amount_history_json`), `project_id` = VALUES(`project_id`), `client_id` = VALUES(`client_id`), `invoice_number` = VALUES(`invoice_number`), `tax_rate` = VALUES(`tax_rate`), `attachments_json` = VALUES(`attachments_json`), `created_by` = VALUES(`created_by`)");
 
             foreach ($payload['financialRecords'] as $fr) {
                 $frId = $fr['id'];
@@ -3848,6 +3849,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     !empty($fr['recurringConfig']) ? json_encode($fr['recurringConfig'], JSON_UNESCAPED_UNICODE) : null,
                     !empty($fr['recurringStartDate']) ? $fr['recurringStartDate'] : null,
                     !empty($fr['recurringEndDate']) ? $fr['recurringEndDate'] : null,
+                    !empty($fr['recurringAmountHistory']) ? json_encode($fr['recurringAmountHistory'], JSON_UNESCAPED_UNICODE) : null,
                     !empty($fr['projectId']) ? $fr['projectId'] : null,
                     !empty($fr['clientId']) ? $fr['clientId'] : null,
                     $fr['invoiceNumber'] ?? null,

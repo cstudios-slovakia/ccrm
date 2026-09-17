@@ -633,6 +633,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `recurring_config_json` TEXT NULL,
               `recurring_start_date` DATE NULL,
               `recurring_end_date` DATE NULL,
+              `recurring_amount_history_json` TEXT NULL COMMENT 'Superseded amounts of a recurring rule: [{until, amountPlanned, amountReal}]',
               `project_id` VARCHAR(50) NULL COMMENT 'NULL for Global company-wide record, or linked project ID',
               `client_id` VARCHAR(50) NULL COMMENT 'NULL for Global company-wide record, or linked client ID',
               `invoice_number` VARCHAR(100) NULL,
@@ -1031,6 +1032,14 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         if (!ccrm_column_exists($pdo, 'tasks', 'completed_at')) {
             $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `completed_at` VARCHAR(16) NULL AFTER `completed_by`");
+        }
+        // A recurring rule is stored as one row, so the reports derive every past
+        // charge from the rule itself. Raising the price used to rewrite the months
+        // already paid at the old one; the superseded amounts now travel with the
+        // rule. Existing rows migrate as NULL, which reads as "always charged what
+        // it charges today" — exactly the behaviour they had before.
+        if (!ccrm_column_exists($pdo, 'financial_records', 'recurring_amount_history_json')) {
+            $pdo->exec("ALTER TABLE `financial_records` ADD COLUMN `recurring_amount_history_json` TEXT NULL AFTER `recurring_end_date`");
         }
         ccrm_migrate_updated_at_precision($pdo);
         ccrm_migrate_task_states($pdo);
