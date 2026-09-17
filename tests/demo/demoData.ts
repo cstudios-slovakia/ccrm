@@ -886,6 +886,7 @@ export const PROJECTS = [
     leadId: 'lead-silvia',
     clientId: 'lead-silvia',
     status: 'active',
+    rating: 5,
     managers: ['Erik Kováč', 'Mária Tóthová'],
     data: {
       'attr-area': 168,
@@ -917,6 +918,7 @@ export const PROJECTS = [
     leadId: 'lead-vinarstvo',
     clientId: 'lead-vinarstvo',
     status: 'active',
+    rating: 4,
     managers: ['Mária Tóthová'],
     data: { 'attr-area': 620, 'attr-start': isoDate(-45), 'attr-variant': 'Plechová', 'attr-scaffold': true },
     timeline: [
@@ -935,6 +937,7 @@ export const PROJECTS = [
     leadId: 'lead-skola',
     clientId: 'lead-skola',
     status: 'completed',
+    rating: 3,
     managers: ['Mária Tóthová'],
     data: { 'attr-area': 410, 'attr-start': isoDate(-75), 'attr-variant': 'mPVC', 'attr-scaffold': false },
     timeline: [
@@ -952,6 +955,7 @@ export const PROJECTS = [
     leadId: 'lead-horvath',
     clientId: 'lead-horvath',
     status: 'on_hold',
+    rating: 2,
     managers: ['Jozef Baláž'],
     data: { 'attr-count': 11, 'attr-profile': 'Plast 6-komorový' },
     timeline: [
@@ -969,6 +973,7 @@ export const PROJECTS = [
     leadId: 'lead-alfa',
     clientId: 'lead-alfa',
     status: 'active',
+    rating: 4,
     managers: ['Erik Kováč', 'Lucia Bieliková'],
     data: { 'attr-objects': 14, 'attr-interval': 'Štvrťročne' },
     timeline: [

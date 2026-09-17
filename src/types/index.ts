@@ -571,6 +571,17 @@ export interface Project {
   leadId?: string | null;
   clientId?: string | null;
   status: string; // one of PROJECT_STATUSES
+  /**
+   * How important this project is, 1-5 stars — the same hand-set priority a
+   * lead carries (see {@link Lead.rating}), and filtered and sorted by the same
+   * options in the projects list.
+   *
+   * 0 (or absent) means "not rated": unlike a lead, which is born at three
+   * stars, a project starts unrated so the list does not claim a priority
+   * nobody set. Absent from a sync payload means "unchanged" — an older client
+   * cannot wipe a rating simply by pushing a project it never knew had one.
+   */
+  rating?: number;
   managers: string[]; // employee ids or names
   data: Record<string, any>; // keyed by attribute.id
   /**

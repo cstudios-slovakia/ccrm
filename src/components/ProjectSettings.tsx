@@ -537,17 +537,31 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     );
   };
 
+  const confirmDeleteTypeMessage = () => t(
+    "WARNING: Deleting this project type will drop its associated data tables and permanently delete all projects of this type. Are you sure you want to proceed?",
+    "VAROVANIE: Vymazanie tohto typu projektu odstráni jeho pridružené dátové tabuľky a trvalo vymaže všetky projekty tohto typu. Naozaj chcete pokračovať?",
+    "FIGYELMEZTETÉS: Ezen projekt típus törlése törli a hozzá tartozó adattáblákat és véglegesen törli az összes ilyen típusú projektet. Biztosan folytatja?"
+  );
+
   const handleDeleteType = (typeId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    const confirmMsg = t(
-      "WARNING: Deleting this project type will drop its associated data tables and permanently delete all projects of this type. Are you sure you want to proceed?",
-      "VAROVANIE: Vymazanie tohto typu projektu odstráni jeho pridružené dátové tabuľky a trvalo vymaže všetky projekty tohto typu. Naozaj chcete pokračovať?",
-      "FIGYELMEZTETÉS: Ezen projekt típus törlése törli a hozzá tartozó adattáblákat és véglegesen törli az összes ilyen típusú projektet. Biztosan folytatja?"
-    );
-
-    if (!window.confirm(confirmMsg)) return;
+    if (!window.confirm(confirmDeleteTypeMessage())) return;
 
     setProjectTypes(prev => prev.filter(t => t.id !== typeId));
+    (window as any).showToast(t("Project type deleted.", "Projektový typ bol vymazaný.", "Projekt típus törölve."));
+  };
+
+  /** Delete straight from the editor, so removing a type doesn't need a trip
+      back to the list. Only offered while editing an existing type — one
+      being created has nothing saved yet to delete. */
+  const handleDeleteEditingType = () => {
+    if (!editingType) return;
+    if (!window.confirm(confirmDeleteTypeMessage())) return;
+
+    const typeId = editingType.id;
+    setProjectTypes(prev => prev.filter(t => t.id !== typeId));
+    setIsCreating(false);
+    setEditingType(null);
     (window as any).showToast(t("Project type deleted.", "Projektový typ bol vymazaný.", "Projekt típus törölve."));
   };
 
@@ -1166,7 +1180,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
             </div>
 
             {/* Existing attributes list */}
-            <div className="space-y-2 max-h-60 overflow-y-auto pr-2 scrollbar-thin">
+            <div className="space-y-2">
               {attributes.length === 0 ? (
                 <div className="p-4 border-2 border-dashed border-slate-200 rounded-2xl text-center text-slate-400 text-xs">
                   {t("No attributes added yet. Use the form below to add attributes.", "Zatiaľ neboli pridané žiadne atribúty.", "Még nincsenek attribútumok hozzáadva.")}
@@ -1410,23 +1424,37 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
 
         {/* Footer Actions */}
         {canEdit && (
-          <div className="flex justify-end gap-3 border-t border-slate-200 pt-4">
-            <button
-              onClick={() => {
-                setIsCreating(false);
-                setEditingType(null);
-              }}
-              className="px-4 py-2.5 rounded-2xl border border-slate-200 text-xs font-black uppercase text-slate-500 hover:bg-slate-50 cursor-pointer"
-            >
-              {t("Cancel", "Zrušiť", "Mégse")}
-            </button>
-            <button
-              onClick={handleSaveType}
-              className="flex items-center gap-1.5 px-5 py-2.5 rounded-2xl bg-emerald-600 text-white font-black text-xs uppercase tracking-wider hover:bg-emerald-700 shadow-md cursor-pointer"
-            >
-              <Save className="h-4 w-4" />
-              <span>{t("Save Project Type", "Uložiť typ projektu", "Projekt típus mentése")}</span>
-            </button>
+          <div className="flex items-center justify-between gap-3 border-t border-slate-200 pt-4">
+            {editingType ? (
+              <button
+                type="button"
+                onClick={handleDeleteEditingType}
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl border border-rose-200 text-xs font-black uppercase text-rose-600 hover:bg-rose-50 cursor-pointer"
+              >
+                <Trash2 className="h-4 w-4" />
+                <span>{t("Delete Project Type", "Vymazať typ projektu", "Projekt típus törlése")}</span>
+              </button>
+            ) : (
+              <span />
+            )}
+            <div className="flex items-center gap-3">
+              <button
+                onClick={() => {
+                  setIsCreating(false);
+                  setEditingType(null);
+                }}
+                className="px-4 py-2.5 rounded-2xl border border-slate-200 text-xs font-black uppercase text-slate-500 hover:bg-slate-50 cursor-pointer"
+              >
+                {t("Cancel", "Zrušiť", "Mégse")}
+              </button>
+              <button
+                onClick={handleSaveType}
+                className="flex items-center gap-1.5 px-5 py-2.5 rounded-2xl bg-emerald-600 text-white font-black text-xs uppercase tracking-wider hover:bg-emerald-700 shadow-md cursor-pointer"
+              >
+                <Save className="h-4 w-4" />
+                <span>{t("Save Project Type", "Uložiť typ projektu", "Projekt típus mentése")}</span>
+              </button>
+            </div>
           </div>
         )}
 

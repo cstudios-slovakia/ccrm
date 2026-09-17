@@ -321,6 +321,8 @@ const SearchableLeadSelect: React.FC<{
     );
 };
 import { CustomSelect } from "./ui/CustomSelect";
+import { StarRating } from "./ui/StarRating";
+import { matchesRatingFilter, ratingFilterOptions } from "../utils/rating";
 import { TimelineAuthorBadge } from "./TimelineAuthorBadge";
 import { TimelineCollapsible } from "./TimelineCollapsible";
 import { BlockEditor } from "./BlockEditor";
@@ -3897,16 +3899,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         selectedCity.toLowerCase();
 
                 // Rating is optional on a lead, so an unrated one counts as 0
-                // and only matches the explicit "not rated" option.
-                const leadRatingValue = lead.rating || 0;
-                const matchesRating =
-                    selectedRating === "all" ||
-                    (selectedRating === "none"
-                        ? leadRatingValue === 0
-                        : selectedRating.startsWith("min")
-                          ? leadRatingValue >=
-                            Number(selectedRating.slice(3))
-                          : leadRatingValue === Number(selectedRating));
+                // and only matches the explicit "not rated" option. The rules
+                // live in utils/rating.ts — the projects list offers the same
+                // dropdown and has to mean the same thing by it.
+                const matchesRating = matchesRatingFilter(
+                    lead.rating,
+                    selectedRating,
+                );
 
                 let matchesOfferDate = true;
                 if (
@@ -4308,39 +4307,18 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             .toUpperCase();
     };
 
+    /* The star row itself now lives in ui/StarRating — projects carry the same
+       rating, and the two lists have to draw it the same way. */
     const renderStars = (
         rating: number = 0,
         onChange?: (r: number) => void,
-    ) => {
-        return (
-            <div
-                className="flex items-center gap-1 select-none animate-fade-in"
-                onClick={(e) => e.stopPropagation()}
-            >
-                {[1, 2, 3, 4, 5].map((star) => {
-                    const isFilled = star <= rating;
-                    return (
-                        <button
-                            key={star}
-                            type="button"
-                            onClick={() => onChange && onChange(star)}
-                            disabled={!onChange}
-                            className={`focus:outline-none transition-all duration-150 p-0.5 ${onChange ? "cursor-pointer hover:scale-130 active:scale-90" : "cursor-default"}`}
-                            aria-label={`${t("Rate", "Hodnotiť", "Értékelés")} ${star}`}
-                        >
-                            <div
-                                className={`h-2 w-2 rounded-full transition-colors duration-150 ${
-                                    isFilled
-                                        ? "bg-amber-500 shadow-sm animate-pulse"
-                                        : "bg-slate-200"
-                                }`}
-                            />
-                        </button>
-                    );
-                })}
-            </div>
-        );
-    };
+    ) => (
+        <StarRating
+            rating={rating}
+            onChange={onChange}
+            userLanguage={systemLanguage}
+        />
+    );
 
     // PM Workload Graph Data Calculations (Unused)
     /*
@@ -9088,36 +9066,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     size="sm"
                                     unstyled
                                     className="text-[11px] font-bold text-slate-700 uppercase tracking-wider w-full justify-between gap-2"
-                                    options={[
-                                        {
-                                            value: "all",
-                                            label: t(
-                                                "All ratings",
-                                                "Všetky hodnotenia",
-                                                "Minden értékelés",
-                                            ),
-                                        },
-                                        {
-                                            value: "min4",
-                                            label: `★★★★ ${t("and up", "a viac", "és felette")}`,
-                                        },
-                                        {
-                                            value: "min3",
-                                            label: `★★★ ${t("and up", "a viac", "és felette")}`,
-                                        },
-                                        ...[5, 4, 3, 2, 1].map((stars) => ({
-                                            value: String(stars),
-                                            label: `${"★".repeat(stars)}${"☆".repeat(5 - stars)}`,
-                                        })),
-                                        {
-                                            value: "none",
-                                            label: t(
-                                                "Not rated",
-                                                "Bez hodnotenia",
-                                                "Nincs értékelve",
-                                            ),
-                                        },
-                                    ]}
+                                    options={ratingFilterOptions(t)}
                                 />
                             </div>
                         </div>

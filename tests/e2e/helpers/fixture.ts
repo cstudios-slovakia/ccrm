@@ -336,6 +336,10 @@ const PROJECTS = [
     leadId: 'lead-silvia',
     clientId: 'lead-silvia',
     status: 'active',
+    // Three projects, three states of the star rating: top priority, a middling
+    // one, and one nobody has rated — so the rating filter has something to
+    // include and something to exclude whichever way it is set.
+    rating: 5,
     deadline: isoDate(4),
     managers: ['Erik'],
     data: {
@@ -377,6 +381,7 @@ const PROJECTS = [
     leadId: 'lead-novak',
     clientId: 'lead-novak',
     status: 'on_hold',
+    rating: 2,
     managers: ['Mária'],
     data: { 'attr-count': 24 },
     timeline: [],
@@ -829,6 +834,14 @@ export const DRILLDOWN_CLIENT = 'Silvia';
  * Writes are acknowledged but discarded: the crawler is free to submit every
  * form it finds without touching a real database, and each test starts from the
  * same dataset.
+ *
+ * One exception, and it is not a convenience: the signed-in user's
+ * `metadata_json` is remembered and handed back on the next GET. Every
+ * interface preference (the projects sort, a view toggle, a dismissed banner)
+ * lives in that blob, and the background poll replaces `currentUser` with the
+ * server's copy whenever the two differ — so a discarded write meant any
+ * preference set during a test silently reverted a few seconds later. Tests
+ * that set one then looked like app bugs, and the bug was here.
  */
 export async function installBackendMocks(page: Page) {
   await page.route('**/api/login.php', (route) =>
@@ -839,13 +852,31 @@ export async function installBackendMocks(page: Page) {
     }),
   );
 
+  /** email -> the metadata_json the app last pushed for that user. */
+  const pushedUserMeta = new Map<string, unknown>();
+
   await page.route('**/sync.php**', (route) => {
-    if (route.request().method() === 'GET') {
+    const request = route.request();
+    if (request.method() === 'GET') {
+      const payload = buildSyncPayload();
       return route.fulfill({
         status: 200,
         contentType: 'application/json',
-        body: JSON.stringify(buildSyncPayload()),
+        body: JSON.stringify({
+          ...payload,
+          users: payload.users.map((u) =>
+            pushedUserMeta.has(u.email) ? { ...u, metadata_json: pushedUserMeta.get(u.email) } : u,
+          ),
+        }),
       });
+    }
+    try {
+      const body = request.postDataJSON() as { users?: { email?: string; metadata_json?: unknown }[] };
+      for (const u of body?.users ?? []) {
+        if (u?.email && u.metadata_json !== undefined) pushedUserMeta.set(u.email, u.metadata_json);
+      }
+    } catch {
+      /* not JSON — nothing to remember */
     }
     return route.fulfill({
       status: 200,

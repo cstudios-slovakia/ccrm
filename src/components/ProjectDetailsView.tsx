@@ -22,6 +22,8 @@ import {
 import { evaluateProjectDeadline, finishedAtForStatus, projectDisplayName, projectMissedDeadline, projectPipelineSegments, projectStartDate, projectStatusBadgeClass, projectStatusDotClass, projectStatusOptions } from "../utils/projects";
 import { CustomSelect } from "./ui/CustomSelect";
 import { PipelineStrip } from "./ui/PipelineStrip";
+import { StarRating } from "./ui/StarRating";
+import { ratingValue } from "../utils/rating";
 import { ProjectTasksPanel } from "./ProjectTasksPanel";
 import type { Task } from "../types";
 import { isDoneTaskState } from "../utils/projectTasks";
@@ -346,6 +348,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const [startDate, setStartDate] = useState("");
   const [finishedAt, setFinishedAt] = useState("");
   const [status, setStatus] = useState("active");
+  /* Star priority, 1-5, 0 while nobody has rated it. Like the status below it,
+     a click saves on the spot rather than waiting for edit mode. */
+  const [rating, setRating] = useState(0);
   const [associatedLeadId, setAssociatedLeadId] = useState("");
   const [associatedClientId, setAssociatedClientId] = useState("");
   const [selectedManagers, setSelectedManagers] = useState<string[]>([]);
@@ -451,6 +456,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       setStartDate(projectStartDate(project) || todayLocal());
       setFinishedAt(project.finishedAt || "");
       setStatus(project.status || "active");
+      setRating(ratingValue(project.rating));
       setAssociatedLeadId(project.leadId || "");
       setAssociatedClientId(project.clientId || "");
       setSelectedManagers(project.managers || []);
@@ -1086,6 +1092,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       startDate: startDate || null,
       finishedAt: finishedAt || null,
       status,
+      rating,
       leadId: associatedLeadId || null,
       clientId: associatedClientId || null,
       managers: selectedManagers,
@@ -1109,6 +1116,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       setStartDate(projectStartDate(project) || todayLocal());
       setFinishedAt(project.finishedAt || "");
       setStatus(project.status || "active");
+      setRating(ratingValue(project.rating));
       setAssociatedLeadId(project.leadId || "");
       setAssociatedClientId(project.clientId || "");
       setSelectedManagers(project.managers || []);
@@ -1694,6 +1702,32 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   icon: <span className={`h-2.5 w-2.5 rounded-full shrink-0 inline-block ${projectStatusDotClass(o.value)}`} />,
                 }))}
               />
+            </div>
+
+            {/* Star priority — the same 1-5 rating a lead carries, and the same
+                widget. Live outside edit mode like the status above it: rating
+                something is a judgement made in passing, not a form to fill in.
+                Clicking the star it already wears clears the rating again. */}
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
+                {getTranslation(userLanguage, "profile.priority_rating")}
+              </label>
+              <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 w-fit">
+                <StarRating
+                  rating={rating}
+                  userLanguage={userLanguage}
+                  onChange={!canEdit ? undefined : (stars) => {
+                    const next = rating === stars ? 0 : stars;
+                    setRating(next);
+                    if (!isEditing) handleSave({ rating: next }, { validate: false, close: false });
+                  }}
+                />
+                {rating === 0 && (
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">
+                    {t("Not rated", "Bez hodnotenia", "Nincs értékelve")}
+                  </span>
+                )}
+              </div>
             </div>
 
             {/* Deadline. Only for a project type that is time-boxed — see

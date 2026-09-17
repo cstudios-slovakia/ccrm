@@ -320,6 +320,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `lead_id` VARCHAR(50) NULL,
               `client_id` VARCHAR(50) NULL,
               `status` VARCHAR(50) NOT NULL DEFAULT 'active',
+              `rating` TINYINT NULL COMMENT 'Star Rating 1-5, 0 = not rated, NULL = never set',
               `deadline` DATE NULL,
               `delay_reason` VARCHAR(500) NULL,
               `start_date` DATE NULL,
@@ -914,6 +915,12 @@ if (!function_exists('ccrm_schema_statements')) {
         // list. The type's default slots keep their own columns in proj_data_*.
         if (!ccrm_column_exists($pdo, 'projects', 'custom_files_json')) {
             $pdo->exec("ALTER TABLE `projects` ADD COLUMN `custom_files_json` LONGTEXT NULL AFTER `budget`");
+        }
+        // 1.9.56: the project's own 1-5 star priority, the same one a lead
+        // carries. NULL on every existing row — "never rated", which the client
+        // shows as an empty row of stars rather than as one star.
+        if (!ccrm_column_exists($pdo, 'projects', 'rating')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `rating` TINYINT NULL AFTER `status`");
         }
         if (!ccrm_column_exists($pdo, 'tasks', 'deadline_time')) {
             $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `deadline_time` VARCHAR(5) NULL AFTER `deadline`");

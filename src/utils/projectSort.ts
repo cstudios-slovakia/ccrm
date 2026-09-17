@@ -2,7 +2,7 @@
 // especially "a project with no value sorts last, whichever way you sort" —
 // are the same in the table, the cards, and the tests.
 
-export type ProjectSortKey = "default" | "name" | "client" | "type" | "managers" | "deadline" | "progress" | "status";
+export type ProjectSortKey = "default" | "name" | "client" | "type" | "managers" | "rating" | "deadline" | "progress" | "status";
 export type ProjectSortDirection = "asc" | "desc";
 
 export interface ProjectSort {
@@ -19,6 +19,7 @@ export const PROJECT_SORT_KEYS: readonly ProjectSortKey[] = [
   "client",
   "type",
   "managers",
+  "rating",
   "deadline",
   "progress",
   "status",
@@ -49,6 +50,12 @@ export interface ProjectSortValues {
   client: string;
   type: string;
   managers: string;
+  /**
+   * 1-5 stars, or null when nobody has rated the project. Unrated is an absent
+   * value rather than a zero, so an unrated project sorts to the bottom in both
+   * directions instead of pretending to be the least important one.
+   */
+  rating: number | null;
   /** "YYYY-MM-DD", or null when the project has none (or its type has no deadlines). */
   deadline: string | null;
   /** 0-100, or null when the project has no roadmap. */

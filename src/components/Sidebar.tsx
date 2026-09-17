@@ -1339,7 +1339,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         onOpenCreateDashboard={() => setIsDashModalOpen(true)}
         pinnedSidebarItems={isEditingNav ? activeItems : resolvedLayout}
         onTogglePinToSidebar={handleTogglePin}
-        onLogout={onLogout}
       />
     </>
   );

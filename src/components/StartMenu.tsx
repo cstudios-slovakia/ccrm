@@ -3,7 +3,7 @@ import * as Icons from "lucide-react";
 import {
   LayoutDashboard, BarChart3, Briefcase, TableProperties, Users,
   Package, Coins, PencilLine, FolderOpen, Mail, Brain, Workflow,
-  Globe, Sparkles, Settings, User, LogOut, Search, X, ChevronRight,
+  Globe, Sparkles, Settings, User, Search, X, ChevronRight,
   Check, Pencil, GripVertical, Pin, RotateCcw, Plus,
   Archive, EyeOff, Trash2, FolderPlus, ListTodo
 } from "lucide-react";
@@ -35,7 +35,6 @@ interface StartMenuProps {
   onOpenCreateDashboard?: () => void;
   pinnedSidebarItems?: string[];
   onTogglePinToSidebar?: (itemId: string) => void;
-  onLogout?: () => void;
 }
 
 /** The stored group shape, defined next to the layout it is persisted in. */
@@ -70,8 +69,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   unifiedEntries = [],
   onOpenCreateDashboard,
   pinnedSidebarItems = [],
-  onTogglePinToSidebar,
-  onLogout
+  onTogglePinToSidebar
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
@@ -1259,7 +1257,12 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
         {/* Footer: User Profile & Quick Actions */}
         <div className="p-4 sm:px-6 bg-slate-50/90  border-t border-slate-100  flex items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => handleItemClick("personal-settings")}
+            title={t("Profile", "Profil", "Profil")}
+            className="flex items-center gap-3 -mx-2 px-2 py-1.5 rounded-xl text-left hover:bg-white border border-transparent hover:border-slate-200 transition-colors cursor-pointer group"
+          >
             <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-indigo-600 to-indigo-400 text-white font-bold flex items-center justify-center text-xs shadow-sm">
               {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : "U"}
             </div>
@@ -1271,28 +1274,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 {currentUser?.role || "Member"}
               </span>
             </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => handleItemClick("personal-settings")}
-              className="px-3 py-1.5 rounded-xl bg-white  border border-slate-200  hover:bg-slate-100 text-slate-700  font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1.5"
-            >
-              <User className="h-3.5 w-3.5 text-slate-500" />
-              <span>{t("Profile", "Profil", "Profil")}</span>
-            </button>
-            {onLogout && (
-              <button
-                type="button"
-                onClick={onLogout}
-                className="px-3 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm"
-              >
-                <LogOut className="h-3.5 w-3.5" />
-                <span>{t("Sign Out", "Odhlásiť", "Kijelentkezés")}</span>
-              </button>
-            )}
-          </div>
+            <User className="h-3.5 w-3.5 text-slate-400 group-hover:text-slate-600 transition-colors" />
+          </button>
         </div>
       </div>
     </div>

@@ -1,12 +1,13 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import * as Icons from "lucide-react";
-import { Plus, Trash2, Settings, Search, Users, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, CalendarClock, Flag, ArrowUp, ArrowDown, ArrowUpDown, Lock } from "lucide-react";
+import { Plus, Trash2, Settings, Search, Users, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, CalendarClock, Flag, ArrowUp, ArrowDown, ArrowUpDown, Lock, Star } from "lucide-react";
 import type { Project, ProjectAutoCreateSettings, ProjectStatus, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory } from "../types";
 import { ProjectDetailsView } from "./ProjectDetailsView";
 import type { Task } from "../types";
 import type { TaskAccess } from "../utils/taskSelectors";
 import { ProjectSettings } from "./ProjectSettings";
 import { CustomSelect } from "./ui/CustomSelect";
+import { StarRating } from "./ui/StarRating";
 import type { Language } from "../utils/translations";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import type { ModuleAccess } from "../utils/permissions";
@@ -29,6 +30,7 @@ import { todayLocal, formatDateLocalized } from "../utils/localTime";
 import { useUserPref } from "../utils/userPrefs";
 import { nextProjectSort, normalizeProjectSort, sortProjects } from "../utils/projectSort";
 import type { ProjectSort, ProjectSortKey } from "../utils/projectSort";
+import { matchesRatingFilter, ratingFilterOptions, ratingValue } from "../utils/rating";
 
 /*
   The summary strip's chips. Each tone is written out in full because Tailwind
@@ -174,6 +176,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   const [selectedStatusFilter, setSelectedStatusFilter] = useState("all");
   const [selectedTypeFilter, setSelectedTypeFilter] = useState("all");
   const [selectedManagerFilter, setSelectedManagerFilter] = useState("all");
+  /* Star priority, same options as the leads list — see utils/rating.ts. */
+  const [selectedRatingFilter, setSelectedRatingFilter] = useState("all");
   /* Its own dimension rather than another status: a project can be late in any
      status, so "overdue" cannot live in the status dropdown. */
   const [overdueOnly, setOverdueOnly] = useState(false);
@@ -268,10 +272,11 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           ? !(p.managers && p.managers.length > 0)
           : (p.managers || []).includes(selectedManagerFilter));
       const matchesOverdue = !overdueOnly || overdueIds.has(p.id);
+      const matchesRating = matchesRatingFilter(p.rating, selectedRatingFilter);
 
-      return matchesSearch && matchesStatus && matchesType && matchesManager && matchesOverdue;
+      return matchesSearch && matchesStatus && matchesType && matchesManager && matchesOverdue && matchesRating;
     });
-  }, [projects, projectTypes, leads, searchQuery, selectedStatusFilter, selectedTypeFilter, selectedManagerFilter, overdueOnly, overdueIds]);
+  }, [projects, projectTypes, leads, searchQuery, selectedStatusFilter, selectedTypeFilter, selectedManagerFilter, selectedRatingFilter, overdueOnly, overdueIds]);
 
   /* Deep link: `#projects?edit=<projectId>` opens that project directly.
      "Convert to Project" on a lead has always navigated here with that query,
@@ -391,6 +396,20 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     (window as any).showToast(t("Project deleted.", "Projekt bol vymazaný.", "Projekt törölve."));
   };
 
+  /**
+   * Rating a project from the list, the way the leads list rates a lead: one
+   * click on a star writes it straight into the project — no edit mode, no save
+   * button, no trip through the details view. Clicking the star a project
+   * already wears clears the rating again, which is the only way back to
+   * "not rated" once one has been set.
+   */
+  const handleRateProject = (id: string, stars: number) => {
+    if (!canEdit) return;
+    setProjects(prev => prev.map(p => (
+      p.id === id ? { ...p, rating: ratingValue(p.rating) === stars ? 0 : stars } : p
+    )));
+  };
+
   const calculateProgress = (project: Project) => {
     if (!project.gantt || project.gantt.length === 0) return 0;
     const sum = project.gantt.reduce((acc, row) => acc + (row.progress || 0), 0);
@@ -409,6 +428,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         client: leads.find(l => l.id === p.leadId)?.name || "",
         type: pType?.name || "",
         managers: (p.managers || []).join(", "),
+        // Unrated travels as null, not 0 — see ProjectSortValues.rating.
+        rating: ratingValue(p.rating) || null,
         deadline: evaluateProjectDeadline(p, pType, today)?.deadline ?? null,
         progress: pType?.hasGantt && p.gantt && p.gantt.length > 0 ? calculateProgress(p) : null,
         statusRank: rank === -1 ? statusOrder.length : rank,
@@ -423,6 +444,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     { value: "client", label: t("Client", "Klient", "Ügyfél") },
     { value: "type", label: t("Type", "Typ", "Típus") },
     { value: "managers", label: t("Managers", "Manažéri", "Menedzserek") },
+    { value: "rating", label: t("Rating", "Hodnotenie", "Értékelés") },
     { value: "deadline", label: t("Deadline", "Termín", "Határidő") },
     { value: "progress", label: t("Progress", "Postup", "Haladás") },
     { value: "status", label: t("Status", "Stav", "Állapot") },
@@ -829,6 +851,18 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               />
             </div>
 
+            {/* Star priority. The same dropdown, and the same meanings, as the
+                one over the leads list — both read utils/rating.ts. */}
+            <div className="w-full sm:w-40 shrink-0">
+              <CustomSelect
+                className="h-10"
+                icon={<Star className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
+                value={selectedRatingFilter}
+                onChange={(v) => setSelectedRatingFilter(v)}
+                options={ratingFilterOptions(t)}
+              />
+            </div>
+
             {/* Order — the only way to sort the cards; the table headers write
                 the same preference. */}
             <div className="flex items-center gap-1.5 w-full sm:w-auto shrink-0">
@@ -920,6 +954,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                         { key: "type", label: t("Type", "Typ", "Típus") },
                         { key: "client", label: t("Client", "Klient", "Ügyfél") },
                         { key: "managers", label: t("Managers", "Manažéri", "Menedzserek") },
+                        { key: "rating", label: t("Rating", "Hodnotenie", "Értékelés") },
                         { key: "deadline", label: t("Deadline", "Termín", "Határidő") },
                         { key: "progress", label: t("Progress", "Postup", "Haladás") },
                         { key: "status", label: t("Status", "Stav", "Állapot") },
@@ -993,6 +1028,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                             {p.managers && p.managers.length > 0
                               ? <span className="block truncate" title={p.managers.join(", ")}>{p.managers.join(", ")}</span>
                               : <span className="text-slate-300">—</span>}
+                          </td>
+                          <td className="px-4 py-3">
+                            {/* Rated on the spot, like a lead in its own list.
+                                Read-only for a role that cannot edit — the dots
+                                still show the priority, they just do not move. */}
+                            <StarRating
+                              rating={ratingValue(p.rating)}
+                              onChange={canEdit ? (stars) => handleRateProject(p.id, stars) : undefined}
+                              userLanguage={userLanguage}
+                            />
                           </td>
                           <td className="px-4 py-3">
                             {dl ? (
@@ -1092,6 +1137,15 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                         {t("Unassigned client", "Nepriradený klient", "Nincs hozzárendelve")}
                       </span>
                     )}
+
+                    {/* Star priority, under the name the way the leads list
+                        shows it. Clickable straight from the card. */}
+                    <StarRating
+                      className="mt-2"
+                      rating={ratingValue(p.rating)}
+                      onChange={canEdit ? (stars) => handleRateProject(p.id, stars) : undefined}
+                      userLanguage={userLanguage}
+                    />
 
                     {/* Assigned Managers */}
                     {p.managers && p.managers.length > 0 && (
