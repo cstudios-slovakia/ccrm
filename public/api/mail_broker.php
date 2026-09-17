@@ -191,6 +191,25 @@ try {
             ]);
             break;
 
+        case 'set_seen':
+            // Explicit read / unread, by UID. The response carries the flag as
+            // the server reports it after the change, never as assumed.
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+                throw new Exception('Invalid method.');
+            }
+            $payload = json_decode(file_get_contents('php://input'), true);
+            if (!is_array($payload)) {
+                throw new Exception('Invalid payload.');
+            }
+            $uid = isset($payload['uid']) ? trim((string)$payload['uid']) : '';
+            $folder = ccrm_canonical_folder($emailSettings, isset($payload['folder']) ? $payload['folder'] : 'INBOX');
+            if ($uid === '' || !array_key_exists('seen', $payload)) {
+                throw new Exception('Missing parameters.');
+            }
+            $seen = set_imap_email_seen($emailSettings, $folder, $uid, !empty($payload['seen']));
+            echo json_encode(['success' => true, 'uid' => $uid, 'folder' => $folder, 'seen' => $seen]);
+            break;
+
         case 'delete_email':
             if ($_SERVER['REQUEST_METHOD'] !== 'DELETE') {
                 throw new Exception('Invalid method.');
@@ -812,7 +831,7 @@ function fetch_imap_email_detail($settings, $folder, $uid) {
                 if (isset($part->parts)) {
                     foreach ($part->parts as $nestedPartNo => $nestedPart) {
                         $partStr = ($partNo + 1) . '.' . ($nestedPartNo + 1);
-                        $body = imap_fetchbody($imapStream, $msgNo, $partStr);
+                        $body = imap_fetchbody($imapStream, $msgNo, $partStr, FT_PEEK);
                         $body = decode_imap_body($body, $nestedPart->encoding, get_part_charset($nestedPart));
                         if (isset($nestedPart->subtype) && $nestedPart->subtype === 'HTML') {
                             $html = $body;
@@ -821,7 +840,7 @@ function fetch_imap_email_detail($settings, $folder, $uid) {
                         }
                     }
                 } else {
-                    $body = imap_fetchbody($imapStream, $msgNo, (string)($partNo + 1));
+                    $body = imap_fetchbody($imapStream, $msgNo, (string)($partNo + 1), FT_PEEK);
                     $body = decode_imap_body($body, $part->encoding, get_part_charset($part));
                     if (isset($part->subtype) && $part->subtype === 'HTML') {
                         $html = $body;
@@ -832,7 +851,7 @@ function fetch_imap_email_detail($settings, $folder, $uid) {
             }
         } else {
             // Simple structure
-            $body = imap_body($imapStream, $msgNo);
+            $body = imap_body($imapStream, $msgNo, FT_PEEK);
             $body = decode_imap_body($body, $structure->encoding, get_part_charset($structure));
             if (isset($structure->subtype) && $structure->subtype === 'HTML') {
                 $html = $body;
@@ -842,17 +861,71 @@ function fetch_imap_email_detail($settings, $folder, $uid) {
         }
     }
     
-    // Mark as read
-    @imap_setflag_full($imapStream, $msgNo, "\\Seen");
-    
+    // Opening a message is the one thing that marks it read - and it is marked
+    // by UID, the same way the user's mail client addresses it, so both agree.
+    $seen = ccrm_set_seen_flag($imapStream, $uid, true);
+
     @imap_close($imapStream);
-    
+    @imap_errors();
+
     return [
         'uid' => $uid,
         'html' => safe_utf8($html),
         'text' => safe_utf8($text),
-        'attachments' => $attachments
+        'attachments' => $attachments,
+        'seen' => $seen === null ? true : $seen
     ];
+}
+
+/**
+ * Set or clear \Seen on one message, addressed by UID, and read the flag back.
+ *
+ * The IMAP flag is the single source of truth for "read": it is what the
+ * user's mail client shows, so it is what the CRM shows and what the CRM
+ * changes. Every body fetch in this file peeks (FT_PEEK), because a plain
+ * BODY[] fetch makes the server set \Seen as a side effect - that is how the
+ * background inbox poll and the RAG cache used to mark every message read
+ * before anyone had opened it. This helper is therefore the ONLY place the
+ * flag changes, and it does so only when a user opens a message or asks for
+ * it explicitly.
+ *
+ * Returns the flag as the server reports it afterwards, or null when the
+ * message could not be found under that UID.
+ */
+function ccrm_set_seen_flag($imapStream, $uid, $seen) {
+    $uid = (int)$uid;
+    if ($uid <= 0) {
+        return null;
+    }
+    if ($seen) {
+        @imap_setflag_full($imapStream, (string)$uid, "\\Seen", ST_UID);
+    } else {
+        @imap_clearflag_full($imapStream, (string)$uid, "\\Seen", ST_UID);
+    }
+    $overview = @imap_fetch_overview($imapStream, (string)$uid, FT_UID);
+    if (!is_array($overview) || empty($overview) || !is_object($overview[0])) {
+        return null;
+    }
+    return isset($overview[0]->seen) ? (bool)$overview[0]->seen : null;
+}
+
+function set_imap_email_seen($settings, $folder, $uid, $seen) {
+    $mailbox = get_imap_mailbox_string($settings, $folder);
+    list($imapUser, $imapPass) = get_imap_credentials($settings);
+    $imapStream = @imap_open($mailbox, $imapUser, $imapPass, 0, 1, ['DISABLE_AUTHENTICATOR' => 'GSSAPI']);
+    if (!$imapStream) {
+        throw new Exception('IMAP connection failed: ' . imap_last_error());
+    }
+    $result = ccrm_set_seen_flag($imapStream, $uid, $seen);
+    @imap_close($imapStream);
+    @imap_errors();
+    if ($result === null) {
+        throw new Exception('This message is no longer in ' . $folder . ' (it may have been moved or deleted).');
+    }
+    if ($result !== (bool)$seen) {
+        throw new Exception('The mail server did not accept the read-state change.');
+    }
+    return $result;
 }
 
 function get_part_charset($part) {
@@ -1270,7 +1343,7 @@ function serve_imap_attachment($settings, $folder, $uid, $partNum, $name) {
         $encoding = $part->encoding;
     }
     
-    $data = imap_fetchbody($imapStream, $msgNo, $partNum);
+    $data = imap_fetchbody($imapStream, $msgNo, $partNum, FT_PEEK);
     $data = decode_imap_body($data, $encoding);
     
     @imap_close($imapStream);
@@ -1317,7 +1390,7 @@ function fetch_email_body_text($imapStream, $msgNo) {
                 if (isset($part->parts)) {
                     foreach ($part->parts as $nestedPartNo => $nestedPart) {
                         $partStr = ($partNo + 1) . '.' . ($nestedPartNo + 1);
-                        $body = @imap_fetchbody($imapStream, $msgNo, $partStr);
+                        $body = @imap_fetchbody($imapStream, $msgNo, $partStr, FT_PEEK);
                         $body = decode_imap_body($body, $nestedPart->encoding, get_part_charset($nestedPart));
                         if (isset($nestedPart->subtype) && $nestedPart->subtype === 'HTML') {
                             $html = $body;
@@ -1326,7 +1399,7 @@ function fetch_email_body_text($imapStream, $msgNo) {
                         }
                     }
                 } else {
-                    $body = @imap_fetchbody($imapStream, $msgNo, (string)($partNo + 1));
+                    $body = @imap_fetchbody($imapStream, $msgNo, (string)($partNo + 1), FT_PEEK);
                     $body = decode_imap_body($body, $part->encoding, get_part_charset($part));
                     if (isset($part->subtype) && $part->subtype === 'HTML') {
                         $html = $body;
@@ -1336,7 +1409,7 @@ function fetch_email_body_text($imapStream, $msgNo) {
                 }
             }
         } else {
-            $body = @imap_body($imapStream, $msgNo);
+            $body = @imap_body($imapStream, $msgNo, FT_PEEK);
             $body = decode_imap_body($body, $structure->encoding, get_part_charset($structure));
             if (isset($structure->subtype) && $structure->subtype === 'HTML') {
                 $html = $body;
@@ -1392,7 +1465,7 @@ function save_imap_attachment_to_uploads($settings, $folder, $uid, $partNum, $na
     }
     $encoding = isset($part->encoding) ? $part->encoding : 0;
 
-    $data = @imap_fetchbody($imapStream, $msgNo, $partNum);
+    $data = @imap_fetchbody($imapStream, $msgNo, $partNum, FT_PEEK);
     $data = decode_imap_body($data, $encoding);
 
     @imap_close($imapStream);

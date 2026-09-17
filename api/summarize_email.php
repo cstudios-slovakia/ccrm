@@ -98,9 +98,12 @@ function fetch_imap_email_body_helper($settings, $folder, $uid) {
         return '';
     }
     
+    // Never fall back to treating the UID as a sequence number - that reads
+    // (and summarises) a different message once the mailbox has had a deletion.
     $msgNo = @imap_msgno($imapStream, $uid);
     if (!$msgNo) {
-        $msgNo = $uid;
+        @imap_close($imapStream);
+        return '';
     }
     
     $html = '';
@@ -113,7 +116,7 @@ function fetch_imap_email_body_helper($settings, $folder, $uid) {
                 if (isset($part->parts)) {
                     foreach ($part->parts as $nestedPartNo => $nestedPart) {
                         $partStr = ($partNo + 1) . '.' . ($nestedPartNo + 1);
-                        $body = imap_fetchbody($imapStream, $msgNo, $partStr);
+                        $body = imap_fetchbody($imapStream, $msgNo, $partStr, FT_PEEK);
                         $body = decode_imap_body_helper($body, $nestedPart->encoding);
                         if (isset($nestedPart->subtype) && $nestedPart->subtype === 'HTML') {
                             $html = $body;
@@ -122,7 +125,7 @@ function fetch_imap_email_body_helper($settings, $folder, $uid) {
                         }
                     }
                 } else {
-                    $body = imap_fetchbody($imapStream, $msgNo, (string)($partNo + 1));
+                    $body = imap_fetchbody($imapStream, $msgNo, (string)($partNo + 1), FT_PEEK);
                     $body = decode_imap_body_helper($body, $part->encoding);
                     if (isset($part->subtype) && $part->subtype === 'HTML') {
                         $html = $body;
@@ -132,7 +135,7 @@ function fetch_imap_email_body_helper($settings, $folder, $uid) {
                 }
             }
         } else {
-            $body = imap_body($imapStream, $msgNo);
+            $body = imap_body($imapStream, $msgNo, FT_PEEK);
             $body = decode_imap_body_helper($body, $structure->encoding);
             if (isset($structure->subtype) && $structure->subtype === 'HTML') {
                 $html = $body;

@@ -3,7 +3,7 @@ import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { 
   Send, Trash2, Search, Mail, Plus, X, Loader2, 
   Reply, CheckCircle2, CircleAlert, Clock, Phone, FileText, Calendar, TrendingUp,
-  CornerDownLeft, CornerLeftDown, ChevronDown, ChevronUp, Brain, RefreshCw, Lock
+  CornerDownLeft, CornerLeftDown, ChevronDown, ChevronUp, Brain, RefreshCw, Lock, MailOpen
 } from "lucide-react";
 import type { Lead, Task, UserProfile } from "../types";
 import type { ModuleAccess } from "../utils/permissions";
@@ -524,10 +524,49 @@ export const EmailView: React.FC<EmailViewProps> = ({
     await loadEmails(1, filter, true);
   };
 
+  // The IMAP \Seen flag is the only read state there is: the mail client shows
+  // it, the list refresh reads it back, and this is the one call that changes
+  // it on purpose. The list is updated with the flag the server reports, not
+  // with what we asked for, so the two can never drift apart silently.
+  const setSeenFlag = async (email: any, seen: boolean): Promise<boolean> => {
+    const folderToUse = email.isSent ? "Sent" : activeFolder;
+    try {
+      const res = await fetch("/api/mail_broker.php?action=set_seen", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-User-Email": currentUser.email },
+        body: JSON.stringify({ uid: email.uid, folder: folderToUse, seen })
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "set_seen failed");
+      setEmails(prev => prev.map(e => e.uid === email.uid ? { ...e, seen: !!data.seen } : e));
+      return true;
+    } catch (err) {
+      notify(
+        seen
+          ? t("Could not mark the message as read", "Správu sa nepodarilo označiť ako prečítanú", "Az üzenetet nem sikerült olvasottnak jelölni")
+          : t("Could not mark the message as unread", "Správu sa nepodarilo označiť ako neprečítanú", "Az üzenetet nem sikerült olvasatlannak jelölni"),
+        "error"
+      );
+      return false;
+    }
+  };
+
+  // Whole-thread toggle: reading marks every unread message; "unread" lifts
+  // only the newest one, which is what the mail client does for a conversation.
+  const setThreadSeen = async (thread: any, seen: boolean) => {
+    const targets = seen ? thread.emails.filter((e: any) => !e.seen) : [thread.latestEmail];
+    for (const email of targets) {
+      await setSeenFlag(email, seen);
+    }
+  };
+
   // Expand Single message details
   const expandThreadMessage = async (email: any) => {
     if (threadBodies[email.uid]) {
       setSelectedEmail(email);
+      // The body is cached but the mail client has since marked it unread:
+      // opening it again is reading it again.
+      if (!email.seen) setSeenFlag(email, true);
       return;
     }
     setIsLoadingDetail(true);
@@ -540,9 +579,10 @@ export const EmailView: React.FC<EmailViewProps> = ({
       if (data.success) {
         setThreadBodies(prev => ({ ...prev, [email.uid]: data.email }));
         setSelectedEmail(email);
-        
-        // Mark as seen locally
-        setEmails(prev => prev.map(e => e.uid === email.uid ? { ...e, seen: true } : e));
+
+        // Opening the message marked it read on the server; mirror the flag it reports.
+        const seenNow = data.email?.seen !== false;
+        setEmails(prev => prev.map(e => e.uid === email.uid ? { ...e, seen: seenNow } : e));
       } else {
         notify(data.error || t("Could not retrieve email contents", "Nepodarilo sa načítať obsah e-mailu", "Az e-mail tartalmát nem sikerült lekérni"), "error");
       }
@@ -716,7 +756,13 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const toggleEmailExpand = async (email: any) => {
     const isExpanded = !expandedEmailUids[email.uid];
     setExpandedEmailUids(prev => ({ ...prev, [email.uid]: isExpanded }));
-    
+
+    if (isExpanded && threadBodies[email.uid] && !email.seen) {
+      // Cached body, but the message is unread again (the mail client can do
+      // that): expanding it is reading it.
+      setSeenFlag(email, true);
+    }
+
     if (isExpanded && !threadBodies[email.uid]) {
       setIsLoadingDetail(true);
       const folderToUse = email.isSent ? "Sent" : activeFolder;
@@ -727,8 +773,9 @@ export const EmailView: React.FC<EmailViewProps> = ({
         const data = await res.json();
         if (data.success) {
           setThreadBodies(prev => ({ ...prev, [email.uid]: data.email }));
-          // Mark as seen locally
-          setEmails(prev => prev.map(e => e.uid === email.uid ? { ...e, seen: true } : e));
+          // Opening the message marked it read on the server; mirror the flag it reports.
+          const seenNow = data.email?.seen !== false;
+          setEmails(prev => prev.map(e => e.uid === email.uid ? { ...e, seen: seenNow } : e));
         }
       } catch (err) {
         console.warn("Failed to retrieve threaded email detail", err);
@@ -1177,16 +1224,31 @@ export const EmailView: React.FC<EmailViewProps> = ({
                   </span>
                 </div>
                 
-                {/* Global reply button to latest sender */}
-                {canEdit && (
+                <div className="flex gap-2 shrink-0">
                   <button
-                    onClick={() => openNewComposer(activeThread.latestEmail.from.address, `Re: ${activeThread.subject}`)}
-                    className="px-3.5 py-1.5 rounded-xl border border-pink-200 bg-pink-50 text-pink-700 hover:bg-pink-100 hover:text-pink-800 text-[10px] font-black uppercase flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+                    onClick={() => setThreadSeen(activeThread, !activeThread.seen)}
+                    className="p-2 hover:bg-slate-100 text-slate-600 rounded-xl border border-slate-200 hover:text-slate-900 cursor-pointer transition-all active:scale-95"
+                    title={activeThread.seen
+                      ? t("Mark as unread", "Označiť ako neprečítané", "Megjelölés olvasatlanként")
+                      : t("Mark as read", "Označiť ako prečítané", "Megjelölés olvasottként")}
+                    aria-label={activeThread.seen
+                      ? t("Mark as unread", "Označiť ako neprečítané", "Megjelölés olvasatlanként")
+                      : t("Mark as read", "Označiť ako prečítané", "Megjelölés olvasottként")}
                   >
-                    <Reply size={13} />
-                    {t("Reply Thread", "Odpovedať na vlákno", "Válasz a szálra")}
+                    {activeThread.seen ? <Mail size={15} /> : <MailOpen size={15} />}
                   </button>
-                )}
+
+                  {/* Global reply button to latest sender */}
+                  {canEdit && (
+                    <button
+                      onClick={() => openNewComposer(activeThread.latestEmail.from.address, `Re: ${activeThread.subject}`)}
+                      className="px-3.5 py-1.5 rounded-xl border border-pink-200 bg-pink-50 text-pink-700 hover:bg-pink-100 hover:text-pink-800 text-[10px] font-black uppercase flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+                    >
+                      <Reply size={13} />
+                      {t("Reply Thread", "Odpovedať na vlákno", "Válasz a szálra")}
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* CRM Match Info card */}
@@ -1608,7 +1670,10 @@ export const EmailView: React.FC<EmailViewProps> = ({
             </div>
           ) : selectedEmail ? (() => {
             const bodyObj = threadBodies[selectedEmail.uid];
-            
+            // `selectedEmail` is the row as it was when clicked; the read flag
+            // lives in `emails`, which the toggle and the refresh keep current.
+            const isSeen = emails.find(e => e.uid === selectedEmail.uid)?.seen ?? selectedEmail.seen;
+
             return (
               <div className="h-full flex flex-col justify-between overflow-hidden">
                 {/* Header */}
@@ -1620,6 +1685,18 @@ export const EmailView: React.FC<EmailViewProps> = ({
                     </p>
                   </div>
                   <div className="flex gap-2">
+                    <button
+                      onClick={() => setSeenFlag(selectedEmail, !isSeen)}
+                      className="p-2 hover:bg-slate-100 text-slate-600 rounded-xl border border-slate-200 hover:text-slate-900 cursor-pointer transition-all active:scale-95"
+                      title={isSeen
+                        ? t("Mark as unread", "Označiť ako neprečítané", "Megjelölés olvasatlanként")
+                        : t("Mark as read", "Označiť ako prečítané", "Megjelölés olvasottként")}
+                      aria-label={isSeen
+                        ? t("Mark as unread", "Označiť ako neprečítané", "Megjelölés olvasatlanként")
+                        : t("Mark as read", "Označiť ako prečítané", "Megjelölés olvasottként")}
+                    >
+                      {isSeen ? <Mail size={15} /> : <MailOpen size={15} />}
+                    </button>
                     <button
                       onClick={() => openNewComposer(selectedEmail.from.address, `Re: ${selectedEmail.subject}`)}
                       className="p-2 hover:bg-slate-100 text-slate-600 rounded-xl border border-slate-200 hover:text-slate-900 cursor-pointer"
