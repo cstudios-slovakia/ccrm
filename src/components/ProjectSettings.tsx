@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import * as Icons from "lucide-react";
-import { Plus, Trash2, ArrowUp, ArrowDown, Save, X, Workflow, LayoutGrid, Rows3, CalendarClock, Paperclip, FileText, SlidersHorizontal, History, ListChecks, GripVertical } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, Save, X, Workflow, LayoutGrid, Rows3, CalendarClock, Paperclip, FileText, SlidersHorizontal, History, ListChecks, GripVertical, Pencil } from "lucide-react";
 import { CustomSelect } from "./ui/CustomSelect";
 import { cn } from "../utils/cn";
 import { ColorPicker } from "./ui/ColorPicker";
@@ -57,6 +57,9 @@ const ATTRIBUTE_TYPES: { id: ProjectAttributeType; label: [string, string, strin
   { id: "files", label: ["File Upload", "Nahranie súboru", "Fájlfeltöltés"] },
   { id: "contact", label: ["Contact Picker", "Výber kontaktu", "Kapcsolatválasztó"] }
 ];
+
+const OPTION_ATTR_TYPES: ProjectAttributeType[] = ["select", "radio", "checkbox"];
+const isOptionAttrType = (type: ProjectAttributeType) => OPTION_ATTR_TYPES.includes(type);
 
 /** The sections the project type editor is split into. */
 type EditSection = "general" | "timeline" | "attributes" | "files";
@@ -149,6 +152,8 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
   const [newAttrType, setNewAttrType] = useState<ProjectAttributeType>("textfield");
   const [newAttrRequired, setNewAttrRequired] = useState(false);
   const [newAttrOptions, setNewAttrOptions] = useState("");
+  const [editingAttrId, setEditingAttrId] = useState<string | null>(null);
+  const [editingTeAttrId, setEditingTeAttrId] = useState<string | null>(null);
 
   const [iconSearchQuery, setIconSearchQuery] = useState("");
   const [isIconPickerOpen, setIsIconPickerOpen] = useState(false);
@@ -181,6 +186,8 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setEditSection("general");
     setIsCreating(true);
     setEditingType(null);
+    resetAttrForm();
+    resetTeAttrForm();
   };
 
   /* The projects list can ask for the create form directly — see autoStartCreate.
@@ -215,26 +222,72 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setTimelineEventTypes(type.timelineEventTypes || []);
     setSelectedTeTypeId(type.timelineEventTypes && type.timelineEventTypes.length > 0 ? type.timelineEventTypes[0].id : null);
     setIsCreating(false);
+    resetAttrForm();
+    resetTeAttrForm();
   };
 
-  const handleAddAttribute = () => {
-    if (!newAttrName.trim()) return;
-    const attrId = "attr_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
-    const newAttr: ProjectAttribute = {
-      id: attrId,
-      name: newAttrName.trim(),
-      type: newAttrType,
-      required: newAttrRequired,
-      options: ["select", "radio", "checkbox"].includes(newAttrType)
-        ? newAttrOptions.split(",").map(o => o.trim()).filter(Boolean)
-        : undefined
-    };
+  const parseAttrOptions = (type: ProjectAttributeType, raw: string) =>
+    isOptionAttrType(type) ? raw.split(",").map(o => o.trim()).filter(Boolean) : undefined;
 
-    setAttributes(prev => [...prev, newAttr]);
+  const resetAttrForm = () => {
     setNewAttrName("");
     setNewAttrType("textfield");
     setNewAttrRequired(false);
     setNewAttrOptions("");
+    setEditingAttrId(null);
+  };
+
+  const resetTeAttrForm = () => {
+    setNewTeAttrName("");
+    setNewTeAttrType("textfield");
+    setNewTeAttrRequired(false);
+    setNewTeAttrOptions("");
+    setEditingTeAttrId(null);
+  };
+
+  const warnAttrTypeChange = (from: ProjectAttributeType, to: ProjectAttributeType, persisted: boolean) => {
+    if (from === to || !persisted) return true;
+    return window.confirm(t(
+      "WARNING: Changing this attribute's type can lead to data loss on existing projects. Do you want to proceed?",
+      "VAROVANIE: Zmena typu tohto atribútu môže viesť k strate údajov v existujúcich projektoch. Chcete pokračovať?",
+      "FIGYELMEZTETÉS: Az attribútum típusának megváltoztatása adatvesztéshez vezethet a meglévő projekteknél. Folytatja?"
+    ));
+  };
+
+  const handleStartEditAttribute = (attr: ProjectAttribute) => {
+    setEditingAttrId(attr.id);
+    setNewAttrName(attr.name);
+    setNewAttrType(attr.type);
+    setNewAttrRequired(!!attr.required);
+    setNewAttrOptions((attr.options || []).join(", "));
+  };
+
+  const handleAttrFormTypeChange = (next: ProjectAttributeType) => {
+    const persisted = !!editingAttrId && !!editingType?.attributes?.some(a => a.id === editingAttrId);
+    if (!warnAttrTypeChange(newAttrType, next, persisted)) return;
+    setNewAttrType(next);
+  };
+
+  const handleSaveAttribute = () => {
+    if (!newAttrName.trim()) return;
+    const name = newAttrName.trim();
+    const options = parseAttrOptions(newAttrType, newAttrOptions);
+    if (editingAttrId) {
+      setAttributes(prev => prev.map(a => a.id === editingAttrId
+        ? { ...a, name, type: newAttrType, required: newAttrRequired, options }
+        : a));
+      resetAttrForm();
+      return;
+    }
+    const newAttr: ProjectAttribute = {
+      id: "attr_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
+      name,
+      type: newAttrType,
+      required: newAttrRequired,
+      options
+    };
+    setAttributes(prev => [...prev, newAttr]);
+    resetAttrForm();
   };
 
   const handleRemoveAttribute = (attrId: string) => {
@@ -246,6 +299,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
       );
       if (!window.confirm(confirmMsg)) return;
     }
+    if (editingAttrId === attrId) resetAttrForm();
     setAttributes(prev => prev.filter(a => a.id !== attrId));
   };
 
@@ -353,30 +407,53 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setNewTeTypeIcon("Activity");
   };
 
-  const handleAddTimelineAttribute = () => {
+  const handleStartEditTimelineAttribute = (attr: ProjectAttribute) => {
+    setEditingTeAttrId(attr.id);
+    setNewTeAttrName(attr.name);
+    setNewTeAttrType(attr.type);
+    setNewTeAttrRequired(!!attr.required);
+    setNewTeAttrOptions((attr.options || []).join(", "));
+  };
+
+  const handleTeAttrFormTypeChange = (next: ProjectAttributeType) => {
+    const persisted = !!editingTeAttrId && !!editingType?.timelineEventTypes?.some(et =>
+      et.attributes.some(a => a.id === editingTeAttrId)
+    );
+    if (!warnAttrTypeChange(newTeAttrType, next, persisted)) return;
+    setNewTeAttrType(next);
+  };
+
+  const handleSaveTimelineAttribute = () => {
     if (!selectedTeTypeId || !newTeAttrName.trim()) return;
-    const attrId = "tattr_" + Date.now() + "_" + Math.floor(Math.random() * 1000);
+    const name = newTeAttrName.trim();
+    const options = parseAttrOptions(newTeAttrType, newTeAttrOptions);
+    if (editingTeAttrId) {
+      setTimelineEventTypes(prev => prev.map(t => {
+        if (t.id !== selectedTeTypeId) return t;
+        return {
+          ...t,
+          attributes: t.attributes.map(a => a.id === editingTeAttrId
+            ? { ...a, name, type: newTeAttrType, required: newTeAttrRequired, options }
+            : a)
+        };
+      }));
+      resetTeAttrForm();
+      return;
+    }
     const newAttr: ProjectAttribute = {
-      id: attrId,
-      name: newTeAttrName.trim(),
+      id: "tattr_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
+      name,
       type: newTeAttrType,
       required: newTeAttrRequired,
-      options: ["select", "radio", "checkbox"].includes(newTeAttrType)
-        ? newTeAttrOptions.split(",").map(o => o.trim()).filter(Boolean)
-        : undefined
+      options
     };
-
     setTimelineEventTypes(prev => prev.map(t => {
       if (t.id === selectedTeTypeId) {
         return { ...t, attributes: [...t.attributes, newAttr] };
       }
       return t;
     }));
-
-    setNewTeAttrName("");
-    setNewTeAttrType("textfield");
-    setNewTeAttrRequired(false);
-    setNewTeAttrOptions("");
+    resetTeAttrForm();
   };
 
   const handleRemoveTimelineAttribute = (attrId: string) => {
@@ -389,6 +466,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
       );
       if (!window.confirm(confirmMsg)) return;
     }
+    if (editingTeAttrId === attrId) resetTeAttrForm();
     setTimelineEventTypes(prev => prev.map(t => {
       if (t.id === selectedTeTypeId) {
         return { ...t, attributes: t.attributes.filter((a: ProjectAttribute) => a.id !== attrId) };
@@ -779,7 +857,10 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                       return (
                         <div
                           key={et.id}
-                          onClick={() => setSelectedTeTypeId(et.id)}
+                          onClick={() => {
+                            if (et.id !== selectedTeTypeId) resetTeAttrForm();
+                            setSelectedTeTypeId(et.id);
+                          }}
                           className={`flex items-center gap-1.5 px-2.5 py-1 border rounded-lg text-xs font-bold transition-all cursor-pointer select-none ${
                             isSelected
                               ? "border-purple-600 bg-purple-50 text-purple-700"
@@ -846,7 +927,13 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                               </div>
                             ) : (
                               selectedTeType.attributes.map((attr: ProjectAttribute, idx: number) => (
-                                <div key={attr.id} className="flex items-center justify-between p-3 bg-white border border-slate-200 rounded-2xl shadow-sm text-xs font-semibold">
+                                <div
+                                  key={attr.id}
+                                  className={cn(
+                                    "flex items-center justify-between p-3 bg-white border rounded-2xl shadow-sm text-xs font-semibold transition-colors duration-150",
+                                    editingTeAttrId === attr.id ? "border-indigo-300 ring-2 ring-indigo-100" : "border-slate-200"
+                                  )}
+                                >
                                   <div className="flex flex-col">
                                     <span className="text-slate-800 text-[13px]">{attr.name}</span>
                                     <span className="text-slate-400 font-medium">
@@ -859,7 +946,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                                       type="button"
                                       disabled={!canEdit || idx === 0}
                                       onClick={() => handleMoveTimelineAttribute(idx, "up")}
-                                      className="p-1 hover:bg-slate-100 rounded text-slate-500 disabled:opacity-30"
+                                      className="p-1 hover:bg-slate-100 rounded text-slate-500 disabled:opacity-30 transition-colors duration-150 active:scale-95"
                                     >
                                       <ArrowUp className="h-4.5 w-4.5" />
                                     </button>
@@ -867,15 +954,24 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                                       type="button"
                                       disabled={!canEdit || idx === selectedTeType.attributes.length - 1}
                                       onClick={() => handleMoveTimelineAttribute(idx, "down")}
-                                      className="p-1 hover:bg-slate-100 rounded text-slate-500 disabled:opacity-30"
+                                      className="p-1 hover:bg-slate-100 rounded text-slate-500 disabled:opacity-30 transition-colors duration-150 active:scale-95"
                                     >
                                       <ArrowDown className="h-4.5 w-4.5" />
                                     </button>
                                     <button
                                       type="button"
                                       disabled={!canEdit}
+                                      aria-label={t("Edit attribute", "Upraviť atribút", "Attribútum szerkesztése")}
+                                      onClick={() => handleStartEditTimelineAttribute(attr)}
+                                      className="p-1 hover:bg-indigo-50 rounded text-indigo-600 disabled:opacity-30 transition-colors duration-150 active:scale-95"
+                                    >
+                                      <Pencil className="h-4.5 w-4.5" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      disabled={!canEdit}
                                       onClick={() => handleRemoveTimelineAttribute(attr.id)}
-                                      className="p-1 hover:bg-rose-50 rounded text-rose-600"
+                                      className="p-1 hover:bg-rose-50 rounded text-rose-600 transition-colors duration-150 active:scale-95"
                                     >
                                       <Trash2 className="h-4.5 w-4.5" />
                                     </button>
@@ -887,7 +983,15 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
 
                           {/* Add new timeline attribute form */}
                           {canEdit && (
-                            <div className="bg-slate-50 p-4 rounded-2xl space-y-3 border border-slate-200">
+                            <div className={cn(
+                              "p-4 rounded-2xl space-y-3 border transition-colors duration-150",
+                              editingTeAttrId ? "bg-indigo-50/60 border-indigo-200" : "bg-slate-50 border-slate-200"
+                            )}>
+                              {editingTeAttrId && (
+                                <div className="text-[10px] font-heading font-black text-indigo-500 uppercase tracking-widest">
+                                  {t("Edit attribute", "Upraviť atribút", "Attribútum szerkesztése")}
+                                </div>
+                              )}
                               <div className="grid grid-cols-2 gap-3">
                                 <div>
                                   <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
@@ -906,13 +1010,13 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                                   </label>
                                   <CustomSelect
                                     value={newTeAttrType}
-                                    onChange={(v) => setNewTeAttrType(v as ProjectAttributeType)}
+                                    onChange={(v) => handleTeAttrFormTypeChange(v as ProjectAttributeType)}
                                     options={ATTRIBUTE_TYPES.map(at => ({ value: at.id, label: attributeTypeLabel(at.id) }))}
                                   />
                                 </div>
                               </div>
 
-                              {["select", "radio", "checkbox"].includes(newTeAttrType) && (
+                              {isOptionAttrType(newTeAttrType) && (
                                 <div>
                                   <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
                                     {t("Options (comma separated)", "Možnosti (oddelené čiarkou)", "Opciók (vesszővel elválasztva)")}
@@ -937,14 +1041,30 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                                   <span className="text-xs font-semibold text-slate-600">{t("Required field", "Povinné pole", "Kötelező mező")}</span>
                                 </label>
 
-                                <button
-                                  type="button"
-                                  onClick={handleAddTimelineAttribute}
-                                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 transition-all cursor-pointer"
-                                >
-                                  <Plus className="h-4 w-4" />
-                                  <span>{t("Add Attribute", "Pridať atribút", "Attribútum hozzáadása")}</span>
-                                </button>
+                                <div className="flex items-center gap-1.5">
+                                  {editingTeAttrId && (
+                                    <button
+                                      type="button"
+                                      onClick={resetTeAttrForm}
+                                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-600 font-bold text-xs hover:bg-slate-50 transition-all duration-150 active:scale-95 cursor-pointer"
+                                    >
+                                      <X className="h-4 w-4" />
+                                      <span>{t("Cancel", "Zrušiť", "Mégse")}</span>
+                                    </button>
+                                  )}
+                                  <button
+                                    type="button"
+                                    onClick={handleSaveTimelineAttribute}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 transition-all duration-150 active:scale-95 cursor-pointer"
+                                  >
+                                    {editingTeAttrId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                                    <span>
+                                      {editingTeAttrId
+                                        ? t("Save changes", "Uložiť zmeny", "Változtatások mentése")
+                                        : t("Add Attribute", "Pridať atribút", "Attribútum hozzáadása")}
+                                    </span>
+                                  </button>
+                                </div>
                               </div>
                             </div>
                           )}
@@ -1054,18 +1174,20 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
               ) : (
                 attributes.map((attr, idx) => {
                   const drop = draggedAttrId && attrDropTarget?.id === attr.id ? attrDropTarget.position : null;
+                  const isEditing = editingAttrId === attr.id;
                   return (
                   <div
                     key={attr.id}
-                    draggable={canEdit}
+                    draggable={canEdit && !isEditing}
                     onDragStart={e => handleAttrDragStart(e, attr.id)}
                     onDragEnd={endAttrDrag}
                     onDragOver={e => handleAttrDragOver(e, attr.id)}
                     onDrop={handleAttrDrop}
-                    title={canEdit ? t("Drag to reorder", "Potiahnutím zmeníte poradie", "Húzza az átrendezéshez") : undefined}
+                    title={canEdit && !isEditing ? t("Drag to reorder", "Potiahnutím zmeníte poradie", "Húzza az átrendezéshez") : undefined}
                     className={cn(
-                      "group relative flex items-center justify-between p-3 bg-white border border-slate-200 rounded-2xl shadow-sm text-xs font-semibold transition-[opacity,box-shadow] duration-150",
-                      canEdit && "cursor-grab active:cursor-grabbing",
+                      "group relative flex items-center justify-between p-3 bg-white border rounded-2xl shadow-sm text-xs font-semibold transition-[opacity,box-shadow,border-color] duration-150",
+                      isEditing ? "border-indigo-300 ring-2 ring-indigo-100" : "border-slate-200",
+                      canEdit && !isEditing && "cursor-grab active:cursor-grabbing",
                       draggedAttrId === attr.id && "opacity-40"
                     )}
                   >
@@ -1092,7 +1214,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                         type="button"
                         disabled={!canEdit || idx === 0}
                         onClick={() => handleMoveAttribute(idx, "up")}
-                        className="p-1 hover:bg-slate-100 rounded text-slate-500 disabled:opacity-30"
+                        className="p-1 hover:bg-slate-100 rounded text-slate-500 disabled:opacity-30 transition-colors duration-150 active:scale-95"
                       >
                         <ArrowUp className="h-4.5 w-4.5" />
                       </button>
@@ -1100,15 +1222,24 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                         type="button"
                         disabled={!canEdit || idx === attributes.length - 1}
                         onClick={() => handleMoveAttribute(idx, "down")}
-                        className="p-1 hover:bg-slate-100 rounded text-slate-500 disabled:opacity-30"
+                        className="p-1 hover:bg-slate-100 rounded text-slate-500 disabled:opacity-30 transition-colors duration-150 active:scale-95"
                       >
                         <ArrowDown className="h-4.5 w-4.5" />
                       </button>
                       <button
                         type="button"
                         disabled={!canEdit}
+                        aria-label={t("Edit attribute", "Upraviť atribút", "Attribútum szerkesztése")}
+                        onClick={() => handleStartEditAttribute(attr)}
+                        className="p-1 hover:bg-indigo-50 rounded text-indigo-600 disabled:opacity-30 transition-colors duration-150 active:scale-95"
+                      >
+                        <Pencil className="h-4.5 w-4.5" />
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!canEdit}
                         onClick={() => handleRemoveAttribute(attr.id)}
-                        className="p-1 hover:bg-rose-50 rounded text-rose-600"
+                        className="p-1 hover:bg-rose-50 rounded text-rose-600 transition-colors duration-150 active:scale-95"
                       >
                         <Trash2 className="h-4.5 w-4.5" />
                       </button>
@@ -1121,7 +1252,15 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
 
             {/* Add new attribute form */}
             {canEdit && (
-              <div className="bg-slate-50 p-4 rounded-2xl space-y-3 border border-slate-200">
+              <div className={cn(
+                "p-4 rounded-2xl space-y-3 border transition-colors duration-150",
+                editingAttrId ? "bg-indigo-50/60 border-indigo-200" : "bg-slate-50 border-slate-200"
+              )}>
+                {editingAttrId && (
+                  <div className="text-[10px] font-heading font-black text-indigo-500 uppercase tracking-widest">
+                    {t("Edit attribute", "Upraviť atribút", "Attribútum szerkesztése")}
+                  </div>
+                )}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
@@ -1140,13 +1279,13 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                     </label>
                     <CustomSelect
                       value={newAttrType}
-                      onChange={(v) => setNewAttrType(v as ProjectAttributeType)}
+                      onChange={(v) => handleAttrFormTypeChange(v as ProjectAttributeType)}
                       options={ATTRIBUTE_TYPES.map(at => ({ value: at.id, label: attributeTypeLabel(at.id) }))}
                     />
                   </div>
                 </div>
 
-                {["select", "radio", "checkbox"].includes(newAttrType) && (
+                {isOptionAttrType(newAttrType) && (
                   <div>
                     <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
                       {t("Options (comma separated)", "Možnosti (oddelené čiarkou)", "Opciók (vesszővel elválasztva)")}
@@ -1171,14 +1310,30 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                     <span className="text-xs font-semibold text-slate-600">{t("Required field", "Povinné pole", "Kötelező mező")}</span>
                   </label>
 
-                  <button
-                    type="button"
-                    onClick={handleAddAttribute}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 transition-all cursor-pointer"
-                  >
-                    <Plus className="h-4 w-4" />
-                    <span>{t("Add Attribute", "Pridať atribút", "Attribútum hozzáadása")}</span>
-                  </button>
+                  <div className="flex items-center gap-1.5">
+                    {editingAttrId && (
+                      <button
+                        type="button"
+                        onClick={resetAttrForm}
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-600 font-bold text-xs hover:bg-slate-50 transition-all duration-150 active:scale-95 cursor-pointer"
+                      >
+                        <X className="h-4 w-4" />
+                        <span>{t("Cancel", "Zrušiť", "Mégse")}</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleSaveAttribute}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 transition-all duration-150 active:scale-95 cursor-pointer"
+                    >
+                      {editingAttrId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
+                      <span>
+                        {editingAttrId
+                          ? t("Save changes", "Uložiť zmeny", "Változtatások mentése")
+                          : t("Add Attribute", "Pridať atribút", "Attribútum hozzáadása")}
+                      </span>
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
