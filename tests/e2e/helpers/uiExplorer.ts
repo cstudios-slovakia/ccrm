@@ -665,11 +665,29 @@ export class ViewCrawler {
       const groups: Array<{ index: number; labels: string[]; active: boolean[] }> = [];
       const containers = new Set<Element>();
 
-      const explicit = main.querySelectorAll('[role="tab"]');
+      // With a modal open (a record detail, a file preview) the page behind it
+      // is out of the user's reach on purpose: audit the modal's own strips, not
+      // the ones it covers. Same test for "topmost layer" as markTopOverlay().
+      const layers = Array.from(document.querySelectorAll('.fixed.inset-0')).filter((el) => {
+        const cs = window.getComputedStyle(el);
+        if (cs.display === 'none' || cs.visibility === 'hidden') return false;
+        const r = el.getBoundingClientRect();
+        return r.width > 240 && r.height > 240;
+      });
+      const topLayer = layers.length
+        ? layers.reduce((best, el) => {
+            const z = parseInt(window.getComputedStyle(el).zIndex, 10) || 0;
+            const bz = parseInt(window.getComputedStyle(best).zIndex, 10) || 0;
+            return z >= bz ? el : best;
+          })
+        : null;
+      const root: Element = topLayer ?? main;
+
+      const explicit = root.querySelectorAll('[role="tab"]');
       explicit.forEach((t) => t.parentElement && containers.add(t.parentElement));
 
       // Heuristic strip: >=2 sibling buttons with short labels in a flex row.
-      main.querySelectorAll('div').forEach((div) => {
+      root.querySelectorAll('div').forEach((div) => {
         const cls = typeof div.className === 'string' ? div.className : '';
         if (!/\bflex\b/.test(cls)) return;
         const kids = Array.from(div.children).filter((c) => c.tagName === 'BUTTON');
@@ -726,6 +744,7 @@ export class ViewCrawler {
         if (!(await button.isVisible({ timeout: 300 }).catch(() => false))) continue;
 
         const before = await readViewState(this.page);
+        const pressedBefore = await button.getAttribute('aria-pressed').catch(() => null);
         const outcome = await this.robustClick(
           button,
           `Tab "${label}"`,
@@ -736,6 +755,33 @@ export class ViewCrawler {
 
         await this.page.waitForTimeout(SETTLE.content);
         const after = await readViewState(this.page);
+
+        // Some "strips" are rows of action buttons ("New income" / "New expense")
+        // that open a dialog. That is a working control — but left open, the
+        // dialog covers the next button and reads as an overlap defect. Close
+        // just what this click opened, keeping any modal the strip lives in.
+        if (after.overlayCount > before.overlayCount) {
+          for (let attempt = 0; attempt < 3; attempt++) {
+            if ((await readViewState(this.page)).overlayCount <= before.overlayCount) break;
+            await this.page.keyboard.press('Escape').catch(() => {});
+            await this.page.waitForTimeout(SETTLE.overlay);
+          }
+          if (before.overlayCount === 0) await dismissOverlays(this.page);
+          if ((await readViewState(this.page)).overlayCount > before.overlayCount) {
+            this.record({
+              target: `Tab "${label}"`,
+              action: `Close the dialog the "${label}" button opened in ${scopeLabel}`,
+              expected: 'Escape or the close button dismisses the dialog.',
+              actual: 'The dialog stayed open and keeps covering the page.',
+              category: 'INTERACTION_FAILED',
+              severity: 'MEDIUM',
+              screenshotPath: await captureEvidence(this.page, `dialog-stuck-${label}`),
+            });
+          } else {
+            this.pass(`Button "${label}" in ${scopeLabel} opened a dialog that closed again`);
+          }
+          continue;
+        }
 
         if (after.errorScreen) {
           this.record({
@@ -757,8 +803,18 @@ export class ViewCrawler {
         }
 
         if (after.fingerprint === before.fingerprint && after.hash === before.hash) {
+          // A filter toggle (aria-pressed) can respond correctly and still leave
+          // the list as it was: the chips before it in this strip were clicked
+          // too, and the last one's filter may already leave nothing to narrow.
+          const pressedAfter =
+            pressedBefore === null ? null : await button.getAttribute('aria-pressed').catch(() => null);
           if (wasAlreadyOpen) {
             this.pass(`Tab "${label}" in ${scopeLabel} was already open and stayed healthy when re-clicked`);
+          } else if (pressedAfter !== null && pressedAfter !== pressedBefore) {
+            this.pass(
+              `Toggle "${label}" in ${scopeLabel} switched aria-pressed ${pressedBefore} → ${pressedAfter} ` +
+                '(the list was unchanged under the filters set by the chips before it)',
+            );
           } else {
             this.record({
               target: `Tab "${label}"`,
