@@ -6,6 +6,7 @@ import { ProjectDetailsView } from "./ProjectDetailsView";
 import type { Task } from "../types";
 import type { TaskAccess } from "../utils/taskSelectors";
 import { ProjectSettings } from "./ProjectSettings";
+import { ProjectListViewMenu } from "./ProjectListViewMenu";
 import { CustomSelect } from "./ui/CustomSelect";
 import { StarRating } from "./ui/StarRating";
 import type { Language } from "../utils/translations";
@@ -36,7 +37,8 @@ import {
   asAttributeList,
   isBooleanCheckbox,
   projectAttributeSortValue,
-  visibleProjectColumns,
+  resolveProjectColumns,
+  toStoredColumns,
 } from "../utils/projectColumns";
 import type { BuiltinProjectColumnKey, ResolvedProjectColumn } from "../utils/projectColumns";
 import { currencyForRegion, formatMoney, isMoneyValueEmpty, parseMoneyValue } from "../utils/currency";
@@ -447,11 +449,37 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     return projectTypes.length === 1 ? projectTypes[0] : null;
   }, [selectedTypeFilter, projectTypes]);
 
-  /** The columns the table draws, in order. */
-  const activeColumns = useMemo<ResolvedProjectColumn[]>(
-    () => visibleProjectColumns(layoutType?.attributes, layoutType?.listColumns),
-    [layoutType]
+  /* A list of mixed types keeps its own built-in-only layout, per user; a list
+     of one type follows that type's layout, shared by everyone. Both are edited
+     from the View menu in the filter bar. */
+  const [mixedListColumns, setMixedListColumns] = useUserPref("projectsListColumns");
+
+  /** Every column the table can draw, hidden ones included, in order. */
+  const allColumns = useMemo<ResolvedProjectColumn[]>(
+    () => layoutType
+      ? resolveProjectColumns(layoutType.attributes, layoutType.listColumns)
+      : resolveProjectColumns(undefined, mixedListColumns),
+    [layoutType, mixedListColumns]
   );
+
+  /** The columns the table draws, in order. */
+  const activeColumns = useMemo(() => allColumns.filter(c => c.visible), [allColumns]);
+
+  /* A type's layout is workspace config, so changing it takes the same right
+     as editing the type in Settings; the mixed layout is the user's own. */
+  const canEditColumns = !layoutType || settingsAccess.edit;
+
+  const saveColumns = (next: ResolvedProjectColumn[] | null) => {
+    if (!layoutType) {
+      setMixedListColumns(next ? toStoredColumns(next) : null);
+      return;
+    }
+    if (!settingsAccess.edit) return;
+    const typeId = layoutType.id;
+    setProjectTypes(prev => prev.map(pt => pt.id === typeId
+      ? { ...pt, listColumns: next ? toStoredColumns(next) : [] }
+      : pt));
+  };
 
   /* Ordering by an attribute column only makes sense while that column is on
      screen. Switch back to "all types", or to a type that does not carry it,
@@ -1053,7 +1081,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               because CustomSelect's trigger is w-100%; each now sits in a fixed
               track of its own. The view switcher is parked on the right, away
               from the filters it is not one of. */}
-          <div className="glass-panel flex flex-wrap items-center gap-2.5 p-2.5 rounded-3xl border border-white/60 bg-white/95 shadow-glass">
+          <div className="glass-panel relative z-20 flex flex-wrap items-center gap-2.5 p-2.5 rounded-3xl border border-white/60 bg-white/95 shadow-glass">
             {/* Search */}
             <div className="relative flex-1 min-w-[11rem] sm:max-w-xs">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -1123,33 +1151,32 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               />
             </div>
 
-            {/* Order — the only way to sort the cards; the table headers write
-                the same preference. */}
-            <div className="flex items-center gap-1.5 w-full sm:w-auto shrink-0">
-              <div className="flex-1 sm:w-44">
-                <CustomSelect
-                  className="h-10"
-                  icon={<ArrowUpDown className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
-                  value={effectiveSort.key}
-                  onChange={(v) => setSort({ key: v as ProjectSortKey, direction: v === effectiveSort.key ? effectiveSort.direction : "asc" })}
-                  options={sortOptions}
-                />
-              </div>
-              {effectiveSort.key !== "default" && (
-                <button
-                  type="button"
-                  onClick={() => setSort({ ...effectiveSort, direction: effectiveSort.direction === "asc" ? "desc" : "asc" })}
-                  title={effectiveSort.direction === "asc" ? t("Ascending", "Vzostupne", "Növekvő") : t("Descending", "Zostupne", "Csökkenő")}
-                  aria-label={effectiveSort.direction === "asc" ? t("Ascending", "Vzostupne", "Növekvő") : t("Descending", "Zostupne", "Csökkenő")}
-                  className="h-10 w-10 shrink-0 flex items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-indigo-600 hover:border-indigo-200 active:scale-95 transition-all cursor-pointer animate-in fade-in zoom-in-95 duration-150"
-                >
-                  {effectiveSort.direction === "asc" ? <ArrowUp className="h-4 w-4" /> : <ArrowDown className="h-4 w-4" />}
-                </button>
-              )}
+            {/* Order and columns — the only way to sort the cards; the table
+                headers write the same sort preference. */}
+            <div className="sm:ml-auto">
+              <ProjectListViewMenu
+                t={t}
+                sort={effectiveSort}
+                sortOptions={sortOptions}
+                onSortChange={setSort}
+                columns={allColumns}
+                onColumnsChange={saveColumns}
+                columnLabel={columnLabel}
+                canEditColumns={canEditColumns}
+                columnsScope={layoutType
+                  ? (settingsAccess.edit
+                    ? t(`Columns of the "${layoutType.name}" type — the same for everyone.`, `Stĺpce typu „${layoutType.name}“ — rovnaké pre všetkých.`, `A(z) „${layoutType.name}” típus oszlopai — mindenkinek ugyanazok.`)
+                    : t(`Columns of the "${layoutType.name}" type. Only someone who can edit project types can change them.`, `Stĺpce typu „${layoutType.name}“. Zmeniť ich môže len ten, kto smie upravovať typy projektov.`, `A(z) „${layoutType.name}” típus oszlopai. Csak projekt típusokat szerkeszteni jogosult felhasználó módosíthatja őket.`))
+                  : t("All types: built-in columns only. Filter the list by one type to show its own attributes as columns.", "Všetky typy: len vstavané stĺpce. Vyfiltrujte zoznam podľa typu a zobrazíte aj jeho atribúty.", "Minden típus: csak beépített oszlopok. Szűrjön egy típusra, hogy az attribútumai is oszlopként megjelenjenek.")}
+                onReset={() => {
+                  setSort({ key: "default", direction: "asc" });
+                  if (canEditColumns) saveColumns(null);
+                }}
+              />
             </div>
 
             {/* Cards or table. */}
-            <div className="sm:ml-auto flex items-center gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200 select-none shrink-0">
+            <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200 select-none shrink-0">
               {([
                 { mode: "list" as const, Icon: Rows3, label: t("List view", "Zobrazenie zoznamu", "Lista nézet") },
                 { mode: "grid" as const, Icon: LayoutGrid, label: t("Grid view", "Zobrazenie kariet", "Kártyás nézet") },

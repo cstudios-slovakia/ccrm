@@ -1,5 +1,6 @@
 import { createContext, useContext } from "react";
 import type { StartMenuLayout } from "./startMenuLayout";
+import type { ProjectListColumn } from "../types";
 
 /**
  * Per-user interface preferences.
@@ -51,6 +52,13 @@ export interface UserPrefs {
    * normalizeProjectSort() from utils/projectSort.ts.
    */
   projectsSort: { key: string; direction: string } | null;
+  /**
+   * Projects screen: the table's columns while it lists more than one project
+   * type — built-ins only, since an attribute belongs to one type. A list of a
+   * single type follows that type's own `listColumns` instead. `null` means the
+   * default layout. Reconciled by resolveProjectColumns() in utils/projectColumns.ts.
+   */
+  projectsListColumns: ProjectListColumn[] | null;
   /** Leads screen: grouping / sorting. */
   leadsOrderingMode: "state" | "pm" | "created_newest" | "created_oldest" | "size" | "rating";
   /**
@@ -105,6 +113,7 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   leadsViewMode: "list",
   projectsViewMode: "list",
   projectsSort: null,
+  projectsListColumns: null,
   leadsCompactMode: false,
   leadsOrderingMode: "state",
   leadsVisibleStates: null,
