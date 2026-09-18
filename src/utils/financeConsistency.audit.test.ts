@@ -62,6 +62,13 @@ const ledgerDate = (r: FinancialRecord) => r.paidDate || r.issueDate || ""; // F
 /** The Movements ledger's own idea of what a movement is worth. FinancialManagementView.tsx:1303 */
 const ledgerAmount = (r: FinancialRecord) => (r.amountReal > 0 ? r.amountReal : r.amountPlanned);
 
+// `aggregateOverviewTable` now needs `todayIso` to decide a recurring
+// charge's real/estimated split (see Problem A of the finance consistency
+// audit follow-up). None of these fixtures except the F2 family care about
+// that split, so they all pin it far in the future — every charge inside
+// their (much earlier) fixed columns is settled either way.
+const TODAY = "2099-12-31";
+
 const months = (year: number, count: number, futureFrom = 99): OverviewColumn[] =>
   Array.from({ length: count }, (_, i) => {
     const m = String(i + 1).padStart(2, "0");
@@ -84,7 +91,8 @@ test("F1: an income under an income category whose parent is an expense category
   const out = aggregateOverviewTable(
     [rec({ id: "F1", type: "income", categoryId: "inc-child", amountPlanned: 1000, amountReal: 1000, status: "paid", issueDate: "2026-09-10" })],
     categories,
-    months(2026, 9)
+    months(2026, 9),
+    TODAY
   );
 
   // Observed at audit time: totalIncomes 0, totalExpenses 1000, net -1000.
@@ -117,25 +125,62 @@ const monthlyRule = (over: Partial<FinancialRecord> = {}): FinancialRecord =>
 
 const oneExpenseCategory = [cat("exp", "expense", 1)];
 
-test("F2: pausing a recurring rule today does not erase the charges it already made", () => {
+test("F2: pausing a recurring rule today does not erase the charges it already made, and does stop the ones after it", () => {
   const cols = months(2026, 9);
-  const active = aggregateOverviewTable([monthlyRule()], oneExpenseCategory, cols);
+  const active = aggregateOverviewTable([monthlyRule()], oneExpenseCategory, cols, TODAY);
   assert.equal(active.totalExpenseSummary.total, 2700, "sanity: nine monthly charges of 300");
 
-  // handleToggleRecurringActive (FinancialManagementView.tsx:1478) only flips the
-  // status; it never stamps an end date. Observed: the whole year drops to 0.
-  const paused = aggregateOverviewTable([monthlyRule({ status: "cancelled" })], oneExpenseCategory, cols);
+  // Pausing stamps `recurringEndDate`, not `status` (see `pauseRecurringRule`,
+  // the fix chosen for this finding) — a pause dated after the last charge in
+  // the window must leave every one of them standing.
+  const pausedLate = aggregateOverviewTable(
+    [monthlyRule({ recurringEndDate: "2026-09-20" })],
+    oneExpenseCategory,
+    cols,
+    "2026-09-20"
+  );
   assert.equal(
-    paused.totalExpenseSummary.total,
+    pausedLate.totalExpenseSummary.total,
     2700,
-    "2 700 € of already-paid rent must survive the pause; only future charges should stop"
+    "2 700 € of already-paid rent must survive a pause dated after it"
+  );
+
+  // And a pause dated *before* the ninth charge actually stops the charges
+  // after it — the fix's whole point, not just "don't erase the past".
+  const pausedEarly = aggregateOverviewTable(
+    [monthlyRule({ recurringEndDate: "2026-05-05" })],
+    oneExpenseCategory,
+    cols,
+    "2026-05-05"
+  );
+  assert.equal(
+    pausedEarly.totalExpenseSummary.total,
+    5 * 300,
+    "charges after the pause date must stop, unlike the old status-based guard which stopped all of them or none"
+  );
+});
+
+test("F2c: a rule paused the old way — status alone, no end date — stops on the day it was last touched, not retroactively", () => {
+  // Rules stored `cancelled` before pausing became an end date (pre-1.9.70)
+  // carry no `recurringEndDate` at all. `effectiveRecurringEndDate` reads
+  // `updatedAt` (falling back to `issueDate`) so they still stop somewhere,
+  // instead of either charging forever or losing their settled history.
+  const cols = months(2026, 9);
+  const legacy = monthlyRule({ status: "cancelled", updatedAt: "2026-05-05T00:00:00.000Z" });
+  const out = aggregateOverviewTable([legacy], oneExpenseCategory, cols, TODAY);
+  assert.equal(
+    out.totalExpenseSummary.total,
+    5 * 300,
+    "charges up to and including 5 May stand; June onward must not still be charging"
   );
 });
 
 test("F2b: resuming a paused rule does not move its settled history into the plan column", () => {
   const cols = months(2026, 9);
-  // The toggle resumes to "planned", never back to "paid" (FinancialManagementView.tsx:1482).
-  const resumed = aggregateOverviewTable([monthlyRule({ status: "planned" })], oneExpenseCategory, cols);
+  // The toggle never writes `status` at all (`resumeRecurringRule`); this
+  // pins the closely related fact that `status` alone was never what decided
+  // real vs estimated for an elapsed charge in the first place.
+  const resumed = aggregateOverviewTable([monthlyRule({ status: "planned" })], oneExpenseCategory, cols, TODAY);
   assert.equal(
     resumed.totalExpenseSummary.real,
     2700,
@@ -240,7 +285,7 @@ test("F6: a cancelled one-off movement is expected money in no tab", () => {
     "a cancelled movement must not be counted as money still expected"
   );
 
-  const out = aggregateOverviewTable([cancelled], oneExpenseCategory, months(2026, 12, 10));
+  const out = aggregateOverviewTable([cancelled], oneExpenseCategory, months(2026, 12, 10), TODAY);
   assert.equal(out.totalExpenseSummary.total, 0, "observed: 5 000 € still budgeted, and still subtracted from the projected bank balance");
 });
 
@@ -260,7 +305,7 @@ test("F7: a movement with no usable date is treated the same way by every tab", 
 
   // Table and trend drop it (financialOverviewTable.ts:147, FinancialManagementView.tsx:1962);
   // the ledger files it under `movementLedgerDate(rec) || "1970-01-01"` (:1257).
-  const out = aggregateOverviewTable([undated], oneExpenseCategory, months(2026, 12));
+  const out = aggregateOverviewTable([undated], oneExpenseCategory, months(2026, 12), TODAY);
   const ledgerBucket = ledgerDate(undated) || "1970-01-01";
 
   assert.equal(
@@ -282,7 +327,8 @@ test("F8 (regression guard, passes): an uncategorized movement still reaches the
       rec({ id: "dead-cat", categoryId: "deleted", amountPlanned: 20, amountReal: 20, status: "paid", issueDate: "2026-03-10" })
     ],
     oneExpenseCategory,
-    months(2026, 12)
+    months(2026, 12),
+    TODAY
   );
 
   assert.equal(out.cells[UNCATEGORIZED_ROW_ID.expense]["2026-03"].real, 200);
@@ -301,7 +347,8 @@ test("F9: a category in a parent cycle still reaches the section total, and is c
   const out = aggregateOverviewTable(
     [rec({ id: "F9", categoryId: "A", amountPlanned: 700, amountReal: 700, status: "paid", issueDate: "2026-03-10" })],
     cycle,
-    months(2026, 12)
+    months(2026, 12),
+    TODAY
   );
 
   // Observed: row A = 700 AND row B = 700 (the same money drawn twice),
@@ -314,7 +361,8 @@ test("F9b: a self-parented category still reaches the section total", () => {
   const out = aggregateOverviewTable(
     [rec({ id: "F9b", categoryId: "S", amountPlanned: 300, amountReal: 300, status: "paid", issueDate: "2026-03-10" })],
     [cat("S", "expense", 1, "S")],
-    months(2026, 12)
+    months(2026, 12),
+    TODAY
   );
   assert.equal(out.rowTotals["S"].real, 300, "sanity: the row shows the money");
   assert.equal(out.totalExpenseSummary.real, 300, "observed: the row shows 300 € but Total Expenses says 0 €");
@@ -330,7 +378,8 @@ test("F10: a duplicated category id does not multiply what the category contribu
   const out = aggregateOverviewTable(
     [rec({ id: "F10", categoryId: "D", amountPlanned: 100, amountReal: 100, status: "paid", issueDate: "2026-03-10" })],
     duplicated,
-    months(2026, 12)
+    months(2026, 12),
+    TODAY
   );
 
   // Observed: row 200 €, Total Expenses 400 €, for one 100 € movement.
@@ -350,7 +399,8 @@ test("F11: a date that arrives as a datetime is still filed in its own month", (
       rec({ id: "stamped", categoryId: "H", amountPlanned: 222, amountReal: 222, status: "paid", issueDate: "2026-03-31T10:00:00" })
     ],
     [cat("H", "expense", 1)],
-    months(2026, 12)
+    months(2026, 12),
+    TODAY
   );
 
   // "2026-03-31T10:00:00" > "2026-03-31", so the 222 € falls past the end of
@@ -367,7 +417,7 @@ test("F11: a date that arrives as a datetime is still filed in its own month", (
 test("F12: a negative amount means the same thing in the table and in the ledger", () => {
   const refund = rec({ id: "F12", categoryId: "H", amountPlanned: -500, amountReal: -500, status: "paid", issueDate: "2026-03-10" });
 
-  const out = aggregateOverviewTable([refund], [cat("H", "expense", 1)], months(2026, 12));
+  const out = aggregateOverviewTable([refund], [cat("H", "expense", 1)], months(2026, 12), TODAY);
   // Observed: table 0 (Math.max(..., 0) at financialOverviewTable.ts:80-81),
   // ledger -500 (no clamp at FinancialManagementView.tsx:1306).
   assert.equal(
@@ -471,12 +521,12 @@ test("F15: editing a recurring rule from a secondary form does not destroy the r
   const rule = monthlyRule({ id: "F15", status: "paid", projectId: "proj-1" } as Partial<FinancialRecord>);
   const cols = months(2026, 9);
 
-  const before = aggregateOverviewTable([rule], oneExpenseCategory, cols);
+  const before = aggregateOverviewTable([rule], oneExpenseCategory, cols, TODAY);
   assert.equal(before.totalExpenseSummary.total, 2700, "sanity: nine monthly charges of 300");
 
   // `projectFinancials` (ProjectDetailsView.tsx:427) filters on projectId only,
   // so a project-scoped recurring rule is listed there with an edit pencil.
-  const after = aggregateOverviewTable([clientTabSave(rule)], oneExpenseCategory, cols);
+  const after = aggregateOverviewTable([clientTabSave(rule)], oneExpenseCategory, cols, TODAY);
   assert.equal(
     after.totalExpenseSummary.total,
     2700,

@@ -4,8 +4,10 @@
  *
  * Reconciled after the fixes for F1-F7, F9, F10, F13, F15-F18: every helper
  * that was lifted into `src/utils/` is now imported for real instead of
- * mirrored, and the remaining component-internal mirrors (F9's toggle,
- * F10's rename cascade) were updated to match the fixed behaviour. F6/F14 are
+ * mirrored — F9's pause/resume toggle joined that list once the finance
+ * consistency audit's Problem B lifted it into `toggleRecurringPause`
+ * (recurringExpenses.ts) — and the remaining component-internal mirror
+ * (F10's rename cascade) was updated to match the fixed behaviour. F6/F14 are
  * plain inline checks (no helper to lift). F8/F11/F12/F14 stay `skip` — they
  * need a Playwright spec or are an explicit product decision, per the audit.
  *
@@ -28,6 +30,7 @@ import {
   recurringAmountHistoryAfterChange,
   recurringPlannedAmountAt,
   recurringTotalInRange,
+  toggleRecurringPause,
   type RecurringRule
 } from "./recurringExpenses.ts";
 import { reconcileInvoiceMovements } from "./invoiceFinanceBridge.ts";
@@ -285,24 +288,16 @@ test("F8: typing a new WAP on the item form does not silently re-value stock alr
 
 test("F9: pausing and resuming a rule that has a planned end date gives that end date back", () => {
   const today = "2026-09-18";
-  // Fixed: mirror of FinancialManagementView.tsx's `handleToggleRecurringActive`
-  // (~1768-1794) — the planned end date is stashed in `recurringPlannedEndDate`
-  // on pause and restored on resume, instead of being clobbered by `today`/`null`.
-  const toggle = (r: Pick<FinancialRecord, "recurringEndDate" | "recurringPlannedEndDate">) => {
-    const isActive = !r.recurringEndDate || r.recurringEndDate > today;
-    if (isActive) {
-      return { ...r, recurringPlannedEndDate: r.recurringEndDate ?? null, recurringEndDate: today };
-    }
-    return { ...r, recurringEndDate: r.recurringPlannedEndDate ?? null, recurringPlannedEndDate: null };
-  };
-  // Fixed: mirror of FinancialManagementView.tsx's `isRecurringPaused` (~1260-1261) — now `<=`.
+  // `toggleRecurringPause` (recurringExpenses.ts) is what
+  // `handleToggleRecurringActive` calls now — no more hand-mirrored copy here.
+  // Fixed: mirror of FinancialManagementView.tsx's `isRecurringPaused` (~1264-1270) — now `<=`.
   const isRecurringPaused = (r: Pick<FinancialRecord, "recurringEndDate">) => !!r.recurringEndDate && r.recurringEndDate <= today;
 
   const lease = { recurringEndDate: "2026-12-31", recurringPlannedEndDate: null as string | null };
-  const paused = toggle(lease);
+  const paused = { ...lease, ...toggleRecurringPause(lease, today) };
   // Observed before the fix: paused.recurringEndDate === today, and isRecurringPaused(paused) === false on the day of the click.
   assert.equal(isRecurringPaused(paused), true, "a rule paused today reads as paused today");
-  const resumed = toggle(paused);
+  const resumed = { ...paused, ...toggleRecurringPause(paused, today) };
   assert.equal(resumed.recurringEndDate, "2026-12-31", "resume must restore the planned end, not make the rule endless");
 });
 

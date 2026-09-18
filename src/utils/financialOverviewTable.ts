@@ -44,6 +44,17 @@ export const isEmptyOverviewCell = (cell: OverviewCell | undefined): boolean =>
   !cell || (cell.real === 0 && cell.estimated === 0 && cell.total === 0);
 
 /**
+ * Whether a recurring charge dated `dateIso` has actually happened by
+ * `todayIso` — the one rule the overview table and the cash-flow trend both
+ * read a recurring charge's settled/estimated split by. A charge later this
+ * month is still estimated even though the column holding it (the current
+ * month) is not itself "future"; a charge dated today or earlier is real. The
+ * movements ledger (`pastRecurringCharges.ts`) already applies the same rule
+ * by bounding its charge range at `todayIso`.
+ */
+export const isRecurringChargeSettled = (dateIso: string, todayIso: string): boolean => dateIso <= todayIso;
+
+/**
  * The row a movement is counted on.
  *
  * A movement is "uncategorized" when it has no category, when its category no
@@ -165,16 +176,19 @@ const addCell = (target: OverviewCell, source: OverviewCell) => addTo(target, so
  *
  * One-off movements land in the column their date falls in. Recurring rules
  * are enumerated off the calendar into every column they charge in, each
- * charge priced at the amount in force on its date; a paused rule
- * (`cancelled`) charges nothing, the same as the recurring tab's totals treat
- * it. Each category then absorbs its descendants, walking the real parent
+ * charge priced at the amount in force on its date; the schedule itself
+ * (`recurringOccurrences`/`effectiveRecurringEndDate`) already stops a rule
+ * paused either way — a `recurringEndDate` or, for a rule paused the old way,
+ * `status === "cancelled"` — so nothing here needs to guard on `status`
+ * again. Each category then absorbs its descendants, walking the real parent
  * chain rather than trusting the stored `level`, so a category whose parent
  * was deleted still counts as the root row it is displayed as.
  */
 export function aggregateOverviewTable(
   records: FinancialRecord[],
   categories: FinancialCategory[],
-  columns: OverviewColumn[]
+  columns: OverviewColumn[],
+  todayIso: string
 ): OverviewTableAggregate {
   const byId = new Map(categories.map((c) => [c.id, c]));
 
@@ -210,17 +224,27 @@ export function aggregateOverviewTable(
     }
 
     // A recurring rule fires on its own schedule rather than waiting for
-    // someone to mark each charge paid, so a charge in a column that has
-    // already elapsed is settled money regardless of the rule's current
-    // lifecycle status (active/paused). Pausing or resuming the rule only
-    // changes which *future* columns it still charges — via
-    // `recurringEndDate`/`recurringStartDate`, honoured by `recurringCharges`
-    // itself — and must never retroactively move already-elapsed charges
-    // between "real" and "estimated".
+    // someone to mark each charge paid, so a charge that has come due is
+    // settled money regardless of the rule's current lifecycle status
+    // (active/paused). Pausing or resuming the rule only changes which
+    // *future* charges the schedule still makes — via `effectiveRecurringEndDate`
+    // / `recurringStartDate`, honoured by `recurringCharges` itself — and must
+    // never retroactively move already-elapsed charges between "real" and
+    // "estimated".
+    //
+    // Real vs estimated is decided per charge against `todayIso`, not per
+    // column: the column holding today (the current month, week, ...) is not
+    // itself "future", but a charge inside it dated after today has not
+    // happened yet and must still show as estimated (Problem A of the 18
+    // September audit follow-up).
     columns.forEach((col) => {
-      const amount = recurringCharges(rec, col.startIso, col.endIso).reduce((sum, charge) => sum + charge.amount, 0);
-      if (amount <= 0) return;
-      addDirect(rowId, col.id, col.isFuture ? 0 : amount, col.isFuture ? amount : 0);
+      let real = 0;
+      let estimated = 0;
+      recurringCharges(rec, col.startIso, col.endIso).forEach(({ date, amount }) => {
+        if (isRecurringChargeSettled(date, todayIso)) real += amount;
+        else estimated += amount;
+      });
+      if (real > 0 || estimated > 0) addDirect(rowId, col.id, real, estimated);
     });
 
     const ownRow = recurringOwnRowCharge(rec);

@@ -51,9 +51,11 @@ import {
   type FinancialTrendSettings
 } from "../utils/financialTrend";
 import {
+  effectiveRecurringEndDate,
   isoDaysBetween,
   lastRecurringOccurrenceOnOrBefore,
   nextRecurringChargeAfter,
+  pauseRecurringRule,
   recurringAmountHistoryAfterChange,
   recurringChargeAmount,
   recurringEarliestRepriceDate,
@@ -62,11 +64,13 @@ import {
   recurringPlannedAmountAt,
   recurringTotalInRange,
   shiftIsoDate,
+  toggleRecurringPause,
   type RecurringRule
 } from "../utils/recurringExpenses";
 import {
   UNCATEGORIZED_ROW_ID,
   aggregateOverviewTable,
+  isRecurringChargeSettled,
   overviewRecordDate,
   recurringOwnRowCharge,
   splitRecordAmounts
@@ -1060,6 +1064,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const [formYearlyMonth, setFormYearlyMonth] = useState<number>(1);
   const [formRecurringStartDate, setFormRecurringStartDate] = useState(todayLocal());
   const [formRecurringEndDate, setFormRecurringEndDate] = useState("");
+  // The real planned end a pause tucks away, restored on resume — see
+  // `pauseRecurringRule`. Only ever written by the "Zrušené" status shortcut
+  // below; the end-date field itself is untouched by it.
+  const [formRecurringPlannedEndDate, setFormRecurringPlannedEndDate] = useState<string | null>(null);
   // The day a changed recurring amount takes effect; "" = from the next charge.
   const [formAmountAppliesFrom, setFormAmountAppliesFrom] = useState("");
 
@@ -1254,12 +1262,18 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   // Frozen for the render, so every figure on screen is cut off at the same day.
   const forecastToday = todayLocal();
 
-  // A rule is paused when its own end date has already passed — pausing
-  // stamps `recurringEndDate = today` rather than flipping `status` (see F2 /
-  // `handleToggleRecurringActive`), so this is the one place "active vs
-  // paused" is decided for display.
-  const isRecurringPaused = (rec: Pick<FinancialRecord, "recurringEndDate">): boolean =>
-    !!rec.recurringEndDate && rec.recurringEndDate <= forecastToday;
+  // A rule is paused when its schedule's effective end date has already
+  // passed — pausing stamps `recurringEndDate = today` rather than flipping
+  // `status` (see F2 / `handleToggleRecurringActive`), and a rule paused the
+  // old way, by `status` alone, reads as ended on the day it was last touched
+  // (`effectiveRecurringEndDate`). This is the one place "active vs paused"
+  // is decided for display.
+  const isRecurringPaused = (
+    rec: Pick<FinancialRecord, "recurringEndDate" | "status" | "updatedAt" | "issueDate">
+  ): boolean => {
+    const end = effectiveRecurringEndDate(rec);
+    return !!end && end <= forecastToday;
+  };
 
   const forecastRange = useMemo(
     () => futureWindow(forecastToday, futureHorizonMonths),
@@ -1736,6 +1750,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     setFormYearlyMonth(1);
     setFormRecurringStartDate(todayLocal());
     setFormRecurringEndDate("");
+    setFormRecurringPlannedEndDate(null);
     setFormAmountAppliesFrom("");
     setIsModalOpen(true);
   };
@@ -1766,31 +1781,11 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const handleToggleRecurringActive = (recId: string) => {
     const today = todayLocal();
     setFinancialRecords((prev) =>
-      prev.map((r) => {
-        if (r.id === recId) {
-          // Same comparison `isRecurringPaused` uses, so a rule paused today
-          // reads as paused today instead of "active" until midnight (F9).
-          const isActive = !r.recurringEndDate || r.recurringEndDate > today;
-          if (isActive) {
-            // Pausing stops future charges by stamping today as the end date
-            // — but a rule can have a real planned end already, and that must
-            // come back on resume rather than being clobbered (F9).
-            return {
-              ...r,
-              recurringPlannedEndDate: r.recurringEndDate ?? null,
-              recurringEndDate: today,
-              updatedAt: new Date().toISOString()
-            };
-          }
-          return {
-            ...r,
-            recurringEndDate: r.recurringPlannedEndDate ?? null,
-            recurringPlannedEndDate: null,
-            updatedAt: new Date().toISOString()
-          };
-        }
-        return r;
-      })
+      prev.map((r) =>
+        r.id === recId
+          ? { ...r, ...toggleRecurringPause(r, today), updatedAt: new Date().toISOString() }
+          : r
+      )
     );
   };
 
@@ -2177,6 +2172,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
     const pad = (n: number) => String(n).padStart(2, "0");
     const toYMD = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const todayIso = toYMD(now);
 
     // Find Monday of current week
     const currentDay = now.getDay();
@@ -2308,24 +2304,31 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     financialRecords.forEach((rec) => {
       if (!rec.isRecurring) return;
       // No `status === "cancelled"` guard here (see F2): a pause is an end
-      // date, and `recurringCharges` already stops charging past
-      // `recurringEndDate` on its own — gating on `status` too used to erase
-      // every already-elapsed charge the moment a rule was paused.
+      // date (or, for a rule paused the old way, `effectiveRecurringEndDate`
+      // reading `status`), and `recurringCharges` already stops charging past
+      // it on its own — gating on `status` too used to erase every
+      // already-elapsed charge the moment a rule was paused.
 
       const freq = rec.recurringFrequency || "monthly";
 
       buckets.forEach((b) => {
-        recurringCharges(rec, b.startIso, b.endIso).forEach(({ amount: amt }) => {
+        recurringCharges(rec, b.startIso, b.endIso).forEach(({ date, amount: amt }) => {
           if (!amt) return;
+          // A charge is real once its date has arrived, whatever week it
+          // falls in — the same rule the overview table uses (Problem A):
+          // past weeks are always settled, future weeks never are, and the
+          // current week splits on the charge's own date rather than being
+          // real or projected as a whole.
+          const settled = isRecurringChargeSettled(date, todayIso);
 
           if (rec.type === "income") {
-            if (b.isPast || b.isCurrent) {
+            if (settled) {
               b.incomeReal += amt;
             } else {
               b.incomeProjected += amt;
             }
           } else {
-            if (b.isPast || b.isCurrent) {
+            if (settled) {
               b.expenseReal += amt;
             } else {
               b.expenseProjected += amt;
@@ -2489,6 +2492,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     const pad = (n: number) => String(n).padStart(2, "0");
     const toYMD = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
     const now = new Date();
+    const todayIso = toYMD(now);
 
     // 1. Build Period Columns based on tableGranularity
     let columns: {
@@ -2621,7 +2625,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     // 2. Aggregate every movement into the matrix — which row it lands on, how
     // much of it is settled versus still expected, and how the category levels
     // roll up — lives in utils/financialOverviewTable.ts so it can be unit-tested.
-    return { columns, ...aggregateOverviewTable(financialRecords, financialCategories, columns) };
+    return { columns, ...aggregateOverviewTable(financialRecords, financialCategories, columns, todayIso) };
   }, [financialCategories, financialRecords, tableGranularity, tableYear, weeklyTrendData]);
 
   // Helper to render a cell value formatted by tableValueMode with distinct colors (Expense = Red, Income = Green)
@@ -2896,6 +2900,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     setFormYearlyMonth(1);
     setFormRecurringStartDate(todayLocal());
     setFormRecurringEndDate("");
+    setFormRecurringPlannedEndDate(null);
     setFormAmountAppliesFrom("");
     setIsModalOpen(true);
   };
@@ -2932,6 +2937,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     setFormYearlyMonth(cfg.month ?? 1);
     setFormRecurringStartDate(rec.recurringStartDate || rec.issueDate || todayLocal());
     setFormRecurringEndDate(rec.recurringEndDate || "");
+    setFormRecurringPlannedEndDate(rec.recurringPlannedEndDate || null);
     setFormAmountAppliesFrom("");
 
     setIsModalOpen(true);
@@ -3027,6 +3033,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       recurringConfig: recConfig,
       recurringStartDate: formIsRecurring ? formRecurringStartDate : null,
       recurringEndDate: formIsRecurring ? formRecurringEndDate || null : null,
+      recurringPlannedEndDate: formIsRecurring ? formRecurringPlannedEndDate || null : null,
       recurringAmountHistory: amountHistory,
       projectId: formScope === "project" && formProjectId ? formProjectId : null,
       clientId: formScope === "client" && formClientId ? formClientId : (formScope === "project" && formProjectId ? (projects.find(p => p.id === formProjectId)?.clientId || projects.find(p => p.id === formProjectId)?.leadId || null) : null),
@@ -3074,6 +3081,20 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
   const handleInlineStatusChange = (rec: FinancialRecord, nextStatus: FinancialStatus) => {
     if (!canEdit || nextStatus === rec.status) return;
+
+    if (rec.isRecurring && nextStatus === "cancelled") {
+      // "Zrušené" on a recurring rule's own row pauses the schedule instead
+      // of marking the row cancelled (option A of Problem B, finance
+      // consistency audit F2): the same mechanism as the pause toggle, so
+      // every tab — table, trend, ledger, forecast — reads the rule as
+      // stopped from today. `status` is left untouched, so this never creates
+      // a new legacy-style cancelled rule.
+      patchMovement(rec.id, pauseRecurringRule(rec, todayLocal()));
+      (window as any).showToast?.(
+        t("Recurring rule paused", "Pravidelná platba pozastavená", "Ismétlődő tétel szüneteltetve")
+      );
+      return;
+    }
 
     if (statusNeedsRealAmount(nextStatus)) {
       // Fully paid defaults to the planned figure; a partial payment has no
@@ -3494,6 +3515,15 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             value={formStatus}
             onChange={(val) => {
               const newSt = val as FinancialStatus;
+              if (formIsRecurring && newSt === "cancelled") {
+                // "Zrušené" on a recurring row pauses it (option A of Problem
+                // B): end date = today, planned end kept, `status` left as-is
+                // — the same mechanism `handleInlineStatusChange` and the
+                // pause toggle use, so every tab agrees on when it stopped.
+                setFormRecurringPlannedEndDate(formRecurringEndDate || null);
+                setFormRecurringEndDate(todayLocal());
+                return;
+              }
               setFormStatus(newSt);
               if (newSt === "paid" && (!formAmountReal || formAmountReal === 0) && formAmountPlanned) {
                 setFormAmountReal(formAmountPlanned);

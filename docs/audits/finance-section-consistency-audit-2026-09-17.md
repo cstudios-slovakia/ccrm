@@ -278,6 +278,12 @@ Resuming is the mirror: `handleToggleRecurringActive` (`:1478-1492`) resumes to 
 
 **Pinned by.** `F2`, `F2b`.
 
+**Fixed (1.9.82).** Pausing now stamps `recurringEndDate = todayLocal()` and leaves `status` untouched (`pauseRecurringRule`/`toggleRecurringPause`, `src/utils/recurringExpenses.ts`); `handleToggleRecurringActive` and the "Zrušené" status shortcut (below) both go through it. The three `status === "cancelled"` short-circuits are gone — the table, the trend, the ledger and the forecast all just read `recurringOccurrences`, which now honours the effective end date on its own.
+
+That still leaves rules paused the *old* way, by `status` alone, with no `recurringEndDate` at all — every one of them from before 1.9.70. Decision made (option A of the follow-up task): such a rule is read as ended on its `updatedAt` day, falling back to `issueDate` for a record stored before `updatedAt` existed (`effectiveRecurringEndDate`, one helper `recurringOccurrences` itself goes through, so every reader agrees). Charges on or before that day stay real (F2 holds); charges after it stop everywhere, forecast included. Stored data is never rewritten. Choosing "Zrušené" on a recurring row's own status (the inline picker or the transaction form) now pauses through the same mechanism instead of writing `status: "cancelled"`, so it never creates a new legacy-style pause.
+
+A second, independent gap in the same area: `aggregateOverviewTable`'s recurring branch and the Globální prehľad trend used to decide real-vs-estimated *per column* (`col.isFuture ? 0 : amount`), so the column holding today counted a charge later this month as already settled. Fixed the same way as F22 fixed the ledger: real vs estimated is now decided per charge against `todayIso`, not per column (`isRecurringChargeSettled`, `financialOverviewTable.ts`) — see the updated note under F22.
+
 ### F6. `cancelled` cancels nothing for a one-off movement
 Severity: **high**
 
@@ -370,7 +376,9 @@ Compounding it: `claimedRecordIds` deliberately does **not** claim recurring rul
 
 **Pinned by.** `src/utils/pastRecurringCharges.test.ts` — "every month's ledger totals equal the overview table's column for the same records"; browser side in `tests/e2e/financialFutureMovements.spec.ts`.
 
-**Fixed (1.9.81).** `projectPastRecurringCharges` (`src/utils/pastRecurringCharges.ts`) draws one settled row per charge a rule has made up to and including today, priced by `recurringCharges`; the forecast overlay keeps everything from tomorrow on. The rule's own row follows the table's `recurringOwnRowCharge`: before the schedule it is the first payment and counts; on a charge day the charge row stands in for it (drawn once); after a charge, on a day the schedule does not charge, it stays visible as the rule but adds nothing. Every elapsed month in the ledger now equals the table's column. The current month still differs by design on one point: the table's current column counts the rest of the month's charges as real, while the ledger draws them in the overlay.
+**Fixed (1.9.81, tightened 1.9.82).** `projectPastRecurringCharges` (`src/utils/pastRecurringCharges.ts`) draws one settled row per charge a rule has made up to and including today, priced by `recurringCharges`; the forecast overlay keeps everything from tomorrow on. The rule's own row follows the table's `recurringOwnRowCharge`: before the schedule it is the first payment and counts; on a charge day the charge row stands in for it (drawn once); after a charge, on a day the schedule does not charge, it stays visible as the rule but adds nothing. Every elapsed month in the ledger now equals the table's column.
+
+1.9.81 left the current month differing "by design": the table's current column counted the rest of the month's charges as real, while the ledger drew them in the overlay — a real vs. estimated gap, not a total gap, but still a number a user could read as "already paid" when it was not. 1.9.82 closed it: `aggregateOverviewTable` and the cash-flow trend now decide real vs. estimated per charge against `todayIso` (`isRecurringChargeSettled`), not per column, so a charge later this month reads as estimated in the table exactly as it always has in the ledger. `src/utils/pastRecurringCharges.test.ts`'s cross-check now asserts this directly as two invariants — settled equals real for every elapsed-or-current month, and the current month's estimated equals the ledger's estimated plus the recurring forecast still due — instead of adding the forecast back into the ledger's real side to paper over the old gap.
 
 ---
 

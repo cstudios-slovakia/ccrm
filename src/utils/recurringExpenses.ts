@@ -45,7 +45,12 @@ export type RecurringRule = Pick<
   | "recurringStartDate"
   | "recurringEndDate"
   | "recurringAmountHistory"
->;
+> &
+  // `status`/`updatedAt`/`issueDate` are optional here — most callers build a
+  // rule from just its schedule fields — but when present they let
+  // `effectiveRecurringEndDate` catch a rule paused the old way, by `status`
+  // alone, before pausing became an end date (see `pauseRecurringRule`).
+  Partial<Pick<FinancialRecord, "status" | "updatedAt" | "issueDate">>;
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -268,6 +273,30 @@ function monthlyOccurrence(config: FinancialRecurrenceConfig, year: number, mont
 }
 
 /**
+ * The date after which a rule's schedule stops charging — its explicit
+ * `recurringEndDate` (see `pauseRecurringRule`), tightened further when the
+ * rule was paused the old way, by `status` alone, before a pause became an
+ * end date. A legacy `cancelled` rule has no end date of its own, so it reads
+ * as ended on the day it was last touched (`updatedAt`, falling back to
+ * `issueDate` for a rule stored before `updatedAt` existed) — one helper the
+ * whole schedule goes through, so every reader (table, trend, ledger,
+ * forecast) stops the rule at the same day without rewriting the stored
+ * record.
+ */
+export function effectiveRecurringEndDate(
+  rule: Pick<RecurringRule, "recurringEndDate" | "status" | "updatedAt" | "issueDate">
+): string | null {
+  const explicit = isIsoDate(rule.recurringEndDate) ? rule.recurringEndDate : null;
+  if (rule.status !== "cancelled") return explicit;
+
+  const updatedDay = rule.updatedAt && isIsoDate(rule.updatedAt.slice(0, 10)) ? rule.updatedAt.slice(0, 10) : null;
+  const legacyEnd = updatedDay || (isIsoDate(rule.issueDate) ? rule.issueDate : null);
+  if (!legacyEnd) return explicit;
+  if (!explicit) return legacyEnd;
+  return legacyEnd < explicit ? legacyEnd : explicit;
+}
+
+/**
  * Every date the rule charges between `startIso` and `endIso`, inclusive.
  *
  * The rule's own start / end dates narrow the window further. A day of the
@@ -281,14 +310,12 @@ export function recurringOccurrences(
 ): string[] {
   if (!isIsoDate(startIso) || !isIsoDate(endIso)) return [];
 
+  const effectiveEnd = effectiveRecurringEndDate(rule);
   const from =
     isIsoDate(rule.recurringStartDate) && rule.recurringStartDate > startIso
       ? rule.recurringStartDate
       : startIso;
-  const to =
-    isIsoDate(rule.recurringEndDate) && rule.recurringEndDate < endIso
-      ? rule.recurringEndDate
-      : endIso;
+  const to = isIsoDate(effectiveEnd) && effectiveEnd < endIso ? effectiveEnd : endIso;
   if (from > to) return [];
 
   const config: FinancialRecurrenceConfig = rule.recurringConfig || {};
@@ -353,4 +380,50 @@ export function recurringCharges(
 /** Sum of `recurringCharges` — the figure a report cell shows for the period. */
 export function recurringTotalInRange(rule: RecurringRule, startIso: string, endIso: string): number {
   return recurringCharges(rule, startIso, endIso).reduce((sum, charge) => sum + charge.amount, 0);
+}
+
+// ==========================================
+// Pausing (an end date, not a status — see the finance consistency audit, F2)
+// ==========================================
+
+/** The fields a pause or a resume writes onto a rule's own record. */
+export interface RecurringPauseState {
+  recurringEndDate: string | null;
+  recurringPlannedEndDate: string | null;
+}
+
+/**
+ * Stops a rule's future charges as of `todayIso`, without touching `status`.
+ *
+ * `recurringOccurrences` already honours `recurringEndDate` exactly, so this
+ * only needs to stamp today as the end date — but a rule can already have a
+ * real planned end, and that must not be clobbered: it is tucked into
+ * `recurringPlannedEndDate` so a resume can restore it. This is also what
+ * choosing "Zrušené" on a recurring rule's own row does (option A of Problem
+ * B): the row is stopped from the day the choice was made, not marked
+ * cancelled, so every reader (table, trend, ledger, forecast) agrees on when
+ * it stopped instead of one tab reading `status` and the others reading the
+ * schedule.
+ */
+export function pauseRecurringRule(
+  rule: Pick<FinancialRecord, "recurringEndDate" | "recurringPlannedEndDate">,
+  todayIso: string
+): RecurringPauseState {
+  return { recurringPlannedEndDate: rule.recurringEndDate ?? null, recurringEndDate: todayIso };
+}
+
+/** Restores the real planned end a pause tucked away, clearing the pause. */
+export function resumeRecurringRule(
+  rule: Pick<FinancialRecord, "recurringPlannedEndDate">
+): RecurringPauseState {
+  return { recurringEndDate: rule.recurringPlannedEndDate ?? null, recurringPlannedEndDate: null };
+}
+
+/** Active → paused (stamp today) or paused → active (restore the planned end). */
+export function toggleRecurringPause(
+  rule: Pick<FinancialRecord, "recurringEndDate" | "recurringPlannedEndDate">,
+  todayIso: string
+): RecurringPauseState {
+  const isActive = !rule.recurringEndDate || rule.recurringEndDate > todayIso;
+  return isActive ? pauseRecurringRule(rule, todayIso) : resumeRecurringRule(rule);
 }

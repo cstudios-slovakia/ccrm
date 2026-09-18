@@ -103,9 +103,24 @@ test("a rule past its end date stops charging", () => {
   );
 });
 
-test("a paused rule charges nothing at all", () => {
-  const out = projectFutureMovements([rule({ id: "rent", status: "cancelled" })], "2026-09-18", "2026-12-17");
+test("a rule paused through an end date charges nothing after it", () => {
+  // Pausing stamps `recurringEndDate = today`, not `status` — the mechanism
+  // `pauseRecurringRule` / the pause toggle use (see the finance consistency
+  // audit, Problem B). A pause dated today leaves the whole forecast window
+  // empty, since the window itself starts tomorrow.
+  const out = projectFutureMovements([rule({ id: "rent", recurringEndDate: TODAY })], "2026-09-18", "2026-12-17");
   assert.deepEqual(out, []);
+});
+
+test("a rule paused the old way — status alone, no end date — charges nothing after the day it was last touched", () => {
+  // No separate `status === "cancelled"` guard exists any more: the schedule
+  // itself (`effectiveRecurringEndDate`) stops the rule at its `updatedAt`
+  // day, falling back to `issueDate`, so the forecast can never disagree with
+  // the overview table or the ledger about when a legacy-cancelled rule
+  // stopped.
+  const legacy = rule({ id: "rent", status: "cancelled", updatedAt: "2026-08-20T00:00:00.000Z" });
+  const out = projectFutureMovements([legacy], "2026-09-18", "2026-12-17");
+  assert.deepEqual(out, [], "the rule stopped on 20 August, well before the forecast window even opens");
 });
 
 test("a rule already marked paid still charges ahead - the payment settled one month, not the rule", () => {

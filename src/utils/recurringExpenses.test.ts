@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  effectiveRecurringEndDate,
   nextRecurringChargeAfter,
+  pauseRecurringRule,
   recurringAmountHistoryAfterChange,
   recurringEarliestRepriceDate,
   recurringAmountsAt,
@@ -9,7 +11,9 @@ import {
   recurringOccurrences,
   recurringPlannedAmountAt,
   recurringTotalInRange,
+  resumeRecurringRule,
   shiftIsoDate,
+  toggleRecurringPause,
   type RecurringRule
 } from "./recurringExpenses.ts";
 
@@ -225,4 +229,98 @@ test("nextRecurringChargeAfter is the default day a new price starts", () => {
   assert.equal(nextRecurringChargeAfter(rent, "2026-10-01"), "2026-11-01");
   assert.equal(nextRecurringChargeAfter(rule({ recurringEndDate: "2026-09-30" }), "2026-09-18"), null);
   assert.equal(nextRecurringChargeAfter(rent, "not a date"), null);
+});
+
+// ==========================================
+// Pausing — an end date, not a status (finance consistency audit, F2 / Problem B)
+// ==========================================
+
+test("effectiveRecurringEndDate reads the explicit end date when the rule isn't legacy-cancelled", () => {
+  assert.equal(effectiveRecurringEndDate(rule({ recurringEndDate: "2026-06-30" })), "2026-06-30");
+  assert.equal(effectiveRecurringEndDate(rule({ recurringEndDate: null })), null);
+  // `status` only matters once it is exactly "cancelled".
+  assert.equal(
+    effectiveRecurringEndDate(rule({ recurringEndDate: "2026-06-30", status: "pending" })),
+    "2026-06-30"
+  );
+});
+
+test("effectiveRecurringEndDate falls back to updatedAt, then issueDate, for a rule cancelled the old way", () => {
+  assert.equal(
+    effectiveRecurringEndDate(rule({ status: "cancelled", updatedAt: "2026-05-05T12:00:00.000Z" })),
+    "2026-05-05",
+    "updatedAt wins when it is present"
+  );
+  assert.equal(
+    effectiveRecurringEndDate(rule({ status: "cancelled", issueDate: "2026-04-01" })),
+    "2026-04-01",
+    "issueDate is the fallback for a rule stored before updatedAt existed"
+  );
+  assert.equal(
+    effectiveRecurringEndDate(rule({ status: "cancelled" })),
+    null,
+    "with neither date to fall back to, there is nothing to clamp"
+  );
+  // An explicit end date and a legacy status both apply — the earlier wins.
+  assert.equal(
+    effectiveRecurringEndDate(
+      rule({ status: "cancelled", recurringEndDate: "2026-08-01", updatedAt: "2026-05-05T00:00:00.000Z" })
+    ),
+    "2026-05-05"
+  );
+  assert.equal(
+    effectiveRecurringEndDate(
+      rule({ status: "cancelled", recurringEndDate: "2026-03-01", updatedAt: "2026-05-05T00:00:00.000Z" })
+    ),
+    "2026-03-01"
+  );
+});
+
+test("recurringOccurrences stops a legacy-cancelled rule at its effective end, not at the requested range's end", () => {
+  const legacy = rule({ status: "cancelled", updatedAt: "2026-03-15T00:00:00.000Z" });
+  assert.deepEqual(recurringOccurrences(legacy, "2026-01-01", "2026-06-30"), [
+    "2026-01-01",
+    "2026-02-01",
+    "2026-03-01"
+  ]);
+});
+
+test("pauseRecurringRule stamps today as the end date and tucks away any real planned end", () => {
+  assert.deepEqual(pauseRecurringRule({ recurringEndDate: null, recurringPlannedEndDate: null }, "2026-09-18"), {
+    recurringEndDate: "2026-09-18",
+    recurringPlannedEndDate: null
+  });
+  // A rule with a real planned end (e.g. a fixed-term contract) keeps it in
+  // reserve instead of losing it to the pause.
+  assert.deepEqual(
+    pauseRecurringRule({ recurringEndDate: "2027-01-01", recurringPlannedEndDate: null }, "2026-09-18"),
+    { recurringEndDate: "2026-09-18", recurringPlannedEndDate: "2027-01-01" }
+  );
+});
+
+test("resumeRecurringRule restores the planned end and clears the pause", () => {
+  assert.deepEqual(resumeRecurringRule({ recurringPlannedEndDate: "2027-01-01" }), {
+    recurringEndDate: "2027-01-01",
+    recurringPlannedEndDate: null
+  });
+  assert.deepEqual(resumeRecurringRule({ recurringPlannedEndDate: null }), {
+    recurringEndDate: null,
+    recurringPlannedEndDate: null
+  });
+});
+
+test("toggleRecurringPause pauses an active rule and resumes a paused one", () => {
+  const active = { recurringEndDate: null, recurringPlannedEndDate: null };
+  const paused = toggleRecurringPause(active, "2026-09-18");
+  assert.deepEqual(paused, { recurringEndDate: "2026-09-18", recurringPlannedEndDate: null });
+
+  const resumed = toggleRecurringPause(paused, "2026-09-19");
+  assert.deepEqual(resumed, { recurringEndDate: null, recurringPlannedEndDate: null });
+
+  // Paused today reads as paused today, not "active" until midnight.
+  assert.deepEqual(
+    toggleRecurringPause({ recurringEndDate: "2026-09-18", recurringPlannedEndDate: null }, "2026-09-18"),
+    { recurringEndDate: null, recurringPlannedEndDate: null },
+    "a rule whose end date is today is already paused, so toggling it resumes"
+  );
 });

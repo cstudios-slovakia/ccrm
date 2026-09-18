@@ -108,8 +108,12 @@ const isOpen = (rec: FinancialRecord): boolean =>
  *
  * A recurring rule contributes one row per charge; every other record
  * contributes at most one, on the day it is expected to settle, for the part of
- * it that is still outstanding. A rule paused with `cancelled` charges nothing,
- * matching how the overview table and the cash-flow trend read it.
+ * it that is still outstanding. A paused rule charges nothing past its stop
+ * date — an explicit `recurringEndDate`, or, for a rule paused the old way by
+ * `status` alone, the day `effectiveRecurringEndDate` reads off it — because
+ * `recurringCharges` already stops there; there is no separate `status` guard
+ * here, so the forecast can never disagree with the overview table or the
+ * cash-flow trend about when a rule stopped.
  */
 export function projectFutureMovements(
   records: FinancialRecord[],
@@ -122,7 +126,6 @@ export function projectFutureMovements(
 
   records.forEach((rec) => {
     if (rec.isRecurring) {
-      if (rec.status === "cancelled") return;
       recurringCharges(rec, startIso, endIso).forEach(({ date, amount }) => {
         if (amount <= 0) return;
         out.push({

@@ -187,9 +187,16 @@ test("a paused rule keeps every charge on or before its end date as real, and no
     ["2026-08-17", 40]
   ]);
 
-  // A rule paused the old way, by status alone, has not erased its history.
-  const legacy = rule({ id: "legacy", status: "cancelled" });
-  assert.equal(chargesOf([legacy], "legacy").length, 4);
+  // A rule paused the old way, by `status` alone, still keeps every charge up
+  // to the day it was last touched — F2's "not erased" — but, unlike before
+  // Problem B's fix, also stops charging after that day instead of charging
+  // forever just like an active rule.
+  const legacy = rule({ id: "legacy", status: "cancelled", updatedAt: "2026-08-15T00:00:00.000Z" });
+  assert.deepEqual(chargesOf([legacy], "legacy"), [
+    ["2026-06-01", 500],
+    ["2026-07-01", 500],
+    ["2026-08-01", 500]
+  ]);
 });
 
 test("a charge before a price change keeps the old amount", () => {
@@ -306,7 +313,15 @@ function ledgerMonthTotals(records: FinancialRecord[], today: string): Map<strin
   return months;
 }
 
-test("every month's ledger totals equal the overview table's column for the same records", () => {
+/**
+ * A record set built to exercise every past-charge case at once: an own row
+ * on its first charge, an own row before the schedule, an own row after a
+ * charge on a day the schedule does not charge, a rule paused by end date, a
+ * re-priced rule, a rule paused the old way (by `status` alone), a rule
+ * charging later this month than today, and one-off movements in every
+ * state.
+ */
+function buildCrossCheckFixture() {
   const records: FinancialRecord[] = [
     // Own row on its first charge.
     rule({ id: "rent", categoryId: "exp" }),
@@ -348,7 +363,9 @@ test("every month's ledger totals equal the overview table's column for the same
       amountReal: 900,
       recurringAmountHistory: [{ until: "2026-05-31", amountPlanned: 800, amountReal: 800 }]
     }),
-    // Charges today, and paused the old way by status.
+    // Charged once on its own day, then paused the old way by `status` alone
+    // — no `recurringEndDate`, so `effectiveRecurringEndDate` falls back to
+    // its `issueDate` (it has no `updatedAt`) and nothing after 18 May counts.
     rule({
       id: "retainer",
       type: "income",
@@ -379,41 +396,46 @@ test("every month's ledger totals equal the overview table's column for the same
     rec({ id: "bill-cancelled", categoryId: "exp", status: "cancelled", amountPlanned: 75, issueDate: "2026-06-11" })
   ];
 
-  const table = aggregateOverviewTable(records, categories, monthColumns);
-  const ledger = ledgerMonthTotals(records, TODAY);
-  const zero: Split = { real: 0, estimated: 0 };
-  const cell = ({ real, estimated }: Split) => ({ real, estimated });
+  return {
+    records,
+    table: aggregateOverviewTable(records, categories, monthColumns, TODAY),
+    ledger: ledgerMonthTotals(records, TODAY)
+  };
+}
 
-  // Every month that has fully elapsed: identical, settled and expected alike.
+const zeroSplit: Split = { real: 0, estimated: 0 };
+
+test("invariant 1: for every month up to and including the current one, the ledger's settled money equals the table's real", () => {
+  const { table, ledger } = buildCrossCheckFixture();
+
   monthColumns
-    .filter((col) => col.endIso < TODAY)
+    .filter((col) => !col.isFuture)
     .forEach((col) => {
-      const month = ledger.get(col.id);
-      assert.deepEqual(cell(month?.income ?? zero), cell(table.totalIncomesByCol[col.id]), `income, ${col.id}`);
-      assert.deepEqual(cell(month?.expense ?? zero), cell(table.totalExpensesByCol[col.id]), `expense, ${col.id}`);
+      const month = ledger.get(col.id) ?? { income: zeroSplit, expense: zeroSplit };
+      assert.equal(month.income.real, table.totalIncomesByCol[col.id].real, `income real, ${col.id}`);
+      assert.equal(month.expense.real, table.totalExpensesByCol[col.id].real, `expense real, ${col.id}`);
     });
-
-  // The current month: the table's column is not a future one, so it also
-  // counts as real the charges still to come this month. The ledger draws
-  // those in the forecast overlay, which starts tomorrow. Add them back and
-  // the month agrees too.
-  const september = ledger.get("2026-09")!;
-  const rest = projectFutureMovements(records, futureWindow(TODAY, 1).startIso, "2026-09-30").filter(
-    (m) => m.source === "recurring"
-  );
-  const restOf = (type: FinancialType) => rest.filter((m) => m.type === type).reduce((s, m) => s + m.amount, 0);
-  assert.deepEqual(rest.map((m) => [m.record.id, m.date]), [["internet", "2026-09-25"]]);
-  assert.deepEqual(
-    { real: september.income.real + restOf("income"), estimated: september.income.estimated },
-    cell(table.totalIncomesByCol["2026-09"])
-  );
-  assert.deepEqual(
-    { real: september.expense.real + restOf("expense"), estimated: september.expense.estimated },
-    cell(table.totalExpensesByCol["2026-09"])
-  );
 
   // And the fixture really does exercise the charges: May is late + the lease
   // at its old price + internet; June adds the rent and the lease's new price.
-  assert.deepEqual(cell(ledger.get("2026-05")!.expense), { real: 500 + 800 + 30, estimated: 0 });
-  assert.deepEqual(cell(ledger.get("2026-06")!.expense), { real: 500 + 500 + 900 + 30, estimated: 0 });
+  assert.equal(ledger.get("2026-05")!.expense.real, 500 + 800 + 30);
+  assert.equal(ledger.get("2026-06")!.expense.real, 500 + 500 + 900 + 30);
+});
+
+test("invariant 2: the current month's table estimate equals the ledger's estimate plus the recurring forecast still due this month", () => {
+  const { records, table, ledger } = buildCrossCheckFixture();
+  const current = monthColumns.find((c) => c.id === "2026-09")!;
+  const september = ledger.get("2026-09") ?? { income: zeroSplit, expense: zeroSplit };
+
+  // The ledger's forecast overlay starts tomorrow (F2's "today belongs to the
+  // past half"); the rest of the current month is what is still missing from
+  // its own estimated total to match the table's.
+  const restOfMonth = projectFutureMovements(records, futureWindow(TODAY, 1).startIso, current.endIso).filter(
+    (m) => m.source === "recurring"
+  );
+  const restOf = (type: FinancialType) => restOfMonth.filter((m) => m.type === type).reduce((s, m) => s + m.amount, 0);
+  assert.deepEqual(restOfMonth.map((m) => [m.record.id, m.date]), [["internet", "2026-09-25"]]);
+
+  assert.equal(september.income.estimated + restOf("income"), table.totalIncomesByCol["2026-09"].estimated);
+  assert.equal(september.expense.estimated + restOf("expense"), table.totalExpensesByCol["2026-09"].estimated);
 });
