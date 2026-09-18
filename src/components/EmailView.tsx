@@ -1138,8 +1138,11 @@ export const EmailView: React.FC<EmailViewProps> = ({
     setAssigningActionItem(null);
   };
 
-  const renderDigestButton = (key: string, lead: Lead | null, size: "sm" | "md" = "md") => {
+  // IMAP uids arrive as numbers; the digest key must be a string (the popover
+  // tells threads from single mails with key.startsWith("thread-")).
+  const renderDigestButton = (rawKey: string | number, lead: Lead | null, size: "sm" | "md" = "md") => {
     if (!isOpenAiKeySet) return null;
+    const key = String(rawKey);
     const isActive = digest?.key === key;
     const iconSize = size === "sm" ? 15 : 17;
     return (
