@@ -1100,335 +1100,393 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
           </div>
         </div>
 
-        {/* Rehearsal Title & Core Hypothesis */}
-        <div className="p-6 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-5">
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center justify-between">
-              <span>{t('Simulation Title', 'Názov simulácie', 'Szimuláció címe')} <span className="text-rose-500">*</span></span>
-              <span className="text-[11px] text-slate-400 font-normal">
-                {t('Executive identifier for reports & checkpoints', 'Manažérsky identifikátor pre reporty & kontrolné body', 'Vezetői azonosító a jelentésekhez és ellenőrző pontokhoz')}
+        {/* Rehearsal Title, Hypothesis, Briefing & Supplementary Files Card */}
+        <div className="p-6 md:p-8 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-8 divide-y divide-slate-100">
+          
+          {/* 1. Simulation Title Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 lg:gap-8 items-start pt-0 first:pt-0">
+            <div className="lg:col-span-1 space-y-1.5 pt-0.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600 bg-purple-50 px-2 py-0.5 rounded-md inline-block border border-purple-200/60">
+                {t('Simulation Title', 'Názov simulácie', 'Szimuláció címe')}
               </span>
-            </label>
-            <input 
-              type="text"
-              value={title}
-              onChange={e => {
-                setTitle(e.target.value);
-                setIsDirty(true);
-              }}
-              placeholder={t('e.g. Q4 Enterprise Pricing Restructuring', 'napr. Reštrukturalizácia cien balíka Enterprise v Q4', 'pl. Q4 Enterprise díjcsomag átstrukturálása')}
-              required
-              className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-sm text-slate-900 font-semibold bg-white"
-            />
-            <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
-              <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
-              <span>
-                <strong className="text-slate-700 font-semibold">{t('Purpose:', 'Na čo slúži:', 'Célja:')}</strong>{' '}
-                {t(
-                  'Primary executive title and identifier for this market simulation.',
-                  'Hlavný manažérsky názov a identifikátor pre túto trhovú simuláciu.',
-                  'A piaci szimuláció elsődleges vezetői címe és azonosítója.'
-                )}{' '}
-                <strong className="text-slate-700 font-semibold">{t('How it\'s used:', 'Ako sa používa:', 'Használata:')}</strong>{' '}
-                {t(
-                  'Displayed across simulation lists, checkpoints, live War Room, and exported executive reports.',
-                  'Zobrazuje sa na prehľadoch simulácií, pri ukladaní kontrolných bodov, v reálnom čase vo War Roome a v exportovaných manažérskych reportoch.',
-                  'Megjelenik a szimulációs listákon, ellenőrző pontoknál, élőben a War Roomban és az exportált vezetői jelentésekben.'
-                )}
-              </span>
+              <h3 className="text-sm font-bold text-slate-900 leading-snug">
+                {t('What is the name of the simulation?', 'Ako sa volá táto simulácia?', 'Mi a szimuláció neve?')}
+              </h3>
+              <p className="text-[11px] text-slate-400 font-normal leading-relaxed">
+                {t('Give your simulation a clear executive identifier.', 'Zadajte jasný manažérsky identifikátor pre túto simuláciu.', 'Adjon egyértelmű vezetői azonosítót a szimulációnak.')}
+              </p>
             </div>
-          </div>
 
-          {/* Hypothesis */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center justify-between">
-              <span>{t('Strategic Hypothesis / What-If Variable', 'Strategická hypotéza / What-If premenná', 'Stratégiai hipotézis / "Mi lenne, ha" változó')} <span className="text-rose-500">*</span></span>
-              <span className="text-[11px] text-slate-400 font-normal">
-                {t('Core predictive question deliberated by the swarm', 'Kľúčová prediktívna otázka, o ktorej bude roj diskutovať', 'A raj által megvitatott legfontosabb prediktív kérdés')}
-              </span>
-            </label>
-            <input 
-              type="text"
-              value={hypothesis}
-              onChange={e => {
-                setHypothesis(e.target.value);
-                setIsDirty(true);
-              }}
-              placeholder={t('e.g. What if we raise prices by 25% while offering 99.9% SLA availability?', 'napr. Čo ak zvýšime ceny o 25% a zároveň ponúkneme 99.9% SLA dostupnosť?', 'pl. Mi lenne, ha 25%-kal növelnénk az árakat, miközben 99.9%-os SLA rendelkezésre állást garantálunk?')}
-              required
-              className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-sm text-slate-900 font-medium bg-white"
-            />
-            <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
-              <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
-              <span>
-                <strong className="text-slate-700 font-semibold">{t('Purpose:', 'Na čo slúži:', 'Célja:')}</strong>{' '}
-                {t(
-                  'Key strategic change, pricing shift, or directional move being stress-tested.',
-                  'Kľúčová strategická zmena, zmena cenotvorby alebo smerovania, ktorá sa má otestovať.',
-                  'Kulcsfontosságú stratégiai váltás, árváltoztatás vagy irányvonal, amely tesztelésre kerül.'
-                )}{' '}
-                <strong className="text-slate-700 font-semibold">{t('How it\'s used:', 'Ako sa používa:', 'Használata:')}</strong>{' '}
-                {t(
-                  'Serves as the central mission prompt for agents, guiding autonomous opinion formulation, sentiment shifts, and objection tracking.',
-                  'Slúži ako ústredné zadanie pre agentov, riadi autonómnu tvorbu názorov, zmeny nálad a sledovanie námietok.',
-                  'Központi küldetésként szolgál az ágensek számára, irányítja az autonóm véleményalkotást, a hangulatváltozásokat és a kifogások követését.'
-                )}
-              </span>
-            </div>
-          </div>
-
-          {/* Seed Scenario Document */}
-          <div className="space-y-1.5">
-            <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center justify-between">
-              <span>{t('Input Briefing & Announcement Text', 'Vstupné zadanie & Text oznámenia', 'Bemeneti összefoglaló és közlemény')} <span className="text-rose-500">*</span></span>
-              <span className="text-[11px] text-slate-400 font-normal">
-                {t('Press release, internal memo, or pricing document', 'Tlačová správa, interné memorandum alebo cenový dokument', 'Sajtóközlemény, belső feljegyzés vagy árazási dokumentum')}
-              </span>
-            </label>
-            <textarea 
-              rows={6}
-              value={seedDocument}
-              onChange={e => {
-                setSeedDocument(e.target.value);
-                setIsDirty(true);
-              }}
-              placeholder={t(
-                'Enter the proposed announcement text, changes, new terms, or market move that agents will read and analyze...',
-                'Vložte text oznámenia, návrh tlačovej správy alebo cenové memorandum, ktoré budú agenti čítať a analyzovať...',
-                'Illessze be a közlemény szövegét, a sajtóközlemény tervezetét vagy az árazási feljegyzést, amelyet az ágensek olvasnak és elemeznek...'
-              )}
-              required
-              className="w-full px-4 py-3.5 rounded-2xl border border-slate-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-sm text-slate-800 font-normal resize-y leading-relaxed bg-white"
-            />
-            <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
-              <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
-              <span>
-                <strong className="text-slate-700 font-semibold">{t('Purpose:', 'Na čo slúži:', 'Célja:')}</strong>{' '}
-                {t(
-                  'Full briefing text, draft announcement, internal memo, or proposed contractual terms.',
-                  'Kompletný text zadania, návrh oznámenia, interné memorandum alebo navrhované zmluvné podmienky.',
-                  'A feladat teljes szövege, közleménytervezet, belső feljegyzés vagy javasolt szerződéses feltételek.'
-                )}{' '}
-                <strong className="text-slate-700 font-semibold">{t('How it\'s used:', 'Ako sa používa:', 'Használata:')}</strong>{' '}
-                {t(
-                  'Agents inspect this briefing verbatim in Round 1, quote exact clauses, assess terms against their persona interests, and formulate counterarguments.',
-                  'Agenti čítajú tento text doslovne v 1. kole, citujú konkrétne podmienky, vyhodnocujú doložky podľa svojich záujmov a formulujú protiargumenty.',
-                  'Az ágensek az 1. fordulóban szó szerint elolvassák ezt a szöveget, konkrét záradékokat idéznek, értékelik a feltételeket a személyiségük érdekei szerint és ellenérveket fogalmaznak meg.'
-                )}
-              </span>
-            </div>
-          </div>
-
-          {/* Context Documents Upload (PDF & Markdown) */}
-          <div className="space-y-3 pt-2 border-t border-slate-100">
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
-                <Paperclip className="w-3.5 h-3.5 text-purple-600" />
-                <span>{t('Supplementary Knowledge Base (PDF & Markdown)', 'Doplnková dokumentácia pre roj (PDF & Markdown)', 'Kiegészítő dokumentáció a raj számára (PDF és Markdown)')}</span>
-                {contextDocuments.length > 0 && (
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-50 text-purple-700 border border-purple-200">
-                    {contextDocuments.length} {systemLanguage === 'hu' ? 'fájl' : isSk ? (contextDocuments.length === 1 ? 'súbor' : contextDocuments.length < 5 ? 'súbory' : 'súborov') : (contextDocuments.length === 1 ? 'file' : 'files')}
-                  </span>
-                )}
+            <div className="lg:col-span-4 space-y-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center justify-between">
+                <span>{t('Simulation Title', 'Názov simulácie', 'Szimuláció címe')} <span className="text-rose-500">*</span></span>
+                <span className="text-[11px] text-slate-400 font-normal">
+                  {t('Executive identifier for reports & checkpoints', 'Manažérsky identifikátor pre reporty & kontrolné body', 'Vezetői azonosító a jelentésekhez és ellenőrző pontokhoz')}
+                </span>
               </label>
-              <span className="text-[11px] text-slate-400 font-normal">
-                {t('Supported formats: ', 'Podporované formáty: ', 'Támogatott formátumok: ')}
-                <strong className="text-slate-600 font-semibold">.pdf</strong>, <strong className="text-slate-600 font-semibold">.md</strong>, <strong className="text-slate-600 font-semibold">.txt</strong>
+              <input 
+                type="text"
+                value={title}
+                onChange={e => {
+                  setTitle(e.target.value);
+                  setIsDirty(true);
+                }}
+                placeholder={t('e.g. Q4 Enterprise Pricing Restructuring', 'napr. Reštrukturalizácia cien balíka Enterprise v Q4', 'pl. Q4 Enterprise díjcsomag átstrukturálása')}
+                required
+                className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-sm text-slate-900 font-semibold bg-white"
+              />
+              <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+                <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
+                <span>
+                  <strong className="text-slate-700 font-semibold">{t('Purpose:', 'Na čo slúži:', 'Célja:')}</strong>{' '}
+                  {t(
+                    'Primary executive title and identifier for this market simulation.',
+                    'Hlavný manažérsky názov a identifikátor pre túto trhovú simuláciu.',
+                    'A piaci szimuláció elsődleges vezetői címe és azonosítója.'
+                  )}{' '}
+                  <strong className="text-slate-700 font-semibold">{t('How it\'s used:', 'Ako sa používa:', 'Használata:')}</strong>{' '}
+                  {t(
+                    'Displayed across simulation lists, checkpoints, live War Room, and exported executive reports.',
+                    'Zobrazuje sa na prehľadoch simulácií, pri ukladaní kontrolných bodov, v reálnom čase vo War Roome a v exportovaných manažérskych reportoch.',
+                    'Megjelenik a szimulációs listákon, ellenőrző pontoknál, élőben a War Roomban és az exportált vezetői jelentésekben.'
+                  )}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. Strategic Hypothesis Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 lg:gap-8 items-start pt-8">
+            <div className="lg:col-span-1 space-y-1.5 pt-0.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md inline-block border border-indigo-200/60">
+                {t('Core Variable', 'Kľúčová premenná', 'Fő változó')}
               </span>
+              <h3 className="text-sm font-bold text-slate-900 leading-snug">
+                {t('What key question or change do you want to test?', 'Akú kľúčovú otázku alebo zmenu chcete otestovať?', 'Milyen kulcsfontosságú kérdést vagy változást szeretne tesztelni?')}
+              </h3>
+              <p className="text-[11px] text-slate-400 font-normal leading-relaxed">
+                {t('Core predictive hypothesis deliberated by the swarm.', 'Kľúčová prediktívna hypotéza, o ktorej bude roj diskutovať.', 'A raj által megvitatott legfontosabb prediktív hipotézis.')}
+              </p>
             </div>
 
-            {/* Drag & Drop Upload Zone */}
-            <div
-              onDragOver={(e) => {
-                e.preventDefault();
-                setIsDraggingDoc(true);
-              }}
-              onDragLeave={(e) => {
-                e.preventDefault();
-                setIsDraggingDoc(false);
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                setIsDraggingDoc(false);
-                if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-                  processUploadedFiles(e.dataTransfer.files);
-                }
-              }}
-              onClick={() => fileInputRef.current?.click()}
-              className={`border-2 border-dashed rounded-2xl p-4 sm:p-5 transition-all text-center cursor-pointer flex flex-col items-center justify-center gap-2 ${
-                isDraggingDoc
-                  ? 'border-purple-500 bg-purple-50/80 ring-4 ring-purple-100'
-                  : 'border-slate-200 hover:border-purple-300 hover:bg-slate-50/60 bg-slate-50/30'
-              }`}
-            >
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                accept=".pdf,.md,.markdown,.txt,application/pdf,text/markdown,text/plain"
-                className="hidden"
-                onChange={(e) => {
-                  if (e.target.files && e.target.files.length > 0) {
-                    processUploadedFiles(e.target.files);
-                    e.target.value = '';
+            <div className="lg:col-span-4 space-y-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center justify-between">
+                <span>{t('Strategic Hypothesis / What-If Variable', 'Strategická hypotéza / What-If premenná', 'Stratégiai hipotézis / "Mi lenne, ha" változó')} <span className="text-rose-500">*</span></span>
+                <span className="text-[11px] text-slate-400 font-normal">
+                  {t('Core predictive question deliberated by the swarm', 'Kľúčová prediktívna otázka, o ktorej bude roj diskutovať', 'A raj által megvitatott legfontosabb prediktív kérdés')}
+                </span>
+              </label>
+              <input 
+                type="text"
+                value={hypothesis}
+                onChange={e => {
+                  setHypothesis(e.target.value);
+                  setIsDirty(true);
+                }}
+                placeholder={t('e.g. What if we raise prices by 25% while offering 99.9% SLA availability?', 'napr. Čo ak zvýšime ceny o 25% a zároveň ponúkneme 99.9% SLA dostupnosť?', 'pl. Mi lenne, ha 25%-kal növelnénk az árakat, miközben 99.9%-os SLA rendelkezésre állást garantálunk?')}
+                required
+                className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-sm text-slate-900 font-medium bg-white"
+              />
+              <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+                <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
+                <span>
+                  <strong className="text-slate-700 font-semibold">{t('Purpose:', 'Na čo slúži:', 'Célja:')}</strong>{' '}
+                  {t(
+                    'Key strategic change, pricing shift, or directional move being stress-tested.',
+                    'Kľúčová strategická zmena, zmena cenotvorby alebo smerovania, ktorá sa má otestovať.',
+                    'Kulcsfontosságú stratégiai váltás, árváltoztatás vagy irányvonal, amely tesztelésre kerül.'
+                  )}{' '}
+                  <strong className="text-slate-700 font-semibold">{t('How it\'s used:', 'Ako sa používa:', 'Használata:')}</strong>{' '}
+                  {t(
+                    'Serves as the central mission prompt for agents, guiding autonomous opinion formulation, sentiment shifts, and objection tracking.',
+                    'Slúži ako ústredné zadanie pre agentov, riadi autonómnu tvorbu názorov, zmeny nálad a sledovanie námietok.',
+                    'Központi küldetésként szolgál az ágensek számára, irányítja az autonóm véleményalkotást, a hangulatváltozásokat és a kifogások követését.'
+                  )}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Input Briefing & Announcement Text Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 lg:gap-8 items-start pt-8">
+            <div className="lg:col-span-1 space-y-1.5 pt-0.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600 bg-purple-50 px-2 py-0.5 rounded-md inline-block border border-purple-200/60">
+                {t('Briefing Context', 'Kontext zadania', 'Forgatókönyv')}
+              </span>
+              <h3 className="text-sm font-bold text-slate-900 leading-snug">
+                {t('What do you want to simulate?', 'Čo chcete simulovať?', 'Mit szeretne szimulálni?')}
+              </h3>
+              <p className="text-[11px] text-slate-400 font-normal leading-relaxed">
+                {t('The announcement, pricing memo, or scenario text agents will read and quote.', 'Znenie tlačovej správy, cenník alebo memorandum, ktoré budú agenti citovať.', 'A közlemény, árlista vagy feljegyzés szövege, amit az ágensek olvasnak.')}
+              </p>
+            </div>
+
+            <div className="lg:col-span-4 space-y-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center justify-between">
+                <span>{t('Input Briefing & Announcement Text', 'Vstupné zadanie & Text oznámenia', 'Bemeneti összefoglaló és közlemény')} <span className="text-rose-500">*</span></span>
+                <span className="text-[11px] text-slate-400 font-normal">
+                  {t('Press release, internal memo, or pricing document', 'Tlačová správa, interné memorandum alebo cenový dokument', 'Sajtóközlemény, belső feljegyzés vagy árazási dokumentum')}
+                </span>
+              </label>
+              <textarea 
+                rows={6}
+                value={seedDocument}
+                onChange={e => {
+                  setSeedDocument(e.target.value);
+                  setIsDirty(true);
+                }}
+                placeholder={t(
+                  'Enter the proposed announcement text, changes, new terms, or market move that agents will read and analyze...',
+                  'Vložte text oznámenia, návrh tlačovej správy alebo cenové memorandum, ktoré budú agenti čítať a analyzovať...',
+                  'Illessze be a közlemény szövegét, a sajtóközlemény tervezetét vagy az árazási feljegyzést, amelyet az ágensek olvasnak és elemeznek...'
+                )}
+                required
+                className="w-full px-4 py-3.5 rounded-2xl border border-slate-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-sm text-slate-800 font-normal resize-y leading-relaxed bg-white"
+              />
+              <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+                <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
+                <span>
+                  <strong className="text-slate-700 font-semibold">{t('Purpose:', 'Na čo slúži:', 'Célja:')}</strong>{' '}
+                  {t(
+                    'Full briefing text, draft announcement, internal memo, or proposed contractual terms.',
+                    'Kompletný text zadania, návrh oznámenia, interné memorandum alebo navrhované zmluvné podmienky.',
+                    'A feladat teljes szövege, közleménytervezet, belső feljegyzés vagy javasolt szerződéses feltételek.'
+                  )}{' '}
+                  <strong className="text-slate-700 font-semibold">{t('How it\'s used:', 'Ako sa používa:', 'Használata:')}</strong>{' '}
+                  {t(
+                    'Agents inspect this briefing verbatim in Round 1, quote exact clauses, assess terms against their persona interests, and formulate counterarguments.',
+                    'Agenti čítajú tento text doslovne v 1. kole, citujú konkrétne podmienky, vyhodnocujú doložky podľa svojich záujmov a formulujú protiargumenty.',
+                    'Az ágensek az 1. fordulóban szó szerint elolvassák ezt a szöveget, konkrét záradékokat idéznek, értékelik a feltételeket a személyiségük érdekei szerint és ellenérveket fogalmaznak meg.'
+                  )}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* 4. Context Documents Upload (PDF & Markdown) Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 lg:gap-8 items-start pt-8">
+            <div className="lg:col-span-1 space-y-1.5 pt-0.5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md inline-block border border-emerald-200/60">
+                {t('Attachments', 'Prílohy', 'Csatolmányok')}
+              </span>
+              <h3 className="text-sm font-bold text-slate-900 leading-snug">
+                {t('Any additional files you want to consider?', 'Máte doplňujúce podklady alebo súbory na zváženie?', 'Vannak további figyelembe veendő fájlok?')}
+              </h3>
+              <p className="text-[11px] text-slate-400 font-normal leading-relaxed">
+                {t('Attach supporting contracts, pricing policies, specs, or objection battlecards.', 'Priložte zmluvy, cenové smernice, technické špecifikácie alebo odpovede na námietky.', 'Csatoljon szerződéseket, árpolitikát, specifikációkat vagy kifogáskezelési kártyákat.')}
+              </p>
+            </div>
+
+            <div className="lg:col-span-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+                  <Paperclip className="w-3.5 h-3.5 text-purple-600" />
+                  <span>{t('Supplementary Knowledge Base (PDF & Markdown)', 'Doplnková dokumentácia pre roj (PDF & Markdown)', 'Kiegészítő dokumentáció a raj számára (PDF és Markdown)')}</span>
+                  {contextDocuments.length > 0 && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-50 text-purple-700 border border-purple-200">
+                      {contextDocuments.length} {systemLanguage === 'hu' ? 'fájl' : isSk ? (contextDocuments.length === 1 ? 'súbor' : contextDocuments.length < 5 ? 'súbory' : 'súborov') : (contextDocuments.length === 1 ? 'file' : 'files')}
+                    </span>
+                  )}
+                </label>
+                <span className="text-[11px] text-slate-400 font-normal">
+                  {t('Supported formats: ', 'Podporované formáty: ', 'Támogatott formátumok: ')}
+                  <strong className="text-slate-600 font-semibold">.pdf</strong>, <strong className="text-slate-600 font-semibold">.md</strong>, <strong className="text-slate-600 font-semibold">.txt</strong>
+                </span>
+              </div>
+
+              {/* Drag & Drop Upload Zone */}
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDraggingDoc(true);
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  setIsDraggingDoc(false);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setIsDraggingDoc(false);
+                  if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    processUploadedFiles(e.dataTransfer.files);
                   }
                 }}
-              />
+                onClick={() => fileInputRef.current?.click()}
+                className={`border-2 border-dashed rounded-2xl p-4 sm:p-5 transition-all text-center cursor-pointer flex flex-col items-center justify-center gap-2 ${
+                  isDraggingDoc
+                    ? 'border-purple-500 bg-purple-50/80 ring-4 ring-purple-100'
+                    : 'border-slate-200 hover:border-purple-300 hover:bg-slate-50/60 bg-slate-50/30'
+                }`}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept=".pdf,.md,.markdown,.txt,application/pdf,text/markdown,text/plain"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files.length > 0) {
+                      processUploadedFiles(e.target.files);
+                      e.target.value = '';
+                    }
+                  }}
+                />
 
-              <div className="w-10 h-10 rounded-2xl bg-purple-100/80 text-purple-600 flex items-center justify-center shadow-xs">
-                {isUploadingDoc ? (
-                  <Loader2 className="w-5 h-5 animate-spin text-purple-600" />
-                ) : (
-                  <UploadCloud className="w-5 h-5" />
-                )}
-              </div>
-
-              <div>
-                <p className="text-xs font-bold text-slate-800">
-                  {isUploadingDoc
-                    ? uploadDocProgress || t('Uploading and parsing files...', 'Nahrávam a analyzujem súbory...', 'Fájlok feltöltése és elemzése...')
-                    : t('Click to upload documents or drag & drop files here', 'Kliknite pre nahratie dokumentov alebo ich presuňte sem', 'Kattintson a dokumentumok feltöltéséhez vagy húzza ide a fájlokat')}
-                </p>
-                <p className="text-[11px] text-slate-500 mt-0.5">
-                  {t(
-                    'Contracts, pricing policies, specs, objection battlecards, or product notes',
-                    'Zmluvy, cenové smernice, technické špecifikácie, odpovede na námietky alebo poznámky k produktu',
-                    'Szerződések, árpolitika, specifikációk, kifogáskezelési kártyák vagy termékjegyzetek'
+                <div className="w-10 h-10 rounded-2xl bg-purple-100/80 text-purple-600 flex items-center justify-center shadow-xs">
+                  {isUploadingDoc ? (
+                    <Loader2 className="w-5 h-5 animate-spin text-purple-600" />
+                  ) : (
+                    <UploadCloud className="w-5 h-5" />
                   )}
-                </p>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-center gap-1.5 pt-1">
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
-                  <FileText className="w-3 h-3" /> PDF ({t('text extraction', 'extrakcia textu', 'szövegkivonás')})
-                </span>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
-                  <FileCode className="w-3 h-3" /> MARKDOWN (.md)
-                </span>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
-                  TEXT (.txt)
-                </span>
-              </div>
-            </div>
-
-            {/* Error banner if upload failed */}
-            {docUploadError && (
-              <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
-                  <span>{docUploadError}</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => setDocUploadError(null)}
-                  className="p-1 hover:bg-rose-100 rounded-lg text-rose-500 transition cursor-pointer"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            )}
 
-            {/* Uploaded Documents List */}
-            {contextDocuments.length > 0 && (
-              <div className="space-y-2 pt-1">
-                <div className="flex items-center justify-between text-[11px] text-slate-500 font-semibold px-1">
-                  <span>{t(`Attached context documents ready for simulation (${contextDocuments.length}):`, `Priložené dokumenty pripravené na simuláciu (${contextDocuments.length}):`, `Csatolt dokumentumok a szimulációhoz készen (${contextDocuments.length}):`)}</span>
-                  <span>
+                <div>
+                  <p className="text-xs font-bold text-slate-800">
+                    {isUploadingDoc
+                      ? uploadDocProgress || t('Uploading and parsing files...', 'Nahrávam a analyzujem súbory...', 'Fájlok feltöltése és elemzése...')
+                      : t('Click to upload documents or drag & drop files here', 'Kliknite pre nahratie dokumentov alebo ich presuňte sem', 'Kattintson a dokumentumok feltöltéséhez vagy húzza ide a fájlokat')}
+                  </p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
                     {t(
-                      `Total ~${contextDocuments.reduce((acc, d) => acc + Math.ceil((d.content?.length || 0) / 4), 0).toLocaleString()} context tokens`,
-                      `Spolu ~${contextDocuments.reduce((acc, d) => acc + Math.ceil((d.content?.length || 0) / 4), 0).toLocaleString()} tokenov kontextu`,
-                      `Összesen ~${contextDocuments.reduce((acc, d) => acc + Math.ceil((d.content?.length || 0) / 4), 0).toLocaleString()} kontextus token`
+                      'Contracts, pricing policies, specs, objection battlecards, or product notes',
+                      'Zmluvy, cenové smernice, technické špecifikácie, odpovede na námietky alebo poznámky k produktu',
+                      'Szerződések, árpolitika, specifikációk, kifogáskezelési kártyák vagy termékjegyzetek'
                     )}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-center gap-1.5 pt-1">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                    <FileText className="w-3 h-3" /> PDF ({t('text extraction', 'extrakcia textu', 'szövegkivonás')})
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                    <FileCode className="w-3 h-3" /> MARKDOWN (.md)
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                    TEXT (.txt)
                   </span>
                 </div>
+              </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                  {contextDocuments.map((doc) => {
-                    const isPdf = doc.type === 'pdf';
-                    const isMd = doc.type === 'markdown';
-                    const approxTokens = Math.ceil((doc.content?.length || 0) / 4);
+              {/* Error banner if upload failed */}
+              {docUploadError && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                    <span>{docUploadError}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDocUploadError(null)}
+                    className="p-1 hover:bg-rose-100 rounded-lg text-rose-500 transition cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
 
-                    return (
-                      <div
-                        key={doc.id}
-                        className="p-3 rounded-2xl bg-white border border-slate-200/90 hover:border-purple-200 transition shadow-xs flex items-start justify-between gap-3 group"
-                      >
-                        <div className="flex items-start gap-2.5 min-w-0 flex-1">
-                          <div
-                            className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
-                              isPdf
-                                ? 'bg-rose-50 text-rose-600 border border-rose-200'
-                                : isMd
-                                ? 'bg-purple-50 text-purple-600 border border-purple-200'
-                                : 'bg-slate-100 text-slate-600 border border-slate-200'
-                            }`}
-                          >
-                            {isPdf ? (
-                              <FileText className="w-4 h-4" />
-                            ) : isMd ? (
-                              <FileCode className="w-4 h-4" />
-                            ) : (
-                              <Paperclip className="w-4 h-4" />
-                            )}
-                          </div>
+              {/* Uploaded Documents List */}
+              {contextDocuments.length > 0 && (
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center justify-between text-[11px] text-slate-500 font-semibold px-1">
+                    <span>{t(`Attached context documents ready for simulation (${contextDocuments.length}):`, `Priložené dokumenty pripravené na simuláciu (${contextDocuments.length}):`, `Csatolt dokumentumok a szimulációhoz készen (${contextDocuments.length}):`)}</span>
+                    <span>
+                      {t(
+                        `Total ~${contextDocuments.reduce((acc, d) => acc + Math.ceil((d.content?.length || 0) / 4), 0).toLocaleString()} context tokens`,
+                        `Spolu ~${contextDocuments.reduce((acc, d) => acc + Math.ceil((d.content?.length || 0) / 4), 0).toLocaleString()} tokenov kontextu`,
+                        `Összesen ~${contextDocuments.reduce((acc, d) => acc + Math.ceil((d.content?.length || 0) / 4), 0).toLocaleString()} kontextus token`
+                      )}
+                    </span>
+                  </div>
 
-                          <div className="min-w-0 flex-1">
-                            <p className="text-xs font-bold text-slate-800 truncate" title={doc.name}>
-                              {doc.name}
-                            </p>
-                            <div className="flex flex-wrap items-center gap-2 mt-0.5 text-[10px] text-slate-500">
-                              <span>{formatBytes(doc.size)}</span>
-                              <span>•</span>
-                              {doc.extractedChars && doc.extractedChars > 0 ? (
-                                <span className="text-emerald-700 font-medium">
-                                  {doc.extractedChars.toLocaleString()} {t('chars', 'znakov', 'karakter')} (~{approxTokens} tkn)
-                                </span>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {contextDocuments.map((doc) => {
+                      const isPdf = doc.type === 'pdf';
+                      const isMd = doc.type === 'markdown';
+                      const approxTokens = Math.ceil((doc.content?.length || 0) / 4);
+
+                      return (
+                        <div
+                          key={doc.id}
+                          className="p-3 rounded-2xl bg-white border border-slate-200/90 hover:border-purple-200 transition shadow-xs flex items-start justify-between gap-3 group"
+                        >
+                          <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                            <div
+                              className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
+                                isPdf
+                                  ? 'bg-rose-50 text-rose-600 border border-rose-200'
+                                  : isMd
+                                  ? 'bg-purple-50 text-purple-600 border border-purple-200'
+                                  : 'bg-slate-100 text-slate-600 border border-slate-200'
+                              }`}
+                            >
+                              {isPdf ? (
+                                <FileText className="w-4 h-4" />
+                              ) : isMd ? (
+                                <FileCode className="w-4 h-4" />
                               ) : (
-                                <span className="text-amber-600 font-medium">
-                                  {t('No text extracted', 'Nenašiel sa text', 'Nem található szöveg')}
-                                </span>
+                                <Paperclip className="w-4 h-4" />
                               )}
                             </div>
-                          </div>
-                        </div>
 
-                        <div className="flex items-center gap-1 shrink-0">
-                          {doc.content && doc.content.length > 0 && (
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-bold text-slate-800 truncate" title={doc.name}>
+                                {doc.name}
+                              </p>
+                              <div className="flex flex-wrap items-center gap-2 mt-0.5 text-[10px] text-slate-500">
+                                <span>{formatBytes(doc.size)}</span>
+                                <span>•</span>
+                                {doc.extractedChars && doc.extractedChars > 0 ? (
+                                  <span className="text-emerald-700 font-medium">
+                                    {doc.extractedChars.toLocaleString()} {t('chars', 'znakov', 'karakter')} (~{approxTokens} tkn)
+                                  </span>
+                                ) : (
+                                  <span className="text-amber-600 font-medium">
+                                    {t('No text extracted', 'Nenašiel sa text', 'Nem található szöveg')}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1 shrink-0">
+                            {doc.content && doc.content.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setPreviewDoc(doc)}
+                                title={t('View extracted text', 'Zobraziť extrahovaný text', 'Kivont szöveg megtekintése')}
+                                className="p-1.5 rounded-lg hover:bg-purple-50 text-slate-400 hover:text-purple-600 transition cursor-pointer"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
+                            )}
                             <button
                               type="button"
-                              onClick={() => setPreviewDoc(doc)}
-                              title={t('View extracted text', 'Zobraziť extrahovaný text', 'Kivont szöveg megtekintése')}
-                              className="p-1.5 rounded-lg hover:bg-purple-50 text-slate-400 hover:text-purple-600 transition cursor-pointer"
+                              onClick={() => handleRemoveDoc(doc.id)}
+                              title={t('Remove document', 'Odstrániť dokument', 'Dokumentum törlése')}
+                              className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition cursor-pointer"
                             >
-                              <Eye className="w-3.5 h-3.5" />
+                              <Trash2 className="w-3.5 h-3.5" />
                             </button>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveDoc(doc.id)}
-                            title={t('Remove document', 'Odstrániť dokument', 'Dokumentum törlése')}
-                            className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition cursor-pointer"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
+                          </div>
                         </div>
-                      </div>
-                    );
-                  })}
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            )}
+              )}
 
-            <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
-              <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
-              <span>
-                <strong className="text-slate-700 font-semibold">{t('How it works:', 'Ako to funguje:', 'Hogyan működik:')}</strong>{' '}
-                {t(
-                  'Clean text is automatically extracted from attached PDF and Markdown files. This content is integrated into the world ontology graph so swarm agents can reference specific clauses, compare terms, and formulate tailored reactions.',
-                  'Z priložených PDF a Markdown súborov sa automaticky vyextrahuje čistý text. Tento text je zahrnutý do tvorby ontologického grafu simulačného sveta a agenti v roji môžu citovať presné klauzuly, porovnávať parametre a formulovať cielené reakcie.',
-                  'A csatolt PDF és Markdown fájlokból a tiszta szöveg automatikusan kinyerésre kerül. Ez a tartalom beépül a szimulációs világ ontológiai gráfjába, így a raj ágensei konkrét záradékokra hivatkozhatnak, paramétereket hasonlíthatnak össze és célzott reakciókat adhatnak.'
-                )}
-              </span>
+              <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+                <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
+                <span>
+                  <strong className="text-slate-700 font-semibold">{t('How it works:', 'Ako to funguje:', 'Hogyan működik:')}</strong>{' '}
+                  {t(
+                    'Clean text is automatically extracted from attached PDF and Markdown files. This content is integrated into the world ontology graph so swarm agents can reference specific clauses, compare terms, and formulate tailored reactions.',
+                    'Z priložených PDF a Markdown súborov sa automaticky vyextrahuje čistý text. Tento text je zahrnutý do tvorby ontologického grafu simulačného sveta a agenti v roji môžu citovať presné klauzuly, porovnávať parametre a formulovať cielené reakcie.',
+                    'A csatolt PDF és Markdown fájlokból a tiszta szöveg automatikusan kinyerésre kerül. Ez a tartalom beépül a szimulációs világ ontológiai gráfjába, így a raj ágensei konkrét záradékokra hivatkozhatnak, paramétereket hasonlíthatnak össze és célzott reakciókat adhatnak.'
+                  )}
+                </span>
+              </div>
             </div>
           </div>
         </div>
