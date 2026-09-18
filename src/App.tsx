@@ -9,6 +9,7 @@ import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils
 import { normalizeLeadStateSla, type LeadStateSla } from "./utils/leadSla";
 import { listIdsSignature, normalizeListIds, type ListIds } from "./utils/listIds";
 import { VERSION } from "./utils/version";
+import { reconcileInvoiceMovements } from "./utils/invoiceFinanceBridge";
 import { parseAppHash, workspaceResetKey } from "./utils/hash";
 import { HOME_DASHBOARD_ID, buildDefaultHomeDashboard } from "./utils/dashboardWidgets";
 import { SOCIAL_MEDIA_ENABLED } from "./utils/featureFlags";
@@ -1559,13 +1560,24 @@ ${log.payload || ''}
     pushStateToServer();
   };
 
+  /**
+   * Every invoice change is mirrored into the finance ledger (audit F27): an
+   * issued invoice owns one linked `pending` income movement. Resolved against
+   * the refs rather than inside a state updater, so both collections change
+   * together and go out in one push.
+   */
   const updateInvoicesOffersAndSync = (newOffers: InvoiceOffer[] | ((prev: InvoiceOffer[]) => InvoiceOffer[])) => {
-    setInvoicesOffers(prev => {
-      const next = typeof newOffers === "function" ? newOffers(prev) : newOffers;
-      invoicesOffersRef.current = next;
-      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
-      return next;
-    });
+    const prev = invoicesOffersRef.current;
+    const next = typeof newOffers === "function" ? newOffers(prev) : newOffers;
+    invoicesOffersRef.current = next;
+    setInvoicesOffers(next);
+    const prevRecords = financialRecordsRef.current;
+    const nextRecords = reconcileInvoiceMovements(prev, next, prevRecords);
+    if (nextRecords !== prevRecords) {
+      financialRecordsRef.current = nextRecords;
+      setFinancialRecords(nextRecords);
+    }
+    pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, nextRecords !== prevRecords ? nextRecords : undefined, next);
   };
 
   const updateClientCategoriesAndSync = (newCats: ClientCategory[] | ((prev: ClientCategory[]) => ClientCategory[])) => {
