@@ -9076,14 +9076,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             {(orderingMode === "state" ||
                                                 orderingMode === "pm") && (
                                                 <tr
-                                                    onClick={() => {
-                                                        const first = group.leads[0];
-                                                        if (first) {
-                                                            window.location.hash = `lead-${first.id}`;
-                                                            return;
-                                                        }
-                                                        toggleGroupCollapse(group.state);
-                                                    }}
+                                                    onClick={() =>
+                                                        toggleGroupCollapse(group.state)
+                                                    }
                                                     className="block lg:table-row bg-transparent cursor-pointer hover:opacity-80 transition-all select-none"
                                                 >
                                                     <th
