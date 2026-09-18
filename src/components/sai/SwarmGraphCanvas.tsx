@@ -1,12 +1,14 @@
 import React, { useRef, useState } from 'react';
 import type { SwarmKnowledgeGraph, SwarmEntityNode } from '../../utils/swarm/types';
-import { ZoomIn, ZoomOut, RotateCcw, X } from 'lucide-react';
+import { ZoomIn, ZoomOut, RotateCcw, X, Bot, Sparkles, Loader2, Network } from 'lucide-react';
 
 interface SwarmGraphCanvasProps {
   graph: SwarmKnowledgeGraph;
   activeEntityId?: string | null;
   className?: string;
   systemLanguage?: string;
+  isPreparing?: boolean;
+  prepStepMessage?: string;
 }
 
 interface ColorScheme {
@@ -132,7 +134,9 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
   graph,
   activeEntityId,
   className = "w-full h-full min-h-[380px]",
-  systemLanguage = 'sk'
+  systemLanguage = 'sk',
+  isPreparing = false,
+  prepStepMessage
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === 'sk' ? sk : systemLanguage === 'hu' ? hu : en;
@@ -148,6 +152,8 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedNode, setSelectedNode] = useState<SwarmEntityNode | null>(null);
   const [zoomLevel, setZoomLevel] = useState(1);
+
+  const isSynthesizing = isPreparing || graph.nodes.length === 0;
 
   // Layout calculation: circular orbit layout with calibrated radial spacing
   const nodePositions = React.useMemo(() => {
@@ -192,10 +198,23 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
       
       {/* Top Left Status Badge */}
       <div className="absolute top-3.5 left-3.5 z-10 flex items-center gap-2">
-        <div className="px-3 py-1.5 rounded-full bg-white/95 backdrop-blur-md border border-slate-200/90 text-[11px] font-bold text-slate-700 flex items-center gap-2 shadow-xs">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
-          <span>{t('Knowledge Graph', 'Graf znalostí', 'Tudásgráf')} ({graph.nodes.length} {t('nodes', 'uzlov', 'csomópont')}, {graph.edges.length} {t('relations', 'väzieb', 'kapcsolat')})</span>
-        </div>
+        {isSynthesizing ? (
+          <div className="px-3 py-1.5 rounded-full bg-purple-900/90 backdrop-blur-md border border-purple-400/50 text-[11px] font-bold text-white flex items-center gap-2 shadow-md animate-in fade-in">
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Loader2 className="w-3 h-3 animate-spin text-purple-300" />
+              {t('Synthesizing Dynamic Knowledge Graph...', 'Syntéza dynamického grafu znalostí...', 'Dinamikus tudásgráf szintetizálása...')}
+            </span>
+          </div>
+        ) : (
+          <div className="px-3 py-1.5 rounded-full bg-white/95 backdrop-blur-md border border-slate-200/90 text-[11px] font-bold text-slate-700 flex items-center gap-2 shadow-xs">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span>{t('Knowledge Graph', 'Graf znalostí', 'Tudásgráf')} ({graph.nodes.length} {t('nodes', 'uzlov', 'csomópont')}, {graph.edges.length} {t('relations', 'väzieb', 'kapcsolat')})</span>
+          </div>
+        )}
       </div>
 
       {/* Top Right Zoom & Pan Controls */}
@@ -238,6 +257,42 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
         <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-purple-600"></span>{t('Agency', 'Agentúra', 'Ügynökség')}</span>
         <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-600"></span>{t('Market Participant', 'Účastník trhu', 'Piaci résztvevő')}</span>
       </div>
+
+      {/* Ingestion & Synthesis Active Overlay when nodes are empty or preparing */}
+      {isSynthesizing && (
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center p-6 bg-slate-900/10 backdrop-blur-[2px] animate-in fade-in duration-300">
+          <div className="max-w-md w-full p-6 rounded-3xl bg-white/95 border border-purple-200/90 shadow-2xl text-center space-y-4 backdrop-blur-md">
+            <div className="relative w-16 h-16 mx-auto">
+              <div className="absolute inset-0 rounded-full bg-purple-500/20 animate-ping" />
+              <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-emerald-500 flex items-center justify-center text-white shadow-lg">
+                <Network className="w-8 h-8 animate-pulse" />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-100 text-purple-800 border border-purple-200 inline-flex items-center gap-1.5">
+                <Sparkles className="w-3 h-3 text-purple-600" />
+                {t('AI Swarm Knowledge Synthesis', 'AI syntéza znalostného grafu', 'MI tudásgráf szintézis')}
+              </span>
+              <h3 className="text-sm font-bold text-slate-900">
+                {t('Constructing Dynamic Market Knowledge Graph...', 'Vytváranie dynamického grafu trhu...', 'Dinamikus piaci tudásgráf felépítése...')}
+              </h3>
+              <p className="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto font-normal">
+                {prepStepMessage || t(
+                  'Extracting stakeholder entities, competitor stances, and relationship edges from CRM context and scenario...',
+                  'Extrakcia entít stakeholderov, postojov konkurencie a väzieb z CRM kontextu a zadania...',
+                  'Érintetti entitások, versenytársi álláspontok és kapcsolatok kinyerése a CRM kontextusból és forgatókönyvből...'
+                )}
+              </p>
+            </div>
+
+            <div className="flex items-center justify-center gap-2 text-[11px] font-semibold text-purple-700 bg-purple-50/80 py-2 px-4 rounded-xl border border-purple-100">
+              <Loader2 className="w-4 h-4 animate-spin text-purple-600" />
+              <span>{t('Synthesizing social entities & ontology via OpenAI...', 'Syntéza sociálnych entít a ontológie cez OpenAI...', 'Társas entitások és ontológia szintézise OpenAI-n keresztül...')}</span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* SVG Canvas Area */}
       <div className="flex-1 w-full h-full flex items-center justify-center overflow-hidden cursor-grab active:cursor-grabbing">

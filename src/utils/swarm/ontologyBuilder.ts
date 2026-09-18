@@ -77,43 +77,67 @@ Extract between 8 and 18 key entities and their inter-relationships in natural S
       maxTokens: 8000
     });
 
-    const nodes = (result.nodes && result.nodes.length > 0) ? result.nodes : [
-      { id: 'node_1', name: 'Zákazníci a nákupcovia B2B', type: 'Client', summary: 'Cieľoví B2B nákupcovia analyzujúci ponuku.' },
-      { id: 'node_2', name: 'Konkurenční poskytovatelia', type: 'Competitor', summary: 'Trhoví konkurenti reagujúci na stratégiu.' },
-      { id: 'node_3', name: 'Regulátori a audítori', type: 'Authority', summary: 'Subjekty dohliadajúce na zmluvné podmienky.' }
+    const validTypes: ('Client' | 'Competitor' | 'Regulator' | 'Agency' | 'Stakeholder')[] = [
+      'Client', 'Competitor', 'Regulator', 'Agency', 'Stakeholder'
     ];
 
-    const edges = (result.edges && result.edges.length > 0) ? result.edges : [
-      { id: 'edge_1', source: 'node_1', target: 'node_2', relation: 'POROVNÁVA', fact: 'Klienti porovnávajú ponuku s alternatívami.' }
+    const rawNodes = (result.nodes && result.nodes.length > 0) ? result.nodes : [
+      { id: 'node_1', name: 'B2B Rozhodovatelia & Kľúčoví zákazníci', type: 'Client', summary: 'Cieľoví B2B nákupcovia a manažéri analyzujúci ponuku.' },
+      { id: 'node_2', name: 'Konkurenční poskytovatelia', type: 'Competitor', summary: 'Trhoví konkurenti reagujúci na stratégiu a cenotvorbu.' },
+      { id: 'node_3', name: 'Regulačné a certifikačné orgány', type: 'Regulator', summary: 'Subjekty dohliadajúce na zmluvné podmienky a legislatívu.' },
+      { id: 'node_4', name: 'Digitálne a marketingové agentúry', type: 'Agency', summary: 'Agentúrni partneri a integrátori.' },
+      { id: 'node_5', name: 'Odborná verejnosť & Médiá', type: 'Stakeholder', summary: 'Priemyselné médiá a mienkotvorní analytici.' }
     ];
 
-    return {
-      nodes: nodes.map(n => ({
-        id: n.id,
-        name: n.name,
-        type: n.type || 'Stakeholder',
-        summary: n.summary || ''
-      })),
-      edges: edges.map((e, idx) => ({
-        id: e.id || `edge_${idx}`,
+    const nodes = rawNodes.map((n, i) => ({
+      id: n.id || `node_${i + 1}`,
+      name: n.name || `Subjekt ${i + 1}`,
+      type: validTypes.includes(n.type as any) ? (n.type as any) : 'Stakeholder',
+      summary: n.summary || ''
+    }));
+
+    const nodeIds = new Set(nodes.map(n => n.id));
+
+    const rawEdges = (result.edges && result.edges.length > 0) ? result.edges : [
+      { id: 'edge_1', source: nodes[0].id, target: nodes[1].id, relation: 'POROVNÁVA', fact: 'Klienti porovnávajú ponuku s alternatívami.' },
+      { id: 'edge_2', source: nodes[1].id, target: nodes[0].id, relation: 'KONKURUJE', fact: 'Konkurencia ponúka alternatívne podmienky.' }
+    ];
+
+    const edges = rawEdges
+      .filter(e => e.source && e.target && nodeIds.has(e.source) && nodeIds.has(e.target) && e.source !== e.target)
+      .map((e, idx) => ({
+        id: e.id || `edge_${idx + 1}`,
         source: e.source,
         target: e.target,
-        relation: e.relation || 'RELATES_TO',
+        relation: e.relation || 'HODNOTÍ',
         fact: e.fact || '',
         validFromRound: 0,
         invalidFromRound: null
-      }))
+      }));
+
+    // If edges got filtered out, guarantee at least 1-2 valid edges between existing nodes
+    const finalEdges = edges.length > 0 ? edges : [
+      { id: 'edge_1', source: nodes[0].id, target: nodes[Math.min(1, nodes.length - 1)].id, relation: 'HODNOTÍ', fact: 'Subjekty analyzujú podmienky.', validFromRound: 0, invalidFromRound: null }
+    ];
+
+    return {
+      nodes,
+      edges: finalEdges
     };
   } catch (err) {
     console.warn('Ontology extraction warning, falling back to foundational stakeholders:', err);
     return {
       nodes: [
-        { id: 'node_1', name: 'Kľúčoví zákazníci & Rozhodovatelia', type: 'Client', summary: 'Zástupcovia cieľového segmentu.' },
-        { id: 'node_2', name: 'Konkurenčné trhové platformy', type: 'Competitor', summary: 'Alternatívne riešenia na trhu.' },
-        { id: 'node_3', name: 'Finanční kontrolóri & Compliance', type: 'Authority', summary: 'Dohľad nad rozpočtami a zmluvami.' }
+        { id: 'node_1', name: 'Kľúčoví zákazníci & Rozhodovatelia', type: 'Client', summary: 'Zástupcovia cieľového segmentu a B2B nákupcovia.' },
+        { id: 'node_2', name: 'Konkurenčné trhové platformy', type: 'Competitor', summary: 'Alternatívne riešenia a platformy na trhu.' },
+        { id: 'node_3', name: 'Finanční kontrolóri & Compliance', type: 'Regulator', summary: 'Dohľad nad rozpočtami, zmluvami a reguláciou.' },
+        { id: 'node_4', name: 'Digitálne a servisné agentúry', type: 'Agency', summary: 'Servisní a technologickí partneri.' },
+        { id: 'node_5', name: 'Odborní analytici & Obchodné médiá', type: 'Stakeholder', summary: 'Trhoví komentátori a ekonomické médiá.' }
       ],
       edges: [
-        { id: 'edge_1', source: 'node_1', target: 'node_2', relation: 'POROVNÁVA', fact: 'Zákazníci vyhodnocujú cenovú a technickú ponuku.', validFromRound: 0, invalidFromRound: null }
+        { id: 'edge_1', source: 'node_1', target: 'node_2', relation: 'POROVNÁVA', fact: 'Zákazníci vyhodnocujú cenovú a technickú ponuku.', validFromRound: 0, invalidFromRound: null },
+        { id: 'edge_2', source: 'node_2', target: 'node_1', relation: 'KONKURUJE', fact: 'Konkurenti aktívne reagujú na trhové zmeny.', validFromRound: 0, invalidFromRound: null },
+        { id: 'edge_3', source: 'node_1', target: 'node_3', relation: 'KONZULTUJE', fact: 'Overovanie zmluvných podmienok a rozpočtov.', validFromRound: 0, invalidFromRound: null }
       ]
     };
   }

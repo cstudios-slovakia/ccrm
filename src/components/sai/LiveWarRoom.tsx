@@ -18,6 +18,8 @@ interface LiveWarRoomProps {
   posts: SwarmPost[];
   latestMetrics?: SwarmRoundMetrics | null;
   isRunning: boolean;
+  isPreparing?: boolean;
+  prepStepMessage?: string;
   onStop: () => void;
   onRestart?: () => void;
   onEditDraft?: () => void;
@@ -33,6 +35,8 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
   posts,
   latestMetrics,
   isRunning,
+  isPreparing = false,
+  prepStepMessage,
   onStop,
   onRestart,
   onEditDraft,
@@ -63,14 +67,26 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-base font-bold text-slate-900">{title}</h2>
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200">
-                {isRunning 
-                  ? t('Simulation Active', 'Simulácia prebieha', 'Szimuláció folyamatban') 
-                  : t('Paused / Complete', 'Pozastavené / Ukončené', 'Szünetel / Befejezve')}
-              </span>
+              {isPreparing ? (
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-100 text-purple-800 border border-purple-300 flex items-center gap-1.5 animate-pulse">
+                  <span className="w-2 h-2 rounded-full bg-purple-600 animate-ping" />
+                  {t('Ingesting Swarm & Knowledge Graph...', 'Ingescia a syntéza roju...', 'Raj betöltése és szintézise...')}
+                </span>
+              ) : isRunning ? (
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1.5">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                  {t('Simulation Active', 'Simulácia prebieha', 'Szimuláció folyamatban')}
+                </span>
+              ) : (
+                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
+                  {currentRound >= totalRounds ? t('Completed', 'Dokončená', 'Befejezve') : t('Paused / Ready', 'Pozastavená / Pripravená', 'Szünetel / Kész')}
+                </span>
+              )}
             </div>
             <p className="text-xs text-slate-500">
-              {t('Autonomous multi-agent market simulation in progress', 'Prebieha autonómna simulácia trhu s viacerými agentmi', 'Autonóm többágenses piaci szimuláció folyamatban')}
+              {isPreparing 
+                ? t('Synthesizing dynamic ontology and initializing autonomous agents...', 'Prebieha syntéza dynamickej ontológie a inicializácia autonómnych agentov...', 'Dinamikus ontológia szintézise és autonóm ágensek inicializálása...')
+                : t('Autonomous multi-agent market simulation in progress', 'Prebieha autonómna simulácia trhu s viacerými agentmi', 'Autonóm többágenses piaci szimuláció folyamatban')}
             </p>
           </div>
         </div>
@@ -116,7 +132,12 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
           </div>
 
           {/* Action Buttons */}
-          {isRunning ? (
+          {isPreparing ? (
+            <div className="px-4 py-2 rounded-2xl bg-purple-50 text-purple-700 border border-purple-200 font-bold text-xs flex items-center gap-2 shadow-xs">
+              <span className="w-3.5 h-3.5 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+              <span>{t('Synthesizing...', 'Spracováva sa...', 'Szintetizálás...')}</span>
+            </div>
+          ) : isRunning ? (
             <button
               onClick={onStop}
               className="px-4 py-2 rounded-2xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
@@ -167,6 +188,8 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
             graph={graph} 
             activeEntityId={activeEntityId} 
             systemLanguage={systemLanguage}
+            isPreparing={isPreparing}
+            prepStepMessage={prepStepMessage}
           />
         </div>
 
@@ -177,6 +200,8 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
             systemLanguage={systemLanguage}
             onRestart={onRestart}
             onEditDraft={onEditDraft}
+            isPreparing={isPreparing}
+            prepStepMessage={prepStepMessage}
           />
         </div>
 

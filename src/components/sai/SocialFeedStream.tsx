@@ -1,7 +1,7 @@
 import React, { useRef, useEffect, useState } from 'react';
 import type { SwarmPost } from '../../utils/swarm/types';
 import { Markdown } from '../../utils/markdown';
-import { MessageSquare, Heart, Repeat2, Sparkles, MessageCircle, MessagesSquare } from 'lucide-react';
+import { MessageSquare, Heart, Repeat2, Sparkles, MessageCircle, MessagesSquare, CheckCircle2, Loader2, CircleDot, Network } from 'lucide-react';
 
 interface SocialFeedStreamProps {
   posts: SwarmPost[];
@@ -9,6 +9,8 @@ interface SocialFeedStreamProps {
   systemLanguage?: string;
   onRestart?: () => void;
   onEditDraft?: () => void;
+  isPreparing?: boolean;
+  prepStepMessage?: string;
 }
 
 export const SocialFeedStream: React.FC<SocialFeedStreamProps> = ({
@@ -16,7 +18,9 @@ export const SocialFeedStream: React.FC<SocialFeedStreamProps> = ({
   className = "w-full h-full",
   systemLanguage = 'sk',
   onRestart,
-  onEditDraft
+  onEditDraft,
+  isPreparing = false,
+  prepStepMessage
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === 'sk' ? sk : systemLanguage === 'hu' ? hu : en;
@@ -84,32 +88,68 @@ export const SocialFeedStream: React.FC<SocialFeedStreamProps> = ({
         className="flex-1 min-h-0 overflow-y-auto p-4 space-y-3 scrollbar-thin scrollbar-thumb-slate-200"
       >
         {sortedPosts.length === 0 ? (
-          <div className="h-64 flex flex-col items-center justify-center text-slate-400 text-xs space-y-3 text-center px-4">
-            <Sparkles className="w-8 h-8 text-purple-400 animate-pulse" />
-            <span className="font-medium text-slate-600">
-              {t('Waiting for Round 1 deliberation to begin...', 'Čaká sa na začiatok 1. kola...', 'Várakozás az 1. forduló megkezdésére...')}
-            </span>
-            {(onRestart || onEditDraft) && (
-              <div className="flex items-center gap-2 pt-2">
-                {onEditDraft && (
-                  <button
-                    onClick={onEditDraft}
-                    className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-bold text-xs transition cursor-pointer"
-                  >
-                    {t('Edit Config', 'Upraviť konfiguráciu', 'Konfiguráció szerkesztése')}
-                  </button>
-                )}
-                {onRestart && (
-                  <button
-                    onClick={onRestart}
-                    className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 hover:from-purple-700 text-white font-bold text-xs transition cursor-pointer shadow-md"
-                  >
-                    {t('Start / Re-run Simulation', 'Spustiť / Reštartovať simuláciu', 'Szimuláció indítása / Újrafuttatás')}
-                  </button>
-                )}
+          isPreparing ? (
+            <div className="py-6 px-4 space-y-5 animate-in fade-in">
+              <div className="text-center space-y-1">
+                <div className="w-10 h-10 rounded-2xl bg-purple-50 text-purple-600 border border-purple-200 flex items-center justify-center mx-auto shadow-xs">
+                  <Network className="w-5 h-5 animate-pulse" />
+                </div>
+                <h4 className="text-xs font-bold text-slate-800">
+                  {t('Orchestrating Market Swarm...', 'Príprava simulácie roju...', 'Piaci raj előkészítése...')}
+                </h4>
+                <p className="text-[11px] text-slate-500 max-w-xs mx-auto">
+                  {prepStepMessage || t('Extracting intelligence and initializing agent cognitive states.', 'Extrakcia dát a inicializácia kognitívnych stavov agentov.', 'Adatok kinyerése és az ágensek kognitív állapotainak inicializálása.')}
+                </p>
               </div>
-            )}
-          </div>
+
+              {/* Step Progression List */}
+              <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2.5 text-xs">
+                <div className="flex items-center gap-2.5 text-emerald-700 font-semibold text-[11px]">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>{t('1. CRM Temporal Lookback Extraction', '1. Extrakcia CRM dát z histórie', '1. Időbeli CRM adatok kinyerése')}</span>
+                </div>
+                <div className="flex items-center gap-2.5 text-purple-700 font-bold text-[11px] bg-purple-50/80 p-1.5 rounded-xl border border-purple-200/60">
+                  <Loader2 className="w-4 h-4 text-purple-600 animate-spin shrink-0" />
+                  <span>{t('2. Knowledge Graph & Stakeholders Synthesis', '2. Syntéza grafu znalostí & stakeholderov', '2. Tudásgráf & érintettek szintézise')}</span>
+                </div>
+                <div className="flex items-center gap-2.5 text-slate-400 font-medium text-[11px]">
+                  <CircleDot className="w-4 h-4 text-slate-300 shrink-0" />
+                  <span>{t('3. Autonomous Personas Calibration', '3. Kalibrácia autonómnych persón', '3. Autonóm személyiségek kalibrálása')}</span>
+                </div>
+                <div className="flex items-center gap-2.5 text-slate-400 font-medium text-[11px]">
+                  <CircleDot className="w-4 h-4 text-slate-300 shrink-0" />
+                  <span>{t('4. Round 1 Market Deliberation', '4. Zahájenie 1. kola trhovej debaty', '4. 1. forduló piaci vitájának megkezdése')}</span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="h-64 flex flex-col items-center justify-center text-slate-400 text-xs space-y-3 text-center px-4">
+              <Sparkles className="w-8 h-8 text-purple-400 animate-pulse" />
+              <span className="font-medium text-slate-600">
+                {t('Waiting for Round 1 deliberation to begin...', 'Čaká sa na začiatok 1. kola...', 'Várakozás az 1. forduló megkezdésére...')}
+              </span>
+              {(onRestart || onEditDraft) && (
+                <div className="flex items-center gap-2 pt-2">
+                  {onEditDraft && (
+                    <button
+                      onClick={onEditDraft}
+                      className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-bold text-xs transition cursor-pointer"
+                    >
+                      {t('Edit Config', 'Upraviť konfiguráciu', 'Konfiguráció szerkesztése')}
+                    </button>
+                  )}
+                  {onRestart && (
+                    <button
+                      onClick={onRestart}
+                      className="px-4 py-2 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 hover:from-purple-700 text-white font-bold text-xs transition cursor-pointer shadow-md"
+                    >
+                      {t('Start / Re-run Simulation', 'Spustiť / Reštartovať simuláciu', 'Szimuláció indítása / Újrafuttatás')}
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+          )
         ) : (
           sortedPosts.map((post) => (
             <div 
