@@ -3769,7 +3769,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $insFc->execute([
                     $fcId,
                     $fc['type'] ?? 'expense',
-                    $fc['name'] ?? '',
+                    mb_substr((string) ccrm_sanitize_db_text($fc['name'] ?? '', 600), 0, 150, 'UTF-8'),
                     !empty($fc['parentId']) ? $fc['parentId'] : null,
                     (int)($fc['level'] ?? 1),
                     (int)($fc['sortOrder'] ?? 0),
@@ -3828,30 +3828,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             foreach ($payload['financialRecords'] as $fr) {
                 $frId = $fr['id'];
+                $frTitle = mb_substr((string) ccrm_sanitize_db_text($fr['title'] ?? '', 1020), 0, 255, 'UTF-8');
+                $frCategoryPathSanitized = ccrm_sanitize_db_text($fr['categoryPath'] ?? null, 1020);
+                $frCategoryPath = $frCategoryPathSanitized !== null ? mb_substr($frCategoryPathSanitized, 0, 255, 'UTF-8') : null;
+                $frClientId = !empty($fr['clientId']) ? mb_substr((string) ccrm_sanitize_db_text($fr['clientId'], 200), 0, 50, 'UTF-8') : null;
+                // Narrow to bare Y-m-d so a datetime string (e.g. "…T00:00:00.000Z")
+                // doesn't raise SQLSTATE 22007 and roll back the whole sync.
+                $frIssueDate = ccrm_date_only($fr['issueDate'] ?? null) ?: date('Y-m-d');
+                $frDueDate = ccrm_date_only($fr['dueDate'] ?? null);
+                $frPaidDate = ccrm_date_only($fr['paidDate'] ?? null);
+                $frRecurringStartDate = ccrm_date_only($fr['recurringStartDate'] ?? null);
+                $frRecurringEndDate = ccrm_date_only($fr['recurringEndDate'] ?? null);
                 $insFr->execute([
                     $frId,
                     $fr['type'] ?? 'expense',
                     $fr['subtype'] ?? 'regular',
-                    $fr['title'] ?? '',
+                    $frTitle,
                     $fr['description'] ?? null,
                     !empty($fr['categoryId']) ? $fr['categoryId'] : null,
-                    $fr['categoryPath'] ?? null,
-                    (float)($fr['amountPlanned'] ?? 0),
-                    (float)($fr['amountReal'] ?? 0),
+                    $frCategoryPath,
+                    round((float)($fr['amountPlanned'] ?? 0), 2),
+                    round((float)($fr['amountReal'] ?? 0), 2),
                     $fr['currency'] ?? 'EUR',
                     $fr['status'] ?? 'planned',
-                    !empty($fr['issueDate']) ? $fr['issueDate'] : date('Y-m-d'),
-                    !empty($fr['dueDate']) ? $fr['dueDate'] : null,
-                    !empty($fr['paidDate']) ? $fr['paidDate'] : null,
+                    $frIssueDate,
+                    $frDueDate,
+                    $frPaidDate,
                     $fr['paymentMethod'] ?? null,
                     !empty($fr['isRecurring']) ? 1 : 0,
                     $fr['recurringFrequency'] ?? null,
                     !empty($fr['recurringConfig']) ? json_encode($fr['recurringConfig'], JSON_UNESCAPED_UNICODE) : null,
-                    !empty($fr['recurringStartDate']) ? $fr['recurringStartDate'] : null,
-                    !empty($fr['recurringEndDate']) ? $fr['recurringEndDate'] : null,
+                    $frRecurringStartDate,
+                    $frRecurringEndDate,
                     !empty($fr['recurringAmountHistory']) ? json_encode($fr['recurringAmountHistory'], JSON_UNESCAPED_UNICODE) : null,
                     !empty($fr['projectId']) ? $fr['projectId'] : null,
-                    !empty($fr['clientId']) ? $fr['clientId'] : null,
+                    $frClientId,
                     $fr['invoiceNumber'] ?? null,
                     (float)($fr['taxRate'] ?? 20),
                     !empty($fr['attachments']) ? json_encode($fr['attachments'], JSON_UNESCAPED_UNICODE) : null,

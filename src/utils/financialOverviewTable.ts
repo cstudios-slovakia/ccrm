@@ -77,20 +77,32 @@ export function overviewRowIdFor(
 export function splitRecordAmounts(
   rec: Pick<FinancialRecord, "status" | "amountPlanned" | "amountReal">
 ): { real: number; estimated: number } {
-  const planned = Math.max(Number(rec.amountPlanned) || 0, 0);
-  const real = Math.max(Number(rec.amountReal) || 0, 0);
-  if (rec.status === "paid") return { real: real > 0 ? real : planned, estimated: 0 };
+  const planned = Number(rec.amountPlanned) || 0;
+  const real = Number(rec.amountReal) || 0;
+  // A paused/cancelled movement is not money still expected, whether it is a
+  // one-off or a recurring rule's own row.
+  if (rec.status === "cancelled") return { real: 0, estimated: 0 };
+  if (rec.status === "paid") return { real: real !== 0 ? real : planned, estimated: 0 };
   if (rec.status === "partially_paid") {
-    const expected = planned > 0 ? planned : real;
-    return { real, estimated: Math.max(expected - real, 0) };
+    const expected = planned !== 0 ? planned : real;
+    return { real, estimated: expected - real };
   }
-  return { real: 0, estimated: planned > 0 ? planned : real };
+  return { real: 0, estimated: planned !== 0 ? planned : real };
 }
 
-/** The date a one-off movement is filed under in the overview table. */
+/**
+ * The date a one-off movement is filed under — cash basis, the same order the
+ * trend and the movements ledger use, so a movement cannot land in three
+ * different months across the three tabs. A datetime value is truncated to
+ * its calendar day so a time-of-day suffix cannot sort it past the end of its
+ * own month.
+ */
 export const overviewRecordDate = (
   rec: Pick<FinancialRecord, "issueDate" | "paidDate" | "dueDate">
-): string => rec.issueDate || rec.paidDate || rec.dueDate || "";
+): string => {
+  const raw = rec.paidDate || rec.dueDate || rec.issueDate || "";
+  return raw ? raw.slice(0, 10) : "";
+};
 
 export interface OverviewTableAggregate {
   /** `cells[rowId][columnId]`, with every category holding its own and its descendants' movements. */
@@ -105,6 +117,8 @@ export interface OverviewTableAggregate {
   netSummary: OverviewCell;
   /** Whether the uncategorized row of each type has anything in it. */
   hasUncategorized: Record<FinancialType, boolean>;
+  /** One-off movements whose date fell in none of the given columns. */
+  outsideHorizon: Record<FinancialType, { count: number; real: number; estimated: number }>;
 }
 
 const addTo = (target: OverviewCell, real: number, estimated: number) => {
@@ -135,9 +149,14 @@ export function aggregateOverviewTable(
 
   const direct: Record<string, Record<string, OverviewCell>> = {};
   const addDirect = (rowId: string, colId: string, real: number, estimated: number) => {
-    if (real <= 0 && estimated <= 0) return;
+    if (real === 0 && estimated === 0) return;
     const row = (direct[rowId] ||= {});
-    addTo((row[colId] ||= emptyOverviewCell()), Math.max(real, 0), Math.max(estimated, 0));
+    addTo((row[colId] ||= emptyOverviewCell()), real, estimated);
+  };
+
+  const outsideHorizon: OverviewTableAggregate["outsideHorizon"] = {
+    expense: { count: 0, real: 0, estimated: 0 },
+    income: { count: 0, real: 0, estimated: 0 }
   };
 
   records.forEach((rec) => {
@@ -148,39 +167,62 @@ export function aggregateOverviewTable(
       if (!date) return;
       const { real, estimated } = splitRecordAmounts(rec);
       const col = columns.find((c) => date >= c.startIso && date <= c.endIso);
-      if (col) addDirect(rowId, col.id, real, estimated);
+      if (col) {
+        addDirect(rowId, col.id, real, estimated);
+      } else if (real !== 0 || estimated !== 0) {
+        const bucket = outsideHorizon[rec.type];
+        bucket.count += 1;
+        bucket.real += real;
+        bucket.estimated += estimated;
+      }
       return;
     }
 
-    if (rec.status === "cancelled") return; // paused rule
+    // A recurring rule fires on its own schedule rather than waiting for
+    // someone to mark each charge paid, so a charge in a column that has
+    // already elapsed is settled money regardless of the rule's current
+    // lifecycle status (active/paused). Pausing or resuming the rule only
+    // changes which *future* columns it still charges — via
+    // `recurringEndDate`/`recurringStartDate`, honoured by `recurringCharges`
+    // itself — and must never retroactively move already-elapsed charges
+    // between "real" and "estimated".
     columns.forEach((col) => {
       const amount = recurringCharges(rec, col.startIso, col.endIso).reduce((sum, charge) => sum + charge.amount, 0);
       if (amount <= 0) return;
-      const isReal = !col.isFuture && rec.status === "paid";
-      addDirect(rowId, col.id, isReal ? amount : 0, isReal ? 0 : amount);
+      addDirect(rowId, col.id, col.isFuture ? 0 : amount, col.isFuture ? amount : 0);
     });
   });
 
-  // Roll every category's direct sums up through its ancestors.
+  // Every category's unique ids, so a duplicated entry (a bad sync or import)
+  // is counted once rather than once per array element.
+  const uniqueCategories = Array.from(byId.values());
+
+  // Roll every category's direct sums up through its ancestors, walking a
+  // guarded parent chain. A chain that cycles back on itself before reaching a
+  // true root (no parent) never resolves to a root at all: the category that
+  // holds the money is then its own root, and nothing is drawn onto the other
+  // categories caught in the same cycle.
   const cells: Record<string, Record<string, OverviewCell>> = {};
   const cellOf = (rowId: string, colId: string): OverviewCell => (cells[rowId] ||= {})[colId] ||= emptyOverviewCell();
 
-  const ancestorsOf = (cat: FinancialCategory): FinancialCategory[] => {
-    const chain: FinancialCategory[] = [];
+  const chainOf = (cat: FinancialCategory): { ancestors: FinancialCategory[]; root: FinancialCategory } => {
+    const ancestors: FinancialCategory[] = [];
     const seen = new Set<string>([cat.id]);
-    let parentId = effectiveParentId(cat, byId);
-    while (parentId && !seen.has(parentId)) {
+    let current = cat;
+    for (;;) {
+      const parentId = effectiveParentId(current, byId);
+      if (parentId === null) return { ancestors, root: current };
+      if (seen.has(parentId)) return { ancestors: [], root: cat };
       const parent = byId.get(parentId)!;
-      chain.push(parent);
+      ancestors.push(parent);
       seen.add(parent.id);
-      parentId = effectiveParentId(parent, byId);
+      current = parent;
     }
-    return chain;
   };
 
-  categories.forEach((cat) => {
+  uniqueCategories.forEach((cat) => {
     const own = direct[cat.id];
-    const targets = [cat, ...ancestorsOf(cat)];
+    const targets = [cat, ...chainOf(cat).ancestors];
     columns.forEach((col) => {
       const value = own?.[col.id];
       targets.forEach((target) => {
@@ -206,11 +248,16 @@ export function aggregateOverviewTable(
     rowTotals[rowId] = total;
   });
 
-  // Section totals: the root rows of each type plus that type's uncategorized row.
-  const rootsOf = (type: FinancialType): string[] => [
-    ...categories.filter((c) => c.type === type && effectiveParentId(c, byId) === null).map((c) => c.id),
-    UNCATEGORIZED_ROW_ID[type]
-  ];
+  // Section totals: the root rows of each type (as `chainOf` defines a root)
+  // plus that type's uncategorized row.
+  const rootsOf = (type: FinancialType): string[] => {
+    const ids = new Set<string>();
+    uniqueCategories.forEach((c) => {
+      if (c.type === type) ids.add(chainOf(c).root.id);
+    });
+    ids.add(UNCATEGORIZED_ROW_ID[type]);
+    return [...ids];
+  };
   const expenseRoots = rootsOf("expense");
   const incomeRoots = rootsOf("income");
 
@@ -255,6 +302,7 @@ export function aggregateOverviewTable(
     hasUncategorized: {
       expense: !isEmptyOverviewCell(rowTotals[UNCATEGORIZED_ROW_ID.expense]),
       income: !isEmptyOverviewCell(rowTotals[UNCATEGORIZED_ROW_ID.income])
-    }
+    },
+    outsideHorizon
   };
 }

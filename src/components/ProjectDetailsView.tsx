@@ -19,6 +19,9 @@ import {
   isMoneyValueEmpty,
   parseMoneyValue,
 } from "../utils/currency";
+import { mergeFinancialRecord, derivePaidDate, FINANCIAL_STATUS_OPTIONS } from "../utils/financialRecordMerge";
+import { splitRecordAmounts } from "../utils/financialOverviewTable";
+import { categoryBreadcrumbs } from "../utils/financialCategoryTree";
 import { evaluateProjectDeadline, finishedAtForStatus, projectDisplayName, projectMissedDeadline, projectPipelineSegments, projectStartDate, projectStatusBadgeClass, projectStatusDotClass, projectStatusOptions } from "../utils/projects";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
@@ -443,12 +446,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     let totalRealExpenses = 0;
 
     projectFinancials.forEach((r) => {
+      const { real } = splitRecordAmounts(r);
       if (r.type === "income") {
         totalPlannedIncome += r.amountPlanned || 0;
-        totalRealIncome += r.amountReal || 0;
+        totalRealIncome += real;
       } else {
         totalPlannedExpenses += r.amountPlanned || 0;
-        totalRealExpenses += r.amountReal || 0;
+        totalRealExpenses += real;
       }
     });
 
@@ -468,7 +472,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
         catMap[catId] = { name, planned: 0, real: 0, color };
       }
       catMap[catId].planned += e.amountPlanned || 0;
-      catMap[catId].real += e.amountReal || 0;
+      catMap[catId].real += splitRecordAmounts(e).real;
     });
 
     return {
@@ -522,6 +526,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
   const handleOpenProjectFinModal = (type: FinancialType, record?: FinancialRecord) => {
     if (!canEdit) return;
+    // This secondary form has no recurring UI at all and can never
+    // faithfully represent a recurring rule — it must be edited from
+    // Financial Management → Recurring instead.
+    if (record?.isRecurring) return;
     if (record) {
       setFinEditingRecord(record);
       setFinFormType(record.type);
@@ -554,39 +562,47 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     e.preventDefault();
     if (!canEditFinance || !finFormTitle.trim() || !project) return;
 
-    let path = "";
-    if (finFormCategoryId) {
-      const cat = financialCategories.find((c) => c.id === finFormCategoryId);
-      if (cat) {
-        path = cat.name;
-      }
-    }
-
-    const payload: FinancialRecord = {
+    const formValues: Partial<FinancialRecord> & Pick<FinancialRecord, "id"> = {
       id: finEditingRecord?.id || `fr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-      type: finFormType,
-      subtype: finFormType === "income" ? "invoice" : "material",
       title: finFormTitle.trim(),
       description: finFormDescription.trim() || null,
       categoryId: finFormCategoryId || null,
-      categoryPath: path || null,
       amountPlanned: Number(finFormAmountPlanned) || 0,
       amountReal: Number(finFormAmountReal) || 0,
       currency: currencyCode || "EUR",
       status: finFormStatus,
       issueDate: finFormIssueDate,
       dueDate: finFormDueDate || null,
-      paidDate: finFormStatus === "paid" ? todayLocal() : null,
-      paymentMethod: "bank_transfer",
-      isRecurring: false,
-      projectId: project.id,
-      clientId: associatedClientId || associatedLeadId || null,
       invoiceNumber: finFormInvoiceNumber.trim() || null,
-      taxRate: 20,
-      createdBy: (window as any).ccrmCurrentUser?.email || "Admin",
-      createdAt: finEditingRecord?.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      paidDate: derivePaidDate(finEditingRecord, finFormStatus)
     };
+
+    // Only recompute the category breadcrumb when the category actually
+    // changed (or this is a brand-new record) — otherwise omit it so the
+    // merge preserves whatever breadcrumb the record already had.
+    const previousCategoryId = finEditingRecord?.categoryId || "";
+    if (!finEditingRecord || finFormCategoryId !== previousCategoryId) {
+      formValues.categoryPath = finFormCategoryId
+        ? categoryBreadcrumbs(financialCategories, finFormCategoryId).map((c) => c.name).join(" > ") || null
+        : null;
+    }
+
+    if (!finEditingRecord) {
+      // A brand-new record from this secondary form is always a one-off —
+      // set the fields the form does not render, but only once, at
+      // creation. Editing must never re-stamp these (see mergeFinancialRecord).
+      formValues.type = finFormType;
+      formValues.subtype = finFormType === "income" ? "invoice" : "material";
+      formValues.paymentMethod = "bank_transfer";
+      formValues.isRecurring = false;
+      formValues.projectId = project.id;
+      formValues.clientId = associatedClientId || associatedLeadId || null;
+      formValues.taxRate = 20;
+      formValues.createdBy = (window as any).ccrmCurrentUser?.email || "Admin";
+      formValues.createdAt = new Date().toISOString();
+    }
+
+    const payload = mergeFinancialRecord(finEditingRecord, formValues);
 
     if (setFinancialRecords) {
       setFinancialRecords((prev) => {
@@ -3369,8 +3385,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                               <div className="flex items-center justify-end gap-1">
                                 {canEditFinance && (
                                   <button
+                                    type="button"
                                     onClick={() => handleOpenProjectFinModal("income", inv)}
-                                    className="p-1 text-slate-400 hover:text-indigo-600 rounded"
+                                    disabled={inv.isRecurring}
+                                    title={inv.isRecurring ? t("This is a recurring rule — edit it from Financial Management → Recurring.", "Toto je opakovaná platba — upravte ju v Finančnom prehľade → Opakované platby.", "Ez egy ismétlődő szabály — szerkessze a Pénzügyek → Ismétlődők nézetben.") : undefined}
+                                    className="p-1 text-slate-400 hover:text-indigo-600 rounded disabled:opacity-40 disabled:hover:text-slate-400 disabled:cursor-not-allowed"
                                   >
                                     <Edit3 className="h-3.5 w-3.5" />
                                   </button>
@@ -3454,8 +3473,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                               <div className="flex items-center justify-end gap-1">
                                 {canEditFinance && (
                                   <button
+                                    type="button"
                                     onClick={() => handleOpenProjectFinModal("expense", exp)}
-                                    className="p-1 text-slate-400 hover:text-indigo-600 rounded"
+                                    disabled={exp.isRecurring}
+                                    title={exp.isRecurring ? t("This is a recurring rule — edit it from Financial Management → Recurring.", "Toto je opakovaná platba — upravte ju v Finančnom prehľade → Opakované platby.", "Ez egy ismétlődő szabály — szerkessze a Pénzügyek → Ismétlődők nézetben.") : undefined}
+                                    className="p-1 text-slate-400 hover:text-indigo-600 rounded disabled:opacity-40 disabled:hover:text-slate-400 disabled:cursor-not-allowed"
                                   >
                                     <Edit3 className="h-3.5 w-3.5" />
                                   </button>
@@ -3605,10 +3627,21 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         onChange={(e) => setFinFormStatus(e.target.value as any)}
                         className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50"
                       >
-                        <option value="planned">{t("Planned", "Plánované", "Tervezett")}</option>
-                        <option value="pending">{t("Pending", "Čaká na úhradu", "Függő")}</option>
-                        <option value="paid">{t("Paid", "Uhradené", "Fizetve")}</option>
-                        <option value="overdue">{t("Overdue", "Po splatnosti", "Lejárt")}</option>
+                        {FINANCIAL_STATUS_OPTIONS.map((s) => (
+                          <option key={s} value={s}>
+                            {s === "planned"
+                              ? t("Planned", "Plánované", "Tervezett")
+                              : s === "pending"
+                              ? t("Pending", "Čaká na úhradu", "Függő")
+                              : s === "partially_paid"
+                              ? t("Partially Paid", "Čiastočne uhradené", "Részben fizetve")
+                              : s === "paid"
+                              ? t("Paid", "Uhradené", "Fizetve")
+                              : s === "overdue"
+                              ? t("Overdue", "Po splatnosti", "Lejárt")
+                              : t("Cancelled", "Zrušené", "Törölve")}
+                          </option>
+                        ))}
                       </select>
                     </div>
                   </div>

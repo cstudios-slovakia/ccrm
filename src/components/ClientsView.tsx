@@ -41,6 +41,9 @@ import { resolveCurrencySymbol, formatMoney } from "../utils/currency";
 import { resolveAssigneeName, type TaskAccess } from "../utils/taskSelectors";
 import { todayLocal, nowLocalStamp, formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
 import { chartTheme, useAppearance } from "../utils/theme";
+import { mergeFinancialRecord, derivePaidDate, FINANCIAL_STATUS_OPTIONS } from "../utils/financialRecordMerge";
+import { splitRecordAmounts } from "../utils/financialOverviewTable";
+import { categoryBreadcrumbs } from "../utils/financialCategoryTree";
 
 interface ClientsViewProps {
   leads: Lead[];
@@ -1384,11 +1387,18 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     if (!activeClient) return [];
     const leadIds = (activeClient.associatedLeads || []).map((l: any) => l.id);
     const primaryId = activeClient.associatedLeads?.[0]?.id;
-    return financialRecords.filter((r) => (primaryId && r.clientId === primaryId) || r.clientId === activeClient.name || (r.clientId && leadIds.includes(r.clientId)));
+    return financialRecords.filter((r) =>
+      r.type === "income" && !r.projectId &&
+      ((primaryId && r.clientId === primaryId) || r.clientId === activeClient.name || (r.clientId && leadIds.includes(r.clientId)))
+    );
   }, [financialRecords, activeClient]);
 
   const handleOpenClientInvoiceModal = (inv?: FinancialRecord) => {
     if (!canEdit) return;
+    // This secondary form has no recurring UI at all and can never
+    // faithfully represent a recurring rule — it must be edited from
+    // Financial Management → Recurring instead.
+    if (inv?.isRecurring) return;
     if (inv) {
       setClientInvEditing(inv);
       setClientInvTitle(inv.title);
@@ -1419,39 +1429,48 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     e.preventDefault();
     if (!canEditFinance || !clientInvTitle.trim() || !activeClient) return;
 
-    let path = "";
-    if (clientInvCategoryId) {
-      const cat = financialCategories.find((c) => c.id === clientInvCategoryId);
-      if (cat) path = cat.name;
-    }
-
-    const clientIdVal = activeClient.associatedLeads?.[0]?.id || activeClient.name;
-
-    const payload: FinancialRecord = {
+    const formValues: Partial<FinancialRecord> & Pick<FinancialRecord, "id"> = {
       id: clientInvEditing?.id || `fr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-      type: "income",
-      subtype: "invoice",
       title: clientInvTitle.trim(),
       description: clientInvDescription.trim() || null,
       categoryId: clientInvCategoryId || null,
-      categoryPath: path || null,
       amountPlanned: Number(clientInvPlanned) || 0,
       amountReal: Number(clientInvReal) || 0,
       currency: currencyCode || "EUR",
       status: clientInvStatus,
       issueDate: clientInvIssueDate,
       dueDate: clientInvDueDate || null,
-      paidDate: clientInvStatus === "paid" ? todayLocal() : null,
-      paymentMethod: "bank_transfer",
-      isRecurring: false,
-      projectId: null,
-      clientId: clientIdVal,
       invoiceNumber: clientInvNumber.trim() || null,
-      taxRate: 20,
-      createdBy: (window as any).ccrmCurrentUser?.email || "Admin",
-      createdAt: clientInvEditing?.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      paidDate: derivePaidDate(clientInvEditing, clientInvStatus)
     };
+
+    // Only recompute the category breadcrumb when the category actually
+    // changed (or this is a brand-new record) — otherwise omit it so the
+    // merge preserves whatever breadcrumb the record already had.
+    const previousCategoryId = clientInvEditing?.categoryId || "";
+    if (!clientInvEditing || clientInvCategoryId !== previousCategoryId) {
+      formValues.categoryPath = clientInvCategoryId
+        ? categoryBreadcrumbs(financialCategories, clientInvCategoryId).map((c) => c.name).join(" > ") || null
+        : null;
+    }
+
+    if (!clientInvEditing) {
+      // A brand-new invoice from this tab is always a one-off income tied
+      // to this client, never project-scoped and never recurring — set the
+      // fields the form does not render, but only once, at creation.
+      const clientIdVal = activeClient.associatedLeads?.[0]?.id || activeClient.name;
+      formValues.type = "income";
+      formValues.subtype = "invoice";
+      formValues.paymentMethod = "bank_transfer";
+      formValues.isRecurring = false;
+      formValues.projectId = null;
+      formValues.clientId = clientIdVal;
+      formValues.taxRate = 20;
+      formValues.createdBy = (window as any).ccrmCurrentUser?.email || "Admin";
+      formValues.createdAt = new Date().toISOString();
+    }
+
+    const payload = mergeFinancialRecord(clientInvEditing, formValues);
 
     if (setFinancialRecords) {
       setFinancialRecords((prev) => {
@@ -4437,9 +4456,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   {/* Client Financial Summary Cards */}
                   {clientInvoices.length > 0 && (() => {
                     const totalPlanned = clientInvoices.reduce((acc, r) => acc + (r.amountPlanned || 0), 0);
-                    const totalReal = clientInvoices.reduce((acc, r) => acc + (r.amountReal || 0), 0);
-                    const pendingAmount = clientInvoices.filter(r => r.status === "pending" || r.status === "planned").reduce((acc, r) => acc + (r.amountPlanned || 0), 0);
-                    const overdueAmount = clientInvoices.filter(r => r.status === "overdue").reduce((acc, r) => acc + (r.amountPlanned || 0), 0);
+                    const totalReal = clientInvoices.reduce((acc, r) => acc + splitRecordAmounts(r).real, 0);
+                    const pendingAmount = clientInvoices.filter(r => r.status === "pending" || r.status === "planned" || r.status === "partially_paid").reduce((acc, r) => acc + splitRecordAmounts(r).estimated, 0);
+                    const overdueAmount = clientInvoices.filter(r => r.status === "overdue").reduce((acc, r) => acc + splitRecordAmounts(r).estimated, 0);
 
                     return (
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -4451,7 +4470,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         <div className="p-3.5 rounded-2xl bg-amber-50/50 border border-amber-200">
                           <span className="text-[10px] font-bold text-amber-700 uppercase block">{t("Pending Payment", "Čaká na úhradu", "Fizetésre vár")}</span>
                           <div className="text-base font-black text-amber-900 mt-0.5">{money(pendingAmount)}</div>
-                          <span className="text-[10px] text-amber-600">{clientInvoices.filter(r => r.status === "pending" || r.status === "planned").length} {t("invoices", "faktúr", "számla")}</span>
+                          <span className="text-[10px] text-amber-600">{clientInvoices.filter(r => r.status === "pending" || r.status === "planned" || r.status === "partially_paid").length} {t("invoices", "faktúr", "számla")}</span>
                         </div>
                         <div className="p-3.5 rounded-2xl bg-rose-50/50 border border-rose-200">
                           <span className="text-[10px] font-bold text-rose-700 uppercase block">{t("Overdue", "Po splatnosti", "Lejárt")}</span>
@@ -4529,8 +4548,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                     <button
                                       type="button"
                                       onClick={() => handleOpenClientInvoiceModal(inv)}
-                                      className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors cursor-pointer"
-                                      title={t("Edit invoice", "Upraviť faktúru", "Számla szerkesztése")}
+                                      disabled={inv.isRecurring}
+                                      className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors cursor-pointer disabled:opacity-40 disabled:hover:text-slate-400 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+                                      title={inv.isRecurring ? t("This is a recurring rule — edit it from Financial Management → Recurring.", "Toto je opakovaná platba — upravte ju v Finančnom prehľade → Opakované platby.", "Ez egy ismétlődő szabály — szerkessze a Pénzügyek → Ismétlődők nézetben.") : t("Edit invoice", "Upraviť faktúru", "Számla szerkesztése")}
                                     >
                                       <PencilLine className="h-3.5 w-3.5" />
                                     </button>
@@ -4646,10 +4666,21 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                 onChange={(e) => setClientInvStatus(e.target.value as any)}
                                 className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50"
                               >
-                                <option value="planned">{t("Planned", "Plánované", "Tervezett")}</option>
-                                <option value="pending">{t("Pending", "Čaká na úhradu", "Függő")}</option>
-                                <option value="paid">{t("Paid", "Uhradené", "Fizetve")}</option>
-                                <option value="overdue">{t("Overdue", "Po splatnosti", "Lejárt")}</option>
+                                {FINANCIAL_STATUS_OPTIONS.map((s) => (
+                                  <option key={s} value={s}>
+                                    {s === "planned"
+                                      ? t("Planned", "Plánované", "Tervezett")
+                                      : s === "pending"
+                                      ? t("Pending", "Čaká na úhradu", "Függő")
+                                      : s === "partially_paid"
+                                      ? t("Partially Paid", "Čiastočne uhradené", "Részben fizetve")
+                                      : s === "paid"
+                                      ? t("Paid", "Uhradené", "Fizetve")
+                                      : s === "overdue"
+                                      ? t("Overdue", "Po splatnosti", "Lejárt")
+                                      : t("Cancelled", "Zrušené", "Törölve")}
+                                  </option>
+                                ))}
                               </select>
                             </div>
                           </div>

@@ -125,7 +125,14 @@ test("a category whose parent was deleted is a root row, and its movements reach
   assert.equal(out.totalExpenseSummary.real, 75);
 });
 
-test("a recurring rule charges every column it lands in, is real only in the past when paid, and charges nothing while paused", () => {
+test("a recurring rule charges every column it lands in, real in the past and estimated in the future, regardless of its current status", () => {
+  // A recurring rule fires on its own schedule rather than waiting for someone
+  // to mark each charge paid, so a charge in an elapsed column is settled
+  // money whatever the rule's live `status` says — see
+  // docs/audits/finance-section-consistency-audit-2026-09-17.md, F2/F2b: the
+  // opposite used to be true (a paused rule retroactively lost its settled
+  // history, and a merely-"pending" rule counted its past charges as only
+  // "estimated"), which this test now pins as the bug it was.
   const rule = (over: Partial<FinancialRecord>) =>
     rec({
       id: "rent",
@@ -144,14 +151,23 @@ test("a recurring rule charges every column it lands in, is real only in the pas
   assert.equal(paid.rowTotals["exp"].total, 1500);
 
   const pending = aggregateOverviewTable([rule({ status: "pending" })], categories, columns);
-  assert.deepEqual(pending.cells["exp"]["2026-02"], { real: 0, estimated: 500, total: 500 });
+  assert.deepEqual(
+    pending.cells["exp"]["2026-02"],
+    { real: 500, estimated: 0, total: 500 },
+    "an elapsed charge is real however the rule's live status reads"
+  );
 
   const paused = aggregateOverviewTable([rule({ status: "cancelled" })], categories, columns);
-  assert.deepEqual(paused.rowTotals["exp"], { real: 0, estimated: 0, total: 0 });
-  assert.equal(paused.totalExpenseSummary.total, 0);
+  assert.deepEqual(
+    paused.rowTotals["exp"],
+    { real: 1000, estimated: 500, total: 1500 },
+    "pausing today must not erase the two charges already made in Feb and Mar"
+  );
+  assert.equal(paused.totalExpenseSummary.total, 1500);
 
   const uncategorizedRule = aggregateOverviewTable([rule({ status: "pending", categoryId: null })], categories, columns);
-  assert.equal(uncategorizedRule.rowTotals[UNCATEGORIZED_ROW_ID.expense].estimated, 1500);
+  assert.equal(uncategorizedRule.rowTotals[UNCATEGORIZED_ROW_ID.expense].real, 1000);
+  assert.equal(uncategorizedRule.rowTotals[UNCATEGORIZED_ROW_ID.expense].estimated, 500);
 });
 
 test("a movement dated outside every column is not counted anywhere", () => {

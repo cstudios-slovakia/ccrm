@@ -33,7 +33,9 @@ import type { Language } from "../utils/translations";
 import { formatMoney } from "../utils/currency";
 import { todayLocal, formatDateLocalized } from "../utils/localTime";
 import {
+  categoryBreadcrumbs,
   categoryChildren,
+  categoryDescendantIds,
   moveCategory,
   nextCategorySortOrder,
   resolveCategoryDrop,
@@ -54,11 +56,14 @@ import {
   recurringChargeAmount,
   recurringCharges,
   recurringOccurrences,
+  recurringPlannedAmountAt,
+  recurringTotalInRange,
   shiftIsoDate
 } from "../utils/recurringExpenses";
 import {
   UNCATEGORIZED_ROW_ID,
   aggregateOverviewTable,
+  overviewRecordDate,
   splitRecordAmounts
 } from "../utils/financialOverviewTable";
 import {
@@ -147,6 +152,15 @@ type MovementLedgerRow =
 const statusNeedsRealAmount = (status: FinancialStatus): status is "paid" | "partially_paid" =>
   status === "paid" || status === "partially_paid";
 
+/**
+ * Which bucket a movement's own scope falls into, computed once from the
+ * record itself. A project-scoped record also carries the project's
+ * `clientId` (see `handleSaveTransaction`), so checking `clientId` alone
+ * would also catch project records under "Client" — project takes priority.
+ */
+const movementScope = (rec: Pick<FinancialRecord, "projectId" | "clientId">): "global" | "project" | "client" =>
+  rec.projectId ? "project" : rec.clientId ? "client" : "global";
+
 /** Shared look of the transaction form: one label style, one 40px field style. */
 const FORM_LABEL = "text-xs font-semibold text-slate-600 block mb-1.5";
 const FORM_INPUT =
@@ -201,18 +215,12 @@ const SearchableCategorySelect: React.FC<SearchableCategorySelectProps> = ({
 
   const selectedCategory = categories.find((c) => c.id === value);
 
-  // Build full hierarchy breadcrumb for search and display
-  const getCategoryPath = (cat: FinancialCategory): string => {
-    const parts = [cat.name];
-    let curr = cat;
-    while (curr.parentId) {
-      const p = categories.find((c) => c.id === curr.parentId);
-      if (!p) break;
-      parts.unshift(p.name);
-      curr = p;
-    }
-    return parts.join(" ➔ ");
-  };
+  // Build full hierarchy breadcrumb for search and display — guarded against a
+  // cyclic parentId chain, which would otherwise loop forever (see F14).
+  const getCategoryPath = (cat: FinancialCategory): string =>
+    categoryBreadcrumbs(categories, cat.id)
+      .map((c) => c.name)
+      .join(" ➔ ");
 
   const filteredCategories = useMemo(() => {
     return categories
@@ -847,7 +855,6 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       project: params.get("project") || "all",
       client: params.get("client") || "all",
       status: params.get("status") || "all",
-      time: (params.get("time") as "this_month" | "next_month" | "this_quarter" | "this_year" | "all" | "custom") || "this_month",
       category: params.get("category") || "all",
     };
   };
@@ -872,6 +879,41 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       return next;
     });
   };
+
+  // A search match must always be visible, even inside a branch nobody has
+  // manually expanded — otherwise a level-3 hit renders under a still-collapsed
+  // level-1 row and never reaches the screen (see F18).
+  useEffect(() => {
+    const q = tableSearchQuery.trim().toLowerCase();
+    if (!q) return;
+    const toExpand = new Set<string>();
+    financialCategories.forEach((cat) => {
+      if (cat.name.toLowerCase().includes(q)) {
+        categoryBreadcrumbs(financialCategories, cat.id)
+          .slice(0, -1)
+          .forEach((ancestor) => toExpand.add(ancestor.id));
+      }
+    });
+    if (toExpand.size === 0) return;
+    setExpandedCatIds((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      toExpand.forEach((id) => {
+        if (!next.has(id)) {
+          next.add(id);
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [tableSearchQuery, financialCategories]);
+
+  // The Total/Net rows are deliberately never filtered by the category search
+  // — they always add up to the true total — so this makes that explicit
+  // instead of silently disagreeing with the (filtered) rows above them (see F18).
+  const tableSearchTotalSuffix = tableSearchQuery.trim()
+    ? t(" (of all categories)", " (za všetky kategórie)", " (minden kategóriára)")
+    : "";
 
 
 
@@ -1016,7 +1058,14 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const [movementsEndDate, setMovementsEndDate] = useState<string>("");
   const [movementsSortOrder, setMovementsSortOrder] = useState<"desc" | "asc">("desc");
   const [movementsVisibleCount, setMovementsVisibleCount] = useState<number>(40);
-  const [isMovementsAdvancedOpen, setIsMovementsAdvancedOpen] = useState<boolean>(false);
+  // A filter seeded from the URL hash must not land hidden inside a collapsed
+  // drawer — the user would see filtered results with no visible reason why.
+  const [isMovementsAdvancedOpen, setIsMovementsAdvancedOpen] = useState<boolean>(
+    initialUrlState.category !== "all" ||
+      initialUrlState.scope !== "all" ||
+      initialUrlState.project !== "all" ||
+      initialUrlState.client !== "all"
+  );
 
   // Forecast overlay: expected movements drawn into the ledger alongside the
   // real ones. A recurring rule charges forever, so the overlay only ever holds
@@ -1027,24 +1076,15 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   // Sentinel ref for infinite scroll
   const movementsSentinelRef = useRef<HTMLDivElement | null>(null);
 
-  // Helper to get 3-level breadcrumbs for any category ID
-  const getCategoryBreadcrumbs = (catId?: string | null): FinancialCategory[] => {
-    if (!catId) return [];
-    const cat = financialCategories.find((c) => c.id === catId);
-    if (!cat) return [];
-    const path: FinancialCategory[] = [cat];
-    let current = cat;
-    while (current.parentId) {
-      const parent = financialCategories.find((c) => c.id === current.parentId);
-      if (!parent) break;
-      path.unshift(parent);
-      current = parent;
-    }
-    return path;
-  };
+  // Helper to get breadcrumbs for any category ID, guarded against a cyclic
+  // `parentId` chain (see F14) by the shared, cycle-guarded walker.
+  const getCategoryBreadcrumbs = (catId?: string | null): FinancialCategory[] =>
+    catId ? categoryBreadcrumbs(financialCategories, catId) : [];
 
-  // The day a real movement is filed under in the ledger.
-  const movementLedgerDate = (rec: FinancialRecord): string => rec.paidDate || rec.issueDate || "";
+  // The day a real movement is filed under in the ledger — cash basis, the
+  // same rule the trend and the overview table use (see F3), so a movement
+  // cannot land in three different months across the three tabs.
+  const movementLedgerDate = (rec: FinancialRecord): string => overviewRecordDate(rec);
 
   /**
    * Everything the filter bar asks of one ledger line, in one place.
@@ -1061,21 +1101,15 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     const query = movementsSearch.trim().toLowerCase();
 
     // A category filter matches the category itself and everything under it.
-    // The set is also the guard against a cyclic `parentId`: a category that is
-    // already in it has been walked, and walking it again would recurse until
-    // the stack gave out and the ErrorBoundary replaced the finance section.
+    // `categoryDescendantIds` is already guarded against a cyclic `parentId`
+    // (see F14); it does not include the starting id itself, so it is added
+    // back in here.
     let categoryIds: Set<string> | null = null;
     if (movementsCategoryId !== "all") {
-      const ids = new Set<string>([movementsCategoryId]);
-      const addChildren = (parentId: string) => {
-        financialCategories.filter((c) => c.parentId === parentId).forEach((child) => {
-          if (ids.has(child.id)) return;
-          ids.add(child.id);
-          addChildren(child.id);
-        });
-      };
-      addChildren(movementsCategoryId);
-      categoryIds = ids;
+      categoryIds = new Set<string>([
+        movementsCategoryId,
+        ...categoryDescendantIds(financialCategories, movementsCategoryId)
+      ]);
     }
 
     // Every preset is a plain inclusive range once resolved; `-31` as an end is
@@ -1134,13 +1168,13 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       // 3. Category Filter (match self or any descendants)
       if (categoryIds && !(rec.categoryId && categoryIds.has(rec.categoryId))) return false;
 
-      // 4. Scope / Project / Client
-      if (movementsScope === "global") {
-        if (rec.projectId || rec.clientId) return false;
-      } else if (movementsScope === "project") {
-        if (movementsProjectId !== "all" ? rec.projectId !== movementsProjectId : !rec.projectId) return false;
-      } else if (movementsScope === "client") {
-        if (movementsClientId !== "all" ? rec.clientId !== movementsClientId : !rec.clientId) return false;
+      // 4. Scope / Project / Client — scope is computed once (project takes
+      // priority over client, see `movementScope`), so "Client" cannot also
+      // list a project record just because it carries the project's clientId.
+      if (movementsScope !== "all") {
+        if (movementScope(rec) !== movementsScope) return false;
+        if (movementsScope === "project" && movementsProjectId !== "all" && rec.projectId !== movementsProjectId) return false;
+        if (movementsScope === "client" && movementsClientId !== "all" && rec.clientId !== movementsClientId) return false;
       }
 
       // 5. Value Range
@@ -1172,9 +1206,13 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
   // Movements Filter Hook
   const filteredMovements = useMemo(() => {
-    const list = financialRecords.filter((rec) =>
-      movementMatchesFilters(rec, movementLedgerDate(rec), rec.amountReal > 0 ? rec.amountReal : rec.amountPlanned)
-    );
+    const list = financialRecords.filter((rec) => {
+      // The value range is measured against the record's whole value (real +
+      // estimated), the same figure `splitRecordAmounts` gives every other
+      // reader, not an ad hoc "real if any, else planned" guess (see F4).
+      const { real, estimated } = splitRecordAmounts(rec);
+      return movementMatchesFilters(rec, movementLedgerDate(rec), real + estimated);
+    });
 
     // 7. Chronological Sorting
     list.sort((a, b) => {
@@ -1192,6 +1230,13 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
   // Frozen for the render, so every figure on screen is cut off at the same day.
   const forecastToday = todayLocal();
+
+  // A rule is paused when its own end date has already passed — pausing
+  // stamps `recurringEndDate = today` rather than flipping `status` (see F2 /
+  // `handleToggleRecurringActive`), so this is the one place "active vs
+  // paused" is decided for display.
+  const isRecurringPaused = (rec: Pick<FinancialRecord, "recurringEndDate">): boolean =>
+    !!rec.recurringEndDate && rec.recurringEndDate < forecastToday;
 
   const forecastRange = useMemo(
     () => futureWindow(forecastToday, futureHorizonMonths),
@@ -1263,8 +1308,14 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     type Group = {
       monthKey: string; // e.g. "2026-08"
       monthLabel: string; // e.g. "August 2026"
+      /** `real + estimated` — what the month is worth once everything settles. */
       totalIncome: number;
       totalExpense: number;
+      /** Settled vs still-expected, split the same way `splitRecordAmounts` does everywhere else (see F4). */
+      incomeReal: number;
+      incomeEstimated: number;
+      expenseReal: number;
+      expenseEstimated: number;
       net: number;
       /** The forecast half of the month, kept apart so it never reads as settled. */
       expectedIncome: number;
@@ -1313,6 +1364,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           monthLabel,
           totalIncome: 0,
           totalExpense: 0,
+          incomeReal: 0,
+          incomeEstimated: 0,
+          expenseReal: 0,
+          expenseEstimated: 0,
           net: 0,
           expectedIncome: 0,
           expectedExpense: 0,
@@ -1326,9 +1381,16 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
       if (row.kind === "record") {
         const rec = row.record;
-        const amount = rec.amountReal > 0 ? rec.amountReal : rec.amountPlanned;
-        if (rec.type === "income") group.totalIncome += amount;
-        else group.totalExpense += amount;
+        const { real, estimated } = splitRecordAmounts(rec);
+        if (rec.type === "income") {
+          group.incomeReal += real;
+          group.incomeEstimated += estimated;
+          group.totalIncome += real + estimated;
+        } else {
+          group.expenseReal += real;
+          group.expenseEstimated += estimated;
+          group.totalExpense += real + estimated;
+        }
         group.net = group.totalIncome - group.totalExpense;
       } else {
         if (row.forecast.type === "income") group.expectedIncome += row.forecast.amount;
@@ -1349,15 +1411,30 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const movementsSummary = useMemo(() => {
     let income = 0;
     let expense = 0;
+    let incomeReal = 0;
+    let incomeEstimated = 0;
+    let expenseReal = 0;
+    let expenseEstimated = 0;
     let recordCount = 0;
     groupedMovementsByMonth.forEach((group) => {
       income += group.totalIncome;
       expense += group.totalExpense;
+      incomeReal += group.incomeReal;
+      incomeEstimated += group.incomeEstimated;
+      expenseReal += group.expenseReal;
+      expenseEstimated += group.expenseEstimated;
       recordCount += group.rows.length - group.forecastCount;
     });
     return {
       income,
       expense,
+      // Settled vs still-expected, so the ledger's own pills can finally show
+      // "Real"/"Skutočnosť" apart from "Est"/"Plán" instead of one blended
+      // figure with no concept of what has actually happened (see F4).
+      incomeReal,
+      incomeEstimated,
+      expenseReal,
+      expenseEstimated,
       net: income - expense,
       count: recordCount,
       expectedIncome: forecastSummary.income,
@@ -1497,15 +1574,23 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     (window as any).showToast?.(t("Recurring expense duplicated", "Pravidelný výdavok bol skopírovaný", "Ismétlődő tétel duplikálva"));
   };
 
-  // Helper to toggle active vs paused status
+  // Helper to toggle active vs paused status.
+  //
+  // A pause is an end date, not a status change (see F2): flipping `status`
+  // used to retroactively erase or reclassify every charge the rule had
+  // already made, because the aggregation guarded on `status === "cancelled"`
+  // for the whole rule. `recurringCharges` already honours `recurringEndDate`
+  // exactly, so pausing only needs to stop future charges — stamp today as the
+  // end date; resuming clears it. `status` is left untouched either way.
   const handleToggleRecurringActive = (recId: string) => {
+    const today = todayLocal();
     setFinancialRecords((prev) =>
       prev.map((r) => {
         if (r.id === recId) {
-          const nextStatus: FinancialStatus = r.status === "cancelled" ? "planned" : "cancelled";
+          const isActive = !r.recurringEndDate || r.recurringEndDate >= today;
           return {
             ...r,
-            status: nextStatus,
+            recurringEndDate: isActive ? today : null,
             updatedAt: new Date().toISOString()
           };
         }
@@ -1607,9 +1692,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     }
 
     if (recurringStatusFilter === "active") {
-      list = list.filter((r) => r.status !== "cancelled");
+      list = list.filter((r) => !isRecurringPaused(r));
     } else if (recurringStatusFilter === "paused") {
-      list = list.filter((r) => r.status === "cancelled");
+      list = list.filter((r) => isRecurringPaused(r));
     }
 
     if (recurringScopeFilter === "global") {
@@ -1621,9 +1706,19 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     }
 
     return list;
-  }, [financialRecords, recurringSearch, recurringFreqFilter, recurringStatusFilter, recurringScopeFilter, financialCategories]);
+  }, [financialRecords, recurringSearch, recurringFreqFilter, recurringStatusFilter, recurringScopeFilter, financialCategories, forecastToday]);
 
-  // Summary KPIs for recurring overhead
+  // Summary KPIs for recurring overhead.
+  //
+  // Priced by summing `recurringCharges` over the next 12 months from today —
+  // the same calendar-accurate, history- and end-date-aware math the Overview
+  // Table already uses, so these cards can never disagree with the table for
+  // the same rules (see F17). Reads the *filtered* list, so the cards respect
+  // whatever is selected in the filter bar above them, the same as the list
+  // they sit above (see F18). `activeCount` is whether a rule still has any
+  // charge left in that forward window, not `status` — a rule whose
+  // `recurringEndDate` has already passed contributes 0 and is no longer
+  // "active", the same thing `isRecurringPaused` says for the row badge.
   const recurringMetrics = useMemo<{
     activeCount: number;
     pausedCount: number;
@@ -1631,53 +1726,59 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     totalMonthlyIncome: number;
     totalAnnualExpense: number;
     totalAnnualIncome: number;
-    nextUpcoming: { record: FinancialRecord; daysLeft: number; dateStr: string } | null;
+    nextUpcoming: { record: FinancialRecord; daysLeft: number; dateStr: string; amount: number } | null;
   }>(() => {
-    const allRecurring = financialRecords.filter((r) => r.isRecurring);
-    const activeRecurring = allRecurring.filter((r) => r.status !== "cancelled");
-    const activeExpenses = activeRecurring.filter((r) => r.type === "expense");
-    const activeIncomes = activeRecurring.filter((r) => r.type === "income");
+    const allRecurring = filteredRecurringRecords;
+    const rangeStart = forecastToday;
+    const rangeEnd = shiftIsoDate(forecastToday, 365);
 
-    const totalMonthlyExpense = activeExpenses.reduce((sum, r) => {
-      const amount = r.amountReal > 0 ? r.amountReal : r.amountPlanned;
-      return sum + getMonthlyEquivalent(amount, r.recurringFrequency);
-    }, 0);
+    let totalAnnualExpense = 0;
+    let totalAnnualIncome = 0;
+    let activeCount = 0;
 
-    const totalMonthlyIncome = activeIncomes.reduce((sum, r) => {
-      const amount = r.amountReal > 0 ? r.amountReal : r.amountPlanned;
-      return sum + getMonthlyEquivalent(amount, r.recurringFrequency);
-    }, 0);
+    allRecurring.forEach((r) => {
+      const total = recurringTotalInRange(r, rangeStart, rangeEnd);
+      if (total > 0) activeCount += 1;
+      if (r.type === "income") totalAnnualIncome += total;
+      else totalAnnualExpense += total;
+    });
 
-    const totalAnnualExpense = totalMonthlyExpense * 12;
-    const totalAnnualIncome = totalMonthlyIncome * 12;
-
-    // Find closest upcoming recurring charge
-    let nextUpcoming: { record: FinancialRecord; daysLeft: number; dateStr: string } | null = null;
-    activeExpenses.forEach((rec) => {
+    // Find the closest upcoming recurring charge across both expense AND
+    // income rules — priced at the amount that will actually be in force on
+    // that date (history-aware), not a real-first snapshot of today's fields.
+    let nextUpcoming: { record: FinancialRecord; daysLeft: number; dateStr: string; amount: number } | null = null;
+    allRecurring.forEach((rec) => {
       const next = getNextRecurringDueDate(rec);
       if (!next) return;
       if (!nextUpcoming || next.daysLeft < nextUpcoming.daysLeft) {
-        nextUpcoming = { record: rec, daysLeft: next.daysLeft, dateStr: next.dateStr };
+        nextUpcoming = {
+          record: rec,
+          daysLeft: next.daysLeft,
+          dateStr: next.dateStr,
+          amount: recurringPlannedAmountAt(rec, next.dateStr)
+        };
       }
     });
 
     return {
-      activeCount: activeRecurring.length,
-      pausedCount: allRecurring.length - activeRecurring.length,
-      totalMonthlyExpense,
-      totalMonthlyIncome,
+      activeCount,
+      pausedCount: allRecurring.length - activeCount,
+      totalMonthlyExpense: totalAnnualExpense / 12,
+      totalMonthlyIncome: totalAnnualIncome / 12,
       totalAnnualExpense,
       totalAnnualIncome,
       nextUpcoming
     };
-  }, [financialRecords]);
+  }, [filteredRecurringRecords, forecastToday]);
 
   // Quick seed standard overhead templates
   const handleQuickSeedRecurringExpenses = () => {
-    const rentCat = financialCategories.find(c => c.name.includes("Nájom") || c.name.includes("Rent") || c.name.includes("Office"))?.id || null;
-    const itCat = financialCategories.find(c => c.name.includes("Software") || c.name.includes("Hosting") || c.name.includes("IT"))?.id || null;
-    const salaryCat = financialCategories.find(c => c.name.includes("Mzdy") || c.name.includes("Salaries") || c.name.includes("Personnel"))?.id || null;
-    const accountCat = financialCategories.find(c => c.name.includes("Účtovníctvo") || c.name.includes("Accounting") || c.name.includes("Admin"))?.id || null;
+    // Every seeded record below is an expense, so a same-named income category
+    // (e.g. an income "Office services") must never win the match (see F24).
+    const rentCat = financialCategories.find(c => c.type === "expense" && (c.name.includes("Nájom") || c.name.includes("Rent") || c.name.includes("Office")))?.id || null;
+    const itCat = financialCategories.find(c => c.type === "expense" && (c.name.includes("Software") || c.name.includes("Hosting") || c.name.includes("IT")))?.id || null;
+    const salaryCat = financialCategories.find(c => c.type === "expense" && (c.name.includes("Mzdy") || c.name.includes("Salaries") || c.name.includes("Personnel")))?.id || null;
+    const accountCat = financialCategories.find(c => c.type === "expense" && (c.name.includes("Účtovníctvo") || c.name.includes("Accounting") || c.name.includes("Admin")))?.id || null;
 
     const templates: FinancialRecord[] = [
       {
@@ -1981,7 +2082,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     financialRecords.forEach((rec) => {
       if (rec.isRecurring) return;
 
-      const recDateStr = rec.paidDate || rec.dueDate || rec.issueDate;
+      // Cash basis, the same rule the ledger and the overview table use (see F3).
+      const recDateStr = overviewRecordDate(rec);
       if (!recDateStr) return;
 
       buckets.forEach((b) => {
@@ -2018,8 +2120,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     // us — see utils/recurringExpenses.ts.
     financialRecords.forEach((rec) => {
       if (!rec.isRecurring) return;
-      // A paused rule charges nothing, as the recurring tab's totals already assume.
-      if (rec.status === "cancelled") return;
+      // No `status === "cancelled"` guard here (see F2): a pause is an end
+      // date, and `recurringCharges` already stops charging past
+      // `recurringEndDate` on its own — gating on `status` too used to erase
+      // every already-elapsed charge the moment a rule was paused.
 
       const freq = rec.recurringFrequency || "monthly";
 
@@ -2600,7 +2704,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     setFormDueDate(rec.dueDate || "");
     setFormPaidDate(rec.paidDate || "");
     setFormPaymentMethod(rec.paymentMethod || "bank_transfer");
-    setFormScope(rec.projectId ? "project" : rec.clientId ? "client" : "global");
+    setFormScope(movementScope(rec));
     setFormProjectId(rec.projectId || "");
     setFormClientId(rec.clientId || "");
     setFormInvoiceNumber(rec.invoiceNumber || "");
@@ -2846,7 +2950,11 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     let parentLevel = 1;
     if (newCatParentId) {
       const parent = financialCategories.find((c) => c.id === newCatParentId);
-      if (parent) {
+      // A parent from the other side of the ledger (stale selection left over
+      // from the Expense/Income switcher, see F1) is treated the same as no
+      // parent found at all — the new category is created as a root of its
+      // own type instead of silently nesting under the wrong section.
+      if (parent && parent.type === catTreeType) {
         parentLevel = parent.level + 1;
       }
     }
@@ -3105,6 +3213,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           <input
             type="text"
             required
+            maxLength={255}
             value={formTitle}
             onChange={(e) => setFormTitle(e.target.value)}
             placeholder={formType === "income" ? t("e.g. Countertop supply & installation", "napr. Dodávka a montáž kuchynskej linky", "pl. Konyhapult szállítása és beépítése") : t("e.g. Material purchase, Office rent...", "napr. Nákup materiálu, Nájom skladu...", "pl. Anyagbeszerzés, Irodabérlet...")}
@@ -4717,7 +4826,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                     <td className="w-[320px] min-w-[320px] max-w-[320px] py-3 px-4 sticky left-0 bg-rose-100  z-20 text-rose-800  border-r-2 border-rose-300  shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
                       <div className="flex items-center gap-2 whitespace-nowrap">
                         <ArrowDownRight className="h-4 w-4 text-rose-600 shrink-0" />
-                        <span>{t("Total Expenses", "Výdavky spolu", "Összes kiadás")}</span>
+                        <span>{t("Total Expenses", "Výdavky spolu", "Összes kiadás")}{tableSearchTotalSuffix}</span>
                       </div>
                     </td>
                     {overviewTableData.columns.map((col) => {
@@ -4766,7 +4875,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                     <td className="w-[320px] min-w-[320px] max-w-[320px] py-3 px-4 sticky left-0 bg-emerald-100  z-20 text-emerald-800  border-r-2 border-emerald-300  shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
                       <div className="flex items-center gap-2 whitespace-nowrap">
                         <ArrowUpRight className="h-4 w-4 text-emerald-600 shrink-0" />
-                        <span>{t("Total Incomes", "Príjmy spolu", "Összes bevétel")}</span>
+                        <span>{t("Total Incomes", "Príjmy spolu", "Összes bevétel")}{tableSearchTotalSuffix}</span>
                       </div>
                     </td>
                     {overviewTableData.columns.map((col) => {
@@ -4800,7 +4909,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                     <td className="w-[320px] min-w-[320px] max-w-[320px] py-3 px-4 sticky left-0 bg-purple-50  z-20 text-purple-900  border-r-2 border-purple-300  shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
                       <div className="flex items-center gap-2 whitespace-nowrap">
                         <Coins className="h-4 w-4 text-purple-600 shrink-0" />
-                        <span>{t("Net Cash Flow (Diff = Income − Expense)", "Čistý rozdiel (Príjmy − Výdavky)", "Nettó eredmény (Bevétel − Kiadás)")}</span>
+                        <span>{t("Net Cash Flow (Diff = Income − Expense)", "Čistý rozdiel (Príjmy − Výdavky)", "Nettó eredmény (Bevétel − Kiadás)")}{tableSearchTotalSuffix}</span>
                       </div>
                     </td>
                     {overviewTableData.columns.map((col) => {
@@ -4846,36 +4955,53 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 </div>
 
                 {/* Live Total KPI Pills */}
-                <div className="flex items-center gap-2 text-xs font-bold">
-                  <span className="px-2.5 py-1 rounded-xl bg-emerald-50  text-emerald-700  border border-emerald-200 ">
-                    {t("Incomes:", "Príjmy:", "Bevételek:")} +{money(movementsSummary.income)}
-                  </span>
-                  <span className="px-2.5 py-1 rounded-xl bg-rose-50  text-rose-700  border border-rose-200 ">
-                    {t("Expenses:", "Výdavky:", "Kiadások:")} -{money(movementsSummary.expense)}
-                  </span>
-                  <span className={`px-2.5 py-1 rounded-xl border ${
-                    movementsSummary.net >= 0
-                      ? "bg-purple-50  text-purple-700  border-purple-200 "
-                      : "bg-rose-50  text-rose-700  border-rose-200 "
-                  }`}>
-                    {t("Net:", "Čistý rozdiel:", "Nettó:")} {movementsSummary.net >= 0 ? "+" : ""}{money(movementsSummary.net)}
-                  </span>
-
-                  {/* The forecast is kept in its own pill: it is not money in the account. */}
-                  {movementsSummary.forecastCount > 0 && (
-                    <span
-                      className="px-2.5 py-1 rounded-xl bg-violet-50  text-violet-700  border border-dashed border-violet-300  flex items-center gap-1.5"
-                      title={t(
-                        "Expected, not settled — this is not counted in the totals on the left",
-                        "Očakávané, neuhradené — nie je započítané v sumách vľavo",
-                        "Várható, nem teljesült — a bal oldali összegek ezt nem tartalmazzák"
-                      )}
-                    >
-                      <Telescope className="h-3.5 w-3.5" />
-                      {t("Expected net:", "Očakávaný rozdiel:", "Várható nettó:")}{" "}
-                      {movementsSummary.expectedNet >= 0 ? "+" : ""}{money(movementsSummary.expectedNet)}
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2 text-xs font-bold">
+                    <span className="px-2.5 py-1 rounded-xl bg-emerald-50  text-emerald-700  border border-emerald-200 ">
+                      {t("Incomes:", "Príjmy:", "Bevételek:")} +{money(movementsSummary.income)}
                     </span>
-                  )}
+                    <span className="px-2.5 py-1 rounded-xl bg-rose-50  text-rose-700  border border-rose-200 ">
+                      {t("Expenses:", "Výdavky:", "Kiadások:")} -{money(movementsSummary.expense)}
+                    </span>
+                    <span className={`px-2.5 py-1 rounded-xl border ${
+                      movementsSummary.net >= 0
+                        ? "bg-purple-50  text-purple-700  border-purple-200 "
+                        : "bg-rose-50  text-rose-700  border-rose-200 "
+                    }`}>
+                      {t("Net:", "Čistý rozdiel:", "Nettó:")} {movementsSummary.net >= 0 ? "+" : ""}{money(movementsSummary.net)}
+                    </span>
+
+                    {/* The forecast is kept in its own pill: it is not money in the account. */}
+                    {movementsSummary.forecastCount > 0 && (
+                      <span
+                        className="px-2.5 py-1 rounded-xl bg-violet-50  text-violet-700  border border-dashed border-violet-300  flex items-center gap-1.5"
+                        title={t(
+                          "Expected, not settled — this is not counted in the totals on the left",
+                          "Očakávané, neuhradené — nie je započítané v sumách vľavo",
+                          "Várható, nem teljesült — a bal oldali összegek ezt nem tartalmazzák"
+                        )}
+                      >
+                        <Telescope className="h-3.5 w-3.5" />
+                        {t("Expected net:", "Očakávaný rozdiel:", "Várható nettó:")}{" "}
+                        {movementsSummary.expectedNet >= 0 ? "+" : ""}{money(movementsSummary.expectedNet)}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Settled vs still-expected within the totals above, so "Incomes: +X"
+                      is never mistaken for money that has actually arrived (see F4). */}
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-0.5 text-[10px] font-semibold text-slate-400">
+                    <span>
+                      {t("Income:", "Príjmy:", "Bevételek:")} +{money(movementsSummary.incomeReal)}{" "}
+                      {t("settled", "skutočnosť", "tény")} · +{money(movementsSummary.incomeEstimated)}{" "}
+                      {t("expected", "plán", "terv")}
+                    </span>
+                    <span>
+                      {t("Expense:", "Výdavky:", "Kiadások:")} -{money(movementsSummary.expenseReal)}{" "}
+                      {t("settled", "skutočnosť", "tény")} · -{money(movementsSummary.expenseEstimated)}{" "}
+                      {t("expected", "plán", "terv")}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -5321,11 +5447,21 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                   <div className="flex flex-wrap items-center gap-3 text-xs font-black">
                                     {settledInGroup > 0 && (
                                       <>
-                                        <span className="text-emerald-700 ">
-                                          +{money(group.totalIncome)}
+                                        <span className="text-emerald-700  flex flex-col items-end leading-tight">
+                                          <span>+{money(group.totalIncome)}</span>
+                                          {group.incomeEstimated !== 0 && (
+                                            <span className="text-[9px] font-semibold text-emerald-500/80">
+                                              est: +{money(group.incomeEstimated)}
+                                            </span>
+                                          )}
                                         </span>
-                                        <span className="text-rose-700 ">
-                                          -{money(group.totalExpense)}
+                                        <span className="text-rose-700  flex flex-col items-end leading-tight">
+                                          <span>-{money(group.totalExpense)}</span>
+                                          {group.expenseEstimated !== 0 && (
+                                            <span className="text-[9px] font-semibold text-rose-500/80">
+                                              est: -{money(group.expenseEstimated)}
+                                            </span>
+                                          )}
                                         </span>
                                         <span className={`px-2 py-0.5 rounded-lg border ${
                                           group.net >= 0
@@ -5534,7 +5670,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                               const catBreadcrumbs = getCategoryBreadcrumbs(rec.categoryId);
                               const rootCat = catBreadcrumbs[0];
                               const isExpense = rec.type === "expense";
-                              const amount = rec.amountReal > 0 ? rec.amountReal : rec.amountPlanned;
+                              // Whole value real + estimated (see F4); the settled/expected
+                              // split is shown separately below as the "est:" subtitle.
+                              const { real: amountReal, estimated: amountEstimated } = splitRecordAmounts(rec);
+                              const amount = amountReal + amountEstimated;
 
                               return (
                                 <tr
@@ -5692,10 +5831,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                       )}
                                     </div>
 
-                                    {/* Estimated amount subtitle if different from real */}
-                                    {rec.amountPlanned !== rec.amountReal && rec.amountReal > 0 && (
+                                    {/* Estimated amount subtitle — the still-outstanding part, same rule as splitRecordAmounts */}
+                                    {amountEstimated !== 0 && (
                                       <div className="text-[10px] text-slate-400 mt-0.5">
-                                        est: {money(rec.amountPlanned)}
+                                        est: {money(amountEstimated)}
                                       </div>
                                     )}
                                   </td>
@@ -5769,7 +5908,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       {activeTab === "recurring" && (
         <div className="space-y-4 animate-in fade-in duration-200">
           {/* TOP METRIC CARDS */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
             {/* Card 1: Monthly Recurring Commitment */}
             <div className="p-4 rounded-3xl bg-white  border border-slate-200/80  shadow-sm flex items-center gap-3.5">
               <div className="p-3 rounded-2xl bg-rose-50  text-rose-600 ">
@@ -5797,6 +5936,38 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 </div>
                 <div className="text-lg font-black text-slate-900 ">
                   -{money(recurringMetrics.totalAnnualExpense)}
+                  <span className="text-xs font-semibold text-slate-400 ml-1">/ {t("yr", "rok", "év")}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Card 1b: Monthly Recurring Income */}
+            <div className="p-4 rounded-3xl bg-white  border border-slate-200/80  shadow-sm flex items-center gap-3.5">
+              <div className="p-3 rounded-2xl bg-emerald-50  text-emerald-600 ">
+                <TrendingUp className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  {t("Monthly Recurring Income", "Mesačný pravidelný príjem", "Havi rendszeres bevétel")}
+                </div>
+                <div className="text-lg font-black text-emerald-600 ">
+                  +{money(recurringMetrics.totalMonthlyIncome)}
+                  <span className="text-xs font-semibold text-slate-400 ml-1">/ {t("mo", "mes", "hó")}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Card 2b: Annual Recurring Income Projection */}
+            <div className="p-4 rounded-3xl bg-white  border border-slate-200/80  shadow-sm flex items-center gap-3.5">
+              <div className="p-3 rounded-2xl bg-emerald-50  text-emerald-600 ">
+                <Calendar className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  {t("Annual Recurring Income Projection", "Ročný projektovaný príjem", "Éves tervezett bevétel")}
+                </div>
+                <div className="text-lg font-black text-slate-900 ">
+                  +{money(recurringMetrics.totalAnnualIncome)}
                   <span className="text-xs font-semibold text-slate-400 ml-1">/ {t("yr", "rok", "év")}</span>
                 </div>
               </div>
@@ -5838,8 +6009,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   }
                   return (
                     <div className="text-xs font-bold text-slate-900  truncate">
-                      <span className="text-rose-600  font-black">
-                        {money(upcoming.record.amountReal || upcoming.record.amountPlanned)}
+                      <span className={`font-black ${upcoming.record.type === "income" ? "text-emerald-600 " : "text-rose-600 "}`}>
+                        {upcoming.record.type === "income" ? "+" : "-"}{money(upcoming.amount)}
                       </span>{" "}
                       – {upcoming.record.title}{" "}
                       <span className="text-[10px] text-amber-600  font-semibold">
@@ -6021,7 +6192,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                       const client = leads.find((l) => l.id === rec.clientId || l.id === project?.clientId || l.id === project?.leadId);
                       const catBreadcrumbs = getCategoryBreadcrumbs(rec.categoryId);
                       const rootCat = catBreadcrumbs[0];
-                      const isPaused = rec.status === "cancelled";
+                      const isPaused = isRecurringPaused(rec);
                       const amount = rec.amountReal > 0 ? rec.amountReal : rec.amountPlanned;
                       const monthlyCost = getMonthlyEquivalent(amount, rec.recurringFrequency);
                       const nextCharge = getNextRecurringDueDate(rec);
@@ -6258,7 +6429,15 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             {/* Incomes vs Expenses tree switcher */}
             <div className="flex items-center gap-2 bg-slate-100  p-1 rounded-2xl">
               <button
-                onClick={() => setCatTreeType("expense")}
+                onClick={() => {
+                  // A parent id from the tree just left behind must not survive
+                  // the switch — it would be silently invisible in the "Parent
+                  // Category" select (its option belongs to the other type) while
+                  // still being submitted, putting the new category's money on
+                  // the wrong side of the ledger (see F1).
+                  setCatTreeType("expense");
+                  setNewCatParentId("");
+                }}
                 className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   catTreeType === "expense" ? "bg-white  text-rose-600 shadow-sm" : "text-slate-500"
                 }`}
@@ -6266,7 +6445,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 {t("Expense Categories", "Kategórie výdavkov", "Kiadási kategóriák")}
               </button>
               <button
-                onClick={() => setCatTreeType("income")}
+                onClick={() => {
+                  setCatTreeType("income");
+                  setNewCatParentId("");
+                }}
                 className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   catTreeType === "income" ? "bg-white  text-emerald-600 shadow-sm" : "text-slate-500"
                 }`}
@@ -6284,6 +6466,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               </label>
               <input
                 type="text"
+                maxLength={150}
                 value={newCatName}
                 onChange={(e) => setNewCatName(e.target.value)}
                 placeholder={t("e.g. Meta Ads, Truck Transport, LAM 5+...", "napr. Meta Ads, Preprava, LAM 5+...", "pl. Google Ads, Szállítás...")}

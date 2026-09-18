@@ -23,9 +23,17 @@ export const iconForCategoryLevel = (level: number): string =>
 
 const indexById = (cats: FinancialCategory[]) => new Map(cats.map((c) => [c.id, c]));
 
-/** A parent that no longer exists is treated as no parent, so the row stays visible at the root. */
-export const effectiveParentId = (cat: FinancialCategory, byId: Map<string, FinancialCategory>): string | null =>
-  cat.parentId && byId.has(cat.parentId) ? cat.parentId : null;
+/**
+ * A parent that no longer exists, points at itself, or belongs to the other
+ * side of the ledger (income parented under an expense category or vice
+ * versa) is treated as no parent, so the row stays visible at the root of its
+ * own section instead of silently pulling its money onto the other side.
+ */
+export const effectiveParentId = (cat: FinancialCategory, byId: Map<string, FinancialCategory>): string | null => {
+  if (!cat.parentId || cat.parentId === cat.id) return null;
+  const parent = byId.get(cat.parentId);
+  return parent && parent.type === cat.type ? cat.parentId : null;
+};
 
 /**
  * The children of `parentId` (null = main categories) in display order.
@@ -51,6 +59,29 @@ export function nextCategorySortOrder(
 ): number {
   const siblings = categoryChildren(cats, type, parentId);
   return siblings.length ? Math.max(...siblings.map((c) => c.sortOrder ?? 0)) + 1 : 0;
+}
+
+/**
+ * The path from the root down to `catId`, inclusive, guarded against a
+ * cyclic `parentId` chain (which would otherwise grow the path without bound
+ * and freeze or crash whatever renders it). Returns `[]` if `catId` does not
+ * exist.
+ */
+export function categoryBreadcrumbs(cats: FinancialCategory[], catId: string): FinancialCategory[] {
+  const byId = indexById(cats);
+  const start = byId.get(catId);
+  if (!start) return [];
+  const path = [start];
+  const seen = new Set<string>([start.id]);
+  let current = start;
+  for (;;) {
+    const parentId = effectiveParentId(current, byId);
+    if (parentId === null || seen.has(parentId)) return path;
+    const parent = byId.get(parentId)!;
+    path.unshift(parent);
+    seen.add(parent.id);
+    current = parent;
+  }
 }
 
 /** Every id below `id`, not including `id` itself. */
