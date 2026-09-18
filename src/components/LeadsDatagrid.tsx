@@ -3521,9 +3521,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         setEditingRowId(null);
     };
 
-    // Delete lead
-    const handleDeleteLead = (id: string, name: string) => {
-        if (!canDelete) return;
+    // Delete lead — returns true when the user confirmed and it was removed
+    const handleDeleteLead = (id: string, name: string): boolean => {
+        if (!canDelete) return false;
         if (
             confirm(
                 systemLanguage === "sk"
@@ -3535,7 +3535,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         ) {
             setLeads((prev) => prev.filter((l) => l.id !== id));
             if (editingRowId === id) setEditingRowId(null);
+            return true;
         }
+        return false;
     };
 
     /**
@@ -4290,80 +4292,37 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
         return (
             <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
-                {/* Back header */}
-                <div className="flex items-center justify-between gap-4 flex-wrap">
-                    <button
-                        onClick={() => {
-                            window.location.hash = "leads";
-                        }}
-                        className="h-12 shrink-0 px-4.5 rounded-2xl bg-white border-2 border-slate-300 text-slate-700 hover:text-slate-950 hover:border-slate-800 transition-all text-xs font-extrabold uppercase tracking-wider leading-tight flex items-center gap-2 shadow-sm"
-                    >
-                        <ArrowLeft className="h-4.5 w-4.5 stroke-[2.5] shrink-0" />{" "}
-                        {getTranslation(systemLanguage, "common.back_to_leads")}
-                    </button>
-                    {readOnlyNotice}
+                {/* Header: back on the left, value + actions on the right.
+                    Every control shares one height, radius and border weight. */}
+                <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-3 flex-wrap min-w-0">
+                        <button
+                            onClick={() => {
+                                window.location.hash = "leads";
+                            }}
+                            className="h-11 shrink-0 px-4 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300 hover:bg-slate-50 active:scale-[0.98] transition-all text-xs font-bold uppercase tracking-wider flex items-center gap-2 shadow-sm cursor-pointer"
+                        >
+                            <ArrowLeft className="h-4 w-4 stroke-[2.5] shrink-0" />
+                            {getTranslation(systemLanguage, "common.back_to_leads")}
+                        </button>
+                        {readOnlyNotice}
+                    </div>
 
-                    <div className="flex flex-1 min-w-0 items-center justify-end gap-3 flex-wrap">
-                        {/* AI Summary Purple Card */}
-                        {!isOpenAiConfigured && !localSummary ? (
-                            <div className="flex min-w-0 items-center gap-2.5 bg-purple-50/50 border border-purple-200 p-2.5 px-3.5 rounded-2xl max-w-md text-xs font-bold text-purple-800 shadow-sm">
-                                <Brain className="h-5 w-5 text-purple-400 shrink-0" />
-                                <span className="text-[10px] text-purple-600 italic">
-                                    {systemLanguage === "sk"
-                                        ? "AI zhrnutie nie je k dispozícii. Nastavte OpenAI kľúč v nastaveniach."
-                                        : systemLanguage === "hu"
-                                          ? "Az AI összefoglaló nem érhető el. Állítsa be az OpenAI kulcsot a beállításokban."
-                                          : "AI summary unavailable. Configure OpenAI Key in settings."}
+                    <div className="flex items-center justify-end gap-2.5 flex-wrap">
+                            <div className="h-11 inline-flex items-center gap-2 px-4 rounded-xl bg-white border border-slate-200 shadow-sm whitespace-nowrap">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                    {getTranslation(
+                                        systemLanguage,
+                                        "common.lead_value",
+                                    )}
+                                </span>
+                                <span className="text-sm font-black text-slate-900 tabular-nums">
+                                    {money(activeLead.value, {
+                                        minimumFractionDigits: 2,
+                                    })}
                                 </span>
                             </div>
-                        ) : localSummary || isGeneratingSummary ? (
-                            <div className="flex min-w-0 items-center gap-2.5 bg-purple-50 border-2 border-purple-200 p-2.5 px-3.5 rounded-2xl max-w-xl text-xs font-bold text-purple-900 shadow-sm hover:shadow-md transition-all animate-fade-in">
-                                <Brain
-                                    className={`h-5 w-5 text-purple-600 shrink-0 ${isGeneratingSummary ? "animate-pulse" : ""}`}
-                                />
-                                <div>
-                                    {isGeneratingSummary && !localSummary ? (
-                                        <span className="text-[10px] text-purple-600 italic animate-pulse flex items-center gap-1.5">
-                                            <Loader2 className="h-3 w-3 animate-spin text-purple-600" />
-                                            {systemLanguage === "sk"
-                                                ? "Generuje sa AI zhrnutie..."
-                                                : systemLanguage === "hu"
-                                                  ? "AI összefoglaló generálása..."
-                                                  : "Generating AI summary..."}
-                                        </span>
-                                    ) : (
-                                        <p className="leading-relaxed text-[11px] font-semibold">
-                                            {localSummary}
-                                            {isGeneratingSummary && (
-                                                <span className="ml-1 text-[9px] text-purple-500 animate-pulse">
-                                                    (
-                                                    {systemLanguage === "sk"
-                                                        ? "Aktualizuje sa..."
-                                                        : systemLanguage ===
-                                                            "hu"
-                                                          ? "Frissítés..."
-                                                          : "Updating..."}
-                                                    )
-                                                </span>
-                                            )}
-                                        </p>
-                                    )}
-                                </div>
-                            </div>
-                        ) : null}
-
-                        {/* Lead value + Convert button — wrap together, value first */}
-                        <div className="flex items-center justify-end gap-3 flex-wrap">
-                            <span className="h-12 inline-flex items-center text-xs font-black uppercase tracking-widest text-blue-800 bg-blue-100 border-2 border-blue-300 px-4 rounded-2xl shadow-inner whitespace-nowrap">
-                                {getTranslation(
-                                    systemLanguage,
-                                    "common.lead_value",
-                                )}
-                                :{" "}
-                                {money(activeLead.value, {
-                                    minimumFractionDigits: 2,
-                                })}
-                            </span>
 
                             {/* Convert to Project Button */}
                             {canEdit &&
@@ -4378,7 +4337,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 !isConvertDropdownOpen,
                                             )
                                         }
-                                        className="h-12 px-4.5 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs uppercase tracking-wider leading-tight flex items-center gap-1.5 shadow-md shadow-purple-600/10 cursor-pointer"
+                                        className="h-11 px-4 rounded-xl bg-purple-600 hover:bg-purple-700 active:scale-[0.98] transition-all text-white font-bold text-xs uppercase tracking-wider flex items-center gap-2 shadow-sm shadow-purple-600/20 cursor-pointer"
                                     >
                                         <Briefcase className="h-4.5 w-4.5" />
                                         <span>
@@ -4424,8 +4383,80 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     )}
                                 </div>
                             )}
-                        </div>
+
+                            {canDelete && (
+                                <button
+                                    onClick={() => {
+                                        if (
+                                            handleDeleteLead(
+                                                activeLead.id,
+                                                activeLead.name,
+                                            )
+                                        ) {
+                                            window.location.hash = "leads";
+                                        }
+                                    }}
+                                    className="h-11 w-11 shrink-0 rounded-xl bg-white border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 active:scale-95 transition-all flex items-center justify-center shadow-sm cursor-pointer"
+                                    title={t(
+                                        "Delete Lead",
+                                        "Odstrániť lead",
+                                        "Lead törlése",
+                                    )}
+                                    aria-label={t(
+                                        "Delete Lead",
+                                        "Odstrániť lead",
+                                        "Lead törlése",
+                                    )}
+                                >
+                                    <Trash2 className="h-4 w-4" />
+                                </button>
+                            )}
                     </div>
+                </div>
+
+                {/* AI summary — its own full-width strip, so a long summary
+                    never stretches the button row */}
+                {!isOpenAiConfigured && !localSummary ? (
+                    <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-purple-50/50 border border-purple-100 text-[11px] font-medium italic text-purple-600">
+                        <Brain className="h-4 w-4 text-purple-400 shrink-0" />
+                        {systemLanguage === "sk"
+                            ? "AI zhrnutie nie je k dispozícii. Nastavte OpenAI kľúč v nastaveniach."
+                            : systemLanguage === "hu"
+                              ? "Az AI összefoglaló nem érhető el. Állítsa be az OpenAI kulcsot a beállításokban."
+                              : "AI summary unavailable. Configure OpenAI Key in settings."}
+                    </div>
+                ) : localSummary || isGeneratingSummary ? (
+                    <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-purple-50/70 border border-purple-200 text-purple-950 animate-fade-in">
+                        <Brain
+                            className={`h-4.5 w-4.5 mt-px text-purple-600 shrink-0 ${isGeneratingSummary ? "animate-pulse" : ""}`}
+                        />
+                        {isGeneratingSummary && !localSummary ? (
+                            <span className="text-xs text-purple-600 italic animate-pulse flex items-center gap-1.5">
+                                <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-600" />
+                                {systemLanguage === "sk"
+                                    ? "Generuje sa AI zhrnutie..."
+                                    : systemLanguage === "hu"
+                                      ? "AI összefoglaló generálása..."
+                                      : "Generating AI summary..."}
+                            </span>
+                        ) : (
+                            <p className="text-xs leading-relaxed font-medium">
+                                {localSummary}
+                                {isGeneratingSummary && (
+                                    <span className="ml-1.5 text-[10px] text-purple-500 animate-pulse">
+                                        (
+                                        {systemLanguage === "sk"
+                                            ? "Aktualizuje sa..."
+                                            : systemLanguage === "hu"
+                                              ? "Frissítés..."
+                                              : "Updating..."}
+                                        )
+                                    </span>
+                                )}
+                            </p>
+                        )}
+                    </div>
+                ) : null}
                 </div>
 
                 {/* Master Dual-Panel Dashboard Grid */}

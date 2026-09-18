@@ -1,0 +1,1 @@
+function e(e,t){return{...e||{},...t,updatedAt:new Date().toISOString()}}function t(e,t){return t===`paid`?e?.paidDate||new Date().toISOString().slice(0,10):e?.paidDate??null}var n=[`planned`,`pending`,`partially_paid`,`paid`,`overdue`,`cancelled`];export{t as n,e as r,n as t};
