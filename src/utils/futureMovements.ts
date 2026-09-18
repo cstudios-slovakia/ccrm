@@ -166,9 +166,13 @@ export function projectFutureMovements(
  * the ledger has to stop drawing it on the day it was issued — otherwise the
  * same invoice is counted in August and again in October.
  *
- * Two kinds are never claimed. A recurring rule is not: the rule row is the
- * rule, and its charges are extra rows beside it. Neither is a movement that
- * has *already* been paid in part — the 4 000 € received against a 9 200 €
+ * A recurring rule is claimed only when one of its charges lands on the rule's
+ * own ledger day — a rule starting on 1 October is itself the October charge,
+ * and drawing both would show that one payment twice. A rule that started
+ * earlier keeps its row; its later charges are extra rows beside it.
+ *
+ * A movement that
+ * has *already* been paid in part is never claimed — the 4 000 € received against a 9 200 €
  * invoice is money in the bank, and it belongs on the day it arrived. Only the
  * outstanding 5 200 € moves forward, so both halves stay visible and neither is
  * counted twice.
@@ -176,8 +180,8 @@ export function projectFutureMovements(
 export function claimedRecordIds(movements: FutureMovement[]): Set<string> {
   const ids = new Set<string>();
   movements.forEach((m) => {
-    if (m.source === "recurring") return;
     if (splitRecordAmounts(m.record).real > 0) return;
+    if (m.source === "recurring" && m.date !== (m.record.paidDate || m.record.issueDate)) return;
     ids.add(m.record.id);
   });
   return ids;

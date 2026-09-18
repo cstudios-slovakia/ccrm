@@ -246,6 +246,29 @@ test("the forecast claims the invoices it moved forward, but never a recurring r
   assert.ok(!claimed.has("rent"));
 });
 
+test("a rule that starts in the future is its own first charge — claimed, not drawn twice", () => {
+  const upcoming = rule({
+    id: "pausal",
+    type: "income",
+    issueDate: "2026-10-01",
+    dueDate: "2026-10-10",
+    recurringStartDate: "2026-10-01",
+    recurringConfig: { monthlyType: "day_of_month", dayOfMonth: 1 }
+  });
+  const running = rule({ id: "rent" });
+
+  const out = projectFutureMovements([upcoming, running], "2026-09-18", "2026-10-17");
+
+  assert.deepEqual(
+    out.filter((m) => m.record.id === "pausal").map((m) => m.date),
+    ["2026-10-01"]
+  );
+  const claimed = claimedRecordIds(out);
+  assert.ok(claimed.has("pausal"));
+  // A rule that started months ago keeps its row; its charges sit beside it.
+  assert.ok(!claimed.has("rent"));
+});
+
 test("a part-paid invoice is not claimed — the money already received stays where it arrived", () => {
   const partial = rec({
     id: "fa2",
