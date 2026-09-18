@@ -154,6 +154,40 @@ export const BigNumber: React.FC<{ children: React.ReactNode; className?: string
 );
 
 /** The hairline-topped strip under a table: count on the left, total on the right. */
+/**
+ * How many rows a table body shows: at least `min`, and as many more as fit
+ * when the card is stretched taller by its neighbours in the grid.
+ *
+ * Spread `bodyProps` on the body's outer element and put the rows in an
+ * absolutely positioned layer inside it (`FILL_ROWS_LAYER`), so the rows never
+ * push the card taller themselves: the card's height comes from `min` (or less,
+ * when there is less data than that) and from the grid row, and rows fill it.
+ */
+export const useFillRows = (min: number, available: number, rowHeight: number) => {
+  const [node, setNode] = React.useState<HTMLDivElement | null>(null);
+  const [fit, setFit] = React.useState(min);
+
+  React.useLayoutEffect(() => {
+    if (!node) return;
+    const measure = () => setFit(Math.floor(node.clientHeight / rowHeight));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [node, rowHeight]);
+
+  return {
+    count: Math.min(available, Math.max(min, fit)),
+    bodyProps: {
+      ref: setNode,
+      className: "relative flex-1 overflow-hidden",
+      style: { minHeight: Math.min(min, available) * rowHeight }
+    }
+  };
+};
+
+export const FILL_ROWS_LAYER = "absolute inset-x-0 top-0 flex flex-col";
+
 export const CardFooter: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <div className="flex items-center justify-between border-t border-slate-100 px-3 pt-3 pb-1 shrink-0">
     {children}

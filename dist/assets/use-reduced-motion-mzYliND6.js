@@ -1,0 +1,1 @@
+import{$a as e,Ft as t,Nt as n,Pt as r,eo as i}from"./index-DARDUj_M.js";var a=i(e(),1);function o(){!r.current&&n();let[e]=(0,a.useState)(t.current);return e}export{o as t};

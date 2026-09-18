@@ -340,7 +340,8 @@ export const WidgetSettingsDrawer: React.FC<{
                   }
                 />
               </Field>
-              <Field label={t("Rows", "Riadkov", "Sorok")}>
+              {/* A minimum: the table shows more when its card is stretched taller. */}
+              <Field label={t("Min. rows", "Min. riadkov", "Min. sorok")}>
                 <SegmentedToggle
                   large
                   value={String(settings.rows ?? 5)}

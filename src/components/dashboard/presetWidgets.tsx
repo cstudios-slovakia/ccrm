@@ -13,6 +13,7 @@
  */
 
 import React from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Building2, Plus, User } from "lucide-react";
 import { cn } from "../../utils/cn";
 import { formatDateLocalized, todayLocal } from "../../utils/localTime";
@@ -25,6 +26,7 @@ import {
   BigNumber,
   CardFooter,
   EmptyWidgetRows,
+  FILL_ROWS_LAYER,
   MoreLink,
   PersonPill,
   SegmentBar,
@@ -34,6 +36,7 @@ import {
   colorForStatus,
   initialsOf,
   labelForStatus,
+  useFillRows,
   type Translate
 } from "./widgetKit";
 
@@ -196,6 +199,12 @@ const clientTypeLabel = (row: any, t: Translate): string => {
   return t("Person", "Osoba", "Személy");
 };
 
+/** Every table row is this tall; `useFillRows` counts how many fit in it. */
+const TABLE_ROW_HEIGHT = 60;
+
+/** Rows leaving/entering/reordering on a toggle animate rather than snap. */
+const ROW_EASE = [0.4, 0, 0.2, 1] as const;
+
 export const LeadsTableWidget: React.FC<PresetWidgetProps> = ({
   widget,
   data,
@@ -205,11 +214,15 @@ export const LeadsTableWidget: React.FC<PresetWidgetProps> = ({
   onView,
   settings
 }) => {
+  const reduceMotion = useReducedMotion();
+  const rowTransition = { duration: reduceMotion ? 0 : 0.25, ease: ROW_EASE };
   const list = rows(data);
   const columns = visibleColumnsOf({ ...widget, settings });
   const template = columns.map((key) => LEAD_COLUMN_WIDTH[key] || "120px").join(" ");
+  const fill = useFillRows(num(settings.rows) || 5, list.length, TABLE_ROW_HEIGHT);
+  const shown = list.slice(0, fill.count);
   const total = num(list[0]?.total_count) || list.length;
-  const shownValue = list.reduce((sum, row) => sum + num(row?.value), 0);
+  const shownValue = shown.reduce((sum, row) => sum + num(row?.value), 0);
 
   const cell = (key: string, row: any) => {
     switch (key) {
@@ -331,29 +344,40 @@ export const LeadsTableWidget: React.FC<PresetWidgetProps> = ({
                 </span>
               ))}
             </div>
-            {list.map((row, index) => (
-              <a
-                key={row?.id ?? index}
-                href={row?.id ? `#lead-${row.id}` : "#leads"}
-                onClick={(e) => {
-                  e.preventDefault();
-                  ctx.navigate(row?.id ? `lead-${row.id}` : "leads");
-                }}
-                className="grid items-center h-[60px] px-3 gap-x-4 border-t border-slate-100 text-inherit hover:bg-slate-50 transition-colors"
-                style={{ gridTemplateColumns: template }}
-              >
-                {columns.map((key) => (
-                  <React.Fragment key={key}>{cell(key, row)}</React.Fragment>
-                ))}
-              </a>
-            ))}
+            <div {...fill.bodyProps}>
+              <div className={FILL_ROWS_LAYER}>
+                <AnimatePresence initial={false} mode="popLayout">
+                  {shown.map((row, index) => (
+                    <motion.a
+                      key={row?.id ?? index}
+                      layout
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={rowTransition}
+                      href={row?.id ? `#lead-${row.id}` : "#leads"}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        ctx.navigate(row?.id ? `lead-${row.id}` : "leads");
+                      }}
+                      className="grid items-center h-[60px] px-3 gap-x-4 border-t border-slate-100 text-inherit hover:bg-slate-50 transition-colors"
+                      style={{ gridTemplateColumns: template }}
+                    >
+                      {columns.map((key) => (
+                        <React.Fragment key={key}>{cell(key, row)}</React.Fragment>
+                      ))}
+                    </motion.a>
+                  ))}
+                </AnimatePresence>
+              </div>
+            </div>
           </div>
           <CardFooter>
             <span className="text-xs font-semibold text-slate-500">
               {ctx.t(
-                `${list.length} of ${total} leads`,
-                `${list.length} z ${total} leadov`,
-                `${list.length} / ${total} lead`
+                `${shown.length} of ${total} leads`,
+                `${shown.length} z ${total} leadov`,
+                `${shown.length} / ${total} lead`
               )}
             </span>
             <span
@@ -405,9 +429,13 @@ export const TasksTableWidget: React.FC<PresetWidgetProps> = ({
   onView,
   settings
 }) => {
+  const reduceMotion = useReducedMotion();
+  const rowTransition = { duration: reduceMotion ? 0 : 0.25, ease: ROW_EASE };
   const list = rows(data);
   const columns = visibleColumnsOf({ ...widget, settings });
   const template = columns.map((key) => TASK_COLUMN_WIDTH[key] || "120px").join(" ");
+  const fill = useFillRows(num(settings.rows) || 5, list.length, TABLE_ROW_HEIGHT);
+  const shown = list.slice(0, fill.count);
   const total = num(list[0]?.total_count) || list.length;
   const today = todayLocal();
 
@@ -517,29 +545,40 @@ export const TasksTableWidget: React.FC<PresetWidgetProps> = ({
                 </span>
               ))}
             </div>
-            {list.map((row, index) => (
-              <a
-                key={row?.id ?? index}
-                href="#tasks"
-                onClick={(e) => {
-                  e.preventDefault();
-                  ctx.navigate("tasks");
-                }}
-                className="grid items-center h-[60px] px-3 gap-x-4 border-t border-slate-100 text-inherit hover:bg-slate-50 transition-colors"
-                style={{ gridTemplateColumns: template }}
-              >
-                {columns.map((key) => (
-                  <React.Fragment key={key}>{cell(key, row)}</React.Fragment>
-                ))}
-              </a>
-            ))}
+            <div {...fill.bodyProps}>
+              <div className={FILL_ROWS_LAYER}>
+                <AnimatePresence initial={false} mode="popLayout">
+                  {shown.map((row, index) => (
+                    <motion.a
+                      key={row?.id ?? index}
+                      layout
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={rowTransition}
+                      href="#tasks"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        ctx.navigate("tasks");
+                      }}
+                      className="grid items-center h-[60px] px-3 gap-x-4 border-t border-slate-100 text-inherit hover:bg-slate-50 transition-colors"
+                      style={{ gridTemplateColumns: template }}
+                    >
+                      {columns.map((key) => (
+                        <React.Fragment key={key}>{cell(key, row)}</React.Fragment>
+                      ))}
+                    </motion.a>
+                  ))}
+                </AnimatePresence>
+              </div>
+            </div>
           </div>
           <CardFooter>
             <span className="text-xs font-semibold text-slate-500">
               {ctx.t(
-                `${list.length} of ${total} tasks`,
-                `${list.length} z ${total} úloh`,
-                `${list.length} / ${total} feladat`
+                `${shown.length} of ${total} tasks`,
+                `${shown.length} z ${total} úloh`,
+                `${shown.length} / ${total} feladat`
               )}
             </span>
             <a

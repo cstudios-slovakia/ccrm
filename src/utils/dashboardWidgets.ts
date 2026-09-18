@@ -166,8 +166,30 @@ export const TASK_TABLE_COLUMNS: WidgetColumnDef[] = [
   { key: "project", label: text("Project", "Projekt", "Projekt") }
 ];
 
-/** The rows-per-table choices the settings drawer offers. */
+/**
+ * The rows-per-table choices the settings drawer offers. A table always shows
+ * at least this many, and more when its card is stretched taller by the cards
+ * beside it — see `FillRows` in components/dashboard/widgetKit.tsx.
+ */
 export const WIDGET_ROW_COUNTS = [5, 10, 15];
+
+/**
+ * How many rows a table widget fetches regardless of its minimum, so there is
+ * something to fill a stretched card with. The server caps a limit at 50.
+ */
+export const TABLE_FILL_FETCH = 30;
+
+/**
+ * The params actually sent for a widget's query. The two table actions ask for
+ * `TABLE_FILL_FETCH` rows even when their setting says fewer: the setting is a
+ * minimum, and the card decides how many of them it has room to draw.
+ */
+export const fetchParamsOf = (query: any): Record<string, any> => {
+  const params = query?.params || {};
+  if (query?.action !== "recent_leads" && query?.action !== "recent_tasks") return params;
+  const limit = Number(params.limit) || 5;
+  return { ...params, limit: Math.max(limit, TABLE_FILL_FETCH) };
+};
 
 /* ------------------------------------------------------------------------ */
 

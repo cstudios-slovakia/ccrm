@@ -49,6 +49,7 @@ import {
   applySettingsToQuery,
   buildPresetWidget,
   buildDefaultHomeWidgets,
+  fetchParamsOf,
   newWidgetId,
   presetOfWidget,
   rendererOfWidget,
@@ -470,6 +471,13 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
 
   const prevDashIdRef = useRef(dashboard.id);
 
+  /**
+   * Per-widget (and per-tab) query fingerprint from the last fetch, so a
+   * card's own view toggle re-fetches only that card instead of every widget
+   * on the board — see the effect below that keys off `querySignature`.
+   */
+  const prevQueriesRef = useRef<Record<string, string>>({});
+
   // The background sync hands this view a fresh `dashboard` object on every
   // poll, so this effect runs every few seconds. It may refresh the working
   // layout while nothing is unsaved, but only switching to another dashboard
@@ -484,6 +492,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
         setIsEditMode(canEdit && dashboard.layout.widgets.length === 0);
         setViewOverrides({});
         setSettingsWidgetId(null);
+        prevQueriesRef.current = {};
       }
       setIsSaved(true);
       prevDashIdRef.current = dashboard.id;
@@ -508,7 +517,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   // Load data for all widgets in the layout. A `tabs` widget holds one query per
   // tab rather than a single query of its own, so results are keyed by a data key
   // (the widget id, or `${widget.id}::tab${i}`) instead of plainly by widget id.
-  const fetchAllWidgetsData = async (widgetsToLoad: any[]) => {
+  const fetchAllWidgetsData = async (widgetsToLoad: any[], onlyKeys?: Set<string>) => {
     const jobs: { key: string; query: any }[] = [];
     widgetsToLoad.forEach((w: any) => {
       if (w?.query?.action) jobs.push({ key: w.id, query: w.query });
@@ -519,7 +528,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
       }
     });
 
-    jobs.forEach(async ({ key, query }) => {
+    (onlyKeys ? jobs.filter(job => onlyKeys.has(job.key)) : jobs).forEach(async ({ key, query }) => {
       setLoadingWidgets(prev => ({ ...prev, [key]: true }));
       setWidgetErrors(prev => {
         if (!(key in prev)) return prev;
@@ -533,7 +542,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             action: query.action,
-            params: query.params || {}
+            params: fetchParamsOf(query)
           })
         });
         const json = await res.json();
@@ -564,9 +573,34 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     [widgets]
   );
 
+  // querySignature changing at all does not mean every widget needs refetching —
+  // a single card's own "Newest / Highest value" toggle changes that card's query
+  // and nothing else, but the whole array's stringified signature still differs.
+  // Diff per widget/tab against the last fetch so only the query that actually
+  // changed re-fetches (and only that card shows its loading overlay).
   useEffect(() => {
-    if (widgetsRef.current.length > 0) {
-      fetchAllWidgetsData(widgetsRef.current);
+    const widgetsToLoad = widgetsRef.current;
+    if (widgetsToLoad.length === 0) return;
+
+    const nextQueries: Record<string, string> = {};
+    widgetsToLoad.forEach((w: any) => {
+      if (w?.query?.action) nextQueries[w.id] = JSON.stringify(w.query);
+      if (Array.isArray(w?.tabs)) {
+        w.tabs.forEach((tab: any, i: number) => {
+          if (tab?.query?.action) nextQueries[tabDataKey(w.id, i)] = JSON.stringify(tab.query);
+        });
+      }
+    });
+
+    const prevQueries = prevQueriesRef.current;
+    const changedKeys = new Set<string>();
+    Object.keys(nextQueries).forEach(key => {
+      if (prevQueries[key] !== nextQueries[key]) changedKeys.add(key);
+    });
+    prevQueriesRef.current = nextQueries;
+
+    if (changedKeys.size > 0) {
+      fetchAllWidgetsData(widgetsToLoad, changedKeys);
     }
   }, [querySignature]);
 
@@ -1583,7 +1617,13 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                         />
                       )}
 
-                      {loadingWidgets[w.id] && (
+                      {/* Only the first fetch for a widget — with nothing on
+                          screen yet — earns the blocking spinner. A refetch
+                          that already has data to show (a "Newest / Highest
+                          value" toggle, a settings change) leaves the old
+                          content up and lets the new content take its place,
+                          rather than blank the whole card out from under it. */}
+                      {loadingWidgets[w.id] && widgetData[w.id] === undefined && (
                         <div className="absolute inset-0 bg-white/70 backdrop-blur-[0.5px] z-30 flex items-center justify-center rounded-3xl">
                           <RefreshCw className="h-5 w-5 text-indigo-600 animate-spin" />
                         </div>
