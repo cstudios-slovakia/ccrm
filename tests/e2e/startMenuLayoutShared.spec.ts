@@ -14,7 +14,6 @@ import { TEST_USER, buildSyncPayload } from './helpers/fixture';
  */
 
 const LEGACY_KEY = `ccrm_start_menu_groups_v2_${TEST_USER.id}`;
-const LAUNCHER = /Start Menu \(All Modules\)|Štart menu \(Všetky moduly\)|Start menü \(Összes modul\)/;
 const EDIT = /^(Edit|Upraviť|Szerkesztés)$/;
 const RENAME = /Rename group|Premenovať skupinu|Csoport átnevezése/;
 
@@ -151,9 +150,11 @@ test.describe('Start Menu layout', () => {
     await gotoView(page, '#dashboard');
 
     // Adopted into the user's row, and the browser copy is gone so it cannot
-    // fire a second time and overwrite a newer layout from another machine.
+    // fire a second time and overwrite a newer layout from another machine. The
+    // copy goes only once the server has answered the push that carries it, so
+    // it trails the request the store just saw by a round trip.
     await expect.poll(() => storedLayout(store), { timeout: 15_000 }).toContain(LEGACY_NAME);
-    await expect(legacyKeys(page)).resolves.toEqual([]);
+    await expect.poll(() => legacyKeys(page), { timeout: 5_000 }).toEqual([]);
 
     await openStartMenu(page);
     await expect(page.getByText(LEGACY_NAME).first()).toBeVisible();

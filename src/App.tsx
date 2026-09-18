@@ -1806,6 +1806,12 @@ ${log.payload || ''}
   // two would each overwrite the other's copy of `preferences`), and then adopts
   // only when the row holds no layout, so a second browser's stale copy cannot
   // replace what the account already saved elsewhere.
+  //
+  // The browser copy is dropped only once the server has confirmed the push that
+  // carries it. The adoption push queues behind the one that first writes the
+  // preferences blob, so a reload or a closed tab in that window used to lose the
+  // layout for good: gone from the browser, never reached the row. Kept until
+  // confirmed, the next load simply adopts it again.
   const legacyStartMenuMigratedForRef = useRef<string | null>(null);
   useEffect(() => {
     if (!currentUser || !isInitialSyncResolved) return;
@@ -1814,11 +1820,36 @@ ${log.payload || ''}
     if (legacyStartMenuMigratedForRef.current === currentUser.email) return;
     legacyStartMenuMigratedForRef.current = currentUser.email;
 
-    const legacy = readLegacyStartMenuLayout(currentUser.id);
-    if (legacy && !readUserPrefs(currentUser).startMenuLayout) {
-      setUserPref("startMenuLayout", legacy);
+    const userId = currentUser.id;
+    const legacy = readLegacyStartMenuLayout(userId);
+    if (!legacy || readUserPrefs(currentUser).startMenuLayout) {
+      clearLegacyStartMenuLayout(userId);
+      return;
     }
-    clearLegacyStartMenuLayout(currentUser.id);
+
+    const nextMeta = {
+      ...parseUserMetadata(currentUser),
+      preferences: { ...readUserPrefs(currentUser), startMenuLayout: legacy }
+    };
+    const nextUsers = usersRef.current.map(u =>
+      u.email === currentUser.email ? { ...u, metadata_json: nextMeta } : u
+    );
+    usersRef.current = nextUsers;
+    setUsers(nextUsers);
+    setCurrentUser(prev => prev ? { ...prev, metadata_json: nextMeta } : prev);
+
+    // lastConfirmedPushSigRef only moves on a 2xx, so a change across exactly
+    // this push (sampled once everything queued ahead of it has settled) means
+    // the server accepted it.
+    let confirmedBefore: string | null = null;
+    pushChainRef.current = pushChainRef.current.then(() => {
+      confirmedBefore = lastConfirmedPushSigRef.current;
+    });
+    pushStateToServer(undefined, undefined, undefined, undefined, nextUsers).then(() => {
+      if (lastConfirmedPushSigRef.current !== confirmedBefore) {
+        clearLegacyStartMenuLayout(userId);
+      }
+    });
   }, [currentUser, users, isInitialSyncResolved]);
 
   const handleSaveUserLayout = (layout: string[], hidden?: string[]) => {
