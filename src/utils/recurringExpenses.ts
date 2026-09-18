@@ -45,6 +45,7 @@ export type RecurringRule = Pick<
   | "recurringStartDate"
   | "recurringEndDate"
   | "recurringAmountHistory"
+  | "recurringSkippedDates"
 > &
   // `status`/`updatedAt`/`issueDate` are optional here — most callers build a
   // rule from just its schedule fields — but when present they let
@@ -302,12 +303,46 @@ export function effectiveRecurringEndDate(
  * The rule's own start / end dates narrow the window further. A day of the
  * month the month is too short for lands on its last day (a rule set to the
  * 31st still charges in February) rather than skipping the month entirely.
+ * A day listed in `recurringSkippedDates` is left out: a stored movement
+ * stands in for that charge (see `FinancialRecord.recurringSourceId`).
  */
 export function recurringOccurrences(
   rule: RecurringRule,
   startIso: string,
   endIso: string
 ): string[] {
+  const scheduled = scheduledOccurrences(rule, startIso, endIso);
+  const skipped = rule.recurringSkippedDates;
+  if (!skipped || skipped.length === 0) return scheduled;
+  return scheduled.filter((date) => !skipped.includes(date));
+}
+
+/** Whether a stored movement stands in for the rule's charge on `dateIso` (see `recurringSkippedDates`). */
+export function isRecurringDateSkipped(
+  rule: Pick<RecurringRule, "recurringSkippedDates">,
+  dateIso: string
+): boolean {
+  return Array.isArray(rule.recurringSkippedDates) && rule.recurringSkippedDates.includes(dateIso);
+}
+
+/** The rule's skipped days with `dateIso` added — sorted, without duplicates. */
+export function skipRecurringDate(rule: Pick<RecurringRule, "recurringSkippedDates">, dateIso: string): string[] {
+  const set = new Set((rule.recurringSkippedDates || []).filter(isIsoDate));
+  if (isIsoDate(dateIso)) set.add(dateIso);
+  return Array.from(set).sort();
+}
+
+/** The rule's skipped days with `dateIso` removed — `null` once nothing is skipped, so the record stores nothing. */
+export function unskipRecurringDate(
+  rule: Pick<RecurringRule, "recurringSkippedDates">,
+  dateIso: string
+): string[] | null {
+  const rest = (rule.recurringSkippedDates || []).filter((d) => isIsoDate(d) && d !== dateIso).sort();
+  return rest.length > 0 ? rest : null;
+}
+
+/** The schedule itself, before any skipped day is taken out. */
+function scheduledOccurrences(rule: RecurringRule, startIso: string, endIso: string): string[] {
   if (!isIsoDate(startIso) || !isIsoDate(endIso)) return [];
 
   const effectiveEnd = effectiveRecurringEndDate(rule);

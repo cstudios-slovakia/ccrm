@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   effectiveRecurringEndDate,
+  isRecurringDateSkipped,
   nextRecurringChargeAfter,
   pauseRecurringRule,
   recurringAmountHistoryAfterChange,
@@ -13,7 +14,9 @@ import {
   recurringTotalInRange,
   resumeRecurringRule,
   shiftIsoDate,
+  skipRecurringDate,
   toggleRecurringPause,
+  unskipRecurringDate,
   type RecurringRule
 } from "./recurringExpenses.ts";
 
@@ -323,4 +326,38 @@ test("toggleRecurringPause pauses an active rule and resumes a paused one", () =
     { recurringEndDate: null, recurringPlannedEndDate: null },
     "a rule whose end date is today is already paused, so toggling it resumes"
   );
+});
+
+// ==========================================
+// Skipped days — one charge replaced by a stored movement
+// ==========================================
+
+test("a skipped day drops out of the schedule everywhere, the rest is untouched", () => {
+  const rent = rule({ recurringSkippedDates: ["2026-03-01"] });
+  assert.deepEqual(recurringOccurrences(rent, "2026-01-01", "2026-04-30"), ["2026-01-01", "2026-02-01", "2026-04-01"]);
+  assert.deepEqual(
+    recurringCharges(rent, "2026-02-01", "2026-04-30").map((c) => c.date),
+    ["2026-02-01", "2026-04-01"]
+  );
+  assert.equal(recurringTotalInRange(rent, "2026-01-01", "2026-04-30"), 1500);
+  // The next charge after a skipped day is the one after it, not the skipped one.
+  assert.equal(nextRecurringChargeAfter(rent, "2026-02-15"), "2026-04-01");
+  assert.equal(isRecurringDateSkipped(rent, "2026-03-01"), true);
+  assert.equal(isRecurringDateSkipped(rent, "2026-04-01"), false);
+});
+
+test("skipping and un-skipping a day keeps the list sorted, unique, and null once empty", () => {
+  const rent = rule();
+  const once = skipRecurringDate(rent, "2026-03-01");
+  assert.deepEqual(once, ["2026-03-01"]);
+  const twice = skipRecurringDate({ recurringSkippedDates: once }, "2026-03-01");
+  assert.deepEqual(twice, ["2026-03-01"]);
+  const earlier = skipRecurringDate({ recurringSkippedDates: twice }, "2026-01-01");
+  assert.deepEqual(earlier, ["2026-01-01", "2026-03-01"]);
+  // Garbage never makes it into the list.
+  assert.deepEqual(skipRecurringDate({ recurringSkippedDates: ["nope"] }, "not a date"), []);
+
+  assert.deepEqual(unskipRecurringDate({ recurringSkippedDates: earlier }, "2026-01-01"), ["2026-03-01"]);
+  assert.equal(unskipRecurringDate({ recurringSkippedDates: ["2026-03-01"] }, "2026-03-01"), null);
+  assert.equal(unskipRecurringDate({ recurringSkippedDates: null }, "2026-03-01"), null);
 });

@@ -34,6 +34,11 @@
  *    rule you edit, pause or delete, but it adds nothing to its month's totals
  *    (`uncountedIds`).
  *
+ * A day listed in the rule's `recurringSkippedDates` is one a stored one-off
+ * movement stands in for (the user edited that single charge): the schedule
+ * draws nothing on it, and if it is the rule's own day, the rule row is
+ * claimed by that movement just as a charge would claim it.
+ *
  * Only past charges decide the last two cases. A rule row dated ahead of
  * today with no charge behind it keeps counting as it always has, and the
  * forecast overlay settles it against the future charges.
@@ -44,7 +49,7 @@
 
 import type { FinancialRecord, FinancialType } from "../types";
 import { overviewRecordDate, splitRecordAmounts } from "./financialOverviewTable.ts";
-import { recurringCharges, recurringOccurrences } from "./recurringExpenses.ts";
+import { isRecurringDateSkipped, recurringCharges, recurringOccurrences } from "./recurringExpenses.ts";
 
 /** One charge a recurring rule has already made. Not a record: nothing of it is stored. */
 export interface PastRecurringCharge {
@@ -109,7 +114,9 @@ export function projectPastRecurringCharges(
     });
 
     if (!isIsoDate(ownDate)) return;
-    if (drawn.has(ownDate)) {
+    // A stored movement stands in for the rule's own payment on that day (the
+    // user edited that one charge): the movement is drawn, the rule row is not.
+    if (drawn.has(ownDate) || isRecurringDateSkipped(rec, ownDate)) {
       claimedIds.add(rec.id);
       return;
     }

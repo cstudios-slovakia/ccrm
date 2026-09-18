@@ -634,7 +634,11 @@ if (!function_exists('ccrm_schema_statements')) {
               `recurring_config_json` TEXT NULL,
               `recurring_start_date` DATE NULL,
               `recurring_end_date` DATE NULL,
+              `recurring_planned_end_date` DATE NULL COMMENT 'The end date a paused rule really has, restored on resume (a pause stamps recurring_end_date with today)',
               `recurring_amount_history_json` TEXT NULL COMMENT 'Superseded amounts of a recurring rule: [{until, amountPlanned, amountReal}]',
+              `recurring_skipped_dates_json` TEXT NULL COMMENT 'Scheduled days a stored movement stands in for, as a JSON list of YYYY-MM-DD days',
+              `recurring_source_id` VARCHAR(50) NULL COMMENT 'On a one-off movement: the recurring rule whose charge it replaces',
+              `recurring_occurrence_date` DATE NULL COMMENT 'On a one-off movement: the scheduled day it stands in for',
               `project_id` VARCHAR(50) NULL COMMENT 'NULL for Global company-wide record, or linked project ID',
               `client_id` VARCHAR(50) NULL COMMENT 'NULL for Global company-wide record, or linked client ID',
               `invoice_number` VARCHAR(100) NULL,
@@ -1047,6 +1051,26 @@ if (!function_exists('ccrm_schema_statements')) {
         // it charges today" — exactly the behaviour they had before.
         if (!ccrm_column_exists($pdo, 'financial_records', 'recurring_amount_history_json')) {
             $pdo->exec("ALTER TABLE `financial_records` ADD COLUMN `recurring_amount_history_json` TEXT NULL AFTER `recurring_end_date`");
+        }
+        // A pause stamps `recurring_end_date` with today and remembers the end
+        // date the rule really had here, so resuming can restore it. The field
+        // existed in the app before it had a column: pausing a rule with a
+        // planned end and reloading used to make it open-ended on resume.
+        if (!ccrm_column_exists($pdo, 'financial_records', 'recurring_planned_end_date')) {
+            $pdo->exec("ALTER TABLE `financial_records` ADD COLUMN `recurring_planned_end_date` DATE NULL AFTER `recurring_end_date`");
+        }
+        // One charge of a recurring rule can be edited on its own: the edit is
+        // stored as a one-off movement pointing back at the rule and the day it
+        // stands in for, and the rule lists that day among those it no longer
+        // charges. Existing rows migrate as NULL: nothing replaced, nothing skipped.
+        if (!ccrm_column_exists($pdo, 'financial_records', 'recurring_skipped_dates_json')) {
+            $pdo->exec("ALTER TABLE `financial_records` ADD COLUMN `recurring_skipped_dates_json` TEXT NULL AFTER `recurring_amount_history_json`");
+        }
+        if (!ccrm_column_exists($pdo, 'financial_records', 'recurring_source_id')) {
+            $pdo->exec("ALTER TABLE `financial_records` ADD COLUMN `recurring_source_id` VARCHAR(50) NULL AFTER `recurring_skipped_dates_json`");
+        }
+        if (!ccrm_column_exists($pdo, 'financial_records', 'recurring_occurrence_date')) {
+            $pdo->exec("ALTER TABLE `financial_records` ADD COLUMN `recurring_occurrence_date` DATE NULL AFTER `recurring_source_id`");
         }
         ccrm_migrate_updated_at_precision($pdo);
         ccrm_migrate_task_states($pdo);

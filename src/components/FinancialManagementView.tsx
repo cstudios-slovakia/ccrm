@@ -64,7 +64,9 @@ import {
   recurringPlannedAmountAt,
   recurringTotalInRange,
   shiftIsoDate,
+  skipRecurringDate,
   toggleRecurringPause,
+  unskipRecurringDate,
   type RecurringRule
 } from "../utils/recurringExpenses";
 import {
@@ -1015,12 +1017,27 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const [isClosingModal, setIsClosingModal] = useState(false);
   const [editingRecord, setEditingRecord] = useState<FinancialRecord | null>(null);
 
+  /**
+   * One charge of a recurring rule being edited on its own — opened from the
+   * movements ledger, never from the Recurring tab. `existing` is the stored
+   * movement already standing in for that day, when there is one; otherwise
+   * the save creates it and lists `date` in the rule's `recurringSkippedDates`.
+   * The rule itself (title, category, scope, schedule) is edited only on the
+   * Recurring tab.
+   */
+  const [editingOccurrence, setEditingOccurrence] = useState<{
+    rule: FinancialRecord;
+    date: string;
+    existing: FinancialRecord | null;
+  } | null>(null);
+
   // Smoothly animated close handler
   const handleCloseModal = () => {
     setIsClosingModal(true);
     setTimeout(() => {
       setIsModalOpen(false);
       setIsClosingModal(false);
+      setEditingOccurrence(null);
     }, 280);
   };
 
@@ -1380,6 +1397,20 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             <span className="truncate max-w-[280px]" title={rec.title}>
               {rec.title}
             </span>
+            {rec.recurringSourceId && (
+              <span
+                data-recurring-payment="true"
+                className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-purple-50 text-purple-700 border border-purple-200 shrink-0"
+                title={t(
+                  "A payment of a recurring movement, edited on its own",
+                  "Platba pravidelného pohybu upravená samostatne",
+                  "Ismétlődő tétel külön szerkesztett fizetése"
+                )}
+              >
+                <RefreshCw className="h-2.5 w-2.5" />
+                {t("Recurring", "Pravidelné", "Ismétlődő")}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2 mt-0.5">
             {rec.invoiceNumber && (
@@ -1723,6 +1754,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const handleOpenCreateRecurringModal = (type: FinancialType = "expense", scope: "global" | "project" | "client" = "global") => {
     if (!canEdit) return;
     setEditingRecord(null);
+    setEditingOccurrence(null);
     setFormType(type);
     setFormSubtype("expense");
     setFormTitle("");
@@ -1761,8 +1793,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       ...rec,
       id: `fr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       title: `${rec.title} (Copy)`,
-      // The copy is a new rule — it never charged the original's older prices.
+      // The copy is a new rule — it never charged the original's older prices,
+      // and none of its days have been replaced by a stored movement.
       recurringAmountHistory: null,
+      recurringSkippedDates: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -2873,6 +2907,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const handleOpenCreateModal = (type: FinancialType, defaultScope: "global" | "project" | "client" = "global") => {
     if (!canEdit) return;
     setEditingRecord(null);
+    setEditingOccurrence(null);
     setFormType(type);
     setFormSubtype(type === "income" ? "invoice" : "regular");
     setFormTitle("");
@@ -2908,6 +2943,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   // Open Edit Modal
   const handleOpenEditModal = (rec: FinancialRecord) => {
     setEditingRecord(rec);
+    setEditingOccurrence(null);
     setFormType(rec.type);
     setFormSubtype(rec.subtype || "regular");
     setFormTitle(rec.title);
@@ -2943,6 +2979,154 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     setIsModalOpen(true);
   };
 
+  /**
+   * Open one charge of a recurring rule for editing on its own: the day it
+   * was charged, what it cost and whether it was paid — never the rule's
+   * title, category, scope or schedule, which are set once on the rule and
+   * edited on the Recurring tab. Saving stores a one-off movement that stands
+   * in for that day and lists the day in the rule's `recurringSkippedDates`,
+   * so every tab stops charging it (see utils/recurringExpenses.ts).
+   */
+  const handleOpenOccurrenceModal = (rule: FinancialRecord, date: string, existing: FinancialRecord | null = null) => {
+    if (!canEdit) return;
+    setEditingRecord(existing);
+    setEditingOccurrence({ rule, date, existing });
+    const base = existing || rule;
+    setFormType(rule.type);
+    setFormSubtype(base.subtype || "regular");
+    setFormTitle(existing?.title || rule.title);
+    setFormDescription(existing?.description || "");
+    setFormCategoryId(base.categoryId || "");
+    setFormScope(movementScope(base));
+    setFormProjectId(base.projectId || "");
+    setFormClientId(base.clientId || "");
+    setFormInvoiceNumber(existing?.invoiceNumber || "");
+    setFormTaxRate(base.taxRate ?? 20);
+    setFormPaymentMethod(base.paymentMethod || "bank_transfer");
+    setFormIsRecurring(false);
+    setFormAmountAppliesFrom("");
+
+    const ownRow = recurringOwnRowCharge(rule);
+    if (existing) {
+      setFormAmountPlanned(existing.amountPlanned);
+      setFormAmountReal(existing.amountReal);
+      setFormStatus(existing.status);
+      setFormIssueDate(existing.paidDate || existing.issueDate || date);
+      setFormDueDate(existing.dueDate || "");
+      setFormPaidDate(existing.paidDate || "");
+    } else if (ownRow && ownRow.date === date) {
+      // The rule's own first payment: it carries its own status and amounts.
+      setFormAmountPlanned(rule.amountPlanned);
+      setFormAmountReal(rule.amountReal);
+      setFormStatus(rule.status);
+      setFormIssueDate(rule.paidDate || rule.issueDate || date);
+      setFormDueDate(rule.dueDate || "");
+      setFormPaidDate(rule.paidDate || "");
+    } else {
+      // A charge the schedule made: priced at the amount in force that day,
+      // settled once the day has arrived, still expected otherwise — exactly
+      // how the ledger has been drawing it.
+      const amount = recurringPlannedAmountAt(rule, date);
+      const settled = isRecurringChargeSettled(date, todayLocal());
+      setFormAmountPlanned(amount);
+      setFormAmountReal(settled ? amount : "");
+      setFormStatus(settled ? "paid" : "planned");
+      setFormIssueDate(date);
+      setFormDueDate("");
+      setFormPaidDate(settled ? date : "");
+    }
+    setIsModalOpen(true);
+  };
+
+  /**
+   * What the pencil on a ledger row opens. The ledger edits single movements:
+   * a recurring rule's own first payment opens as that one payment, a
+   * movement standing in for a rule's charge opens against its rule, and a
+   * plain movement opens as itself. A rule row that is only the rule (its
+   * payments are drawn as charge rows beside it) has nothing of its own to
+   * edit here, so it opens the rule — the same editor the Recurring tab has.
+   */
+  const handleOpenLedgerRow = (rec: FinancialRecord) => {
+    if (rec.recurringSourceId && rec.recurringOccurrenceDate) {
+      const rule = financialRecords.find((r) => r.id === rec.recurringSourceId && r.isRecurring);
+      if (rule) {
+        handleOpenOccurrenceModal(rule, rec.recurringOccurrenceDate, rec);
+        return;
+      }
+    }
+    if (rec.isRecurring) {
+      const ownRow = recurringOwnRowCharge(rec);
+      if (ownRow) {
+        handleOpenOccurrenceModal(rec, ownRow.date);
+        return;
+      }
+    }
+    handleOpenEditModal(rec);
+  };
+
+  /**
+   * Save one edited charge of a recurring rule as a movement of its own. The
+   * rule keeps everything it was set up with — only this day's money changes:
+   * the movement carries the day, the amounts and the status, and the rule
+   * lists the day among those it no longer charges.
+   */
+  const handleSaveOccurrence = () => {
+    if (!editingOccurrence) return;
+    const { rule, date, existing } = editingOccurrence;
+    const now = new Date().toISOString();
+    const day = formIssueDate || date;
+    const movement: FinancialRecord = {
+      id: existing?.id || `fr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      type: rule.type,
+      subtype: existing?.subtype || rule.subtype || "regular",
+      title: formTitle.trim() || rule.title,
+      description: formDescription.trim() || null,
+      categoryId: rule.categoryId || null,
+      categoryPath: rule.categoryPath || null,
+      amountPlanned: Number(formAmountPlanned) || 0,
+      amountReal: Number(formAmountReal) || 0,
+      currency: rule.currency || currencyCode || "EUR",
+      status: formStatus,
+      // One day is the day of the payment: filed under it whether it is
+      // settled or still open, so the row keeps the date the user typed.
+      issueDate: day,
+      dueDate: formDueDate || null,
+      paidDate: statusNeedsRealAmount(formStatus) ? day : null,
+      paymentMethod: existing?.paymentMethod || rule.paymentMethod || "bank_transfer",
+      isRecurring: false,
+      recurringFrequency: null,
+      recurringConfig: null,
+      recurringStartDate: null,
+      recurringEndDate: null,
+      recurringPlannedEndDate: null,
+      recurringAmountHistory: null,
+      recurringSkippedDates: null,
+      recurringSourceId: rule.id,
+      recurringOccurrenceDate: date,
+      projectId: rule.projectId || null,
+      clientId: rule.clientId || null,
+      invoiceNumber: formInvoiceNumber.trim() || null,
+      taxRate: existing?.taxRate ?? rule.taxRate ?? 20,
+      attachments: existing?.attachments || [],
+      createdBy: existing?.createdBy || (window as any).ccrmCurrentUser?.email || "Admin",
+      createdAt: existing?.createdAt || now,
+      updatedAt: now
+    };
+
+    setFinancialRecords((prev) => {
+      const skipped = skipRecurringDate(rule, date);
+      const next = prev.map((r) => (r.id === rule.id ? { ...r, recurringSkippedDates: skipped } : r));
+      return next.some((r) => r.id === movement.id)
+        ? next.map((r) => (r.id === movement.id ? movement : r))
+        : [movement, ...next];
+    });
+
+    handleCloseModal();
+    (window as any).showToast?.(
+      t("Payment saved — the rule is unchanged", "Platba uložená — pravidlo zostáva bez zmeny", "Fizetés mentve — a szabály változatlan")
+    );
+  };
+
   /** The recurring rule exactly as the form currently describes it. */
   const formRecurringRule = (): RecurringRule => ({
     amountPlanned: Number(formAmountPlanned) || 0,
@@ -2971,6 +3155,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   // Save Transaction
   const handleSaveTransaction = (e: React.FormEvent) => {
     e.preventDefault();
+    if (editingOccurrence) {
+      handleSaveOccurrence();
+      return;
+    }
     if (!formTitle.trim()) {
       alert(t("Title is required", "Názov záznamu je povinný", "A megnevezés kitöltése kötelező"));
       return;
@@ -3179,8 +3367,27 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   // Delete Transaction
   const handleDeleteTransaction = (id: string) => {
     if (!canDelete) return;
-    if (confirm(t("Are you sure you want to delete this financial record?", "Naozaj chcete vymazať tento finančný záznam?", "Biztosan törölni szeretné ezt a tételt?"))) {
-      setFinancialRecords((prev) => prev.filter((r) => r.id !== id));
+    // A movement standing in for one charge of a recurring rule: deleting it
+    // hands the day back to the rule, which charges it by its schedule again.
+    const target = financialRecords.find((r) => r.id === id);
+    const standsIn = target?.recurringSourceId && target.recurringOccurrenceDate ? target : null;
+    const question = standsIn
+      ? t(
+          "Delete this payment? The recurring rule will charge that day by its schedule again.",
+          "Naozaj vymazať túto platbu? Pravidelný pohyb bude tento deň opäť účtovať podľa plánu.",
+          "Törli ezt a fizetést? Az ismétlődő tétel újra az ütemezés szerint terheli azt a napot."
+        )
+      : t("Are you sure you want to delete this financial record?", "Naozaj chcete vymazať tento finančný záznam?", "Biztosan törölni szeretné ezt a tételt?");
+    if (confirm(question)) {
+      setFinancialRecords((prev) =>
+        prev
+          .filter((r) => r.id !== id)
+          .map((r) =>
+            standsIn && r.id === standsIn.recurringSourceId
+              ? { ...r, recurringSkippedDates: unskipRecurringDate(r, standsIn.recurringOccurrenceDate!) }
+              : r
+          )
+      );
       (window as any).showToast?.(t("Record deleted", "Záznam bol vymazaný", "Tétel törölve"));
     }
   };
@@ -3690,7 +3897,11 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         })()}
       </div>
 
-      {/* 6. Recurring switch — the whole row toggles */}
+      {/* 6. Recurring switch — the whole row toggles. Only when creating, or
+          editing a rule from the Recurring tab: a stored one-off movement is
+          edited as the single movement it is, and one charge of a rule is
+          edited through `renderOccurrenceFormFields`. */}
+      {(!editingRecord || editingRecord.isRecurring) && (
       <div
         className={`p-4 rounded-2xl border space-y-3 transition-colors duration-200 ${
           formIsRecurring ? "bg-indigo-50/60 border-indigo-200" : "bg-white border-slate-200 hover:border-slate-300"
@@ -3888,6 +4099,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           </div>
         )}
       </div>
+      )}
 
       {/* 7. Assignment — company-wide, a project or a client */}
       <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
@@ -3975,6 +4187,164 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       </div>
     </>
   );
+
+  /**
+   * The form for one charge of a recurring rule (see `handleOpenOccurrenceModal`):
+   * the day, the amounts, the status, a document number and a note. Title,
+   * category, scope and schedule belong to the rule and are only shown.
+   */
+  const renderOccurrenceFormFields = () => {
+    if (!editingOccurrence) return null;
+    const { rule, date } = editingOccurrence;
+    const crumbs = getCategoryBreadcrumbs(rule.categoryId);
+    const scheduledAmount = recurringPlannedAmountAt(rule, date);
+    return (
+      <>
+        {/* 1. What this payment belongs to — read-only, edited on the Recurring tab */}
+        <div className="p-4 rounded-2xl bg-indigo-50/60 border border-indigo-200 space-y-2" data-occurrence-source="true">
+          <div className="flex items-start gap-3">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white">
+              <RefreshCw className="h-4 w-4" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-bold text-slate-800 truncate" title={rule.title}>
+                {rule.title}
+              </div>
+              <div className="text-[11px] text-slate-500 mt-0.5">
+                {crumbs.length > 0
+                  ? crumbs.map((c) => c.name).join(" › ")
+                  : t("Uncategorized", "Bez kategórie", "Kategória nélkül")}
+                {" · "}
+                {getRecurrenceDescription(rule)}
+              </div>
+              <div className="text-[11px] text-indigo-700 mt-1">
+                {t(
+                  `Scheduled for ${formatDateLocalized(date, userLanguage)} at ${money(scheduledAmount)}. Only this payment changes here — the rule stays as it is.`,
+                  `Naplánované na ${formatDateLocalized(date, userLanguage)} vo výške ${money(scheduledAmount)}. Tu sa mení iba táto platba — pravidlo zostáva bez zmeny.`,
+                  `Ütemezve: ${formatDateLocalized(date, userLanguage)}, ${money(scheduledAmount)}. Itt csak ez a fizetés változik — a szabály változatlan marad.`
+                )}
+              </div>
+            </div>
+            {canEdit && (
+              <button
+                type="button"
+                onClick={() => handleOpenEditModal(rule)}
+                className="shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] font-bold text-indigo-700 bg-white border border-indigo-200 hover:bg-indigo-100 transition-colors cursor-pointer"
+                title={t("Edit the rule itself: title, category, amount, schedule", "Upraviť samotné pravidlo: názov, kategóriu, sumu, plán", "A szabály szerkesztése: név, kategória, összeg, ütemezés")}
+              >
+                {t("Edit rule", "Upraviť pravidlo", "Szabály")}
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* 2. Status & the day of the payment */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label className={FORM_LABEL}>{t("Status", "Stav úhrady", "Állapot")}</label>
+            <CustomSelect
+              value={formStatus}
+              onChange={(val) => {
+                const newSt = val as FinancialStatus;
+                setFormStatus(newSt);
+                if (newSt === "paid" && (!formAmountReal || formAmountReal === 0) && formAmountPlanned) {
+                  setFormAmountReal(formAmountPlanned);
+                }
+              }}
+              options={[
+                { value: "planned", label: t("Planned / Scheduled", "Plánované", "Tervezett") },
+                { value: "pending", label: t("Pending / Issued", "Čaká na úhradu", "Fizetésre vár") },
+                { value: "paid", label: t("Paid / Settled", "Uhradené", "Fizetve") },
+                { value: "partially_paid", label: t("Partially Paid", "Čiastočne uhradené", "Részben fizetve") },
+                { value: "overdue", label: t("Overdue", "Po splatnosti", "Lejárt") },
+                { value: "cancelled", label: t("Cancelled", "Zrušené", "Törölve") }
+              ]}
+              size="sm"
+              className="h-10 !px-3.5 text-xs rounded-xl"
+            />
+          </div>
+
+          <div>
+            <label className={FORM_LABEL}>{t("Payment date *", "Dátum platby *", "Fizetés napja *")}</label>
+            <input
+              type="date"
+              required
+              value={formIssueDate}
+              onChange={(e) => setFormIssueDate(e.target.value)}
+              className={FORM_INPUT}
+            />
+          </div>
+
+          <div>
+            <label className={FORM_LABEL}>{t("Due Date", "Dátum splatnosti", "Esedékesség")}</label>
+            <input type="date" value={formDueDate} onChange={(e) => setFormDueDate(e.target.value)} className={FORM_INPUT} />
+          </div>
+        </div>
+
+        {/* 3. Amounts — this payment only */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-200">
+          <div>
+            <label className={`${FORM_LABEL} flex items-baseline justify-between gap-2`}>
+              <span>{t("Planned Amount *", "Plánovaná suma *", "Tervezett összeg *")}</span>
+              <span className="text-[10px] font-medium text-slate-400">{t("This payment", "Táto platba", "Ez a fizetés")}</span>
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                step="0.01"
+                required
+                value={formAmountPlanned}
+                onChange={(e) => setFormAmountPlanned(e.target.value ? parseFloat(e.target.value) : "")}
+                placeholder="0.00"
+                className={`${FORM_INPUT} pr-9 !text-sm font-bold tabular-nums`}
+              />
+              <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">€</span>
+            </div>
+          </div>
+
+          <div>
+            <label className={`${FORM_LABEL} flex items-baseline justify-between gap-2`}>
+              <span>{t("Paid Amount", "Skutočná suma", "Fizetett összeg")}</span>
+              <span className="text-[10px] font-medium text-slate-400">{t("Actually settled", "Skutočne uhradené", "Ténylegesen fizetve")}</span>
+            </label>
+            <div className="relative">
+              <input
+                type="number"
+                step="0.01"
+                value={formAmountReal}
+                onChange={(e) => setFormAmountReal(e.target.value ? parseFloat(e.target.value) : "")}
+                placeholder="0.00"
+                className={`${FORM_INPUT} pr-9 !text-sm font-bold tabular-nums`}
+              />
+              <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">€</span>
+            </div>
+          </div>
+        </div>
+
+        {/* 4. Document number & note */}
+        <div>
+          <label className={FORM_LABEL}>{t("Document No.", "Číslo dokladu", "Bizonylatszám")}</label>
+          <input
+            type="text"
+            value={formInvoiceNumber}
+            onChange={(e) => setFormInvoiceNumber(e.target.value)}
+            placeholder="FA-2026-0001"
+            className={`${FORM_INPUT} font-mono`}
+          />
+        </div>
+        <div>
+          <label className={FORM_LABEL}>{t("Note", "Poznámka", "Megjegyzés")}</label>
+          <textarea
+            rows={3}
+            value={formDescription}
+            onChange={(e) => setFormDescription(e.target.value)}
+            placeholder={t("Why this payment differs from the rule...", "Prečo sa táto platba líši od pravidla...", "Miért tér el ez a fizetés a szabálytól...")}
+            className={FORM_TEXTAREA}
+          />
+        </div>
+      </>
+    );
+  };
 
   return (
     <div className="space-y-6 pb-16 font-sans">
@@ -5938,13 +6308,21 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                       <div className="flex items-center justify-end gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
                                         <button
                                           type="button"
-                                          onClick={() => handleOpenEditModal(source)}
+                                          onClick={() =>
+                                            forecast.source === "recurring"
+                                              ? handleOpenOccurrenceModal(source, forecast.date)
+                                              : handleOpenEditModal(source)
+                                          }
                                           className="p-1.5 hover:bg-violet-100  rounded-lg text-violet-500 hover:text-violet-900  transition-colors cursor-pointer"
-                                          title={t(
-                                            "Open the movement this is expected from",
-                                            "Otvoriť pohyb, z ktorého to vychádza",
-                                            "A várható tétel forrásának megnyitása"
-                                          )}
+                                          title={
+                                            forecast.source === "recurring"
+                                              ? t("Edit this payment only", "Upraviť iba túto platbu", "Csak ennek a fizetésnek a szerkesztése")
+                                              : t(
+                                                  "Open the movement this is expected from",
+                                                  "Otvoriť pohyb, z ktorého to vychádza",
+                                                  "A várható tétel forrásának megnyitása"
+                                                )
+                                          }
                                         >
                                           <Pencil className="h-3.5 w-3.5" />
                                         </button>
@@ -5957,8 +6335,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                               // A charge a recurring rule has already made. It
                               // happened, so it is drawn and counted as settled,
                               // but nothing of it is stored: no status to set,
-                              // nothing to delete, and editing it means editing
-                              // the rule it was charged by.
+                              // nothing to delete. Editing it stores that one
+                              // payment as a movement of its own and takes the
+                              // day off the rule's schedule.
                               if (row.kind === "charge") {
                                 const charge = row.charge;
                                 const chargeIsExpense = charge.type === "expense";
@@ -6010,13 +6389,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                       <div className="flex items-center justify-end gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
                                         <button
                                           type="button"
-                                          onClick={() => handleOpenEditModal(charge.record)}
+                                          onClick={() => handleOpenOccurrenceModal(charge.record, charge.date)}
                                           className="p-1.5 hover:bg-slate-100  rounded-lg text-slate-500 hover:text-slate-900  transition-colors cursor-pointer"
-                                          title={t(
-                                            "Open the recurring rule this charge comes from",
-                                            "Otvoriť pravidelný pohyb, z ktorého platba vychádza",
-                                            "Az ismétlődő tétel megnyitása, amelyből a terhelés származik"
-                                          )}
+                                          title={t("Edit this payment only", "Upraviť iba túto platbu", "Csak ennek a fizetésnek a szerkesztése")}
                                         >
                                           <Pencil className="h-3.5 w-3.5" />
                                         </button>
@@ -6123,7 +6498,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                     <div className="flex items-center justify-end gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
                                       <button
                                         type="button"
-                                        onClick={() => handleOpenEditModal(rec)}
+                                        onClick={() => handleOpenLedgerRow(rec)}
                                         className="p-1.5 hover:bg-slate-100  rounded-lg text-slate-500 hover:text-slate-900  transition-colors cursor-pointer"
                                         title={t("Edit movement", "Upraviť pohyb", "Szerkesztés")}
                                       >
@@ -6871,7 +7246,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       )}
 
       {/* 9A. EDIT TRANSACTION: RIGHT SLIDEOUT DRAWER PANEL (ENTITIES WITHOUT SEPARATE VIEW) */}
-      {isModalOpen && editingRecord && (
+      {isModalOpen && (editingRecord || editingOccurrence) && (
         <div className="fixed inset-0 z-[9999] flex justify-end overflow-hidden">
           {/* Backdrop overlay */}
           <div
@@ -6902,22 +7277,40 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 <div>
                   <div className="flex items-center gap-2">
                     <h3 className="text-base font-bold text-slate-900 ">
-                      {formType === "income"
-                        ? t("Edit Income / Invoice", "Upraviť príjem / faktúru", "Bevétel / számla szerkesztése")
-                        : t("Edit Expense", "Upraviť výdavok", "Kiadás szerkesztése")}
+                      {editingOccurrence
+                        ? t("Edit payment", "Upraviť platbu", "Fizetés szerkesztése")
+                        : editingRecord?.isRecurring
+                          ? t("Edit recurring movement", "Upraviť pravidelný pohyb", "Ismétlődő tétel szerkesztése")
+                          : formType === "income"
+                            ? t("Edit Income / Invoice", "Upraviť príjem / faktúru", "Bevétel / számla szerkesztése")
+                            : t("Edit Expense", "Upraviť výdavok", "Kiadás szerkesztése")}
                     </h3>
-                    {formIsRecurring && (
+                    {(formIsRecurring || editingOccurrence) && (
                       <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-100  text-purple-700  border border-purple-200 ">
-                        {t("Recurring", "Pravidelné", "Ismétlődő")}
+                        {editingOccurrence
+                          ? formatDateLocalized(editingOccurrence.date, userLanguage)
+                          : t("Recurring", "Pravidelné", "Ismétlődő")}
                       </span>
                     )}
                   </div>
                   <p className="text-xs text-slate-400 mt-0.5">
-                    {t(
-                      "Update transaction values, 3-level categories, or recurrence rules.",
-                      "Úprava finančného záznamu, kategórie alebo pravidiel opakovania.",
-                      "Tétel, kategória és ismétlődés adatainak módosítása."
-                    )}
+                    {editingOccurrence
+                      ? t(
+                          "One payment of a recurring movement: its day, amounts and status. The rule is edited on the Recurring tab.",
+                          "Jedna platba pravidelného pohybu: jej deň, sumy a stav. Pravidlo sa upravuje v záložke Pravidelné.",
+                          "Az ismétlődő tétel egy fizetése: napja, összegei és állapota. A szabály az Ismétlődő fülön szerkeszthető."
+                        )
+                      : editingRecord?.isRecurring
+                        ? t(
+                            "Title, category, amount and schedule — set once for every payment the rule makes.",
+                            "Názov, kategória, suma a plán opakovania — nastavené raz pre každú platbu pravidla.",
+                            "Név, kategória, összeg és ütemezés — egyszer beállítva a szabály minden fizetésére."
+                          )
+                        : t(
+                            "Update transaction values and 3-level categories.",
+                            "Úprava finančného záznamu a kategórie.",
+                            "Tétel és kategória adatainak módosítása."
+                          )}
                   </p>
                 </div>
               </div>
@@ -6934,7 +7327,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
             {/* Scrollable Form Body */}
             <form id="transaction-edit-form" onSubmit={handleSaveTransaction} className="flex-1 overflow-y-auto p-6 space-y-4 scrollbar-thin">
-              {renderTransactionFormFields()}
+              {editingOccurrence ? renderOccurrenceFormFields() : renderTransactionFormFields()}
             </form>
 
             {/* Sticky Actions Footer */}
@@ -6963,7 +7356,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       )}
 
       {/* 9B. CREATE TRANSACTION: CENTER POPUP MODAL */}
-      {isModalOpen && !editingRecord && (
+      {isModalOpen && !editingRecord && !editingOccurrence && (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 overflow-y-auto">
           {/* Backdrop overlay */}
           <div

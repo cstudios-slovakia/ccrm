@@ -848,6 +848,21 @@ export interface FinancialRecord {
    * `utils/recurringExpenses.ts`.
    */
   recurringAmountHistory?: FinancialRecurringAmountPeriod[] | null;
+  /**
+   * Scheduled days (`YYYY-MM-DD`) this rule no longer charges, because a
+   * stored one-off movement stands in for each of them (see
+   * `recurringSourceId`). Editing one charge of a rule — "this month the rent
+   * was 520 €, paid on the 3rd" — writes that movement and lists its scheduled
+   * day here, so the table, trend, ledger and forecast all stop charging it.
+   */
+  recurringSkippedDates?: string[] | null;
+  /**
+   * On a one-off movement: the recurring rule it replaces one charge of, and
+   * the scheduled day (`YYYY-MM-DD`) it stands in for. Deleting the movement
+   * un-skips that day on the rule, so the schedule charges it again.
+   */
+  recurringSourceId?: string | null;
+  recurringOccurrenceDate?: string | null;
   projectId?: string | null; // NULL for Global Company-Wide record
   clientId?: string | null;  // NULL for Global Company-Wide record
   invoiceNumber?: string | null;
