@@ -146,6 +146,13 @@ type MovementLedgerRow =
 const statusNeedsRealAmount = (status: FinancialStatus): status is "paid" | "partially_paid" =>
   status === "paid" || status === "partially_paid";
 
+/** Shared look of the transaction form: one label style, one 40px field style. */
+const FORM_LABEL = "text-xs font-semibold text-slate-600 block mb-1.5";
+const FORM_INPUT =
+  "w-full h-10 px-3.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 hover:border-slate-300 transition-colors duration-150 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20";
+const FORM_TEXTAREA =
+  "w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 hover:border-slate-300 transition-colors duration-150 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 resize-y";
+
 interface SearchableCategorySelectProps {
   value: string;
   onChange: (catId: string) => void;
@@ -153,6 +160,8 @@ interface SearchableCategorySelectProps {
   filterType?: FinancialType | "all";
   allowAll?: boolean;
   placeholder?: string;
+  /** "md" matches the 40px fields of the transaction form; "sm" is the compact filter-bar trigger. */
+  size?: "sm" | "md";
   t: (en: string, sk: string, hu: string) => string;
 }
 
@@ -163,6 +172,7 @@ const SearchableCategorySelect: React.FC<SearchableCategorySelectProps> = ({
   filterType = "all",
   allowAll = true,
   placeholder,
+  size = "sm",
   t
 }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -223,7 +233,7 @@ const SearchableCategorySelect: React.FC<SearchableCategorySelectProps> = ({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full py-1.5 px-3 bg-slate-50  border border-slate-200  hover:border-emerald-500 rounded-xl text-xs text-left flex items-center justify-between gap-2 transition-all cursor-pointer shadow-2xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+        className={`w-full ${size === "md" ? "h-10 px-3.5 bg-white" : "py-1.5 px-3 bg-slate-50"} border border-slate-200 hover:border-emerald-500 rounded-xl text-xs text-left flex items-center justify-between gap-2 transition-all cursor-pointer shadow-2xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20`}
       >
         <div className="flex items-center gap-2 truncate flex-1 min-w-0">
           {selectedCategory ? (
@@ -3056,8 +3066,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   // Shared Transaction Form Fields (used in both Slideout Drawer for Edit and Center Popup for Create)
   const renderTransactionFormFields = () => (
     <>
-      {/* Type Switcher (Income vs Expense) */}
-      <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100  rounded-2xl">
+      {/* 1. Type — income or expense */}
+      <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-2xl">
         <button
           type="button"
           onClick={() => {
@@ -3066,8 +3076,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               setFormInvoiceNumber(`FA-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`);
             }
           }}
-          className={`py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-            formType === "income" ? "bg-emerald-600 text-white shadow-sm" : "text-slate-600 "
+          className={`h-10 rounded-xl text-xs font-bold transition-all duration-150 cursor-pointer flex items-center justify-center gap-1.5 active:scale-[0.98] ${
+            formType === "income" ? "bg-emerald-600 text-white shadow-sm" : "text-slate-600 hover:bg-white/70 hover:text-slate-800"
           }`}
         >
           <TrendingUp className="h-4 w-4" />
@@ -3076,8 +3086,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         <button
           type="button"
           onClick={() => switchFormType("expense")}
-          className={`py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-            formType === "expense" ? "bg-rose-600 text-white shadow-sm" : "text-slate-600 "
+          className={`h-10 rounded-xl text-xs font-bold transition-all duration-150 cursor-pointer flex items-center justify-center gap-1.5 active:scale-[0.98] ${
+            formType === "expense" ? "bg-rose-600 text-white shadow-sm" : "text-slate-600 hover:bg-white/70 hover:text-slate-800"
           }`}
         >
           <TrendingDown className="h-4 w-4" />
@@ -3085,11 +3095,11 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         </button>
       </div>
 
-      {/* Title & Invoice # */}
+      {/* 2. Title & document number */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="sm:col-span-2">
-          <label className="text-xs font-bold text-slate-700  block mb-1">
-            {t("Movement Title *", "Názov finančného pohybu *", "Tétel megnevezése *")}
+          <label className={FORM_LABEL}>
+            {t("Title *", "Názov *", "Megnevezés *")}
           </label>
           <input
             type="text"
@@ -3097,120 +3107,28 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             value={formTitle}
             onChange={(e) => setFormTitle(e.target.value)}
             placeholder={formType === "income" ? t("e.g. Countertop supply & installation", "napr. Dodávka a montáž kuchynskej linky", "pl. Konyhapult szállítása és beépítése") : t("e.g. Material purchase, Office rent...", "napr. Nákup materiálu, Nájom skladu...", "pl. Anyagbeszerzés, Irodabérlet...")}
-            className="w-full px-3.5 py-2.5 bg-slate-50  border border-slate-200  rounded-xl text-xs text-slate-800  focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className={FORM_INPUT}
           />
         </div>
 
         <div>
-          <label className="text-xs font-bold text-slate-700  block mb-1">
-            {t("Invoice # / Doc Ref", "Číslo faktúry / Dokladu", "Számlaszám")}
+          <label className={FORM_LABEL}>
+            {t("Document No.", "Číslo dokladu", "Bizonylatszám")}
           </label>
           <input
             type="text"
             value={formInvoiceNumber}
             onChange={(e) => setFormInvoiceNumber(e.target.value)}
             placeholder="FA-2026-0001"
-            className="w-full px-3.5 py-2.5 bg-slate-50  border border-slate-200  rounded-xl text-xs font-mono text-slate-800  focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className={`${FORM_INPUT} font-mono`}
           />
         </div>
       </div>
 
-      {/* Scope (Global vs Project vs Client) */}
-      <div className="p-4 rounded-2xl bg-slate-50  border border-slate-200  space-y-3">
-        <label className="text-xs font-bold text-slate-700  block">
-          {t("Financial Scope & Association", "Rozsah a priradenie", "Hatókör és hozzárendelés")}
-        </label>
-        <div className="grid grid-cols-3 gap-2 text-xs font-semibold">
-          <button
-            type="button"
-            onClick={() => setFormScope("global")}
-            className={`py-2 px-3 rounded-xl border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-              formScope === "global"
-                ? "bg-emerald-50 border-emerald-500 text-emerald-700 font-bold  "
-                : "bg-white  border-slate-200  text-slate-600"
-            }`}
-          >
-            <Globe className="h-3.5 w-3.5" />
-            {t("Global Company", "Globálne firemné", "Globális vállalati")}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setFormScope("project")}
-            className={`py-2 px-3 rounded-xl border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-              formScope === "project"
-                ? "bg-indigo-50 border-indigo-500 text-indigo-700 font-bold  "
-                : "bg-white  border-slate-200  text-slate-600"
-            }`}
-          >
-            <Briefcase className="h-3.5 w-3.5" />
-            {t("Project", "Projekt", "Projekt")}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setFormScope("client")}
-            className={`py-2 px-3 rounded-xl border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-              formScope === "client"
-                ? "bg-teal-50 border-teal-500 text-teal-700 font-bold  "
-                : "bg-white  border-slate-200  text-slate-600"
-            }`}
-          >
-            <User className="h-3.5 w-3.5" />
-            {t("Client", "Klient", "Ügyfél")}
-          </button>
-        </div>
-
-        {/* Project Selector if Project Scope */}
-        {formScope === "project" && (
-          <div className="pt-2 animate-in fade-in">
-            <label className="text-[11px] font-bold text-slate-500 block mb-1">
-              {t("Select Associated Project *", "Vyberte projekt *", "Válasszon projektet *")}
-            </label>
-            <CustomSelect
-              searchable
-              value={formProjectId}
-              onChange={(val) => setFormProjectId(val)}
-              placeholder={t("-- Select Project --", "-- Vyberte projekt --", "-- Válasszon --")}
-              options={[
-                { value: "", label: t("-- Select Project --", "-- Vyberte projekt --", "-- Válasszon --") },
-                ...projects.map((p) => {
-                  const lead = leads.find((l) => l.id === p.leadId || l.id === p.clientId);
-                  return {
-                    value: p.id,
-                    label: lead ? (lead.city ? `${lead.name} (${lead.city})` : lead.name) : p.id,
-                  };
-                }),
-              ]}
-              size="sm"
-              className="w-full text-xs font-semibold rounded-xl"
-            />
-          </div>
-        )}
-
-        {/* Client Selector if Client Scope */}
-        {formScope === "client" && (
-          <div className="pt-2 animate-in fade-in">
-            <label className="text-[11px] font-bold text-slate-500 block mb-1">
-              {t("Select Associated Client *", "Vyberte klienta *", "Válasszon ügyfelet *")}
-            </label>
-            <ClientSelect
-              leads={leads}
-              value={formClientId}
-              onChange={(val) => setFormClientId(val)}
-              placeholder={t("-- Select Client --", "-- Vyberte klienta --", "-- Válasszon ügyfelet --")}
-              noneLabel={t("-- Select Client --", "-- Vyberte klienta --", "-- Válasszon ügyfelet --")}
-              size="sm"
-              className="w-full text-xs font-semibold rounded-xl"
-            />
-          </div>
-        )}
-      </div>
-
-      {/* 3-Level Category Selector */}
+      {/* 3. Category */}
       <div>
-        <label className="text-xs font-bold text-slate-700  block mb-1">
-          {t("Category Classification (3 Levels)", "Klasifikácia kategórie (3 úrovne)", "Kategória besorolás")}
+        <label className={FORM_LABEL}>
+          {t("Category", "Kategória", "Kategória")}
         </label>
         <SearchableCategorySelect
           value={formCategoryId}
@@ -3218,42 +3136,103 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           categories={financialCategories}
           filterType={formType}
           allowAll={false}
+          size="md"
           placeholder={t("-- Select Category --", "-- Vyberte kategóriu --", "-- Válasszon kategóriát --")}
           t={t}
         />
       </div>
 
-      {/* PLANNED & REAL AMOUNTS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-2xl bg-slate-50  border border-slate-200 ">
+      {/* 4. Status & dates */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
-          <label className="text-xs font-bold text-slate-700  block mb-1 flex items-center justify-between">
-            <span>{t("Planned Amount (€) *", "Plánovaná suma (€) *", "Tervezett összeg (€) *")}</span>
-            <span className="text-[10px] text-slate-400 font-normal">{t("Budget / Target", "Rozpočet / Cieľ", "Költségvetés")}</span>
+          <label className={FORM_LABEL}>
+            {t("Status", "Stav úhrady", "Állapot")}
           </label>
-          <input
-            type="number"
-            step="0.01"
-            required
-            value={formAmountPlanned}
-            onChange={(e) => setFormAmountPlanned(e.target.value ? parseFloat(e.target.value) : "")}
-            placeholder="0.00"
-            className="w-full px-3.5 py-2 bg-white  border border-slate-200  rounded-xl text-sm font-bold text-slate-900  focus:outline-none focus:ring-2 focus:ring-emerald-500"
+          <CustomSelect
+            value={formStatus}
+            onChange={(val) => {
+              const newSt = val as FinancialStatus;
+              setFormStatus(newSt);
+              if (newSt === "paid" && (!formAmountReal || formAmountReal === 0) && formAmountPlanned) {
+                setFormAmountReal(formAmountPlanned);
+              }
+            }}
+            options={[
+              { value: "planned", label: t("Planned / Scheduled", "Plánované", "Tervezett") },
+              { value: "pending", label: t("Pending / Issued", "Čaká na úhradu", "Fizetésre vár") },
+              { value: "paid", label: t("Paid / Settled", "Uhradené", "Fizetve") },
+              { value: "partially_paid", label: t("Partially Paid", "Čiastočne uhradené", "Részben fizetve") },
+              { value: "overdue", label: t("Overdue", "Po splatnosti", "Lejárt") },
+              { value: "cancelled", label: t("Cancelled", "Zrušené", "Törölve") },
+            ]}
+            size="sm"
+            className="h-10 !px-3.5 text-xs rounded-xl"
           />
         </div>
 
         <div>
-          <label className="text-xs font-bold text-slate-700  block mb-1 flex items-center justify-between">
-            <span>{t("Real / Paid Amount (€)", "Skutočná / Reálna suma (€)", "Valós / Fizetett összeg (€)")}</span>
-            <span className="text-[10px] text-slate-400 font-normal">{t("Actual realized", "Skutočne zaplatené", "Tényleges")}</span>
+          <label className={FORM_LABEL}>
+            {t("Issue Date *", "Dátum vystavenia *", "Kiállítás dátuma *")}
           </label>
           <input
-            type="number"
-            step="0.01"
-            value={formAmountReal}
-            onChange={(e) => setFormAmountReal(e.target.value ? parseFloat(e.target.value) : "")}
-            placeholder="0.00"
-            className="w-full px-3.5 py-2 bg-white  border border-slate-200  rounded-xl text-sm font-bold text-slate-900  focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            type="date"
+            required
+            value={formIssueDate}
+            onChange={(e) => setFormIssueDate(e.target.value)}
+            className={FORM_INPUT}
           />
+        </div>
+
+        <div>
+          <label className={FORM_LABEL}>
+            {t("Due Date", "Dátum splatnosti", "Esedékesség")}
+          </label>
+          <input
+            type="date"
+            value={formDueDate}
+            onChange={(e) => setFormDueDate(e.target.value)}
+            className={FORM_INPUT}
+          />
+        </div>
+      </div>
+
+      {/* 5. Amounts — planned vs actually paid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-200">
+        <div>
+          <label className={`${FORM_LABEL} flex items-baseline justify-between gap-2`}>
+            <span>{t("Planned Amount *", "Plánovaná suma *", "Tervezett összeg *")}</span>
+            <span className="text-[10px] font-medium text-slate-400">{t("Budget / target", "Rozpočet / cieľ", "Költségvetés")}</span>
+          </label>
+          <div className="relative">
+            <input
+              type="number"
+              step="0.01"
+              required
+              value={formAmountPlanned}
+              onChange={(e) => setFormAmountPlanned(e.target.value ? parseFloat(e.target.value) : "")}
+              placeholder="0.00"
+              className={`${FORM_INPUT} pr-9 !text-sm font-bold tabular-nums`}
+            />
+            <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">€</span>
+          </div>
+        </div>
+
+        <div>
+          <label className={`${FORM_LABEL} flex items-baseline justify-between gap-2`}>
+            <span>{t("Paid Amount", "Skutočná suma", "Fizetett összeg")}</span>
+            <span className="text-[10px] font-medium text-slate-400">{t("Actually settled", "Skutočne uhradené", "Ténylegesen fizetve")}</span>
+          </label>
+          <div className="relative">
+            <input
+              type="number"
+              step="0.01"
+              value={formAmountReal}
+              onChange={(e) => setFormAmountReal(e.target.value ? parseFloat(e.target.value) : "")}
+              placeholder="0.00"
+              className={`${FORM_INPUT} pr-9 !text-sm font-bold tabular-nums`}
+            />
+            <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">€</span>
+          </div>
         </div>
 
         {/* A price change on a recurring rule only ever moves forward — say so
@@ -3305,79 +3284,40 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         })()}
       </div>
 
-      {/* Status, Dates, Payment Method */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div>
-          <label className="text-xs font-bold text-slate-700  block mb-1">
-            {t("Payment Status", "Stav úhrady", "Fizetési állapot")}
-          </label>
-          <CustomSelect
-            value={formStatus}
-            onChange={(val) => {
-              const newSt = val as FinancialStatus;
-              setFormStatus(newSt);
-              if (newSt === "paid" && (!formAmountReal || formAmountReal === 0) && formAmountPlanned) {
-                setFormAmountReal(formAmountPlanned);
-              }
-            }}
-            options={[
-              { value: "planned", label: t("Planned / Scheduled", "Plánované", "Tervezett") },
-              { value: "pending", label: t("Pending / Issued", "Čaká na úhradu", "Fizetésre vár") },
-              { value: "paid", label: t("Paid / Settled", "Uhradené", "Fizetve") },
-              { value: "partially_paid", label: t("Partially Paid", "Čiastočne uhradené", "Részben fizetve") },
-              { value: "overdue", label: t("Overdue", "Po splatnosti", "Lejárt") },
-              { value: "cancelled", label: t("Cancelled", "Zrušené", "Törölve") },
-            ]}
-            size="sm"
-            className="w-full text-xs font-semibold rounded-xl bg-slate-50 border-slate-200"
-          />
-        </div>
-
-        <div>
-          <label className="text-xs font-bold text-slate-700  block mb-1">
-            {t("Issue / Scheduled Date", "Dátum vystavenia / naplánovania", "Kiállítási / tervezett dátum")}
-          </label>
-          <input
-            type="date"
-            required
-            value={formIssueDate}
-            onChange={(e) => setFormIssueDate(e.target.value)}
-            className="w-full px-3 py-2 bg-slate-50  border border-slate-200  rounded-xl text-xs"
-          />
-        </div>
-
-        <div>
-          <label className="text-xs font-bold text-slate-700  block mb-1">
-            {t("Due Date", "Dátum splatnosti", "Esedékesség dátuma")}
-          </label>
-          <input
-            type="date"
-            value={formDueDate}
-            onChange={(e) => setFormDueDate(e.target.value)}
-            className="w-full px-3 py-2 bg-slate-50  border border-slate-200  rounded-xl text-xs"
-          />
-        </div>
-      </div>
-
-      {/* RECURRING PAYMENT CONFIG */}
-      <div className="p-4 rounded-2xl bg-indigo-50/50  border border-indigo-100  space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <RefreshCw className="h-4 w-4 text-indigo-600 " />
-            <span className="text-xs font-bold text-slate-900 ">
-              {t("Recurring Movement Schedule", "Pravidelná / opakujúca sa platba", "Rendszeres / ismétlődő tétel")}
+      {/* 6. Recurring switch — the whole row toggles */}
+      <div
+        className={`p-4 rounded-2xl border space-y-3 transition-colors duration-200 ${
+          formIsRecurring ? "bg-indigo-50/60 border-indigo-200" : "bg-white border-slate-200 hover:border-slate-300"
+        }`}
+      >
+        <label className="flex items-center justify-between gap-3 cursor-pointer">
+          <span className="flex items-center gap-3 min-w-0">
+            <span
+              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-colors duration-200 ${
+                formIsRecurring ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500"
+              }`}
+            >
+              <RefreshCw className="h-4 w-4" />
             </span>
-          </div>
-          <label className="relative inline-flex items-center cursor-pointer">
+            <span className="min-w-0">
+              <span className="block text-xs font-bold text-slate-800">
+                {t("Recurring payment", "Opakujúca sa platba", "Ismétlődő tétel")}
+              </span>
+              <span className="block text-[11px] text-slate-500">
+                {t("Repeats automatically every week, month or year", "Automaticky sa opakuje týždenne, mesačne alebo ročne", "Automatikusan ismétlődik hetente, havonta vagy évente")}
+              </span>
+            </span>
+          </span>
+          <span className="relative inline-flex shrink-0 items-center">
             <input
               type="checkbox"
               checked={formIsRecurring}
               onChange={(e) => setFormIsRecurring(e.target.checked)}
               className="sr-only peer"
             />
-            <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
-          </label>
-        </div>
+            <span className="w-9 h-5 bg-slate-200 rounded-full peer-focus-visible:ring-2 peer-focus-visible:ring-indigo-500/40 peer-checked:bg-indigo-600 transition-colors duration-200 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-transform after:duration-200 peer-checked:after:translate-x-4 peer-checked:after:border-white"></span>
+          </span>
+        </label>
 
         {formIsRecurring && (
           <div className="space-y-3 pt-2 border-t border-indigo-100  animate-in fade-in">
@@ -3543,17 +3483,88 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         )}
       </div>
 
-      {/* Description */}
+      {/* 7. Assignment — company-wide, a project or a client */}
+      <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+        <span className="text-xs font-semibold text-slate-600 block">
+          {t("Assignment", "Priradenie", "Hozzárendelés")}
+        </span>
+        <div className="grid grid-cols-3 gap-1 p-1 bg-slate-200/60 rounded-xl text-xs font-semibold">
+          {([
+            { id: "global", icon: Globe, label: t("Company-wide", "Celá firma", "Teljes cég"), active: "text-emerald-700" },
+            { id: "project", icon: Briefcase, label: t("Project", "Projekt", "Projekt"), active: "text-indigo-700" },
+            { id: "client", icon: User, label: t("Client", "Klient", "Ügyfél"), active: "text-teal-700" },
+          ] as const).map(({ id, icon: Icon, label, active }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setFormScope(id)}
+              className={`h-9 px-2 rounded-lg flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer active:scale-[0.98] ${
+                formScope === id ? `bg-white shadow-sm font-bold ${active}` : "text-slate-600 hover:text-slate-800 hover:bg-white/60"
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Project Selector if Project Scope */}
+        {formScope === "project" && (
+          <div className="animate-in fade-in duration-150">
+            <label className="text-[11px] font-bold text-slate-500 block mb-1">
+              {t("Select Associated Project *", "Vyberte projekt *", "Válasszon projektet *")}
+            </label>
+            <CustomSelect
+              searchable
+              value={formProjectId}
+              onChange={(val) => setFormProjectId(val)}
+              placeholder={t("-- Select Project --", "-- Vyberte projekt --", "-- Válasszon --")}
+              options={[
+                { value: "", label: t("-- Select Project --", "-- Vyberte projekt --", "-- Válasszon --") },
+                ...projects.map((p) => {
+                  const lead = leads.find((l) => l.id === p.leadId || l.id === p.clientId);
+                  return {
+                    value: p.id,
+                    label: lead ? (lead.city ? `${lead.name} (${lead.city})` : lead.name) : p.id,
+                  };
+                }),
+              ]}
+              size="sm"
+              className="h-10 !px-3.5 text-xs rounded-xl"
+            />
+          </div>
+        )}
+
+        {/* Client Selector if Client Scope */}
+        {formScope === "client" && (
+          <div className="animate-in fade-in duration-150">
+            <label className="text-[11px] font-bold text-slate-500 block mb-1">
+              {t("Select Associated Client *", "Vyberte klienta *", "Válasszon ügyfelet *")}
+            </label>
+            <ClientSelect
+              leads={leads}
+              value={formClientId}
+              onChange={(val) => setFormClientId(val)}
+              placeholder={t("-- Select Client --", "-- Vyberte klienta --", "-- Válasszon ügyfelet --")}
+              noneLabel={t("-- Select Client --", "-- Vyberte klienta --", "-- Válasszon ügyfelet --")}
+              size="sm"
+              className="h-10 !px-3.5 text-xs rounded-xl"
+            />
+          </div>
+        )}
+      </div>
+
+      {/* 8. Note */}
       <div>
-        <label className="text-xs font-bold text-slate-700  block mb-1">
-          {t("Notes / Description", "Poznámka / Popis položiek", "Megjegyzés / leírás")}
+        <label className={FORM_LABEL}>
+          {t("Note", "Poznámka", "Megjegyzés")}
         </label>
         <textarea
-          rows={2}
+          rows={3}
           value={formDescription}
           onChange={(e) => setFormDescription(e.target.value)}
           placeholder={t("Additional details, contract references, itemized breakdown...", "Podrobnosti o položkách, zmluve, podmienkach...", "További részletek...")}
-          className="w-full px-3.5 py-2 bg-slate-50  border border-slate-200  rounded-xl text-xs text-slate-800  focus:outline-none"
+          className={FORM_TEXTAREA}
         />
       </div>
     </>
