@@ -23,7 +23,9 @@ import { AiKeyBanner } from "./components/ui/AiKeyBanner";
 import { QuickAddClientProvider } from "./components/ui/QuickAddClient";
 import FilePreviewPane from "./components/FilePreviewPane";
 import { RefreshCw, AlertOctagon, Trash2, Copy } from "lucide-react";
-import { ShaderGradient, ShaderGradientCanvas } from "shadergradient";
+import { ShaderGradient } from "shadergradient";
+import { Canvas, type EventManager } from "@react-three/fiber";
+import { ShaderChunk } from "three";
 import { getStoredTheme, getStoredThemeMode, isThemeMode, startThemeWatcher, type Appearance, type ThemeMode } from "./utils/theme";
 import { hasPersistentStorage } from "./utils/safeStorage";
 import { LicenseBanner } from "./components/LicenseBanner";
@@ -112,6 +114,42 @@ const FinancialManagementView = safeLazy(() => import("./components/FinancialMan
 const InvoicingView = safeLazy(() => import("./components/InvoicingView").then(m => ({ default: m.InvoicingView })));
 
 const ShaderGradientAny = ShaderGradient as any;
+
+/**
+ * shadergradient's own ShaderGradientCanvas, minus pointer events.
+ *
+ * Its Canvas wires r3f's pointer handlers to the wrapper div once WebGL is up.
+ * The loading screen that hosts it often unmounts before that happens, and r3f
+ * then calls addEventListener on a null ref — an uncaught exception on nearly
+ * every load. The gradient is pointer-events:none and never needed events, so
+ * an event manager with no connect step removes the race rather than hiding it.
+ * The rest mirrors the wrapper: its Canvas props, and blanking the uv2/encodings
+ * chunks its shaders still #include but current three no longer ships.
+ */
+const NO_POINTER_EVENTS = (): EventManager<HTMLElement> => ({ enabled: false, priority: 0 });
+const BackgroundGradientCanvas: React.FC<{ style: React.CSSProperties; children: React.ReactNode }> = ({ style, children }) => {
+  useEffect(() => {
+    const chunks = ShaderChunk as unknown as Record<string, string>;
+    chunks.uv2_pars_vertex = "";
+    chunks.uv2_vertex = "";
+    chunks.uv2_pars_fragment = "";
+    chunks.encodings_fragment = "";
+  }, []);
+  return (
+    <Canvas
+      style={style}
+      resize={{ offsetSize: true }}
+      dpr={1}
+      camera={{ fov: 45 }}
+      linear
+      flat
+      gl={{ preserveDrawingBuffer: true }}
+      events={NO_POINTER_EVENTS}
+    >
+      {children}
+    </Canvas>
+  );
+};
 
 // Stable, order-fixed fingerprint of the settings block. Used to tell a genuine
 // user edit apart from merely re-receiving the server's own settings, so the
@@ -2993,7 +3031,7 @@ ${log.payload || ''}
 
         {/* Animated 3D Shader Background */}
         <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
-          <ShaderGradientCanvas
+          <BackgroundGradientCanvas
             style={{
               position: 'absolute',
               top: 0,
@@ -3043,7 +3081,7 @@ ${log.payload || ''}
               uStrength={0.4}
               wireframe={false}
             />
-          </ShaderGradientCanvas>
+          </BackgroundGradientCanvas>
         </div>
 
         <div className="relative z-10 flex flex-col items-center max-w-sm text-center">
