@@ -1,5 +1,9 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { defineConfig, devices } from '@playwright/test';
 import { inferSuiteKindFromArgv, persistSuiteKind } from './tests/e2e/helpers/reportCollector';
+
+const ROOT = path.dirname(fileURLToPath(import.meta.url));
 
 persistSuiteKind(inferSuiteKindFromArgv());
 
@@ -38,6 +42,17 @@ const QA_URL = `http://localhost:${QA_PORT}`;
 /** Auditing a deployed environment: use it as-is, do not start anything local. */
 const EXTERNAL_TARGET = process.env.BASE_URL;
 
+/**
+ * Vite is started from its own bin script, not through `npm run dev`. Through
+ * npm the server is a great-grandchild (npm -> shell -> node), and playwright's
+ * kill at the end of a run does not always reach it on Windows: a leftover
+ * server was found still burning a full core hours after its run had ended,
+ * and the port it held made the next run refuse to start. Spawned directly it
+ * is in playwright's own process tree and dies with the run.
+ */
+const VITE_BIN = path.join(ROOT, 'node_modules', 'vite', 'bin', 'vite.js');
+const DEV_SERVER_COMMAND = `"${process.execPath}" "${VITE_BIN}" --port ${QA_PORT} --strictPort`;
+
 export default defineConfig({
   testDir: './tests/e2e',
   outputDir: './test-results/artifacts',
@@ -49,6 +64,13 @@ export default defineConfig({
      dropdown, so it needs far longer than a conventional assertion test. */
   timeout: 4 * 60 * 1000,
   expect: { timeout: 5000 },
+
+  /* A ceiling on the whole run. A run on a memory-starved machine does not
+     fail, it crawls: one was found 24 minutes in with every test still pending
+     and nothing written. `scripts/qa/run-qa.mjs` sets this to 15 minutes for a
+     scoped run and 45 for a full one; the value here is what a bare
+     `npx playwright test` gets. */
+  globalTimeout: Number(process.env.QA_GLOBAL_TIMEOUT_MS ?? 45 * 60 * 1000),
 
   /* Each test gets its own browser context with its own mocked backend, so
      modules are safe to audit concurrently.
@@ -101,7 +123,7 @@ export default defineConfig({
   /* BASE_URL means "audit that deployment"; starting a local dev server then
      would be pointless and would make the run wait on a port nobody uses. */
   webServer: EXTERNAL_TARGET ? undefined : {
-    command: `npm run dev -- --port ${QA_PORT} --strictPort`,
+    command: DEV_SERVER_COMMAND,
     url: QA_URL,
     reuseExistingServer: process.env.QA_REUSE_SERVER === '1',
     timeout: 120 * 1000,

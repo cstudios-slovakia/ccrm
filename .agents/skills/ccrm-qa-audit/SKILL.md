@@ -48,6 +48,16 @@ reuse means a run either audits *this* checkout or refuses to start, instead of
 silently auditing another branch. Set `QA_REUSE_SERVER=1` to reuse a server
 already on the QA port.
 
+**One run per machine.** The runner takes a machine-wide lock
+(`%TEMP%\ccrm-qa-run.lock`), waits for 1.5 GB of free RAM and for its port, sizes
+its workers to what is free (1, or 2 above 4 GB), and caps the whole run at 15
+minutes scoped / 45 full. A second run prints `Waiting: …` and starts when the
+first ends. Never kill the other run, sweep by port, or take another `QA_PORT`
+to run beside it — several concurrent runs on one 16 GB machine is exactly what
+produced hung runs and phantom findings. In a shared worktree prefer
+`--files <your files>` or `--module`, since the automatic diff scopes to every
+session's changes.
+
 A full run takes a few minutes.
 
 | Command | Scope |
@@ -66,7 +76,10 @@ A full run takes a few minutes.
 Environment switches:
 
 - `QA_FAIL_ON=CRITICAL|HIGH|MEDIUM|LOW|NEVER` - severity that fails the run (default `HIGH`).
-- `QA_WORKERS=n` - parallel workers (default 2).
+- `QA_WORKERS=n` - parallel workers (default 1, or 2 when at least 4 GB of RAM is free).
+- `QA_MIN_FREE_MB=n` - free RAM a run waits for before starting (default 1536; 0 in CI).
+- `QA_WAIT_MIN=n` - how long to queue behind another run, low memory or a busy port (default 30).
+- `QA_GLOBAL_TIMEOUT_MS=n` - ceiling on the whole run (default 15 min scoped, 45 min full).
 - `QA_MAX_CORES=n` - hard CPU ceiling; browsers are pinned to `n` cores (default: half the machine, `0` disables).
 - `QA_VIDEO=1` - record video. Off by default: playwright records *every* test to
   keep the ones that fail, one `ffmpeg` per worker, and traces already show what

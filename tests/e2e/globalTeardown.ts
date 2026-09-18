@@ -8,6 +8,7 @@ import {
   isCanaryFinding,
 } from './helpers/reportCollector';
 import { FAIL_ON } from './helpers/gate';
+import { releaseRunLock } from '../../scripts/qa/admission.mjs';
 
 /** file:// URL — most terminals turn this into a clickable link. */
 function link(file: string): string {
@@ -31,6 +32,8 @@ function openInEditor(file: string) {
  * disk. Set QA_OPEN=1 to also open the report automatically when defects exist.
  */
 export default function globalTeardown() {
+  /* No-op unless this process took the machine lock itself in globalSetup. */
+  releaseRunLock();
   const { data, suiteKind, runDir } = generateMarkdownReport();
 
   const counts = data.findings.reduce<Record<string, number>>((acc, f) => {

@@ -2,7 +2,6 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 
-export const FINDINGS_DIR = path.resolve('test-results', 'qa-findings');
 export const REPORT_PATH = path.resolve('test-results', 'qa-audit-report.md');
 export const FINDINGS_JSON = path.resolve('test-results', 'qa-findings.json');
 export const LATEST_FULL_REPORT = path.resolve('test-results', 'qa-audit-report-latest-full.md');
@@ -19,7 +18,6 @@ export const LATEST_FULL_JSON = path.resolve('test-results', 'qa-findings-latest
  * the screenshots it references, together, and old folders are pruned.
  */
 export const RUNS_DIR = path.resolve('test-results', 'runs');
-const RUN_ID_MARKER = path.resolve('test-results', 'qa-run-id.txt');
 
 /** How many past run folders to keep on disk. */
 export const KEEP_RUNS = Math.max(1, Number(process.env.QA_KEEP_RUNS ?? 10) || 10);
@@ -35,12 +33,18 @@ function stampNow(): string {
 
 /**
  * Called once from globalSetup, before any worker starts. Creates this run's
- * folder and records its id so every worker process writes evidence into it.
+ * folder and publishes its id through the environment, which playwright
+ * copies into every worker it spawns.
+ *
+ * The id used to be mirrored in a marker file under `test-results/` as well.
+ * Two runs in the same checkout then shared that one file, so a worker could
+ * pick up a *sibling* run's id and write its evidence into the wrong folder.
+ * The environment is per process tree, so it cannot leak between runs.
  */
 export function beginRun(kind: SuiteKind): string {
   const id = `${stampNow()}-${kind}`;
   fs.mkdirSync(path.join(RUNS_DIR, id, 'screenshots'), { recursive: true });
-  fs.writeFileSync(RUN_ID_MARKER, id, 'utf-8');
+  fs.mkdirSync(path.join(RUNS_DIR, id, 'findings'), { recursive: true });
   process.env.QA_RUN_ID = id;
   return id;
 }
@@ -48,18 +52,21 @@ export function beginRun(kind: SuiteKind): string {
 /** This run's id, shared across the main process and every worker. */
 export function currentRunId(): string {
   if (process.env.QA_RUN_ID) return process.env.QA_RUN_ID;
-  if (fs.existsSync(RUN_ID_MARKER)) {
-    const id = fs.readFileSync(RUN_ID_MARKER, 'utf-8').trim();
-    if (id) {
-      process.env.QA_RUN_ID = id;
-      return id;
-    }
-  }
   return beginRun(inferSuiteKind());
 }
 
 export function currentRunDir(): string {
   return path.join(RUNS_DIR, currentRunId());
+}
+
+/**
+ * Per-worker findings scratch, inside this run's own folder. A shared
+ * `test-results/qa-findings/` used to be wiped by every globalSetup, so a run
+ * starting while another was still crawling erased the first run's evidence
+ * mid-flight and then merged whatever was left into both reports.
+ */
+export function findingsDir(): string {
+  return path.join(currentRunDir(), 'findings');
 }
 
 /** Where `captureEvidence` writes, repo-relative so the report can link to it. */
@@ -85,8 +92,6 @@ const UTF8_BOM = '\uFEFF';
 
 export type SuiteKind = 'full' | 'partial';
 
-const SUITE_KIND_MARKER = path.resolve('test-results', 'qa-suite-kind.txt');
-
 /**
  * CLI-only inference. Used from playwright.config.ts where `process.argv`
  * still contains the spec file / --grep. Do not read the marker here — it
@@ -102,23 +107,28 @@ export function inferSuiteKindFromArgv(argv: string[] = process.argv.slice(2)): 
   return 'full';
 }
 
+/**
+ * Records the kind for the rest of this process (playwright.config.ts,
+ * globalSetup and globalTeardown all run in the same one). `QA_SUITE` set by
+ * the caller — `scripts/qa/run-qa.mjs` always sets it — wins over the argv
+ * guess. Nothing is written to disk: the marker file this used to keep was
+ * shared by every run in the checkout, so a concurrent partial run could
+ * relabel a full one.
+ */
 export function persistSuiteKind(kind: SuiteKind) {
-  fs.mkdirSync(path.dirname(SUITE_KIND_MARKER), { recursive: true });
-  fs.writeFileSync(SUITE_KIND_MARKER, kind, 'utf-8');
+  const forced = process.env.QA_SUITE?.toLowerCase();
+  if (forced === 'full' || forced === 'partial') return;
   process.env.QA_SUITE = kind;
 }
 
 /**
- * A full suite is `npm run test:qa` / bare `playwright test`. Passing a spec
- * file or `--grep` is a partial run and must not replace the last full report.
+ * A full suite is `npm run test:qa:full` / bare `playwright test`. Passing a
+ * spec file or `--grep` is a partial run and must not replace the last full
+ * report.
  */
 export function inferSuiteKind(): SuiteKind {
   const forced = process.env.QA_SUITE?.toLowerCase();
   if (forced === 'full' || forced === 'partial') return forced;
-  if (fs.existsSync(SUITE_KIND_MARKER)) {
-    const v = fs.readFileSync(SUITE_KIND_MARKER, 'utf-8').trim().toLowerCase();
-    if (v === 'full' || v === 'partial') return v;
-  }
   return inferSuiteKindFromArgv();
 }
 
@@ -237,7 +247,7 @@ class Collector {
   private readonly file: string;
 
   constructor() {
-    this.file = path.join(FINDINGS_DIR, `worker-${process.pid}-${crypto.randomBytes(3).toString('hex')}.json`);
+    this.file = path.join(findingsDir(), `worker-${process.pid}-${crypto.randomBytes(3).toString('hex')}.json`);
   }
 
   /** Starts tracking findings for one test, so that test can fail on its own defects. */
@@ -272,7 +282,7 @@ class Collector {
   }
 
   private flush() {
-    fs.mkdirSync(FINDINGS_DIR, { recursive: true });
+    fs.mkdirSync(findingsDir(), { recursive: true });
     const payload: CollectedData = { findings: this.findings, passes: this.passes };
     fs.writeFileSync(this.file, JSON.stringify(payload, null, 2), 'utf-8');
   }
@@ -287,12 +297,13 @@ export function formatFindingLine(f: QAFinding): string {
 
 export function readAllFindings(): CollectedData {
   const merged: CollectedData = { findings: [], passes: [] };
-  if (!fs.existsSync(FINDINGS_DIR)) return merged;
+  const dir = findingsDir();
+  if (!fs.existsSync(dir)) return merged;
   const seen = new Set<string>();
-  for (const name of fs.readdirSync(FINDINGS_DIR)) {
+  for (const name of fs.readdirSync(dir)) {
     if (!name.endsWith('.json')) continue;
     try {
-      const data: CollectedData = JSON.parse(fs.readFileSync(path.join(FINDINGS_DIR, name), 'utf-8'));
+      const data: CollectedData = JSON.parse(fs.readFileSync(path.join(dir, name), 'utf-8'));
       for (const f of data.findings ?? []) {
         if (seen.has(f.id)) continue;
         seen.add(f.id);

@@ -47,6 +47,29 @@ run reserved for a human asking for it explicitly. If you think a change's
 blast radius genuinely needs more than the scoped run covers, say so and ask
 before running it.
 
+## 2b. One run at a time, and only your own scope
+
+Several sessions share this machine and often this checkout. Every one of them
+following this rule at once is what overloaded it: 2.5 GB per run, three runs,
+0.2 GB free, half-hour runs that reported nothing. `scripts/qa/run-qa.mjs` now
+enforces the fix mechanically, and the rules that go with it are:
+
+- **If it prints `Waiting: …`, wait.** It queues behind the other run (or low
+  memory) and starts by itself. Never kill the other run, never sweep processes
+  by port, never set another `QA_PORT` to run beside it.
+- **Never start a QA run as a background task.** A backgrounded shell task
+  that gets cut off kills the run halfway and leaves nothing useful. Run it in
+  the foreground and read the verdict.
+- **In a shared worktree, name your files:**
+  `node scripts/qa/run-qa.mjs --files <files you changed>` or
+  `npm run test:qa:module <Module>`. Plain `npm run test:qa` diffs the whole
+  working tree, so its scope is every session's changes, not yours.
+- **Pure logic needs no browser.** A change confined to `src/utils` is covered
+  by `npm run test:unit`; the scoped run would only add the shell tests.
+- A run that hits its time cap (15 min scoped, 45 full) or reports defects
+  while other runs were live is **load, not evidence** — re-run it alone
+  before touching product code.
+
 ## 3. It also runs without you
 
 - `npm run deploy` runs the gate first and **aborts the deploy** if it fails.

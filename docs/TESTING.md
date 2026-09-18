@@ -32,8 +32,9 @@ Then, any time you want:
 npm run test:qa
 ```
 
-The dev server starts automatically. If you already have `npm run dev` running,
-it is reused rather than restarted.
+The dev server starts automatically on port **5273** - not the 5173 you develop
+on, so a run always audits *this* checkout. Set `QA_REUSE_SERVER=1` to reuse a
+server you already have on that port.
 
 ---
 
@@ -89,17 +90,55 @@ default to plain `npm run test:qa` after finishing a change and never reach for
 changed. Ask the user first if you think a full run is warranted (e.g. a change
 whose blast radius the scoping table can't express).
 
+**In a shared worktree, name your files.** `npm run test:qa` diffs the *whole*
+working tree, so when several sessions edit the same checkout its scope is
+everyone's changes, not yours. `node scripts/qa/run-qa.mjs --files <your files>`
+(or `npm run test:qa:module <Module>`) keeps the run to what you touched.
+
+### One run per machine
+
+A run is a Chromium per worker plus its own dev server - about 2.5 GB - and
+several sessions following the same "test when finished" rule used to start
+two or three of them at once on a 16 GB machine. Nothing failed outright; runs
+simply crawled for half an hour, reported nothing, or reported defects that
+vanished on a quiet machine. So `scripts/qa/run-qa.mjs` now admits one run at a
+time:
+
+- It takes a **machine-wide lock** (`%TEMP%\ccrm-qa-run.lock`, shared by every
+  worktree and every session). A second run prints `Waiting: another QA run is
+  live: PID …` and starts when the first one ends - usually within minutes.
+- It waits until at least **1.5 GB of RAM is free** (`QA_MIN_FREE_MB`), and until
+  its port is not held by a server it did not start.
+- It runs **1 worker** unless at least 4 GB is free, then 2. `QA_WORKERS`
+  overrides.
+- The whole run is capped: **15 minutes scoped, 45 full**
+  (`QA_GLOBAL_TIMEOUT_MS`). A run that needs longer is starved, not thorough.
+- It gives up after `QA_WAIT_MIN` minutes (default 30) with exit code 2 and
+  runs nothing, rather than start a run whose findings would be noise.
+
+When you see `Waiting:`, wait. Do not kill the other run, do not sweep
+processes by port, and do not take a different `QA_PORT` to squeeze in beside
+it - that is the overload the lock exists to prevent. On exit or Ctrl+C the
+runner kills its own process tree, so nothing is left behind to sweep.
+
 ### Environment switches
 
 | Variable | Default | Effect |
 |---|---|---|
 | `QA_FAIL_ON` | `HIGH` | Severity that fails the run. `CRITICAL`/`HIGH`/`MEDIUM`/`LOW`/`NEVER`. |
-| `QA_WORKERS` | `3` (`2` in CI) | Parallel workers. |
+| `QA_WORKERS` | `1`, or `2` when ≥ 4 GB RAM is free | Parallel workers; one is one Chromium. Never more than 2 by default. |
+| `QA_MIN_FREE_MB` | `1536` (`0` in CI) | Free RAM a run waits for before starting. |
+| `QA_WAIT_MIN` | `30` | How long to queue behind another run, low memory or a busy port before giving up. |
+| `QA_GLOBAL_TIMEOUT_MS` | 15 min scoped, 45 min full | Ceiling on the whole run. |
+| `QA_MAX_CORES` | half the machine | Hard CPU ceiling; browsers are pinned to that many cores. `0` disables. |
+| `QA_VIDEO` | off | `QA_VIDEO=1` records video (one `ffmpeg` per worker). Traces already show failures. |
+| `QA_PORT` | `5273` | Port of the dev server the run starts. |
+| `QA_REUSE_SERVER` | off | `QA_REUSE_SERVER=1` reuses a server already on `QA_PORT` instead of starting one. |
 | `QA_KEEP_RUNS` | `10` | How many past run folders to keep on disk. |
 | `QA_OPEN` | off | `QA_OPEN=1` opens the report automatically when defects are found. |
 | `QA_SERVER_LOGS` | off | `QA_SERVER_LOGS=1` un-silences the Vite dev server output. |
 | `QA_RECORDING` | — | Replay a single recording file. |
-| `BASE_URL` | `http://localhost:5173` | Audit a deployed environment instead of localhost. |
+| `BASE_URL` | — | Audit a deployed environment instead; no local dev server is started. |
 
 ---
 
@@ -118,6 +157,7 @@ test-results/
       report.md                       <- self-contained: links resolve inside
       findings.json
       screenshots/                    <- only this run's evidence
+      findings/                       <- per-worker scratch the report is merged from
     2026-08-27_21-40-12-partial/
       ...
   artifacts/                          <- Playwright traces and video
@@ -252,6 +292,9 @@ dismissal is keyed, the seat arithmetic — is in `src/utils/license.test.ts` an
 | Touched navigation, the sidebar or the header | `npm run test:qa:nav` |
 | Touched licensing (`api/license*.php`, the token format) | `php scripts/test/license-verification.php` |
 | **Finished a feature or a fix** | **`npm run test:qa`** (scoped automatically) |
+| Several sessions share this checkout | `node scripts/qa/run-qa.mjs --files <your files>` — the automatic diff would scope to everyone's changes |
+| Another run is live (`Waiting:` printed) | nothing — it queues and starts when the other run ends |
+| Changed only pure logic in `src/utils` | `npm run test:unit` is enough; the scoped run adds only the shell tests |
 | You want everything run, on purpose | `npm run test:qa:full` — **ask the user first; don't default to this** |
 | About to deploy | automatic — `npm run deploy` gates on it (scoped) |
 | Opened a PR / pushed a branch | automatic — GitHub Actions runs it (scoped) |

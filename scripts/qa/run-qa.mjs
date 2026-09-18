@@ -22,6 +22,17 @@
  *   node scripts/qa/run-qa.mjs --since main         # diff against another ref
  *   node scripts/qa/run-qa.mjs --files src/components/EmailView.tsx
  *
+ * Only one run per machine. Several editor sessions share this machine and
+ * each of them follows the same "test when finished" rule, so runs used to
+ * pile up: two or three at once, each a Chromium per worker plus a dev
+ * server, on a 16 GB machine already carrying the editors, Docker and WSL.
+ * The result was 0.2 GB free, runs that hung for half an hour and reported
+ * nothing, and "defects" that vanished on a quiet machine. So before a
+ * browser starts, a run takes a machine-wide lock, waits for enough free
+ * memory and for its port, and sizes its worker count to what is free
+ * (`admission.mjs`; the playwright global setup takes the same lock, so
+ * `npx playwright test` cannot slip past it either).
+ *
  * `--files` answers "what would editing these run?" without consulting git, so
  * the mapping below can be checked directly. Anything after `--` is forwarded
  * to playwright untouched — `-- --list` prints the selection without opening a
@@ -32,6 +43,7 @@ import { readFileSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { LOCK_FILE, admitRun, freeMb, killTree, releaseRunLock, sweepOrphans } from './admission.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 
@@ -312,39 +324,11 @@ function enforceLimits() {
   return () => clearInterval(timer);
 }
 
-/**
- * Playwright kills the dev server it started, but on Windows that kill does not
- * always reach the `vite` grandchild — a leftover server was found still
- * burning a full core hours after its run had finished. The port makes it
- * unambiguous: only the audit's own server is started with
- * `--port <QA_PORT> --strictPort`, never the one you develop on.
- */
-function sweepOrphans() {
-  if (process.platform !== 'win32') return;
-  const qaPort = process.env.QA_PORT ?? '5273';
-  const filter = `$_.Name -eq 'node.exe' -and $_.CommandLine -like '*--port ${qaPort}*--strictPort*'`;
-  try {
-    execFileSync(
-      'powershell',
-      [
-        '-NoProfile',
-        '-Command',
-        `Get-CimInstance Win32_Process | Where-Object { ${filter} } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }`,
-      ],
-      { stdio: 'ignore' },
-    );
-  } catch {
-    /* best effort: an orphan left behind is a nuisance, not a failed run */
-  }
-}
+const QA_PORT = process.env.QA_PORT ?? '5273';
 
 /* -------------------------------------------------------------------- run */
 
 const { titles, why, files } = selectTitles();
-
-/* One worker is one Chromium instance. Three saturated a 12-core machine; two
-   leaves headroom for the editor and the dev server the suite is driving. */
-const workers = Number(process.env.QA_WORKERS ?? Math.max(1, Math.min(2, Math.floor(TOTAL_CORES / 4))));
 
 const rule = '─'.repeat(72);
 const scope = titles === null ? 'FULL SUITE' : titles.length === 0 ? 'nothing to test' : titles.join(', ');
@@ -358,15 +342,45 @@ if (files?.length) {
   const shown = files.slice(0, 8).join(', ');
   console.log(`Changed:  ${shown}${files.length > 8 ? ` +${files.length - 8} more` : ''}`);
 }
-const cpuCap = capped ? `${maxCores}/${TOTAL_CORES} cores` : 'uncapped';
-console.log(`Workers:  ${workers}   CPU: ${cpuCap}, below-normal priority   Video: ${process.env.QA_VIDEO === '1' ? 'on' : 'off'}`);
-console.log(`${rule}\n`);
 
 if (titles !== null && titles.length === 0) {
+  console.log(`${rule}\n`);
   console.log('Nothing changed that this suite covers, so no browser was started.');
   console.log('Run a full audit on purpose with:  npm run test:qa:full\n');
   process.exit(0);
 }
+
+/* `-- --list` opens no browser, so it needs no lock and no memory. */
+const listOnly = passThrough.includes('--list');
+if (!listOnly) {
+  try {
+    await admitRun({
+      scope: titles === null ? 'full suite' : `${titles.length} test title(s)`,
+      port: QA_PORT,
+      checkPort: process.env.QA_REUSE_SERVER !== '1',
+    });
+  } catch (err) {
+    console.error(`\n${err.message}\n`);
+    process.exit(2);
+  }
+}
+
+/* One worker is one Chromium instance, ~0.8 GB with its renderers. Two only
+   when the machine can afford it: below 4 GB free the second worker buys a
+   little wall-clock and costs the memory the first one needed. Three
+   saturated a 12-core machine, which is why the ceiling is two. */
+const free = freeMb();
+const workers = Number(
+  process.env.QA_WORKERS ?? (free >= 4 * 1024 ? Math.max(1, Math.min(2, Math.floor(TOTAL_CORES / 4))) : 1),
+);
+/* A scoped run is a few tests; a full one is the whole ladder. Either way a
+   run still going past this is starved, not thorough. */
+const globalTimeoutMs = Number(process.env.QA_GLOBAL_TIMEOUT_MS ?? (titles === null ? 45 : 15) * 60 * 1000);
+
+const cpuCap = capped ? `${maxCores}/${TOTAL_CORES} cores` : 'uncapped';
+console.log(`Workers:  ${workers}   CPU: ${cpuCap}, below-normal priority   Video: ${process.env.QA_VIDEO === '1' ? 'on' : 'off'}`);
+console.log(`Machine:  ${(free / 1024).toFixed(1)} GB RAM free   Run limit: ${Math.round(globalTimeoutMs / 60000)} min   Lock: ${LOCK_FILE}`);
+console.log(`${rule}\n`);
 
 /* Invoking playwright's CLI directly rather than through `npx`: it skips an npm
    process and a shell, and — the part that matters here — makes the browsers
@@ -386,19 +400,39 @@ args.push(...passThrough);
 const child = spawn(process.execPath, args, {
   cwd: ROOT,
   stdio: 'inherit',
-  env: { ...process.env, QA_WORKERS: String(workers) },
+  env: {
+    ...process.env,
+    QA_WORKERS: String(workers),
+    QA_SUITE: titles === null ? 'full' : 'partial',
+    QA_GLOBAL_TIMEOUT_MS: String(globalTimeoutMs),
+    /* Tells the playwright global setup that its parent already holds the
+       machine lock, so it does not queue behind this very process. */
+    QA_LOCK_OWNER: listOnly ? '' : String(process.pid),
+  },
 });
 
 demote(child.pid);
 const stopSweep = enforceLimits();
 
-for (const signal of ['SIGINT', 'SIGTERM']) {
-  process.on(signal, () => child.kill(signal));
+/* Whatever ends this process, the lock goes with it — and so does the whole
+   playwright tree, so a Ctrl+C, a harness timeout or a crashed stdout pipe no
+   longer leaves sixteen browser processes and a dev server behind. */
+process.on('exit', () => {
+  if (child.exitCode === null && child.signalCode === null) killTree(child.pid);
+  releaseRunLock();
+});
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+  process.on(signal, () => {
+    stopSweep();
+    killTree(child.pid);
+    sweepOrphans(QA_PORT);
+    process.exit(130);
+  });
 }
 
 child.on('exit', (code, signal) => {
   stopSweep();
-  sweepOrphans();
+  sweepOrphans(QA_PORT);
   if (titles !== null && code === 0) {
     console.log('\nThis was a scoped run — only the tests listed above were executed.');
     console.log('For everything:  npm run test:qa:full\n');
