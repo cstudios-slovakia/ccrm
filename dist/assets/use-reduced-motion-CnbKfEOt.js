@@ -1,1 +1,0 @@
-import{Ft as e,Nt as t,Pt as n,io as r,ro as i}from"./index-BRRDOej2.js";var a=r(i(),1);function o(){!n.current&&t();let[r]=(0,a.useState)(e.current);return r}export{o as t};

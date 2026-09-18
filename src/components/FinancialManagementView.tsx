@@ -67,6 +67,7 @@ import {
   UNCATEGORIZED_ROW_ID,
   aggregateOverviewTable,
   overviewRecordDate,
+  recurringOwnRowCharge,
   splitRecordAmounts
 } from "../utils/financialOverviewTable";
 import {
@@ -2160,6 +2161,29 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           });
         });
       });
+
+      // The rule's own row, when it precedes its schedule — the same first
+      // charge the overview table counts (see `recurringOwnRowCharge`).
+      const ownRow = recurringOwnRowCharge(rec);
+      const ownBucket = ownRow && buckets.find((b) => ownRow.date >= b.startIso && ownRow.date <= b.endIso);
+      if (ownRow && ownBucket) {
+        if (rec.type === "income") {
+          ownBucket.incomeReal += ownRow.real;
+          if (ownBucket.isFuture) ownBucket.incomeProjected += ownRow.estimated;
+          else ownBucket.incomePlanned += ownRow.estimated;
+        } else {
+          ownBucket.expenseReal += ownRow.real;
+          if (ownBucket.isFuture) ownBucket.expenseProjected += ownRow.estimated;
+          else ownBucket.expensePlanned += ownRow.estimated;
+        }
+        ownBucket.items.push({
+          title: `🔄 ${rec.title}`,
+          amount: ownRow.real + ownRow.estimated,
+          type: rec.type,
+          isRecurring: true,
+          frequency: freq
+        });
+      }
     });
 
     // 3. Final totals & Net Difference per week

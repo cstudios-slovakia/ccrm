@@ -112,6 +112,29 @@ export const overviewRecordDate = (
   return raw ? raw.slice(0, 10) : "";
 };
 
+/**
+ * A recurring rule's own ledger row, when it is money the schedule does not
+ * already account for.
+ *
+ * A rule entered and settled on 18 September but set to charge on the 1st
+ * first charges on 1 October — yet the ledger shows the 18 September row, and
+ * that payment is real. The row is then the rule's first charge and counts on
+ * its own date, split by its own status exactly as the ledger splits it. Once
+ * the schedule has charged on or before the row's day, the row is just the
+ * rule's representation and adds nothing, or that month would count twice.
+ */
+export function recurringOwnRowCharge(
+  rec: FinancialRecord
+): { date: string; real: number; estimated: number } | null {
+  if (!rec.isRecurring) return null;
+  const date = overviewRecordDate(rec);
+  if (!date) return null;
+  if (recurringCharges(rec, "0000-01-01", date).length > 0) return null;
+  const { real, estimated } = splitRecordAmounts(rec);
+  if (real === 0 && estimated === 0) return null;
+  return { date, real, estimated };
+}
+
 export interface OverviewTableAggregate {
   /** `cells[rowId][columnId]`, with every category holding its own and its descendants' movements. */
   cells: Record<string, Record<string, OverviewCell>>;
@@ -199,6 +222,12 @@ export function aggregateOverviewTable(
       if (amount <= 0) return;
       addDirect(rowId, col.id, col.isFuture ? 0 : amount, col.isFuture ? amount : 0);
     });
+
+    const ownRow = recurringOwnRowCharge(rec);
+    if (ownRow) {
+      const col = columns.find((c) => ownRow.date >= c.startIso && ownRow.date <= c.endIso);
+      if (col) addDirect(rowId, col.id, ownRow.real, ownRow.estimated);
+    }
   });
 
   // Every category's unique ids, so a duplicated entry (a bad sync or import)

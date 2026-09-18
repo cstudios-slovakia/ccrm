@@ -193,3 +193,42 @@ test("a recurring rule's own row is worth what the rule charged on its date, not
   assert.deepEqual(splitRecordAmounts({ ...rent, paidDate: "2026-12-01" }), { real: 2400, estimated: 0 });
   assert.deepEqual(splitRecordAmounts({ ...rent, recurringAmountHistory: null }), { real: 2400, estimated: 0 });
 });
+
+test("a recurring rule's own row counts as its first charge when it comes before the schedule", () => {
+  // Entered and paid on 18 September, set to charge on the 1st: the schedule
+  // first charges on 1 October, but the 18 September payment is real and the
+  // ledger shows it — the table must too.
+  const monthly: OverviewColumn[] = [
+    { id: "2026-09", startIso: "2026-09-01", endIso: "2026-09-30", isFuture: false },
+    { id: "2026-10", startIso: "2026-10-01", endIso: "2026-10-31", isFuture: true }
+  ];
+  const fee = (over: Partial<FinancialRecord>) =>
+    rec({
+      id: "fee",
+      type: "income",
+      categoryId: "inc",
+      amountPlanned: 280,
+      status: "paid",
+      issueDate: "2026-09-18",
+      isRecurring: true,
+      recurringFrequency: "monthly",
+      recurringConfig: { monthlyType: "day_of_month", dayOfMonth: 1 },
+      recurringStartDate: "2026-09-18",
+      ...over
+    });
+
+  const paid = aggregateOverviewTable([fee({})], categories, monthly);
+  assert.deepEqual(paid.cells["inc"]["2026-09"], { real: 280, estimated: 0, total: 280 });
+  assert.deepEqual(paid.cells["inc"]["2026-10"], { real: 0, estimated: 280, total: 280 });
+
+  const planned = aggregateOverviewTable([fee({ status: "planned" })], categories, monthly);
+  assert.deepEqual(planned.cells["inc"]["2026-09"], { real: 0, estimated: 280, total: 280 });
+
+  // A row on a day the schedule already charges is that charge, not a second one.
+  const onSchedule = aggregateOverviewTable(
+    [fee({ recurringConfig: { monthlyType: "day_of_month", dayOfMonth: 18 } })],
+    categories,
+    monthly
+  );
+  assert.deepEqual(onSchedule.cells["inc"]["2026-09"], { real: 280, estimated: 0, total: 280 });
+});
