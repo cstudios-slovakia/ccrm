@@ -30,6 +30,9 @@ if (!file_exists($configFile) || @filesize($configFile) < 100) {
 }
 
 require_once $configFile;
+// Loaded after config.php so a per-install override of the licence endpoint or
+// public key (define()d there) wins over the compiled-in defaults.
+require_once __DIR__ . '/api/license_client.php';
 
 try {
     $pdo = get_db_connection();
@@ -64,6 +67,52 @@ function fetch_system_settings($pdo) {
     return $settings;
 }
 
+/**
+ * Normalize the finance trend anchors (system_settings.FINANCIAL_TREND).
+ *
+ * Shape: { weeklyBankBalances: { "2026-08-17": 123456.0, ... },
+ *          currentBankBalance: 48500.0 | null }
+ *
+ * Keys that are not a bare `Y-m-d` and values that are not finite numbers are
+ * dropped rather than stored: the client builds the whole projection curve by
+ * running cash flow forward from these anchors, so one NaN would blank every
+ * week after it. `currentBankBalance` stays null when nothing was ever set —
+ * which is NOT the same as an operator deliberately anchoring the account at 0.
+ *
+ * Accepts the raw JSON string from the settings table or an already-decoded
+ * array, so both the GET and POST paths can use it.
+ */
+function ccrm_normalize_financial_trend($raw) {
+    $data = is_string($raw) ? json_decode($raw, true) : $raw;
+    $balances = [];
+    $current = null;
+
+    if (is_array($data)) {
+        $inbound = $data['weeklyBankBalances'] ?? null;
+        if (is_array($inbound)) {
+            foreach ($inbound as $week => $amount) {
+                if (!is_string($week) || !preg_match('/^\d{4}-\d{2}-\d{2}$/', $week)) continue;
+                if (!is_numeric($amount)) continue;
+                $value = (float) $amount;
+                if (!is_finite($value)) continue;
+                $balances[$week] = $value;
+            }
+        }
+        if (array_key_exists('currentBankBalance', $data) && is_numeric($data['currentBankBalance'])) {
+            $value = (float) $data['currentBankBalance'];
+            if (is_finite($value)) $current = $value;
+        }
+    }
+
+    ksort($balances);
+    return [
+        // Empty has to travel as {} for the same reason leadStateSla does: an
+        // empty PHP array encodes as [], which the client would read as a list.
+        'weeklyBankBalances' => $balances ?: (object) [],
+        'currentBankBalance' => $current,
+    ];
+}
+
 // Compute a cheap content-derived version of the whole dataset. CHECKSUM TABLE
 // ... EXTENDED live-scans each table's rows (~8ms total here) and changes only
 // when real content changes — inserts, updates and deletes across every column.
@@ -71,7 +120,7 @@ function fetch_system_settings($pdo) {
 // the multi-MB snapshot, and it is immune to no-op re-saves (a sync POST that
 // writes identical rows leaves the checksum untouched).
 function ccrm_compute_data_version($pdo) {
-    $candidates = ['leads', 'timeline_events', 'lead_categories', 'tasks', 'task_assignees', 'users', 'roles', 'meeting_notes', 'meeting_tasks', 'unified_entries', 'system_settings', 'project_types', 'projects', 'project_managers', 'warehouses', 'suppliers', 'warehouse_items', 'warehouse_stock', 'warehouse_batches', 'warehouse_movements', 'warehouse_movement_items', 'financial_categories', 'financial_records'];
+    $candidates = ['leads', 'timeline_events', 'lead_categories', 'tasks', 'task_assignees', 'users', 'roles', 'meeting_notes', 'meeting_tasks', 'unified_entries', 'system_settings', 'project_types', 'projects', 'project_managers', 'warehouses', 'suppliers', 'warehouse_items', 'warehouse_stock', 'warehouse_batches', 'warehouse_movements', 'warehouse_movement_items', 'financial_categories', 'client_categories', 'financial_records', 'invoices_offers', 'invoice_offer_items', 'ai_custom_templates'];
     try {
         $existing = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
         $existingSet = array_flip($existing);
@@ -188,7 +237,10 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
         'dissolution_date' => $inc['dissolutionDate'] ?? null,
         'region' => $inc['region'] ?? null,
         'district' => $inc['district'] ?? null,
+        'client_category_id' => $inc['clientCategoryId'] ?? null,
+        'archived' => !empty($inc['archived']) ? 1 : 0,
         'follow_ups' => (isset($inc['followUps']) && !empty($inc['followUps'])) ? $inc['followUps'] : null,
+        'vat_validation_result' => isset($inc['vatValidationResult']) ? json_encode($inc['vatValidationResult']) : null,
         // 'financial_summary' is deliberately excluded: it is server-owned, so a
         // lead whose only difference is the server-generated report still counts
         // as identical and is skipped (no rewrite, no needless report re-spawn).
@@ -201,6 +253,8 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
             if (abs(floatval($val) - floatval($dbVal)) > 0.001) return false;
         } elseif ($col === 'rating') {
             if (intval($val) !== intval($dbVal)) return false;
+        } elseif ($col === 'archived') {
+            if (intval($val) !== intval($dbVal)) return false;
         } elseif ($col === 'follow_ups') {
             // Compare the per-state follow-up map order-independently. $val is the
             // incoming assoc array (or null); $dbVal is the stored JSON string.
@@ -209,13 +263,19 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
             ksort($incMap);
             ksort($dbMap);
             if (json_encode($incMap) !== json_encode($dbMap)) return false;
+        } elseif ($col === 'vat_validation_result') {
+            $incDecoded = $val !== null ? json_decode($val, true) : null;
+            $dbDecoded = ($dbVal !== null && $dbVal !== '') ? json_decode($dbVal, true) : null;
+            if (is_array($incDecoded)) ksort($incDecoded);
+            if (is_array($dbDecoded)) ksort($dbDecoded);
+            if (json_encode($incDecoded) !== json_encode($dbDecoded)) return false;
         } else {
             $v1 = ($val === '') ? null : $val;
             $v2 = ($dbVal === '') ? null : $dbVal;
             if ($v1 !== $v2) return false;
         }
     }
-    
+
     // Compare categories
     $incCats = $inc['categories'] ?? [];
     $dbCats = $db['categories'] ?? [];
@@ -249,9 +309,11 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
             'attachments_json' => ccrm_encode_attachments($te['attachments'] ?? null),
             'extra_time' => $te['extraTime'] ?? $te['extra_time'] ?? null,
             'audio_file' => $te['audioFile'] ?? $te['audio_file'] ?? null,
-            'transcription' => $te['transcription'] ?? null
+            'transcription' => $te['transcription'] ?? null,
+            'timestamp' => $te['timestamp'] ?? null,
+            'author' => $te['author'] ?? null
         ];
-        
+
         foreach ($teFields as $col => $val) {
             $dbVal = $dbTe[$col] ?? null;
             if ($col === 'amount') {
@@ -260,6 +322,10 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
                 } elseif ($val !== $dbVal) {
                     return false;
                 }
+            } elseif ($col === 'timestamp') {
+                $v1 = $val ? date('Y-m-d H:i:s', strtotime($val)) : null;
+                $v2 = $dbVal ? date('Y-m-d H:i:s', strtotime($dbVal)) : null;
+                if ($v1 !== $v2) return false;
             } else {
                 $v1 = ($val === '') ? null : $val;
                 $v2 = ($dbVal === '') ? null : $dbVal;
@@ -272,15 +338,17 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
 }
 
 /**
- * Delete rows that the client omitted from its payload — but never delete a row
- * that changed after the client's last sync ($baseSyncedAt). Otherwise a client
- * working from a stale snapshot would silently delete records another user
- * created or edited in the meantime (last-write-wins data loss).
+ * Delete rows the client removed — either by omitting them from a v1 snapshot
+ * or by naming them in a v2 `deleted` list.
  *
- * $baseSyncedAt is the DB clock value ('YYYY-MM-DD HH:MM:SS') captured in the GET
- * the client synced from, so it is compared against the same clock as updated_at.
- * When it is null (legacy client that didn't send one) we fall back to the old
- * unconditional delete so behaviour is unchanged for those clients.
+ * For delete-by-omission, never remove a row that changed after the client's
+ * last sync ($baseSyncedAt). Otherwise a stale snapshot would wipe records
+ * another user created in the meantime. Named (v2) deletions skip that clock
+ * check: the client listed the id on purpose, including a row it created a
+ * moment earlier whose updated_at is newer than the previous GET.
+ *
+ * $baseSyncedAt is the DB clock value captured in the GET the client synced
+ * from. Null (legacy client) falls back to an unconditional delete.
  *
  * $table is only ever a trusted, sanitized name (fixed table names or the
  * already-validated ue_<id>), never raw user input.
@@ -354,6 +422,27 @@ function ccrm_ts_to_micro(string $ts): ?float {
 }
 
 /**
+ * The DB clock the client echoes back as baseSyncedAt. NOW(3) is preferred so
+ * the concurrency guard can tell two writes in the same second apart; hosts
+ * that reject fractional-second NOW() fall back to whole seconds. Always a
+ * string (or null) so json_encode + the client's `typeof === "string"` check
+ * agree — some PDO builds otherwise hand back a DateTime that becomes `{}`.
+ */
+function ccrm_db_clock(PDO $pdo): ?string {
+    foreach (['SELECT NOW(3)', 'SELECT NOW()'] as $sql) {
+        try {
+            $value = $pdo->query($sql)->fetchColumn();
+            if ($value !== false && $value !== null && $value !== '') {
+                return (string) $value;
+            }
+        } catch (\Throwable $e) {
+            continue;
+        }
+    }
+    return null;
+}
+
+/**
  * Ids a protocol-v2 client explicitly asked to delete for one entity.
  *
  * v1 clients never reach this: their deletions are inferred from whatever is
@@ -388,7 +477,7 @@ function ccrm_explicit_deleted_ids(array $deleted, string $entity): array {
  * deletion is irreversible (project_types DROPs its dynamic data tables) pass
  * $strict so even an N-1 wipe is refused.
  */
-function ccrm_filter_mass_delete(PDO $pdo, string $table, array $toDelete, bool $strict = false): array {
+function ccrm_filter_mass_delete(PDO $pdo, string $table, array $toDelete, bool $strict = false, bool $explicit = false): array {
     if (empty($toDelete)) {
         return [];
     }
@@ -409,10 +498,18 @@ function ccrm_filter_mass_delete(PDO $pdo, string $table, array $toDelete, bool 
         return [];
     }
 
-    // (a) Never delete EVERY remaining row of a table by omission — that is only
+    // (a) Never delete EVERY remaining row of a table by OMISSION — that is only
     //     ever an empty/stale push, never a legitimate edit. Applies to every
     //     table regardless of size, so even a 1- or 2-row table can't be emptied.
-    $wouldEmptyTable = ($serverTotal > 0 && $deleteCount >= $serverTotal);
+    //     $explicit marks a delta-sync deletion the client NAMED in its `deleted`
+    //     list. That is recorded user intent, not an inferred omission -- and the
+    //     incident this guard was written for was omission, not naming. Such a
+    //     delete may empty an ordinary table, so removing the only price offer you
+    //     have actually sticks instead of silently reappearing on the next sync.
+    //     $strict tables (users, project_types) are never emptied either way, and
+    //     rule (b) below still caps how much one request may remove.
+    $wouldEmptyTable = ($serverTotal > 0 && $deleteCount >= $serverTotal)
+        && (!$explicit || $strict);
 
     // (b) Refuse to delete a large FRACTION of a table in one request. Ordinary
     //     data tables keep a small absolute-row floor so everyday little
@@ -426,18 +523,25 @@ function ccrm_filter_mass_delete(PDO $pdo, string $table, array $toDelete, bool 
         && $deleteCount >= $minRows
         && ($deleteCount / $serverTotal) >= CCRM_MASS_DELETE_FRACTION);
 
-    if ($wouldEmptyTable || $massFraction) {
+    // Named (v2) deletions skip the fraction cap the same way they skip the
+    // empty-table rule: the client listed the ids. Omission still cannot wipe
+    // half a table in one push. $strict tables (users, project_types) keep the
+    // empty-table block even when named, so the last project type cannot DROP
+    // its data tables through a single-item delete.
+    if ($wouldEmptyTable || ($massFraction && !$explicit)) {
         error_log(sprintf(
-            '[ccrm] BLOCKED delete-by-omission on `%s`: %d of %d rows (%.0f%%%s) — likely an empty/stale client push; no rows deleted.',
-            $table, $deleteCount, $serverTotal, 100 * $deleteCount / max(1, $serverTotal), $strict ? ', strict' : ''
+            '[ccrm] BLOCKED delete-by-omission on `%s`: %d of %d rows (%.0f%%%s%s) — likely an empty/stale client push; no rows deleted.',
+            $table, $deleteCount, $serverTotal, 100 * $deleteCount / max(1, $serverTotal), $strict ? ', strict' : '', $explicit ? ', named' : ''
         ));
+        $GLOBALS['ccrm_delete_blocked'] = $GLOBALS['ccrm_delete_blocked'] ?? [];
+        $GLOBALS['ccrm_delete_blocked'][$table] = array_values($toDelete);
         return [];
     }
 
     return $toDelete;
 }
 
-function ccrm_delete_omitted(PDO $pdo, string $table, array $idsToDelete, ?string $baseSyncedAt, array $skipIds = [], bool $strict = false): void {
+function ccrm_delete_omitted(PDO $pdo, string $table, array $idsToDelete, ?string $baseSyncedAt, array $skipIds = [], bool $strict = false, bool $explicit = false): void {
     if (empty($idsToDelete)) {
         return;
     }
@@ -451,18 +555,27 @@ function ccrm_delete_omitted(PDO $pdo, string $table, array $idsToDelete, ?strin
         }
     }
 
-    $toDelete = ccrm_filter_mass_delete($pdo, $table, $toDelete, $strict);
+    $toDelete = ccrm_filter_mass_delete($pdo, $table, $toDelete, $strict, $explicit);
     if (empty($toDelete)) {
         return;
     }
 
-    if ($baseSyncedAt !== null) {
+    // Named (protocol-v2) deletions are recorded user intent, so they must not
+    // be blocked by the snapshot clock. The updated_at guard exists for
+    // delete-by-omission: a stale full snapshot must not wipe rows another user
+    // created after it was taken. A client that listed the id in `deleted` saw
+    // that row and chose to remove it — including a row they themselves created
+    // a moment earlier, whose updated_at is newer than the previous GET.
+    // TIMESTAMP(3) hosts make that race the common case for "create then
+    // immediately delete"; without this the DELETE matches zero rows and the
+    // lead reappears on the next refresh.
+    if ($baseSyncedAt !== null && !$explicit) {
         $stmt = $pdo->prepare("DELETE FROM `{$table}` WHERE `id` = ? AND `updated_at` <= ?");
     } else {
         $stmt = $pdo->prepare("DELETE FROM `{$table}` WHERE `id` = ?");
     }
     foreach ($toDelete as $id) {
-        if ($baseSyncedAt !== null) {
+        if ($baseSyncedAt !== null && !$explicit) {
             $stmt->execute([$id, $baseSyncedAt]);
         } else {
             $stmt->execute([$id]);
@@ -561,6 +674,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $timelineByLead = [];
     $teBulk = $pdo->query("SELECT * FROM `timeline_events` ORDER BY `timestamp` ASC");
     while ($te = $teBulk->fetch()) {
+        // A mail entry the user removed from the timeline. Kept only as a
+        // tombstone so the mailbox importer does not file it again.
+        if (!empty($te['hidden'])) {
+            continue;
+        }
         $event = [
             'id' => $te['id'],
             'type' => $te['type'],
@@ -625,6 +743,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'clientType' => $row['client_type'],
             'status' => $row['status'],
             'source' => $row['source'],
+            // Reported by the web form through api/pipeline.php and shown
+            // read-only in the app, so it is deliberately absent from the
+            // upsert below: a client's copy can never blank it out.
+            'trafficOrigin' => $row['traffic_origin'] ?? '',
+            'trafficOriginDetail' => $row['traffic_origin_detail'] ?? '',
             'owner' => $row['owner'],
             'value' => floatval($row['value']),
             'rating' => intval($row['rating']),
@@ -659,6 +782,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'region' => $row['region'] ?? '',
             'district' => $row['district'] ?? '',
             'financialSummary' => $row['financial_summary'] ?? '',
+            'clientCategoryId' => $row['client_category_id'] ?? null,
+            'archived' => intval($row['archived'] ?? 0) === 1,
             'followUps' => (isset($row['follow_ups']) && $row['follow_ups'] !== '' && $row['follow_ups'] !== null) ? json_decode($row['follow_ups'], true) : (object)[]
         ];
     }
@@ -688,6 +813,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'owner' => $row['owner'],
             'createdBy' => $row['created_by'] ?? null,
             'relatedLeadId' => $row['related_lead_id'] ?? null,
+            'relatedProjectId' => $row['related_project_id'] ?? null,
             'isLocking' => intval($row['is_locking']) === 1,
             'archived' => intval($row['archived'] ?? 0) === 1,
             'completedBy' => $row['completed_by'] ?? null,
@@ -728,32 +854,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // client a permanently empty role list.
     $roles = isset($settings['ROLES_RBAC']) ? json_decode($settings['ROLES_RBAC'], true) : null;
     if (!is_array($roles) || empty($roles)) {
-        $roles = [
-            [
-                'name' => 'Admin',
-                'permissions' => [
-                    'general_config' => 'edit',
-                    'pm_managers' => 'edit',
-                    'pipeline_stages' => 'edit',
-                    'traffic_sources' => 'edit',
-                    'system_reset' => 'edit',
-                    'ai_config' => 'edit',
-                    'nav_edit' => 'edit'
-                ]
-            ],
-            [
-                'name' => 'Project Manager',
-                'permissions' => [
-                    'general_config' => 'nothing',
-                    'pm_managers' => 'nothing',
-                    'pipeline_stages' => 'nothing',
-                    'traffic_sources' => 'nothing',
-                    'system_reset' => 'nothing',
-                    'ai_config' => 'nothing',
-                    'nav_edit' => 'nothing'
-                ]
-            ]
-        ];
+        $roles = ccrm_fallback_roles();
     }
 
     // Reconstruct settings from system_settings DB table. Anything not stored yet
@@ -766,9 +867,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $leadStateColors = isset($settings['LEAD_STATE_COLORS']) ? json_decode($settings['LEAD_STATE_COLORS'], true) : [];
     $leadSourceColors = isset($settings['LEAD_SOURCE_COLORS']) ? json_decode($settings['LEAD_SOURCE_COLORS'], true) : [];
     $leadCategoryColors = isset($settings['LEAD_CATEGORY_COLORS']) ? json_decode($settings['LEAD_CATEGORY_COLORS'], true) : [];
+    // Permanent ids for the two lists a website form addresses by number
+    // (`source_id` / `category_id` in /api/pipeline.php). Normalized on the way
+    // out — as the client normalizes on the way in — so an install that has
+    // never saved them still sees exactly the map the backend resolves against,
+    // and the settings signature compares equal instead of pushing forever.
+    // See ccrm_normalize_list_ids / normalizeListIds.
+    $leadSourceIds = ccrm_normalize_list_ids(
+        $leadSources,
+        isset($settings['LEAD_SOURCE_IDS']) ? json_decode($settings['LEAD_SOURCE_IDS'], true) : []
+    );
+    $leadCategoryIds = ccrm_normalize_list_ids(
+        $leadCategories,
+        isset($settings['LEAD_CATEGORY_IDS']) ? json_decode($settings['LEAD_CATEGORY_IDS'], true) : []
+    );
     $leadStageGroups = isset($settings['LEAD_STAGE_GROUPS']) ? json_decode($settings['LEAD_STAGE_GROUPS'], true) : [];
     $leadStateParents = isset($settings['LEAD_STATE_PARENTS']) ? json_decode($settings['LEAD_STATE_PARENTS'], true) : (object)[];
     $leadStateFollowUp = isset($settings['LEAD_STATE_FOLLOWUP']) ? json_decode($settings['LEAD_STATE_FOLLOWUP'], true) : (object)[];
+    // How many days a lead may sit in each pipeline phase before the app flags it.
+    // Normalized on the way out so the client never has to defend against a
+    // malformed blob, and so its own normalization compares equal to this one.
+    $leadStateSla = ccrm_normalize_lead_state_sla(
+        isset($settings['LEAD_STATE_SLA']) ? json_decode($settings['LEAD_STATE_SLA'], true) : null
+    );
+    // Who new leads are handed to when they arrive without an owner. Normalized
+    // on the way out so the UI never has to defend against a malformed blob.
+    $leadAssignment = ccrm_normalize_lead_assignment(
+        isset($settings['LEAD_ASSIGNMENT']) ? json_decode($settings['LEAD_ASSIGNMENT'], true) : null
+    );
+    // Whether every incoming lead is paired with a freshly created project, and
+    // of which type. Normalized on the way out for the same reason.
+    $projectAutoCreate = ccrm_normalize_project_auto_create(
+        isset($settings['PROJECT_AUTO_CREATE']) ? json_decode($settings['PROJECT_AUTO_CREATE'], true) : null
+    );
     $taskStates = isset($settings['TASK_STATES']) ? json_decode($settings['TASK_STATES'], true) : $defaultLists['taskStates'];
     $taskStateColors = isset($settings['TASK_STATE_COLORS']) ? json_decode($settings['TASK_STATE_COLORS'], true) : [];
     // An empty colour map would make every task state render in the same grey.
@@ -784,6 +915,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     if (is_array($integrationsConfig)) {
         $integrationsConfig = ccrm_decrypt_config_secrets($integrationsConfig, ccrm_integration_secret_keys());
         $integrationsConfig = ccrm_mask_secrets($integrationsConfig, ccrm_integration_secret_keys());
+    }
+
+    // Same treatment for the accounting connectors. The settings blob goes to
+    // EVERY authenticated client on every sync, so an unmasked SuperFaktúra API
+    // key / iDoklad client secret here was handed to every account in the CRM
+    // regardless of role. The connectors read the real values server-side.
+    $invoicingIntegrations = isset($settings['INVOICING_INTEGRATIONS'])
+        ? json_decode($settings['INVOICING_INTEGRATIONS'], true)
+        : null;
+    if (is_array($invoicingIntegrations)) {
+        $invoicingIntegrations = ccrm_decrypt_invoicing_secrets($invoicingIntegrations);
+        $invoicingIntegrations = ccrm_mask_invoicing_secrets($invoicingIntegrations);
     }
 
     // Fetch Meeting Notes (meeting_tasks pre-fetched in one query, grouped by meeting_id)
@@ -901,6 +1044,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                         if (isset($r['lead_id'])) {
                             $rowItem['leadId'] = $r['lead_id'];
                         }
+                        if (isset($r['number_value'])) {
+                            $rowItem['numberValue'] = (float)$r['number_value'];
+                        }
+                        if (isset($r['money_amount'])) {
+                            $rowItem['moneyAmount'] = (float)$r['money_amount'];
+                            $rowItem['moneyCurrency'] = $r['money_currency'];
+                        }
                         if (isset($r['warning_days'])) {
                             $rowItem['warningDays'] = (int)$r['warning_days'];
                         }
@@ -954,6 +1104,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'attributes' => json_decode($row['attributes_json'] ?? '[]', true),
                 'hasTimeline' => (int)$row['has_timeline'] === 1,
                 'hasGantt' => (int)$row['has_gantt'] === 1,
+                'hasDeadline' => (int)($row['has_deadline'] ?? 0) === 1,
+                'deadlineWarningDays' => (int)($row['deadline_warning_days'] ?? 0),
+                'deadlineRequired' => (int)($row['deadline_required'] ?? 0) === 1,
+                'hasFiles' => (int)($row['has_files'] ?? 0) === 1,
+                'fileFields' => json_decode($row['file_fields_json'] ?? '[]', true) ?: [],
+                // How the projects list is laid out for this type. An empty
+                // array means "never arranged", which the client reads as the
+                // default set of columns.
+                'listColumns' => json_decode($row['list_columns_json'] ?? '[]', true) ?: [],
                 'timelineEventTypes' => json_decode($row['timeline_event_types_json'] ?? '[]', true),
                 'timelineAttributes' => json_decode($row['timeline_attributes_json'] ?? '[]', true)
             ];
@@ -975,9 +1134,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             $projectItem = [
                 'id' => $projId,
                 'projectTypeId' => $ptId,
+                'name' => $pRow['name'] ?? '',
                 'leadId' => $pRow['lead_id'] ?? null,
                 'clientId' => $pRow['client_id'] ?? null,
                 'status' => $pRow['status'],
+                // Star priority. NULL in the column means nobody ever rated this
+                // project; the client draws 0 and 'never rated' the same way, so
+                // both travel as 0 rather than as a null it would have to guard.
+                'rating' => isset($pRow['rating']) ? (int)$pRow['rating'] : 0,
+                'deadline' => $pRow['deadline'] ?? null,
+                'delayReason' => $pRow['delay_reason'] ?? null,
+                'startDate' => $pRow['start_date'] ?? null,
+                'finishedAt' => $pRow['finished_at'] ?? null,
+                'createdAt' => $pRow['created_at'] ?? null,
+                'budget' => isset($pRow['budget']) ? (float)$pRow['budget'] : null,
+                'customFileFields' => json_decode($pRow['custom_files_json'] ?? '[]', true) ?: [],
                 'managers' => $managersByProject[$projId] ?? [],
                 'data' => [],
                 'timeline' => [],
@@ -1209,12 +1380,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         error_log('[ccrm sync] warehouse fetch error: ' . $e->getMessage());
     }
 
-    // 3.8. Fetch Financial Categories and Records
+    // 3.8. Fetch Financial Categories and Records, Invoices & Price Offers
     $financialCategories = [];
+    $clientCategories = [];
     $financialRecords = [];
+    $invoicesOffers = [];
+    $aiCustomTemplates = [];
     try {
         if ($pdo->query("SHOW TABLES LIKE 'financial_categories'")->rowCount() > 0) {
-            $fcStmt = $pdo->query("SELECT * FROM `financial_categories` ORDER BY `level` ASC, `name` ASC");
+            $fcStmt = $pdo->query("SELECT * FROM `financial_categories` ORDER BY `level` ASC, `sort_order` ASC, `name` ASC");
             while ($row = $fcStmt->fetch()) {
                 $financialCategories[] = [
                     'id' => $row['id'],
@@ -1222,6 +1396,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'name' => $row['name'],
                     'parentId' => $row['parent_id'],
                     'level' => (int)($row['level'] ?? 1),
+                    'sortOrder' => (int)($row['sort_order'] ?? 0),
+                    'color' => $row['color'],
+                    'icon' => $row['icon'],
+                    'createdAt' => $row['created_at'],
+                    'updatedAt' => $row['updated_at'],
+                ];
+            }
+        }
+
+        // Customer categories (Clients → Categories): the finance tree's shape
+        // without the income/expense type.
+        if ($pdo->query("SHOW TABLES LIKE 'client_categories'")->rowCount() > 0) {
+            $ccStmt = $pdo->query("SELECT * FROM `client_categories` ORDER BY `level` ASC, `sort_order` ASC, `name` ASC");
+            while ($row = $ccStmt->fetch()) {
+                $clientCategories[] = [
+                    'id' => $row['id'],
+                    'name' => $row['name'],
+                    'parentId' => $row['parent_id'],
+                    'level' => (int)($row['level'] ?? 1),
+                    'sortOrder' => (int)($row['sort_order'] ?? 0),
                     'color' => $row['color'],
                     'icon' => $row['icon'],
                     'createdAt' => $row['created_at'],
@@ -1254,6 +1448,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'recurringConfig' => !empty($row['recurring_config_json']) ? json_decode($row['recurring_config_json'], true) : null,
                     'recurringStartDate' => $row['recurring_start_date'],
                     'recurringEndDate' => $row['recurring_end_date'],
+                    'recurringAmountHistory' => !empty($row['recurring_amount_history_json']) ? json_decode($row['recurring_amount_history_json'], true) : null,
                     'projectId' => $row['project_id'],
                     'clientId' => $row['client_id'],
                     'invoiceNumber' => $row['invoice_number'],
@@ -1265,15 +1460,108 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 ];
             }
         }
+        if ($pdo->query("SHOW TABLES LIKE 'invoices_offers'")->rowCount() > 0) {
+            $ioStmt = $pdo->query("SELECT * FROM `invoices_offers` ORDER BY `issued_at` DESC, `created_at` DESC");
+            $allItemsStmt = $pdo->query("SELECT * FROM `invoice_offer_items`");
+            $itemsByIo = [];
+            while ($itemRow = $allItemsStmt->fetch()) {
+                $itemsByIo[$itemRow['invoice_offer_id']][] = [
+                    'id' => $itemRow['id'],
+                    'warehouseItemId' => $itemRow['warehouse_item_id'],
+                    'sku' => $itemRow['sku'],
+                    'name' => $itemRow['name'],
+                    'description' => $itemRow['description'],
+                    'quantity' => (float)$itemRow['quantity'],
+                    'unit' => $itemRow['unit'],
+                    'unitPrice' => (float)$itemRow['unit_price'],
+                    'vatRate' => (float)$itemRow['vat_rate'],
+                    'discountPct' => (float)$itemRow['discount_pct'],
+                    'totalPrice' => (float)$itemRow['total_price'],
+                ];
+            }
+
+            while ($row = $ioStmt->fetch()) {
+                $invoicesOffers[] = [
+                    'id' => $row['id'],
+                    'documentNumber' => $row['document_number'],
+                    'type' => $row['type'],
+                    'mode' => $row['mode'],
+                    'externalProvider' => $row['external_provider'],
+                    'externalId' => $row['external_id'],
+                    'externalPdfUrl' => $row['external_pdf_url'],
+                    'leadId' => $row['lead_id'],
+                    'clientId' => $row['client_id'],
+                    'clientName' => $row['client_name'],
+                    'clientEmail' => $row['client_email'],
+                    'clientPhone' => $row['client_phone'],
+                    'clientStreet' => $row['client_street'],
+                    'clientCity' => $row['client_city'],
+                    'clientPostalCode' => $row['client_postal_code'],
+                    'clientCountry' => $row['client_country'],
+                    'clientIco' => $row['client_ico'],
+                    'clientDic' => $row['client_dic'],
+                    'clientIcdph' => $row['client_icdph'],
+                    'title' => $row['title'],
+                    'subject' => $row['subject'],
+                    'location' => $row['location'],
+                    'greetingNote' => $row['greeting_note'],
+                    'introNote' => $row['intro_note'],
+                    'uspCards' => !empty($row['usp_cards_json']) ? json_decode($row['usp_cards_json'], true) : [],
+                    'reassuranceNote' => $row['reassurance_note'],
+                    'items' => $itemsByIo[$row['id']] ?? [],
+                    'subtotal' => (float)$row['subtotal'],
+                    'vatAmount' => (float)$row['vat_amount'],
+                    'totalPrice' => (float)$row['total_price'],
+                    'priceRangeMin' => $row['price_range_min'] !== null ? (float)$row['price_range_min'] : null,
+                    'priceRangeMax' => $row['price_range_max'] !== null ? (float)$row['price_range_max'] : null,
+                    'currency' => $row['currency'] ?? 'EUR',
+                    'durationText' => $row['duration_text'],
+                    'startDateText' => $row['start_date_text'],
+                    'warrantyText' => $row['warranty_text'],
+                    'nextStepsNote' => $row['next_steps_note'],
+                    'closingNote' => $row['closing_note'],
+                    'signOffTeam' => $row['sign_off_team'],
+                    'customTemplateId' => $row['custom_template_id'],
+                    'customTemplateStyle' => !empty($row['custom_template_style_json']) ? json_decode($row['custom_template_style_json'], true) : null,
+                    'status' => $row['status'],
+                    'issuedAt' => $row['issued_at'],
+                    'validUntil' => $row['valid_until'],
+                    'dueDate' => $row['due_date'],
+                    'fileName' => $row['file_name'],
+                    'filePath' => $row['file_path'],
+                    'createdBy' => $row['created_by'],
+                    'createdAt' => $row['created_at'],
+                    'updatedAt' => $row['updated_at'],
+                ];
+            }
+        }
+
+        if ($pdo->query("SHOW TABLES LIKE 'ai_custom_templates'")->rowCount() > 0) {
+            $actStmt = $pdo->query("SELECT * FROM `ai_custom_templates` ORDER BY `created_at` DESC");
+            while ($row = $actStmt->fetch()) {
+                $aiCustomTemplates[] = [
+                    'id' => $row['id'],
+                    'name' => $row['name'],
+                    'description' => $row['description'],
+                    'sourcePdfUrl' => $row['source_pdf_url'],
+                    'sourcePdfName' => $row['source_pdf_name'],
+                    'colors' => json_decode($row['colors_json'] ?? '{}', true),
+                    'typography' => json_decode($row['typography_json'] ?? '{}', true),
+                    'sectionsOrder' => json_decode($row['sections_order_json'] ?? '[]', true),
+                    'customBannerText' => $row['custom_banner_text'],
+                    'badgeStyle' => $row['badge_style'] ?? 'rounded',
+                    'createdAt' => $row['created_at'],
+                ];
+            }
+        }
     } catch (\Throwable $e) {
-        error_log('[ccrm sync] financial fetch error: ' . $e->getMessage());
+        error_log('[ccrm sync] financial/invoicing fetch error: ' . $e->getMessage());
     }
 
     // DB clock at read time. The client echoes this back as baseSyncedAt on the
     // next POST so the server can tell "the user deleted this" apart from "the
     // client never saw this newer row" (see ccrm_delete_omitted).
-    $serverTime = null;
-    try { $serverTime = $pdo->query("SELECT NOW(3)")->fetchColumn(); } catch (\Throwable $e) {}
+    $serverTime = ccrm_db_clock($pdo);
 
     // Real database connection info for the Settings "Database" panel. Admins
     // only — this is infrastructure detail (host/name/user), never the password.
@@ -1281,7 +1569,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // ccrm_user), which masked where the data actually lives; now it reflects
     // config.php so an operator can see the real target at a glance.
     $dbInfo = null;
-    if (($sessionUser['role'] ?? '') === 'admin') {
+    if (ccrm_is_admin($sessionUser)) {
         $dbInfo = [
             'host' => defined('DB_HOST') ? DB_HOST : '',
             'port' => defined('DB_PORT') ? (string) DB_PORT : '',
@@ -1330,7 +1618,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'warehouseBatches' => $warehouseBatches,
         'warehouseMovements' => $warehouseMovements,
         'financialCategories' => $financialCategories,
+        'clientCategories' => $clientCategories,
         'financialRecords' => $financialRecords,
+        'invoicesOffers' => $invoicesOffers,
+        'aiCustomTemplates' => $aiCustomTemplates,
+        // Manual weekly bank-balance anchors behind the finance trend chart.
+        // Shared workspace data, not a per-user setting: these anchors define
+        // the shape of the projection curve, so everyone has to see the same
+        // ones. They used to live in each browser's localStorage, which meant
+        // the person who reconciled a week against the bank statement saw one
+        // projection and every colleague saw another.
+        'financialTrend' => ccrm_normalize_financial_trend($settings['FINANCIAL_TREND'] ?? null),
         'settings' => [
             'systemName' => $settings['SYSTEM_NAME'] ?? 'CCRM',
             'systemLanguage' => $settings['SYSTEM_LANGUAGE'] ?? 'sk',
@@ -1338,15 +1636,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'leadStates' => $leadStates,
             'leadSources' => $leadSources,
             'leadCategories' => $leadCategories,
+            // Empty has to travel as {} for the same reason leadStateSla does.
+            'leadSourceIds' => $leadSourceIds ?: (object)[],
+            'leadCategoryIds' => $leadCategoryIds ?: (object)[],
             'leadStateColors' => $leadStateColors,
             'leadSourceColors' => $leadSourceColors,
             'leadCategoryColors' => $leadCategoryColors,
             'leadStageGroups' => $leadStageGroups,
             'leadStateParents' => $leadStateParents,
             'leadStateFollowUp' => $leadStateFollowUp,
+            // Empty has to travel as {} — an empty PHP array encodes as [], which
+            // the client would read as a list and normalize back to {} forever.
+            'leadStateSla' => $leadStateSla ?: (object)[],
+            'leadAssignment' => $leadAssignment,
+            'projectAutoCreate' => $projectAutoCreate,
             'taskStates' => $taskStates,
             'taskStateColors' => $taskStateColors,
             'integrationsConfig' => $integrationsConfig,
+            'companyBillingSettings' => isset($settings['COMPANY_BILLING_SETTINGS']) ? json_decode($settings['COMPANY_BILLING_SETTINGS'], true) : null,
+            'invoicingIntegrations' => $invoicingIntegrations,
             'customLabels' => isset($settings['CUSTOM_LABELS']) ? json_decode($settings['CUSTOM_LABELS'], true) : (object)[]
         ]
     ]);
@@ -1362,7 +1670,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // payloads still carry these sections (the client always sends a full
     // snapshot), so we silently ignore the privileged parts for non-admins
     // rather than reject the whole sync — otherwise ordinary editing breaks.
-    $isAdmin = (($sessionUser['role'] ?? '') === 'admin');
+    $isAdmin = ccrm_is_admin($sessionUser);
+    $perms = ccrm_user_permissions($pdo, $sessionUser);
+    $permissionSkipped = [];
+    $ccrm_skip_writes = function (string $moduleKey, string $collection) use ($perms, $isAdmin, &$permissionSkipped): bool {
+        if ($isAdmin || ccrm_perm_can_edit($perms, $moduleKey)) {
+            return false;
+        }
+        if (!in_array($collection, $permissionSkipped, true)) {
+            $permissionSkipped[] = $collection;
+            error_log('[ccrm] permissionSkipped: ' . $collection . ' (no edit on ' . $moduleKey . ')');
+        }
+        return true;
+    };
+    $ccrm_skip_deletes = function (string $moduleKey, string $collection) use ($perms, $isAdmin, &$permissionSkipped): bool {
+        if ($isAdmin) {
+            return false;
+        }
+        $mod = ccrm_perm_module($perms, $moduleKey);
+        if (!empty($mod['delete'])) {
+            return false;
+        }
+        $tag = $collection . ':delete';
+        if (!in_array($tag, $permissionSkipped, true)) {
+            $permissionSkipped[] = $tag;
+            error_log('[ccrm] permissionSkipped: ' . $tag . ' (no delete on ' . $moduleKey . ')');
+        }
+        return true;
+    };
 
     $input = file_get_contents('php://input');
     $payload = json_decode($input, true);
@@ -1403,6 +1738,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // rather than anything worth surfacing.
     $conflictedIds = [];
 
+    // leadId => owner name, for new leads the server auto-assigned (see the
+    // lead loop). Reported back so the client can show the assignment straight
+    // away instead of pushing its own blank owner over it on the next sync.
+    $assignedOwners = [];
+
+    // Named deletions the mass-delete circuit breaker refused (see
+    // ccrm_filter_mass_delete). Reported so the client does not treat HTTP 200
+    // as "the row is gone".
+    $GLOBALS['ccrm_delete_blocked'] = [];
+
+    // Projects the server created for brand-new leads (Projects → Settings →
+    // automatic project creation). Reported back for the same reason as the
+    // owners above: the client would otherwise not see them until the next full
+    // pull, and a v1 client would push its own project list straight back over
+    // them, taking them with it.
+    $createdProjects = [];
+
+    // Email addresses of accounts this push tried to CREATE beyond the licensed
+    // seat count. Reported back so the client can say which ones did not land,
+    // instead of the new colleague silently disappearing on the next poll.
+    $seatRejections = [];
+
     // Protocol the client is speaking. Absent/1 = full snapshot with deletions
     // inferred from omission (every pre-1.6.27 build). 2 = delta sync: sections may
     // be omitted entirely, only changed records are sent, and deletions are stated
@@ -1429,7 +1786,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // its delete step. (Harmless in delta mode — an empty list means "no edits"
     // here, never "delete the rest", which is only how v1 reads it.)
     if ($isDeltaSync) {
-        foreach (['leads', 'meetingNotes', 'users', 'customDashboards', 'projects', 'projectTypes'] as $entity) {
+        foreach ([
+            'leads', 'meetingNotes', 'users', 'customDashboards', 'projects', 'projectTypes',
+            'warehouses', 'suppliers', 'warehouseItems', 'warehouseStock', 'warehouseBatches',
+            'warehouseMovements', 'financialCategories', 'financialRecords', 'invoicesOffers',
+            'aiCustomTemplates', 'clientCategories',
+        ] as $entity) {
             if (!isset($payload[$entity]) && ccrm_explicit_deleted_ids($explicitDeletes, $entity)) {
                 $payload[$entity] = [];
             }
@@ -1461,7 +1823,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // MySQL, so running it inside the transaction would silently end it and
         // make the final commit() fail with "There is no active transaction".
         // DDL cannot be rolled back anyway, so it belongs outside the transaction.
-        if (isset($payload['unifiedEntries']) && is_array($payload['unifiedEntries'])) {
+        if (isset($payload['unifiedEntries']) && is_array($payload['unifiedEntries']) && !$ccrm_skip_writes('general_config', 'unifiedEntries')) {
             // Cap dynamic-table provisioning per request so a crafted payload
             // cannot exhaust the database with unbounded CREATE/ALTER TABLE.
             $ddlBudget = 200;
@@ -1519,11 +1881,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `lead_id` VARCHAR(50) NULL");
                     }
                 }
+                if (in_array('number', $allActiveModules)) {
+                    if (!ccrm_column_exists($pdo, $tableName, 'number_value')) {
+                        $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `number_value` DECIMAL(20,4) NULL");
+                    }
+                }
+                if (in_array('money', $allActiveModules)) {
+                    if (!ccrm_column_exists($pdo, $tableName, 'money_amount')) {
+                        $pdo->exec("ALTER TABLE `{$tableName}` ADD COLUMN `money_amount` DECIMAL(20,4) NULL, ADD COLUMN `money_currency` VARCHAR(10) NULL");
+                    }
+                }
             }
         }
 
         // Project Types dynamic table generation
-        if (isset($payload['projectTypes']) && is_array($payload['projectTypes'])) {
+        if (isset($payload['projectTypes']) && is_array($payload['projectTypes']) && !$ccrm_skip_writes('general_config', 'projectTypes')) {
             require_once __DIR__ . '/api/agent_utils.php';
             // Extract integrations config from existing settings to instantiate RAG connection
             $intConfigRaw = '';
@@ -1554,7 +1926,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($ragPdo) $ragPdo->exec(str_replace("FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE", "", $createData));
 
                 // Add or Remove Columns for Data Table
-                $attributes = $pt['attributes'] ?? [];
+                // The built-in "Files" attribute keeps each document slot's uploads
+                // in a column of its own, exactly like a "files" attribute. The
+                // columns stay while the switch is off, so turning it off hides the
+                // files instead of deleting them; only removing a slot drops one.
+                $attributes = array_merge(
+                    is_array($pt['attributes'] ?? null) ? $pt['attributes'] : [],
+                    is_array($pt['fileFields'] ?? null) ? $pt['fileFields'] : []
+                );
                 $currentColsStmt = $pdo->query("SHOW COLUMNS FROM `{$dataTable}`");
                 $existingCols = [];
                 while($col = $currentColsStmt->fetch(PDO::FETCH_ASSOC)) {
@@ -1572,7 +1951,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
 
+                // A client older than the Files attribute sends no fileFields at all.
+                // Its silence must not read as "every slot was removed", which would
+                // drop the columns and every file uploaded into them.
+                $keepFileCols = !array_key_exists('fileFields', $pt);
                 foreach ($existingCols as $col) {
+                    if ($keepFileCols && str_starts_with($col, 'attr_file_')) continue;
                     if (str_starts_with($col, 'attr_') && !in_array($col, $expectedCols)) {
                         $dropCol = "ALTER TABLE `{$dataTable}` DROP COLUMN `{$col}`";
                         $pdo->exec($dropCol);
@@ -1656,8 +2040,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         $pdo->beginTransaction();
 
-        // 4.1. Save system settings & configurations (admin-only).
-        if ($isAdmin && isset($payload['settings'])) {
+        // 4.1. Save system settings & configurations.
+        //
+        // Admin writes every key. A non-admin with a settings permission writes
+        // only the keys that permission covers — otherwise pipeline_stages=edit
+        // looked saved in the UI and reverted on the next GET, because this
+        // block used to be admin-only.
+        $canSettingsGeneral = $isAdmin || ccrm_perm_can_edit($perms, 'general_config');
+        $canSettingsPipeline = $isAdmin || ccrm_perm_can_edit($perms, 'pipeline_stages');
+        $canSettingsSources = $isAdmin || ccrm_perm_can_edit($perms, 'traffic_sources');
+        $canSettingsAi = $isAdmin || ccrm_perm_can_edit($perms, 'ai_config');
+        if (isset($payload['settings']) && ($canSettingsGeneral || $canSettingsPipeline || $canSettingsSources || $canSettingsAi)) {
             $s = $payload['settings'];
 
             // Preserve masked secrets: merge the inbound integrations config over
@@ -1679,6 +2072,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $integrationsValue = ($existingIntegrationsRaw !== false && $existingIntegrationsRaw !== null) ? $existingIntegrationsRaw : json_encode((object)[]);
             }
 
+            // Accounting connectors: same masked-secret merge, plus the same
+            // "omitted means unchanged" rule. Writing NULL whenever the client
+            // did not send these keys silently wiped the saved company billing
+            // identity and API credentials on any unrelated settings save.
+            $existingBillingRaw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'COMPANY_BILLING_SETTINGS'")->fetchColumn();
+            $billingValue = ($existingBillingRaw !== false && $existingBillingRaw !== null) ? $existingBillingRaw : null;
+            if (array_key_exists('companyBillingSettings', $s) && is_array($s['companyBillingSettings'])) {
+                $billingValue = json_encode($s['companyBillingSettings'], JSON_UNESCAPED_UNICODE);
+            }
+
+            $existingInvIntRaw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'INVOICING_INTEGRATIONS'")->fetchColumn();
+            $existingInvInt = ($existingInvIntRaw !== false && $existingInvIntRaw !== null) ? json_decode($existingInvIntRaw, true) : [];
+            if (!is_array($existingInvInt)) { $existingInvInt = []; }
+            $invIntValue = ($existingInvIntRaw !== false && $existingInvIntRaw !== null) ? $existingInvIntRaw : null;
+            if (array_key_exists('invoicingIntegrations', $s) && is_array($s['invoicingIntegrations'])) {
+                $mergedInvInt = ccrm_merge_invoicing_secrets($s['invoicingIntegrations'], $existingInvInt);
+                $mergedInvInt = ccrm_encrypt_invoicing_secrets($mergedInvInt);
+                $invIntValue = json_encode($mergedInvInt, JSON_UNESCAPED_UNICODE);
+            }
+
             $settingsList = [
                 'SYSTEM_NAME' => $s['systemName'] ?? 'CCRM',
                 'SYSTEM_LANGUAGE' => $s['systemLanguage'] ?? 'sk',
@@ -1686,20 +2099,101 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'LEAD_STATES' => json_encode($s['leadStates'] ?? []),
                 'LEAD_SOURCES' => json_encode($s['leadSources'] ?? []),
                 'LEAD_CATEGORIES' => json_encode($s['leadCategories'] ?? []),
+                // Omitted (or empty) means unchanged, the same contract as the
+                // SLA and auto-assignment blobs below: a client that predates
+                // permanent ids must not be able to wipe the map and send every
+                // web form already deployed back to positional numbering.
+                'LEAD_SOURCE_IDS' => !empty($s['leadSourceIds']) && is_array($s['leadSourceIds'])
+                    ? json_encode(ccrm_normalize_list_ids($s['leadSources'] ?? [], $s['leadSourceIds']), JSON_UNESCAPED_UNICODE)
+                    : null,
+                'LEAD_CATEGORY_IDS' => !empty($s['leadCategoryIds']) && is_array($s['leadCategoryIds'])
+                    ? json_encode(ccrm_normalize_list_ids($s['leadCategories'] ?? [], $s['leadCategoryIds']), JSON_UNESCAPED_UNICODE)
+                    : null,
                 'LEAD_STATE_COLORS' => json_encode($s['leadStateColors'] ?? []),
                 'LEAD_SOURCE_COLORS' => json_encode($s['leadSourceColors'] ?? []),
                 'LEAD_CATEGORY_COLORS' => json_encode($s['leadCategoryColors'] ?? []),
                 'LEAD_STAGE_GROUPS' => json_encode($s['leadStageGroups'] ?? []),
                 'LEAD_STATE_PARENTS' => json_encode($s['leadStateParents'] ?? (object)[]),
                 'LEAD_STATE_FOLLOWUP' => json_encode($s['leadStateFollowUp'] ?? (object)[]),
+                // Omitted means unchanged (null is skipped below), the same
+                // contract as the auto-assignment settings underneath: a client
+                // that knows nothing about SLA limits must not clear everyone
+                // else's by saving an unrelated setting.
+                'LEAD_STATE_SLA' => isset($s['leadStateSla']) && is_array($s['leadStateSla'])
+                    ? json_encode((object)ccrm_normalize_lead_state_sla($s['leadStateSla']))
+                    : null,
+                // Omitted means unchanged (null is skipped below): an older client
+                // that knows nothing about auto-assignment must not switch it off
+                // for everyone else simply by saving an unrelated setting.
+                'LEAD_ASSIGNMENT' => isset($s['leadAssignment']) && is_array($s['leadAssignment'])
+                    ? json_encode(ccrm_normalize_lead_assignment($s['leadAssignment']))
+                    : null,
+                // Same contract: omitted means unchanged, so an older client
+                // cannot switch automatic project creation off for everyone.
+                // The per-category rules get the contract one level down as
+                // well: a client that predates them sends no `categoryTypes`
+                // key at all, and reading that as "no rules" would wipe the
+                // operator's mapping the first time such a client saved
+                // anything unrelated. A client that knows about them always
+                // sends the key, empty map included, so clearing the last rule
+                // still works.
+                'PROJECT_AUTO_CREATE' => isset($s['projectAutoCreate']) && is_array($s['projectAutoCreate'])
+                    ? json_encode(ccrm_normalize_project_auto_create(
+                        array_key_exists('categoryTypes', $s['projectAutoCreate'])
+                            ? $s['projectAutoCreate']
+                            : array_merge(
+                                $s['projectAutoCreate'],
+                                ['categoryTypes' => (array)ccrm_project_auto_create_config($pdo)['categoryTypes']]
+                            )
+                    ))
+                    : null,
                 'TASK_STATES' => json_encode($s['taskStates'] ?? []),
                 'TASK_STATE_COLORS' => json_encode($s['taskStateColors'] ?? []),
                 'INTEGRATIONS_CONFIG' => $integrationsValue,
-                'CUSTOM_LABELS' => json_encode($s['customLabels'] ?? (object)[])
+                'COMPANY_BILLING_SETTINGS' => $billingValue,
+                'INVOICING_INTEGRATIONS' => $invIntValue,
+                // Same contract: omitted means unchanged. No UI currently sends
+                // `customLabels` at all, so without this an unrelated save (e.g.
+                // just the system name) would wipe it for every client by writing
+                // `{}` over whatever was stored. array_key_exists (not isset) so an
+                // intentionally-empty-but-present value still counts as "sent".
+                'CUSTOM_LABELS' => array_key_exists('customLabels', $s) ? json_encode($s['customLabels']) : null,
             ];
 
             $insSet = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
+            $settingsAllowedKeys = [];
+            if ($canSettingsGeneral) {
+                $settingsAllowedKeys = array_merge($settingsAllowedKeys, [
+                    'SYSTEM_NAME', 'SYSTEM_LANGUAGE', 'SYSTEM_CURRENCY',
+                    'TASK_STATES', 'TASK_STATE_COLORS', 'CUSTOM_LABELS',
+                    'COMPANY_BILLING_SETTINGS', 'INVOICING_INTEGRATIONS',
+                    'PROJECT_AUTO_CREATE',
+                ]);
+            }
+            if ($canSettingsPipeline) {
+                $settingsAllowedKeys = array_merge($settingsAllowedKeys, [
+                    'LEAD_STATES', 'LEAD_CATEGORIES', 'LEAD_CATEGORY_IDS',
+                    'LEAD_STATE_COLORS', 'LEAD_CATEGORY_COLORS',
+                    'LEAD_STAGE_GROUPS', 'LEAD_STATE_PARENTS', 'LEAD_STATE_FOLLOWUP',
+                    'LEAD_STATE_SLA', 'LEAD_ASSIGNMENT',
+                ]);
+            }
+            if ($canSettingsSources) {
+                $settingsAllowedKeys = array_merge($settingsAllowedKeys, [
+                    'LEAD_SOURCES', 'LEAD_SOURCE_IDS', 'LEAD_SOURCE_COLORS',
+                ]);
+            }
+            if ($canSettingsAi) {
+                $settingsAllowedKeys[] = 'INTEGRATIONS_CONFIG';
+            }
+            $settingsAllowed = array_flip($settingsAllowedKeys);
             foreach ($settingsList as $k => $v) {
+                // A null here means "nothing inbound and nothing stored" — skip it
+                // rather than writing a NULL row over a value another writer may
+                // have just saved.
+                if ($v === null || !isset($settingsAllowed[$k])) {
+                    continue;
+                }
                 $insSet->execute([$k, $v]);
             }
             ccrm_audit_log($pdo, $sessionUser, 'settings.update', 'System settings / integrations updated');
@@ -1758,6 +2252,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingUserIds = array_keys($existingHashes);
             $processedUserIds = [];
 
+            // Seat limit from the licence (null = unlimited, and null is also what
+            // an unlicensed install gets — never lock anyone out of managing their
+            // own team just because a licence is missing). Accounts that already
+            // exist are NEVER touched by this: being over the limit after a
+            // downgrade only stops the team growing further.
+            //
+            // The budget is measured against the state this push will LEAVE
+            // BEHIND, so an admin who removes one colleague and adds another in
+            // the same save is not refused for momentarily "exceeding" a limit
+            // they end up respecting. Deletions are resolved the same way the
+            // delete step below resolves them.
+            $seatLimit = function_exists('ccrm_license_seat_limit') ? ccrm_license_seat_limit($pdo) : null;
+            $seatsAfterDeletes = count($existingUserIds);
+            if ($seatLimit !== null && $isAdmin) {
+                $payloadUserIds = [];
+                foreach ($payload['users'] as $pu) {
+                    if (empty($pu['email'])) continue;
+                    $puEmail = strtolower(trim($pu['email']));
+                    $payloadUserIds[] = isset($emailToUser[$puEmail])
+                        ? $emailToUser[$puEmail]['id']
+                        : ($pu['id'] ?? ('u-' . md5($puEmail)));
+                }
+                $plannedDeletes = $isDeltaSync
+                    ? $deletionsFor('users', $existingUserIds)
+                    : array_diff($existingUserIds, $payloadUserIds);
+                // The account performing the sync is never deleted, so it never
+                // frees a seat either.
+                $plannedDeletes = array_diff($plannedDeletes, [$sessionUser['id']]);
+                $seatsAfterDeletes = max(0, count($existingUserIds) - count($plannedDeletes));
+            }
+
             $insUser = $pdo->prepare("INSERT INTO `users` (`id`, `name`, `email`, `password_hash`, `role`, `avatar`, `color`, `metadata_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `email` = VALUES(`email`), `password_hash` = VALUES(`password_hash`), `role` = VALUES(`role`), `avatar` = VALUES(`avatar`), `color` = VALUES(`color`), `metadata_json` = VALUES(`metadata_json`)");
 
             foreach ($payload['users'] as $u) {
@@ -1767,6 +2292,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $uEmail = strtolower(trim($u['email']));
                 $existingRecord = $emailToUser[$uEmail] ?? null;
                 $userId = $existingRecord ? $existingRecord['id'] : ($u['id'] ?? ('u-' . md5($uEmail)));
+
+                // Creating an account past the licensed seat count. Refused here
+                // as well as in the UI: the settings screen is one client of this
+                // endpoint, not a gate in front of it.
+                if ($existingRecord === null && $seatLimit !== null && $seatsAfterDeletes >= $seatLimit) {
+                    $seatRejections[] = (string) $u['email'];
+                    continue;
+                }
 
                 $isSelf = ($sessionUser !== null) && (
                     strtolower(trim($sessionUser['email'] ?? '')) === $uEmail ||
@@ -1779,10 +2312,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     continue;
                 }
                 if ($isAdmin) {
-                    $role = ccrm_normalize_role($u['role'] ?? 'viewer');
+                    $role = ccrm_canonical_role_name(ccrm_load_roles($pdo), $u['role'] ?? '');
                 } else {
-                    // Lock to the caller's stored role, ignoring any client value.
-                    $role = ccrm_normalize_role($existingRoles[$userId] ?? ($sessionUser['role'] ?? 'viewer'));
+                    // Lock to the stored role, ignoring any client value.
+                    $role = $existingRoles[$userId] ?? ccrm_normalize_role($sessionUser['role'] ?? '');
                 }
                 // Audit any admin-driven role change.
                 if ($isAdmin && isset($existingRoles[$userId]) && $existingRoles[$userId] !== $role) {
@@ -1826,6 +2359,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $metaJson
                 ]);
 
+                if ($existingRecord === null) {
+                    $seatsAfterDeletes++;
+                }
+
                 // A new password retires every session that the old one could reach,
                 // except the one making this change (which just proved it knows the
                 // new password by setting it).
@@ -1846,20 +2383,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ? $deletionsFor('users', $existingUserIds)
                     : array_diff($existingUserIds, $processedUserIds);
                 if (!empty($usersToDelete)) {
-                    ccrm_delete_omitted($pdo, 'users', $usersToDelete, $baseSyncedAt, [$sessionUser['id']], true);
+                    ccrm_delete_omitted($pdo, 'users', $usersToDelete, $baseSyncedAt, [$sessionUser['id']], true, $isDeltaSync);
                     ccrm_audit_log($pdo, $sessionUser, 'user.delete', 'Removed users: ' . implode(', ', $usersToDelete));
                 }
             }
         }
 
         // 4.2.5. Synchronize Project Types & Projects
-        if (isset($payload['projectTypes']) && is_array($payload['projectTypes'])) {
+        if (isset($payload['projectTypes']) && is_array($payload['projectTypes']) && !$ccrm_skip_writes('general_config', 'projectTypes')) {
             $existingPtIds = $pdo->query("SELECT `id` FROM `project_types`")->fetchAll(PDO::FETCH_COLUMN);
             $processedPtIds = [];
-            $insPt = $pdo->prepare("INSERT INTO `project_types` (`id`, `name`, `description`, `icon`, `color`, `attributes_json`, `has_timeline`, `has_gantt`, `timeline_event_types_json`, `timeline_attributes_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `icon`=VALUES(`icon`), `color`=VALUES(`color`), `attributes_json`=VALUES(`attributes_json`), `has_timeline`=VALUES(`has_timeline`), `has_gantt`=VALUES(`has_gantt`), `timeline_event_types_json`=VALUES(`timeline_event_types_json`), `timeline_attributes_json`=VALUES(`timeline_attributes_json`)");
+            $insPt = $pdo->prepare("INSERT INTO `project_types` (`id`, `name`, `description`, `icon`, `color`, `attributes_json`, `has_timeline`, `has_gantt`, `has_deadline`, `deadline_warning_days`, `deadline_required`, `has_files`, `file_fields_json`, `list_columns_json`, `timeline_event_types_json`, `timeline_attributes_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name`=VALUES(`name`), `description`=VALUES(`description`), `icon`=VALUES(`icon`), `color`=VALUES(`color`), `attributes_json`=VALUES(`attributes_json`), `has_timeline`=VALUES(`has_timeline`), `has_gantt`=VALUES(`has_gantt`), `has_deadline`=VALUES(`has_deadline`), `deadline_warning_days`=VALUES(`deadline_warning_days`), `deadline_required`=VALUES(`deadline_required`), `has_files`=VALUES(`has_files`), `file_fields_json`=VALUES(`file_fields_json`), `list_columns_json`=VALUES(`list_columns_json`), `timeline_event_types_json`=VALUES(`timeline_event_types_json`), `timeline_attributes_json`=VALUES(`timeline_attributes_json`)");
             
             foreach ($payload['projectTypes'] as $pt) {
                 if (!isset($pt['id'])) continue;
+                $ptDeadlineRequired = !empty($pt['deadlineRequired']) ? 1 : 0;
+                $ptHasFiles = !empty($pt['hasFiles']) ? 1 : 0;
+                $ptFileFields = json_encode(is_array($pt['fileFields'] ?? null) ? array_values($pt['fileFields']) : []);
+                // A client older than these settings sends none of them; keep what
+                // is stored instead of switching them off behind the user's back.
+                if (!array_key_exists('fileFields', $pt)) {
+                    $prevPt = $pdo->prepare("SELECT `deadline_required`, `has_files`, `file_fields_json` FROM `project_types` WHERE `id` = ?");
+                    $prevPt->execute([$pt['id']]);
+                    if ($prevRow = $prevPt->fetch(PDO::FETCH_ASSOC)) {
+                        $ptDeadlineRequired = (int)$prevRow['deadline_required'];
+                        $ptHasFiles = (int)$prevRow['has_files'];
+                        $ptFileFields = $prevRow['file_fields_json'] ?? '[]';
+                    }
+                }
+                // The projects-list layout, same rule as the file slots above: a
+                // client that predates it sends no `listColumns` at all, and must
+                // not flatten an arrangement somebody made from a newer one.
+                $ptListColumns = json_encode(is_array($pt['listColumns'] ?? null) ? array_values($pt['listColumns']) : []);
+                if (!array_key_exists('listColumns', $pt)) {
+                    $prevCols = $pdo->prepare("SELECT `list_columns_json` FROM `project_types` WHERE `id` = ?");
+                    $prevCols->execute([$pt['id']]);
+                    if ($prevColsRow = $prevCols->fetch(PDO::FETCH_ASSOC)) {
+                        $ptListColumns = $prevColsRow['list_columns_json'] ?? '[]';
+                    }
+                }
                 $insPt->execute([
                     $pt['id'],
                     $pt['name'],
@@ -1869,6 +2431,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     json_encode($pt['attributes'] ?? []),
                     !empty($pt['hasTimeline']) ? 1 : 0,
                     !empty($pt['hasGantt']) ? 1 : 0,
+                    !empty($pt['hasDeadline']) ? 1 : 0,
+                    // Same clamp as normalizeDeadlineWarningDays on the client:
+                    // a positive whole number of days, or 0 for "only once late".
+                    max(0, min(365, (int)($pt['deadlineWarningDays'] ?? 0))),
+                    $ptDeadlineRequired,
+                    $ptHasFiles,
+                    $ptFileFields,
+                    $ptListColumns,
                     json_encode($pt['timelineEventTypes'] ?? []),
                     json_encode($pt['timelineAttributes'] ?? [])
                 ]);
@@ -1886,8 +2456,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $ptToDelete = $isDeltaSync
                 ? $deletionsFor('projectTypes', $existingPtIds)
                 : array_diff($existingPtIds, $processedPtIds);
-            $ptToDelete = ccrm_filter_mass_delete($pdo, 'project_types', $ptToDelete, true);
-            if (!empty($ptToDelete)) {
+            $ptToDelete = ccrm_filter_mass_delete($pdo, 'project_types', $ptToDelete, true, $isDeltaSync);
+            if (!empty($ptToDelete) && !$ccrm_skip_deletes('general_config', 'projectTypes')) {
                 $delPt = $pdo->prepare("DELETE FROM `project_types` WHERE `id` = ?");
                 foreach ($ptToDelete as $ptId) {
                     $delPt->execute([$ptId]);
@@ -1907,11 +2477,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        if (isset($payload['projects']) && is_array($payload['projects'])) {
+        if (isset($payload['projects']) && is_array($payload['projects']) && !$ccrm_skip_writes('projects', 'projects')) {
             $existingProjIds = $pdo->query("SELECT `id` FROM `projects`")->fetchAll(PDO::FETCH_COLUMN);
             $processedProjIds = [];
 
-            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `lead_id`, `client_id`, `status`) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`)");
+            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `rating`, `deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`, `custom_files_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `rating`=COALESCE(VALUES(`rating`), `rating`), `deadline`=VALUES(`deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`), `custom_files_json`=COALESCE(VALUES(`custom_files_json`), `custom_files_json`)");
 
             // Manager assignments are replaced per project, never globally. The old
             // unconditional `DELETE FROM project_managers` assumed every push carried
@@ -1927,12 +2497,74 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if (!isset($p['id']) || !isset($p['projectTypeId'])) continue;
                 $projId = $p['id'];
 
+                // A project's own name. Empty is stored as NULL rather than "",
+                // so "unnamed" has one representation and the client's fallback
+                // to the paired lead's name keeps working either way.
+                $projName = trim((string)($p['name'] ?? ''));
+                // Deadlines are calendar days. Anything that is not one — "", null,
+                // a stray timestamp — clears the column instead of making MySQL
+                // guess at a DATE it cannot parse.
+                $projDeadline = null;
+                if (preg_match('/^(\d{4}-\d{2}-\d{2})/', (string)($p['deadline'] ?? ''), $dm)) {
+                    $projDeadline = $dm[1];
+                }
+                // The real start and finish — calendar days too, same rule.
+                $projStart = preg_match('/^(\d{4}-\d{2}-\d{2})/', (string)($p['startDate'] ?? ''), $sm) ? $sm[1] : null;
+                $projFinished = preg_match('/^(\d{4}-\d{2}-\d{2})/', (string)($p['finishedAt'] ?? ''), $fm) ? $fm[1] : null;
+
+                // Why the project is late. Required by the client once a project
+                // is actually past its deadline; empty is stored as NULL so
+                // "not late" and "late but unexplained" read the same way back.
+                $projDelayReason = trim((string)($p['delayReason'] ?? ''));
+                $projDelayReason = $projDelayReason === '' ? null : mb_substr($projDelayReason, 0, 500);
+
+                // What the project may spend. Anything that is not a positive
+                // amount — "", null, 0, garbage — means "no budget set".
+                $projBudget = (isset($p['budget']) && is_numeric($p['budget']) && (float)$p['budget'] > 0)
+                    ? round(min((float)$p['budget'], 999999999999.99), 2)
+                    : null;
+
+                // Star priority, 1-5, with 0 meaning "not rated". A client that
+                // does not carry the key at all means "unchanged" — NULL, which
+                // the COALESCE above turns into keeping what is stored, so a
+                // client older than this field cannot wipe a rating. 0 is a real
+                // value: it is how a rating is cleared again.
+                $projRating = null;
+                if (array_key_exists('rating', $p) && is_numeric($p['rating'])) {
+                    $projRating = max(0, min(5, (int)$p['rating']));
+                }
+
+                // File slots added on this project alone. A client that sends no
+                // list at all means "unchanged" — NULL, which the COALESCE above
+                // turns into keeping what is stored.
+                $projCustomFiles = null;
+                if (array_key_exists('customFileFields', $p) && is_array($p['customFileFields'])) {
+                    $cleanCustom = [];
+                    foreach ($p['customFileFields'] as $cf) {
+                        if (!is_array($cf) || empty($cf['id']) || trim((string)($cf['name'] ?? '')) === '') continue;
+                        $cleanCustom[] = [
+                            'id' => mb_substr((string)$cf['id'], 0, 100),
+                            'name' => mb_substr(trim((string)$cf['name']), 0, 200),
+                            'files' => is_array($cf['files'] ?? null) ? array_values($cf['files']) : [],
+                        ];
+                    }
+                    $projCustomFiles = json_encode($cleanCustom);
+                }
+
                 $insProj->execute([
                     $projId,
                     $p['projectTypeId'],
+                    $projName === '' ? null : mb_substr($projName, 0, 200),
                     empty($p['leadId']) ? null : $p['leadId'],
                     empty($p['clientId']) ? null : $p['clientId'],
-                    $p['status'] ?? 'active'
+                    $p['status'] ?? 'active',
+                    $projRating,
+                    $projDeadline,
+                    $projDelayReason,
+                    $projStart,
+                    $projFinished,
+                    $projBudget,
+                    $projCustomFiles
                 ]);
 
                 // Only rewrite this project's managers when the payload actually carries
@@ -2040,17 +2672,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $projToDelete = $isDeltaSync
                 ? $deletionsFor('projects', $existingProjIds)
                 : array_diff($existingProjIds, $processedProjIds);
-            $projToDelete = ccrm_filter_mass_delete($pdo, 'projects', $projToDelete);
-            if (!empty($projToDelete)) {
+            $projToDelete = ccrm_filter_mass_delete($pdo, 'projects', $projToDelete, false, $isDeltaSync);
+            if (!empty($projToDelete) && !$ccrm_skip_deletes('projects', 'projects')) {
                 $delProj = $pdo->prepare("DELETE FROM `projects` WHERE `id` = ?");
+                // The project's tasks stay on the Tasks board; only the link to
+                // the project that no longer exists goes.
+                $unlinkProjTasks = $pdo->prepare("UPDATE `tasks` SET `related_project_id` = NULL WHERE `related_project_id` = ?");
                 foreach ($projToDelete as $pid) {
                     $delProj->execute([$pid]);
+                    $unlinkProjTasks->execute([$pid]);
                 }
             }
         }
 
-        // 4.3. Synchronize Leads, Categories & Timelines
-        if (isset($payload['leads']) && is_array($payload['leads'])) {
+        // 4.3. Synchronize Leads, Categories & Timelines (same table as clients)
+        $canWriteLead = $isAdmin || ccrm_perm_can_edit($perms, 'leads');
+        $canWriteClient = $isAdmin || ccrm_perm_can_edit($perms, 'clients');
+        $leadDeletePerm = ccrm_perm_module($perms, 'leads');
+        $clientDeletePerm = ccrm_perm_module($perms, 'clients');
+        $canDeleteLead = $isAdmin || !empty($leadDeletePerm['delete']);
+        $canDeleteClient = $isAdmin || !empty($clientDeletePerm['delete']);
+        if (isset($payload['leads']) && is_array($payload['leads']) && ($canWriteLead || $canWriteClient || $canDeleteLead || $canDeleteClient)) {
             $stmt = $pdo->query("SELECT * FROM `leads`");
             $dbLeads = [];
             while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
@@ -2093,13 +2735,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               `establishment_date`, `legal_form`, `sk_nace`, `organization_size`, `ownership_type`, `data_source`, `dissolution_date`, `region`, `district`, `financial_summary`,
               `vat_validation_result`,
               `created_at`,
-              `follow_ups`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+              `follow_ups`,
+              `client_category_id`, `archived`
+            ) VALUES (?, ?, ?, ?,?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
               `name` = VALUES(`name`), `city` = VALUES(`city`), `client_type` = VALUES(`client_type`), `status` = VALUES(`status`), `source` = VALUES(`source`), `owner` = VALUES(`owner`), `value` = VALUES(`value`), `rating` = VALUES(`rating`), `phone` = VALUES(`phone`), `email` = VALUES(`email`), `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`), `contact_person` = VALUES(`contact_person`), `website` = VALUES(`website`), `street` = VALUES(`street`), `postal_code` = VALUES(`postal_code`), `country` = VALUES(`country`), `ai_summary` = VALUES(`ai_summary`), `ai_summary_fingerprint` = VALUES(`ai_summary_fingerprint`), `interest_note` = VALUES(`interest_note`), `referral_lead_id` = VALUES(`referral_lead_id`),
               `establishment_date` = VALUES(`establishment_date`), `legal_form` = VALUES(`legal_form`), `sk_nace` = VALUES(`sk_nace`), `organization_size` = VALUES(`organization_size`), `ownership_type` = VALUES(`ownership_type`), `data_source` = VALUES(`data_source`), `dissolution_date` = VALUES(`dissolution_date`), `region` = VALUES(`region`), `district` = VALUES(`district`),
               `vat_validation_result` = VALUES(`vat_validation_result`),
-              `follow_ups` = VALUES(`follow_ups`)");
+              `follow_ups` = VALUES(`follow_ups`),
+              `client_category_id` = VALUES(`client_category_id`), `archived` = VALUES(`archived`),
+              `created_at` = COALESCE(?, `created_at`)");
+              // `created_at` is user-editable (the lead editor exposes the creation
+              // date), so it has to be updated here too — otherwise the next pull
+              // hands the old date back and the edit "disappears after a while".
+              // COALESCE keeps the stored date when a payload omits createdAt,
+              // instead of stamping today's date on it the way the INSERT fallback does.
               // NOTE: `financial_summary` is intentionally NOT updated here. It is
               // server-owned — generated by api/generate_report.php in the
               // background and written directly to the row. Letting the client's
@@ -2114,6 +2764,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $leadId = $l['id'];
                 $processedLeadIds[] = $leadId;
+
+                // Clients live in the same table. A role with clients.edit but not
+                // leads.edit (or the reverse) must still persist the rows it is
+                // allowed to touch, instead of skip_writes('leads') no-op'ing the
+                // whole collection with HTTP 200.
+                $isClientRow = (($l['clientType'] ?? 'person') !== 'person');
+                if ($isClientRow ? !$canWriteClient : !$canWriteLead) {
+                    $skipTag = $isClientRow ? 'leads:clients' : 'leads';
+                    if (!in_array($skipTag, $permissionSkipped, true)) {
+                        $permissionSkipped[] = $skipTag;
+                    }
+                    continue;
+                }
 
                 // Optimization: Skip if the lead is identical to what we have in the DB
                 if (isset($dbLeads[$leadId]) && ccrm_leads_are_identical($l, $dbLeads[$leadId], $defaultOwner)) {
@@ -2131,13 +2794,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $address = $l['address'] ?? [];
 
+                $isNew = !isset($dbLeads[$leadId]);
+
+                // Auto-assignment: a brand-new lead that nobody was put on goes to
+                // the next project manager in the configured rotation (Settings →
+                // Users). Deliberately limited to inserts — re-running it on every
+                // sync would re-stamp an owner the moment somebody cleared one by
+                // hand, and would keep re-rotating leads that are already assigned.
+                // ccrm_auto_assign_owner() returns '' when the feature is off, so
+                // the fallback below stays exactly what it always was.
+                if ($isNew && trim((string)($l['owner'] ?? '')) === '') {
+                    $autoOwner = ccrm_auto_assign_owner($pdo);
+                    if ($autoOwner !== '') {
+                        $l['owner'] = $autoOwner;
+                        $assignedOwners[$leadId] = $autoOwner;
+                    }
+                }
+
                 // A lead pushed without an owner is stored under the fallback one,
                 // so the trigger payload has to carry that same name — otherwise
                 // {{$trigger.owner}} resolves to empty for exactly the leads that
                 // do have an owner in the database.
                 $l['owner'] = $l['owner'] ?? $defaultOwner;
 
-                $isNew = !isset($dbLeads[$leadId]);
                 $oldStatus = $isNew ? null : ($dbLeads[$leadId]['status'] ?? null);
 
                 $insLead->execute([
@@ -2176,8 +2855,41 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $l['financialSummary'] ?? null,
                     isset($l['vatValidationResult']) ? json_encode($l['vatValidationResult']) : null,
                     ccrm_date_only($l['createdAt'] ?? null) ?? date('Y-m-d'),
-                    (isset($l['followUps']) && !empty($l['followUps'])) ? json_encode($l['followUps']) : null
+                    (isset($l['followUps']) && !empty($l['followUps'])) ? json_encode($l['followUps']) : null,
+                    !empty($l['clientCategoryId']) ? (string)$l['clientCategoryId'] : null,
+                    !empty($l['archived']) ? 1 : 0,
+                    // 39th param: ON DUPLICATE KEY UPDATE created_at (null = keep the stored date)
+                    ccrm_date_only($l['createdAt'] ?? null)
                 ]);
+
+                // Automatic project creation (Projects → Settings). Runs before
+                // the workflow triggers below on purpose, so an automation
+                // reacting to `lead_created` already finds the project it may
+                // want to move. Returns an empty list whenever the feature is
+                // off, no rule matches, the configured types are gone, or this
+                // lead already has a project of each of them.
+                //
+                // The lead's categories are handed over rather than read back:
+                // `lead_categories` is only written further down, so the table
+                // still holds nothing for a lead that arrived in this payload.
+                //
+                // PROJECT-AUTO-CREATE-DISABLED (v1.9.29): switched off app-wide.
+                // To bring it back, uncomment the block below. Manual pairing of
+                // lead <-> project <-> client is unaffected.
+                // if ($isNew) {
+                //     $leadCategoryNames = [];
+                //     if (isset($l['categories']) && is_array($l['categories'])) {
+                //         foreach ($l['categories'] as $catName) {
+                //             $catName = trim((string)$catName);
+                //             if ($catName !== '') {
+                //                 $leadCategoryNames[] = $catName;
+                //             }
+                //         }
+                //     }
+                //     foreach (ccrm_auto_create_project_for_lead($pdo, $leadId, (string)($l['owner'] ?? ''), $leadCategoryNames) as $autoProject) {
+                //         $createdProjects[] = $autoProject;
+                //     }
+                // }
 
                 // Workflow Triggers
                 require_once __DIR__ . '/api/workflows_engine.php';
@@ -2246,11 +2958,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $delTimeline->execute([$leadId]);
 
                 if (isset($l['timeline']) && is_array($l['timeline'])) {
-                    $insTimeline = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `amount`, `file_name`, `file_size`, `file_type`, `attachments_json`, `extra_time`, `author`, `audio_file`, `transcription`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                    $insTimeline = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `amount`, `file_name`, `file_size`, `file_type`, `attachments_json`, `extra_time`, `is_outgoing`, `author`, `audio_file`, `transcription`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+                    // Editing an entry the mail importer owns: only these columns
+                    // are the user's to change. Everything else belongs to the
+                    // message and is rewritten from IMAP on the next read.
+                    $updMailTe = $pdo->prepare("UPDATE `timeline_events` SET `timestamp` = ?, `title` = ?, `content` = ? WHERE `id` = ? AND `lead_id` = ?");
+                    // ...and removing one. Omitting it from the payload cannot mean
+                    // "delete": the client may simply never have loaded it. So the
+                    // client sends it flagged `hidden`, and the row stays behind as
+                    // a tombstone — deleting it would let the next mailbox read
+                    // file the message again.
                     $allowedEventTypes = ['phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change'];
                     foreach ($l['timeline'] as $te) {
                         $teId = $te['id'] ?? ('ev-' . uniqid());
                         if (strpos($teId, 'email-') === 0) {
+                            // Importer-owned. It is never INSERTed from here: the
+                            // client also carries live IMAP entries that have no row
+                            // yet, and writing those would duplicate whatever the
+                            // next mailbox read stores. But an edit to one that DOES
+                            // exist used to be dropped without a word — the date you
+                            // corrected simply reappeared wrong. Apply it.
+                            try {
+                                if (!empty($te['hidden'])) {
+                                    $hideMailTe = $pdo->prepare("UPDATE `timeline_events` SET `hidden` = 1 WHERE `id` = ? AND `lead_id` = ?");
+                                    $hideMailTe->execute([$teId, $leadId]);
+                                    continue;
+                                }
+                                $updMailTe->execute([
+                                    isset($te['timestamp']) ? date('Y-m-d H:i:s', strtotime($te['timestamp'])) : date('Y-m-d H:i:s'),
+                                    mb_substr((string) ccrm_sanitize_db_text($te['title'] ?? '', 1020), 0, 255, 'UTF-8'),
+                                    ccrm_sanitize_db_text($te['content'] ?? null, 63000),
+                                    $teId,
+                                    $leadId
+                                ]);
+                            } catch (\PDOException $mailEx) {
+                                // Never let a mail entry abort the lead's own save.
+                                error_log('CCRM sync: could not update mail event ' . $teId . ': ' . $mailEx->getMessage());
+                            }
                             continue;
                         }
                         // If this id was already used by another lead in this same payload,
@@ -2309,6 +3053,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $te['fileType'] ?? null,
                             ccrm_encode_attachments($te['attachments'] ?? null),
                             $te['extraTime'] ?? $te['extra_time'] ?? null,
+                            // Direction of a mail event. The column was simply
+                            // absent from this statement, so every hand-logged
+                            // "Direct Email Sent" fell back to the DEFAULT 0 and
+                            // came back from the server marked as Incoming.
+                            !empty($te['isOutgoing']) ? 1 : 0,
                             $teAuthor,
                             $teAudioFile,
                             $teTranscription
@@ -2355,11 +3104,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $leadsToDelete = $isDeltaSync
                 ? $deletionsFor('leads', $existingLeadIds)
                 : array_diff($existingLeadIds, $processedLeadIds);
-            ccrm_delete_omitted($pdo, 'leads', $leadsToDelete, $baseSyncedAt);
+            $filteredLeadDeletes = [];
+            foreach ($leadsToDelete as $delId) {
+                $row = $dbLeads[$delId] ?? null;
+                $isClientRow = $row && (($row['client_type'] ?? 'person') !== 'person');
+                if ($isClientRow ? $canDeleteClient : $canDeleteLead) {
+                    $filteredLeadDeletes[] = $delId;
+                } else {
+                    $skipTag = $isClientRow ? 'leads:clients:delete' : 'leads:delete';
+                    if (!in_array($skipTag, $permissionSkipped, true)) {
+                        $permissionSkipped[] = $skipTag;
+                    }
+                }
+            }
+            if (!empty($filteredLeadDeletes)) {
+                ccrm_delete_omitted($pdo, 'leads', $filteredLeadDeletes, $baseSyncedAt, [], false, $isDeltaSync);
+            }
         }
 
         // 4.4. Synchronize Tasks
-        if (isset($payload['tasks']) && is_array($payload['tasks'])) {
+        if (isset($payload['tasks']) && is_array($payload['tasks']) && !$ccrm_skip_writes('tasks', 'tasks')) {
             // updated_at comes along so the conflict guard below can tell a stale
             // re-send apart from a genuine edit.
             $dbTasks = [];
@@ -2373,7 +3137,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // completed_by/completed_at are in the UPDATE list on purpose: reopening a
             // task ("Restore" in the archive) sends them back as null and must clear
             // the stored attribution, not keep the stale one.
-            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `is_locking`, `archived`, `completed_by`, `completed_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`), `completed_by` = VALUES(`completed_by`), `completed_at` = VALUES(`completed_at`)");
+            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `is_locking`, `archived`, `completed_by`, `completed_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`), `completed_by` = VALUES(`completed_by`), `completed_at` = VALUES(`completed_at`)");
 
             foreach ($payload['tasks'] as $t) {
                 // Skip malformed items rather than aborting the whole sync.
@@ -2411,6 +3175,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $t['owner'],
                     $sessionUserName !== '' ? $sessionUserName : null,
                     $t['relatedLeadId'] ?? null,
+                    (isset($t['relatedProjectId']) && $t['relatedProjectId'] !== '') ? $t['relatedProjectId'] : null,
                     ($t['isLocking'] ?? false) ? 1 : 0,
                     ($t['archived'] ?? false) ? 1 : 0,
                     (isset($t['completedBy']) && $t['completedBy'] !== '') ? $t['completedBy'] : null,
@@ -2451,7 +3216,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         // 4.5. Synchronize Meeting Notes & meeting_tasks
-        if (isset($payload['meetingNotes']) && is_array($payload['meetingNotes'])) {
+        if (isset($payload['meetingNotes']) && is_array($payload['meetingNotes']) && !$ccrm_skip_writes('meetings', 'meetingNotes')) {
             // Fetch existing ids to delete
             // updated_at comes along so the conflict guard below can tell a stale
             // re-send apart from a genuine edit.
@@ -2533,11 +3298,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $meetingsToDelete = $isDeltaSync
                 ? $deletionsFor('meetingNotes', $existingMeetingIds)
                 : array_diff($existingMeetingIds, $processedMeetingIds);
-            ccrm_delete_omitted($pdo, 'meeting_notes', $meetingsToDelete, $baseSyncedAt);
+            if (!$ccrm_skip_deletes('meetings', 'meetingNotes')) {
+                ccrm_delete_omitted($pdo, 'meeting_notes', $meetingsToDelete, $baseSyncedAt, [], false, $isDeltaSync);
+            }
         }
 
         // 4.6. Synchronize Unified Universal Entries (Registry & Dynamic Tables)
         if (isset($payload['unifiedEntries']) && is_array($payload['unifiedEntries'])) {
+            $skipUeRegistry = $ccrm_skip_writes('general_config', 'unifiedEntries');
+            $skipUeData = $ccrm_skip_writes('unified_entries', 'unifiedEntriesData');
+            if ($skipUeRegistry && $skipUeData) {
+                // nothing to do
+            } else {
             $stmt = $pdo->query("SELECT `id` FROM `unified_entries`");
             $existingRegistryIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedRegistryIds = [];
@@ -2548,6 +3320,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $ueId = $ue['id'];
                 $modules = $ue['modules'] ?? [];
                 $folderModules = $ue['folderModules'] ?? [];
+                if (!$skipUeRegistry) {
                 $insRegistry->execute([
                     $ueId,
                     $ue['name'],
@@ -2563,6 +3336,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ($ue['archived'] ?? false) ? 1 : 0
                 ]);
                 $processedRegistryIds[] = $ueId;
+                }
 
                 // Dynamically spawn or migrate table for this entry
                 $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($ueId));
@@ -2574,7 +3348,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // commit in MySQL.
 
                 // If rows data is supplied, synchronize it to this dynamic table
-                if (isset($payload['unifiedEntriesData'][$ueId]) && is_array($payload['unifiedEntriesData'][$ueId])) {
+                if (!$skipUeData && isset($payload['unifiedEntriesData'][$ueId]) && is_array($payload['unifiedEntriesData'][$ueId])) {
                     $rows = $payload['unifiedEntriesData'][$ueId];
                     $stmtRows = $pdo->query("SELECT `id` FROM `{$tableName}`");
                     $existingRowIds = $stmtRows->fetchAll(PDO::FETCH_COLUMN);
@@ -2637,6 +3411,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $updates[] = "`lead_id` = ?";
                                 $params[] = $row['leadId'] ?? null;
                             }
+                            if (in_array('number', $rowModules) && ccrm_column_exists($pdo, $tableName, 'number_value')) {
+                                $updates[] = "`number_value` = ?";
+                                $params[] = (isset($row['numberValue']) && $row['numberValue'] !== '') ? (float)$row['numberValue'] : null;
+                            }
+                            if (in_array('money', $rowModules) && ccrm_column_exists($pdo, $tableName, 'money_amount')) {
+                                $updates[] = "`money_amount` = ?";
+                                $updates[] = "`money_currency` = ?";
+                                $params[] = (isset($row['moneyAmount']) && $row['moneyAmount'] !== '') ? (float)$row['moneyAmount'] : null;
+                                $params[] = $row['moneyCurrency'] ?? null;
+                            }
                             $params[] = $rowId; // for WHERE id = ?
                             $updateSql = "UPDATE `{$tableName}` SET " . implode(", ", $updates) . " WHERE `id` = ?";
                             $pdo->prepare($updateSql)->execute($params);
@@ -2693,6 +3477,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 $placeholders[] = "?";
                                 $params[] = $row['leadId'] ?? null;
                             }
+                            if (in_array('number', $rowModules) && ccrm_column_exists($pdo, $tableName, 'number_value')) {
+                                $fields[] = "`number_value`";
+                                $placeholders[] = "?";
+                                $params[] = (isset($row['numberValue']) && $row['numberValue'] !== '') ? (float)$row['numberValue'] : null;
+                            }
+                            if (in_array('money', $rowModules) && ccrm_column_exists($pdo, $tableName, 'money_amount')) {
+                                $fields[] = "`money_amount`";
+                                $fields[] = "`money_currency`";
+                                $placeholders[] = "?";
+                                $placeholders[] = "?";
+                                $params[] = (isset($row['moneyAmount']) && $row['moneyAmount'] !== '') ? (float)$row['moneyAmount'] : null;
+                                $params[] = $row['moneyCurrency'] ?? null;
+                            }
                             $insertSql = "INSERT INTO `{$tableName}` (" . implode(", ", $fields) . ") VALUES (" . implode(", ", $placeholders) . ")";
                             $pdo->prepare($insertSql)->execute($params);
                         }
@@ -2709,8 +3506,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             $ueId
                         )))
                         : array_diff($existingRowIds, $processedRowIds);
-                    ccrm_delete_omitted($pdo, $tableName, $rowsToDelete, $baseSyncedAt);
+                    if (!$ccrm_skip_deletes('unified_entries', 'unifiedEntriesData')) {
+                        ccrm_delete_omitted($pdo, $tableName, $rowsToDelete, $baseSyncedAt, [], false, $isDeltaSync);
+                    }
                 }
+            }
             }
         }
 
@@ -2724,6 +3524,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             foreach ($payload['customDashboards'] as $dash) {
                 $dashId = $dash['id'];
+                $dashMod = ($dashId === CCRM_HOME_DASHBOARD_ID) ? 'dashboard' : 'dashboard.custom';
+                $dashColl = ($dashId === CCRM_HOME_DASHBOARD_ID) ? 'customDashboards:home' : 'customDashboards';
+                if ($ccrm_skip_writes($dashMod, $dashColl)) {
+                    continue;
+                }
                 $prompts = $dash['prompts'] ?? [];
                 $layout = $dash['layout'] ?? [];
                 $insDash->execute([
@@ -2742,13 +3547,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $dashesToDelete = $isDeltaSync
                 ? $deletionsFor('customDashboards', $existingDashIds)
                 : array_diff($existingDashIds, $processedDashIds);
+            $dashesToDelete = array_values(array_filter($dashesToDelete, function ($id) use ($ccrm_skip_deletes) {
+                $mod = ($id === CCRM_HOME_DASHBOARD_ID) ? 'dashboard' : 'dashboard.custom';
+                $coll = ($id === CCRM_HOME_DASHBOARD_ID) ? 'customDashboards:home' : 'customDashboards';
+                return !$ccrm_skip_deletes($mod, $coll);
+            }));
             if (!empty($dashesToDelete)) {
-                ccrm_delete_omitted($pdo, 'custom_dashboards', $dashesToDelete, null);
+                ccrm_delete_omitted($pdo, 'custom_dashboards', $dashesToDelete, null, [], false, $isDeltaSync);
             }
         }
 
         // 4.8. Synchronize Warehouses
-        if (isset($payload['warehouses']) && is_array($payload['warehouses'])) {
+        if (isset($payload['warehouses']) && is_array($payload['warehouses']) && !$ccrm_skip_writes('warehouse', 'warehouses')) {
             $stmt = $pdo->query("SELECT `id` FROM `warehouses`");
             $existingWhIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedWhIds = [];
@@ -2769,13 +3579,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $whToDelete = $isDeltaSync ? $deletionsFor('warehouses', $existingWhIds) : array_diff($existingWhIds, $processedWhIds);
-            if (!empty($whToDelete)) {
-                ccrm_delete_omitted($pdo, 'warehouses', $whToDelete, null);
+            if (!empty($whToDelete) && !$ccrm_skip_deletes('warehouse', 'warehouses')) {
+                ccrm_delete_omitted($pdo, 'warehouses', $whToDelete, null, [], false, $isDeltaSync);
             }
         }
 
         // 4.9. Synchronize Suppliers
-        if (isset($payload['suppliers']) && is_array($payload['suppliers'])) {
+        if (isset($payload['suppliers']) && is_array($payload['suppliers']) && !$ccrm_skip_writes('warehouse', 'suppliers')) {
             $stmt = $pdo->query("SELECT `id` FROM `suppliers`");
             $existingSupIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedSupIds = [];
@@ -2807,13 +3617,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $supToDelete = $isDeltaSync ? $deletionsFor('suppliers', $existingSupIds) : array_diff($existingSupIds, $processedSupIds);
-            if (!empty($supToDelete)) {
-                ccrm_delete_omitted($pdo, 'suppliers', $supToDelete, null);
+            if (!empty($supToDelete) && !$ccrm_skip_deletes('warehouse', 'suppliers')) {
+                ccrm_delete_omitted($pdo, 'suppliers', $supToDelete, null, [], false, $isDeltaSync);
             }
         }
 
         // 4.10. Synchronize Warehouse Items
-        if (isset($payload['warehouseItems']) && is_array($payload['warehouseItems'])) {
+        if (isset($payload['warehouseItems']) && is_array($payload['warehouseItems']) && !$ccrm_skip_writes('warehouse', 'warehouseItems')) {
             $stmt = $pdo->query("SELECT `id` FROM `warehouse_items`");
             $existingItemIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedItemIds = [];
@@ -2843,13 +3653,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $itemsToDelete = $isDeltaSync ? $deletionsFor('warehouseItems', $existingItemIds) : array_diff($existingItemIds, $processedItemIds);
-            if (!empty($itemsToDelete)) {
-                ccrm_delete_omitted($pdo, 'warehouse_items', $itemsToDelete, null);
+            if (!empty($itemsToDelete) && !$ccrm_skip_deletes('warehouse', 'warehouseItems')) {
+                ccrm_delete_omitted($pdo, 'warehouse_items', $itemsToDelete, null, [], false, $isDeltaSync);
             }
         }
 
         // 4.11. Synchronize Warehouse Stock & Batches
-        if (isset($payload['warehouseStock']) && is_array($payload['warehouseStock'])) {
+        if (isset($payload['warehouseStock']) && is_array($payload['warehouseStock']) && !$ccrm_skip_writes('warehouse', 'warehouseStock')) {
             $insStock = $pdo->prepare("INSERT INTO `warehouse_stock` (`warehouse_id`, `item_id`, `quantity`, `reserved_quantity`, `location`) VALUES (?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `quantity` = VALUES(`quantity`), `reserved_quantity` = VALUES(`reserved_quantity`), `location` = VALUES(`location`)");
             foreach ($payload['warehouseStock'] as $stk) {
                 if (!empty($stk['warehouseId']) && !empty($stk['itemId'])) {
@@ -2868,7 +3678,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
 
-        if (isset($payload['warehouseBatches']) && is_array($payload['warehouseBatches'])) {
+        if (isset($payload['warehouseBatches']) && is_array($payload['warehouseBatches']) && !$ccrm_skip_writes('warehouse', 'warehouseBatches')) {
             $stmt = $pdo->query("SELECT `id` FROM `warehouse_batches`");
             $existingBatchIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedBatchIds = [];
@@ -2895,13 +3705,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $batchesToDelete = $isDeltaSync ? $deletionsFor('warehouseBatches', $existingBatchIds) : array_diff($existingBatchIds, $processedBatchIds);
-            if (!empty($batchesToDelete)) {
-                ccrm_delete_omitted($pdo, 'warehouse_batches', $batchesToDelete, null);
+            if (!empty($batchesToDelete) && !$ccrm_skip_deletes('warehouse', 'warehouseBatches')) {
+                ccrm_delete_omitted($pdo, 'warehouse_batches', $batchesToDelete, null, [], false, $isDeltaSync);
             }
         }
 
         // 4.12. Synchronize Warehouse Movements
-        if (isset($payload['warehouseMovements']) && is_array($payload['warehouseMovements'])) {
+        if (isset($payload['warehouseMovements']) && is_array($payload['warehouseMovements']) && !$ccrm_skip_writes('warehouse', 'warehouseMovements')) {
             $stmt = $pdo->query("SELECT `id` FROM `warehouse_movements`");
             $existingMovIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedMovIds = [];
@@ -2956,27 +3766,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $movToDelete = $isDeltaSync ? $deletionsFor('warehouseMovements', $existingMovIds) : array_diff($existingMovIds, $processedMovIds);
-            if (!empty($movToDelete)) {
-                ccrm_delete_omitted($pdo, 'warehouse_movements', $movToDelete, null);
+            if (!empty($movToDelete) && !$ccrm_skip_deletes('warehouse', 'warehouseMovements')) {
+                ccrm_delete_omitted($pdo, 'warehouse_movements', $movToDelete, null, [], false, $isDeltaSync);
             }
         }
 
         // 4.13. Synchronize Financial Categories
-        if (isset($payload['financialCategories']) && is_array($payload['financialCategories'])) {
+        if (isset($payload['financialCategories']) && is_array($payload['financialCategories']) && !$ccrm_skip_writes('financial', 'financialCategories')) {
             $stmt = $pdo->query("SELECT `id` FROM `financial_categories`");
             $existingFcIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedFcIds = [];
 
-            $insFc = $pdo->prepare("INSERT INTO `financial_categories` (`id`, `type`, `name`, `parent_id`, `level`, `color`, `icon`) VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `type` = VALUES(`type`), `name` = VALUES(`name`), `parent_id` = VALUES(`parent_id`), `level` = VALUES(`level`), `color` = VALUES(`color`), `icon` = VALUES(`icon`)");
+            $insFc = $pdo->prepare("INSERT INTO `financial_categories` (`id`, `type`, `name`, `parent_id`, `level`, `sort_order`, `color`, `icon`) VALUES (?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `type` = VALUES(`type`), `name` = VALUES(`name`), `parent_id` = VALUES(`parent_id`), `level` = VALUES(`level`), `sort_order` = VALUES(`sort_order`), `color` = VALUES(`color`), `icon` = VALUES(`icon`)");
 
             foreach ($payload['financialCategories'] as $fc) {
                 $fcId = $fc['id'];
                 $insFc->execute([
                     $fcId,
                     $fc['type'] ?? 'expense',
-                    $fc['name'] ?? '',
+                    mb_substr((string) ccrm_sanitize_db_text($fc['name'] ?? '', 600), 0, 150, 'UTF-8'),
                     !empty($fc['parentId']) ? $fc['parentId'] : null,
                     (int)($fc['level'] ?? 1),
+                    (int)($fc['sortOrder'] ?? 0),
                     $fc['color'] ?? null,
                     $fc['icon'] ?? null
                 ]);
@@ -2984,44 +3795,89 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $fcToDelete = $isDeltaSync ? $deletionsFor('financialCategories', $existingFcIds) : array_diff($existingFcIds, $processedFcIds);
-            if (!empty($fcToDelete)) {
-                ccrm_delete_omitted($pdo, 'financial_categories', $fcToDelete, null);
+            if (!empty($fcToDelete) && !$ccrm_skip_deletes('financial', 'financialCategories')) {
+                ccrm_delete_omitted($pdo, 'financial_categories', $fcToDelete, null, [], false, $isDeltaSync);
+            }
+        }
+
+        // 4.13b. Synchronize Client Categories — same rules as the finance tree
+        // above, minus the income/expense type. Deleting a category does not
+        // touch the clients filed under it here: the app clears their
+        // clientCategoryId itself and pushes those leads alongside.
+        if (isset($payload['clientCategories']) && is_array($payload['clientCategories']) && !$ccrm_skip_writes('clients', 'clientCategories')) {
+            $stmt = $pdo->query("SELECT `id` FROM `client_categories`");
+            $existingCcIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $processedCcIds = [];
+
+            $insCc = $pdo->prepare("INSERT INTO `client_categories` (`id`, `name`, `parent_id`, `level`, `sort_order`, `color`, `icon`) VALUES (?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `name` = VALUES(`name`), `parent_id` = VALUES(`parent_id`), `level` = VALUES(`level`), `sort_order` = VALUES(`sort_order`), `color` = VALUES(`color`), `icon` = VALUES(`icon`)");
+
+            foreach ($payload['clientCategories'] as $cc) {
+                if (!is_array($cc) || empty($cc['id'])) {
+                    continue;
+                }
+                $insCc->execute([
+                    (string)$cc['id'],
+                    $cc['name'] ?? '',
+                    !empty($cc['parentId']) ? $cc['parentId'] : null,
+                    max(1, min(3, (int)($cc['level'] ?? 1))),
+                    (int)($cc['sortOrder'] ?? 0),
+                    $cc['color'] ?? null,
+                    $cc['icon'] ?? null
+                ]);
+                $processedCcIds[] = (string)$cc['id'];
+            }
+
+            $ccToDelete = $isDeltaSync ? $deletionsFor('clientCategories', $existingCcIds) : array_diff($existingCcIds, $processedCcIds);
+            if (!empty($ccToDelete) && !$ccrm_skip_deletes('clients', 'clientCategories')) {
+                ccrm_delete_omitted($pdo, 'client_categories', $ccToDelete, null, [], false, $isDeltaSync);
             }
         }
 
         // 4.14. Synchronize Financial Records
-        if (isset($payload['financialRecords']) && is_array($payload['financialRecords'])) {
+        if (isset($payload['financialRecords']) && is_array($payload['financialRecords']) && !$ccrm_skip_writes('financial', 'financialRecords')) {
             $stmt = $pdo->query("SELECT `id` FROM `financial_records`");
             $existingFrIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedFrIds = [];
 
-            $insFr = $pdo->prepare("INSERT INTO `financial_records` (`id`, `type`, `subtype`, `title`, `description`, `category_id`, `category_path`, `amount_planned`, `amount_real`, `currency`, `status`, `issue_date`, `due_date`, `paid_date`, `payment_method`, `is_recurring`, `recurring_frequency`, `recurring_config_json`, `recurring_start_date`, `recurring_end_date`, `project_id`, `client_id`, `invoice_number`, `tax_rate`, `attachments_json`, `created_by`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `type` = VALUES(`type`), `subtype` = VALUES(`subtype`), `title` = VALUES(`title`), `description` = VALUES(`description`), `category_id` = VALUES(`category_id`), `category_path` = VALUES(`category_path`), `amount_planned` = VALUES(`amount_planned`), `amount_real` = VALUES(`amount_real`), `currency` = VALUES(`currency`), `status` = VALUES(`status`), `issue_date` = VALUES(`issue_date`), `due_date` = VALUES(`due_date`), `paid_date` = VALUES(`paid_date`), `payment_method` = VALUES(`payment_method`), `is_recurring` = VALUES(`is_recurring`), `recurring_frequency` = VALUES(`recurring_frequency`), `recurring_config_json` = VALUES(`recurring_config_json`), `recurring_start_date` = VALUES(`recurring_start_date`), `recurring_end_date` = VALUES(`recurring_end_date`), `project_id` = VALUES(`project_id`), `client_id` = VALUES(`client_id`), `invoice_number` = VALUES(`invoice_number`), `tax_rate` = VALUES(`tax_rate`), `attachments_json` = VALUES(`attachments_json`), `created_by` = VALUES(`created_by`)");
+            $insFr = $pdo->prepare("INSERT INTO `financial_records` (`id`, `type`, `subtype`, `title`, `description`, `category_id`, `category_path`, `amount_planned`, `amount_real`, `currency`, `status`, `issue_date`, `due_date`, `paid_date`, `payment_method`, `is_recurring`, `recurring_frequency`, `recurring_config_json`, `recurring_start_date`, `recurring_end_date`, `recurring_amount_history_json`, `project_id`, `client_id`, `invoice_number`, `tax_rate`, `attachments_json`, `created_by`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `type` = VALUES(`type`), `subtype` = VALUES(`subtype`), `title` = VALUES(`title`), `description` = VALUES(`description`), `category_id` = VALUES(`category_id`), `category_path` = VALUES(`category_path`), `amount_planned` = VALUES(`amount_planned`), `amount_real` = VALUES(`amount_real`), `currency` = VALUES(`currency`), `status` = VALUES(`status`), `issue_date` = VALUES(`issue_date`), `due_date` = VALUES(`due_date`), `paid_date` = VALUES(`paid_date`), `payment_method` = VALUES(`payment_method`), `is_recurring` = VALUES(`is_recurring`), `recurring_frequency` = VALUES(`recurring_frequency`), `recurring_config_json` = VALUES(`recurring_config_json`), `recurring_start_date` = VALUES(`recurring_start_date`), `recurring_end_date` = VALUES(`recurring_end_date`), `recurring_amount_history_json` = VALUES(`recurring_amount_history_json`), `project_id` = VALUES(`project_id`), `client_id` = VALUES(`client_id`), `invoice_number` = VALUES(`invoice_number`), `tax_rate` = VALUES(`tax_rate`), `attachments_json` = VALUES(`attachments_json`), `created_by` = VALUES(`created_by`)");
 
             foreach ($payload['financialRecords'] as $fr) {
                 $frId = $fr['id'];
+                $frTitle = mb_substr((string) ccrm_sanitize_db_text($fr['title'] ?? '', 1020), 0, 255, 'UTF-8');
+                $frCategoryPathSanitized = ccrm_sanitize_db_text($fr['categoryPath'] ?? null, 1020);
+                $frCategoryPath = $frCategoryPathSanitized !== null ? mb_substr($frCategoryPathSanitized, 0, 255, 'UTF-8') : null;
+                $frClientId = !empty($fr['clientId']) ? mb_substr((string) ccrm_sanitize_db_text($fr['clientId'], 200), 0, 50, 'UTF-8') : null;
+                // Narrow to bare Y-m-d so a datetime string (e.g. "…T00:00:00.000Z")
+                // doesn't raise SQLSTATE 22007 and roll back the whole sync.
+                $frIssueDate = ccrm_date_only($fr['issueDate'] ?? null) ?: date('Y-m-d');
+                $frDueDate = ccrm_date_only($fr['dueDate'] ?? null);
+                $frPaidDate = ccrm_date_only($fr['paidDate'] ?? null);
+                $frRecurringStartDate = ccrm_date_only($fr['recurringStartDate'] ?? null);
+                $frRecurringEndDate = ccrm_date_only($fr['recurringEndDate'] ?? null);
                 $insFr->execute([
                     $frId,
                     $fr['type'] ?? 'expense',
                     $fr['subtype'] ?? 'regular',
-                    $fr['title'] ?? '',
+                    $frTitle,
                     $fr['description'] ?? null,
                     !empty($fr['categoryId']) ? $fr['categoryId'] : null,
-                    $fr['categoryPath'] ?? null,
-                    (float)($fr['amountPlanned'] ?? 0),
-                    (float)($fr['amountReal'] ?? 0),
+                    $frCategoryPath,
+                    round((float)($fr['amountPlanned'] ?? 0), 2),
+                    round((float)($fr['amountReal'] ?? 0), 2),
                     $fr['currency'] ?? 'EUR',
                     $fr['status'] ?? 'planned',
-                    !empty($fr['issueDate']) ? $fr['issueDate'] : date('Y-m-d'),
-                    !empty($fr['dueDate']) ? $fr['dueDate'] : null,
-                    !empty($fr['paidDate']) ? $fr['paidDate'] : null,
+                    $frIssueDate,
+                    $frDueDate,
+                    $frPaidDate,
                     $fr['paymentMethod'] ?? null,
                     !empty($fr['isRecurring']) ? 1 : 0,
                     $fr['recurringFrequency'] ?? null,
                     !empty($fr['recurringConfig']) ? json_encode($fr['recurringConfig'], JSON_UNESCAPED_UNICODE) : null,
-                    !empty($fr['recurringStartDate']) ? $fr['recurringStartDate'] : null,
-                    !empty($fr['recurringEndDate']) ? $fr['recurringEndDate'] : null,
+                    $frRecurringStartDate,
+                    $frRecurringEndDate,
+                    !empty($fr['recurringAmountHistory']) ? json_encode($fr['recurringAmountHistory'], JSON_UNESCAPED_UNICODE) : null,
                     !empty($fr['projectId']) ? $fr['projectId'] : null,
-                    !empty($fr['clientId']) ? $fr['clientId'] : null,
+                    $frClientId,
                     $fr['invoiceNumber'] ?? null,
                     (float)($fr['taxRate'] ?? 20),
                     !empty($fr['attachments']) ? json_encode($fr['attachments'], JSON_UNESCAPED_UNICODE) : null,
@@ -3031,8 +3887,183 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
 
             $frToDelete = $isDeltaSync ? $deletionsFor('financialRecords', $existingFrIds) : array_diff($existingFrIds, $processedFrIds);
-            if (!empty($frToDelete)) {
-                ccrm_delete_omitted($pdo, 'financial_records', $frToDelete, null);
+            if (!empty($frToDelete) && !$ccrm_skip_deletes('financial', 'financialRecords')) {
+                ccrm_delete_omitted($pdo, 'financial_records', $frToDelete, null, [], false, $isDeltaSync);
+            }
+        }
+
+        // 4.14b. Manual weekly bank-balance anchors for the trend chart.
+        //
+        // Gated on the FINANCIAL module rather than on a settings permission:
+        // reconciling a week against the bank statement is finance work, and
+        // whoever may edit the movements may state the balance they produced.
+        //
+        // Omitted means unchanged, the same contract as the settings blobs
+        // below — a client that predates this key must not wipe the operator's
+        // anchors simply by saving a movement.
+        if (isset($payload['financialTrend']) && is_array($payload['financialTrend'])
+            && !$ccrm_skip_writes('financial', 'financialTrend')) {
+            $trend = ccrm_normalize_financial_trend($payload['financialTrend']);
+            $insTrend = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('FINANCIAL_TREND', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
+            $insTrend->execute([json_encode($trend)]);
+        }
+
+        // 4.15. Synchronize Invoices & Price Offers
+        if (isset($payload['invoicesOffers']) && is_array($payload['invoicesOffers']) && !$ccrm_skip_writes('invoices', 'invoicesOffers')) {
+            $stmt = $pdo->query("SELECT `id` FROM `invoices_offers`");
+            $existingIoIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $processedIoIds = [];
+
+            $insIo = $pdo->prepare("INSERT INTO `invoices_offers` (
+                `id`, `document_number`, `type`, `mode`, `external_provider`, `external_id`, `external_pdf_url`,
+                `lead_id`, `client_id`, `client_name`, `client_email`, `client_phone`, `client_street`, `client_city`, `client_postal_code`, `client_country`, `client_ico`, `client_dic`, `client_icdph`,
+                `title`, `subject`, `location`, `greeting_note`, `intro_note`, `usp_cards_json`, `reassurance_note`,
+                `subtotal`, `vat_amount`, `total_price`, `price_range_min`, `price_range_max`, `currency`,
+                `duration_text`, `start_date_text`, `warranty_text`, `next_steps_note`, `closing_note`, `sign_off_team`,
+                `custom_template_id`, `custom_template_style_json`, `status`, `issued_at`, `valid_until`, `due_date`,
+                `file_name`, `file_path`, `created_by`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                `document_number` = VALUES(`document_number`), `type` = VALUES(`type`), `mode` = VALUES(`mode`),
+                `external_provider` = VALUES(`external_provider`), `external_id` = VALUES(`external_id`), `external_pdf_url` = VALUES(`external_pdf_url`),
+                `lead_id` = VALUES(`lead_id`), `client_id` = VALUES(`client_id`), `client_name` = VALUES(`client_name`),
+                `client_email` = VALUES(`client_email`), `client_phone` = VALUES(`client_phone`), `client_street` = VALUES(`client_street`),
+                `client_city` = VALUES(`client_city`), `client_postal_code` = VALUES(`client_postal_code`), `client_country` = VALUES(`client_country`),
+                `client_ico` = VALUES(`client_ico`), `client_dic` = VALUES(`client_dic`), `client_icdph` = VALUES(`client_icdph`),
+                `title` = VALUES(`title`), `subject` = VALUES(`subject`), `location` = VALUES(`location`),
+                `greeting_note` = VALUES(`greeting_note`), `intro_note` = VALUES(`intro_note`), `usp_cards_json` = VALUES(`usp_cards_json`), `reassurance_note` = VALUES(`reassurance_note`),
+                `subtotal` = VALUES(`subtotal`), `vat_amount` = VALUES(`vat_amount`), `total_price` = VALUES(`total_price`),
+                `price_range_min` = VALUES(`price_range_min`), `price_range_max` = VALUES(`price_range_max`), `currency` = VALUES(`currency`),
+                `duration_text` = VALUES(`duration_text`), `start_date_text` = VALUES(`start_date_text`), `warranty_text` = VALUES(`warranty_text`),
+                `next_steps_note` = VALUES(`next_steps_note`), `closing_note` = VALUES(`closing_note`), `sign_off_team` = VALUES(`sign_off_team`),
+                `custom_template_id` = VALUES(`custom_template_id`), `custom_template_style_json` = VALUES(`custom_template_style_json`),
+                `status` = VALUES(`status`), `issued_at` = VALUES(`issued_at`), `valid_until` = VALUES(`valid_until`), `due_date` = VALUES(`due_date`),
+                `file_name` = VALUES(`file_name`), `file_path` = VALUES(`file_path`), `created_by` = VALUES(`created_by`)");
+
+            $delIoItems = $pdo->prepare("DELETE FROM `invoice_offer_items` WHERE `invoice_offer_id` = ?");
+            $insIoItem = $pdo->prepare("INSERT INTO `invoice_offer_items` (
+                `id`, `invoice_offer_id`, `warehouse_item_id`, `sku`, `name`, `description`,
+                `quantity`, `unit`, `unit_price`, `vat_rate`, `discount_pct`, `total_price`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+
+            foreach ($payload['invoicesOffers'] as $io) {
+                $ioId = $io['id'];
+                $insIo->execute([
+                    $ioId,
+                    $io['documentNumber'] ?? '',
+                    $io['type'] ?? 'price_offer',
+                    $io['mode'] ?? 'default',
+                    $io['externalProvider'] ?? null,
+                    $io['externalId'] ?? null,
+                    $io['externalPdfUrl'] ?? null,
+                    $io['leadId'] ?? '',
+                    $io['clientId'] ?? null,
+                    $io['clientName'] ?? '',
+                    $io['clientEmail'] ?? null,
+                    $io['clientPhone'] ?? null,
+                    $io['clientStreet'] ?? null,
+                    $io['clientCity'] ?? null,
+                    $io['clientPostalCode'] ?? null,
+                    $io['clientCountry'] ?? 'Slovakia',
+                    $io['clientIco'] ?? null,
+                    $io['clientDic'] ?? null,
+                    $io['clientIcdph'] ?? null,
+                    $io['title'] ?? '',
+                    $io['subject'] ?? '',
+                    $io['location'] ?? null,
+                    $io['greetingNote'] ?? null,
+                    $io['introNote'] ?? null,
+                    !empty($io['uspCards']) ? json_encode($io['uspCards'], JSON_UNESCAPED_UNICODE) : null,
+                    $io['reassuranceNote'] ?? null,
+                    (float)($io['subtotal'] ?? 0),
+                    (float)($io['vatAmount'] ?? 0),
+                    (float)($io['totalPrice'] ?? 0),
+                    isset($io['priceRangeMin']) && $io['priceRangeMin'] !== null ? (float)$io['priceRangeMin'] : null,
+                    isset($io['priceRangeMax']) && $io['priceRangeMax'] !== null ? (float)$io['priceRangeMax'] : null,
+                    $io['currency'] ?? 'EUR',
+                    $io['durationText'] ?? null,
+                    $io['startDateText'] ?? null,
+                    $io['warrantyText'] ?? null,
+                    $io['nextStepsNote'] ?? null,
+                    $io['closingNote'] ?? null,
+                    $io['signOffTeam'] ?? null,
+                    $io['customTemplateId'] ?? null,
+                    !empty($io['customTemplateStyle']) ? json_encode($io['customTemplateStyle'], JSON_UNESCAPED_UNICODE) : null,
+                    $io['status'] ?? 'draft',
+                    !empty($io['issuedAt']) ? $io['issuedAt'] : date('Y-m-d'),
+                    !empty($io['validUntil']) ? $io['validUntil'] : null,
+                    !empty($io['dueDate']) ? $io['dueDate'] : null,
+                    $io['fileName'] ?? null,
+                    $io['filePath'] ?? null,
+                    $io['createdBy'] ?? $sessionEmail
+                ]);
+                $processedIoIds[] = $ioId;
+
+                if (isset($io['items']) && is_array($io['items'])) {
+                    $delIoItems->execute([$ioId]);
+                    foreach ($io['items'] as $item) {
+                        $itemId = $item['id'] ?? ('ioi-' . bin2hex(random_bytes(8)));
+                        $insIoItem->execute([
+                            $itemId,
+                            $ioId,
+                            $item['warehouseItemId'] ?? null,
+                            $item['sku'] ?? null,
+                            $item['name'] ?? '',
+                            $item['description'] ?? null,
+                            (float)($item['quantity'] ?? 1),
+                            $item['unit'] ?? 'ks',
+                            (float)($item['unitPrice'] ?? 0),
+                            (float)($item['vatRate'] ?? 20),
+                            (float)($item['discountPct'] ?? 0),
+                            (float)($item['totalPrice'] ?? 0)
+                        ]);
+                    }
+                }
+            }
+
+            $ioToDelete = $isDeltaSync ? $deletionsFor('invoicesOffers', $existingIoIds) : array_diff($existingIoIds, $processedIoIds);
+            if (!empty($ioToDelete) && !$ccrm_skip_deletes('invoices', 'invoicesOffers')) {
+                ccrm_delete_omitted($pdo, 'invoices_offers', $ioToDelete, null, [], false, $isDeltaSync);
+            }
+        }
+
+        // 4.16. Synchronize AI Custom PDF Templates
+        if (isset($payload['aiCustomTemplates']) && is_array($payload['aiCustomTemplates']) && !$ccrm_skip_writes('general_config', 'aiCustomTemplates')) {
+            $stmt = $pdo->query("SELECT `id` FROM `ai_custom_templates`");
+            $existingActIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $processedActIds = [];
+
+            $insAct = $pdo->prepare("INSERT INTO `ai_custom_templates` (
+                `id`, `name`, `description`, `source_pdf_url`, `source_pdf_name`,
+                `colors_json`, `typography_json`, `sections_order_json`, `custom_banner_text`, `badge_style`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                `name` = VALUES(`name`), `description` = VALUES(`description`),
+                `source_pdf_url` = VALUES(`source_pdf_url`), `source_pdf_name` = VALUES(`source_pdf_name`),
+                `colors_json` = VALUES(`colors_json`), `typography_json` = VALUES(`typography_json`),
+                `sections_order_json` = VALUES(`sections_order_json`), `custom_banner_text` = VALUES(`custom_banner_text`),
+                `badge_style` = VALUES(`badge_style`)");
+
+            foreach ($payload['aiCustomTemplates'] as $act) {
+                $actId = $act['id'];
+                $insAct->execute([
+                    $actId,
+                    $act['name'] ?? 'Template',
+                    $act['description'] ?? null,
+                    $act['sourcePdfUrl'] ?? null,
+                    $act['sourcePdfName'] ?? null,
+                    json_encode($act['colors'] ?? (object)[], JSON_UNESCAPED_UNICODE),
+                    json_encode($act['typography'] ?? (object)[], JSON_UNESCAPED_UNICODE),
+                    json_encode($act['sectionsOrder'] ?? [], JSON_UNESCAPED_UNICODE),
+                    $act['customBannerText'] ?? null,
+                    $act['badgeStyle'] ?? 'rounded'
+                ]);
+                $processedActIds[] = $actId;
+            }
+
+            $actToDelete = $isDeltaSync ? $deletionsFor('aiCustomTemplates', $existingActIds) : array_diff($existingActIds, $processedActIds);
+            if (!empty($actToDelete) && !$ccrm_skip_deletes('general_config', 'aiCustomTemplates')) {
+                ccrm_delete_omitted($pdo, 'ai_custom_templates', $actToDelete, null, [], false, $isDeltaSync);
             }
         }
 
@@ -3065,8 +4096,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Also return the post-commit DB clock so the client advances its
         // baseSyncedAt and can safely delete rows it just created/edited on a
         // later sync.
-        $serverTime = null;
-        try { $serverTime = $pdo->query("SELECT NOW(3)")->fetchColumn(); } catch (\Throwable $e) {}
+        $serverTime = ccrm_db_clock($pdo);
         echo json_encode([
             'success' => true,
             'message' => 'CCRM Database Synced Successfully!',
@@ -3076,6 +4106,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // therefore left as-is. Always reported; only a delta client can treat
             // them as a real conflict (see ccrm_write_would_clobber).
             'conflicts' => (object) $conflictedIds,
+            // Accounts refused by the licensed seat count, if any.
+            'seatRejections' => array_values($seatRejections),
+            // New leads the server put an owner on, so the client can adopt the
+            // assignment rather than pushing its blank owner back over it.
+            'assignedOwners' => (object) $assignedOwners,
+            // Projects the server paired with brand-new leads, so the client can
+            // show them straight away instead of after the next full pull.
+            'createdProjects' => array_values($createdProjects),
+            'permissionSkipped' => array_values($permissionSkipped),
+            'deleteBlocked' => (object) ($GLOBALS['ccrm_delete_blocked'] ?? []),
         ]);
     } catch (\Throwable $e) {
         if (isset($pdo) && $pdo->inTransaction()) {

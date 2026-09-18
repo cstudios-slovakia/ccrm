@@ -26,7 +26,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
   const t = {
     en: {
       title: "CCRM Installation Wizard",
-      subtitle: "Set up your secure MySQL database connection in a few seconds",
+      requires: "Requires a MySQL or MariaDB database",
       step1: "Credentials",
       step2: "Seeding",
       step3: "Finish",
@@ -50,7 +50,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
     },
     sk: {
       title: "Inštalačný sprievodca CCRM",
-      subtitle: "Nastavte si bezpečné pripojenie k databáze MySQL v priebehu niekoľkých sekúnd",
+      requires: "Vyžaduje databázu MySQL alebo MariaDB",
       step1: "Údaje",
       step2: "Dáta",
       step3: "Dokončiť",
@@ -74,7 +74,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
     },
     hu: {
       title: "CCRM Telepítési Varázsló",
-      subtitle: "Állítsa be a biztonságos MySQL adatbázis-kapcsolatot néhány másodperc alatt",
+      requires: "MySQL vagy MariaDB adatbázis szükséges",
       step1: "Adatok",
       step2: "Magvetés",
       step3: "Befejezés",
@@ -166,7 +166,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
         <div className="absolute top-[25%] right-[10%] w-[48vw] h-[48vw] rounded-full bg-purple-200/45 mix-blend-multiply filter blur-[90px] animate-fluid-blob animation-delay-4000" />
       </div>
 
-      <div className="w-full max-w-2xl bg-white/70 border border-white/60 rounded-[32px] shadow-2xl shadow-indigo-150/30 backdrop-blur-xl p-6 md:p-10 relative z-10 text-slate-800 animate-in zoom-in duration-300">
+      <div className="w-full max-w-2xl bg-white/70 border border-white/60 rounded-[32px] shadow-2xl shadow-indigo-100/30 backdrop-blur-xl p-6 md:p-10 relative z-10 text-slate-800 animate-in zoom-in duration-300">
         
         {/* Language selector in Header */}
         <div className="absolute top-6 right-6 flex items-center gap-2 bg-slate-100/80 px-3 py-1.5 rounded-full border border-slate-200 text-[10px] font-black uppercase tracking-wider text-slate-600">
@@ -184,11 +184,11 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
             <Database className="h-7 w-7 text-white animate-bounce" />
           </div>
           <div>
-            <h2 className="text-2xl md:text-3xl font-heading font-black tracking-tight uppercase bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-650">
+            <h2 className="text-2xl md:text-3xl font-heading font-black tracking-tight uppercase bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-600">
               {t[lang].title}
             </h2>
-            <p className="text-[10px] text-slate-500 uppercase tracking-widest font-black mt-1.5 max-w-md mx-auto leading-normal">
-              {t[lang].subtitle}
+            <p className="text-[10px] text-slate-500 uppercase tracking-widest font-black mt-1.5">
+              {t[lang].requires}
             </p>
           </div>
         </div>
@@ -228,14 +228,14 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
               <div className="md:col-span-3 space-y-1.5 text-left">
                 <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider block pl-0.5">{t[lang].host}</label>
                 <div className="relative">
-                  <Server className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-450" />
+                  <Server className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                   <input
                     type="text"
                     required
                     value={host}
                     onChange={(e) => setHost(e.target.value)}
                     placeholder="localhost"
-                    className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white/80 border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold shadow-sm"
+                    className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white/80 border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400/70 placeholder:font-normal focus:outline-none focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold shadow-sm"
                   />
                 </div>
               </div>
@@ -248,7 +248,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
                   required
                   value={port}
                   onChange={(e) => setPort(e.target.value)}
-                  className="w-full px-4 py-3 rounded-2xl bg-white/80 border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400 text-center focus:outline-none focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold shadow-sm"
+                  className="w-full px-4 py-3 rounded-2xl bg-white/80 border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400/70 placeholder:font-normal text-center focus:outline-none focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold shadow-sm"
                 />
               </div>
 
@@ -263,7 +263,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
                 value={dbname}
                 onChange={(e) => setDbname(e.target.value)}
                 placeholder="ccrm"
-                className="w-full px-4 py-3 rounded-2xl bg-white/80 border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold shadow-sm"
+                className="w-full px-4 py-3 rounded-2xl bg-white/80 border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400/70 placeholder:font-normal focus:outline-none focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold shadow-sm"
               />
             </div>
 
@@ -278,7 +278,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
                   value={user}
                   onChange={(e) => setUser(e.target.value)}
                   placeholder="ccrm_user"
-                  className="w-full px-4 py-3 rounded-2xl bg-white/80 border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold shadow-sm"
+                  className="w-full px-4 py-3 rounded-2xl bg-white/80 border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400/70 placeholder:font-normal focus:outline-none focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold shadow-sm"
                 />
               </div>
 
@@ -286,12 +286,11 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
               <div className="space-y-1.5 text-left">
                 <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider block pl-0.5">{t[lang].pass}</label>
                 <div className="relative">
-                  <Key className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-450 z-10" />
+                  <Key className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 z-10" />
                   <PasswordInput
                     value={pass}
                     onChange={(e) => setPass(e.target.value)}
-                    placeholder="••••••••"
-                    className="w-full pl-11 pr-11 py-3 rounded-2xl bg-white/80 border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold shadow-sm"
+                    className="w-full pl-11 pr-11 py-3 rounded-2xl bg-white/80 border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400/70 placeholder:font-normal focus:outline-none focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold shadow-sm"
                   />
                 </div>
               </div>
@@ -299,11 +298,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
             </div>
 
             {/* Form actions */}
-            <div className="pt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-              <div className="text-[9px] text-slate-500 font-extrabold flex items-center gap-1.5 bg-slate-100/80 px-3.5 py-2 rounded-xl border border-slate-200 w-fit">
-                <span className="h-1.5 w-1.5 rounded-full bg-indigo-600 animate-pulse" />
-                {lang === "sk" ? "Zadajte údaje vašej databázy" : lang === "hu" ? "Adja meg az adatbázis adatait" : "Enter your database credentials"}
-              </div>
+            <div className="pt-4 flex justify-end">
               <button
                 type="submit"
                 className="w-full sm:w-auto px-8 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all duration-150 flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 active:scale-[0.99] hover:scale-[1.01] cursor-pointer shrink-0"
@@ -326,7 +321,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
                 className={`w-full p-5 rounded-[24px] border text-left transition-all relative overflow-hidden group cursor-pointer ${
                   installType === "demo"
                     ? "bg-indigo-50/70 border-indigo-500 shadow-lg shadow-indigo-100/40"
-                    : "bg-white/60 border-slate-200 hover:border-slate-350"
+                    : "bg-white/60 border-slate-200 hover:border-slate-300"
                 }`}
               >
                 <div className="flex items-start gap-4">
@@ -352,7 +347,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
                 className={`w-full p-5 rounded-[24px] border text-left transition-all relative overflow-hidden group cursor-pointer ${
                   installType === "fresh"
                     ? "bg-indigo-50/70 border-indigo-500 shadow-lg shadow-indigo-100/40"
-                    : "bg-white/60 border-slate-200 hover:border-slate-350"
+                    : "bg-white/60 border-slate-200 hover:border-slate-300"
                 }`}
               >
                 <div className="flex items-start gap-4">
@@ -376,7 +371,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
               {installType === "fresh" && (
                 <div className="p-5 rounded-[24px] border border-slate-200 bg-slate-50/50 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
                   <span className="font-heading font-black text-[9px] uppercase tracking-widest text-slate-500 flex items-center gap-2">
-                    <Key className="h-3.5 w-3.5 text-indigo-550" />
+                    <Key className="h-3.5 w-3.5 text-indigo-500" />
                     {lang === "sk" ? "Administrátorský účet" : lang === "hu" ? "Rendszergazdai fiók" : "Administrator account"}
                   </span>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -385,23 +380,23 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
                       value={adminName}
                       onChange={(e) => setAdminName(e.target.value)}
                       placeholder={lang === "sk" ? "Meno" : lang === "hu" ? "Név" : "Name"}
-                      className="w-full px-4 py-3 rounded-2xl bg-white border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold"
+                      className="w-full px-4 py-3 rounded-2xl bg-white border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400/70 placeholder:font-normal focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold"
                     />
                     <input
                       type="email"
                       value={adminEmail}
                       onChange={(e) => setAdminEmail(e.target.value)}
                       placeholder={lang === "sk" ? "E-mail (prihlásenie)" : lang === "hu" ? "E-mail (belépés)" : "Email (login)"}
-                      className="w-full px-4 py-3 rounded-2xl bg-white border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold"
+                      className="w-full px-4 py-3 rounded-2xl bg-white border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400/70 placeholder:font-normal focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold"
                     />
                   </div>
                   <PasswordInput
                     value={adminPassword}
                     onChange={(e) => setAdminPassword(e.target.value)}
                     placeholder={lang === "sk" ? "Heslo" : lang === "hu" ? "Jelszó" : "Password"}
-                    className="w-full pl-4 pr-11 py-3 rounded-2xl bg-white border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold"
+                    className="w-full pl-4 pr-11 py-3 rounded-2xl bg-white border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400/70 placeholder:font-normal focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold"
                   />
-                  <p className="text-xs text-slate-450 leading-relaxed">
+                  <p className="text-xs text-slate-400 leading-relaxed">
                     {lang === "sk"
                       ? "Ak necháte polia prázdne, vytvorí sa účet admin@crm.com s náhodným heslom, ktoré sa zobrazí po inštalácii."
                       : lang === "hu"
@@ -458,7 +453,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
                   <div>{generatedCreds.email}</div>
                   <div className="font-black mt-1 text-slate-900">{generatedCreds.password}</div>
                 </div>
-                <p className="text-[9px] text-amber-850 leading-relaxed font-semibold">
+                <p className="text-[9px] text-amber-800 leading-relaxed font-semibold">
                   {lang === "sk" ? "Heslo sa už nezobrazí. Po prihlásení si ho zmeňte." : lang === "hu" ? "A jelszó többé nem jelenik meg. Belépés után változtassa meg." : "This password will not be shown again. Change it after logging in."}
                 </p>
               </div>

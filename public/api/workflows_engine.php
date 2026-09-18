@@ -327,6 +327,118 @@ if (!function_exists('ccrm_workflow_related_record_id')) {
         }
         return null;
     }
+
+    /**
+     * The projects a "change project status" node should act on.
+     *
+     * Two ways to name them:
+     *   target 'project' — an explicit id, usually a variable such as
+     *                      {{$node-3.project_id}} from a create-lead node.
+     *   target 'lead'    — every project paired with the lead the workflow is
+     *                      about, optionally narrowed to one project type, and
+     *                      by default only the newest of them.
+     *
+     * Returns an empty array when nothing matches; the caller reports that as a
+     * skipped node rather than a failure, because "this lead has no project yet"
+     * is a normal outcome for a branch that runs on every lead.
+     */
+    function ccrm_workflow_target_projects(\PDO $pdo, $nodeData, $incomingPayload, $context): array {
+        if (($nodeData['target'] ?? 'lead') === 'project') {
+            $projectId = trim(ccrm_interpolate_variables($nodeData['project_id'] ?? '', $incomingPayload, $context));
+            if ($projectId === '') {
+                return [];
+            }
+            $stmt = $pdo->prepare("SELECT `id` FROM `projects` WHERE `id` = ?");
+            $stmt->execute([$projectId]);
+            return $stmt->fetchAll(\PDO::FETCH_COLUMN) ?: [];
+        }
+
+        // Prefer the record the previous node produced (a freshly created lead),
+        // and fall back to the one the workflow fired for — behind a condition or
+        // an AI node the incoming payload no longer carries it.
+        $leadId = ccrm_workflow_related_record_id($incomingPayload);
+        if ($leadId === null) {
+            $leadId = ccrm_workflow_related_record_id($context['trigger'] ?? null);
+        }
+        if ($leadId === null) {
+            return [];
+        }
+
+        $sql = "SELECT `id` FROM `projects` WHERE `lead_id` = ?";
+        $params = [$leadId];
+        $typeId = trim((string)($nodeData['project_type_id'] ?? ''));
+        if ($typeId !== '' && $typeId !== 'any') {
+            $sql .= " AND `project_type_id` = ?";
+            $params[] = $typeId;
+        }
+        // Newest first, so "latest" means the project the lead is working on now.
+        $sql .= " ORDER BY `created_at` DESC, `id` DESC";
+        if (($nodeData['scope'] ?? 'latest') !== 'all') {
+            $sql .= " LIMIT 1";
+        }
+        $stmt = $pdo->prepare($sql);
+        $stmt->execute($params);
+        return $stmt->fetchAll(\PDO::FETCH_COLUMN) ?: [];
+    }
+}
+
+if (!function_exists('ccrm_workflow_lead_project_data')) {
+    /**
+     * The custom-attribute values a project converted from a lead starts with.
+     *
+     * Mirrors handleConvertToProject() in src/components/LeadsDatagrid.tsx: an
+     * attribute whose name or id says what it holds is filled in from the lead,
+     * so a workflow produces the same project the "Convert to Project" button on
+     * the lead does. Only free-text attributes are touched — a select, a date or
+     * a money column has no business holding a phone number.
+     *
+     * Keys are attribute ids; the caller maps them onto the type's
+     * proj_data_<type> columns. An attribute the lead has nothing for is left
+     * out entirely rather than written empty.
+     */
+    function ccrm_workflow_lead_project_data(array $lead, array $attributes): array {
+        $needles = [
+            // Checked in this order, which is what decides a name matching two
+            // of them: "company e-mail" is an e-mail field, not a company one.
+            'email'   => ['email'],
+            'phone'   => ['phone', 'tel'],
+            'city'    => ['city'],
+            'street'  => ['address', 'street'],
+            'company' => ['company', 'firma'],
+        ];
+        $values = [
+            'email'   => trim((string)($lead['email'] ?? '')),
+            'phone'   => trim((string)($lead['phone'] ?? '')),
+            'city'    => trim((string)($lead['city'] ?? '')),
+            'street'  => trim((string)($lead['street'] ?? '')),
+            'company' => trim((string)($lead['company_id'] ?? '')),
+        ];
+
+        $data = [];
+        foreach ($attributes as $attr) {
+            if (!is_array($attr)) {
+                continue;
+            }
+            $attrId = trim((string)($attr['id'] ?? ''));
+            $type = (string)($attr['type'] ?? 'textfield');
+            if ($attrId === '' || ($type !== 'textfield' && $type !== 'textarea')) {
+                continue;
+            }
+            $haystack = (string)($attr['name'] ?? '') . ' ' . $attrId;
+            $haystack = function_exists('mb_strtolower') ? mb_strtolower($haystack, 'UTF-8') : strtolower($haystack);
+            foreach ($needles as $field => $words) {
+                foreach ($words as $word) {
+                    if (strpos($haystack, $word) !== false) {
+                        if ($values[$field] !== '') {
+                            $data[$attrId] = $values[$field];
+                        }
+                        continue 3;
+                    }
+                }
+            }
+        }
+        return $data;
+    }
 }
 
 if (!function_exists('ccrm_workflow_unreachable_nodes')) {
@@ -459,7 +571,7 @@ if (!function_exists('ccrm_call_llm')) {
             curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($payload));
         } elseif ($provider === 'openai') {
             $url = 'https://api.openai.com/v1/chat/completions';
-            $model = $options['model'] ?? 'gpt-4o-mini';
+            $model = $options['model'] ?? 'gpt-5.6-luna';
             $payload = [
                 'model' => $model,
                 'messages' => [['role' => 'user', 'content' => $prompt]]
@@ -705,7 +817,15 @@ if (!function_exists('ccrm_execute_workflow')) {
                         // or a client died right after doing its work.
                         $recordStatus = ccrm_interpolate_variables($nodeData['status'] ?? ($actionType === 'create_client' ? 'client' : 'new'), $incomingPayload, $context);
                         $value = (float)ccrm_interpolate_variables($nodeData['value'] ?? '0', $incomingPayload, $context);
-                        $owner = ccrm_interpolate_variables($nodeData['owner'] ?? 'Alex', $incomingPayload, $context);
+                        // An unset owner used to fall back to the literal "Alex" —
+                        // a demo account name that does not exist on a real
+                        // install, so every workflow-created lead landed on
+                        // nobody. Use the same auto-assignment the rest of the
+                        // app uses, and the primary user if that is switched off.
+                        $owner = trim(ccrm_interpolate_variables($nodeData['owner'] ?? '', $incomingPayload, $context));
+                        if ($owner === '') {
+                            $owner = ccrm_auto_assign_owner($pdo) ?: ccrm_default_owner($pdo);
+                        }
                         $clientType = ($actionType === 'create_client') ? ($nodeData['client_type'] ?? 'person') : 'person';
 
                         $street = ccrm_interpolate_variables($nodeData['street'] ?? '', $incomingPayload, $context);
@@ -730,6 +850,17 @@ if (!function_exists('ccrm_execute_workflow')) {
                           $leadId, $name, $city, $clientType, $recordStatus, $owner, $value, $phone, $email,
                           $street, $postalCode, $country, $companyId, $taxId, $vatId, $contactPerson, $website
                         ]);
+                        // A lead an automation created is still a new lead, so it
+                        // gets the same paired projects as one typed in by hand or
+                        // captured by the web form (Projects → Settings). It carries
+                        // no interest categories, so it lands on the fallback type.
+                        //
+                        // PROJECT-AUTO-CREATE-DISABLED (v1.9.29): switched off
+                        // app-wide. To bring it back, restore the call below and
+                        // drop the empty list.
+                        // $autoProjects = ccrm_auto_create_project_for_lead($pdo, $leadId, $owner);
+                        $autoProjects = [];
+
                         $outputPayload = [
                           'id' => $leadId,
                           'name' => $name,
@@ -738,7 +869,10 @@ if (!function_exists('ccrm_execute_workflow')) {
                           'email' => $email,
                           'phone' => $phone,
                           'city' => $city,
-                          'company_id' => $companyId
+                          'company_id' => $companyId,
+                          // Lets a later node address the project directly.
+                          'project_id' => $autoProjects[0]['id'] ?? null,
+                          'project_ids' => array_column($autoProjects, 'id')
                         ];
                     } elseif ($actionType === 'create_task') {
                         $title = ccrm_interpolate_variables($nodeData['title'] ?? '', $incomingPayload, $context);
@@ -822,6 +956,196 @@ if (!function_exists('ccrm_execute_workflow')) {
                         // server did not actually accept.
                         ccrm_send_system_mail($mailSettings, $to, $subject, $body);
                         $outputPayload = ['success' => true, 'to' => $to, 'subject' => $subject];
+                    } elseif ($actionType === 'update_project_status') {
+                        $newStatus = trim(ccrm_interpolate_variables($nodeData['status'] ?? '', $incomingPayload, $context));
+                        // A status outside the known set would render as a raw
+                        // string on a card no filter can reach, so refuse it
+                        // loudly rather than writing it and moving on.
+                        if (!in_array($newStatus, ccrm_project_statuses(), true)) {
+                            throw new \RuntimeException(
+                                'Unknown project status "' . $newStatus . '". Expected one of: '
+                                . implode(', ', ccrm_project_statuses()) . '.'
+                            );
+                        }
+
+                        $projectIds = ccrm_workflow_target_projects($pdo, $nodeData, $incomingPayload, $context);
+                        if (!$projectIds) {
+                            // Normal for a branch that runs on every lead: not
+                            // every lead has a project to move.
+                            $outputPayload = [
+                                'skipped' => true,
+                                'reason' => 'No project matched this node — the record has no paired project, or the id resolved to nothing.',
+                                'status' => $newStatus
+                            ];
+                        } else {
+                            $upd = $pdo->prepare("UPDATE `projects` SET `status` = ? WHERE `id` = ?");
+                            foreach ($projectIds as $pid) {
+                                $upd->execute([$newStatus, $pid]);
+                            }
+                            $outputPayload = [
+                                'status' => $newStatus,
+                                'project_id' => $projectIds[0],
+                                'project_ids' => $projectIds,
+                                'updated' => count($projectIds)
+                            ];
+                        }
+                    } elseif ($actionType === 'convert_lead_to_project') {
+                        // The "Convert to Project" button on a lead, as a
+                        // workflow step: one new project of the chosen type,
+                        // paired with the lead the run is about, managed by the
+                        // lead's owner, with the type's own text attributes
+                        // pre-filled from the lead.
+                        $typeId = trim(ccrm_interpolate_variables($nodeData['project_type_id'] ?? '', $incomingPayload, $context));
+                        if ($typeId === '') {
+                            throw new \RuntimeException(
+                                'This "Convert lead to project" action has no project type set. Choose one in the workflow builder.'
+                            );
+                        }
+                        // A type chosen months ago may have been deleted since.
+                        // Inserting against it would violate the projects ->
+                        // project_types foreign key and take the run down with a
+                        // database error nobody can act on, so say which type is
+                        // missing instead.
+                        $typeStmt = $pdo->prepare("SELECT `id`, `attributes_json` FROM `project_types` WHERE `id` = ?");
+                        $typeStmt->execute([$typeId]);
+                        $typeRow = $typeStmt->fetch(\PDO::FETCH_ASSOC);
+                        if (!$typeRow) {
+                            throw new \RuntimeException(
+                                'Project type "' . $typeId . '" no longer exists. Pick another one in the workflow builder.'
+                            );
+                        }
+
+                        $newStatus = trim(ccrm_interpolate_variables($nodeData['status'] ?? '', $incomingPayload, $context));
+                        if ($newStatus === '') {
+                            $newStatus = 'new';
+                        }
+                        if (!in_array($newStatus, ccrm_project_statuses(), true)) {
+                            throw new \RuntimeException(
+                                'Unknown project status "' . $newStatus . '". Expected one of: '
+                                . implode(', ', ccrm_project_statuses()) . '.'
+                            );
+                        }
+
+                        // Prefer the record the previous node produced (a freshly
+                        // created lead), and fall back to the one the workflow
+                        // fired for — behind a condition or an AI node the
+                        // incoming payload no longer carries it.
+                        $leadId = ccrm_workflow_related_record_id($incomingPayload);
+                        if ($leadId === null) {
+                            $leadId = ccrm_workflow_related_record_id($context['trigger'] ?? null);
+                        }
+                        $leadRow = null;
+                        if ($leadId !== null) {
+                            $leadStmt = $pdo->prepare("SELECT * FROM `leads` WHERE `id` = ?");
+                            $leadStmt->execute([$leadId]);
+                            $leadRow = $leadStmt->fetch(\PDO::FETCH_ASSOC) ?: null;
+                        }
+
+                        // Already converted? Default to leaving the existing
+                        // project alone: a workflow on "lead status changed"
+                        // fires again every time the lead moves, and a second run
+                        // must not pile up a duplicate project.
+                        $existingId = null;
+                        if ($leadRow !== null && filter_var($nodeData['skip_if_exists'] ?? true, FILTER_VALIDATE_BOOLEAN)) {
+                            $dup = $pdo->prepare(
+                                "SELECT `id` FROM `projects` WHERE `lead_id` = ? AND `project_type_id` = ?
+                                 ORDER BY `created_at` DESC, `id` DESC LIMIT 1"
+                            );
+                            $dup->execute([$leadId, $typeId]);
+                            $existingId = $dup->fetchColumn() ?: null;
+                        }
+
+                        if ($leadRow === null) {
+                            // Normal for a branch reached without a record —
+                            // report it, do not fail the run.
+                            $outputPayload = [
+                                'skipped' => true,
+                                'reason' => 'No lead to convert — this branch carries no lead or client record, or the record has since been deleted.',
+                                'project_type_id' => $typeId
+                            ];
+                        } elseif ($existingId !== null) {
+                            $outputPayload = [
+                                'skipped' => true,
+                                'reason' => 'This lead already has a project of that type.',
+                                'id' => $existingId,
+                                'project_id' => $existingId,
+                                'project_ids' => [$existingId],
+                                'project_type_id' => $typeId,
+                                'lead_id' => $leadId,
+                                'related_lead_id' => $leadId
+                            ];
+                        } else {
+                            // Who manages it. Empty means the lead's own owner,
+                            // which is what the button on the lead does; an
+                            // explicit name is resolved to exactly one real user,
+                            // or to nobody.
+                            $manager = trim((string)($nodeData['manager'] ?? ''));
+                            if ($manager === '__none__') {
+                                $manager = '';
+                            } else {
+                                if ($manager === '') {
+                                    $manager = (string)($leadRow['owner'] ?? '');
+                                } else {
+                                    $manager = ccrm_interpolate_variables($manager, $incomingPayload, $context);
+                                }
+                                $manager = ccrm_workflow_resolve_assignee($pdo, $manager);
+                            }
+
+                            $projectId = 'proj-' . sprintf('%04x%04x', mt_rand(0, 0xffff), mt_rand(0, 0xffff));
+                            $pdo->prepare(
+                                "INSERT INTO `projects` (`id`, `project_type_id`, `lead_id`, `client_id`, `status`)
+                                 VALUES (?, ?, ?, ?, ?)"
+                            )->execute([$projectId, $typeId, $leadId, $leadId, $newStatus]);
+
+                            if ($manager !== '') {
+                                $pdo->prepare("INSERT IGNORE INTO `project_managers` (`project_id`, `user_id`) VALUES (?, ?)")
+                                    ->execute([$projectId, $manager]);
+                            }
+
+                            // The per-type attribute row. Optional — sync.php's
+                            // GET falls back to empty data when it is missing —
+                            // so a type whose table has not been built yet must
+                            // not take the project down with it.
+                            $attrValues = ccrm_workflow_lead_project_data(
+                                $leadRow,
+                                json_decode($typeRow['attributes_json'] ?? '[]', true) ?: []
+                            );
+                            try {
+                                $dataTable = 'proj_data_' . preg_replace('/[^a-z0-9_]/', '', strtolower($typeId));
+                                if ($pdo->query("SHOW TABLES LIKE " . $pdo->quote($dataTable))->rowCount() > 0) {
+                                    $cols = ['id', 'project_id'];
+                                    $vals = [$projectId, $projectId];
+                                    foreach ($attrValues as $attrId => $attrValue) {
+                                        $colName = 'attr_' . preg_replace('/[^a-z0-9_]/', '', strtolower($attrId));
+                                        if (ccrm_column_exists($pdo, $dataTable, $colName)) {
+                                            $cols[] = $colName;
+                                            $vals[] = $attrValue;
+                                        }
+                                    }
+                                    $colsStr = implode(', ', array_map(function ($c) { return '`' . $c . '`'; }, $cols));
+                                    $placeholders = implode(', ', array_fill(0, count($cols), '?'));
+                                    $pdo->prepare("INSERT IGNORE INTO `{$dataTable}` ({$colsStr}) VALUES ({$placeholders})")
+                                        ->execute($vals);
+                                }
+                            } catch (\Throwable $e) {
+                                // Attributes stay empty; the project itself is already saved.
+                            }
+
+                            $outputPayload = [
+                                'id' => $projectId,
+                                'project_id' => $projectId,
+                                'project_ids' => [$projectId],
+                                'project_type_id' => $typeId,
+                                'status' => $newStatus,
+                                'lead_id' => $leadId,
+                                // Keeps the lead addressable downstream: a node
+                                // reads the payload the previous one emitted, and
+                                // a following "create task" would otherwise lose
+                                // the record the run is about.
+                                'related_lead_id' => $leadId,
+                                'managers' => $manager !== '' ? [$manager] : []
+                            ];
+                        }
                     } else {
                         // Other actions (Reply to email, SMS, Create document) are stubbed out or simulated for testing
                         $outputPayload = ['action' => $actionType, 'simulated' => true, 'time' => date('Y-m-d H:i:s')];

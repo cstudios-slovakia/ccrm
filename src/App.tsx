@@ -3,20 +3,35 @@ import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { LoginView } from "./components/LoginView";
 import { TaskDashboardView } from "./components/TaskDashboardView";
-import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, FinancialRecord } from "./types";
+import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, FinancialRecord, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings } from "./types";
+import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAssignment";
+import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils/projectAutoCreate";
+import { normalizeLeadStateSla, type LeadStateSla } from "./utils/leadSla";
+import { listIdsSignature, normalizeListIds, type ListIds } from "./utils/listIds";
 import { VERSION } from "./utils/version";
+import { reconcileInvoiceMovements } from "./utils/invoiceFinanceBridge";
+import { parseAppHash, workspaceResetKey } from "./utils/hash";
+import { HOME_DASHBOARD_ID, buildDefaultHomeDashboard } from "./utils/dashboardWidgets";
 import { SOCIAL_MEDIA_ENABLED } from "./utils/featureFlags";
 import type { MeetingNote } from "./components/MeetingRoomView";
-import { getTranslation } from "./utils/translations";
+import { getTranslation, formatTranslation } from "./utils/translations";
 import { orderLeadStates } from "./utils/leadStates";
-import { resolveTaskViewAll } from "./utils/taskSelectors";
+import { buildAccess, firstAllowedRoute, permissionKeyForRoute } from "./utils/permissions";
+import { AccessDeniedView } from "./components/AccessDeniedView";
 import { InstallerWizard } from "./components/InstallerWizard";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { AiKeyBanner } from "./components/ui/AiKeyBanner";
+import { QuickAddClientProvider } from "./components/ui/QuickAddClient";
 import FilePreviewPane from "./components/FilePreviewPane";
 import { RefreshCw, AlertOctagon, Trash2, Copy } from "lucide-react";
-import { ShaderGradient, ShaderGradientCanvas } from "shadergradient";
-import { getStoredTheme, applyTheme } from "./utils/theme";
+import { ShaderGradient } from "shadergradient";
+import { Canvas, type EventManager } from "@react-three/fiber";
+import { ShaderChunk } from "three";
+import { getStoredTheme, getStoredThemeMode, isThemeMode, startThemeWatcher, type Appearance, type ThemeMode } from "./utils/theme";
 import { hasPersistentStorage } from "./utils/safeStorage";
+import { LicenseBanner } from "./components/LicenseBanner";
+import { fetchLicenseState } from "./utils/licenseApi";
+import type { LicenseState } from "./utils/license";
 import type { UserPrefs, UserPrefsApi } from "./utils/userPrefs";
 import {
   DEFAULT_USER_PREFS,
@@ -27,6 +42,26 @@ import {
   readLegacyPrefs,
   readUserPrefs,
 } from "./utils/userPrefs";
+import {
+  clearLegacyStartMenuLayout,
+  readLegacyStartMenuLayout,
+} from "./utils/startMenuLayout";
+import type { FinancialTrendSettings } from "./utils/financialTrend";
+import {
+  EMPTY_FINANCIAL_TREND,
+  clearLegacyFinancialTrend,
+  isFinancialTrendEmpty,
+  normalizeFinancialTrend,
+  readLegacyFinancialTrend,
+} from "./utils/financialTrend";
+
+/**
+ * Routes whose whole purpose depends on OpenAI. Visiting one without a
+ * configured key gets the AiKeyBanner above the view. Views that merely have an
+ * AI corner (clients, leads) are deliberately absent — they mount the banner
+ * next to the affected section instead of over the whole screen.
+ */
+const AI_DEPENDENT_TABS = ["rag_ai", "automation", "meetings", "email"];
 
 // Helper for resilient lazy loading: automatically reloads page if a build update changed chunk hash filenames
 const safeLazy = <T extends ComponentType<any>>(importFn: () => Promise<{ default: T }>) =>
@@ -78,8 +113,45 @@ const AutomationView = safeLazy(() => import("./components/AutomationView").then
 const SocialMediaView = safeLazy(() => import("./components/SocialMediaView").then(m => ({ default: m.SocialMediaView })));
 const WarehouseView = safeLazy(() => import("./components/WarehouseView").then(m => ({ default: m.WarehouseView })));
 const FinancialManagementView = safeLazy(() => import("./components/FinancialManagementView").then(m => ({ default: m.FinancialManagementView })));
+const InvoicingView = safeLazy(() => import("./components/InvoicingView").then(m => ({ default: m.InvoicingView })));
 
 const ShaderGradientAny = ShaderGradient as any;
+
+/**
+ * shadergradient's own ShaderGradientCanvas, minus pointer events.
+ *
+ * Its Canvas wires r3f's pointer handlers to the wrapper div once WebGL is up.
+ * The loading screen that hosts it often unmounts before that happens, and r3f
+ * then calls addEventListener on a null ref — an uncaught exception on nearly
+ * every load. The gradient is pointer-events:none and never needed events, so
+ * an event manager with no connect step removes the race rather than hiding it.
+ * The rest mirrors the wrapper: its Canvas props, and blanking the uv2/encodings
+ * chunks its shaders still #include but current three no longer ships.
+ */
+const NO_POINTER_EVENTS = (): EventManager<HTMLElement> => ({ enabled: false, priority: 0 });
+const BackgroundGradientCanvas: React.FC<{ style: React.CSSProperties; children: React.ReactNode }> = ({ style, children }) => {
+  useEffect(() => {
+    const chunks = ShaderChunk as unknown as Record<string, string>;
+    chunks.uv2_pars_vertex = "";
+    chunks.uv2_vertex = "";
+    chunks.uv2_pars_fragment = "";
+    chunks.encodings_fragment = "";
+  }, []);
+  return (
+    <Canvas
+      style={style}
+      resize={{ offsetSize: true }}
+      dpr={1}
+      camera={{ fov: 45 }}
+      linear
+      flat
+      gl={{ preserveDrawingBuffer: true }}
+      events={NO_POINTER_EVENTS}
+    >
+      {children}
+    </Canvas>
+  );
+};
 
 // Stable, order-fixed fingerprint of the settings block. Used to tell a genuine
 // user edit apart from merely re-receiving the server's own settings, so the
@@ -101,15 +173,33 @@ const computeSettingsSig = (s: any): string => {
     s.leadStates ?? [],
     s.leadSources ?? [],
     s.leadCategories ?? [],
+    // Normalized on both sides so an install that has never stored an id map
+    // compares equal to the one the server derives. Reduced to a sorted array
+    // of pairs because two equal maps with their keys written in a different
+    // order would stringify differently and push forever. See listIdsSignature.
+    listIdsSignature(normalizeListIds(s.leadSources ?? [], s.leadSourceIds)),
+    listIdsSignature(normalizeListIds(s.leadCategories ?? [], s.leadCategoryIds)),
     s.leadStateColors && Object.keys(s.leadStateColors).length ? s.leadStateColors : null,
     s.leadSourceColors && Object.keys(s.leadSourceColors).length ? s.leadSourceColors : null,
     s.leadCategoryColors && Object.keys(s.leadCategoryColors).length ? s.leadCategoryColors : null,
     s.leadStageGroups && Object.keys(s.leadStageGroups).length ? s.leadStageGroups : null,
     s.leadStateParents && Object.keys(s.leadStateParents).length ? s.leadStateParents : null,
     s.leadStateFollowUp && Object.keys(s.leadStateFollowUp).length ? s.leadStateFollowUp : null,
+    // Normalized on both sides so "no SLA anywhere" has one spelling whichever
+    // side you ask. See normalizeLeadStateSla / ccrm_normalize_lead_state_sla.
+    normalizeLeadStateSla(s.leadStateSla),
+    // Normalized on both sides so an absent value and an explicit "off" blob
+    // (which is what the server sends back) compare equal instead of pushing
+    // forever. See normalizeLeadAssignment / ccrm_normalize_lead_assignment.
+    normalizeLeadAssignment(s.leadAssignment),
+    // Normalized on both sides for the same reason. See normalizeProjectAutoCreate
+    // / ccrm_normalize_project_auto_create.
+    normalizeProjectAutoCreate(s.projectAutoCreate),
     s.taskStates ?? [],
     s.taskStateColors && Object.keys(s.taskStateColors).length ? s.taskStateColors : null,
     s.integrationsConfig ?? null,
+    s.companyBillingSettings ?? null,
+    s.invoicingIntegrations ?? null,
   ]);
 };
 
@@ -124,12 +214,14 @@ const computePushSig = (p: {
   warehouses?: unknown; suppliers?: unknown; warehouseItems?: unknown;
   warehouseStock?: unknown; warehouseBatches?: unknown; warehouseMovements?: unknown;
   financialCategories?: unknown; financialRecords?: unknown;
+  invoicesOffers?: unknown; aiCustomTemplates?: unknown; clientCategories?: unknown;
   settings?: any;
 }): string => JSON.stringify([
   p.leads, p.tasks, p.users, p.roles, p.meetingNotes, p.unifiedEntries,
   p.unifiedEntriesData, p.customDashboards, p.projectTypes, p.projects,
   p.warehouses, p.suppliers, p.warehouseItems, p.warehouseStock, p.warehouseBatches, p.warehouseMovements,
   p.financialCategories, p.financialRecords,
+  p.invoicesOffers, p.aiCustomTemplates, p.clientCategories,
   computeSettingsSig(p.settings),
 ]);
 
@@ -232,6 +324,12 @@ function App() {
   const warehouseMovementsRef = useRef<WarehouseMovement[]>([]);
   const financialCategoriesRef = useRef<FinancialCategory[]>([]);
   const financialRecordsRef = useRef<FinancialRecord[]>([]);
+  const invoicesOffersRef = useRef<InvoiceOffer[]>([]);
+  const aiCustomTemplatesRef = useRef<AiCustomTemplate[]>([]);
+  const clientCategoriesRef = useRef<ClientCategory[]>([]);
+  const financialTrendRef = useRef<FinancialTrendSettings>(EMPTY_FINANCIAL_TREND);
+  const companyBillingSettingsRef = useRef<CompanyBillingSettings | null>(null);
+  const invoicingIntegrationsRef = useRef<ExternalInvoicingConfig | null>(null);
   // DB clock from the last GET/POST. Sent back as baseSyncedAt so the server can
   // avoid deleting records a concurrent user added after our snapshot.
   const baseSyncedAtRef = useRef<string | null>(null);
@@ -277,11 +375,10 @@ function App() {
   const getTabFromHash = () => {
     const rawHash = window.location.hash.replace("#", "");
     const baseHash = rawHash.split(/[/?]/)[0];
-    const hashLower = baseHash.toLowerCase();
-    if (hashLower.startsWith("client-") || hashLower.startsWith("lead-") || hashLower.startsWith("user-") || hashLower.startsWith("ue_") || hashLower.startsWith("dash_") || hashLower.startsWith("settings") || hashLower.startsWith("warehouse") || hashLower.startsWith("financial") || hashLower.startsWith("sai") || hashLower.startsWith("automation")) {
-      return rawHash; // Keep case sensitivity and allow sub-tabs for settings, warehouse, financial, sai, and automation
+    if (hashLower.startsWith("client-") || hashLower.startsWith("lead-") || hashLower.startsWith("user-") || hashLower.startsWith("ue_") || hashLower.startsWith("dash_") || hashLower.startsWith("settings") || hashLower.startsWith("warehouse") || hashLower.startsWith("financial") || hashLower.startsWith("invoices") || hashLower.startsWith("sai") || hashLower.startsWith("automation")) {
+      return rawHash; // Keep case sensitivity and allow sub-tabs for settings, warehouse, financial, invoices, sai, and automation
     }
-    const validTabs = ["dashboard", "overview", "leads", "clients", "tasks", "files", "personal-settings", "email", "rag_ai", "sai", "automation", "meetings", "projects", "updates", "warehouse", "financial", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
+    const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "tasks", "files", "personal-settings", "email", "rag_ai", "sai", "automation", "meetings", "projects", "updates", "warehouse", "financial", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
     return validTabs.includes(hashLower) ? rawHash : "dashboard";
   };
 
@@ -346,14 +443,18 @@ function App() {
 
     (window as any).showToast = (
       message: string,
-      actionOrVariant?: { label: string; onClick: () => void } | "error" | "warning"
+      actionOrVariant?: { label: string; onClick: () => void } | "error" | "warning",
+      explicitVariant?: "error" | "warning"
     ) => {
       // A dozen call sites put a severity string in the second slot instead of an
       // action. Taken literally that produced a toast with an empty action button
-      // that never auto-dismissed, so normalise the two shapes here.
+      // that never auto-dismissed, so normalise the two shapes here. A caller that
+      // needs both — an actionable failure, e.g. "AI key missing / Open settings"
+      // — passes the severity in the third slot.
       const action = actionOrVariant && typeof actionOrVariant === "object" ? actionOrVariant : undefined;
       const variant: ToastPayload["variant"] =
-        actionOrVariant === "error" || actionOrVariant === "warning" ? actionOrVariant : "info";
+        explicitVariant ||
+        (actionOrVariant === "error" || actionOrVariant === "warning" ? actionOrVariant : "info");
       const next: ToastPayload = { id: ++toastIdRef.current, message, variant, action };
       // visiblePushesRef is bumped the moment a save is queued (not when the request
       // actually starts), because callers fire their success toast synchronously right
@@ -377,11 +478,25 @@ function App() {
     const stored = typeof window !== 'undefined' ? localStorage.getItem("crm_language") : null;
     return (stored === "en" || stored === "sk" || stored === "hu") ? stored : "sk";
   });
+  // Appearance (light/dark/system/auto) and the light palette are independent:
+  // switching to dark and back has to give the user their herb theme again.
   const [userTheme, setUserTheme] = useState<string>(getStoredTheme);
+  const [themeMode, setThemeMode] = useState<ThemeMode>(getStoredThemeMode);
+  const [appearance, setAppearance] = useState<Appearance>(
+    () => (document.documentElement.getAttribute("data-appearance") === "dark" ? "dark" : "light")
+  );
 
-  useEffect(() => {
-    applyTheme(userTheme);
-  }, [userTheme]);
+  // The watcher owns the actual repaint. It also has to react to the OS theme
+  // flipping and to the sun rising or setting, so it reads the current choice
+  // through a ref rather than being re-attached on every change.
+  const themeStateRef = useRef({ mode: themeMode, palette: userTheme });
+  themeStateRef.current = { mode: themeMode, palette: userTheme };
+  useEffect(
+    // Re-attached on every explicit change so the watcher repaints at once and
+    // re-arms its timers for the mode that is now in force.
+    () => startThemeWatcher(() => themeStateRef.current, setAppearance),
+    [themeMode, userTheme]
+  );
 
   // Same three-language shorthand every view uses for one-off copy that has no
   // entry in translations.ts.
@@ -415,6 +530,17 @@ function App() {
   const [warehouseMovements, setWarehouseMovements] = useState<WarehouseMovement[]>([]);
   const [financialCategories, setFinancialCategories] = useState<FinancialCategory[]>([]);
   const [financialRecords, setFinancialRecords] = useState<FinancialRecord[]>([]);
+  const [invoicesOffers, setInvoicesOffers] = useState<InvoiceOffer[]>([]);
+  const [aiCustomTemplates, setAiCustomTemplates] = useState<AiCustomTemplate[]>([]);
+  const [clientCategories, setClientCategories] = useState<ClientCategory[]>([]);
+  /**
+   * Manual weekly bank-balance anchors behind the finance trend chart. Shared
+   * workspace data (stored in `system_settings.FINANCIAL_TREND`), not a browser
+   * setting — see utils/financialTrend.ts for why it moved out of localStorage.
+   */
+  const [financialTrend, setFinancialTrend] = useState<FinancialTrendSettings>(EMPTY_FINANCIAL_TREND);
+  const [companyBillingSettings, setCompanyBillingSettings] = useState<CompanyBillingSettings | null>(null);
+  const [invoicingIntegrations, setInvoicingIntegrations] = useState<ExternalInvoicingConfig | null>(null);
 
   // Initial states set to empty / defaults without localStorage or mockData loaders
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -447,6 +573,14 @@ function App() {
   const [leadCategories, setLeadCategories] = useState<string[]>([
     "Products", "Services"
   ]);
+
+  // The permanent id each source / category answers to when a website form
+  // names it (`source_id` / `category_id` in the /api/pipeline.php payload).
+  // Kept apart from the lists above precisely so that reordering them in
+  // Settings cannot change what a form already deployed means — see
+  // src/utils/listIds.ts. Filled in from the server on the first sync.
+  const [leadSourceIds, setLeadSourceIds] = useState<ListIds>({});
+  const [leadCategoryIds, setLeadCategoryIds] = useState<ListIds>({});
 
   const [leadStateColors, setLeadStateColors] = useState<Record<string, string>>({
     "new": "#3b82f6",
@@ -489,6 +623,24 @@ function App() {
   // Keyed by lowercased state name (admin-configurable in Settings). Robust to
   // renaming/removing states — a removed state's entry simply stops mattering.
   const [leadStateFollowUp, setLeadStateFollowUp] = useState<Record<string, boolean>>({});
+
+  // Per-state SLA: how many days a lead may sit in that phase before the leads
+  // list and the lead detail start flagging it. Keyed by lowercased state name;
+  // a state without an entry simply has no limit. See utils/leadSla.ts.
+  const [leadStateSla, setLeadStateSla] = useState<LeadStateSla>({});
+
+  // Who new leads without an owner are handed to (Settings → Users). The rules
+  // live here; the actual pick is made server-side so one rotation is shared by
+  // every device and by leads that never pass through this app at all (the
+  // public webhook, workflow actions, imports).
+  const [leadAssignment, setLeadAssignment] = useState<LeadAssignmentSettings>(DEFAULT_LEAD_ASSIGNMENT);
+
+  // Whether every new lead is paired with a freshly created project, and of
+  // which type (Projects → Settings). Like the rules above, the creation itself
+  // happens server-side so it also covers leads that never pass through this
+  // app — the public webhook and workflow actions — and so two devices syncing
+  // the same new lead cannot each produce a project for it.
+  const [projectAutoCreate, setProjectAutoCreate] = useState<ProjectAutoCreateSettings>(DEFAULT_PROJECT_AUTO_CREATE);
 
   const [integrationsConfig, setIntegrationsConfig] = useState<any>({
     emailProvider: "smtp",
@@ -543,6 +695,39 @@ function App() {
       sessionStorage.removeItem("crm_current_user_rbac");
     }
   }, [currentUser]);
+
+  // Licence for this installation. Fetched once per session and re-checked on a
+  // slow timer — it changes about once a year, and api/license.php throttles the
+  // call it makes to the licence server behind this anyway.
+  //
+  // `null` means "not known yet, or could not be read", and every consumer treats
+  // that as "say nothing": no banner, no seat limit. A licence check that fails
+  // must never be the reason someone cannot add a colleague.
+  const [licenseState, setLicenseState] = useState<LicenseState | null>(null);
+  // Read from inside the sync push handler, which is rebuilt on every render and
+  // must not close over a licence state that was current three renders ago.
+  const licenseStateRef = useRef<LicenseState | null>(null);
+  licenseStateRef.current = licenseState;
+
+  useEffect(() => {
+    if (!currentUser) {
+      setLicenseState(null);
+      return;
+    }
+    let cancelled = false;
+    const load = async () => {
+      const next = await fetchLicenseState();
+      if (!cancelled && next) setLicenseState(next);
+    };
+    load();
+    // Six hours: long enough to be invisible, short enough that a licence that
+    // expires overnight is reflected in a browser tab left open for days.
+    const timer = window.setInterval(load, 6 * 60 * 60 * 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [currentUser?.email]);
 
   // Theme, error sidebar and the leads-screen view modes are per-user
   // preferences read out of the DB — see the UserPrefs block below.
@@ -703,10 +888,10 @@ ${log.payload || ''}
           viewName = getTranslation(userLanguage, "sidebar.settings");
           break;
         case "overview":
-          viewName = getTranslation(userLanguage, "sidebar.dashboard");
+          viewName = getTranslation(userLanguage, "sidebar.analytics");
           break;
         case "tasks":
-          viewName = t("Tasks", "Úlohy", "Feladatok");
+          viewName = getTranslation(userLanguage, "sidebar.tasks");
           break;
         case "projects":
           viewName = t("Projects", "Projekty", "Projektek");
@@ -732,39 +917,38 @@ ${log.payload || ''}
         case "warehouse":
           viewName = t("Warehouse & Inventory", "Sklad a zásoby", "Raktár és készlet");
           break;
+        case "invoices":
+          viewName = t("Invoices & Price Offers", "Cenové ponuky a faktúry", "Árajánlatok és számlák");
+          break;
         case "dashboard":
+          viewName = getTranslation(userLanguage, "sidebar.dashboard");
+          break;
         default:
-          viewName = t("Task Dashboard", "Panel úloh", "Feladat Irányítópult");
+          viewName = getTranslation(userLanguage, "sidebar.tasks");
           break;
       }
     }
 
-    document.title = `${viewName} | ${systemName}`;
+    // Dev-only version suffix so worktrees running side by side on different
+    // vite ports are distinguishable by tab title; import.meta.env.DEV is
+    // false in a production build, so this never reaches deployed instances.
+    document.title = import.meta.env.DEV
+      ? `${viewName} | ${systemName} — ${VERSION}`
+      : `${viewName} | ${systemName}`;
   }, [activeTab, systemName, userLanguage, leads, customDashboards, unifiedEntries]);
+  // Single permission resolver for the shell: sidebar, launcher, header
+  // shortcuts and the route guard all read from it. Views receive their own
+  // `ModuleAccess` slice so none of them has to know about roles.
+  const access = useMemo(() => buildAccess(currentUser, roles), [currentUser, roles]);
+
   const taskAccess = (() => {
-    if (!currentUser) {
-      return { view: false, create: false, edit: false, delete: false, viewAll: false };
-    }
-    if (currentUser.role.toLowerCase() === "admin") {
-      return { view: true, create: true, edit: true, delete: true, viewAll: true };
-    }
-    const role = roles.find((item) => item.name === currentUser.role);
-    const permissions: Partial<RolePermission["permissions"]> = role?.permissions || {};
-    const isProjectManager = currentUser.role.toLowerCase() === "project manager";
-    const allowed = (slug: string, projectManagerDefault = false) => {
-      if (Object.prototype.hasOwnProperty.call(permissions, slug)) {
-        return permissions[slug] === "edit" || permissions[slug] === "view";
-      }
-      return isProjectManager && projectManagerDefault;
-    };
-    // Unlike the slugs above, seeing the team board is on by default and has to
-    // be revoked explicitly — see resolveTaskViewAll.
+    const m = access.module("tasks");
     return {
-      view: allowed("tasks.view", true),
-      create: allowed("tasks.create", true),
-      edit: allowed("tasks.edit", true),
-      delete: permissions["tasks.delete"] === "edit",
-      viewAll: resolveTaskViewAll(permissions, false),
+      view: m.view,
+      create: m.edit,
+      edit: m.edit,
+      delete: m.delete,
+      viewAll: access.can("tasks.view_all"),
     };
   })();
 
@@ -776,29 +960,15 @@ ${log.payload || ''}
     return acc;
   }, {} as Record<string, string>);
 
-  // Permission resolver helper
-  const getPermission = (section: keyof RolePermission["permissions"]) => {
-    if (!currentUser) return "nothing";
-    if (currentUser.role.toLowerCase() === "admin") return "edit"; // Admin always has absolute write privileges
-    const userRole = roles.find(r => r.name === currentUser.role);
-    if (!userRole) return "nothing";
-    return userRole.permissions[section] || "nothing";
-  };
-
-  // Has settings access flag
-  const hasSettingsAccess = 
-    getPermission("general_config") !== "nothing" ||
-    getPermission("pm_managers") !== "nothing" ||
-    getPermission("pipeline_stages") !== "nothing" ||
-    getPermission("traffic_sources") !== "nothing" ||
-    getPermission("system_reset") !== "nothing" ||
-    getPermission("ai_config") !== "nothing";
+  // Settings still reads single keys by name (its categories map 1:1 to keys).
+  const getPermission = (section: string) => access.value(section);
 
   // Guard routing pathway from unauthorised users
   useEffect(() => {
-    if (currentUser && activeTab === "settings" && !hasSettingsAccess) {
-      setActiveTab("dashboard");
-      window.location.hash = "dashboard";
+    if (currentUser && activeTab.startsWith("settings") && !access.hasSettingsAccess) {
+      const target = firstAllowedRoute(access) ?? "dashboard";
+      setActiveTab(target);
+      window.location.hash = target;
     }
   }, [activeTab, currentUser, roles]);
 
@@ -823,6 +993,12 @@ ${log.payload || ''}
   warehouseMovementsRef.current = warehouseMovements;
   financialCategoriesRef.current = financialCategories;
   financialRecordsRef.current = financialRecords;
+  invoicesOffersRef.current = invoicesOffers;
+  aiCustomTemplatesRef.current = aiCustomTemplates;
+  clientCategoriesRef.current = clientCategories;
+  financialTrendRef.current = financialTrend;
+  companyBillingSettingsRef.current = companyBillingSettings;
+  invoicingIntegrationsRef.current = invoicingIntegrations;
 
   // --- REAL-TIME SERVER SYNCHRONIZER ENGINE ---
   const pushStateToServer = (
@@ -845,6 +1021,9 @@ ${log.payload || ''}
     nextWarehouseMovements?: WarehouseMovement[],
     nextFinancialCategories?: FinancialCategory[],
     nextFinancialRecords?: FinancialRecord[],
+    nextInvoicesOffers?: InvoiceOffer[],
+    nextAiCustomTemplates?: AiCustomTemplate[],
+    nextClientCategories?: ClientCategory[],
     options?: { showIndicator?: boolean }
   ): Promise<void> => {
     if (!isInstalled || !currentUser || !isInitialSyncResolved) return pushChainRef.current;
@@ -882,6 +1061,9 @@ ${log.payload || ''}
     const liveWarehouseMovements = nextWarehouseMovements ?? warehouseMovementsRef.current;
     const liveFinancialCategories = nextFinancialCategories ?? financialCategoriesRef.current;
     const liveFinancialRecords = nextFinancialRecords ?? financialRecordsRef.current;
+    const liveInvoicesOffers = nextInvoicesOffers ?? invoicesOffersRef.current;
+    const liveAiCustomTemplates = nextAiCustomTemplates ?? aiCustomTemplatesRef.current;
+    const liveClientCategories = nextClientCategories ?? clientCategoriesRef.current;
 
     const payload: any = {
       baseSyncedAt: baseSyncedAtRef.current,
@@ -903,6 +1085,13 @@ ${log.payload || ''}
       warehouseMovements: liveWarehouseMovements,
       financialCategories: liveFinancialCategories,
       financialRecords: liveFinancialRecords,
+      invoicesOffers: liveInvoicesOffers,
+      aiCustomTemplates: liveAiCustomTemplates,
+      clientCategories: liveClientCategories,
+      // Always sent whole: it is one small blob, and the server's contract is
+      // "omitted means unchanged", so narrowing it would be indistinguishable
+      // from a client that predates the key.
+      financialTrend: financialTrendRef.current,
       settings: {
         systemName,
         systemLanguage,
@@ -910,15 +1099,22 @@ ${log.payload || ''}
         leadStates,
         leadSources,
         leadCategories,
+        leadSourceIds,
+        leadCategoryIds,
         leadStateColors,
         leadSourceColors,
         leadCategoryColors,
         leadStageGroups,
         leadStateParents,
         leadStateFollowUp,
+        leadStateSla,
+        leadAssignment,
+        projectAutoCreate,
         taskStates,
         taskStateColors,
-        integrationsConfig: nextIntegrationsConfig ?? integrationsConfigRef.current
+        integrationsConfig: nextIntegrationsConfig ?? integrationsConfigRef.current,
+        companyBillingSettings: companyBillingSettingsRef.current,
+        invoicingIntegrations: invoicingIntegrationsRef.current
       }
     };
 
@@ -951,6 +1147,9 @@ ${log.payload || ''}
       narrow("warehouseMovements", liveWarehouseMovements);
       narrow("financialCategories", liveFinancialCategories);
       narrow("financialRecords", liveFinancialRecords);
+      narrow("invoicesOffers", liveInvoicesOffers);
+      narrow("aiCustomTemplates", liveAiCustomTemplates);
+      narrow("clientCategories", liveClientCategories);
 
       // The registry list stays whole on purpose: sync.php walks unifiedEntries to
       // reach each entry's dynamic table, so an entry omitted here would silently
@@ -996,18 +1195,143 @@ ${log.payload || ''}
         // The server now holds this exact payload — remember it so a later 401
         // can tell a genuine unsaved edit apart from an echoed no-op push.
         lastConfirmedPushSigRef.current = computePushSig(payload);
-        // The server now holds these records, so the next push only has to carry
-        // what changes from here. Done only on a confirmed write: advancing the
-        // baseline after a failed push would make the client believe an edit was
-        // saved and never send it again.
-        Object.assign(syncedRecordsRef.current, pendingBaselines);
-        Object.assign(ueSyncedRecordsRef.current, pendingUeBaselines);
-        // Advance our snapshot clock so a delete right after this edit is not
-        // wrongly skipped by the server's concurrency guard.
+        let out: any = null;
         try {
-          const out = await res.json();
-          if (out && typeof out.serverTime === "string") {
-            baseSyncedAtRef.current = out.serverTime;
+          out = await res.json();
+        } catch { /* non-JSON (PHP warning before the body) — still advance below */ }
+        try {
+          // PDO may return NOW() as a DateTime/number on some hosts; the server
+          // now stringifies, but coerce anyway so a delete after create still
+          // carries a usable baseSyncedAt.
+          const clock = out?.serverTime;
+          if (clock != null && String(clock).trim() !== "" && String(clock) !== "[object Object]") {
+            baseSyncedAtRef.current = String(clock);
+          }
+          // Collections the server refused to write or delete. Keep the previous
+          // baseline for those so a skipped lead delete is retried instead of
+          // being treated as saved, then resurrected by the next GET.
+          const skipped = new Set<string>(
+            Array.isArray(out?.permissionSkipped) ? out.permissionSkipped.map(String) : [],
+          );
+          const conflicted: Record<string, string[]> = {};
+          if (out?.conflicts && typeof out.conflicts === "object") {
+            for (const [k, ids] of Object.entries(out.conflicts as Record<string, unknown>)) {
+              if (Array.isArray(ids) && ids.length) conflicted[k] = ids.map(String);
+            }
+          }
+          const deleteBlockedKeys = new Set<string>();
+          if (out?.deleteBlocked && typeof out.deleteBlocked === "object") {
+            const tableToKey: Record<string, string> = {
+              leads: "leads", meeting_notes: "meetingNotes", users: "users",
+              project_types: "projectTypes", projects: "projects",
+              custom_dashboards: "customDashboards", warehouses: "warehouses",
+              suppliers: "suppliers", warehouse_items: "warehouseItems",
+              warehouse_batches: "warehouseBatches", warehouse_movements: "warehouseMovements",
+              financial_categories: "financialCategories", client_categories: "clientCategories",
+              financial_records: "financialRecords", invoices_offers: "invoicesOffers",
+              ai_custom_templates: "aiCustomTemplates",
+            };
+            for (const [table, ids] of Object.entries(out.deleteBlocked as Record<string, unknown>)) {
+              if (Array.isArray(ids) && ids.length && tableToKey[table]) {
+                deleteBlockedKeys.add(tableToKey[table]);
+              }
+            }
+          }
+          for (const [key, next] of Object.entries(pendingBaselines)) {
+            if (
+              skipped.has(key) ||
+              skipped.has(`${key}:delete`) ||
+              deleteBlockedKeys.has(key) ||
+              (key === "leads" && (skipped.has("leads:clients") || skipped.has("leads:clients:delete")))
+            ) {
+              continue;
+            }
+            const conflictIds = conflicted[key] ?? [];
+            if (conflictIds.length && syncedRecordsRef.current[key]) {
+              const merged = new Map(next);
+              const prev = syncedRecordsRef.current[key];
+              for (const id of conflictIds) {
+                if (prev.has(id)) merged.set(id, prev.get(id) as string);
+                else merged.delete(id);
+              }
+              syncedRecordsRef.current[key] = merged;
+            } else {
+              syncedRecordsRef.current[key] = next;
+            }
+          }
+          if (!skipped.has("unifiedEntriesData") && !skipped.has("unifiedEntriesData:delete")) {
+            Object.assign(ueSyncedRecordsRef.current, pendingUeBaselines);
+          }
+          const skippedWork = [...skipped].filter((tag) => {
+            const base = tag.replace(/:delete$/, "");
+            const payloadKey = base === "leads:clients" ? "leads" : base;
+            if (tag.endsWith(":delete")) {
+              const ids = (payload as any).deleted?.[payloadKey];
+              return Array.isArray(ids) && ids.length > 0;
+            }
+            const body = (payload as any)[payloadKey];
+            return Array.isArray(body) ? body.length > 0 : body != null && typeof body === "object";
+          });
+          const conflictCount = Object.values(conflicted).reduce((n, ids) => n + ids.length, 0);
+          const blockedCount = [...deleteBlockedKeys].length;
+          if ((skippedWork.length || conflictCount || blockedCount) && typeof (window as any).showToast === "function") {
+            (window as any).showToast(
+              t(
+                "Some changes were not saved on the server. They will be retried, or revert after refresh.",
+                "Niektoré zmeny sa na serveri neuložili. Skúsime ich znova, alebo sa po obnovení vrátia.",
+                "Néhány módosítás nem került a szerverre. Újrapróbáljuk, vagy frissítés után visszaállnak.",
+              ),
+              "warning",
+            );
+          }
+          // Owners the server put on brand-new, unassigned leads (Settings →
+          // Users → auto-assignment). Adopt them locally: without this the
+          // client keeps its blank owner, shows the lead as unassigned until
+          // the next full pull, and pushes the blank straight back over the
+          // server's pick on the following sync.
+          const assigned = out?.assignedOwners;
+          if (assigned && typeof assigned === "object" && Object.keys(assigned).length > 0) {
+            setLeads((prev) =>
+              prev.map((lead) => {
+                const owner = assigned[lead.id];
+                return typeof owner === "string" && owner && !lead.owner
+                  ? { ...lead, owner }
+                  : lead;
+              })
+            );
+          }
+          // Projects the server paired with brand-new leads (Projects →
+          // Settings → automatic project creation). Adopt them the same way:
+          // without this they would not appear until the next full pull, and a
+          // client still on protocol v1 would push its own project list back
+          // over them, taking them with it.
+          const created = out?.createdProjects;
+          if (Array.isArray(created) && created.length > 0) {
+            setProjects((prev) => {
+              const known = new Set(prev.map((p) => p.id));
+              const additions = (created as Project[]).filter(
+                (p) => p && typeof p.id === "string" && !known.has(p.id)
+              );
+              if (additions.length === 0) return prev;
+              const next = [...additions, ...prev];
+              projectsRef.current = next;
+              return next;
+            });
+          }
+          // Accounts the server refused because the licence has no seat left.
+          // The push itself succeeded, so without this the new colleague would
+          // simply not be there after the next poll, with nothing said.
+          if (Array.isArray(out?.seatRejections) && out.seatRejections.length > 0) {
+            const emails = out.seatRejections.filter((e: unknown) => typeof e === "string");
+            if (emails.length > 0 && typeof (window as any).showToast === "function") {
+              (window as any).showToast(
+                formatTranslation(userLanguage, "license.seat_rejected", {
+                  emails: emails.join(", "),
+                  max: licenseStateRef.current?.maxUsers ?? "—",
+                }),
+                "warning"
+              );
+            }
           }
         } catch { /* non-JSON response — keep the previous snapshot clock */ }
       } else {
@@ -1091,6 +1415,17 @@ ${log.payload || ''}
       return nextDashboards;
     });
   };
+
+  /**
+   * The Dashboard section is stored as a reserved entry in `customDashboards`,
+   * so it syncs and versions exactly like a user-made AI panel. Until someone
+   * saves a change to it there is nothing on the server, and the starter layout
+   * from `buildDefaultHomeDashboard()` stands in.
+   */
+  const homeDashboard = useMemo(
+    () => customDashboards.find(d => d.id === HOME_DASHBOARD_ID) || buildDefaultHomeDashboard(),
+    [customDashboards]
+  );
 
   const updateRolesAndSync = (newRoles: RolePermission[] | ((prev: RolePermission[]) => RolePermission[])) => {
     setRoles(prev => {
@@ -1224,6 +1559,73 @@ ${log.payload || ''}
     });
   };
 
+  /**
+   * Save the trend anchors. The ref is set before pushing rather than passed as
+   * an argument: pushStateToServer reads this blob straight out of the ref, so
+   * there is no positional slot to thread it through.
+   */
+  const updateFinancialTrendAndSync = (next: FinancialTrendSettings) => {
+    financialTrendRef.current = next;
+    setFinancialTrend(next);
+    pushStateToServer();
+  };
+
+  /**
+   * Every invoice change is mirrored into the finance ledger (audit F27): an
+   * issued invoice owns one linked `pending` income movement. Resolved against
+   * the refs rather than inside a state updater, so both collections change
+   * together and go out in one push.
+   */
+  const updateInvoicesOffersAndSync = (newOffers: InvoiceOffer[] | ((prev: InvoiceOffer[]) => InvoiceOffer[])) => {
+    const prev = invoicesOffersRef.current;
+    const next = typeof newOffers === "function" ? newOffers(prev) : newOffers;
+    invoicesOffersRef.current = next;
+    setInvoicesOffers(next);
+    const prevRecords = financialRecordsRef.current;
+    const nextRecords = reconcileInvoiceMovements(prev, next, prevRecords);
+    if (nextRecords !== prevRecords) {
+      financialRecordsRef.current = nextRecords;
+      setFinancialRecords(nextRecords);
+    }
+    pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, nextRecords !== prevRecords ? nextRecords : undefined, next);
+  };
+
+  const updateClientCategoriesAndSync = (newCats: ClientCategory[] | ((prev: ClientCategory[]) => ClientCategory[])) => {
+    setClientCategories(prev => {
+      const next = typeof newCats === "function" ? newCats(prev) : newCats;
+      clientCategoriesRef.current = next;
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
+      return next;
+    });
+  };
+
+  const updateAiCustomTemplatesAndSync = (newTemplates: AiCustomTemplate[] | ((prev: AiCustomTemplate[]) => AiCustomTemplate[])) => {
+    setAiCustomTemplates(prev => {
+      const next = typeof newTemplates === "function" ? newTemplates(prev) : newTemplates;
+      aiCustomTemplatesRef.current = next;
+      pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
+      return next;
+    });
+  };
+
+  const updateCompanyBillingSettingsAndSync = (newSettings: CompanyBillingSettings | null | ((prev: CompanyBillingSettings | null) => CompanyBillingSettings | null)) => {
+    setCompanyBillingSettings(prev => {
+      const next = typeof newSettings === "function" ? newSettings(prev) : newSettings;
+      companyBillingSettingsRef.current = next;
+      pushStateToServer();
+      return next;
+    });
+  };
+
+  const updateInvoicingIntegrationsAndSync = (newIntegrations: ExternalInvoicingConfig | null | ((prev: ExternalInvoicingConfig | null) => ExternalInvoicingConfig | null)) => {
+    setInvoicingIntegrations(prev => {
+      const next = typeof newIntegrations === "function" ? newIntegrations(prev) : newIntegrations;
+      invoicingIntegrationsRef.current = next;
+      pushStateToServer();
+      return next;
+    });
+  };
+
   const updateMeetingNotesAndSync = (newNotes: MeetingNote[] | ((prev: MeetingNote[]) => MeetingNote[])) => {
     setMeetingNotes(prev => {
       const nextNotes = typeof newNotes === "function" ? newNotes(prev) : newNotes;
@@ -1311,6 +1713,50 @@ ${log.payload || ''}
 
   const errorSidebarEnabled = userPrefs.errorSidebarEnabled;
 
+  // The appearance and the palette live in two places on purpose: localStorage,
+  // which index.html can read before the first frame, and the user's DB row,
+  // which follows the account to another browser. This adopts the row whenever
+  // it disagrees — on login, and after a sync brings a change made elsewhere.
+  //
+  // Read straight out of the blob rather than through `userPrefs`, which fills
+  // absent keys in from DEFAULT_USER_PREFS: an account that has never saved a
+  // theme would otherwise look like it had chosen "system", and adopting that
+  // would throw away the choice the visitor just made in this browser.
+  const storedThemePrefs = useMemo(() => {
+    const preferences = parseUserMetadata({ metadata_json: currentUserMetaJson }).preferences;
+    return preferences && typeof preferences === "object"
+      ? { mode: (preferences as Partial<UserPrefs>).themeMode, palette: (preferences as Partial<UserPrefs>).theme }
+      : { mode: undefined, palette: undefined };
+  }, [currentUserMetaJson]);
+  const storedThemeMode = storedThemePrefs.mode;
+  const storedThemePalette = storedThemePrefs.palette;
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    if (isThemeMode(storedThemeMode) && storedThemeMode !== themeModeRef.current) {
+      setThemeMode(storedThemeMode);
+    }
+    if (storedThemePalette && storedThemePalette !== themePaletteRef.current) {
+      setUserTheme(storedThemePalette);
+    }
+  }, [isLoggedIn, storedThemeMode, storedThemePalette]);
+
+  // Writing a preference re-renders with a new `userPrefs`, so the effect above
+  // must compare against what is on screen right now, not against a value it
+  // captured — otherwise a local change and the row it just wrote fight.
+  const themeModeRef = useRef(themeMode);
+  themeModeRef.current = themeMode;
+  const themePaletteRef = useRef(userTheme);
+  themePaletteRef.current = userTheme;
+
+  const changeThemeMode = (mode: ThemeMode) => {
+    setThemeMode(mode);
+    setUserPref("themeMode", mode);
+  };
+  const changeThemePalette = (palette: string) => {
+    setUserTheme(palette);
+    setUserPref("theme", palette);
+  };
+
   useEffect(() => {
     if (errorSidebarEnabled) {
       fetchErrorLogs();
@@ -1338,13 +1784,94 @@ ${log.payload || ''}
     }
     const nextMeta = {
       ...parseUserMetadata(currentUser),
-      preferences: { ...DEFAULT_USER_PREFS, ...readLegacyPrefs() }
+      // The appearance is seeded from what this browser is actually showing,
+      // not from DEFAULT_USER_PREFS: writing the default here would be read
+      // straight back by the adoption effect above and would silently undo the
+      // theme the visitor picked before they ever logged in.
+      preferences: { ...DEFAULT_USER_PREFS, ...readLegacyPrefs(), themeMode, theme: userTheme }
     };
     updateUsersAndSync(prevUsers => prevUsers.map(u =>
       u.email === currentUser.email ? { ...u, metadata_json: nextMeta } : u
     ));
     setCurrentUser(prev => prev ? { ...prev, metadata_json: nextMeta } : prev);
     clearLegacyPrefs();
+  }, [currentUser, users, isInitialSyncResolved, themeMode, userTheme]);
+
+  // One-shot adoption of the finance trend anchors an existing install still has
+  // in this browser, so moving them into the database does not throw away the
+  // reconciliation someone already did.
+  //
+  // Only ever runs when the server holds NOTHING: once any anchor exists in the
+  // shared dataset, a second browser's stale local copy must not overwrite it.
+  // The local keys are cleared either way, so this cannot fire twice.
+  const legacyTrendMigratedRef = useRef(false);
+  useEffect(() => {
+    if (!currentUser || !isInitialSyncResolved) return;
+    if (legacyTrendMigratedRef.current) return;
+    legacyTrendMigratedRef.current = true;
+
+    const legacy = readLegacyFinancialTrend();
+    if (legacy && isFinancialTrendEmpty(financialTrendRef.current)) {
+      updateFinancialTrendAndSync(legacy);
+    }
+    clearLegacyFinancialTrend();
+  }, [currentUser, isInitialSyncResolved]);
+
+  // One-shot adoption of the Start Menu layout this browser still holds for the
+  // signed-in user, so moving it into the row does not throw away the launcher
+  // they arranged.
+  //
+  // It cannot ride along with readLegacyPrefs() above: that pass only runs for a
+  // row with no preferences blob at all, and everyone migrated by an earlier
+  // release already has one — their layout would have been dropped. So this
+  // waits for the blob to exist instead of racing the pass that writes it (the
+  // two would each overwrite the other's copy of `preferences`), and then adopts
+  // only when the row holds no layout, so a second browser's stale copy cannot
+  // replace what the account already saved elsewhere.
+  //
+  // The browser copy is dropped only once the server has confirmed the push that
+  // carries it. The adoption push queues behind the one that first writes the
+  // preferences blob, so a reload or a closed tab in that window used to lose the
+  // layout for good: gone from the browser, never reached the row. Kept until
+  // confirmed, the next load simply adopts it again.
+  const legacyStartMenuMigratedForRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!currentUser || !isInitialSyncResolved) return;
+    if (!users.some(u => u.email === currentUser.email)) return;
+    if (!hasStoredPrefs(currentUser)) return;
+    if (legacyStartMenuMigratedForRef.current === currentUser.email) return;
+    legacyStartMenuMigratedForRef.current = currentUser.email;
+
+    const userId = currentUser.id;
+    const legacy = readLegacyStartMenuLayout(userId);
+    if (!legacy || readUserPrefs(currentUser).startMenuLayout) {
+      clearLegacyStartMenuLayout(userId);
+      return;
+    }
+
+    const nextMeta = {
+      ...parseUserMetadata(currentUser),
+      preferences: { ...readUserPrefs(currentUser), startMenuLayout: legacy }
+    };
+    const nextUsers = usersRef.current.map(u =>
+      u.email === currentUser.email ? { ...u, metadata_json: nextMeta } : u
+    );
+    usersRef.current = nextUsers;
+    setUsers(nextUsers);
+    setCurrentUser(prev => prev ? { ...prev, metadata_json: nextMeta } : prev);
+
+    // lastConfirmedPushSigRef only moves on a 2xx, so a change across exactly
+    // this push (sampled once everything queued ahead of it has settled) means
+    // the server accepted it.
+    let confirmedBefore: string | null = null;
+    pushChainRef.current = pushChainRef.current.then(() => {
+      confirmedBefore = lastConfirmedPushSigRef.current;
+    });
+    pushStateToServer(undefined, undefined, undefined, undefined, nextUsers).then(() => {
+      if (lastConfirmedPushSigRef.current !== confirmedBefore) {
+        clearLegacyStartMenuLayout(userId);
+      }
+    });
   }, [currentUser, users, isInitialSyncResolved]);
 
   const handleSaveUserLayout = (layout: string[], hidden?: string[]) => {
@@ -1427,9 +1954,10 @@ ${log.payload || ''}
   useEffect(() => {
     if (!isInstalled || !isInitialSyncResolved) return;
     const currentSig = computeSettingsSig({
-      leadStates, leadSources, leadCategories, systemName, systemLanguage, systemCurrency,
+      leadStates, leadSources, leadCategories, leadSourceIds, leadCategoryIds,
+      systemName, systemLanguage, systemCurrency,
       leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups,
-      leadStateParents, leadStateFollowUp, taskStates, taskStateColors,
+      leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors,
     });
     // Before we have ever seen the server's settings, just record the current
     // signature — there is nothing to push yet, and pushing here would echo the
@@ -1457,7 +1985,7 @@ ${log.payload || ''}
       // newest values.
       pushStateToServer();
     }, 700);
-  }, [leadStates, leadSources, leadCategories, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, taskStates, taskStateColors, isInitialSyncResolved]);
+  }, [leadStates, leadSources, leadCategories, leadSourceIds, leadCategoryIds, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, isInitialSyncResolved]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -1485,6 +2013,15 @@ ${log.payload || ''}
   // outside the SPA (cron agents, AI summaries) that don't bump the version
   // still surface within a minute.
   useEffect(() => {
+    // Nothing to poll for until the app is installed, and polling through an
+    // install is actively harmful: `setup.php` writes config.php as part of a
+    // successful run, so the very next tick sees `installed: true` and one of
+    // the branches below flips `isInstalled` back on. That unmounts the wizard
+    // mid-flow — and on a fresh install step 3 is the only place the generated
+    // admin password is ever shown, so it is lost before it can be read. The
+    // wizard reloads the page itself once the user leaves step 3.
+    if (!isInstalled) return;
+
     let lastDataVersion: string | null = null;
     let tick = 0;
 
@@ -1533,8 +2070,8 @@ ${log.payload || ''}
         }
         return;
       }
-      if (typeof data.serverTime === "string") {
-        baseSyncedAtRef.current = data.serverTime;
+      if (data.serverTime != null && String(data.serverTime).trim() !== "" && String(data.serverTime) !== "[object Object]") {
+        baseSyncedAtRef.current = String(data.serverTime);
       }
       if (data.leads && Array.isArray(data.leads)) {
         setLeads((prev) => JSON.stringify(prev) === JSON.stringify(data.leads) ? prev : data.leads);
@@ -1612,20 +2149,62 @@ ${log.payload || ''}
       if (data.financialRecords && Array.isArray(data.financialRecords)) {
         setFinancialRecords(data.financialRecords);
       }
+      if (data.invoicesOffers && Array.isArray(data.invoicesOffers)) {
+        setInvoicesOffers(data.invoicesOffers);
+      }
+      if (data.aiCustomTemplates && Array.isArray(data.aiCustomTemplates)) {
+        setAiCustomTemplates(data.aiCustomTemplates);
+      }
+      if (data.clientCategories && Array.isArray(data.clientCategories)) {
+        setClientCategories(data.clientCategories);
+      }
+      // Absent key = a sync.php that predates the trend anchors. Keep whatever
+      // is in memory rather than blanking the chart back to the default curve.
+      if (data.financialTrend !== undefined) {
+        const incoming = normalizeFinancialTrend(data.financialTrend);
+        setFinancialTrend((prev) =>
+          JSON.stringify(incoming) !== JSON.stringify(prev) ? incoming : prev
+        );
+      }
       if (data.settings) {
         const s = data.settings;
         if (s.systemName && s.systemName !== systemName) setSystemName(s.systemName);
         if (s.systemLanguage && s.systemLanguage !== systemLanguage) setSystemLanguage(s.systemLanguage);
         if (s.systemCurrency !== undefined && s.systemCurrency !== systemCurrency) setSystemCurrency(s.systemCurrency || "");
+        if (s.companyBillingSettings) setCompanyBillingSettings(s.companyBillingSettings);
+        if (s.invoicingIntegrations) setInvoicingIntegrations(s.invoicingIntegrations);
         setLeadStates((prev) => s.leadStates && JSON.stringify(s.leadStates) !== JSON.stringify(prev) ? s.leadStates : prev);
         setLeadSources((prev) => s.leadSources && JSON.stringify(s.leadSources) !== JSON.stringify(prev) ? s.leadSources : prev);
         setLeadCategories((prev) => s.leadCategories && JSON.stringify(s.leadCategories) !== JSON.stringify(prev) ? s.leadCategories : prev);
         setLeadStateColors((prev) => s.leadStateColors && JSON.stringify(s.leadStateColors) !== JSON.stringify(prev) ? s.leadStateColors : prev);
         setLeadSourceColors((prev) => s.leadSourceColors && JSON.stringify(s.leadSourceColors) !== JSON.stringify(prev) ? s.leadSourceColors : prev);
         setLeadCategoryColors((prev) => s.leadCategoryColors && JSON.stringify(s.leadCategoryColors) !== JSON.stringify(prev) ? s.leadCategoryColors : prev);
+        // Normalized against the list that arrived with them, so an install
+        // upgrading from positional ids adopts the same 1..N map the backend
+        // just froze instead of an empty one.
+        setLeadSourceIds((prev) => {
+          const next = normalizeListIds(s.leadSources ?? leadSources, s.leadSourceIds);
+          return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
+        });
+        setLeadCategoryIds((prev) => {
+          const next = normalizeListIds(s.leadCategories ?? leadCategories, s.leadCategoryIds);
+          return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
+        });
         setLeadStageGroups((prev) => s.leadStageGroups && JSON.stringify(s.leadStageGroups) !== JSON.stringify(prev) ? s.leadStageGroups : prev);
         setLeadStateParents((prev) => s.leadStateParents && JSON.stringify(s.leadStateParents) !== JSON.stringify(prev) ? s.leadStateParents : prev);
         setLeadStateFollowUp((prev) => s.leadStateFollowUp && JSON.stringify(s.leadStateFollowUp) !== JSON.stringify(prev) ? s.leadStateFollowUp : prev);
+        setLeadStateSla((prev) => {
+          const next = normalizeLeadStateSla(s.leadStateSla);
+          return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
+        });
+        setLeadAssignment((prev) => {
+          const next = normalizeLeadAssignment(s.leadAssignment);
+          return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
+        });
+        setProjectAutoCreate((prev) => {
+          const next = normalizeProjectAutoCreate(s.projectAutoCreate);
+          return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
+        });
         setTaskStates((prev) => s.taskStates && JSON.stringify(s.taskStates) !== JSON.stringify(prev) ? s.taskStates : prev);
         setTaskStateColors((prev) => s.taskStateColors && JSON.stringify(s.taskStateColors) !== JSON.stringify(prev) ? s.taskStateColors : prev);
         if (s.integrationsConfig) syncIntegrationsConfig(s.integrationsConfig);
@@ -1660,6 +2239,9 @@ ${log.payload || ''}
         warehouseMovements: baselineOf(data.warehouseMovements ?? warehouseMovementsRef.current),
         financialCategories: baselineOf(data.financialCategories ?? financialCategoriesRef.current),
         financialRecords: baselineOf(data.financialRecords ?? financialRecordsRef.current),
+        invoicesOffers: baselineOf(data.invoicesOffers ?? invoicesOffersRef.current),
+        aiCustomTemplates: baselineOf(data.aiCustomTemplates ?? aiCustomTemplatesRef.current),
+        clientCategories: baselineOf(data.clientCategories ?? clientCategoriesRef.current),
       };
       const ueData = data.unifiedEntriesData ?? unifiedEntriesDataRef.current ?? {};
       const nextUeBaselines: Record<string, RecordBaseline> = {};
@@ -1688,6 +2270,9 @@ ${log.payload || ''}
         warehouseMovements: data.warehouseMovements ?? warehouseMovementsRef.current,
         financialCategories: data.financialCategories ?? financialCategoriesRef.current,
         financialRecords: data.financialRecords ?? financialRecordsRef.current,
+        invoicesOffers: data.invoicesOffers ?? invoicesOffersRef.current,
+        aiCustomTemplates: data.aiCustomTemplates ?? aiCustomTemplatesRef.current,
+        clientCategories: data.clientCategories ?? clientCategoriesRef.current,
         settings: data.settings ?? {},
       });
     };
@@ -1838,8 +2423,37 @@ ${log.payload || ''}
       metadata_json: "{}"
     };
 
-    if (activeTab.startsWith("user-")) {
-      const username = decodeURIComponent(activeTab.replace("user-", ""));
+    const { route: activeRoute } = parseAppHash(activeTab);
+
+    // Route guard: the sidebar hides what the role may not open, but a typed
+    // hash, an old bookmark or a permission revoked mid-session still lands
+    // here. Unknown routes fall through to the tasks board below, and
+    // permissionKeyForRoute maps them to "tasks" so that case is covered too.
+    const routeKey = permissionKeyForRoute(activeRoute);
+    if (routeKey !== null && !access.canOpenRoute(activeRoute)) {
+      return (
+        <AccessDeniedView
+          systemLanguage={userLanguage}
+          fallbackRoute={firstAllowedRoute(access)}
+          onNavigate={(route) => {
+            setActiveTab(route);
+            window.location.hash = route;
+          }}
+          roleName={currentUser?.role}
+          hasKnownRole={access.hasKnownRole}
+          onLogout={() => {
+            fetch("/api/logout.php", { method: "POST" })
+              .finally(() => {
+                setCurrentUser(null);
+                window.location.href = "/";
+              });
+          }}
+        />
+      );
+    }
+
+    if (activeRoute.startsWith("user-")) {
+      const username = decodeURIComponent(activeRoute.replace("user-", ""));
       return (
         <SettingsView 
           systemName={systemName} 
@@ -1858,6 +2472,11 @@ ${log.payload || ''}
           setLeadStateColors={setLeadStateColors}
           leadCategories={leadCategories}
           setLeadCategories={setLeadCategories}
+          leadSourceIds={leadSourceIds}
+          setLeadSourceIds={setLeadSourceIds}
+          leadCategoryIds={leadCategoryIds}
+          setLeadCategoryIds={setLeadCategoryIds}
+          setProjectAutoCreate={setProjectAutoCreate}
           leadSourceColors={leadSourceColors}
           setLeadSourceColors={setLeadSourceColors}
           leadCategoryColors={leadCategoryColors}
@@ -1866,6 +2485,10 @@ ${log.payload || ''}
           setLeadStageGroups={setLeadStageGroups}
           leadStateFollowUp={leadStateFollowUp}
           setLeadStateFollowUp={setLeadStateFollowUp}
+          leadStateSla={leadStateSla}
+          setLeadStateSla={setLeadStateSla}
+          leadAssignment={leadAssignment}
+          setLeadAssignment={setLeadAssignment}
           systemLanguage={systemLanguage}
           setSystemLanguage={setSystemLanguage}
           systemCurrency={systemCurrency}
@@ -1882,17 +2505,26 @@ ${log.payload || ''}
           dbInfo={dbInfo || undefined}
           projectTypes={projectTypes}
           setProjectTypes={updateProjectTypesAndSync}
+          companyBillingSettings={companyBillingSettings}
+          setCompanyBillingSettings={updateCompanyBillingSettingsAndSync}
+          invoicingIntegrations={invoicingIntegrations}
+          setInvoicingIntegrations={updateInvoicingIntegrationsAndSync}
+          aiCustomTemplates={aiCustomTemplates}
+          setAiCustomTemplates={updateAiCustomTemplatesAndSync}
+          licenseState={licenseState}
+          onLicenseStateChange={setLicenseState}
         />
       );
     }
 
-    if (activeTab.startsWith("dash_")) {
-      const dashId = activeTab.replace("dash_", "");
+    if (activeRoute.startsWith("dash_")) {
+      const dashId = activeRoute.replace("dash_", "");
       const dashboard = customDashboards.find(d => d.id === dashId);
       if (dashboard) {
         return (
           <DynamicDashboardView
             dashboard={dashboard}
+            access={access.module("dashboard.custom")}
             onSaveDashboard={(updated: CustomDashboard) => {
               updateCustomDashboardsAndSync((prev) =>
                 prev.map((d) => (d.id === updated.id ? updated : d))
@@ -1900,13 +2532,20 @@ ${log.payload || ''}
             }}
             systemLanguage={userLanguage}
             currencyCode={currencyCode}
+            pipelineStages={orderedLeadStates}
+            leadStateColors={leadStateColors}
+            leadSourceColors={leadSourceColors}
+            taskStates={taskStates}
+            taskStateColors={taskStateColors}
+            currentUserName={currentUser?.name || ""}
+            onNavigate={(route) => { window.location.hash = route; }}
           />
         );
       }
     }
 
-    if (activeTab.startsWith("ue_")) {
-      const parts = activeTab.split("/");
+    if (activeRoute.startsWith("ue_")) {
+      const parts = activeRoute.split("/");
       const ueId = parts[0].replace("ue_", "");
       const subPath = parts[1] || null;
       const ueRegistry = unifiedEntries.find(ue => ue.id === ueId);
@@ -1914,18 +2553,20 @@ ${log.payload || ''}
         return (
           <UnifiedEntryView
             registry={ueRegistry}
+            access={access.module("unified_entries")}
             rows={unifiedEntriesData[ueId] || []}
             setRows={(updater: any) => updateUnifiedEntriesDataAndSync(ueId, updater)}
             systemLanguage={userLanguage}
             leads={leads}
             subPath={subPath}
+            systemCurrency={currencyCode}
           />
         );
       }
     }
 
-    if (activeTab.startsWith("client-")) {
-      const clientName = decodeURIComponent(activeTab.replace("client-", ""));
+    if (activeRoute.startsWith("client-")) {
+      const clientName = decodeURIComponent(activeRoute.replace("client-", ""));
       return (
         <ClientsView 
           leads={leads}
@@ -1933,6 +2574,9 @@ ${log.payload || ''}
           projectManagers={projectManagers}
           leadSources={leadSources}
           initialSelectedClient={clientName}
+          access={access.module("clients")}
+          clientCategories={clientCategories}
+          setClientCategories={updateClientCategoriesAndSync}
           systemLanguage={userLanguage}
           tasks={tasks}
           setTasks={updateTasksAndSync}
@@ -1945,8 +2589,8 @@ ${log.payload || ''}
       );
     }
 
-    if (activeTab.startsWith("lead-")) {
-      const leadId = activeTab.replace("lead-", "");
+    if (activeRoute.startsWith("lead-")) {
+      const leadId = activeRoute.replace("lead-", "");
       return (
         <LeadsDatagrid 
           systemName={systemName}
@@ -1958,6 +2602,7 @@ ${log.payload || ''}
           leadStateColors={leadStateColors}
           leadStateParents={leadStateParents}
           initialSelectedLeadId={leadId}
+          access={access.module("leads")}
           projectManagerColors={projectManagerColors}
           leadCategories={leadCategories}
           leadSourceColors={leadSourceColors}
@@ -1971,15 +2616,18 @@ ${log.payload || ''}
           integrationsConfig={integrationsConfig}
           leadStageGroups={leadStageGroups}
           projectTypes={projectTypes}
+          projects={projects}
           setProjects={updateProjectsAndSync}
           setActiveTab={setActiveTab}
           leadStateFollowUp={leadStateFollowUp}
+          leadStateSla={leadStateSla}
+          leadAssignment={leadAssignment}
           currencyCode={currencyCode}
         />
       );
     }
-    if (activeTab.startsWith("settings")) {
-      const parts = activeTab.split("/");
+    if (activeRoute.startsWith("settings")) {
+      const parts = activeRoute.split("/");
       const subTab = parts[1] || "branding";
       const settingsAction = parts[2] || null;
       const settingsActionId = parts[3] || null;
@@ -2001,6 +2649,11 @@ ${log.payload || ''}
           setLeadStateColors={setLeadStateColors}
           leadCategories={leadCategories}
           setLeadCategories={setLeadCategories}
+          leadSourceIds={leadSourceIds}
+          setLeadSourceIds={setLeadSourceIds}
+          leadCategoryIds={leadCategoryIds}
+          setLeadCategoryIds={setLeadCategoryIds}
+          setProjectAutoCreate={setProjectAutoCreate}
           leadSourceColors={leadSourceColors}
           setLeadSourceColors={setLeadSourceColors}
           leadCategoryColors={leadCategoryColors}
@@ -2009,6 +2662,10 @@ ${log.payload || ''}
           setLeadStageGroups={setLeadStageGroups}
           leadStateFollowUp={leadStateFollowUp}
           setLeadStateFollowUp={setLeadStateFollowUp}
+          leadStateSla={leadStateSla}
+          setLeadStateSla={setLeadStateSla}
+          leadAssignment={leadAssignment}
+          setLeadAssignment={setLeadAssignment}
           systemLanguage={systemLanguage}
           setSystemLanguage={setSystemLanguage}
           systemCurrency={systemCurrency}
@@ -2028,23 +2685,32 @@ ${log.payload || ''}
           setTasks={updateTasksAndSync}
           projectTypes={projectTypes}
           setProjectTypes={updateProjectTypesAndSync}
+          companyBillingSettings={companyBillingSettings}
+          setCompanyBillingSettings={updateCompanyBillingSettingsAndSync}
+          invoicingIntegrations={invoicingIntegrations}
+          setInvoicingIntegrations={updateInvoicingIntegrationsAndSync}
+          aiCustomTemplates={aiCustomTemplates}
+          setAiCustomTemplates={updateAiCustomTemplatesAndSync}
           unifiedEntries={unifiedEntries}
           setUnifiedEntries={updateUnifiedEntriesAndSync}
           unifiedEntriesData={unifiedEntriesData}
           initialSubTab={subTab}
           settingsAction={settingsAction}
           settingsActionId={settingsActionId}
+          licenseState={licenseState}
+          onLicenseStateChange={setLicenseState}
         />
       );
     }
 
-    const rawBaseTab = activeTab.split(/[/?]/)[0];
+    const rawBaseTab = activeRoute.split("/")[0];
     const baseTab = rawBaseTab === "social_media" && !SOCIAL_MEDIA_ENABLED ? "dashboard" : rawBaseTab;
     switch (baseTab) {
       case "leads":
         return (
           <LeadsDatagrid 
             systemName={systemName}
+            access={access.module("leads")}
             leads={leads}
             setLeads={updateLeadsAndSync}
             leadStates={orderedLeadStates}
@@ -2065,10 +2731,14 @@ ${log.payload || ''}
             integrationsConfig={integrationsConfig}
             leadStageGroups={leadStageGroups}
             projectTypes={projectTypes}
+            projects={projects}
             setProjects={updateProjectsAndSync}
             setActiveTab={setActiveTab}
             leadStateFollowUp={leadStateFollowUp}
+            leadStateSla={leadStateSla}
+            leadAssignment={leadAssignment}
             currencyCode={currencyCode}
+            taskAccess={taskAccess}
           />
         );
       case "projects":
@@ -2081,18 +2751,32 @@ ${log.payload || ''}
             leads={leads}
             users={users}
             userLanguage={userLanguage}
-            canEdit={getPermission("general_config") === "edit"}
+            access={access.module("projects")}
+            settingsAccess={access.module("general_config")}
+            financeAccess={access.module("financial")}
+            projectAutoCreate={projectAutoCreate}
+            setProjectAutoCreate={setProjectAutoCreate}
+            leadCategories={leadCategories}
             financialRecords={financialRecords}
             setFinancialRecords={updateFinancialRecordsAndSync}
             financialCategories={financialCategories}
             setFinancialCategories={updateFinancialCategoriesAndSync}
             currencyCode={currencyCode}
+            tasks={tasks}
+            setTasks={updateTasksAndSync}
+            taskStates={taskStates}
+            taskStateColors={taskStateColors}
+            taskAccess={taskAccess}
+            currentUser={activeUser}
           />
         );
       case "clients":
         return (
-          <ClientsView 
+          <ClientsView
             leads={leads}
+            access={access.module("clients")}
+            financeAccess={access.module("financial")}
+            taskAccess={taskAccess}
             setLeads={updateLeadsAndSync}
             projectManagers={projectManagers}
             projectManagerColors={projectManagerColors}
@@ -2109,15 +2793,20 @@ ${log.payload || ''}
             setFinancialRecords={updateFinancialRecordsAndSync}
             financialCategories={financialCategories}
             setFinancialCategories={updateFinancialCategoriesAndSync}
+            clientCategories={clientCategories}
+            setClientCategories={updateClientCategoriesAndSync}
           />
         );
       case "financial":
         return (
           <FinancialManagementView
+            access={access.module("financial")}
             financialRecords={financialRecords}
             setFinancialRecords={updateFinancialRecordsAndSync}
             financialCategories={financialCategories}
             setFinancialCategories={updateFinancialCategoriesAndSync}
+            financialTrend={financialTrend}
+            setFinancialTrend={updateFinancialTrendAndSync}
             projects={projects}
             leads={leads}
             users={users}
@@ -2136,9 +2825,39 @@ ${log.payload || ''}
             }}
           />
         );
+      case "invoices":
+        return (
+          <InvoicingView
+            access={access.module("invoices")}
+            invoicesOffers={invoicesOffers}
+            setInvoicesOffers={updateInvoicesOffersAndSync}
+            leads={leads}
+            setLeads={updateLeadsAndSync}
+            warehouseItems={warehouseItems}
+            companyBillingSettings={companyBillingSettings}
+            aiCustomTemplates={aiCustomTemplates}
+            invoicingIntegrations={invoicingIntegrations}
+            currentUser={activeUser}
+            systemLanguage={userLanguage}
+            systemCurrency={currencyCode}
+            onOpenSettings={() => {
+              window.location.hash = "settings/invoicing";
+              setActiveTab("settings/invoicing");
+            }}
+          />
+        );
       case "files":
         return (
-          <FilesView leads={leads} setLeads={updateLeadsAndSync} systemLanguage={userLanguage} currencyCode={currencyCode} />
+          <FilesView
+            leads={leads}
+            setLeads={updateLeadsAndSync}
+            projects={projects}
+            setProjects={updateProjectsAndSync}
+            projectTypes={projectTypes}
+            systemLanguage={userLanguage}
+            currencyCode={currencyCode}
+            access={access.module("files")}
+          />
         );
       case "personal-settings":
         return (
@@ -2150,7 +2869,10 @@ ${log.payload || ''}
             userLanguage={userLanguage}
             setUserLanguage={changeUserLanguage}
             userTheme={userTheme}
-            setUserTheme={setUserTheme}
+            setUserTheme={changeThemePalette}
+            themeMode={themeMode}
+            setThemeMode={changeThemeMode}
+            appearance={appearance}
             onSync={() => {}}
             errorSidebarEnabled={errorSidebarEnabled}
             setErrorSidebarEnabled={(enabled: boolean) => setUserPref("errorSidebarEnabled", enabled)}
@@ -2159,6 +2881,7 @@ ${log.payload || ''}
       case "email":
         return (
           <EmailView
+            access={access.module("email")}
             currentUser={activeUser}
             leads={leads}
             setLeads={updateLeadsAndSync}
@@ -2172,6 +2895,30 @@ ${log.payload || ''}
           />
         );
 
+      case "dashboard":
+        return (
+          <DynamicDashboardView
+            dashboard={homeDashboard}
+            variant="home"
+            access={access.module("dashboard")}
+            onSaveDashboard={(updated: CustomDashboard) => {
+              updateCustomDashboardsAndSync((prev) =>
+                prev.some(d => d.id === HOME_DASHBOARD_ID)
+                  ? prev.map(d => (d.id === HOME_DASHBOARD_ID ? updated : d))
+                  : [...prev, updated]
+              );
+            }}
+            systemLanguage={userLanguage}
+            currencyCode={currencyCode}
+            pipelineStages={orderedLeadStates}
+            leadStateColors={leadStateColors}
+            leadSourceColors={leadSourceColors}
+            taskStates={taskStates}
+            taskStateColors={taskStateColors}
+            currentUserName={currentUser?.name || ""}
+            onNavigate={(route) => { window.location.hash = route; }}
+          />
+        );
       case "overview":
         return (
           <Dashboard 
@@ -2199,6 +2946,7 @@ ${log.payload || ''}
       case "meetings":
         return (
           <MeetingRoomView 
+            access={access.module("meetings")}
             leads={leads}
             users={users}
             currentUser={activeUser}
@@ -2216,18 +2964,20 @@ ${log.payload || ''}
       case "automation":
         return (
           <AutomationView
+            access={access.module("automation")}
             systemLanguage={userLanguage}
             users={users}
             leads={leads}
             taskStates={taskStates}
             leadStates={orderedLeadStates}
             leadSources={leadSources}
+            projectTypes={projectTypes}
             setAppTab={setActiveTab}
           />
         );
       case "social_media":
         return (
-          <SocialMediaView systemLanguage={userLanguage} integrationsConfig={integrationsConfig} isDemoMode={isDemoMode} />
+          <SocialMediaView systemLanguage={userLanguage} integrationsConfig={integrationsConfig} isDemoMode={isDemoMode} access={access.module("social_media")} />
         );
       case "updates":
         return (
@@ -2236,6 +2986,7 @@ ${log.payload || ''}
       case "warehouse":
         return (
           <WarehouseView
+            access={access.module("warehouse")}
             systemLanguage={userLanguage}
             systemCurrency={currencyCode}
             currentUser={activeUser}
@@ -2273,6 +3024,7 @@ ${log.payload || ''}
             tasks={tasks}
             setTasks={updateTasksAndSync}
             leads={leads}
+            projects={projects}
             users={users}
             systemLanguage={userLanguage}
             currentUser={activeUser}
@@ -2336,7 +3088,7 @@ ${log.payload || ''}
 
         {/* Animated 3D Shader Background */}
         <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
-          <ShaderGradientCanvas
+          <BackgroundGradientCanvas
             style={{
               position: 'absolute',
               top: 0,
@@ -2386,7 +3138,7 @@ ${log.payload || ''}
               uStrength={0.4}
               wireframe={false}
             />
-          </ShaderGradientCanvas>
+          </BackgroundGradientCanvas>
         </div>
 
         <div className="relative z-10 flex flex-col items-center max-w-sm text-center">
@@ -2442,16 +3194,24 @@ ${log.payload || ''}
             pendingPushRef.current = false;
             setTimeout(() => {
               pushStateToServer(
+                // 22 positional "next…" slots precede the options object. Keep this
+                // padding in step with the pushStateToServer signature: when the
+                // invoices/AI-template slots were added the options object silently
+                // slid into `nextInvoicesOffers`, corrupting the replayed payload.
                 undefined, undefined, undefined, undefined, undefined, undefined,
                 undefined, undefined, undefined, undefined, undefined,
                 undefined, undefined, undefined, undefined, undefined, undefined,
-                undefined, undefined,
+                undefined, undefined, undefined, undefined, undefined,
                 { showIndicator: false }
               );
             }, 0);
           }
-          // Route the user to their chosen default landing page right after login
-          const dp = getDefaultPageForUser(user) || "dashboard";
+          // Route the user to their chosen default landing page right after
+          // login - unless the role may not open it, in which case the first
+          // permitted module wins (the route guard would only show a wall).
+          const userAccess = buildAccess(user, roles);
+          const preferred = getDefaultPageForUser(user) || "dashboard";
+          const dp = userAccess.canOpenRoute(preferred) ? preferred : (firstAllowedRoute(userAccess) ?? preferred);
           setActiveTab(dp);
           window.location.hash = dp;
         }}
@@ -2464,6 +3224,14 @@ ${log.payload || ''}
 
   return (
     <UserPrefsContext.Provider value={userPrefsApi}>
+    {/* One "new lead / client" form for every picker in the app — see QuickAddClient. */}
+    <QuickAddClientProvider
+      setLeads={updateLeadsAndSync}
+      currentUser={currentUser}
+      leadStates={orderedLeadStates}
+      leadSources={leadSources}
+      canCreate={access.canEdit("leads") || access.canEdit("clients")}
+    >
     <div className="flex h-screen overflow-hidden relative font-sans antialiased text-slate-800 bg-slate-50/50">
 
       {/* Blurred application background layout if not logged in */}
@@ -2472,11 +3240,12 @@ ${log.payload || ''}
         <Sidebar 
           activeTab={activeTab} 
           setActiveTab={(tab) => { 
-            if (tab === "settings" && !hasSettingsAccess) return;
+            if (!access.canOpenRoute(tab)) return;
             window.location.hash = tab; 
           }} 
           systemName={systemName}
-          showSettings={hasSettingsAccess}
+          showSettings={access.hasSettingsAccess}
+          canOpenRoute={access.canOpenRoute}
           onLogout={() => {
             fetch("/api/logout.php", { method: "POST" })
               .finally(() => {
@@ -2487,10 +3256,10 @@ ${log.payload || ''}
           systemLanguage={userLanguage}
           showMailIcon={showMailIcon}
           integrationsConfig={integrationsConfig}
-          showRagAi={getPermission("rag_view") !== "nothing"}
+          showRagAi={access.can("rag_ai")}
           currentUser={currentUser}
           roles={roles}
-          canEditNav={getPermission("nav_edit") === "edit" || currentUser?.role?.toLowerCase() === "project manager"}
+          canEditNav={access.can("nav_edit")}
           onSaveUserLayout={handleSaveUserLayout}
           unifiedEntries={unifiedEntries}
           customDashboards={customDashboards}
@@ -2525,31 +3294,68 @@ ${log.payload || ''}
               window.location.hash = "meetings";
             }}
             onAddTask={() => {
-              setActiveTab("tasks");
-              window.location.hash = "tasks";
+              const route = parseAppHash(activeTab).route;
+              // Already on the task panel: navigating to it again would remount
+              // the calendar (ErrorBoundary resetKey) and race the create drawer
+              // against that remount.
+              if (route !== "tasks") {
+                setActiveTab("tasks");
+                window.location.hash = "tasks";
+              }
               setAutoOpenAddTask(true);
             }}
             onNavigateUpdates={() => {
               setActiveTab("updates");
               window.location.hash = "updates";
             }}
+            canOpenRoute={access.canOpenRoute}
+            canCreateTask={access.canEdit("tasks")}
+            canCreateMeeting={access.canEdit("meetings")}
+            canRunWorkflows={access.canEdit("automation")}
           />
           
-          <main className="flex-1 p-4 md:p-6 overflow-y-auto max-w-[1600px] mx-auto w-full relative flex flex-col justify-between">
+          <main className="flex-1 p-4 md:p-6 overflow-y-auto [scrollbar-gutter:stable] max-w-[1600px] mx-auto w-full relative flex flex-col justify-between">
             <div className="shrink-0 w-full">
+              {/* Advance warning that the licence is lapsing. Above the workspace
+                  rather than over it: nothing here justifies interrupting work,
+                  and it stays out of the per-view ErrorBoundary so a crash in one
+                  module cannot take the notice down with it. */}
+              <LicenseBanner
+                state={licenseState}
+                language={userLanguage}
+                isAdmin={access.isAdmin}
+                onOpenLicenseSettings={() => {
+                  window.location.hash = "settings/license";
+                }}
+              />
+              {/* Whole views (RAG assistant, automations, meeting summaries, the
+                  email assistant) are inert without an OpenAI key, and used to give
+                  no hint of it until a button failed. One banner above the view
+                  covers all of them; sections inside a mixed view (e.g. the client
+                  financial report tab) mount their own. */}
+              {AI_DEPENDENT_TABS.includes(parseAppHash(activeTab).route.split("/")[0]) && (
+                <AiKeyBanner
+                  integrationsConfig={integrationsConfig}
+                  language={userLanguage}
+                  // Sticky, because these views size themselves to the viewport
+                  // and scroll their own content into view on mount (the RAG
+                  // chat jumps to the newest message), which scrolled a plain
+                  // banner straight off the top of the workspace.
+                  className="mb-4 sticky top-0 z-30 backdrop-blur-sm"
+                />
+              )}
               {/* Per-view boundary: a render error in one module (a single CRM tab)
                   used to escape to the root boundary and take the whole app down,
                   leaving a reload as the only way back. Contained here, the sidebar,
                   header and every other tab keep working, and switching tabs clears
                   the error via resetKey. */}
-              <ErrorBoundary contained resetKey={activeTab}>
+              <ErrorBoundary contained resetKey={workspaceResetKey(activeTab)}>
                 <Suspense fallback={<div className="w-full flex items-center justify-center py-24"><RefreshCw className="w-6 h-6 text-indigo-400 animate-spin" /></div>}>
                   {renderWorkspaceView()}
                 </Suspense>
               </ErrorBoundary>
             </div>
-            <footer className="mt-12 pt-4 border-t border-slate-200/50 flex justify-between items-center text-[10px] text-slate-400 select-none font-semibold uppercase tracking-wider">
-              <span>{systemName} CRM &bull; Active Node</span>
+            <footer className="mt-12 pt-4 border-t border-slate-200/50 flex justify-end items-center text-[10px] text-slate-400 select-none font-semibold uppercase tracking-wider">
               <span>v{VERSION}</span>
             </footer>
           </main>
@@ -2562,7 +3368,7 @@ ${log.payload || ''}
           column so they can never land on top of each other — they used to be two
           independently positioned "fixed" banners 4px apart, which read as a single
           garbled banner whenever both were up. */}
-      <div className="fixed bottom-6 right-6 z-[9999] flex flex-col items-end gap-2 pointer-events-none">
+      <div className="fixed bottom-20 right-6 z-[20001] flex flex-col items-end gap-2 pointer-events-none lg:bottom-6">
         {/* Global save indicator — reassures the user their change is being saved
             and, together with the beforeunload guard, that they should not leave or
             reload the page until it disappears. */}
@@ -2610,7 +3416,7 @@ ${log.payload || ''}
           />
           <div className="w-full max-w-5xl h-[85vh] bg-white rounded-t-[32px] rounded-b-[32px] border border-slate-200/80 shadow-2xl p-6 flex flex-col justify-between text-left relative z-10 animate-in zoom-in-95 duration-300">
             {/* Header */}
-            <div className="flex items-center justify-between border-b border-slate-150 pb-3 shrink-0">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
               <div className="min-w-0 pr-4">
                 <span className="text-[10px] font-black uppercase text-amber-700 tracking-wider">{t("File Preview", "Náhľad súboru", "Fájl előnézet")}</span>
                 <h3 className="text-sm font-heading font-black uppercase tracking-tight truncate">{previewFile.name}</h3>
@@ -2659,9 +3465,9 @@ ${log.payload || ''}
       {/* Right Error Sidebar */}
       {errorSidebarEnabled && (
         <div className="w-[300px] bg-white border-l border-slate-200 flex flex-col h-full shrink-0 animate-in slide-in-from-right duration-300 text-left">
-          <div className="p-4.5 border-b border-slate-150 flex items-center justify-between bg-slate-50">
-            <div className="flex items-center gap-1.5 text-red-650">
-              <AlertOctagon className="h-4.5 w-4.5 text-red-550 animate-pulse" />
+          <div className="p-4.5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+            <div className="flex items-center gap-1.5 text-red-600">
+              <AlertOctagon className="h-4.5 w-4.5 text-red-500 animate-pulse" />
               <span className="font-heading font-extrabold text-slate-900 uppercase tracking-wider text-[10.5px]">
                 {t("Background Errors", "Chyby na pozadí", "Háttérhibák")}
               </span>
@@ -2670,7 +3476,7 @@ ${log.payload || ''}
               <button
                 type="button"
                 onClick={fetchErrorLogs}
-                className="p-1.5 hover:bg-slate-200 text-slate-500 hover:text-slate-850 rounded-xl transition-all cursor-pointer"
+                className="p-1.5 hover:bg-slate-200 text-slate-500 hover:text-slate-800 rounded-xl transition-all cursor-pointer"
                 title={t("Refresh", "Obnoviť", "Frissítés")}
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${isLoadingLogs ? 'animate-spin' : ''}`} />
@@ -2678,7 +3484,7 @@ ${log.payload || ''}
               <button
                 type="button"
                 onClick={clearErrorLogs}
-                className="p-1.5 hover:bg-red-50 text-red-650 hover:text-red-800 rounded-xl transition-all cursor-pointer"
+                className="p-1.5 hover:bg-red-50 text-red-600 hover:text-red-800 rounded-xl transition-all cursor-pointer"
                 title={t("Clear All", "Vymazať všetko", "Összes törlése")}
               >
                 <Trash2 className="h-3.5 w-3.5" />
@@ -2713,7 +3519,7 @@ ${log.payload || ''}
                   <div className="font-mono text-[8.5px] text-slate-500 truncate">
                     {log.request_uri}
                   </div>
-                  <div className="font-bold text-red-650 line-clamp-2 leading-relaxed">
+                  <div className="font-bold text-red-600 line-clamp-2 leading-relaxed">
                     {log.message}
                   </div>
                 </div>
@@ -2726,9 +3532,9 @@ ${log.payload || ''}
       {/* Exception Detail Popup Modal */}
       {selectedLog && (
         <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="glass-panel w-full max-w-3xl bg-white rounded-3xl shadow-2xl border border-slate-250 overflow-hidden flex flex-col max-h-[85vh] text-left">
-            <div className="p-6 border-b border-slate-150 flex items-center justify-between bg-slate-50">
-              <div className="flex items-center gap-2 text-red-650">
+          <div className="glass-panel w-full max-w-3xl bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[85vh] text-left">
+            <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
+              <div className="flex items-center gap-2 text-red-600">
                 <AlertOctagon className="h-5 w-5 shrink-0" />
                 <h3 className="font-heading font-extrabold text-slate-900 uppercase tracking-wider text-xs">
                   {t("Exception / Error Details", "Detail výnimky / chyby", "Kivétel / hiba részletei")}
@@ -2746,13 +3552,13 @@ ${log.payload || ''}
                 <button
                   type="button"
                   onClick={() => setSelectedLog(null)}
-                  className="text-slate-450 hover:text-slate-800 p-1.5 hover:bg-slate-100 rounded-xl transition-all cursor-pointer font-bold text-sm"
+                  className="text-slate-400 hover:text-slate-800 p-1.5 hover:bg-slate-100 rounded-xl transition-all cursor-pointer font-bold text-sm"
                 >
                   ✕
                 </button>
               </div>
             </div>
-            <div className="p-6 overflow-y-auto space-y-4 font-medium text-slate-750 text-xs">
+            <div className="p-6 overflow-y-auto space-y-4 font-medium text-slate-700 text-xs">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b border-slate-100 pb-4">
                 <div>
                   <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Date & Time", "Dátum a čas", "Dátum és idő")}</span>
@@ -2760,7 +3566,7 @@ ${log.payload || ''}
                 </div>
                 <div>
                   <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Method & URI", "Metóda a URI", "Metódus és URI")}</span>
-                  <span className="font-mono text-[10.5px] text-slate-750 font-bold">{selectedLog.request_method} {selectedLog.request_uri}</span>
+                  <span className="font-mono text-[10.5px] text-slate-700 font-bold">{selectedLog.request_method} {selectedLog.request_uri}</span>
                 </div>
                 <div>
                   <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("File & Line", "Súbor a riadok", "Fájl és sor")}</span>
@@ -2778,7 +3584,7 @@ ${log.payload || ''}
               {selectedLog.file && (
                 <div className="space-y-1">
                   <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Full File Path", "Úplná cesta k súboru", "Teljes fájlútvonal")}</span>
-                  <div className="p-2.5 bg-slate-50 text-slate-600 rounded-xl font-mono text-[10.5px] border border-slate-150">
+                  <div className="p-2.5 bg-slate-50 text-slate-600 rounded-xl font-mono text-[10.5px] border border-slate-100">
                     {selectedLog.file} (Line {selectedLog.line})
                   </div>
                 </div>
@@ -2806,6 +3612,7 @@ ${log.payload || ''}
         </div>
       )}
     </div>
+    </QuickAddClientProvider>
     </UserPrefsContext.Provider>
   );
 }

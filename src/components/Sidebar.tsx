@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import * as Icons from "lucide-react";
-import { LayoutDashboard, ChevronLeft, ChevronRight, Settings, LogOut, TableProperties, Users, FolderOpen, BarChart3, Mail, Brain, PencilLine, Pencil, X, GripVertical, Download, Upload, Save, Trash2, Sparkles, Coins } from "lucide-react";
+import { LayoutDashboard, ChevronLeft, ChevronRight, Settings, LogOut, TableProperties, Users, FolderOpen, BarChart3, Mail, Brain, PencilLine, Pencil, X, GripVertical, Download, Upload, Save, Trash2, Sparkles, Coins, ListTodo } from "lucide-react";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { cn } from "../utils/cn";
@@ -8,6 +8,22 @@ import { SOCIAL_MEDIA_ENABLED } from "../utils/featureFlags";
 import type { UserProfile, RolePermission, UnifiedEntryRegistry, CustomDashboard } from "../types";
 import { StartMenu } from "./StartMenu";
 import { FlockIcon } from "./icons/FlockIcon";
+import { isHomeDashboard } from "../utils/dashboardWidgets";
+
+/**
+ * `dashboard` used to BE the task panel — the tasks section was split out of it
+ * and the id now belongs to the widget dashboard. A navigation layout saved
+ * before the split lists only "dashboard", which would leave its owner with no
+ * way back to their tasks, so the new item is slotted in right behind it.
+ */
+const withTasksSection = (layout: string[]): string[] => {
+  if (layout.includes("tasks")) return layout;
+  const at = layout.indexOf("dashboard");
+  if (at === -1) return layout;
+  const next = [...layout];
+  next.splice(at + 1, 0, "tasks");
+  return next;
+};
 
 const ALL_LUCIDE_ICONS = Object.keys(Icons).filter(key => {
   return /^[A-Z][a-zA-Z0-9]*$/.test(key) && 
@@ -28,6 +44,8 @@ interface SidebarProps {
   currentUser: UserProfile | null;
   roles: RolePermission[];
   canEditNav: boolean;
+  /** Route gate from the permission resolver — the sidebar never reads roles itself. */
+  canOpenRoute: (routeId: string) => boolean;
   onSaveUserLayout: (layout: string[], hidden?: string[]) => void;
   unifiedEntries?: UnifiedEntryRegistry[];
   customDashboards?: CustomDashboard[];
@@ -49,6 +67,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentUser,
   roles,
   canEditNav,
+  canOpenRoute,
   onSaveUserLayout,
   unifiedEntries = [],
   customDashboards = [],
@@ -131,7 +150,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // Dynamic Custom Dashboards mapping
   const dynamicDashItems = React.useMemo(() => {
     return (customDashboards || [])
-      .filter(dash => !dash.archived)
+      // The built-in Dashboard is stored alongside the AI panels but has its own
+      // nav item, so it must not also be listed as a custom one.
+      .filter(dash => !dash.archived && !isHomeDashboard(dash.id))
       .map(dash => {
         const IconComponent = (Icons as any)[dash.icon] || LayoutDashboard;
         return {
@@ -162,7 +183,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       color: dashColor,
       prompts: [],
       layout: { widgets: [] },
-      activeModel: "gpt-4o",
+      activeModel: "gpt-5.6-terra",
       archived: false
     };
 
@@ -225,13 +246,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // Layout resolution logic
   const defaultSystemLayout = React.useMemo(() => {
     return [
-      "dashboard", 
+      "dashboard",
+      "tasks",
       "overview", 
       "projects",
       "rag_ai", 
       "sai",
       "leads", 
       "clients", 
+      "invoices",
       "warehouse",
       "financial",
       "meetings", 
@@ -263,10 +286,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const resolvedLayout = React.useMemo(() => {
     if (canEditNav && Array.isArray(userMetadata?.navLayout) && userMetadata.navLayout.length > 0) {
       const stored: string[] = userMetadata.navLayout;
-      return stored;
+      return withTasksSection(stored);
     }
     if (userRole?.defaultNavLayout && Array.isArray(userRole.defaultNavLayout) && userRole.defaultNavLayout.length > 0) {
-      return userRole.defaultNavLayout;
+      return withTasksSection(userRole.defaultNavLayout);
     }
     // Default behavior: show all default items on the sidebar
     return defaultSystemLayout;
@@ -423,27 +446,32 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const allPossibleItems = React.useMemo(() => {
     return [
-      { id: "dashboard", label: systemLanguage === "sk" ? "Panel úloh" : systemLanguage === "hu" ? "Feladat Irányítópult" : "Task Dashboard", icon: LayoutDashboard, color: "#ff5d00" },
-      { id: "overview", label: getTranslation(systemLanguage, "sidebar.dashboard"), icon: BarChart3, color: "#0891b2" },
-      { id: "projects", label: systemLanguage === "sk" ? "Projekty" : systemLanguage === "hu" ? "Projektek" : "Projects", icon: Icons.Briefcase || LayoutDashboard, color: "#a855f7", isLavender: true },
-      { id: "rag_ai", label: systemLanguage === "sk" ? "RAG AI Asistent" : systemLanguage === "hu" ? "RAG AI Asszisztens" : "RAG AI Assistant", icon: Brain, color: "#8b5cf6", isPurple: true },
+      { id: "dashboard", label: getTranslation(systemLanguage, "sidebar.dashboard"), icon: LayoutDashboard, color: "var(--color-indigo-600)" },
+      { id: "tasks", label: getTranslation(systemLanguage, "sidebar.tasks"), icon: ListTodo, color: "#ff5d00" },
+      { id: "overview", label: getTranslation(systemLanguage, "sidebar.analytics"), icon: BarChart3, color: "var(--color-cyan-600)" },
+      { id: "projects", label: systemLanguage === "sk" ? "Projekty" : systemLanguage === "hu" ? "Projektek" : "Projects", icon: Icons.Briefcase || LayoutDashboard, color: "var(--color-purple-500)", isLavender: true },
+      { id: "rag_ai", label: systemLanguage === "sk" ? "RAG AI Asistent" : systemLanguage === "hu" ? "RAG AI Asszisztens" : "RAG AI Assistant", icon: Brain, color: "var(--color-violet-500)", isPurple: true },
       { id: "sai", label: "SAI", icon: FlockIcon, color: "#8b5cf6", isPurpleToGreen: true },
-      { id: "leads", label: getTranslation(systemLanguage, "sidebar.leads"), icon: TableProperties, color: "#2563eb" },
-      { id: "clients", label: getTranslation(systemLanguage, "sidebar.clients"), icon: Users, color: "#059669" },
-      { id: "warehouse", label: getTranslation(systemLanguage, "sidebar.warehouse"), icon: Icons.Package || Icons.Boxes || FolderOpen, color: "#1e3a8a", isNavy: true },
-      { id: "financial", label: getTranslation(systemLanguage, "sidebar.financial"), icon: Coins, color: "#10b981", isEmerald: true },
-      { id: "meetings", label: getTranslation(systemLanguage, "sidebar.meetings"), icon: PencilLine, color: "#4f46e5", isNightBlue: true },
+      { id: "leads", label: getTranslation(systemLanguage, "sidebar.leads"), icon: TableProperties, color: "var(--color-blue-600)" },
+      { id: "clients", label: getTranslation(systemLanguage, "sidebar.clients"), icon: Users, color: "var(--color-emerald-600)" },
+      { id: "invoices", label: systemLanguage === "sk" ? "Cenové ponuky & Faktúry" : systemLanguage === "hu" ? "Ajánlatok és számlák" : "Invoices & Offers", icon: Icons.FileText || Coins, color: "var(--color-indigo-500)", isIndigo: true },
+      { id: "warehouse", label: getTranslation(systemLanguage, "sidebar.warehouse"), icon: Icons.Package || Icons.Boxes || FolderOpen, color: "var(--color-blue-900)", isNavy: true },
+      { id: "financial", label: getTranslation(systemLanguage, "sidebar.financial"), icon: Coins, color: "var(--color-emerald-500)", isEmerald: true },
+      { id: "meetings", label: getTranslation(systemLanguage, "sidebar.meetings"), icon: PencilLine, color: "var(--color-indigo-600)", isNightBlue: true },
       ...dynamicUeItems,
       ...dynamicDashItems,
-      { id: "files", label: getTranslation(systemLanguage, "sidebar.files"), icon: FolderOpen, color: "#b45309" },
-      { id: "email", label: systemLanguage === "sk" ? "Pošta" : systemLanguage === "hu" ? "Levelezés" : "Mail Client", icon: Mail, color: "#db2777" },
-      { id: "automation", label: systemLanguage === "sk" ? "Automatizácia" : systemLanguage === "hu" ? "Automatizálás" : "Automation", icon: Icons.Workflow || Icons.Network || Icons.GitFork || FolderOpen, color: "#6b21a8", isPurple: true },
-      { id: "social_media", label: systemLanguage === "sk" ? "Sociálne siete" : systemLanguage === "hu" ? "Közösségi média" : "Social Media", icon: Icons.Share2 || Icons.Globe, color: "#f43f5e", isRose: true },
-      { id: "updates", label: systemLanguage === "sk" ? "Novinky" : systemLanguage === "hu" ? "Újdonságok" : "Updates", icon: Sparkles, color: "#d97706" }
+      { id: "files", label: getTranslation(systemLanguage, "sidebar.files"), icon: FolderOpen, color: "var(--color-amber-700)" },
+      { id: "email", label: systemLanguage === "sk" ? "Pošta" : systemLanguage === "hu" ? "Levelezés" : "Mail Client", icon: Mail, color: "var(--color-pink-600)" },
+      { id: "automation", label: systemLanguage === "sk" ? "Automatizácia" : systemLanguage === "hu" ? "Automatizálás" : "Automation", icon: Icons.Workflow || Icons.Network || Icons.GitFork || FolderOpen, color: "var(--color-purple-800)", isPurple: true },
+      { id: "social_media", label: systemLanguage === "sk" ? "Sociálne siete" : systemLanguage === "hu" ? "Közösségi média" : "Social Media", icon: Icons.Share2 || Icons.Globe, color: "var(--color-rose-500)", isRose: true },
+      { id: "updates", label: systemLanguage === "sk" ? "Novinky" : systemLanguage === "hu" ? "Újdonságok" : "Updates", icon: Sparkles, color: "var(--color-amber-600)" }
     ];
   }, [systemLanguage, dynamicUeItems, dynamicDashItems]);
 
   const isItemVisibleInSystem = (id: string) => {
+    // Role first: a module the role may not open is gone from the sidebar, the
+    // launcher and the layout editor alike, whatever the saved layout says.
+    if (!canOpenRoute(id)) return false;
     if (id === "rag_ai") {
       return showRagAi && integrationsConfig?.vectorDbValidated === true && integrationsConfig?.vectorDb && integrationsConfig?.vectorDb !== "none";
     }
@@ -461,6 +489,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     .filter(isItemVisibleInSystem)
     .map((id: string) => allPossibleItems.find(item => item.id === id))
     .filter(Boolean) as any[];
+  // The layout editor's "hidden" column offers only what the role could show.
+  const visibleHiddenItems = hiddenItems.filter(isItemVisibleInSystem);
 
   return (
     <>
@@ -468,12 +498,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div className="h-screen w-20 shrink-0 select-none hidden lg:block" />
       
       {/* DESKTOP COLLAPSIBLE OVERLAY SIDEBAR */}
-      <aside 
+      <aside
         ref={sidebarRef}
+        onMouseEnter={() => { if (!isEditingNav) setIsCollapsed(false); }}
+        onMouseLeave={() => { if (!isEditingNav) setIsCollapsed(true); }}
         className={cn(
           "h-screen fixed left-0 top-0 bg-white border-r border-slate-200/80 flex flex-col transition-all duration-300 z-[1000] select-none shrink-0 hidden lg:flex",
-          isCollapsed 
-            ? "w-20 shadow-none border-r-slate-200/80" 
+          isCollapsed
+            ? "w-20 shadow-none border-r-slate-200/80"
             : "w-64 shadow-[10px_0_30px_rgba(0,0,0,0.06)] border-r-transparent"
         )}
       >
@@ -508,7 +540,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
             {!isCollapsed && (
               <div className="flex flex-col animate-in fade-in duration-300 min-w-0 flex-1">
-                <span className="font-heading font-bold text-sm leading-snug bg-gradient-to-r from-slate-800 to-slate-950 bg-clip-text text-transparent truncate group-hover:text-indigo-600 transition-colors">
+                <span className="font-heading font-bold text-sm leading-snug text-slate-800 truncate group-hover:text-indigo-600 transition-colors">
                   {systemName}
                 </span>
                 <span className="text-[10px] text-slate-400 tracking-wider font-semibold uppercase mt-0.5 truncate">
@@ -556,7 +588,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     : (item.isCustomUE || item.isCustomDash)
                       ? (isActive
                           ? "text-white font-bold"
-                          : "text-slate-450 hover:text-slate-700 hover:bg-slate-100/50")
+                          : "text-slate-400 hover:text-slate-700 hover:bg-slate-100/50")
                       : item.isPurpleToGreen
                         ? (isActive
                             ? "bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 text-white font-bold shadow-lg shadow-purple-600/30 border border-purple-500/20"
@@ -568,11 +600,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       : item.isLavender
                         ? (isActive
                             ? "bg-purple-500 text-white font-bold shadow-lg shadow-purple-500/30 border border-purple-400/20"
-                            : "text-purple-500 hover:text-purple-650 hover:bg-purple-50/50")
+                            : "text-purple-500 hover:text-purple-600 hover:bg-purple-50/50")
                         : item.isNavy
                           ? (isActive
                               ? "bg-blue-950 text-white font-bold shadow-lg shadow-blue-950/30 border border-blue-900/20"
                               : "text-blue-950 hover:text-blue-900 hover:bg-blue-50/50")
+                        : item.isIndigo
+                          ? (isActive
+                              ? "bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-600/30 border border-indigo-500/20"
+                              : "text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50/50")
                         : item.isEmerald
                           ? (isActive
                               ? "bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-600/30 border border-emerald-500/20"
@@ -580,7 +616,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         : item.isNightBlue
                           ? (isActive
                               ? "bg-slate-900 text-white font-bold shadow-lg shadow-slate-900/30 border border-slate-800/20"
-                              : "text-slate-605 hover:text-slate-900 hover:bg-slate-100/50")
+                              : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/50")
                           : isActive 
                             ? (item.id === "leads"
                                 ? "bg-blue-600 text-white font-bold shadow-lg shadow-blue-600/30 border border-blue-500/20"
@@ -609,7 +645,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   className={cn(
                     "h-5 w-5 shrink-0 transition-transform duration-200",
                     isEditingNav
-                      ? "text-slate-550"
+                      ? "text-slate-500"
                       : isActive 
                         ? "text-white" 
                         : "group-hover:scale-110"
@@ -619,7 +655,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 
                 {!isCollapsed && (
                   <span className={cn(
-                    "text-sm font-heading font-medium tracking-wide",
+                    "text-sm font-heading font-medium tracking-wide truncate min-w-0 flex-1",
                     isEditingNav
                       ? "text-slate-700 font-semibold"
                       : (item.isCustomUE || item.isCustomDash)
@@ -677,7 +713,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <ChevronLeft className="h-5 w-5 shrink-0 text-slate-400" />
               )}
               {!isCollapsed && (
-                <span className="text-sm font-heading font-medium tracking-wide">
+                <span className="text-sm font-heading font-medium tracking-wide truncate min-w-0 flex-1">
                   {getTranslation(systemLanguage, "sidebar.collapse")}
                 </span>
               )}
@@ -722,7 +758,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <Pencil className="h-5 w-5 shrink-0 transition-transform group-hover:scale-110" />
               )}
               {!isCollapsed && (
-                <span className="text-xs font-semibold tracking-wide">
+                <span className="text-xs font-semibold tracking-wide truncate min-w-0 flex-1">
                   {isEditingNav
                     ? (systemLanguage === "sk" ? "Uložiť rozloženie" : systemLanguage === "hu" ? "Elrendezés mentése" : "Save Layout")
                     : t("Edit Navigation", "Upraviť menu", "Navigáció szerkesztése")}
@@ -737,7 +773,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <button
                 type="button"
                 onClick={handleDownloadLayout}
-                className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-xl bg-slate-105 hover:bg-slate-200 text-[10px] font-black text-slate-700 uppercase tracking-wider transition-all shadow-sm cursor-pointer"
+                className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-[10px] font-black text-slate-700 uppercase tracking-wider transition-all shadow-sm cursor-pointer"
                 title={t("Download Layout JSON", "Stiahnuť rozloženie JSON", "Elrendezés JSON letöltése")}
               >
                 <Download className="h-3.5 w-3.5 animate-bounce" />
@@ -746,7 +782,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <button
                 type="button"
                 onClick={() => fileInputRef.current?.click()}
-                className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-[10px] font-black text-indigo-750 uppercase tracking-wider transition-all border border-indigo-200 shadow-sm cursor-pointer"
+                className="flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-[10px] font-black text-indigo-700 uppercase tracking-wider transition-all border border-indigo-200 shadow-sm cursor-pointer"
                 title={t("Upload Layout JSON", "Nahrať rozloženie JSON", "Elrendezés JSON feltöltése")}
               >
                 <Upload className="h-3.5 w-3.5" />
@@ -777,7 +813,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               )}
             >
               <Settings className={cn("h-5 w-5 shrink-0 transition-transform", activeTab.startsWith("settings") ? "text-white" : "text-slate-400 group-hover:rotate-45")} />
-              {!isCollapsed && <span className="text-xs font-semibold tracking-wide">{getTranslation(systemLanguage, "sidebar.settings")}</span>}
+              {!isCollapsed && <span className="text-xs font-semibold tracking-wide truncate min-w-0 flex-1">{getTranslation(systemLanguage, "sidebar.settings")}</span>}
             </button>
           )}
 
@@ -793,7 +829,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             className="w-full flex items-center gap-3.5 px-3 py-2.5 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50/50 transition-all duration-200 text-left group"
           >
             <LogOut className="h-5 w-5 shrink-0 text-slate-400 group-hover:text-rose-500 transition-colors" />
-            {!isCollapsed && <span className="text-xs font-semibold tracking-wide">{getTranslation(systemLanguage, "sidebar.logout")}</span>}
+            {!isCollapsed && <span className="text-xs font-semibold tracking-wide truncate min-w-0 flex-1">{getTranslation(systemLanguage, "sidebar.logout")}</span>}
           </button>
         </div>
       </aside>
@@ -810,13 +846,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <span className="text-xs font-black text-slate-800 uppercase tracking-wider">
                 {systemLanguage === "sk" ? "Dostupné moduly" : systemLanguage === "hu" ? "Elérhető modulok" : "Available Modules"}
               </span>
-              <span className="text-[9px] text-slate-450 font-bold uppercase tracking-wider mt-0.5">
+              <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">
                 {t("Hidden sidebar items", "Skryté položky menu", "Rejtett oldalsáv elemek")}
               </span>
             </div>
             <button 
               onClick={() => setIsEditingNav(false)}
-              className="text-slate-400 hover:text-slate-650 transition-colors p-1 hover:bg-slate-200/50 rounded-lg cursor-pointer"
+              className="text-slate-400 hover:text-slate-600 transition-colors p-1 hover:bg-slate-200/50 rounded-lg cursor-pointer"
             >
               <X className="h-4 w-4" />
             </button>
@@ -837,7 +873,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-2 pr-1 scrollbar-thin">
-            {hiddenItems.length === 0 ? (
+            {visibleHiddenItems.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center text-slate-400 select-none">
                 <span className="text-2xl mb-1.5">✨</span>
                 <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
@@ -848,7 +884,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </p>
               </div>
             ) : (
-              hiddenItems.map((id: string) => {
+              visibleHiddenItems.map((id: string) => {
                 const item = allPossibleItems.find((i) => i.id === id);
                 if (!item) return null;
                 const Icon = item.icon;
@@ -861,8 +897,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     className="w-full flex items-center justify-between px-3 py-3 rounded-2xl bg-white border border-slate-200 shadow-sm transition-all duration-200 cursor-grab active:cursor-grabbing hover:bg-slate-50 relative group"
                   >
                     <div className="flex items-center gap-3.5 overflow-hidden">
-                      <GripVertical className="h-4 w-4 text-slate-350 shrink-0" />
-                      <Icon className="h-5 w-5 text-slate-405 shrink-0" />
+                      <GripVertical className="h-4 w-4 text-slate-300 shrink-0" />
+                      <Icon className="h-5 w-5 text-slate-400 shrink-0" />
                       <span className="text-xs font-semibold text-slate-700 tracking-wide text-left truncate">
                         {item.label}
                       </span>
@@ -901,7 +937,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <button 
           type="button"
           onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-          className="w-12 h-1 bg-slate-200 hover:bg-slate-350 rounded-full mx-auto mb-2 outline-none cursor-pointer transition-colors shrink-0"
+          className="w-12 h-1 bg-slate-200 hover:bg-slate-300 rounded-full mx-auto mb-2 outline-none cursor-pointer transition-colors shrink-0"
           aria-label={isMobileMenuOpen ? t("Collapse navigation drawer", "Zbaliť navigačnú zásuvku", "Navigációs fiók összecsukása") : t("Open fullscreen navigation drawer", "Otvoriť navigáciu na celú obrazovku", "Teljes képernyős navigáció megnyitása")}
         />
 
@@ -913,18 +949,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
               setIsMobileMenuOpen(false);
               setIsStartMenuOpen(true);
             }}
-            className="flex items-center gap-3.5 mb-8 animate-in fade-in slide-in-from-top-4 duration-300 shrink-0 text-left p-2 rounded-2xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer w-full"
+            className="flex items-center gap-3.5 mb-8 animate-in fade-in slide-in-from-top-4 duration-300 shrink-0 text-left p-2 rounded-2xl hover:bg-slate-100 transition-colors cursor-pointer w-full"
           >
-            <div className="h-10 w-10 flex items-center justify-center gap-1.5 shrink-0 select-none rounded-2xl bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+            <div className="h-10 w-10 flex items-center justify-center gap-1.5 shrink-0 select-none rounded-2xl bg-slate-100 border border-slate-200">
               <span className="h-2.5 w-2.5 rounded-full bg-orange-500" />
               <span className="h-2.5 w-2.5 rounded-full bg-emerald-500" />
               <span className="h-2.5 w-2.5 rounded-full bg-indigo-500" />
             </div>
             <div className="flex flex-col text-left">
-              <span className="font-heading font-bold text-sm leading-none bg-gradient-to-r from-slate-800 to-slate-950 dark:from-slate-100 dark:to-white bg-clip-text text-transparent">
+              <span className="font-heading font-bold text-sm leading-none text-slate-800">
                 {systemName}
               </span>
-              <span className="text-[9px] text-indigo-600 dark:text-indigo-400 tracking-wider font-extrabold uppercase mt-1">
+              <span className="text-[9px] text-indigo-600 tracking-wider font-extrabold uppercase mt-1">
                 {t("Open Start Menu", "Otvoriť Štart menu", "Start menü megnyitása")} ➔
               </span>
             </div>
@@ -979,7 +1015,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           ? "bg-purple-500 border-purple-600 text-white"
                           : (isMobileMenuOpen
                               ? "bg-purple-50 border-purple-100 text-purple-500"
-                              : "bg-purple-50/50 border-purple-100 text-purple-500 hover:bg-purple-100 hover:text-purple-650"))
+                              : "bg-purple-50/50 border-purple-100 text-purple-500 hover:bg-purple-100 hover:text-purple-600"))
+                      : item.isIndigo
+                        ? (isActive
+                            ? "bg-indigo-600 border-indigo-700 text-white"
+                            : (isMobileMenuOpen
+                                ? "bg-indigo-50 border-indigo-200 text-indigo-600"
+                                : "bg-indigo-50/50 border-indigo-100 text-indigo-600 hover:bg-indigo-100 hover:text-indigo-700"))
                       : item.isEmerald
                         ? (isActive
                             ? "bg-emerald-600 border-emerald-700 text-white"
@@ -993,7 +1035,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                 ? "bg-slate-100 border-slate-200 text-slate-800"
                                 : "bg-slate-50/50 border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-slate-900"))
                         : isActive
-                          ? (item.id === "dashboard"
+                          ? (item.id === "tasks"
                               ? "bg-[#ff5d00] border-[#ff5d00] text-white"
                               : item.id === "overview"
                                 ? "bg-cyan-600 border-cyan-700 text-white"
@@ -1003,8 +1045,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                     ? "bg-emerald-600 border-emerald-700 text-white"
                                     : item.id === "email"
                                       ? "bg-pink-600 border-pink-700 text-white"
-                                      : item.id === "tasks"
-                                        ? "bg-violet-600 border-violet-700 text-white"
+                                      : item.id === "dashboard"
+                                        ? "bg-indigo-600 border-indigo-700 text-white"
                                         : "bg-amber-700 border-amber-800 text-white"
                             )
                           : (isMobileMenuOpen 
@@ -1082,7 +1124,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   : "h-11 w-11 rounded-xl justify-center",
                 isMobileMenuOpen 
                   ? "bg-transparent border-transparent text-slate-500 hover:text-slate-800 hover:bg-rose-50" 
-                  : "bg-slate-50/50 border-slate-200 text-slate-500 hover:bg-rose-50 hover:border-rose-200 hover:text-rose-650"
+                  : "bg-slate-50/50 border-slate-200 text-slate-500 hover:bg-rose-50 hover:border-rose-200 hover:text-rose-600"
               )}
               title={getTranslation(systemLanguage, "sidebar.logout")}
             >
@@ -1112,7 +1154,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <button
                 type="button"
                 onClick={() => setIsDashModalOpen(false)}
-                className="text-slate-400 hover:text-slate-650 p-1 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
+                className="text-slate-400 hover:text-slate-600 p-1 hover:bg-slate-100 rounded-lg transition-colors cursor-pointer"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -1148,7 +1190,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   <button
                     type="button"
                     onClick={() => setIsIconSearchOpen(true)}
-                    className="flex-1 px-4 py-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold text-slate-650 tracking-wide text-center transition-colors cursor-pointer"
+                    className="flex-1 px-4 py-3 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-xs font-bold text-slate-600 tracking-wide text-center transition-colors cursor-pointer"
                   >
                     {t("Choose from 1000+ icons...", "Vybrať z 1000+ ikon...", "Válasszon több mint 1000 ikon közül...")}
                   </button>
@@ -1186,7 +1228,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <button
                 type="button"
                 onClick={() => setIsDashModalOpen(false)}
-                className="flex-1 px-4 py-3 border border-slate-200 rounded-xl hover:bg-slate-50 text-xs font-bold text-slate-550 uppercase tracking-wider transition-colors cursor-pointer"
+                className="flex-1 px-4 py-3 border border-slate-200 rounded-xl hover:bg-slate-50 text-xs font-bold text-slate-500 uppercase tracking-wider transition-colors cursor-pointer"
               >
                 {t("Cancel", "Zrušiť", "Mégse")}
               </button>
@@ -1222,7 +1264,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   setIsIconSearchOpen(false);
                   setIconSearchQuery("");
                 }}
-                className="p-2 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-100 text-slate-400 hover:text-slate-650 transition-all cursor-pointer"
+                className="p-2 rounded-xl hover:bg-slate-50 border border-transparent hover:border-slate-100 text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
               >
                 <X className="h-4 w-4" />
               </button>
@@ -1306,12 +1348,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         showSettings={showSettings}
         showMailIcon={showMailIcon}
         showRagAi={showRagAi}
+        canOpenRoute={canOpenRoute}
         customDashboards={customDashboards}
         unifiedEntries={unifiedEntries}
         onOpenCreateDashboard={() => setIsDashModalOpen(true)}
         pinnedSidebarItems={isEditingNav ? activeItems : resolvedLayout}
         onTogglePinToSidebar={handleTogglePin}
-        onLogout={onLogout}
       />
     </>
   );

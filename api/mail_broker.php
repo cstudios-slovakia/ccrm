@@ -150,16 +150,20 @@ try {
 
         case 'get_emails':
             $folder = isset($_GET['folder']) ? $_GET['folder'] : 'INBOX';
+            // Callers ask for the literal "Sent". Not every server calls it that,
+            // and asking for a folder that does not exist reads as an empty one —
+            // no error, and no outgoing mail on any timeline.
+            $folder = ccrm_canonical_folder($emailSettings, $folder);
             $page = isset($_GET['page']) ? intval($_GET['page']) : 1;
             $filter = isset($_GET['filter']) ? $_GET['filter'] : 'all';
             $searchEmail = isset($_GET['email']) ? $_GET['email'] : null;
             $result = fetch_imap_emails($emailSettings, $folder, $page, 25, $filter, $searchEmail);
-            echo json_encode(array_merge(['success' => true], $result));
+            echo json_encode(array_merge(['success' => true, 'folder' => $folder], $result));
             break;
 
         case 'get_email_detail':
             $uid = isset($_GET['uid']) ? $_GET['uid'] : '';
-            $folder = isset($_GET['folder']) ? $_GET['folder'] : 'INBOX';
+            $folder = ccrm_canonical_folder($emailSettings, isset($_GET['folder']) ? $_GET['folder'] : 'INBOX');
             if (empty($uid)) {
                 throw new Exception('Missing email UID.');
             }
@@ -176,8 +180,34 @@ try {
             if (!$payload) {
                 throw new Exception('Invalid email payload.');
             }
-            send_smtp_email($emailSettings, $payload['to'], $payload['subject'], $payload['html']);
-            echo json_encode(['success' => true]);
+            $sendResult = send_smtp_email($emailSettings, $payload['to'], $payload['subject'], $payload['html']);
+            // `filed_to_sent` is false when the message was delivered but the
+            // archive copy could not be stored. The send still succeeded; the
+            // client says so, because an unfiled copy will not reach the timeline.
+            echo json_encode([
+                'success' => true,
+                'filed_to_sent' => !empty($sendResult['filed_to_sent']),
+                'message_id' => $sendResult['message_id'] ?? ''
+            ]);
+            break;
+
+        case 'set_seen':
+            // Explicit read / unread, by UID. The response carries the flag as
+            // the server reports it after the change, never as assumed.
+            if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+                throw new Exception('Invalid method.');
+            }
+            $payload = json_decode(file_get_contents('php://input'), true);
+            if (!is_array($payload)) {
+                throw new Exception('Invalid payload.');
+            }
+            $uid = isset($payload['uid']) ? trim((string)$payload['uid']) : '';
+            $folder = ccrm_canonical_folder($emailSettings, isset($payload['folder']) ? $payload['folder'] : 'INBOX');
+            if ($uid === '' || !array_key_exists('seen', $payload)) {
+                throw new Exception('Missing parameters.');
+            }
+            $seen = set_imap_email_seen($emailSettings, $folder, $uid, !empty($payload['seen']));
+            echo json_encode(['success' => true, 'uid' => $uid, 'folder' => $folder, 'seen' => $seen]);
             break;
 
         case 'delete_email':
@@ -185,14 +215,14 @@ try {
                 throw new Exception('Invalid method.');
             }
             $uid = isset($_GET['uid']) ? $_GET['uid'] : '';
-            $folder = isset($_GET['folder']) ? $_GET['folder'] : 'INBOX';
+            $folder = ccrm_canonical_folder($emailSettings, isset($_GET['folder']) ? $_GET['folder'] : 'INBOX');
             delete_imap_email($emailSettings, $folder, $uid);
             echo json_encode(['success' => true]);
             break;
 
         case 'get_attachment':
             $uid = isset($_GET['uid']) ? $_GET['uid'] : '';
-            $folder = isset($_GET['folder']) ? $_GET['folder'] : 'INBOX';
+            $folder = ccrm_canonical_folder($emailSettings, isset($_GET['folder']) ? $_GET['folder'] : 'INBOX');
             $partNum = isset($_GET['part']) ? $_GET['part'] : '';
             $name = isset($_GET['name']) ? $_GET['name'] : 'attachment';
             if (empty($uid) || empty($partNum)) {
@@ -203,10 +233,12 @@ try {
 
         case 'save_attachment':
             $uid = isset($_GET['uid']) ? $_GET['uid'] : '';
-            $folder = isset($_GET['folder']) ? $_GET['folder'] : 'INBOX';
+            $folder = ccrm_canonical_folder($emailSettings, isset($_GET['folder']) ? $_GET['folder'] : 'INBOX');
             $partNum = isset($_GET['part']) ? $_GET['part'] : '';
             $name = isset($_GET['name']) ? $_GET['name'] : 'attachment';
-            $eventId = isset($_GET['eventId']) ? preg_replace('/[^a-zA-Z0-9_]/', '', $_GET['eventId']) : '';
+            // Timeline ids carry '-' now (email-sent-<scope>-<uid>); stripping it
+            // turned every mail event id into one that matches no row.
+            $eventId = isset($_GET['eventId']) ? preg_replace('/[^a-zA-Z0-9_-]/', '', $_GET['eventId']) : '';
             if (empty($uid) || empty($partNum) || empty($eventId)) {
                 throw new Exception('Missing parameters.');
             }
@@ -254,8 +286,56 @@ function get_smtp_credentials($settings) {
     return [$user, $pass];
 }
 
+/**
+ * The host a mailbox actually lives on.
+ *
+ * `provider = exchange` used to fall straight back to outlook.office365.com
+ * whenever `imapHost`/`smtpHost` was blank, silently ignoring the `exchangeUrl`
+ * the operator had typed into Personal Settings. A self-hosted Exchange profile
+ * therefore dialled Microsoft, was refused there ("Server disables LOGIN, no
+ * recognized SASL authenticator") and EVERY mailbox read failed — so no mail ever
+ * reached a lead timeline, while the account still reported itself validated.
+ * Read the configured address first, and refuse an empty one rather than guessing
+ * a host the mailbox was never on.
+ *
+ * $kind is 'imap' or 'smtp'.
+ */
+function ccrm_resolve_mail_host($settings, $kind) {
+    $key = ($kind === 'smtp') ? 'smtpHost' : 'imapHost';
+    $explicit = trim((string)($settings[$key] ?? ''));
+    if ($explicit !== '') {
+        return $explicit;
+    }
+
+    if (($settings['provider'] ?? '') === 'exchange') {
+        // Operators paste the OWA/autodiscover address here, sometimes with a
+        // scheme and a path. Only the host part can be dialled.
+        $exchange = trim((string)($settings['exchangeUrl'] ?? ''));
+        if ($exchange !== '') {
+            if (strpos($exchange, '//') === false) {
+                $exchange = '//' . $exchange;
+            }
+            $parsed = @parse_url($exchange);
+            $host = (is_array($parsed) && !empty($parsed['host'])) ? $parsed['host'] : $exchange;
+            $host = trim($host, "/ \t\r\n");
+            if ($host !== '') {
+                return $host;
+            }
+        }
+        // Nothing configured at all: hosted Microsoft 365 is the only defensible
+        // guess left, and a wrong guess now surfaces as a visible error instead
+        // of an empty timeline.
+        return ($kind === 'smtp') ? 'smtp.office365.com' : 'outlook.office365.com';
+    }
+
+    throw new Exception(
+        ($kind === 'smtp' ? 'Outgoing (SMTP)' : 'Mailbox (IMAP)')
+        . ' server address is not configured. Set it in Personal Settings → E-mail.'
+    );
+}
+
 function get_imap_mailbox_string($settings, $folder = '') {
-    $host = $settings['imapHost'];
+    $host = ccrm_resolve_mail_host($settings, 'imap');
     $port = $settings['imapPort'];
 
     // Validate the server certificate by default. Every connection used to carry
@@ -272,15 +352,171 @@ function get_imap_mailbox_string($settings, $folder = '') {
         $ssl = '/tls' . $certOpt;
     }
 
-    // Autodetect MS Exchange URL or custom Exchange setup if provider is Exchange
+    // Exchange always speaks IMAPS. The host is whatever ccrm_resolve_mail_host()
+    // worked out above — do not second-guess it here.
     if ($settings['provider'] === 'exchange') {
-        // Exchange autodiscover fallback configuration
-        $host = !empty($settings['imapHost']) ? $settings['imapHost'] : 'outlook.office365.com';
-        $port = '993';
+        $port = intval($port) > 0 ? $port : '993';
         $ssl = '/ssl' . $certOpt;
     }
 
+    if (intval($port) <= 0) {
+        throw new Exception('Mailbox (IMAP) port is not configured. Set it in Personal Settings → E-mail.');
+    }
+
     return "{" . "$host:$port/imap$ssl" . "}$folder";
+}
+
+/**
+ * The real name of this mailbox's "Sent" folder.
+ *
+ * Every caller used to hardcode the literal string "Sent". That is correct on
+ * dovecot/websupport but wrong on plenty of servers (`INBOX.Sent`, `Sent Items`,
+ * a localised name) — and a wrong folder name fails exactly the way an empty
+ * mailbox looks: no error, and no outgoing mail on any timeline. Ask the server
+ * instead, and fall back to the literal only when it tells us nothing.
+ */
+function ccrm_resolve_sent_folder($settings) {
+    static $cache = [];
+    $root = get_imap_mailbox_string($settings, '');
+    if (isset($cache[$root])) {
+        return $cache[$root];
+    }
+
+    $resolved = 'Sent';
+    list($imapUser, $imapPass) = get_imap_credentials($settings);
+    $stream = @imap_open($root, $imapUser, $imapPass, OP_HALFOPEN, 1, ['DISABLE_AUTHENTICATOR' => 'GSSAPI']);
+    if ($stream) {
+        $list = @imap_getmailboxes($stream, $root, '*');
+        if (is_array($list)) {
+            $names = [];
+            foreach ($list as $box) {
+                $names[] = str_replace($root, '', $box->name);
+            }
+            // Most specific first. Folder names travel as modified UTF-7, so a
+            // localised name only matches once decoded.
+            $candidates = ['Sent', 'INBOX.Sent', 'INBOX/Sent', 'Sent Items',
+                           'Sent Messages', 'Odoslané', 'Odoslaná pošta', 'Elküldött elemek'];
+            foreach ($candidates as $candidate) {
+                foreach ($names as $n) {
+                    if (strcasecmp($n, $candidate) === 0 || strcasecmp(@imap_utf8($n), $candidate) === 0) {
+                        $resolved = $n;
+                        break 2;
+                    }
+                }
+            }
+        }
+        @imap_close($stream);
+    }
+    @imap_errors();
+
+    $cache[$root] = $resolved;
+    return $resolved;
+}
+
+/**
+ * Map a folder name the client asked for onto the one this server actually has.
+ * Only "Sent" needs translating today — INBOX is universal, and anything else
+ * came from the server's own folder listing already.
+ */
+function ccrm_canonical_folder($settings, $folder) {
+    if (strcasecmp(trim((string)$folder), 'Sent') === 0) {
+        return ccrm_resolve_sent_folder($settings);
+    }
+    return $folder;
+}
+
+/**
+ * File a just-sent message into the mailbox's Sent folder.
+ *
+ * send_smtp_email() spoke SMTP and stopped there, so a mail composed inside CCRM
+ * existed only at the recipient: it was in nobody's Sent folder, and the lead
+ * timeline — which is rebuilt purely by re-reading IMAP — could never show it.
+ * That is the "the e-mail we sent was not recorded" report.
+ *
+ * The message has already been accepted for delivery by the time this runs, so a
+ * failure here is logged and swallowed: losing the archive copy must never be
+ * reported to the user as a failed send.
+ */
+function ccrm_append_to_sent($settings, $rawMessage) {
+    try {
+        $folder = ccrm_resolve_sent_folder($settings);
+        $mailbox = get_imap_mailbox_string($settings, $folder);
+        list($imapUser, $imapPass) = get_imap_credentials($settings);
+
+        $stream = @imap_open($mailbox, $imapUser, $imapPass, 0, 1, ['DISABLE_AUTHENTICATOR' => 'GSSAPI']);
+        if (!$stream) {
+            error_log('CCRM: cannot open "' . $folder . '" to file a sent message: ' . imap_last_error());
+            @imap_errors();
+            return false;
+        }
+
+        $ok = @imap_append($stream, $mailbox, $rawMessage, "\\Seen");
+        if (!$ok) {
+            error_log('CCRM: IMAP APPEND to "' . $folder . '" failed: ' . imap_last_error());
+        }
+        @imap_close($stream);
+        @imap_errors();
+        return (bool) $ok;
+    } catch (\Throwable $e) {
+        error_log('CCRM: could not file sent message: ' . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * The stable timeline-event id for one IMAP message.
+ *
+ * This used to be "email-" . $uid. IMAP UIDs are scoped to one folder in one
+ * mailbox, so Sent uid 133 collided with INBOX uid 133 and with every other
+ * user's uid 133. The loser of a collision took the UPDATE branch of the upsert,
+ * which rewrote title/timestamp/direction but left `lead_id` alone — filing a
+ * message against a customer it was never about, and losing it from the customer
+ * it WAS about. Scope the id by mailbox and folder so two messages can never
+ * claim the same row.
+ *
+ * Stays inside `timeline_events`.`id` VARCHAR(50), and still starts with
+ * "email-" so sync.php keeps recognising importer-owned rows.
+ */
+/**
+ * The addresses this mailbox sends as, lower-cased.
+ *
+ * A message is ours when its From: is one of these. It used to be compared with
+ * the CRM login ($GLOBALS['userEmail']), which is a different address whenever
+ * someone signs in to the CRM as alex@crm.com but reads peter@company.sk here —
+ * then every mail they sent was badged as incoming. SMTP sends as smtpUser (see
+ * send_smtp_email), so that and the IMAP login are the mailbox's own identity.
+ * Usernames that are not addresses (an Exchange domain login) are skipped.
+ */
+function ccrm_mailbox_addresses($settings) {
+    list($imapUser) = get_imap_credentials($settings);
+    list($smtpUser) = get_smtp_credentials($settings);
+    $addresses = [];
+    foreach ([$smtpUser, $imapUser] as $candidate) {
+        $candidate = strtolower(trim((string)$candidate));
+        if ($candidate !== '' && strpos($candidate, '@') !== false) {
+            $addresses[$candidate] = true;
+        }
+    }
+    return array_keys($addresses);
+}
+
+/**
+ * Whether a message was sent by this mailbox. The sender address is
+ * authoritative; the folder only decides when the mailbox has no address to
+ * compare against.
+ */
+function ccrm_mail_is_outgoing($mailboxAddresses, $fromAddress, $folder) {
+    if (!empty($mailboxAddresses)) {
+        return in_array(strtolower(trim((string)$fromAddress)), $mailboxAddresses, true) ? 1 : 0;
+    }
+    return strcasecmp((string)$folder, 'Sent') === 0 ? 1 : 0;
+}
+
+function ccrm_mail_event_id($accountUser, $folder, $uid) {
+    $scope = substr(sha1(strtolower(trim((string)$accountUser)) . '|' . strtolower(trim((string)$folder))), 0, 12);
+    $tag = strtolower(preg_replace('/[^a-z0-9]/i', '', (string)$folder));
+    $tag = $tag === '' ? 'box' : substr($tag, 0, 8);
+    return 'email-' . $tag . '-' . $scope . '-' . intval($uid);
 }
 
 function test_mail_connections($settings) {
@@ -295,14 +531,13 @@ function test_mail_connections($settings) {
     @imap_close($imapStream);
     
     // 2. Test SMTP socket
-    $host = $settings['smtpHost'];
+    $host = ccrm_resolve_mail_host($settings, 'smtp');
     $port = intval($settings['smtpPort']);
-    
-    if ($settings['provider'] === 'exchange') {
-        $host = 'smtp.office365.com';
+
+    if ($settings['provider'] === 'exchange' && $port === 0) {
         $port = 587;
     }
-    
+
     $sec = isset($settings['smtpSecure']) ? $settings['smtpSecure'] : 'ssl';
     $secure = ($sec === 'ssl' || $sec === true) ? 'ssl://' : '';
     if ($port === 587 || $sec === 'tls') {
@@ -346,6 +581,7 @@ function fetch_imap_folders($settings) {
 function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEmail = null) {
     $mailbox = get_imap_mailbox_string($settings, $folder);
     list($imapUser, $imapPass) = get_imap_credentials($settings);
+    $mailboxAddresses = ccrm_mailbox_addresses($settings);
     $imapStream = @imap_open($mailbox, $imapUser, $imapPass, 0, 1, ['DISABLE_AUTHENTICATOR' => 'GSSAPI']);
     if (!$imapStream) {
         throw new Exception('IMAP Connection failed: ' . imap_last_error());
@@ -433,8 +669,19 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                     }
                 }
 
+                // The canonical timeline id for this message, handed to the client
+                // so both sides agree on it. The client used to mint its own
+                // ("email-sent-<uid>") while the row below was stored under a
+                // different one, so the de-duplication that merges the live IMAP
+                // list with the stored timeline never matched and every imported
+                // mail rendered twice.
+                $mailEventId = ccrm_mail_event_id($imapUser, $folder, $o->uid);
+                $listPreview = fetch_list_preview($imapStream, $o->uid);
+                $isOutgoing = ccrm_mail_is_outgoing($mailboxAddresses, $fromAddress, $folder);
+
                 $emailsMap[$o->uid] = [
                     'uid' => $o->uid,
+                    'event_id' => $mailEventId,
                     'subject' => isset($o->subject) ? safe_utf8(imap_utf8($o->subject)) : '(No Subject)',
                     'from' => [
                         'name' => safe_utf8($fromName),
@@ -445,12 +692,17 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                         'address' => safe_utf8($toAddress)
                     ],
                     'date' => isset($o->date) ? date('Y-m-d H:i:s', strtotime($o->date)) : '',
+                    // Decided here, where the mailbox's own address is known; the
+                    // client only has the CRM login, which may be another address.
+                    'is_outgoing' => (bool)$isOutgoing,
                     'seen' => isset($o->seen) ? (bool)$o->seen : false,
                     'size' => isset($o->size) ? intval($o->size) : 0,
                     'message_id' => isset($o->message_id) ? trim($o->message_id) : '',
                     'in_reply_to' => isset($o->in_reply_to) ? trim($o->in_reply_to) : '',
                     'references' => isset($o->references) ? trim($o->references) : '',
-                    'summary' => $summary
+                    'summary' => $summary,
+                    'preview' => $listPreview['preview'],
+                    'attachment_count' => $listPreview['attachment_count']
                 ];
 
                 // Auto-upsert timeline email entries to database with email date and time
@@ -475,23 +727,20 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                     }
 
                     if ($matchedLeadId) {
-                        $eventId = "email-" . $o->uid;
+                        $eventId = $mailEventId;
                         $timestamp = isset($o->date) ? date('Y-m-d H:i:s', strtotime($o->date)) : date('Y-m-d H:i:s');
                         $title = isset($o->subject) ? safe_utf8(imap_utf8($o->subject)) : '(No Subject)';
                         $content = "From: " . $fromName . " <" . $fromAddress . ">\nTo: " . $toName . " <" . $toAddress . ">\nSubject: " . $title;
                         // The timeline badge (and the folder its body is later
-                        // fetched from) depends on who sent the message. The
-                        // sender address is authoritative; the folder only
-                        // decides when we have no account address to compare to.
-                        $accountEmail = isset($GLOBALS['userEmail']) ? strtolower(trim($GLOBALS['userEmail'])) : '';
-                        $isOutgoing = $accountEmail !== ''
-                            ? (strtolower(trim($fromAddress)) === $accountEmail ? 1 : 0)
-                            : (strcasecmp($folder, 'Sent') === 0 ? 1 : 0);
+                        // fetched from) depends on who sent the message:
+                        // $isOutgoing, computed above against the mailbox's own
+                        // address.
 
                         // Only a message we sent has an author inside the CRM:
-                        // resolve the account address to the user behind it so the
-                        // timeline names who wrote it. An incoming mail was nobody's
-                        // action here and stays unattributed.
+                        // the mailbox belongs to the logged-in user, so resolve
+                        // their login to the user behind it. An incoming mail was
+                        // nobody's action here and stays unattributed.
+                        $accountEmail = isset($GLOBALS['userEmail']) ? strtolower(trim($GLOBALS['userEmail'])) : '';
                         $eventAuthor = null;
                         if ($isOutgoing && $accountEmail !== '') {
                             $authorStmt = $pdo->prepare("SELECT `name` FROM `users` WHERE LOWER(`email`) = ? LIMIT 1");
@@ -502,14 +751,32 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                             }
                         }
 
-                        $checkStmt = $pdo->prepare("SELECT 1 FROM `timeline_events` WHERE `id` = ?");
+                        $checkStmt = $pdo->prepare("SELECT * FROM `timeline_events` WHERE `id` = ?");
                         $checkStmt->execute([$eventId]);
-                        if (!$checkStmt->fetchColumn()) {
+                        $existingRow = $checkStmt->fetch(PDO::FETCH_ASSOC);
+                        if (!$existingRow) {
                             $insStmt = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `is_outgoing`, `author`) VALUES (?, ?, 'email', ?, ?, ?, ?, ?)");
                             $insStmt->execute([$eventId, $matchedLeadId, $timestamp, $title, $content, $isOutgoing, $eventAuthor]);
                         } else {
-                            $upStmt = $pdo->prepare("UPDATE `timeline_events` SET `timestamp` = ?, `title` = ?, `is_outgoing` = ?, `author` = ? WHERE `id` = ?");
-                            $upStmt->execute([$timestamp, $title, $isOutgoing, $eventAuthor, $eventId]);
+                            // `lead_id` is refreshed too. It used to be left alone,
+                            // so once a row existed the message stayed filed against
+                            // whichever lead claimed it first — which, with the old
+                            // colliding ids, was regularly the wrong customer. It
+                            // also kept a message pinned to the old lead after a
+                            // customer's address moved to another record.
+                            //
+                            // `timestamp` and `title` are NOT rewritten: they are
+                            // the user's to correct from the lead timeline (sync.php
+                            // applies that edit), and re-reading the mailbox used to
+                            // put the old values straight back.
+                            $upStmt = $pdo->prepare("UPDATE `timeline_events` SET `lead_id` = ?, `is_outgoing` = ?, `author` = ? WHERE `id` = ?");
+                            $upStmt->execute([$matchedLeadId, $isOutgoing, $eventAuthor, $eventId]);
+                            // Removed from the lead timeline by the user. The row is
+                            // kept as a tombstone so this read does not re-file the
+                            // message; tell the client to leave its live copy out.
+                            if (!empty($existingRow['hidden'])) {
+                                $emailsMap[$o->uid]['timeline_hidden'] = true;
+                            }
                         }
                     }
                 }
@@ -616,7 +883,7 @@ function fetch_imap_email_detail($settings, $folder, $uid) {
                 if (isset($part->parts)) {
                     foreach ($part->parts as $nestedPartNo => $nestedPart) {
                         $partStr = ($partNo + 1) . '.' . ($nestedPartNo + 1);
-                        $body = imap_fetchbody($imapStream, $msgNo, $partStr);
+                        $body = imap_fetchbody($imapStream, $msgNo, $partStr, FT_PEEK);
                         $body = decode_imap_body($body, $nestedPart->encoding, get_part_charset($nestedPart));
                         if (isset($nestedPart->subtype) && $nestedPart->subtype === 'HTML') {
                             $html = $body;
@@ -625,7 +892,7 @@ function fetch_imap_email_detail($settings, $folder, $uid) {
                         }
                     }
                 } else {
-                    $body = imap_fetchbody($imapStream, $msgNo, (string)($partNo + 1));
+                    $body = imap_fetchbody($imapStream, $msgNo, (string)($partNo + 1), FT_PEEK);
                     $body = decode_imap_body($body, $part->encoding, get_part_charset($part));
                     if (isset($part->subtype) && $part->subtype === 'HTML') {
                         $html = $body;
@@ -636,7 +903,7 @@ function fetch_imap_email_detail($settings, $folder, $uid) {
             }
         } else {
             // Simple structure
-            $body = imap_body($imapStream, $msgNo);
+            $body = imap_body($imapStream, $msgNo, FT_PEEK);
             $body = decode_imap_body($body, $structure->encoding, get_part_charset($structure));
             if (isset($structure->subtype) && $structure->subtype === 'HTML') {
                 $html = $body;
@@ -646,17 +913,71 @@ function fetch_imap_email_detail($settings, $folder, $uid) {
         }
     }
     
-    // Mark as read
-    @imap_setflag_full($imapStream, $msgNo, "\\Seen");
-    
+    // Opening a message is the one thing that marks it read - and it is marked
+    // by UID, the same way the user's mail client addresses it, so both agree.
+    $seen = ccrm_set_seen_flag($imapStream, $uid, true);
+
     @imap_close($imapStream);
-    
+    @imap_errors();
+
     return [
         'uid' => $uid,
         'html' => safe_utf8($html),
         'text' => safe_utf8($text),
-        'attachments' => $attachments
+        'attachments' => $attachments,
+        'seen' => $seen === null ? true : $seen
     ];
+}
+
+/**
+ * Set or clear \Seen on one message, addressed by UID, and read the flag back.
+ *
+ * The IMAP flag is the single source of truth for "read": it is what the
+ * user's mail client shows, so it is what the CRM shows and what the CRM
+ * changes. Every body fetch in this file peeks (FT_PEEK), because a plain
+ * BODY[] fetch makes the server set \Seen as a side effect - that is how the
+ * background inbox poll and the RAG cache used to mark every message read
+ * before anyone had opened it. This helper is therefore the ONLY place the
+ * flag changes, and it does so only when a user opens a message or asks for
+ * it explicitly.
+ *
+ * Returns the flag as the server reports it afterwards, or null when the
+ * message could not be found under that UID.
+ */
+function ccrm_set_seen_flag($imapStream, $uid, $seen) {
+    $uid = (int)$uid;
+    if ($uid <= 0) {
+        return null;
+    }
+    if ($seen) {
+        @imap_setflag_full($imapStream, (string)$uid, "\\Seen", ST_UID);
+    } else {
+        @imap_clearflag_full($imapStream, (string)$uid, "\\Seen", ST_UID);
+    }
+    $overview = @imap_fetch_overview($imapStream, (string)$uid, FT_UID);
+    if (!is_array($overview) || empty($overview) || !is_object($overview[0])) {
+        return null;
+    }
+    return isset($overview[0]->seen) ? (bool)$overview[0]->seen : null;
+}
+
+function set_imap_email_seen($settings, $folder, $uid, $seen) {
+    $mailbox = get_imap_mailbox_string($settings, $folder);
+    list($imapUser, $imapPass) = get_imap_credentials($settings);
+    $imapStream = @imap_open($mailbox, $imapUser, $imapPass, 0, 1, ['DISABLE_AUTHENTICATOR' => 'GSSAPI']);
+    if (!$imapStream) {
+        throw new Exception('IMAP connection failed: ' . imap_last_error());
+    }
+    $result = ccrm_set_seen_flag($imapStream, $uid, $seen);
+    @imap_close($imapStream);
+    @imap_errors();
+    if ($result === null) {
+        throw new Exception('This message is no longer in ' . $folder . ' (it may have been moved or deleted).');
+    }
+    if ($result !== (bool)$seen) {
+        throw new Exception('The mail server did not accept the read-state change.');
+    }
+    return $result;
 }
 
 function get_part_charset($part) {
@@ -703,14 +1024,13 @@ function delete_imap_email($settings, $folder, $uid) {
 }
 
 function send_smtp_email($settings, $to, $subject, $html) {
-    $host = $settings['smtpHost'];
+    $host = ccrm_resolve_mail_host($settings, 'smtp');
     $port = intval($settings['smtpPort']);
-    
-    if ($settings['provider'] === 'exchange') {
-        $host = 'smtp.office365.com';
+
+    if ($settings['provider'] === 'exchange' && $port === 0) {
         $port = 587;
     }
-    
+
     list($smtpUser, $smtpPass) = get_smtp_credentials($settings);
     
     $sec = isset($settings['smtpSecure']) ? $settings['smtpSecure'] : 'ssl';
@@ -721,63 +1041,102 @@ function send_smtp_email($settings, $to, $subject, $html) {
     
     $socket = @fsockopen($secure . $host, $port, $errno, $errstr, 10);
     if (!$socket) {
-        throw new Exception("Could not connect to SMTP server: $errstr ($errno)");
+        throw new Exception("Could not connect to SMTP server $host:$port — $errstr ($errno)");
     }
-    
-    // Read welcome banner
-    fgets($socket, 515);
-    
-    // SMTP Protocol handshake
-    fwrite($socket, "EHLO " . $_SERVER['SERVER_NAME'] . "\r\n");
-    fgets($socket, 515);
-    
+    stream_set_timeout($socket, 20);
+
+    // Read a WHOLE reply, not one line of it. EHLO answers with several lines
+    // ("250-PIPELINING", "250-SIZE", ..., "250 HELP"); reading a single line left
+    // the rest in the buffer, so every later read returned the previous command's
+    // leftovers. With the protocol desynced like that no reply code could be
+    // trusted — which is why they were almost all ignored, and why a rejected
+    // recipient or body was still reported to the user as a successful send.
+    $readReply = function () use ($socket) {
+        $out = '';
+        while (($line = fgets($socket, 1024)) !== false) {
+            $out .= $line;
+            if (strlen($line) < 4 || $line[3] === ' ') break; // "250-" continues, "250 " ends
+        }
+        return $out;
+    };
+    // Accepts any of the listed codes: a recipient may come back 250 or 251
+    // ("will forward"), and rejecting the second would fail a delivered message.
+    $expect = function ($reply, $codes, $stage) {
+        $head = ltrim($reply);
+        foreach ((array) $codes as $code) {
+            if (strpos($head, $code) === 0) {
+                return;
+            }
+        }
+        throw new Exception("SMTP $stage failed: " . ($head === '' ? 'no reply from the server' : trim($head)));
+    };
+
+    $readReply(); // welcome banner
+
+    $ehlo = "EHLO " . (!empty($_SERVER['SERVER_NAME']) ? $_SERVER['SERVER_NAME'] : 'localhost') . "\r\n";
+    fwrite($socket, $ehlo);
+    $readReply();
+
     // STARTTLS if Port 587 or security is tls
     if ($port === 587 || $sec === 'tls') {
         fwrite($socket, "STARTTLS\r\n");
-        fgets($socket, 515);
+        $expect($readReply(), '220', 'STARTTLS');
         if (!stream_socket_enable_crypto($socket, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
             throw new Exception("TLS encryption handshake negotiation failed.");
         }
         // Send EHLO again after TLS start
-        fwrite($socket, "EHLO " . $_SERVER['SERVER_NAME'] . "\r\n");
-        fgets($socket, 515);
+        fwrite($socket, $ehlo);
+        $readReply();
     }
-    
+
     // Auth login
     fwrite($socket, "AUTH LOGIN\r\n");
-    fgets($socket, 515);
-    
+    $expect($readReply(), '334', 'AUTH LOGIN');
+
     fwrite($socket, base64_encode($smtpUser) . "\r\n");
-    fgets($socket, 515);
-    
+    $expect($readReply(), '334', 'AUTH username');
+
     fwrite($socket, base64_encode($smtpPass) . "\r\n");
-    $authResponse = fgets($socket, 515);
-    if (strpos($authResponse, '235') === false) {
-        throw new Exception("SMTP Authentication failed: " . $authResponse);
-    }
-    
-    // Headers
+    $expect($readReply(), '235', 'authentication');
+
     fwrite($socket, "MAIL FROM: <" . $smtpUser . ">\r\n");
-    fgets($socket, 515);
-    
+    $expect($readReply(), '250', 'MAIL FROM');
+
     fwrite($socket, "RCPT TO: <" . $to . ">\r\n");
-    fgets($socket, 515);
-    
+    $expect($readReply(), ['250', '251'], 'RCPT TO <' . $to . '>');
+
     fwrite($socket, "DATA\r\n");
-    fgets($socket, 515);
-    
+    $expect($readReply(), '354', 'DATA');
+
+    // Build the message ONCE: the bytes handed to SMTP are the same bytes filed
+    // into Sent below, so what the timeline shows is what the recipient got.
+    $domain = strpos($smtpUser, '@') !== false ? substr(strrchr($smtpUser, '@'), 1) : 'ccrm.local';
+    $messageId = '<' . bin2hex(random_bytes(12)) . '@' . $domain . '>';
+
     $headers = "MIME-Version: 1.0\r\n";
     $headers .= "Content-Type: text/html; charset=UTF-8\r\n";
     $headers .= "From: <" . $smtpUser . ">\r\n";
     $headers .= "To: <" . $to . ">\r\n";
     $headers .= "Subject: =?UTF-8?B?" . base64_encode($subject) . "?=\r\n";
+    $headers .= "Message-ID: " . $messageId . "\r\n";
     $headers .= "Date: " . date('r') . "\r\n\r\n";
-    
-    fwrite($socket, $headers . $html . "\r\n.\r\n");
-    fgets($socket, 515);
-    
+
+    $message = $headers . $html;
+    // CRLF line endings, and dot-stuffing so a body line of "." cannot end DATA early.
+    $wire = preg_replace('/\r\n|\r|\n/', "\r\n", $message);
+    $wire = preg_replace('/^\./m', '..', $wire);
+
+    fwrite($socket, $wire . "\r\n.\r\n");
+    $expect($readReply(), '250', 'message body');
+
     fwrite($socket, "QUIT\r\n");
     fclose($socket);
+
+    // Accepted for delivery. Filing the archive copy is best-effort from here on,
+    // but it is what makes the send visible to the timeline importer at all.
+    $filed = ccrm_append_to_sent($settings, $message);
+
+    return ['message_id' => $messageId, 'filed_to_sent' => $filed];
 }
 
 /**
@@ -1036,7 +1395,7 @@ function serve_imap_attachment($settings, $folder, $uid, $partNum, $name) {
         $encoding = $part->encoding;
     }
     
-    $data = imap_fetchbody($imapStream, $msgNo, $partNum);
+    $data = imap_fetchbody($imapStream, $msgNo, $partNum, FT_PEEK);
     $data = decode_imap_body($data, $encoding);
     
     @imap_close($imapStream);
@@ -1083,7 +1442,7 @@ function fetch_email_body_text($imapStream, $msgNo) {
                 if (isset($part->parts)) {
                     foreach ($part->parts as $nestedPartNo => $nestedPart) {
                         $partStr = ($partNo + 1) . '.' . ($nestedPartNo + 1);
-                        $body = @imap_fetchbody($imapStream, $msgNo, $partStr);
+                        $body = @imap_fetchbody($imapStream, $msgNo, $partStr, FT_PEEK);
                         $body = decode_imap_body($body, $nestedPart->encoding, get_part_charset($nestedPart));
                         if (isset($nestedPart->subtype) && $nestedPart->subtype === 'HTML') {
                             $html = $body;
@@ -1092,7 +1451,7 @@ function fetch_email_body_text($imapStream, $msgNo) {
                         }
                     }
                 } else {
-                    $body = @imap_fetchbody($imapStream, $msgNo, (string)($partNo + 1));
+                    $body = @imap_fetchbody($imapStream, $msgNo, (string)($partNo + 1), FT_PEEK);
                     $body = decode_imap_body($body, $part->encoding, get_part_charset($part));
                     if (isset($part->subtype) && $part->subtype === 'HTML') {
                         $html = $body;
@@ -1102,7 +1461,7 @@ function fetch_email_body_text($imapStream, $msgNo) {
                 }
             }
         } else {
-            $body = @imap_body($imapStream, $msgNo);
+            $body = @imap_body($imapStream, $msgNo, FT_PEEK);
             $body = decode_imap_body($body, $structure->encoding, get_part_charset($structure));
             if (isset($structure->subtype) && $structure->subtype === 'HTML') {
                 $html = $body;
@@ -1119,6 +1478,77 @@ function fetch_email_body_text($imapStream, $msgNo) {
         return trim(strip_tags($html));
     }
     return '';
+}
+
+// What the inbox list shows under the subject: a short plain-text preview and
+// the attachment count. Unlike fetch_email_body_text() this downloads only the
+// one text part it needs — never an attachment's bytes — since it runs for
+// every row of every list page.
+function fetch_list_preview($imapStream, $uid) {
+    $result = ['preview' => '', 'attachment_count' => 0];
+    $msgNo = @imap_msgno($imapStream, (int)$uid);
+    if (!$msgNo) {
+        return $result;
+    }
+    $structure = @imap_fetchstructure($imapStream, $msgNo);
+    if (!$structure) {
+        return $result;
+    }
+    $result['attachment_count'] = count(get_attachments_from_structure($structure));
+
+    // Find the first plain-text part, falling back to the first HTML one.
+    $plain = null;
+    $html = null;
+    $walk = function ($part, $partNum) use (&$walk, &$plain, &$html) {
+        if (isset($part->parts) && count($part->parts)) {
+            foreach ($part->parts as $i => $child) {
+                $walk($child, $partNum === '' ? (string)($i + 1) : $partNum . '.' . ($i + 1));
+            }
+            return;
+        }
+        if ((int)$part->type !== 0 || get_part_attachment($part, $partNum ?: '1')) {
+            return;
+        }
+        $subtype = isset($part->subtype) ? strtoupper($part->subtype) : 'PLAIN';
+        if ($subtype === 'PLAIN' && $plain === null) {
+            $plain = [$part, $partNum];
+        } elseif ($subtype === 'HTML' && $html === null) {
+            $html = [$part, $partNum];
+        }
+    };
+    $walk($structure, '');
+    $pick = $plain ?: $html;
+    if (!$pick) {
+        return $result;
+    }
+    list($part, $partNum) = $pick;
+    $raw = $partNum === ''
+        ? @imap_body($imapStream, $msgNo, FT_PEEK)
+        : @imap_fetchbody($imapStream, $msgNo, $partNum, FT_PEEK);
+    $text = decode_imap_body($raw, $part->encoding, get_part_charset($part));
+    if ($pick === $html) {
+        $text = preg_replace('#<(style|script|head)\b[^>]*>.*?</\1>#is', ' ', $text);
+        $text = html_entity_decode(strip_tags($text), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    }
+    // Drop quoted history ("> ...") and the "On <date>, X wrote:" line above it,
+    // so a reply previews what was actually written.
+    $lines = [];
+    foreach (preg_split('/\R/u', (string)$text) as $line) {
+        if (preg_match('/^\s*>/', $line)) {
+            continue;
+        }
+        $lines[] = $line;
+    }
+    $text = preg_replace('/\s+/u', ' ', implode(' ', $lines));
+    $text = preg_replace('/\s*(On|Dňa|Dna)\s.{0,120}?(wrote|napísal\(a\)|napísal|napísala|írta):\s*$/iu', '', $text);
+    $text = trim(safe_utf8($text));
+    if (function_exists('mb_substr')) {
+        $text = mb_substr($text, 0, 240, 'UTF-8');
+    } else {
+        $text = substr($text, 0, 240);
+    }
+    $result['preview'] = $text;
+    return $result;
 }
 
 function save_imap_attachment_to_uploads($settings, $folder, $uid, $partNum, $name, $eventId) {
@@ -1158,7 +1588,7 @@ function save_imap_attachment_to_uploads($settings, $folder, $uid, $partNum, $na
     }
     $encoding = isset($part->encoding) ? $part->encoding : 0;
 
-    $data = @imap_fetchbody($imapStream, $msgNo, $partNum);
+    $data = @imap_fetchbody($imapStream, $msgNo, $partNum, FT_PEEK);
     $data = decode_imap_body($data, $encoding);
 
     @imap_close($imapStream);

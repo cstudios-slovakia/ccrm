@@ -8,6 +8,8 @@ import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { resolveCurrencySymbol, resolveCurrencyPosition, formatMoney } from "../utils/currency";
 import { formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
+import { liftAccent, readableOn } from "../utils/accentColor";
+import { isClosedLeadState } from "../utils/leadSla";
 
 interface DashboardProps {
   systemName: string;
@@ -134,7 +136,7 @@ export const CalendarPane: React.FC<{
       
       <div className="grid grid-cols-8 gap-y-1 text-center items-center">
         {/* Week column header */}
-        <span className="text-[8px] font-black text-slate-350 uppercase tracking-wider">{getTranslation(systemLanguage, "dashboard.picker.week_label")}</span>
+        <span className="text-[8px] font-black text-slate-300 uppercase tracking-wider">{getTranslation(systemLanguage, "dashboard.picker.week_label")}</span>
         {getDayNames().map(d => (
           <span key={d} className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{d}</span>
         ))}
@@ -173,7 +175,7 @@ export const CalendarPane: React.FC<{
                 } else if (inRange) {
                   dayClass += "bg-purple-100/60 text-purple-800 rounded-none h-7 w-full";
                 } else {
-                  dayClass += "text-slate-700 hover:text-purple-650";
+                  dayClass += "text-slate-700 hover:text-purple-600";
                 }
 
                 if (isToday && !isStart && !isEnd && !inRange) {
@@ -343,19 +345,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Real ROI calculation: Sum values of won leads coming from the campaign source
   const metaWonValue = useMemo(() => filteredLeads
     .filter(l => {
-      const statusLower = l.status.toLowerCase();
-      const isWon = statusLower === "accepted" || leadStateParents[statusLower] === "accepted";
+      const isWon = isClosedLeadState(l.status, leadStageGroups, leadStateParents);
       return (l.source === "facebook" || l.source === "instagram") && isWon;
     })
-    .reduce((acc: number, l: Lead) => acc + l.value, 0), [filteredLeads, leadStateParents]);
+    .reduce((acc: number, l: Lead) => acc + l.value, 0), [filteredLeads, leadStageGroups, leadStateParents]);
 
   const googleWonValue = useMemo(() => filteredLeads
     .filter(l => {
-      const statusLower = l.status.toLowerCase();
-      const isWon = statusLower === "accepted" || leadStateParents[statusLower] === "accepted";
+      const isWon = isClosedLeadState(l.status, leadStageGroups, leadStateParents);
       return l.source === "website" && isWon;
     })
-    .reduce((acc: number, l: Lead) => acc + l.value, 0), [filteredLeads, leadStateParents]);
+    .reduce((acc: number, l: Lead) => acc + l.value, 0), [filteredLeads, leadStageGroups, leadStateParents]);
 
   const totalWonValue = metaWonValue + googleWonValue;
 
@@ -364,10 +364,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const totalRoi = totalSpent > 0 ? ((totalWonValue - totalSpent) / totalSpent) * 150 : 0; // colorful multiplier
 
   // --- Company CRM Performance Aggregators ---
-  const wonLeads = useMemo(() => filteredLeads.filter(l => {
-    const statusLower = l.status.toLowerCase();
-    return statusLower === "accepted" || leadStateParents[statusLower] === "accepted";
-  }), [filteredLeads, leadStateParents]);
+  const wonLeads = useMemo(() => filteredLeads.filter(l =>
+    isClosedLeadState(l.status, leadStageGroups, leadStateParents)
+  ), [filteredLeads, leadStageGroups, leadStateParents]);
   
   const activePipelineLeads = useMemo(() => filteredLeads.filter(l => {
     const statusLower = l.status.toLowerCase();
@@ -396,14 +395,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
     let sum = 0;
     const points: number[] = [];
     sortedLeads.forEach(l => {
-      const statusLower = l.status.toLowerCase();
-      if (statusLower === "accepted" || leadStateParents[statusLower] === "accepted") {
+      if (isClosedLeadState(l.status, leadStageGroups, leadStateParents)) {
         sum += l.value;
       }
       points.push(sum);
     });
     return points.length > 1 ? points : [0, 0];
-  }, [sortedLeads, leadStateParents]);
+  }, [sortedLeads, leadStageGroups, leadStateParents]);
 
   const pipelinePoints = useMemo(() => {
     let sum = 0;
@@ -443,24 +441,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const points: number[] = [];
     sortedLeads.forEach(l => {
       totalCount += 1;
-      const statusLower = l.status.toLowerCase();
-      if (statusLower === "accepted" || leadStateParents[statusLower] === "accepted") {
+      if (isClosedLeadState(l.status, leadStageGroups, leadStateParents)) {
         wonCount += 1;
       }
       points.push((wonCount / totalCount) * 100);
     });
     return points.length > 1 ? points : [0, 0];
-  }, [sortedLeads, leadStateParents]);
+  }, [sortedLeads, leadStageGroups, leadStateParents]);
 
   // Project Managers leaderboard
   const pmLeaderboard = useMemo(() => {
     const owners = Array.from(new Set(filteredLeads.map(l => l.owner).filter(Boolean)));
     return owners.map(name => {
       const pmLeads = filteredLeads.filter(l => l.owner === name);
-      const won = pmLeads.filter(l => {
-        const statusLower = l.status.toLowerCase();
-        return statusLower === "accepted" || leadStateParents[statusLower] === "accepted";
-      });
+      const won = pmLeads.filter(l => isClosedLeadState(l.status, leadStageGroups, leadStateParents));
       const rev = won.reduce((acc: number, l: Lead) => acc + l.value, 0);
       const conv = pmLeads.length > 0 ? (won.length / pmLeads.length) * 100 : 0;
       
@@ -484,7 +478,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         trendPoints: trendPoints.length > 1 ? trendPoints : [0, rev]
       };
     }).sort((a, b) => b.revenue - a.revenue);
-  }, [filteredLeads, leadStateParents]);
+  }, [filteredLeads, leadStageGroups, leadStateParents]);
 
   // PM chronological progression lines racing over the interval
   const pmRacingChartData = useMemo(() => {
@@ -512,8 +506,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         const xRatio = Math.max(0, Math.min(1, (leadTime - startMs) / rangeMs));
         
         totalProcessed += 1;
-        const statusLower = l.status.toLowerCase();
-        if (statusLower === "accepted" || leadStateParents[statusLower] === "accepted") {
+        if (isClosedLeadState(l.status, leadStageGroups, leadStateParents)) {
           cumulativeRevenue += l.value;
           cumulativeWon += 1;
         }
@@ -553,7 +546,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     });
 
     return { startMs, endMs, series };
-  }, [filteredLeads, pmLeaderboard, filterStartDate, filterEndDate, leadStateParents]);
+  }, [filteredLeads, pmLeaderboard, filterStartDate, filterEndDate, leadStageGroups, leadStateParents]);
 
   // Monthly revenue, lead counts, and client averages trends
   const monthlyTrends = useMemo(() => {
@@ -566,8 +559,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         monthsMap[monthKey] = { revenue: 0, clientCount: 0, leadCount: 0 };
       }
       monthsMap[monthKey].leadCount += 1;
-      const statusLower = l.status.toLowerCase();
-      if (statusLower === "accepted" || leadStateParents[statusLower] === "accepted") {
+      if (isClosedLeadState(l.status, leadStageGroups, leadStateParents)) {
         monthsMap[monthKey].revenue += l.value;
         monthsMap[monthKey].clientCount += 1;
       }
@@ -586,7 +578,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         leadCount: data.leadCount
       };
     });
-  }, [filteredLeads, leadStateParents]);
+  }, [filteredLeads, leadStageGroups, leadStateParents]);
 
   // --- Client Demographics & Funnel Aggregators ---
   const clientTypes = useMemo(() => {
@@ -607,9 +599,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
     }
     
     const segments = [
-      { label: t("Business Entities (B2B)", "Firemní klienti (B2B)", "Céges ügyfelek (B2B)"), count: clientTypes.business, color: "#2563eb", strokeColor: "stroke-blue-600", fillColor: "fill-blue-600", textClass: "text-blue-650 font-bold", rawColor: "blue" },
-      { label: t("Retail / Persons (B2C)", "Drobní klienti (B2C)", "Lakossági ügyfelek (B2C)"), count: clientTypes.person, color: "#10b981", strokeColor: "stroke-emerald-600", fillColor: "fill-emerald-600", textClass: "text-emerald-650 font-bold", rawColor: "emerald" },
-      { label: t("Partner Accounts", "Partnerské účty", "Partnerfiókok"), count: clientTypes.partner, color: "#d97706", strokeColor: "stroke-amber-600", fillColor: "fill-amber-600", textClass: "text-amber-650 font-bold", rawColor: "amber" }
+      { label: t("Business Entities (B2B)", "Firemní klienti (B2B)", "Céges ügyfelek (B2B)"), count: clientTypes.business, color: "#2563eb", strokeColor: "stroke-blue-600", fillColor: "fill-blue-600", textClass: "text-blue-600 font-bold", rawColor: "blue" },
+      { label: t("Retail / Persons (B2C)", "Drobní klienti (B2C)", "Lakossági ügyfelek (B2C)"), count: clientTypes.person, color: "#10b981", strokeColor: "stroke-emerald-600", fillColor: "fill-emerald-600", textClass: "text-emerald-600 font-bold", rawColor: "emerald" },
+      { label: t("Partner Accounts", "Partnerské účty", "Partnerfiókok"), count: clientTypes.partner, color: "#d97706", strokeColor: "stroke-amber-600", fillColor: "fill-amber-600", textClass: "text-amber-600 font-bold", rawColor: "amber" }
     ];
 
     let currentOffset = 0;
@@ -658,10 +650,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       valueSuffix = currencyValueSuffix;
       let sum = 0;
       details = sortedLeads
-        .filter(l => {
-          const statusLower = l.status.toLowerCase();
-          return statusLower === "accepted" || leadStateParents[statusLower] === "accepted";
-        })
+        .filter(l => isClosedLeadState(l.status, leadStageGroups, leadStateParents))
         .map(l => {
           sum += l.value;
           return {
@@ -678,12 +667,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       valueSuffix = currencyValueSuffix;
       let sum = 0;
       details = sortedLeads
-        .filter(l => {
-          const statusLower = l.status.toLowerCase();
-          const parent = leadStateParents[statusLower];
-          const isClosed = statusLower === "accepted" || statusLower === "rejected" || parent === "accepted" || parent === "rejected";
-          return !isClosed;
-        })
+        .filter(l => !isClosedLeadState(l.status, leadStageGroups, leadStateParents))
         .map(l => {
           sum += l.value;
           return {
@@ -715,8 +699,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       let totalCount = 0;
       details = sortedLeads.map(l => {
         totalCount += 1;
-        const statusLower = l.status.toLowerCase();
-        const isWon = statusLower === "accepted" || leadStateParents[statusLower] === "accepted";
+        const isWon = isClosedLeadState(l.status, leadStageGroups, leadStateParents);
         if (isWon) {
           wonCount += 1;
         }
@@ -734,11 +717,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       valueSuffix = currencyValueSuffix;
       let sum = 0;
       details = sortedLeads
-        .filter(l => {
-          const statusLower = l.status.toLowerCase();
-          const isWon = statusLower === "accepted" || leadStateParents[statusLower] === "accepted";
-          return l.owner === pmName && isWon;
-        })
+        .filter(l => l.owner === pmName && isClosedLeadState(l.status, leadStageGroups, leadStateParents))
         .map(l => {
           sum += l.value;
           return {
@@ -804,10 +783,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
           <button
             type="button"
             onClick={() => setIsDatePickerOpen(!isDatePickerOpen)}
-            className="flex items-center gap-2 px-4 py-2.5 bg-white border-2 border-slate-205 hover:border-purple-500 rounded-2xl text-[10px] font-heading font-black text-slate-800 uppercase tracking-wider transition-all shadow-sm cursor-pointer select-none"
+            className="flex items-center gap-2 px-4 py-2.5 bg-white border-2 border-slate-200 hover:border-purple-500 rounded-2xl text-[10px] font-heading font-black text-slate-800 uppercase tracking-wider transition-all shadow-sm cursor-pointer select-none"
           >
             <Compass className="h-4 w-4 text-purple-600 animate-spin-slow" />
-            {getTranslation(systemLanguage, "dashboard.analyze_interval")} <span className="text-purple-650 font-black">{getTranslation(systemLanguage, getPresetTranslationKey(filterPresetName) as any) || (filterPresetName === "Custom Range" ? t("Custom Range", "Vlastný rozsah", "Egyéni tartomány") : filterPresetName)}</span>
+            {getTranslation(systemLanguage, "dashboard.analyze_interval")} <span className="text-purple-600 font-black">{getTranslation(systemLanguage, getPresetTranslationKey(filterPresetName) as any) || (filterPresetName === "Custom Range" ? t("Custom Range", "Vlastný rozsah", "Egyéni tartomány") : filterPresetName)}</span>
             {filterStartDate && (
               <span className="text-slate-400 font-bold ml-1">
                 ({filterStartDate.toLocaleDateString("en-US", { month: "short", day: "numeric" })}
@@ -1099,7 +1078,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
             <div 
               onClick={() => handleInspectChart("conversion")}
-              className="glass-panel p-5 rounded-3xl border-2 border-rose-450 bg-gradient-to-br from-rose-500/10 to-pink-500/5 shadow-md shadow-rose-500/5 flex items-center gap-4 hover:scale-[1.03] active:scale-[0.98] cursor-pointer transition-all duration-200 relative overflow-hidden group"
+              className="glass-panel p-5 rounded-3xl border-2 border-rose-400 bg-gradient-to-br from-rose-500/10 to-pink-500/5 shadow-md shadow-rose-500/5 flex items-center gap-4 hover:scale-[1.03] active:scale-[0.98] cursor-pointer transition-all duration-200 relative overflow-hidden group"
             >
               <div className="h-12 w-12 rounded-2xl bg-rose-500 text-white flex items-center justify-center text-xl shadow-lg shadow-rose-500/20 relative z-20">
                 <Target className="h-6 w-6" />
@@ -1120,7 +1099,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="lg:col-span-7 glass-panel p-6 rounded-[32px] border-2 border-indigo-200 bg-gradient-to-br from-indigo-50/20 to-purple-50/20 shadow-xl space-y-6 flex flex-col justify-between hover:scale-[1.01] transition-transform duration-300">
               <div className="flex flex-col sm:flex-row justify-between sm:items-center gap-4 border-b border-indigo-100 pb-3">
                 <h3 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <Target className="h-4 w-4 text-indigo-650 animate-pulse" /> {t("Pipeline Funnel Graph", "Graf predajného lievika", "Értékesítési tölcsér grafikon")}
+                  <Target className="h-4 w-4 text-indigo-600 animate-pulse" /> {t("Pipeline Funnel Graph", "Graf predajného lievika", "Értékesítési tölcsér grafikon")}
                 </h3>
                 
                 <div className="flex items-center gap-2">
@@ -1410,7 +1389,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                   className="inline-block px-1.5 py-0.5 rounded text-[8px] font-black uppercase tracking-wider border select-none leading-none"
                                   style={{
                                     backgroundColor: `${leadSourceColors[p.source.toLowerCase()] || "#10b981"}15`,
-                                    color: leadSourceColors[p.source.toLowerCase()] || "#10b981",
+                                    color: liftAccent(leadSourceColors[p.source.toLowerCase()] || "#10b981"),
                                     borderColor: `${leadSourceColors[p.source.toLowerCase()] || "#10b981"}35`
                                   }}
                                 >
@@ -1429,9 +1408,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 const subColor = leadStateColors[sName] || "#38bdf8";
                                 return (
                                   <span 
-                                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider select-none text-white leading-none"
+                                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider select-none leading-none"
                                     style={{
-                                      background: `linear-gradient(135deg, ${parentColor}, ${subColor})`
+                                      background: `linear-gradient(135deg, ${parentColor}, ${subColor})`,
+                                      // The gradient's midpoint is what the text
+                                      // actually sits on; a pale state colour
+                                      // needs ink, not more white.
+                                      color: readableOn(subColor)
                                     }}
                                   >
                                     {parentName.toUpperCase()} &gt; {p.status.toUpperCase()}
@@ -1441,9 +1424,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                                 const mainColor = leadStateColors[sName] || "#6366f1";
                                 return (
                                   <span 
-                                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider select-none text-white leading-none"
+                                    className="inline-flex items-center px-2 py-0.5 rounded-full text-[8px] font-black uppercase tracking-wider select-none leading-none"
                                     style={{
-                                      backgroundColor: mainColor
+                                      backgroundColor: mainColor,
+                                      color: readableOn(mainColor)
                                     }}
                                   >
                                     {p.status.toUpperCase()}
@@ -1584,7 +1568,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         <div className="flex justify-between items-start">
                           <span className="text-xs font-bold text-slate-800 leading-tight pr-4">{c.name}</span>
                           <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border shrink-0 ${
-                            c.status === "active" ? "bg-emerald-50 text-emerald-700 border-emerald-250" : "bg-slate-100 text-slate-500 border-slate-200"
+                            c.status === "active" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-500 border-slate-200"
                           }`}>
                             {c.status}
                           </span>
@@ -1615,7 +1599,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                         <div className="flex justify-between items-start">
                           <span className="text-xs font-bold text-slate-800 leading-tight pr-4">{c.name}</span>
                           <span className={`px-2 py-0.5 rounded text-[8px] font-black uppercase border shrink-0 ${
-                            c.status === "active" ? "bg-emerald-50 text-emerald-700 border-emerald-250" : "bg-slate-100 text-slate-500 border-slate-200"
+                            c.status === "active" ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-500 border-slate-200"
                           }`}>
                             {c.status}
                           </span>
@@ -1651,7 +1635,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
               <div className="p-4 bg-slate-50 border border-slate-100 rounded-2xl">
                 <span className="text-[9px] text-slate-400 font-bold uppercase tracking-wider block">{t("Active Deals in Funnel", "Aktívne obchody v lieviku", "Aktív üzletek a tölcsérben")}</span>
-                <span className="text-lg font-black text-indigo-650 block mt-1">{activePipelineLeads.length}</span>
+                <span className="text-lg font-black text-indigo-600 block mt-1">{activePipelineLeads.length}</span>
               </div>
             </div>
           </div>
@@ -1671,25 +1655,25 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   
                   // Rank styling configurations
                   let badgeBg = "bg-slate-100 text-slate-500 border-slate-200";
-                  let cardHover = "hover:border-slate-355 hover:shadow-md hover:shadow-slate-100/50";
+                  let cardHover = "hover:border-slate-300 hover:shadow-md hover:shadow-slate-100/50";
                   let rankTitle = t("Contender", "Vyzývateľ", "Kihívó");
                   let icon = <Award className="h-3.5 w-3.5 text-slate-400" />;
                   let sparklineColor = "#6366f1"; // indigo
                   
                   if (idx === 0) {
-                    badgeBg = "bg-gradient-to-br from-amber-400 via-yellow-400 to-amber-500 text-white border-amber-350 shadow-md shadow-amber-500/25";
+                    badgeBg = "bg-gradient-to-br from-amber-400 via-yellow-400 to-amber-500 text-white border-amber-300 shadow-md shadow-amber-500/25";
                     cardHover = "hover:border-amber-300 hover:shadow-lg hover:shadow-amber-500/5";
                     rankTitle = t("Elite Champion", "Elitný šampión", "Elit bajnok");
                     icon = <Crown className="h-3.5 w-3.5 text-white animate-bounce duration-1000" />;
                     sparklineColor = "#f59e0b"; // gold/amber
                   } else if (idx === 1) {
-                    badgeBg = "bg-gradient-to-br from-slate-300 via-slate-400 to-slate-500 text-white border-slate-250 shadow-md shadow-slate-500/15";
+                    badgeBg = "bg-gradient-to-br from-slate-300 via-slate-400 to-slate-500 text-white border-slate-200 shadow-md shadow-slate-500/15";
                     cardHover = "hover:border-indigo-300 hover:shadow-lg hover:shadow-indigo-500/5";
                     rankTitle = t("Super Challenger", "Super vyzývateľ", "Szuper kihívó");
                     icon = <Medal className="h-3.5 w-3.5 text-white" />;
                     sparklineColor = "#6366f1"; // indigo/silver
                   } else if (idx === 2) {
-                    badgeBg = "bg-gradient-to-br from-orange-400 via-amber-600 to-orange-600 text-white border-orange-350 shadow-md shadow-orange-500/15";
+                    badgeBg = "bg-gradient-to-br from-orange-400 via-amber-600 to-orange-600 text-white border-orange-300 shadow-md shadow-orange-500/15";
                     cardHover = "hover:border-orange-300 hover:shadow-lg hover:shadow-orange-500/5";
                     rankTitle = t("Rising Star", "Vychádzajúca hviezda", "Feltörekvő csillag");
                     icon = <Trophy className="h-3.5 w-3.5 text-white" />;
@@ -1742,7 +1726,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                             <span className="text-xs font-black text-slate-900">{money(pm.revenue)}</span>
                             <div className="flex items-center gap-1 text-[9px] font-bold">
                               {isHighConversion && <Flame className="h-3 w-3 text-orange-500 animate-pulse" />}
-                              <span className={isHighConversion ? "text-orange-650" : "text-emerald-600"}>
+                              <span className={isHighConversion ? "text-orange-600" : "text-emerald-600"}>
                                 {pm.conversionRate.toFixed(0)}% {t("conversion", "konverzia", "konverzió")}
                               </span>
                             </div>
@@ -1753,7 +1737,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                       {/* Bottom Row: XP Progress Bar comparing to #1 */}
                       <div className="mt-3 flex items-center justify-between gap-3 relative z-20">
                         {/* XP bar label */}
-                        <span className="text-[7px] font-black uppercase tracking-widest text-slate-450 shrink-0">
+                        <span className="text-[7px] font-black uppercase tracking-widest text-slate-400 shrink-0">
                           {idx === 0 ? t("Champion Level Max", "Maximálna úroveň šampióna", "Bajnoki szint max") : `${Math.round(revenuePercentage)}% ${t("of Top Score", "z najlepšieho skóre", "a legjobb pontszámból")}`}
                         </span>
                         {/* Interactive progress bar */}
@@ -1778,7 +1762,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             <div className="lg:col-span-7 glass-panel p-6 rounded-3xl border border-white/60 bg-white shadow-sm space-y-6">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
                 <h3 className="text-xs font-heading font-black text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
-                  <TrendingUp className="h-4 w-4 text-purple-650" /> {t("PM Comparison Race", "Pretek porovnania PM", "PM összehasonlító verseny")}
+                  <TrendingUp className="h-4 w-4 text-purple-600" /> {t("PM Comparison Race", "Pretek porovnania PM", "PM összehasonlító verseny")}
                 </h3>
                 
                 {/* Selector Toggles */}
@@ -1908,7 +1892,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           else finalLabel = `${pm.conversionRate.toFixed(0)}%`;
 
                           return (
-                            <div key={pm.name} className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider text-slate-650">
+                            <div key={pm.name} className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider text-slate-600">
                               <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: color }} />
                               <span>{pm.name}: <strong className="text-slate-800">{finalLabel}</strong></span>
                             </div>
@@ -1931,7 +1915,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             {monthlyTrends.length > 0 ? (
               <div className="space-y-4 pt-2">
                 {monthlyTrends.map(trend => (
-                  <div key={trend.label} className="p-4 bg-slate-55/30 rounded-2xl border border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div key={trend.label} className="p-4 bg-slate-50/30 rounded-2xl border border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                     <div className="flex flex-col">
                       <span className="text-xs font-black text-slate-800">{trend.label}</span>
                       <span className="text-[9px] text-slate-400 font-semibold">{t("CRM Activity Node Period", "Obdobie aktivity v CRM", "CRM aktivitási időszak")}</span>
@@ -2168,7 +2152,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           <span className="text-[10px] text-slate-400 font-extrabold uppercase tracking-wider">{t("Selected Data Node", "Vybraný dátový bod", "Kiválasztott adatpont")}</span>
                           <span className="text-xs font-black text-slate-800 mt-0.5">{pt.label}</span>
                           <div className="flex items-center justify-center gap-3 mt-1 text-[11px] font-bold">
-                            <span className="text-slate-500">{t("Date", "Dátum", "Dátum")}: <strong className="text-slate-700">{pt.date}</strong></span>
+                            <span className="text-slate-500">{t("Date", "Dátum", "Dátum")}: <strong className="text-slate-700">{formatTimestampLocalized(pt.date, systemLanguage)}</strong></span>
                             <span className="text-slate-500">{t("Change", "Zmena", "Változás")}: <strong className="text-slate-700">+{inspectingChart.valuePrefix}{pt.value.toLocaleString()}{inspectingChart.valueSuffix}</strong></span>
                             <span className="text-slate-500">{t("Value", "Hodnota", "Érték")}: <strong style={{ color: inspectingChart.color }}>{inspectingChart.valuePrefix}{pt.cumulative.toLocaleString()}{inspectingChart.valueSuffix}</strong></span>
                           </div>
@@ -2202,7 +2186,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     >
                       <div className="flex flex-col min-w-0 pr-2">
                         <span className="text-[11px] font-bold text-slate-800 truncate leading-snug">{pt.label}</span>
-                        <span className="text-[8px] text-slate-400 font-bold mt-0.5">{pt.date}</span>
+                        <span className="text-[8px] text-slate-400 font-bold mt-0.5">{formatTimestampLocalized(pt.date, systemLanguage)}</span>
                       </div>
                       <div className="flex flex-col items-end shrink-0">
                         <strong className="text-xs font-black text-slate-800">
@@ -2210,7 +2194,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           {pt.cumulative.toLocaleString()}
                           {inspectingChart.valueSuffix}
                         </strong>
-                        <span className="text-[8px] text-slate-450 font-bold">
+                        <span className="text-[8px] text-slate-400 font-bold">
                           +{inspectingChart.valuePrefix}{pt.value.toLocaleString()}{inspectingChart.valueSuffix}
                         </span>
                       </div>
@@ -2259,7 +2243,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                     // Navigate to dedicated fullscreen view via SPA hash routing
                     window.location.hash = "lead-" + selectedLeadForDrawer.id;
                   }}
-                  className="h-8.5 px-3 rounded-xl border border-indigo-200 hover:border-indigo-400 bg-indigo-50/50 hover:bg-indigo-55 text-indigo-750 flex items-center justify-center gap-1.5 cursor-pointer transition-all active:scale-95 text-[9px] font-black uppercase tracking-wider"
+                  className="h-8.5 px-3 rounded-xl border border-indigo-200 hover:border-indigo-400 bg-indigo-50/50 hover:bg-indigo-50 text-indigo-700 flex items-center justify-center gap-1.5 cursor-pointer transition-all active:scale-95 text-[9px] font-black uppercase tracking-wider"
                   title={t("Open in Dedicated Full Screen View", "Otvoriť v samostatnom zobrazení na celú obrazovku", "Megnyitás külön teljes képernyős nézetben")}
                 >
                   <Maximize2 className="h-3.5 w-3.5" /> {t("Full Screen", "Celá obrazovka", "Teljes képernyő")}
@@ -2267,7 +2251,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                 
                 <button 
                   onClick={closeLeadDrawer}
-                  className="h-8.5 w-8.5 rounded-xl border border-slate-200 hover:border-slate-350 hover:bg-slate-50 text-slate-500 hover:text-slate-800 flex items-center justify-center cursor-pointer transition-all active:scale-90 shadow-sm"
+                  className="h-8.5 w-8.5 rounded-xl border border-slate-200 hover:border-slate-300 hover:bg-slate-50 text-slate-500 hover:text-slate-800 flex items-center justify-center cursor-pointer transition-all active:scale-90 shadow-sm"
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -2277,13 +2261,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
             {/* Scrollable details area */}
             <div className="flex-1 overflow-y-auto py-6 space-y-6 scrollbar-thin pr-1 text-left">
               {/* Financial metrics header card */}
-              <div className="p-5 bg-gradient-to-br from-indigo-500 to-purple-650 rounded-3xl text-white shadow-lg space-y-2.5 relative overflow-hidden shrink-0">
+              <div className="p-5 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-3xl text-white shadow-lg space-y-2.5 relative overflow-hidden shrink-0">
                 {/* Background glow decoration */}
                 <div className="absolute -bottom-10 -right-10 w-32 h-32 rounded-full bg-white/10 blur-2xl pointer-events-none" />
                 <span className="text-[9px] font-black text-indigo-100 uppercase tracking-widest block">{t("Estimated Deal Worth", "Odhadovaná hodnota obchodu", "Becsült üzletérték")}</span>
                 <span className="text-3xl font-black block leading-none">{money(selectedLeadForDrawer.value)}</span>
                 
-                <div className="flex items-center gap-2 border-t border-white/20 pt-2.5 mt-1 text-[10px] font-bold text-indigo-150">
+                <div className="flex items-center gap-2 border-t border-white/20 pt-2.5 mt-1 text-[10px] font-bold text-indigo-100">
                   <Compass className="h-3.5 w-3.5" />
                   <span>{t("Channel", "Kanál", "Csatorna")}: </span>
                   <span 
@@ -2392,7 +2376,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               <div className="space-y-4">
                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2">{t("Client Credentials", "Údaje o klientovi", "Ügyfél adatai")}</h4>
                 
-                <div className="space-y-3 bg-slate-50/50 border border-slate-150/40 p-4.5 rounded-2xl text-[11px] font-semibold text-slate-550">
+                <div className="space-y-3 bg-slate-50/50 border border-slate-100/40 p-4.5 rounded-2xl text-[11px] font-semibold text-slate-500">
                   <div className="flex justify-between items-center py-1">
                     <span>{t("Legal Client Type", "Právny typ klienta", "Jogi ügyféltípus")}:</span>
                     <span className="font-black text-slate-800 uppercase tracking-wider text-[9px]">{selectedLeadForDrawer.clientType}</span>
@@ -2427,10 +2411,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   
                   <div className="relative border-l-2 border-slate-100 pl-5.5 ml-2.5 space-y-5 text-[11px] font-semibold text-slate-500">
                     {selectedLeadForDrawer.timeline.map((event) => {
-                      let eventColor = "text-indigo-650 bg-indigo-50 border-indigo-150";
+                      let eventColor = "text-indigo-600 bg-indigo-50 border-indigo-100";
                       if (event.type === "phone") eventColor = "text-blue-600 bg-blue-50 border-blue-100";
                       else if (event.type === "email") eventColor = "text-emerald-600 bg-emerald-50 border-emerald-100";
-                      else if (event.type === "offer") eventColor = "text-purple-650 bg-purple-50 border-purple-100";
+                      else if (event.type === "offer") eventColor = "text-purple-600 bg-purple-50 border-purple-100";
                       else if (event.type === "appointment") eventColor = "text-amber-600 bg-amber-50 border-amber-100";
 
                       return (
@@ -2447,7 +2431,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                           
                           <div className="mt-1 bg-slate-50/40 hover:bg-slate-50 border border-slate-100 rounded-xl p-3 transition-colors">
                             <h5 className="font-black text-slate-800 leading-snug">{event.title}</h5>
-                            <p className="text-slate-450 leading-relaxed mt-1 text-[10px] font-semibold">{event.content}</p>
+                            <p className="text-slate-400 leading-relaxed mt-1 text-[10px] font-semibold">{event.content}</p>
                           </div>
                         </div>
                       );

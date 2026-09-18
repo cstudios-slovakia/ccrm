@@ -65,6 +65,64 @@ export interface TimelineEvent {
   // CRM triggered (incoming mail, imported paperwork) and every event written
   // before this field existed simply have no author and render without a name.
   author?: string;
+  // Mail entries only: removed from the lead timeline by the user. The row is
+  // kept so the mailbox importer does not file the message again.
+  hidden?: boolean;
+}
+
+/**
+ * Who a new lead is handed to when it arrives without an owner — leads captured
+ * by the public webhook, created by a workflow, imported, or added in the app
+ * without picking a project manager.
+ *
+ * The assignment itself is made server-side (sync.php / api/pipeline.php) so a
+ * single rotation cursor is shared by every device and every entry point; the
+ * client only edits these rules and shows the result.
+ */
+export type LeadAssignmentMode =
+  | "off"        // nobody is auto-assigned — new leads stay unassigned
+  | "selected"   // hand out to the chosen users, in the order they are listed
+  | "all";       // hand out to every registered user
+
+export interface LeadAssignmentSettings {
+  mode: LeadAssignmentMode;
+  /** Ordered pool for mode "selected"; ignored otherwise. Names, matching `Lead.owner`. */
+  users: string[];
+  /**
+   * Kept so the stored blob stays a stable shape. Assignment always round-robins
+   * through the pool — a pool of one person is simply that person every time.
+   */
+  rotate: boolean;
+}
+
+/**
+ * Turns every incoming lead into a project automatically.
+ *
+ * Like {@link LeadAssignmentSettings}, the work is done server-side
+ * (ccrm_auto_create_project_for_lead in api/auth.php) so it covers the ways a
+ * lead can arrive without ever passing through this app — the public web-form
+ * webhook and workflow create_lead/create_client actions — and so two devices
+ * syncing the same new lead cannot produce two projects for it.
+ */
+export interface ProjectAutoCreateSettings {
+  enabled: boolean;
+  /**
+   * The type a lead no category rule matched is given a project of — the lead
+   * carries no interest category, or none of the ones it carries is mapped
+   * below. "" leaves such a lead without a project.
+   */
+  projectTypeId: string;
+  /**
+   * Interest category name -> the project type a lead in that category gets.
+   * A lead in several mapped categories gets one project per category.
+   *
+   * Keyed by name rather than by the permanent list id, because the name is the
+   * identity everywhere else in the app (a lead stores category names, the
+   * colour map is keyed by name); a rename carries the entry across with it.
+   */
+  categoryTypes: Record<string, string>;
+  /** Put the lead's project manager on the new project as its manager. */
+  assignOwner: boolean;
 }
 
 export interface Lead {
@@ -122,6 +180,13 @@ export interface Lead {
   // Lead Referral (links to another Lead/Client ID)
   referralLeadId?: string;
 
+  // Which channel first brought the visitor to the website (facebook,
+  // instagram, google, direct, ...) and a free-text detail (medium, campaign,
+  // referrer, landing page). Reported by the public web-form webhook and
+  // shown read-only; the sync never writes it back.
+  trafficOrigin?: string;
+  trafficOriginDetail?: string;
+
   // Follow-up tracking — a map of completed follow-ups keyed by the lowercased
   // lead-state name, value = YYYY-MM-DD it was ticked. One checkbox is shown per
   // state flagged for follow-up in Settings (leadStateFollowUp).
@@ -131,6 +196,33 @@ export interface Lead {
   aiSummary?: string;
   aiSummaryFingerprint?: string;
   financialSummary?: string;
+
+  // Customer category (Clients → Categories): one node of the client category
+  // tree, or null. A client profile spans every lead sharing its name, so the
+  // client register writes it to all of them together.
+  clientCategoryId?: string | null;
+
+  // Archived from the client register: hidden from the client list until
+  // restored. Like clientCategoryId, set on every lead of the profile.
+  archived?: boolean;
+}
+
+/**
+ * A customer category — the finance category tree's shape (up to three levels,
+ * a colour, a hand-set position among siblings) without the income/expense
+ * split. Clients carry one through Lead.clientCategoryId.
+ */
+export interface ClientCategory {
+  id: string;
+  name: string;
+  parentId?: string | null;
+  level: 1 | 2 | 3;
+  /** Position among the siblings under the same parent, lowest first. */
+  sortOrder?: number;
+  color?: string | null;
+  icon?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 export interface Appointment {
@@ -191,6 +283,12 @@ export interface Task {
   createdBy?: string; // Immutable creator name; absent on legacy tasks
   assignedUsers: string[]; // names of assigned team members
   relatedLeadId?: string; // linked lead or client id (optional)
+  /**
+   * The project this task belongs to, if any. Such a task is an ordinary task —
+   * it lives on the Tasks board like any other — and is also listed in the
+   * project's own Tasks tab.
+   */
+  relatedProjectId?: string;
   isLocking?: boolean; // if true, it blocks related lead from transitioning stages until done
   completedBy?: string; // name of user who completed the task
   completedAt?: string; // timestamp (YYYY-MM-DD HH:MM) when completed
@@ -270,15 +368,15 @@ export interface UserProfile {
   metadata_json?: any;
 }
 
+export type PermissionValue = "edit" | "view" | "nothing";
+
 export interface RolePermission {
   name: string;
+  // Sparse map of permission key -> value. Keys absent from a stored role are
+  // resolved by src/utils/permissions.ts (legacy defaults, folded legacy keys);
+  // never read this map directly in a view — go through buildAccess().
   permissions: {
-    general_config: "edit" | "view" | "nothing";
-    pm_managers: "edit" | "view" | "nothing";
-    pipeline_stages: "edit" | "view" | "nothing";
-    traffic_sources: "edit" | "view" | "nothing";
-    system_reset: "edit" | "view" | "nothing";
-    [key: string]: "edit" | "view" | "nothing"; // Allow granular & custom permission slugs dynamically
+    [key: string]: PermissionValue | undefined;
   };
   defaultNavLayout?: string[]; // Array of active module item IDs in order
 }
@@ -310,6 +408,9 @@ export interface UnifiedEntryRow {
   filePath?: string;
   clientId?: string; // Links entry/folder to a Client/Lead ID
   leadId?: string; // Links entry/folder to a Lead ID
+  numberValue?: number;
+  moneyAmount?: number;
+  moneyCurrency?: string; // Per-entry currency for moneyAmount, e.g. "EUR"
   warningDays?: number;
   icon?: string;
 }
@@ -335,6 +436,7 @@ export type ProjectAttributeType =
   | "time" 
   | "datetime" 
   | "number" 
+  | "money" 
   | "checkbox" 
   | "radio" 
   | "files"
@@ -346,6 +448,19 @@ export interface ProjectAttribute {
   type: ProjectAttributeType;
   required: boolean;
   options?: string[];
+}
+
+/**
+ * One column of the projects list, as a project type lays it out.
+ *
+ * `key` is either a built-in column — "name", "type", "client", "managers",
+ * "rating", "deadline", "progress", "status" — or `attr:<attributeId>` for one
+ * of the type's own custom attributes. See utils/projectColumns.ts, which owns
+ * the catalogue and reconciles a saved layout with the columns that exist today.
+ */
+export interface ProjectListColumn {
+  key: string;
+  visible: boolean;
 }
 
 export interface TimelineEventType {
@@ -365,7 +480,65 @@ export interface ProjectType {
   attributes: ProjectAttribute[];
   hasTimeline: boolean;
   hasGantt: boolean;
+  /**
+   * Projects of this type are time-boxed: they carry a deadline, and the list
+   * counts down to it. Off by default, so a type that is not time-boxed shows
+   * no deadline field and no countdown anywhere — the same opt-in shape as
+   * hasTimeline and hasGantt.
+   */
+  hasDeadline?: boolean;
+  /**
+   * How many days ahead of the deadline a project starts warning, which is what
+   * turns the countdown badge amber. 0 means "only once it is actually late".
+   * See normalizeDeadlineWarningDays in utils/projects.ts.
+   */
+  deadlineWarningDays?: number;
+  /** A project of this type cannot be saved without a deadline. Only read while hasDeadline is on. */
+  deadlineRequired?: boolean;
+  /**
+   * Legacy switch for the default files. The Files tab no longer has an on/off
+   * switch — a type with default files shows them — so this is always written
+   * as true and never read.
+   */
+  hasFiles?: boolean;
+  /** The default files: named document slots every project of this type carries (contract, GDPR consent, ...). */
+  fileFields?: ProjectFileField[];
   timelineEventTypes?: TimelineEventType[];
+  /**
+   * Which columns the projects list shows for this type, and in what order —
+   * built-in columns and the type's own custom attributes side by side.
+   *
+   * Absent (on every type saved before this existed) means "never arranged",
+   * and reads as the default layout: the eight built-in columns, attributes
+   * off. The list only honours it while it is showing a single project type,
+   * because an attribute column means nothing to a project of another type.
+   */
+  listColumns?: ProjectListColumn[];
+}
+
+/**
+ * One default file slot of a project type. Its uploads live in
+ * `Project.data[id]`, in the same shape a "files" attribute stores.
+ */
+export interface ProjectFileField {
+  id: string;
+  name: string;
+  /** Legacy. Every file is optional now; kept only so old saved types still parse. */
+  required?: boolean;
+}
+
+/** An uploaded file, as a "files" attribute or file slot stores it. */
+export interface ProjectUploadedFile {
+  name: string;
+  size: string;
+  path: string;
+}
+
+/** A file slot added to one project only, on top of its type's default files. */
+export interface ProjectCustomFileField {
+  id: string;
+  name: string;
+  files: ProjectUploadedFile[];
 }
 
 export interface ProjectTimelineEvent {
@@ -387,16 +560,93 @@ export interface ProjectGanttRow {
   progress: number; // 0-100
 }
 
+/**
+ * The states a project can be in, in the order they are offered. One list,
+ * because three places used to spell it out separately (the projects filter,
+ * the project card, and now the workflow "change project status" action) and a
+ * fourth spelling would drift. Mirrored by ccrm_project_statuses() in
+ * api/auth.php, which validates what automations and the sync endpoint are
+ * allowed to write.
+ *
+ * "new" is where every project starts (DEFAULT_PROJECT_STATUS in
+ * utils/projects.ts). Nothing moves it along on its own: which lead status
+ * promotes a project to "active" differs from one installation to the next, so
+ * that lives in a workflow — the "Lead status changed" trigger wired to the
+ * "Change project status" action — rather than being hard-coded here.
+ */
+export const PROJECT_STATUSES = ["new", "active", "completed", "on_hold", "cancelled"] as const;
+export type ProjectStatus = (typeof PROJECT_STATUSES)[number];
+
 export interface Project {
   id: string;
   projectTypeId: string;
+  /**
+   * What the project is called. Optional, and empty on every project created
+   * before it existed: projects used to borrow the paired lead's name and had
+   * no name of their own, which left an unpaired project literally unnameable.
+   * Prefilled from the lead when one is picked, then free to diverge — see
+   * projectDisplayName in utils/projects.ts for the fallback order.
+   */
+  name?: string;
+  /**
+   * The lead this project is paired with, or null when it stands alone. The
+   * pairing is edited from both ends — "Paired lead / client" on the project,
+   * and the "Linked projects" card on the lead — and one lead can carry
+   * several projects, so the lead side is always a lookup by this field.
+   */
   leadId?: string | null;
   clientId?: string | null;
-  status: string; // e.g. "active" | "completed" | "on_hold" | "cancelled"
+  status: string; // one of PROJECT_STATUSES
+  /**
+   * How important this project is, 1-5 stars — the same hand-set priority a
+   * lead carries (see {@link Lead.rating}), and filtered and sorted by the same
+   * options in the projects list.
+   *
+   * 0 (or absent) means "not rated": unlike a lead, which is born at three
+   * stars, a project starts unrated so the list does not claim a priority
+   * nobody set. Absent from a sync payload means "unchanged" — an older client
+   * cannot wipe a rating simply by pushing a project it never knew had one.
+   */
+  rating?: number;
   managers: string[]; // employee ids or names
   data: Record<string, any>; // keyed by attribute.id
+  /**
+   * Due date as "YYYY-MM-DD", or null when none is set. Only ever shown for a
+   * project whose type has `hasDeadline`.
+   */
+  deadline?: string | null;
+  /**
+   * Why this project is running late. Required — and only required — once the
+   * project is actually past its deadline: the red flag on the list stays lit
+   * until someone writes down what happened, so a slipped date is explained
+   * rather than merely noticed. Empty on every project that is not late.
+   */
+  delayReason?: string | null;
+  /**
+   * When the work really started, "YYYY-MM-DD". Null until someone sets it,
+   * and read as the creation date meanwhile — see projectStartDate().
+   */
+  startDate?: string | null;
+  /**
+   * When the work really finished, "YYYY-MM-DD", set by hand. Once set it
+   * outranks `deadline` in every list, badge and sort.
+   */
+  finishedAt?: string | null;
+  /** Server creation timestamp. Read-only; never sent back as anything meaningful. */
+  createdAt?: string | null;
   timeline?: ProjectTimelineEvent[];
   gantt?: ProjectGanttRow[];
+  /**
+   * What the project may spend, in the default currency — the ceiling its
+   * direct costs are measured against on the finance tab. Null while unset.
+   */
+  budget?: number | null;
+  /**
+   * File slots added on this project alone, each carrying its own uploads.
+   * Stored whole in `projects.custom_files_json`; absent from a payload means
+   * "unchanged", so an older client cannot wipe them.
+   */
+  customFileFields?: ProjectCustomFileField[];
 }
 
 // Warehouse & Inventory Management Types
@@ -530,6 +780,8 @@ export interface FinancialCategory {
   name: string;
   parentId?: string | null;
   level: 1 | 2 | 3;
+  /** Position among the siblings under the same parent, lowest first. */
+  sortOrder?: number;
   color?: string | null;
   icon?: string | null;
   createdAt?: string;
@@ -542,6 +794,23 @@ export interface FinancialRecurrenceConfig {
   dayOfMonth?: number; // 1-31 (for monthly day_of_month)
   weekOfMonth?: number; // 1 = 1st, 2 = 2nd, 3 = 3rd, 4 = 4th, -1 = last (for monthly nth_weekday)
   month?: number; // 1-12 (for yearly)
+}
+
+/**
+ * One closed chapter in a recurring rule's price history.
+ *
+ * A recurring movement is stored as a single rule, not as one row per charge,
+ * so every report derives its past occurrences from the rule. Without this the
+ * rule's current amount would be applied backwards: raising the rent from 500
+ * to 600 would rewrite every month already paid at 500. An entry pins what was
+ * really charged — occurrences dated `until` or earlier (but after the previous
+ * entry) cost this much; anything later uses the record's own amounts.
+ */
+export interface FinancialRecurringAmountPeriod {
+  /** Last occurrence date charged this amount, inclusive, `YYYY-MM-DD`. */
+  until: string;
+  amountPlanned: number;
+  amountReal: number;
 }
 
 export interface FinancialRecord {
@@ -565,6 +834,20 @@ export interface FinancialRecord {
   recurringConfig?: FinancialRecurrenceConfig | null;
   recurringStartDate?: string | null;
   recurringEndDate?: string | null;
+  /**
+   * The end date the rule was actually meant to have, remembered while a
+   * pause is in effect (a pause stamps `recurringEndDate` with today's date
+   * to stop future charges — see `handleToggleRecurringActive` — which would
+   * otherwise overwrite a real planned end; resuming restores it here).
+   */
+  recurringPlannedEndDate?: string | null;
+  /**
+   * Superseded amounts of a recurring rule, oldest first. `amountPlanned` /
+   * `amountReal` above are always the figures in force now; this is what the
+   * occurrences before the last change were charged. See
+   * `utils/recurringExpenses.ts`.
+   */
+  recurringAmountHistory?: FinancialRecurringAmountPeriod[] | null;
   projectId?: string | null; // NULL for Global Company-Wide record
   clientId?: string | null;  // NULL for Global Company-Wide record
   invoiceNumber?: string | null;
@@ -591,6 +874,174 @@ export interface ProjectRevenueAnalysis {
   expensesByCategory: Record<string, { planned: number; real: number; categoryName: string; color: string }>;
 }
 
+// ==========================================
+// Invoices & Price Offers (Version 1.9)
+// ==========================================
 
+export type InvoiceOfferType = 'price_offer' | 'proforma' | 'invoice';
+export type InvoiceOfferMode = 'default' | 'custom' | 'external';
+export type InvoiceOfferStatus = 'draft' | 'sent' | 'approved' | 'rejected' | 'invoiced' | 'cancelled';
+export type ExternalInvoiceProvider = 'superfaktura' | 'idoklad';
 
+export interface InvoiceOfferItem {
+  id: string;
+  warehouseItemId?: string | null;
+  sku?: string | null;
+  name: string;
+  description?: string | null;
+  quantity: number;
+  unit: string;
+  unitPrice: number;
+  vatRate: number; // e.g. 20 for 20%
+  discountPct: number; // 0-100
+  totalPrice: number; // calculated line total with/without VAT depending on config
+}
 
+export interface UspCardItem {
+  id?: string;
+  title: string;
+  subtitle: string;
+  icon?: string;
+}
+
+export interface InvoiceOffer {
+  id: string;
+  documentNumber: string; // e.g. CP-2026-001 or FA-2026-001
+  type: InvoiceOfferType;
+  mode: InvoiceOfferMode;
+  externalProvider?: ExternalInvoiceProvider | null;
+  externalId?: string | null;
+  externalPdfUrl?: string | null;
+  
+  // Mandatory Lead / Client Pairing
+  leadId: string;
+  clientId?: string | null;
+  clientName: string;
+  clientEmail?: string | null;
+  clientPhone?: string | null;
+  clientStreet?: string | null;
+  clientCity?: string | null;
+  clientPostalCode?: string | null;
+  clientCountry?: string | null;
+  clientIco?: string | null;
+  clientDic?: string | null;
+  clientIcdph?: string | null;
+  
+  // Content & Customisation
+  title: string; // e.g. "Predbežná cenová ponuka"
+  subject: string; // e.g. "Rekonštrukcia plochej strechy — Šahy"
+  location?: string | null; // e.g. "Šahy"
+  greetingNote?: string | null; // e.g. "Dobrý deň, pán Šimon Zsolt Frenko,"
+  introNote?: string | null; // Trust paragraph
+  
+  // Value Proposition / USP Highlights
+  uspCards: UspCardItem[];
+  reassuranceNote?: string | null;
+  
+  // Items Scope
+  items: InvoiceOfferItem[];
+  
+  // Financial totals
+  subtotal: number;
+  vatAmount: number;
+  totalPrice: number;
+  priceRangeMin?: number | null;
+  priceRangeMax?: number | null;
+  currency: string; // 'EUR', 'CZK', etc.
+  
+  // Execution Parameters (3 key cards)
+  durationText?: string | null; // e.g. "2–3 dni"
+  startDateText?: string | null; // e.g. "Koniec júna"
+  warrantyText?: string | null; // e.g. "10 rokov"
+  
+  // Closing & Action
+  nextStepsNote?: string | null;
+  closingNote?: string | null;
+  signOffTeam?: string | null; // e.g. "Tím SIGNUM Slovakia s.r.o."
+  
+  // Custom AI Template metadata
+  customTemplateId?: string | null;
+  customTemplateStyle?: Record<string, any> | null;
+  
+  // Status & File
+  status: InvoiceOfferStatus;
+  statusChangedAt?: string | null; // YYYY-MM-DD — when `status` last changed
+  issuedAt: string; // YYYY-MM-DD
+  validUntil?: string | null; // YYYY-MM-DD
+  dueDate?: string | null; // YYYY-MM-DD
+  fileName?: string | null;
+  filePath?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  createdBy?: string | null;
+}
+
+export interface CompanyBillingSettings {
+  companyName: string;
+  companySubtitle?: string;
+  companyLogoUrl?: string | null;
+  street: string;
+  city: string;
+  postalCode: string;
+  country: string;
+  companyId: string; // IČO
+  taxId: string;     // DIČ
+  vatId: string;     // IČ DPH
+  email: string;
+  phone: string;
+  phoneSecondary?: string;
+  website: string;
+  iban: string;
+  swift: string;
+  bankName: string;
+  
+  // Default terms. Seeded into every new document by InvoicingView, so the names
+  // here must match the Settings → Invoicing form that writes them.
+  defaultPaymentDueDays: number;
+  defaultVatRate: number;
+  defaultWarrantyText: string;
+  defaultDurationText: string;
+  defaultStartDateText?: string;
+  defaultNextSteps: string;
+  defaultSocialProof: string; // reference clients printed in the document footer
+  defaultUspCards: UspCardItem[];
+}
+
+export interface ExternalInvoicingConfig {
+  superfaktura: {
+    enabled: boolean;
+    email: string;
+    apiKey: string;
+    companyId: string;
+    sandbox: boolean;
+  };
+  idoklad: {
+    enabled: boolean;
+    clientId: string;
+    clientSecret: string;
+    sandbox: boolean;
+  };
+}
+
+export interface AiCustomTemplate {
+  id: string;
+  name: string;
+  description?: string;
+  sourcePdfUrl?: string;
+  sourcePdfName?: string;
+  colors: {
+    primary: string;
+    secondary: string;
+    background: string;
+    accent: string;
+    text: string;
+  };
+  typography: {
+    fontFamily: string;
+    headingStyle: string;
+  };
+  sectionsOrder: string[];
+  customBannerText?: string;
+  badgeStyle?: 'rounded' | 'square' | 'pill';
+  createdAt: string;
+}

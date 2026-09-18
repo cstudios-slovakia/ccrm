@@ -24,10 +24,6 @@ import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import type { UpdateEntry } from "./UpdateNotesModal";
 import { useUserPref } from "../utils/userPrefs";
-import {
-    bundledUpdateNotes,
-    mergeBundledUpdateNotes,
-} from "../utils/bundledUpdateNotes";
 
 interface HeaderProps {
     activeTab: string;
@@ -41,6 +37,13 @@ interface HeaderProps {
     onNavigateMeetings?: (action: "list" | "new") => void;
     onAddTask?: () => void;
     onNavigateUpdates?: () => void;
+    /** Route gate from the permission resolver; search hits and shortcuts into closed modules are dropped. */
+    canOpenRoute?: (routeId: string) => boolean;
+    /** Quick-create shortcuts appear only when the role may edit the module. */
+    canCreateTask?: boolean;
+    canCreateMeeting?: boolean;
+    /** Manual workflow triggers run automations, so they follow automation edit rights. */
+    canRunWorkflows?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -55,6 +58,10 @@ export const Header: React.FC<HeaderProps> = ({
     onNavigateMeetings,
     onAddTask,
     onNavigateUpdates,
+    canOpenRoute = () => true,
+    canCreateTask = true,
+    canCreateMeeting = true,
+    canRunWorkflows = true,
 }) => {
     const t = (en: string, sk: string, hu: string) =>
         systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
@@ -191,26 +198,34 @@ export const Header: React.FC<HeaderProps> = ({
                     if (best) localizedList.push(best);
                 });
 
-                const allUpdates = mergeBundledUpdateNotes(localizedList);
-                setUpdatesList(allUpdates);
+                // The CMS is the only source of release notes, so an entry that is
+                // not published there must never show up in the app.
+                const sortedUpdates = [...localizedList].sort(
+                    (a, b) =>
+                        new Date(b.postDate).getTime() -
+                        new Date(a.postDate).getTime(),
+                );
+                setUpdatesList(sortedUpdates);
 
                 // Check if there is a new unseen update
-                if (allUpdates.length > 0) {
-                    const latestId = allUpdates[0].id;
+                if (sortedUpdates.length > 0) {
+                    const latestId = sortedUpdates[0].id;
                     if (seenUpdateIdRef.current !== latestId) {
                         setHasNewUpdate(true);
                     }
                 }
             } catch (err) {
                 console.error("Error fetching release notes:", err);
-                setUpdatesList(bundledUpdateNotes);
-                if (seenUpdateIdRef.current !== bundledUpdateNotes[0].id) {
-                    setHasNewUpdate(true);
-                }
+                setUpdatesList([]);
+                setHasNewUpdate(false);
             }
         };
         fetchUpdateNotes();
     }, [systemLanguage]);
+
+    // Search hits carry their hash ("#lead-42", "#meetings/7"); the gate wants the route id.
+    const canOpenSearchHit = (item: any) =>
+        typeof item?.url === "string" && canOpenRoute(item.url.replace(/^#/, ""));
 
     const handleOpenUpdates = () => {
         if (onNavigateUpdates) {
@@ -314,6 +329,8 @@ export const Header: React.FC<HeaderProps> = ({
             }
             if (e.key === "Escape") {
                 setShowSearchDropdown(false);
+                setIsMeetingsOpen(false);
+                setIsToolboxOpen(false);
                 searchInputRef.current?.blur();
             }
         };
@@ -334,7 +351,7 @@ export const Header: React.FC<HeaderProps> = ({
             );
             if (res.ok) {
                 const data = await res.json();
-                setSearchResults(Array.isArray(data) ? data : []);
+                setSearchResults((Array.isArray(data) ? data : []).filter(canOpenSearchHit));
                 setShowSearchDropdown(true);
                 setSelectedIndex(-1);
             } else {
@@ -388,6 +405,7 @@ export const Header: React.FC<HeaderProps> = ({
     };
 
     const handleSelectSearchResult = (item: any) => {
+        if (!canOpenSearchHit(item)) return;
         window.location.hash = item.url;
         setShowSearchDropdown(false);
         setSearchQuery("");
@@ -410,7 +428,7 @@ export const Header: React.FC<HeaderProps> = ({
             case "unified_entry":
                 return <Database className="h-4 w-4 text-purple-500" />;
             default:
-                return <FileText className="h-4 w-4 text-slate-450" />;
+                return <FileText className="h-4 w-4 text-slate-400" />;
         }
     };
 
@@ -597,7 +615,7 @@ export const Header: React.FC<HeaderProps> = ({
                                                     </div>
                                                 )}
                                                 {item.excerpt && (
-                                                    <div className="text-[10px] text-slate-550 font-semibold mt-1 leading-relaxed border-l-2 border-slate-200 pl-2 italic truncate">
+                                                    <div className="text-[10px] text-slate-500 font-semibold mt-1 leading-relaxed border-l-2 border-slate-200 pl-2 italic truncate">
                                                         {item.excerpt}
                                                     </div>
                                                 )}
@@ -624,10 +642,10 @@ export const Header: React.FC<HeaderProps> = ({
                     </a>
                 )}
 
-                {/* Create Task Top-Bar Action Button */}
+                {canCreateTask && (
                 <button
                     onClick={onAddTask}
-                    className="h-10 w-10 rounded-xl border bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-350 hover:bg-slate-50 flex items-center justify-center transition-colors shadow-sm cursor-pointer shrink-0"
+                    className="h-10 w-10 rounded-xl border bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-300 hover:bg-slate-50 flex items-center justify-center transition-colors shadow-sm cursor-pointer shrink-0"
                     title={
                         systemLanguage === "sk"
                             ? "Vytvoriť novú úlohu"
@@ -638,15 +656,19 @@ export const Header: React.FC<HeaderProps> = ({
                 >
                     <CheckSquare className="h-5 w-5 text-indigo-600" />
                 </button>
+                )}
 
-                {/* Meeting Room Popover Utilities */}
+
+                {canOpenRoute("meetings") && (
                 <div className="relative" ref={meetingsDropdownRef}>
                     <button
                         onClick={() => setIsMeetingsOpen(!isMeetingsOpen)}
+                        aria-expanded={isMeetingsOpen}
+                        aria-haspopup="menu"
                         className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer ${
                             isMeetingsOpen
                                 ? "bg-[#0b1329] border-[#0b1329] text-white"
-                                : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-350 hover:bg-slate-50"
+                                : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-300 hover:bg-slate-50"
                         }`}
                         aria-label={t(
                             "Meeting Room Menu",
@@ -665,8 +687,17 @@ export const Header: React.FC<HeaderProps> = ({
                     </button>
 
                     {/* Popover Dropdown Panel */}
+                    {isMeetingsOpen && typeof document !== "undefined" &&
+                        createPortal(
+                            <div
+                                className="fixed inset-0 z-40"
+                                aria-hidden="true"
+                                onClick={() => setIsMeetingsOpen(false)}
+                            />,
+                            document.body,
+                        )}
                     {isMeetingsOpen && (
-                        <div className="absolute right-0 mt-2.5 w-60 bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-2xl rounded-2xl p-2.5 z-50 flex flex-col gap-1 select-none animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div role="menu" className="absolute right-0 mt-2.5 w-60 bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-2xl rounded-2xl p-2.5 z-50 flex flex-col gap-1 select-none animate-in fade-in slide-in-from-top-2 duration-200">
                             <div className="px-3 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 mb-1">
                                 {systemLanguage === "sk"
                                     ? "Rýchle akcie zasadačky"
@@ -713,7 +744,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 </div>
                             </button>
 
-                            {/* New Meeting */}
+                            {canCreateMeeting && (
                             <button
                                 onClick={() => {
                                     setIsMeetingsOpen(false);
@@ -732,6 +763,8 @@ export const Header: React.FC<HeaderProps> = ({
                                           : "New Meeting"}
                                 </span>
                             </button>
+                            )}
+
 
                             {/* Show Meetings */}
                             <button
@@ -755,15 +788,19 @@ export const Header: React.FC<HeaderProps> = ({
                         </div>
                     )}
                 </div>
+                )}
 
-                {/* Automation Toolbox Popover */}
+
+                {canRunWorkflows && (
                 <div className="relative" ref={toolboxDropdownRef}>
                     <button
                         onClick={() => setIsToolboxOpen(!isToolboxOpen)}
+                        aria-expanded={isToolboxOpen}
+                        aria-haspopup="menu"
                         className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer ${
                             isToolboxOpen
                                 ? "bg-[#0b1329] border-[#0b1329] text-white"
-                                : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-350 hover:bg-slate-50"
+                                : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-300 hover:bg-slate-50"
                         }`}
                         title={t(
                             "Automation Toolbox",
@@ -774,8 +811,17 @@ export const Header: React.FC<HeaderProps> = ({
                         <Workflow className="h-5 w-5 text-purple-700" />
                     </button>
 
+                    {isToolboxOpen && typeof document !== "undefined" &&
+                        createPortal(
+                            <div
+                                className="fixed inset-0 z-40"
+                                aria-hidden="true"
+                                onClick={() => setIsToolboxOpen(false)}
+                            />,
+                            document.body,
+                        )}
                     {isToolboxOpen && (
-                        <div className="absolute right-0 mt-2.5 w-64 bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-2xl rounded-2xl p-3.5 z-50 flex flex-col gap-2 select-none animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div role="menu" className="absolute right-0 mt-2.5 w-64 bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-2xl rounded-2xl p-3.5 z-50 flex flex-col gap-2 select-none animate-in fade-in slide-in-from-top-2 duration-200">
                             <div className="px-1.5 pb-2 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 mb-1 flex items-center justify-between">
                                 <span>
                                     {t(
@@ -862,16 +908,18 @@ export const Header: React.FC<HeaderProps> = ({
                         </div>
                     )}
                 </div>
+                )}
+
 
                 {/* Product Release Notes Updates Button */}
-                {updatesList.length > 0 && (
+                {canOpenRoute("updates") && updatesList.length > 0 && (
                     <div className="relative">
                         <button
                             onClick={handleOpenUpdates}
                             className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer relative ${
                                 activeTab === "updates"
                                     ? "bg-[#0b1329] border-[#0b1329] text-white"
-                                    : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-350 hover:bg-slate-50"
+                                    : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-300 hover:bg-slate-50"
                             }`}
                             title={
                                 systemLanguage === "sk"
@@ -896,7 +944,7 @@ export const Header: React.FC<HeaderProps> = ({
                 <div>
                     <button
                         onClick={() => setIsProfileOpen(true)}
-                        className="h-10 w-10 rounded-xl bg-white/80 border border-slate-200 flex items-center justify-center hover:border-slate-350 text-slate-700 transition-colors shadow-sm cursor-pointer"
+                        className="h-10 w-10 rounded-xl bg-white/80 border border-slate-200 flex items-center justify-center hover:border-slate-300 text-slate-700 transition-colors shadow-sm cursor-pointer"
                         aria-label={t(
                             "User Profile Menu",
                             "Menu používateľského profilu",
@@ -986,7 +1034,7 @@ export const Header: React.FC<HeaderProps> = ({
                                         </div>
 
                                         {/* Language Selector Section */}
-                                        <div className="p-5 space-y-3 border-b border-slate-105">
+                                        <div className="p-5 space-y-3 border-b border-slate-100">
                                             <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
                                                 {getTranslation(
                                                     systemLanguage,
@@ -1053,7 +1101,7 @@ export const Header: React.FC<HeaderProps> = ({
                                                     onOpenPersonalSettings();
                                                     handleClose();
                                                 }}
-                                                className="w-full py-3.5 px-4 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 hover:text-indigo-850 transition-all text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                                                className="w-full py-3.5 px-4 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 hover:text-indigo-800 transition-all text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-sm"
                                             >
                                                 <svg
                                                     className="h-4 w-4"

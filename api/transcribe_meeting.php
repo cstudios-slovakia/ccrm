@@ -156,16 +156,19 @@ Transcription:
 Manual Notes:
 " . $manualNotes;
 
+$transcribeModel = ccrm_ai_model();
 $gptPayload = [
-    'model' => ccrm_ai_model(),
+    'model' => $transcribeModel,
     'messages' => [
         [
             'role' => 'user',
             'content' => $prompt
         ]
     ],
-    'temperature' => 0.4
 ];
+if (ccrm_ai_model_supports_temperature($transcribeModel)) {
+    $gptPayload['temperature'] = 0.4;
+}
 
 $ch = curl_init('https://api.openai.com/v1/chat/completions');
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);

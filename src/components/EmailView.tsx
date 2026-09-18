@@ -1,17 +1,22 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
-import { 
-  Send, Trash2, Search, Mail, Plus, X, Loader2, 
+import {
+  Send, Trash2, Search, Mail, Plus, X, Loader2,
   Reply, CheckCircle2, CircleAlert, Clock, Phone, FileText, Calendar, TrendingUp,
-  CornerDownLeft, CornerLeftDown, ChevronDown, ChevronUp, Brain, RefreshCw
+  CornerDownLeft, CornerLeftDown, ChevronDown, ChevronUp, Brain, RefreshCw, Lock, MailOpen,
+  Type, MessagesSquare, Inbox, Paperclip, UserPlus, ExternalLink, History, Download, FolderPlus,
+  FileSpreadsheet, FileImage, ArrowUpRight, ArrowDownLeft
 } from "lucide-react";
 import type { Lead, Task, UserProfile } from "../types";
+import type { ModuleAccess } from "../utils/permissions";
+import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import { formatBytes } from "../utils/formatBytes";
-import { nowLocalStamp, localeCodeFor, formatTimestampLocalized } from "../utils/localTime";
+import { nowLocalStamp, localeCodeFor, formatTimestampLocalized, todayLocalPlusDays } from "../utils/localTime";
 import { getTranslation } from "../utils/translations";
 import { CustomSelect } from "./ui/CustomSelect";
 import { TimelineAuthorBadge } from "./TimelineAuthorBadge";
 import { TimelineCollapsible } from "./TimelineCollapsible";
+import { isOutgoingMail } from "../utils/mailTimeline";
 
 interface EmailViewProps {
   currentUser: any;
@@ -24,6 +29,10 @@ interface EmailViewProps {
   setTasks: (newTasks: Task[] | ((prev: Task[]) => Task[])) => void;
   users: UserProfile[];
   taskStates?: string[];
+  /** Role access for the email module. `edit: false` makes the client read-only:
+      mail can be read, searched and attachments opened, but nothing is sent,
+      created or written into the CRM. */
+  access?: ModuleAccess;
 }
 
 // Geometric Icon component from AuroraMail
@@ -61,9 +70,12 @@ export const EmailView: React.FC<EmailViewProps> = ({
   tasks,
   setTasks,
   users,
-  taskStates = ["New", "In progress", "Blocked", "Done"]
+  taskStates = ["New", "In progress", "Blocked", "Done"],
+  access = FULL_MODULE_ACCESS
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+  const canEdit = access.edit;
+  const canDelete = access.delete;
   // Folder & Email States
   const activeFolder = "INBOX";
   const [emails, setEmails] = useState<any[]>([]);
@@ -105,13 +117,6 @@ export const EmailView: React.FC<EmailViewProps> = ({
     });
   };
 
-  // Match current selected email to CRM client / lead
-  const matchedClient = useMemo(() => {
-    if (!selectedEmail) return null;
-    const addr = selectedEmail.from?.address?.toLowerCase() || "";
-    return leads.find(l => l.email && l.email.toLowerCase() === addr) || null;
-  }, [selectedEmail, leads]);
-  
   // Filtering & Pagination
   const [searchQuery, setSearchQuery] = useState("");
   const [filter, setFilter] = useState<"all" | "unread">("all");
@@ -132,15 +137,24 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const [loadingSummaries, setLoadingSummaries] = useState<Record<string, boolean>>({});
   const [actionItemsMap, setActionItemsMap] = useState<Record<string, string[]>>({});
   const [assigningActionItem, setAssigningActionItem] = useState<{ item: string; emailUid: string } | null>(null);
-  const [collapsedSummaries, setCollapsedSummaries] = useState<Record<string, boolean>>({});
   const [isLargeFont, setIsLargeFont] = useState(false);
 
-  const toggleSummaryCollapse = (uid: string) => {
-    setCollapsedSummaries(prev => ({
-      ...prev,
-      [uid]: !prev[uid]
-    }));
-  };
+  // The AI digest popover: which summary, anchored where, and whether a click
+  // pinned it open (hover-only previews close when the pointer leaves).
+  const [digest, setDigest] = useState<{ key: string; lead: Lead | null; rect: DOMRect; pinned: boolean } | null>(null);
+  const digestHideTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    if (!digest) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        setDigest(null);
+        setAssigningActionItem(null);
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [digest]);
 
   const [isClientSlideoutOpen, setIsClientSlideoutOpen] = useState(false);
   const [isClosingClient, setIsClosingClient] = useState(false);
@@ -185,6 +199,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
   };
 
   const handleAddAttachmentToDocs = async (uid: string, folder: string, att: any, matchedClientObj: any) => {
+    if (!canEdit) return;
     try {
       const eventId = `ev-doc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
       if (typeof (window as any).showToast === "function") {
@@ -307,6 +322,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
   };
 
   const handleAddEmailActionItemAsTask = (actionItem: string, emailUid: string, matchedLead: Lead | null, assignedUser: string) => {
+    if (!canEdit) return;
     const newCrmTask: Task = {
       id: `task-ai-${Date.now()}`,
       title: actionItem,
@@ -314,7 +330,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       status: taskStates[0] || "New",
       priority: "medium",
       startDate: new Date().toISOString().split("T")[0],
-      deadline: new Date(Date.now() + 86400000 * 3).toISOString().split("T")[0],
+      deadline: todayLocalPlusDays(3),
       deadlineTime: "23:59",
       owner: assignedUser,
       createdBy: currentUser?.name || "",
@@ -331,6 +347,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
 
   const handleCreateClientSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canEdit) return;
     if (!clientFormName.trim() || !clientFormEmail.trim() || !clientFormCity.trim()) return;
     
     const newLead: Lead = {
@@ -410,10 +427,12 @@ export const EmailView: React.FC<EmailViewProps> = ({
 
         const combinedEmails: any[] = [];
         const processMail = (mail: any) => {
-          const isOutgoing = mail.from?.address?.toLowerCase() === currentUser?.email?.toLowerCase();
+          const isOutgoing = isOutgoingMail(mail, currentUser?.email);
           const folderPrefix = isOutgoing ? "sent" : "inbox";
           return {
-            id: `email-${folderPrefix}-${mail.uid}`,
+            // Server-issued id, so the merge below recognises the row it already
+            // stored for this message instead of rendering it a second time.
+            id: mail.event_id || `email-${folderPrefix}-${mail.uid}`,
             type: "email",
             timestamp: mail.date.substring(0, 16),
             title: mail.subject || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)"),
@@ -510,10 +529,49 @@ export const EmailView: React.FC<EmailViewProps> = ({
     await loadEmails(1, filter, true);
   };
 
+  // The IMAP \Seen flag is the only read state there is: the mail client shows
+  // it, the list refresh reads it back, and this is the one call that changes
+  // it on purpose. The list is updated with the flag the server reports, not
+  // with what we asked for, so the two can never drift apart silently.
+  const setSeenFlag = async (email: any, seen: boolean): Promise<boolean> => {
+    const folderToUse = email.isSent ? "Sent" : activeFolder;
+    try {
+      const res = await fetch("/api/mail_broker.php?action=set_seen", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-User-Email": currentUser.email },
+        body: JSON.stringify({ uid: email.uid, folder: folderToUse, seen })
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error || "set_seen failed");
+      setEmails(prev => prev.map(e => e.uid === email.uid ? { ...e, seen: !!data.seen } : e));
+      return true;
+    } catch (err) {
+      notify(
+        seen
+          ? t("Could not mark the message as read", "Správu sa nepodarilo označiť ako prečítanú", "Az üzenetet nem sikerült olvasottnak jelölni")
+          : t("Could not mark the message as unread", "Správu sa nepodarilo označiť ako neprečítanú", "Az üzenetet nem sikerült olvasatlannak jelölni"),
+        "error"
+      );
+      return false;
+    }
+  };
+
+  // Whole-thread toggle: reading marks every unread message; "unread" lifts
+  // only the newest one, which is what the mail client does for a conversation.
+  const setThreadSeen = async (thread: any, seen: boolean) => {
+    const targets = seen ? thread.emails.filter((e: any) => !e.seen) : [thread.latestEmail];
+    for (const email of targets) {
+      await setSeenFlag(email, seen);
+    }
+  };
+
   // Expand Single message details
   const expandThreadMessage = async (email: any) => {
     if (threadBodies[email.uid]) {
       setSelectedEmail(email);
+      // The body is cached but the mail client has since marked it unread:
+      // opening it again is reading it again.
+      if (!email.seen) setSeenFlag(email, true);
       return;
     }
     setIsLoadingDetail(true);
@@ -526,9 +584,10 @@ export const EmailView: React.FC<EmailViewProps> = ({
       if (data.success) {
         setThreadBodies(prev => ({ ...prev, [email.uid]: data.email }));
         setSelectedEmail(email);
-        
-        // Mark as seen locally
-        setEmails(prev => prev.map(e => e.uid === email.uid ? { ...e, seen: true } : e));
+
+        // Opening the message marked it read on the server; mirror the flag it reports.
+        const seenNow = data.email?.seen !== false;
+        setEmails(prev => prev.map(e => e.uid === email.uid ? { ...e, seen: seenNow } : e));
       } else {
         notify(data.error || t("Could not retrieve email contents", "Nepodarilo sa načítať obsah e-mailu", "Az e-mail tartalmát nem sikerült lekérni"), "error");
       }
@@ -554,6 +613,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
 
   // Compose a new email
   const openNewComposer = (defaultTo = "", defaultSubject = "", defaultBody = "") => {
+    if (!canEdit) return;
     const newComp = {
       id: Date.now(),
       to: defaultTo,
@@ -565,6 +625,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
   };
 
   const handleSendEmail = async (composer: any) => {
+    if (!canEdit) return;
     setIsSending(true);
     try {
       const res = await fetch("/api/mail_broker.php?action=send_email", {
@@ -581,7 +642,21 @@ export const EmailView: React.FC<EmailViewProps> = ({
       });
       const data = await res.json();
       if (data.success) {
-        notify(t("Email sent successfully!", "E-mail bol úspešne odoslaný!", "Az e-mail sikeresen elküldve!"));
+        // The message is delivered either way. But a copy that could not be filed
+        // into Sent is invisible to the timeline importer, so the mail will never
+        // appear on the customer's history — say so rather than let it vanish.
+        if (data.filed_to_sent === false) {
+          notify(
+            t(
+              "Sent — but the copy could not be saved to your Sent folder, so it will not appear on the client's timeline.",
+              "Odoslané — kópiu sa však nepodarilo uložiť do priečinka Odoslané, takže sa nezobrazí v histórii klienta.",
+              "Elküldve — a másolatot azonban nem sikerült a Küldött elemek mappába menteni, így nem jelenik meg az ügyfél előzményei között.",
+            ),
+            "error",
+          );
+        } else {
+          notify(t("Email sent successfully!", "E-mail bol úspešne odoslaný!", "Az e-mail sikeresen elküldve!"));
+        }
         closeComposer(composer.id);
         loadEmails(1, filter);
       } else {
@@ -595,6 +670,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
   };
 
   const handleDeleteEmail = async (uid: any) => {
+    if (!canDelete) return;
     if (!confirm(t("Are you sure you want to delete this email?", "Naozaj chcete odstrániť tento e-mail?", "Biztosan törölni szeretné ezt az e-mailt?"))) return;
     try {
       const res = await fetch(`/api/mail_broker.php?action=delete_email&uid=${uid}&folder=${encodeURIComponent(activeFolder)}`, {
@@ -671,6 +747,11 @@ export const EmailView: React.FC<EmailViewProps> = ({
     return threadsList;
   }, [emails, searchQuery]);
 
+  const visibleThreads = useMemo(
+    () => (filter === "unread" ? threadedEmails.filter((t) => !t.seen) : threadedEmails),
+    [threadedEmails, filter],
+  );
+
   const activeThread = useMemo(() => {
     if (!isThreadedMode || !selectedThreadId) return null;
     return threadedEmails.find(t => t.id === selectedThreadId) || null;
@@ -680,7 +761,13 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const toggleEmailExpand = async (email: any) => {
     const isExpanded = !expandedEmailUids[email.uid];
     setExpandedEmailUids(prev => ({ ...prev, [email.uid]: isExpanded }));
-    
+
+    if (isExpanded && threadBodies[email.uid] && !email.seen) {
+      // Cached body, but the message is unread again (the mail client can do
+      // that): expanding it is reading it.
+      setSeenFlag(email, true);
+    }
+
     if (isExpanded && !threadBodies[email.uid]) {
       setIsLoadingDetail(true);
       const folderToUse = email.isSent ? "Sent" : activeFolder;
@@ -691,8 +778,9 @@ export const EmailView: React.FC<EmailViewProps> = ({
         const data = await res.json();
         if (data.success) {
           setThreadBodies(prev => ({ ...prev, [email.uid]: data.email }));
-          // Mark as seen locally
-          setEmails(prev => prev.map(e => e.uid === email.uid ? { ...e, seen: true } : e));
+          // Opening the message marked it read on the server; mirror the flag it reports.
+          const seenNow = data.email?.seen !== false;
+          setEmails(prev => prev.map(e => e.uid === email.uid ? { ...e, seen: seenNow } : e));
         }
       } catch (err) {
         console.warn("Failed to retrieve threaded email detail", err);
@@ -714,6 +802,11 @@ export const EmailView: React.FC<EmailViewProps> = ({
       );
     });
   }, [emails, searchQuery]);
+
+  const visibleIndividualEmails = useMemo(
+    () => (filter === "unread" ? filteredIndividualEmails.filter((e) => !e.seen) : filteredIndividualEmails),
+    [filteredIndividualEmails, filter],
+  );
 
   // Fetch thread flow summary when active thread changes or thread bodies load
   useEffect(() => {
@@ -798,23 +891,587 @@ export const EmailView: React.FC<EmailViewProps> = ({
     }
   }, [emails, isThreadedMode, isOpenAiKeySet, threadedEmails, filteredIndividualEmails]);
 
+  // --- Presentation helpers -------------------------------------------------
+
+  const locale = localeCodeFor(systemLanguage);
+
+  const plural = (n: number, en: [string, string], sk: [string, string, string], hu: string) => {
+    if (systemLanguage === "sk") return `${n} ${n === 1 ? sk[0] : n >= 2 && n <= 4 ? sk[1] : sk[2]}`;
+    if (systemLanguage === "hu") return `${n} ${hu}`;
+    return `${n} ${n === 1 ? en[0] : en[1]}`;
+  };
+
+  // The other party of a message: whoever wrote it, or whoever it went to when we sent it.
+  const counterpartOf = (email: any) =>
+    email.isSent
+      ? { name: email.to?.name || email.to?.address || t("Unknown", "Neznámy", "Ismeretlen"), address: email.to?.address || "" }
+      : { name: email.from?.name || email.from?.address || t("Unknown", "Neznámy", "Ismeretlen"), address: email.from?.address || "" };
+
+  // A thread's contact is the newest person who wrote to us, falling back to
+  // whoever we last wrote to — never ourselves.
+  const threadContactOf = (thread: any) => {
+    for (let i = thread.emails.length - 1; i >= 0; i--) {
+      if (!thread.emails[i].isSent) return counterpartOf(thread.emails[i]);
+    }
+    return counterpartOf(thread.latestEmail);
+  };
+
+  const findLead = (address?: string) =>
+    address ? leads.find(l => l.email && l.email.toLowerCase() === address.toLowerCase()) || null : null;
+
+  const initialsOf = (name: string) => {
+    const words = (name || "").replace(/@.*$/, "").split(/[\s._-]+/).filter(w => /^\p{L}/u.test(w));
+    if (words.length === 0) return (name || "?").charAt(0).toUpperCase();
+    return words.slice(0, 2).map(w => w.charAt(0).toUpperCase()).join("");
+  };
+
+  const formatListDate = (value: string) => {
+    const d = new Date(value);
+    if (isNaN(d.getTime())) return "";
+    const now = new Date();
+    const dayStart = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    const diffDays = Math.round((dayStart(now) - dayStart(d)) / 86400000);
+    if (diffDays === 0) return d.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" });
+    if (diffDays === 1) return t("Yesterday", "Včera", "Tegnap");
+    if (d.getFullYear() === now.getFullYear()) return d.toLocaleDateString(locale, { day: "numeric", month: "numeric" });
+    return d.toLocaleDateString(locale);
+  };
+
+  const formatFullDate = (value: string) => {
+    const d = new Date(value);
+    return isNaN(d.getTime()) ? "" : d.toLocaleString(locale, { dateStyle: "medium", timeStyle: "short" });
+  };
+
+  const isClientLead = (lead: Lead) => lead.status === "accepted";
+
+  const iconButtonClass = "h-9 w-9 shrink-0 rounded-xl flex items-center justify-center text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-all active:scale-95 cursor-pointer";
+  const secondaryButtonClass = "px-4 py-2.5 bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 hover:text-slate-900 rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow-2xs active:scale-95 cursor-pointer";
+  const primaryButtonClass = "px-4 py-2.5 bg-pink-600 hover:bg-pink-700 text-white rounded-xl text-sm font-bold flex items-center gap-2 transition-all shadow active:scale-95 cursor-pointer";
+
+  const renderLeadChip = (lead: Lead | null) =>
+    lead ? (
+      <span
+        title={`${t("CRM Match:", "Zhoda CRM:", "CRM egyezés:")} ${lead.name}`}
+        className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-bold border ${
+          isClientLead(lead) ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-slate-100 text-slate-600 border-slate-200"
+        }`}
+      >
+        🤝 {isClientLead(lead) ? t("Client", "Klient", "Ügyfél") : t("Lead", "Záujemca", "Érdeklődő")}
+      </span>
+    ) : null;
+
+  const openCreateClient = (address: string, name: string) => {
+    setClientFormEmail(address);
+    setClientFormName(name);
+    setClientFormCity("");
+    setClientFormPhone("");
+    setClientFormType("person");
+    setIsClientSlideoutOpen(true);
+  };
+
+  // CRM actions for the conversation's contact: timeline + profile when matched,
+  // "create client" when the sender is not in the CRM yet.
+  const renderCrmActions = (lead: Lead | null, contact: { name: string; address: string }) =>
+    lead ? (
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            setSlideoutLead(lead);
+            setIsTimelineSlideoutOpen(true);
+          }}
+          className={secondaryButtonClass}
+        >
+          <History size={16} /> {t("View Timeline", "Zobraziť časovú os", "Idővonal megtekintése")}
+        </button>
+        <button
+          type="button"
+          onClick={() => { window.location.hash = `client-${encodeURIComponent(lead.name)}`; }}
+          className={secondaryButtonClass}
+          title={lead.name}
+        >
+          <ExternalLink size={16} /> {t("Open Client", "Otvoriť klienta", "Ügyfél megnyitása")}
+        </button>
+      </div>
+    ) : canEdit && contact.address ? (
+      <button type="button" onClick={() => openCreateClient(contact.address, contact.name === contact.address ? "" : contact.name)} className={secondaryButtonClass}>
+        <UserPlus size={16} /> {t("Create Client", "Vytvoriť klienta", "Ügyfél létrehozása")}
+      </button>
+    ) : null;
+
+  // Sender line under the subject: avatar chip, address, date, CRM state.
+  const renderPartyMeta = (email: any, lead: Lead | null) => {
+    const party = counterpartOf(email);
+    return (
+      <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-slate-500">
+        <span className="inline-flex items-center gap-2 pl-1 pr-3 py-1 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 font-bold max-w-full">
+          <span className="h-6 w-6 rounded-lg bg-white border border-slate-200 text-slate-600 text-[11px] font-bold flex items-center justify-center shrink-0">
+            {initialsOf(party.name)}
+          </span>
+          {email.isSent && <span className="text-slate-400 font-semibold">{t("To:", "Komu:", "Címzett:")}</span>}
+          <span className="truncate">{party.name}</span>
+        </span>
+        {party.address && party.address !== party.name && <span className="truncate">{party.address}</span>}
+        <span className="text-slate-300" aria-hidden>|</span>
+        <span>{formatFullDate(email.date)}</span>
+        {lead ? (
+          renderLeadChip(lead)
+        ) : (
+          <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-bold border bg-white text-slate-500 border-slate-200">
+            👤 {t("Not in CRM", "Nie je v CRM", "Nincs a CRM-ben")}
+          </span>
+        )}
+      </div>
+    );
+  };
+
+  const attachmentVisual = (name: string) => {
+    const ext = (name.split(".").pop() || "").toLowerCase();
+    if (ext === "pdf") return { Icon: FileText, cls: "bg-rose-50 text-rose-600" };
+    if (["xls", "xlsx", "csv", "ods"].includes(ext)) return { Icon: FileSpreadsheet, cls: "bg-emerald-50 text-emerald-600" };
+    if (["png", "jpg", "jpeg", "gif", "webp", "svg", "heic"].includes(ext)) return { Icon: FileImage, cls: "bg-sky-50 text-sky-600" };
+    return { Icon: Paperclip, cls: "bg-amber-50 text-amber-700" };
+  };
+
+  const renderAttachments = (email: any, bodyObj: any, lead: Lead | null) => {
+    const attachments: any[] = bodyObj?.attachments || [];
+    if (attachments.length === 0) return null;
+    const folder = email.isSent ? "Sent" : activeFolder;
+    return (
+      <div className="shrink-0">
+        <div className="text-xs font-bold text-slate-500 mb-2 flex items-center gap-1.5">
+          <Paperclip size={14} /> {t("Attachments", "Prílohy", "Mellékletek")} · {attachments.length}
+        </div>
+        <div className="flex flex-wrap gap-2.5">
+          {attachments.map((att: any, attIdx: number) => {
+            const { Icon, cls } = attachmentVisual(att.name || "");
+            return (
+              <div key={attIdx} className="flex items-center gap-3 pl-2.5 pr-1.5 py-2 bg-white border border-slate-200 hover:border-slate-300 hover:shadow-sm rounded-2xl transition-all">
+                <span className={`h-10 w-10 rounded-xl flex items-center justify-center shrink-0 ${cls}`}>
+                  <Icon size={18} />
+                </span>
+                <button
+                  type="button"
+                  onClick={() => handleDownloadAttachment(email.uid, folder, att)}
+                  className="min-w-0 text-left cursor-pointer"
+                  title={t("Download", "Stiahnuť", "Letöltés")}
+                >
+                  <span className="block text-sm font-bold text-slate-800 truncate max-w-[200px]">{att.name}</span>
+                  <span className="block text-xs text-slate-500">{formatBytes(att.size)}</span>
+                </button>
+                <div className="flex items-center">
+                  <button
+                    type="button"
+                    onClick={() => handleDownloadAttachment(email.uid, folder, att)}
+                    className="h-8 w-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-800 transition-all active:scale-95 cursor-pointer"
+                    title={t("Download", "Stiahnuť", "Letöltés")}
+                    aria-label={t("Download", "Stiahnuť", "Letöltés")}
+                  >
+                    <Download size={16} />
+                  </button>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => handleAddAttachmentToDocs(email.uid, folder, att, lead)}
+                      className="h-8 w-8 rounded-lg flex items-center justify-center text-slate-400 hover:bg-emerald-50 hover:text-emerald-700 transition-all active:scale-95 cursor-pointer"
+                      title={t("Add to Docs", "Pridať do dokumentov", "Hozzáadás a dokumentumokhoz")}
+                      aria-label={t("Add to Docs", "Pridať do dokumentov", "Hozzáadás a dokumentumokhoz")}
+                    >
+                      <FolderPlus size={16} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  };
+
+  const renderMailFrame = (bodyObj: any, title: string, className: string) => (
+    <iframe
+      className={className}
+      title={title}
+      sandbox=""
+      srcDoc={`
+        <html>
+          <head>
+            <style>
+              body {
+                font-family: system-ui, -apple-system, sans-serif;
+                color: #0f172a;
+                background-color: transparent;
+                line-height: 1.6;
+                font-size: ${isLargeFont ? "17px" : "14px"};
+                margin: 0;
+                padding: 2px;
+              }
+              a { color: #db2777; text-decoration: none; }
+              a:hover { text-decoration: underline; }
+              blockquote { border-left: 3px solid #cbd5e1; padding-left: 12px; color: #64748b; margin: 12px 0; }
+            </style>
+          </head>
+          <body>
+            ${bodyObj.html || bodyObj.text || ""}
+          </body>
+        </html>
+      `}
+    />
+  );
+
+  // AI digest: hidden behind a brain icon; hovering previews it, clicking pins it open.
+  const clearDigestHide = () => {
+    if (digestHideTimer.current !== null) {
+      window.clearTimeout(digestHideTimer.current);
+      digestHideTimer.current = null;
+    }
+  };
+  const scheduleDigestHide = () => {
+    clearDigestHide();
+    digestHideTimer.current = window.setTimeout(() => {
+      setDigest(d => (d && !d.pinned ? null : d));
+    }, 180);
+  };
+  const closeDigest = () => {
+    clearDigestHide();
+    setDigest(null);
+    setAssigningActionItem(null);
+  };
+
+  // IMAP uids arrive as numbers; the digest key must be a string (the popover
+  // tells threads from single mails with key.startsWith("thread-")).
+  const renderDigestButton = (rawKey: string | number, lead: Lead | null, size: "sm" | "md" = "md") => {
+    if (!isOpenAiKeySet) return null;
+    const key = String(rawKey);
+    const isActive = digest?.key === key;
+    const iconSize = size === "sm" ? 15 : 17;
+    return (
+      <button
+        type="button"
+        onClick={(e) => {
+          e.stopPropagation();
+          clearDigestHide();
+          const rect = e.currentTarget.getBoundingClientRect();
+          if (digest?.key === key && digest.pinned) {
+            closeDigest();
+          } else {
+            setAssigningActionItem(null);
+            setDigest({ key, lead, rect, pinned: true });
+          }
+        }}
+        onMouseEnter={(e) => {
+          if (digest?.pinned) return;
+          clearDigestHide();
+          setDigest({ key, lead, rect: e.currentTarget.getBoundingClientRect(), pinned: false });
+        }}
+        onMouseLeave={() => {
+          if (!digest?.pinned) scheduleDigestHide();
+        }}
+        title={t("AI summary", "AI súhrn", "AI összefoglaló")}
+        aria-label={t("AI summary", "AI súhrn", "AI összefoglaló")}
+        aria-expanded={isActive}
+        className={`${size === "sm" ? "h-8 w-8" : "h-9 w-9"} shrink-0 rounded-xl flex items-center justify-center transition-all active:scale-95 cursor-pointer ${
+          isActive ? "bg-purple-100 text-purple-700" : "text-purple-500 hover:bg-purple-50 hover:text-purple-700"
+        }`}
+      >
+        {loadingSummaries[key] ? <Loader2 size={iconSize} className="animate-spin" /> : <Brain size={iconSize} />}
+      </button>
+    );
+  };
+
+  const renderDigestPopover = () => {
+    if (!digest) return null;
+    const { key, lead, rect, pinned } = digest;
+    const width = Math.min(380, window.innerWidth - 16);
+    const left = Math.max(8, Math.min(rect.right - width, window.innerWidth - width - 8));
+    const openUp = rect.bottom + 340 > window.innerHeight && rect.top > 340;
+    const position: React.CSSProperties = openUp
+      ? { left, width, bottom: window.innerHeight - rect.top + 6 }
+      : { left, width, top: rect.bottom + 6 };
+    const isThread = key.startsWith("thread-");
+    const items = actionItemsMap[key] || [];
+
+    return (
+      <>
+        {pinned && <div className="fixed inset-0 z-40 bg-transparent" onClick={closeDigest} />}
+        <div
+          role="dialog"
+          aria-label={t("AI summary", "AI súhrn", "AI összefoglaló")}
+          style={position}
+          onMouseEnter={clearDigestHide}
+          onMouseLeave={() => { if (!pinned) scheduleDigestHide(); }}
+          className="fixed z-50 max-h-[min(440px,70vh)] overflow-y-auto bg-white border border-purple-200 rounded-2xl shadow-2xl p-4 text-left animate-fade-in select-text"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="h-7 w-7 rounded-lg bg-purple-50 text-purple-600 flex items-center justify-center">
+                <Brain size={15} />
+              </span>
+              <span className="text-sm font-bold text-purple-950">
+                {isThread ? t("AI Flow Summary", "AI súhrn toku", "AI folyam összefoglaló") : t("AI Mail Summary", "AI súhrn e-mailu", "AI e-mail összefoglaló")}
+              </span>
+            </div>
+            {pinned && (
+              <button
+                type="button"
+                onClick={closeDigest}
+                className="h-7 w-7 rounded-lg flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-all cursor-pointer"
+                aria-label={t("Close", "Zavrieť", "Bezárás")}
+              >
+                <X size={15} />
+              </button>
+            )}
+          </div>
+
+          <div className="mt-3">
+            {loadingSummaries[key] ? (
+              <div className="flex items-center gap-2 text-sm text-purple-700 font-semibold">
+                <Loader2 size={15} className="animate-spin" />
+                {isThread
+                  ? t("Analyzing conversation flow...", "Analyzuje sa tok konverzácie...", "Beszélgetés folyamának elemzése...")
+                  : t("Analyzing email content...", "Analyzuje sa obsah e-mailu...", "E-mail tartalmának elemzése...")}
+              </div>
+            ) : summaries[key] ? (
+              <p className="text-sm text-slate-700 leading-relaxed">{summaries[key]}</p>
+            ) : (
+              <p className="text-sm text-slate-400 italic">{t("No summary available.", "Súhrn nie je k dispozícii.", "Nincs elérhető összefoglaló.")}</p>
+            )}
+          </div>
+
+          {items.length > 0 && (
+            <div className="mt-4 pt-3 border-t border-purple-100 space-y-2">
+              <div className="text-xs font-bold text-purple-900 flex items-center gap-1.5">
+                <CheckCircle2 size={14} className="text-purple-600" />
+                {t("Suggested Tasks", "Navrhované úlohy", "Javasolt feladatok")}
+              </div>
+              <ul className="space-y-1.5">
+                {items.map((item, idx) => {
+                  const matchingTask = tasks.find(task => task.title === item);
+                  const assignedUser = matchingTask?.assignedUsers?.[0] || null;
+                  const isAssigning = assigningActionItem?.item === item && assigningActionItem?.emailUid === key;
+                  return (
+                    <li key={idx} className="rounded-xl bg-purple-50/60 border border-purple-100 px-3 py-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <span className="text-sm text-slate-800">{item}</span>
+                        {matchingTask ? (
+                          <span className="shrink-0 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-lg" title={assignedUser || undefined}>
+                            {assignedUser ? `✓ ${assignedUser.substring(0, 2).toUpperCase()}` : "✓"}
+                          </span>
+                        ) : canEdit ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDigest(d => (d ? { ...d, pinned: true } : d));
+                              setAssigningActionItem(isAssigning ? null : { item, emailUid: key });
+                            }}
+                            className="shrink-0 text-xs font-bold text-purple-700 hover:text-white bg-white hover:bg-purple-600 border border-purple-200 px-2 py-0.5 rounded-lg transition-all cursor-pointer"
+                          >
+                            + {t("Assign", "Priradiť", "Hozzárendel")}
+                          </button>
+                        ) : null}
+                      </div>
+                      {isAssigning && (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {users.map(u => (
+                            <button
+                              key={u.name}
+                              type="button"
+                              onClick={() => {
+                                handleAddEmailActionItemAsTask(item, key, lead, u.name);
+                                setAssigningActionItem(null);
+                              }}
+                              className="inline-flex items-center gap-1.5 pl-1 pr-2.5 py-1 bg-white hover:bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold text-slate-700 cursor-pointer transition-all"
+                            >
+                              <span className="h-5 w-5 rounded-full bg-indigo-50 border border-indigo-200/40 text-indigo-600 flex items-center justify-center text-[10px] font-bold shrink-0">
+                                {u.name.substring(0, 2).toUpperCase()}
+                              </span>
+                              {u.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+
+          {!pinned && (
+            <p className="mt-3 text-xs text-slate-400">{t("Click the icon to keep it open.", "Kliknutím na ikonu ho necháte otvorený.", "Kattintson az ikonra, hogy nyitva maradjon.")}</p>
+          )}
+        </div>
+      </>
+    );
+  };
+
+  const unreadCount = isThreadedMode
+    ? threadedEmails.filter(th => !th.seen).length
+    : filteredIndividualEmails.filter(e => !e.seen).length;
+  const shownCount = isThreadedMode ? visibleThreads.length : visibleIndividualEmails.length;
+
+  const onListScroll = () => {
+    if (digest) closeDigest();
+  };
+
+  // One row of the conversation list. Same shape for a single message and a thread.
+  const renderListRow = (opts: {
+    key: string;
+    email: any;
+    subject: string;
+    unread: boolean;
+    selected: boolean;
+    count?: number;
+    digestKey: string;
+    onOpen: () => void;
+  }) => {
+    const party = counterpartOf(opts.email);
+    const lead = findLead(party.address);
+    return (
+      <div
+        key={opts.key}
+        role="button"
+        tabIndex={0}
+        onClick={opts.onOpen}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            opts.onOpen();
+          }
+        }}
+        className={`relative flex gap-3 px-4 py-3.5 border-b border-slate-100 text-left cursor-pointer transition-colors outline-none focus-visible:bg-slate-50 ${
+          opts.selected ? "bg-pink-50/40" : "hover:bg-slate-50/80"
+        }`}
+      >
+        {opts.selected && <span className="absolute left-0 top-0 bottom-0 w-[3px] bg-pink-600 rounded-r" aria-hidden />}
+        <span className="h-9 w-9 rounded-xl bg-slate-100 text-slate-600 text-xs font-bold flex items-center justify-center shrink-0">
+          {initialsOf(party.name)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <span className={`flex items-center min-w-0 text-xs font-medium ${opts.unread ? "text-slate-700" : "text-slate-500"}`}>
+              <GeometricIcon emailString={party.address} />
+              {opts.email.isSent && <span className="text-slate-400 font-semibold mr-1 shrink-0">{t("To:", "Komu:", "Címzett:")}</span>}
+              <span className="truncate">{party.name}</span>
+            </span>
+            <span className={`text-xs shrink-0 ${opts.unread ? "text-pink-600 font-bold" : "text-slate-500"}`}>{formatListDate(opts.email.date)}</span>
+          </div>
+          <div className={`mt-0.5 text-base font-bold truncate ${opts.unread ? "text-slate-900" : "text-slate-700"}`}>
+            {opts.subject || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)")}
+          </div>
+          {opts.email.preview && (
+            <p className="mt-0.5 text-sm text-slate-500 line-clamp-2 break-words">{opts.email.preview}</p>
+          )}
+          <div className="mt-2 flex items-center gap-1.5 min-h-[24px]">
+            {opts.email.attachment_count > 0 && (
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-700 border border-amber-100"
+                title={plural(opts.email.attachment_count, ["attachment", "attachments"], ["príloha", "prílohy", "príloh"], "melléklet")}
+              >
+                <Paperclip size={12} /> {opts.email.attachment_count}
+              </span>
+            )}
+            {opts.email.isSent ? (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-bold bg-slate-50 text-slate-500 border border-slate-200">
+                <ArrowUpRight size={12} /> {t("Sent", "Odoslané", "Elküldve")}
+              </span>
+            ) : null}
+            {opts.count !== undefined && opts.count > 1 && (
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-bold bg-pink-50 text-pink-700 border border-pink-100">
+                <MessagesSquare size={12} /> {opts.count}
+              </span>
+            )}
+            {renderLeadChip(lead)}
+            <span className="flex-1" />
+            {renderDigestButton(opts.digestKey, lead, "sm")}
+            {opts.unread && <span className="h-2 w-2 rounded-full bg-pink-600 shrink-0" aria-label={t("Unread", "Neprečítané", "Olvasatlan")} />}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  const readToggleButton = (seen: boolean, onToggle: () => void) => {
+    const label = seen
+      ? t("Mark as unread", "Označiť ako neprečítané", "Megjelölés olvasatlanként")
+      : t("Mark as read", "Označiť ako prečítané", "Megjelölés olvasottként");
+    return (
+      <button type="button" onClick={onToggle} className={iconButtonClass} title={label} aria-label={label}>
+        {seen ? <Mail size={17} /> : <MailOpen size={17} />}
+      </button>
+    );
+  };
+
+  const emptyPane = (text: string) => (
+    <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3 px-6 text-center">
+      <span className="h-14 w-14 rounded-2xl bg-slate-50 border border-slate-100 flex items-center justify-center">
+        <Mail size={26} className="stroke-[1.5] text-slate-300" />
+      </span>
+      <span className="text-sm font-semibold text-slate-500">{text}</span>
+    </div>
+  );
+
   return (
-    <div className="space-y-6 select-none animate-fade-in text-slate-800">
+    <div className="space-y-5 select-none animate-fade-in text-slate-800">
     {/* Title header */}
-    <div className="flex flex-col border-b border-slate-100 pb-4">
-      <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-        <Mail className="h-6 w-6 text-pink-600" /> {t("Email Inbox", "Emailová schránka", "E-mail postafiók")}
-      </h2>
-      <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
-        {t("Unified SMTP / IMAP inbox connected to your CRM contacts", "Jednotná SMTP / IMAP schránka prepojená s kontaktmi CRM", "Egységes SMTP / IMAP postafiók a CRM kapcsolatokhoz")}
-      </p>
+    <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="flex items-center gap-4 min-w-0">
+        <span className="h-12 w-12 rounded-2xl bg-pink-50 border border-pink-100 flex items-center justify-center shrink-0">
+          <Mail className="h-6 w-6 text-pink-600" />
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight">
+            {t("Email Inbox", "Emailová schránka", "E-mail postafiók")}
+          </h2>
+          <p className="text-sm text-slate-500 mt-0.5">
+            {t("Unified SMTP / IMAP inbox connected to your CRM contacts", "Jednotná SMTP / IMAP schránka prepojená s kontaktmi CRM", "Egységes SMTP / IMAP postafiók a CRM kapcsolatokhoz")}
+          </p>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-2">
+        {!canEdit && (
+          <span
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-sm font-bold shrink-0"
+            title={t("Your role can read mail but not send it or write into the CRM from here.", "Vaša rola môže poštu čítať, ale nie odosielať ani odtiaľto zapisovať do CRM.", "A szerepköre olvashatja a leveleket, de nem küldhet, és innen nem írhat a CRM-be.")}
+          >
+            <Lock className="h-4 w-4" />
+            {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
+          </span>
+        )}
+        <span className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-sm font-semibold text-slate-600 shadow-2xs">
+          <span className={`h-2 w-2 rounded-full shrink-0 ${isSyncingEmails ? "bg-pink-500 animate-pulse" : "bg-emerald-500"}`} />
+          {isSyncingEmails
+            ? t("Syncing with mailbox...", "Synchronizuje sa so schránkou...", "Szinkronizálás a postafiókkal...")
+            : lastSyncAt
+              ? `${t("Synced", "Synchronizované", "Szinkronizálva")} ${lastSyncAt.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })} · ${t("every 60 s", "každých 60 s", "60 mp-enként")}`
+              : t("Auto-sync every 60s", "Automatická synchronizácia každých 60 s", "Automatikus szinkronizálás 60 mp-enként")}
+        </span>
+        <button
+          type="button"
+          onClick={handleManualSync}
+          disabled={isSyncingEmails}
+          title={
+            lastSyncAt
+              ? `${t("Last synced", "Naposledy synchronizované", "Utoljára szinkronizálva")}: ${lastSyncAt.toLocaleTimeString()}`
+              : t("Sync now", "Synchronizovať teraz", "Szinkronizálás most")
+          }
+          aria-label={t("Sync now", "Synchronizovať teraz", "Szinkronizálás most")}
+          className="h-10 w-10 bg-white hover:bg-slate-50 active:scale-95 border border-slate-200 text-slate-600 hover:text-pink-600 rounded-xl transition-all flex items-center justify-center shadow-2xs shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
+        >
+          <RefreshCw size={16} className={isSyncingEmails ? "animate-spin" : ""} />
+        </button>
+        {canEdit && (
+          <button type="button" onClick={() => openNewComposer()} className={`${primaryButtonClass} shrink-0`}>
+            <Plus size={16} /> {t("New Message", "Nová správa", "Új üzenet")}
+          </button>
+        )}
+      </div>
     </div>
 
-    <div className={`grid grid-cols-1 lg:grid-cols-12 gap-5 select-none h-[calc(100vh-300px)] items-stretch overflow-hidden animate-slide-up email-view-root ${isLargeFont ? 'email-view-large' : ''}`}>
+    <div className={`grid grid-cols-1 lg:grid-cols-12 gap-5 select-none h-[calc(100vh-280px)] min-h-[520px] items-stretch overflow-hidden animate-slide-up email-view-root ${isLargeFont ? 'email-view-large' : ''}`}>
       <style>{`
-        .email-view-large .text-\\[9px\\] { font-size: 12px !important; }
-        .email-view-large .text-\\[8px\\] { font-size: 11px !important; }
-        .email-view-large .text-\\[7\\.5px\\] { font-size: 10.5px !important; }
         .email-view-large .text-\\[10px\\] { font-size: 13px !important; }
         .email-view-large .text-\\[11px\\] { font-size: 14px !important; }
         .email-view-large .text-xs { font-size: 15px !important; }
@@ -823,964 +1480,383 @@ export const EmailView: React.FC<EmailViewProps> = ({
         .email-view-large .text-lg { font-size: 21px !important; }
         .email-view-large .text-xl { font-size: 23px !important; }
         .email-view-large .text-2xl { font-size: 27px !important; }
-        .email-view-large h3 { font-size: 17px !important; }
-        .email-view-large h4 { font-size: 13px !important; }
-        .email-view-large h5 { font-size: 12px !important; }
-        .email-view-large p { font-size: 14px !important; }
-        .email-view-large button { font-size: 13px !important; }
-        .email-view-large input { font-size: 14px !important; }
-        .email-view-large select { font-size: 14px !important; }
+        .email-view-large input { font-size: 17px !important; }
+        .email-view-large select { font-size: 17px !important; }
       `}</style>
       {/* Notifications banner */}
       {notification && (
         <div className={`fixed bottom-4 right-4 z-50 px-5 py-3.5 rounded-2xl flex items-center gap-3 border shadow-2xl ${
-          notification.type === "success" ? "bg-emerald-50 border-emerald-250 text-emerald-900" : "bg-rose-50 border-rose-250 text-rose-900"
+          notification.type === "success" ? "bg-emerald-50 border-emerald-200 text-emerald-900" : "bg-rose-50 border-rose-200 text-rose-900"
         }`}>
           {notification.type === "success" ? <CheckCircle2 size={16} /> : <CircleAlert size={16} />}
-          <span className="text-xs font-bold">{notification.text}</span>
+          <span className="text-sm font-bold">{notification.text}</span>
         </div>
       )}
 
-      {/* COLUMN 1: Headers List */}
-      <div className="lg:col-span-5 glass-panel p-4 rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full max-h-full overflow-hidden">
-        {/* Search & Filter Header */}
-        <div className="space-y-3 pb-3 border-b border-slate-150">
-          <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
-              <input
-                type="text"
-                placeholder={t("Search conversations...", "Hľadať konverzácie...", "Beszélgetések keresése...")}
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-4 py-2 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-700 focus:outline-none"
-              />
-            </div>
-            <button
-              type="button"
-              onClick={handleManualSync}
-              disabled={isSyncingEmails}
-              title={
-                lastSyncAt
-                  ? `${t("Last synced", "Naposledy synchronizované", "Utoljára szinkronizálva")}: ${lastSyncAt.toLocaleTimeString()}`
-                  : t("Sync now", "Synchronizovať teraz", "Szinkronizálás most")
-              }
-              aria-label={t("Sync now", "Synchronizovať teraz", "Szinkronizálás most")}
-              className="py-2 px-3 bg-white hover:bg-slate-50 active:scale-95 border border-slate-200 text-slate-600 hover:text-pink-600 rounded-xl transition-all flex items-center justify-center shadow-2xs shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
-            >
-              <RefreshCw size={14} className={isSyncingEmails ? "animate-spin" : ""} />
-            </button>
-            <button
-              type="button"
-              onClick={() => openNewComposer()}
-              className="py-2 px-3.5 bg-pink-600 hover:bg-pink-700 active:scale-95 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow shrink-0 cursor-pointer"
-            >
-              <Plus size={14} /> {t("New", "Nový", "Új")}
-            </button>
+      {/* COLUMN 1: Conversation list */}
+      <div className="lg:col-span-5 xl:col-span-4 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full max-h-full overflow-hidden">
+        {/* Search & filters */}
+        <div className="p-4 space-y-3 border-b border-slate-100 shrink-0">
+          <div className="relative">
+            <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <input
+              type="text"
+              placeholder={t("Search conversations...", "Hľadať konverzácie...", "Beszélgetések keresése...")}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-sm text-slate-700 focus:outline-none focus:bg-white focus:border-pink-300 transition-colors"
+            />
           </div>
 
-          <div className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-wider text-slate-400 px-0.5">
-            <span className={`h-1.5 w-1.5 rounded-full ${isSyncingEmails ? "bg-pink-500 animate-pulse" : "bg-emerald-500"}`} />
-            {isSyncingEmails
-              ? t("Syncing with mailbox...", "Synchronizuje sa so schránkou...", "Szinkronizálás a postafiókkal...")
-              : lastSyncAt
-                ? `${t("Last synced", "Naposledy synchronizované", "Utoljára szinkronizálva")} ${lastSyncAt.toLocaleTimeString()} · ${t("auto every 60s", "automaticky každých 60 s", "automatikusan 60 mp-enként")}`
-                : t("Auto-sync every 60s", "Automatická synchronizácia každých 60 s", "Automatikus szinkronizálás 60 mp-enként")}
-          </div>
-
-          <div className="flex items-center justify-between bg-slate-55 p-1 rounded-2xl border border-slate-200/40">
-            <div className="flex bg-slate-100 p-0.5 rounded-xl border border-slate-200/50 text-[10px] font-black uppercase tracking-wider flex-1 mr-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex bg-slate-100 p-1 rounded-xl border border-slate-200/50" role="tablist" aria-label={t("Mailbox filter", "Filter schránky", "Postafiók szűrő")}>
               <button
+                type="button"
+                role="tab"
+                aria-selected={filter === "all"}
                 onClick={() => setFilter("all")}
-                className={`flex-1 py-1.5 rounded-lg transition-all ${filter === "all" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                className={`px-3.5 py-1.5 rounded-lg text-sm font-bold transition-all cursor-pointer ${filter === "all" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
               >
-                {t("All Threads", "Všetky vlákna", "Összes szál")}
+                {t("All", "Všetky", "Összes")}
               </button>
               <button
+                type="button"
+                role="tab"
+                aria-selected={filter === "unread"}
                 onClick={() => setFilter("unread")}
-                className={`flex-1 py-1.5 rounded-lg transition-all ${filter === "unread" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
+                className={`px-3.5 py-1.5 rounded-lg text-sm font-bold transition-all flex items-center gap-1.5 cursor-pointer ${filter === "unread" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-800"}`}
               >
                 {t("Unread", "Neprečítané", "Olvasatlan")}
+                {unreadCount > 0 && (
+                  <span className="min-w-[20px] h-5 px-1.5 rounded-full bg-pink-600 text-white text-xs font-bold flex items-center justify-center">
+                    {unreadCount}
+                  </span>
+                )}
               </button>
             </div>
-            
-            {/* Font Size Toggle Switch */}
-            <div className="flex items-center gap-2 select-none border-l border-slate-200 pl-3.5 mr-1">
-              <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">{t("Font size", "Veľkosť písma", "Betűméret")}</span>
+
+            <div className="flex items-center gap-1.5">
               <button
                 type="button"
                 onClick={() => setIsLargeFont(prev => !prev)}
-                className="px-2.5 py-1.5 bg-white hover:bg-slate-50 border border-slate-200 rounded-xl text-[9px] font-black text-slate-700 uppercase tracking-wider transition-all shadow-2xs flex items-center gap-1 cursor-pointer select-none"
+                aria-pressed={isLargeFont}
+                title={isLargeFont
+                  ? t("Font size: large (click for normal)", "Veľkosť písma: veľké (kliknite pre normálne)", "Betűméret: nagy (kattintson a normálhoz)")
+                  : t("Font size: normal (click for large)", "Veľkosť písma: normálne (kliknite pre veľké)", "Betűméret: normál (kattintson a nagyhoz)")}
+                aria-label={t("Font size", "Veľkosť písma", "Betűméret")}
+                className={`h-9 w-9 rounded-xl border flex items-center justify-center transition-all active:scale-95 cursor-pointer ${
+                  isLargeFont ? "bg-pink-50 border-pink-200 text-pink-700" : "bg-white border-slate-200 text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                }`}
               >
-                <span>{isLargeFont ? t("A++ (Big)", "A++ (Veľké)", "A++ (Nagy)") : t("A- (Small)", "A- (Malé)", "A- (Kicsi)")}</span>
+                <Type size={16} />
               </button>
-            </div>
-
-            {/* Threaded Toggle Switch */}
-            <div className="flex items-center gap-2 select-none border-l border-slate-200 pl-3.5">
-              <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">{t("Flow Mode", "Režim toku", "Folyam mód")}</span>
-              <label className="relative inline-flex items-center cursor-pointer select-none">
-                <input 
-                  type="checkbox" 
-                  checked={isThreadedMode} 
-                  onChange={(e) => {
-                    setIsThreadedMode(e.target.checked);
-                    setSelectedEmail(null);
-                    setSelectedThreadId(null);
-                    setExpandedEmailUids({});
-                  }} 
-                  className="sr-only peer" 
-                />
-                <div className="w-8 h-4.5 bg-slate-250 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-pink-600"></div>
-              </label>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsThreadedMode(prev => !prev);
+                  setSelectedEmail(null);
+                  setSelectedThreadId(null);
+                  setExpandedEmailUids({});
+                  closeDigest();
+                }}
+                aria-pressed={isThreadedMode}
+                title={isThreadedMode
+                  ? t("Flow Mode: on — messages grouped into threads", "Režim toku: zapnutý — správy zoskupené do vlákien", "Folyam mód: be — üzenetek szálakba csoportosítva")
+                  : t("Flow Mode: off — click to group messages into threads", "Režim toku: vypnutý — kliknite pre zoskupenie do vlákien", "Folyam mód: ki — kattintson a szálakba csoportosításhoz")}
+                aria-label={t("Flow Mode", "Režim toku", "Folyam mód")}
+                className={`h-9 w-9 rounded-xl border flex items-center justify-center transition-all active:scale-95 cursor-pointer ${
+                  isThreadedMode ? "bg-pink-50 border-pink-200 text-pink-700" : "bg-white border-slate-200 text-slate-500 hover:text-slate-900 hover:bg-slate-50"
+                }`}
+              >
+                <MessagesSquare size={16} />
+              </button>
             </div>
           </div>
         </div>
 
-        {/* List of Email Cards */}
-        <div className="flex-1 overflow-y-auto space-y-2 pt-3">
+        {/* Conversation rows */}
+        <div className="flex-1 overflow-y-auto" onScroll={onListScroll}>
           {isLoadingEmails ? (
             <div className="flex flex-col items-center justify-center py-12 gap-2 text-slate-400">
               <Loader2 className="animate-spin text-pink-500" size={24} />
-              <span className="text-[10px] font-bold uppercase tracking-wider">{t("Syncing Envelopes...", "Synchronizácia obálok...", "Borítékok szinkronizálása...")}</span>
+              <span className="text-sm font-semibold">{t("Syncing Envelopes...", "Synchronizácia obálok...", "Borítékok szinkronizálása...")}</span>
+            </div>
+          ) : shownCount === 0 ? (
+            <div className="text-center py-12 px-4 text-slate-400 text-sm font-semibold">
+              {filter === "unread"
+                ? t("No unread messages.", "Žiadne neprečítané správy.", "Nincs olvasatlan üzenet.")
+                : isThreadedMode
+                  ? t("No threads found.", "Nenašli sa žiadne vlákna.", "Nincs találat a szálakra.")
+                  : t("No conversations found.", "Nenašli sa žiadne konverzácie.", "Nincs találat a beszélgetésekre.")}
             </div>
           ) : isThreadedMode ? (
-            /* Threaded List View */
-            threadedEmails.length === 0 ? (
-              <div className="text-center py-12 text-slate-400 text-xs font-semibold">
-                {t("No threads found.", "Nenašli sa žiadne vlákna.", "Nincs találat a szálakra.")}
-              </div>
-            ) : (
-              threadedEmails.map(thread => {
-                const isSelected = selectedThreadId === thread.id;
-                const latest = thread.latestEmail;
-                const matchedClient = leads.find(l => l.email && l.email.toLowerCase() === latest.from.address.toLowerCase());
-                
-                return (
-                  <div
-                    key={thread.id}
-                    onClick={() => {
-                      setSelectedThreadId(thread.id);
-                      setExpandedEmailUids({ [latest.uid]: true });
-                      // Load details for latest message
-                      toggleEmailExpand(latest);
-                    }}
-                    className={`p-3.5 rounded-2xl border text-left cursor-pointer transition-all flex flex-col gap-1.5 ${
-                      isSelected 
-                        ? "border-pink-300 bg-pink-50/20 shadow-sm" 
-                        : !thread.seen 
-                          ? "border-slate-200 bg-white font-black shadow-sm" 
-                          : "border-slate-100 bg-white/40 text-slate-600"
-                    }`}
-                  >
-                    <div className="flex justify-between items-start gap-1">
-                      <span className={`text-[12px] truncate max-w-[170px] ${!thread.seen ? "text-slate-900 font-extrabold" : "text-slate-800"}`}>
-                        {latest.isSent ? (
-                          <><span className="text-slate-400 font-bold">{t("To:", "Komu:", "Címzett:")}</span> {latest.to?.name || latest.to?.address || t("Unknown", "Neznámy", "Ismeretlen")}</>
-                        ) : (
-                          <><span className="text-slate-400 font-bold">{t("From:", "Od:", "Feladó:")}</span> {latest.from.name || latest.from.address}</>
-                        )}
-                      </span>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="text-[8.5px] font-extrabold bg-pink-100/80 text-pink-700 px-1.5 py-0.5 rounded-md leading-none">
-                          {thread.emails.length} msg
-                        </span>
-                        <span className="text-[8.5px] text-slate-400 font-semibold">
-                          {new Date(thread.date).toLocaleDateString(localeCodeFor(systemLanguage))}
-                        </span>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1">
-                      <GeometricIcon emailString={latest.isSent ? (latest.to?.address || "") : latest.from.address} />
-                      <span className={`text-[11px] truncate max-w-[240px] ${!thread.seen ? "text-slate-900 font-bold" : "text-slate-700"}`}>
-                        {thread.subject}
-                      </span>
-                    </div>
-
-                    {matchedClient && (
-                      <span className="w-fit text-[8px] font-black uppercase tracking-widest text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md border border-emerald-250">
-                        🤝 {t("CRM Match:", "Zhoda CRM:", "CRM egyezés:")} {matchedClient.name}
-                      </span>
-                    )}
-
-                    {isOpenAiKeySet && (
-                      <div className="mt-1.5 p-2 bg-purple-50/50 border border-purple-150 rounded-xl flex items-start gap-1.5 text-left animate-fade-in">
-                        <Brain className="h-3.5 w-3.5 text-purple-650 shrink-0 mt-0.5" />
-                        <div className="space-y-0.5">
-                          {loadingSummaries[`thread-${thread.id}`] ? (
-                            <span className="text-[8.5px] text-purple-600 font-bold uppercase tracking-wider animate-pulse block">{t("Analyzing flow...", "Analyzuje sa tok...", "Folyam elemzése...")}</span>
-                          ) : summaries[`thread-${thread.id}`] ? (
-                            <p className="text-[9.5px] text-purple-850 font-semibold leading-normal">{summaries[`thread-${thread.id}`]}</p>
-                          ) : (
-                            <span className="text-[8.5px] text-purple-400 italic">{t("No summary available.", "Súhrn nie je k dispozícii.", "Nincs elérhető összefoglaló.")}</span>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
+            visibleThreads.map(thread =>
+              renderListRow({
+                key: thread.id,
+                email: thread.latestEmail,
+                subject: thread.subject,
+                unread: !thread.seen,
+                selected: selectedThreadId === thread.id,
+                count: thread.emails.length,
+                digestKey: `thread-${thread.id}`,
+                onOpen: () => {
+                  setSelectedThreadId(thread.id);
+                  setExpandedEmailUids({ [thread.latestEmail.uid]: true });
+                  // Load details for latest message
+                  toggleEmailExpand(thread.latestEmail);
+                },
               })
             )
           ) : (
-            /* Unthreaded List View */
-            filteredIndividualEmails.length === 0 ? (
-              <div className="text-center py-12 text-slate-400 text-xs font-semibold">
-                {t("No conversations found.", "Nenašli sa žiadne konverzácie.", "Nincs találat a beszélgetésekre.")}
-              </div>
-            ) : (
-              filteredIndividualEmails.map(email => {
-                const isSelected = selectedEmail?.uid === email.uid;
-                const matchedClient = leads.find(l => l.email && l.email.toLowerCase() === email.from.address.toLowerCase());
-                
-                return (
-                  <div
-                    key={email.uid}
-                    onClick={() => expandThreadMessage(email)}
-                    className={`p-3 rounded-2xl border text-left cursor-pointer transition-all flex flex-col gap-1.5 ${
-                      isSelected 
-                        ? "border-pink-300 bg-pink-50/20 shadow-sm" 
-                        : !email.seen 
-                          ? "border-slate-200 bg-white font-black shadow-xs" 
-                          : "border-slate-100 bg-white/30 text-slate-600"
-                    }`}
-                  >
-                    <div className="flex justify-between items-start gap-1">
-                      <span className={`text-[12px] truncate max-w-[200px] ${!email.seen ? "text-slate-900 font-extrabold" : "text-slate-800"}`}>
-                        {email.isSent ? (
-                          <><span className="text-slate-400 font-bold">{t("To:", "Komu:", "Címzett:")}</span> {email.to?.name || email.to?.address || t("Unknown", "Neznámy", "Ismeretlen")}</>
-                        ) : (
-                          <><span className="text-slate-400 font-bold">{t("From:", "Od:", "Feladó:")}</span> {email.from.name || email.from.address}</>
-                        )}
-                      </span>
-                      <span className="text-[9px] text-slate-400 font-medium shrink-0">
-                        {new Date(email.date).toLocaleDateString(localeCodeFor(systemLanguage))}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-1.5">
-                      <GeometricIcon emailString={email.isSent ? (email.to?.address || "") : email.from.address} />
-                      <span className={`text-[11px] truncate max-w-[260px] ${!email.seen ? "text-slate-900 font-bold" : "text-slate-700"}`}>
-                        {email.isSent ? "📤 " : "📥 "}{email.subject || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)")}
-                      </span>
-                    </div>
-
-                    {matchedClient && (
-                      <span className="w-fit text-[8px] font-black uppercase tracking-widest text-emerald-800 bg-emerald-100 px-2 py-0.5 rounded-md border border-emerald-250">
-                        🤝 {t("CRM Match:", "Zhoda CRM:", "CRM egyezés:")} {matchedClient.name}
-                      </span>
-                    )}
-
-                    {isOpenAiKeySet && (
-                      <div className="mt-1.5 p-2 bg-purple-50/50 border border-purple-150 rounded-xl flex items-start gap-1.5 text-left animate-fade-in">
-                        <Brain className="h-3.5 w-3.5 text-purple-650 shrink-0 mt-0.5" />
-                        <div className="space-y-0.5">
-                          {loadingSummaries[email.uid] ? (
-                            <span className="text-[8.5px] text-purple-600 font-bold uppercase tracking-wider animate-pulse block">{t("Analyzing email...", "Analyzuje sa e-mail...", "E-mail elemzése...")}</span>
-                          ) : summaries[email.uid] ? (
-                            <p className="text-[9.5px] text-purple-850 font-semibold leading-normal">{summaries[email.uid]}</p>
-                          ) : (
-                            <span className="text-[8.5px] text-purple-400 italic">{t("No summary available.", "Súhrn nie je k dispozícii.", "Nincs elérhető összefoglaló.")}</span>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
+            visibleIndividualEmails.map(email =>
+              renderListRow({
+                key: String(email.uid),
+                email,
+                subject: email.subject,
+                unread: !email.seen,
+                selected: selectedEmail?.uid === email.uid,
+                digestKey: email.uid,
+                onOpen: () => expandThreadMessage(email),
               })
             )
           )}
         </div>
+
+        {/* List footer */}
+        <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between gap-2 text-sm text-slate-500 shrink-0">
+          <span>
+            {isThreadedMode
+              ? plural(shownCount, ["conversation", "conversations"], ["konverzácia", "konverzácie", "konverzácií"], "beszélgetés")
+              : plural(shownCount, ["message", "messages"], ["správa", "správy", "správ"], "üzenet")}
+          </span>
+          <span className="inline-flex items-center gap-1.5">
+            <Inbox size={15} /> {t("Inbox & Sent", "Doručené a odoslané", "Beérkezett és elküldött")}
+          </span>
+        </div>
       </div>
 
-      {/* COLUMN 2: Mail Detail / Conversation flow Detail Pane */}
-      <div className="lg:col-span-7 glass-panel p-4 rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full max-h-full overflow-hidden">
+      {/* COLUMN 2: Mail detail / conversation flow */}
+      <div className="lg:col-span-7 xl:col-span-8 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col h-full max-h-full overflow-hidden">
         {isThreadedMode ? (
-          /* Render Thread Flow */
-          activeThread ? (
-            <div className="h-full flex flex-col justify-between overflow-hidden">
-              {/* Thread Header */}
-              <div className="border-b border-slate-150 pb-3 flex items-center justify-between shrink-0 text-left">
-                <div>
-                  <h3 className="text-sm font-heading font-black text-slate-900 uppercase tracking-tight">{activeThread.subject}</h3>
-                  <span className="text-[9px] text-slate-400 font-bold tracking-wider uppercase block mt-1">
-                    {t("Thread Flow", "Tok vlákna", "Szál folyama")} ({activeThread.emails.length} {t("correspondence units", "jednotiek korešpondencie", "levelezési egység")})
-                  </span>
-                </div>
-                
-                {/* Global reply button to latest sender */}
-                <button
-                  onClick={() => openNewComposer(activeThread.latestEmail.from.address, `Re: ${activeThread.subject}`)}
-                  className="px-3.5 py-1.5 rounded-xl border border-pink-200 bg-pink-50 text-pink-700 hover:bg-pink-100 hover:text-pink-800 text-[10px] font-black uppercase flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
-                >
-                  <Reply size={13} />
-                  {t("Reply Thread", "Odpovedať na vlákno", "Válasz a szálra")}
-                </button>
-              </div>
-
-              {/* CRM Match Info card */}
-              {(() => {
-                const client = leads.find(l => l.email && l.email.toLowerCase() === activeThread.latestEmail.from.address.toLowerCase());
-                if (!client) {
-                  const latest = activeThread.latestEmail;
-                  const senderEmail = latest.from.address;
-                  const senderName = latest.from.name || "";
-                  return (
-                    <div className="bg-slate-50 border border-slate-205 p-3 rounded-2xl flex items-center justify-between gap-3 text-left mt-3 shrink-0 animate-fade-in shadow-sm">
-                      <div className="flex items-center gap-2">
-                        <span className="text-lg">👤</span>
-                        <div>
-                          <h4 className="text-[9px] font-black text-slate-505 uppercase tracking-tight">{t("Unmatched Sender", "Nepriradený odosielateľ", "Nem párosított feladó")}</h4>
-                          <p className="text-[10.5px] text-slate-655 font-bold mt-0.5">
-                            {t("Email", "E-mail", "E-mail")} <span className="text-slate-900 font-extrabold">{senderEmail}</span> {t("is not registered.", "nie je registrovaný.", "nincs regisztrálva.")}
-                          </p>
-                        </div>
-                      </div>
-                      <button
-                        onClick={() => {
-                          setClientFormEmail(senderEmail);
-                          setClientFormName(senderName);
-                          setClientFormCity("");
-                          setClientFormPhone("");
-                          setClientFormType("person");
-                          setIsClientSlideoutOpen(true);
-                        }}
-                        style={{ backgroundColor: "#6366f1", color: "#ffffff" }}
-                        className="px-2.5 py-1.5 hover:bg-indigo-700 rounded-xl text-[9px] font-black uppercase tracking-wider cursor-pointer transition-all shadow-sm"
-                      >
-                        {t("Create Client", "Vytvoriť klienta", "Ügyfél létrehozása")}
-                      </button>
-                    </div>
-                  );
-                }
-                return (
-                  <div className="bg-emerald-50 border border-emerald-250 p-3 rounded-2xl flex items-center justify-between gap-3 text-left mt-3 shrink-0 animate-fade-in shadow-sm">
-                    <div className="flex items-center gap-2">
-                      <span className="text-lg">🤝</span>
-                      <div>
-                        <h4 className="text-[9px] font-black text-emerald-950 uppercase tracking-tight">{t("CRM Client / Lead", "Klient CRM / Záujemca", "CRM ügyfél / Érdeklődő")}</h4>
-                        <p className="text-[10.5px] text-emerald-850 font-extrabold mt-0.5">
-                          {t("Name:", "Meno:", "Név:")} <span className="text-emerald-950 font-black">{client.name}</span>
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => {
-                          setSlideoutLead(client);
-                          setIsTimelineSlideoutOpen(true);
-                        }}
-                        className="px-2.5 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300 rounded-xl text-[9px] font-black uppercase tracking-wider cursor-pointer"
-                      >
-                        {t("Timeline", "Časová os", "Idővonal")}
-                      </button>
-                      <button
-                        onClick={() => window.location.hash = `client-${encodeURIComponent(client.name)}`}
-                        className="px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[9px] font-black uppercase tracking-wider cursor-pointer"
-                      >
-                        {t("Profile", "Profil", "Profil")}
-                      </button>
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Message cards chronological flow */}
-              <div className="flex-1 overflow-y-auto space-y-3 py-4 pr-1 scrollbar-thin">
-                {isOpenAiKeySet && activeThread && (
-                  <div className="p-3.5 bg-purple-50/60 border border-purple-250 rounded-2xl flex flex-col gap-2.5 text-left animate-fade-in shadow-xs mb-1">
-                    <div className="flex items-start gap-2.5">
-                      <Brain className="h-4.5 w-4.5 text-purple-650 shrink-0 mt-0.5" />
-                      <div className="space-y-0.5 flex-1">
-                        <div className="flex justify-between items-center cursor-pointer select-none" onClick={() => toggleSummaryCollapse(`thread-${activeThread.id}`)}>
-                          <h4 className="text-[10px] font-black text-purple-950 uppercase tracking-tight">{t("AI Flow Summary", "AI súhrn toku", "AI folyam összefoglaló")}</h4>
-                          <span className="text-purple-600 hover:text-purple-800 transition-colors">
-                            {collapsedSummaries[`thread-${activeThread.id}`] ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-                          </span>
-                        </div>
-                        {!collapsedSummaries[`thread-${activeThread.id}`] && (
-                          <>
-                            {loadingSummaries[`thread-${activeThread.id}`] ? (
-                              <div className="flex items-center gap-1.5 py-1">
-                                <Loader2 className="h-3 w-3 animate-spin text-purple-600" />
-                                <span className="text-[10px] text-purple-700 font-bold uppercase tracking-wider">{t("Analyzing conversation flow...", "Analyzuje sa tok konverzácie...", "Beszélgetés folyamának elemzése...")}</span>
-                              </div>
-                            ) : summaries[`thread-${activeThread.id}`] ? (
-                              <p className="text-[11.5px] text-purple-850 font-bold leading-relaxed">{summaries[`thread-${activeThread.id}`]}</p>
-                            ) : (
-                              <p className="text-[10.5px] text-purple-500 italic">{t("No summary generated yet.", "Zatiaľ nebol vygenerovaný žiadny súhrn.", "Még nem készült összefoglaló.")}</p>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </div>
-                    
-                    {!collapsedSummaries[`thread-${activeThread.id}`] && actionItemsMap[`thread-${activeThread.id}`] && actionItemsMap[`thread-${activeThread.id}`].length > 0 && (
-                      <div className="mt-2 pt-2.5 border-t border-purple-200/50 space-y-2">
-                        <h5 className="text-[9px] font-black uppercase text-purple-955 tracking-wider flex items-center gap-1">
-                          <CheckCircle2 className="h-3 w-3 text-purple-600" />
-                          {t("Suggested Tasks", "Navrhované úlohy", "Javasolt feladatok")}
-                        </h5>
-                        <div className="flex flex-wrap gap-1.5">
-                          {actionItemsMap[`thread-${activeThread.id}`].map((item, idx) => {
-                            const matchingTask = tasks.find(t => t.title === item);
-                            const isCreated = !!matchingTask;
-                            const assignedUser = matchingTask && matchingTask.assignedUsers && matchingTask.assignedUsers.length > 0
-                              ? matchingTask.assignedUsers[0]
-                              : null;
-                            const threadLead = leads.find(l => l.email && l.email.toLowerCase() === activeThread.latestEmail.from.address.toLowerCase()) || null;
-                            return (
-                              <div key={idx} className="relative flex items-center gap-1.5 px-2.5 py-1 bg-white/70 border border-purple-150/40 rounded-full text-[10px] text-purple-900 font-bold hover:bg-white transition-all select-none">
-                                <span>{item}</span>
-                                {isCreated ? (
-                                  <span className="shrink-0 flex items-center gap-1 text-[8px] font-black uppercase text-emerald-600 bg-emerald-100 border border-emerald-200 px-1.5 py-0.5 rounded-md">
-                                    {assignedUser ? `✓ ${assignedUser.substring(0, 2).toUpperCase()}` : "✓"}
-                                  </span>
-                                ) : (
-                                  <>
-                                    <button
-                                      onClick={() => setAssigningActionItem(assigningActionItem?.item === item ? null : { item, emailUid: `thread-${activeThread.id}` })}
-                                      className="shrink-0 text-[8.5px] font-black text-purple-700 hover:text-purple-900 bg-purple-100/80 hover:bg-purple-200/80 px-1.5 py-0.5 rounded-md border border-purple-250/30 cursor-pointer"
-                                    >
-                                      + {t("Assign", "Priradiť", "Hozzárendel")}
-                                    </button>
-                                    
-                                    {assigningActionItem?.item === item && assigningActionItem?.emailUid === `thread-${activeThread.id}` && (
-                                      <>
-                                        <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setAssigningActionItem(null)} />
-                                        <div className="absolute left-0 bottom-full mb-1.5 z-50 bg-white border border-slate-250 rounded-xl shadow-2xl p-1 w-[140px] max-h-[150px] overflow-y-auto">
-                                          {users.map(u => (
-                                            <button
-                                              key={u.name}
-                                              type="button"
-                                              onClick={() => {
-                                                handleAddEmailActionItemAsTask(item, `thread-${activeThread.id}`, threadLead, u.name);
-                                                setAssigningActionItem(null);
-                                              }}
-                                              className="w-full text-left px-2 py-1 hover:bg-slate-50 rounded-lg text-[9px] font-black text-slate-700 uppercase tracking-wider cursor-pointer flex items-center gap-1.5"
-                                            >
-                                              <div className="h-4.5 w-4.5 rounded-full bg-indigo-50 border border-indigo-200/40 text-indigo-600 flex items-center justify-center text-[7.5px] font-black shrink-0">
-                                                {u.name.substring(0, 2).toUpperCase()}
-                                              </div>
-                                              <span className="truncate">{u.name}</span>
-                                            </button>
-                                          ))}
-                                        </div>
-                                      </>
-                                    )}
-                                  </>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-                {activeThread.emails.map((email) => {
-                  const isExpanded = !!expandedEmailUids[email.uid];
-                  const bodyObj = threadBodies[email.uid];
-                  const isOut = email.isSent;
-
-                  return (
-                    <div 
-                      key={email.uid} 
-                      className={`border rounded-2xl overflow-hidden shadow-sm transition-all duration-200 text-left ${
-                        isExpanded ? "border-slate-205 bg-slate-50/10" : "border-slate-150 hover:bg-slate-50/20 bg-white"
-                      }`}
-                    >
-                      {/* Email Header line */}
-                      <div 
-                        onClick={() => toggleEmailExpand(email)}
-                        className={`p-3.5 flex items-center justify-between gap-3 cursor-pointer select-none ${
-                          isExpanded ? "bg-slate-50 border-b border-slate-200/80" : "bg-transparent"
-                        }`}
-                      >
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <span className={`h-6 w-6 rounded-lg flex items-center justify-center shrink-0 text-xs font-black ${
-                            isOut ? "bg-pink-100 text-pink-700" : "bg-indigo-100 text-indigo-700"
-                          }`}>
-                            {isOut ? "📤" : "📥"}
-                          </span>
-                          <div className="min-w-0">
-                            <span className="text-[11px] font-extrabold text-slate-800 truncate block">
-                              {isOut ? `${t("To:", "Komu:", "Címzett:")} ${email.to?.name || email.to?.address}` : `${t("From:", "Od:", "Feladó:")} ${email.from.name || email.from.address}`}
-                            </span>
-                            <span className="text-[9px] text-slate-400 block mt-0.5">
-                              {email.subject || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)")}
-                            </span>
-                          </div>
-                        </div>
-                        
-                        <div className="flex items-center gap-3.5 shrink-0">
-                          <span className="text-[9px] text-slate-400 font-bold">
-                            {new Date(email.date).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}
-                          </span>
-                          
-                          {/* Mini Expand Icon */}
-                          <div className="text-slate-400 hover:text-slate-700">
-                            {isExpanded ? <ChevronUp size={15} /> : <ChevronDown size={15} />}
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Email Card Body content */}
-                      {isExpanded && (
-                        <div className="p-4 bg-white min-h-[150px]">
-                          {isOpenAiKeySet && bodyObj && (
-                            <div className="mb-3.5 p-3 bg-purple-50/60 border border-purple-200 rounded-xl flex flex-col gap-2.5 text-left animate-fade-in shadow-2xs">
-                              <div className="flex items-start gap-2">
-                                <Brain className="h-4.5 w-4.5 text-purple-650 shrink-0 mt-0.5" />
-                                <div className="space-y-0.5 flex-1">
-                                  <div className="flex justify-between items-center cursor-pointer select-none" onClick={() => toggleSummaryCollapse(email.uid)}>
-                                    <h4 className="text-[9px] font-black text-purple-950 uppercase tracking-tight">{t("AI Mail Summary", "AI súhrn e-mailu", "AI e-mail összefoglaló")}</h4>
-                                    <span className="text-purple-600 hover:text-purple-800 transition-colors">
-                                      {collapsedSummaries[email.uid] ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
-                                    </span>
-                                  </div>
-                                  {!collapsedSummaries[email.uid] && (
-                                    <>
-                                      {loadingSummaries[email.uid] ? (
-                                        <div className="flex items-center gap-1.5 py-0.5">
-                                          <Loader2 className="animate-spin text-purple-500" size={16} />
-                                          <span className="text-[9px] text-purple-600 font-bold uppercase tracking-wider">{t("Analyzing email content...", "Analyzuje sa obsah e-mailu...", "E-mail tartalmának elemzése...")}</span>
-                                        </div>
-                                      ) : summaries[email.uid] ? (
-                                        <p className="text-[10px] text-purple-850 font-bold leading-normal">{summaries[email.uid]}</p>
-                                      ) : (
-                                        <p className="text-[9.5px] text-purple-400 italic">{t("No summary available.", "Súhrn nie je k dispozícii.", "Nincs elérhető összefoglaló.")}</p>
-                                      )}
-                                    </>
-                                  )}
-                                </div>
-                              </div>
-
-                              {!collapsedSummaries[email.uid] && actionItemsMap[email.uid] && actionItemsMap[email.uid].length > 0 && (
-                                <div className="mt-1.5 pt-2 border-t border-purple-200/50 space-y-2">
-                                  <h5 className="text-[8px] font-black uppercase text-purple-955 tracking-wider flex items-center gap-1">
-                                    <CheckCircle2 className="h-2.5 w-2.5 text-purple-600" />
-                                    {t("Suggested Tasks", "Navrhované úlohy", "Javasolt feladatok")}
-                                  </h5>
-                                  <div className="flex flex-wrap gap-1.5">
-                                    {actionItemsMap[email.uid].map((item, idx) => {
-                                      const matchingTask = tasks.find(t => t.title === item);
-                                      const isCreated = !!matchingTask;
-                                      const assignedUser = matchingTask && matchingTask.assignedUsers && matchingTask.assignedUsers.length > 0
-                                        ? matchingTask.assignedUsers[0]
-                                        : null;
-                                      const msgLead = leads.find(l => l.email && l.email.toLowerCase() === email.from.address.toLowerCase()) || null;
-                                      return (
-                                        <div key={idx} className="relative flex items-center gap-1.5 px-2 py-0.5 bg-white/70 border border-purple-150/40 rounded-full text-[9px] text-purple-900 font-bold hover:bg-white transition-all select-none">
-                                          <span>{item}</span>
-                                          {isCreated ? (
-                                            <span className="shrink-0 text-[7.5px] font-black uppercase text-emerald-600 bg-emerald-100 border border-emerald-200 px-1.5 py-0.5 rounded">
-                                              {assignedUser ? `✓ ${assignedUser.substring(0, 2).toUpperCase()}` : "✓"}
-                                            </span>
-                                          ) : (
-                                            <>
-                                              <button
-                                                onClick={() => setAssigningActionItem(assigningActionItem?.item === item ? null : { item, emailUid: email.uid })}
-                                                className="shrink-0 text-[8px] font-black text-purple-700 hover:text-white bg-purple-100/80 hover:bg-purple-600 px-1.5 py-0.5 rounded-md border border-purple-200 transition-all cursor-pointer"
-                                              >
-                                                + {t("Add", "Pridať", "Hozzáad")}
-                                              </button>
-                                              
-                                              {assigningActionItem?.item === item && assigningActionItem?.emailUid === email.uid && (
-                                                <>
-                                                  <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setAssigningActionItem(null)} />
-                                                  <div className="absolute left-0 bottom-full mb-1 z-50 bg-white border border-slate-200 rounded-xl shadow-2xl p-1 w-[130px] max-h-[140px] overflow-y-auto">
-                                                    {users.map(u => (
-                                                      <button
-                                                        key={u.name}
-                                                        type="button"
-                                                        onClick={() => {
-                                                          handleAddEmailActionItemAsTask(item, email.uid, msgLead, u.name);
-                                                          setAssigningActionItem(null);
-                                                        }}
-                                                        className="w-full text-left px-2 py-1 hover:bg-slate-50 rounded-lg text-[8px] font-black text-slate-700 uppercase tracking-wider cursor-pointer flex items-center gap-1"
-                                                      >
-                                                        <div className="h-4.5 w-4.5 rounded-full bg-indigo-50 border border-indigo-200/40 text-indigo-600 flex items-center justify-center text-[7.5px] font-black shrink-0">
-                                                          {u.name.substring(0, 2).toUpperCase()}
-                                                        </div>
-                                                        <span className="truncate">{u.name}</span>
-                                                      </button>
-                                                    ))}
-                                                  </div>
-                                                </>
-                                              )}
-                                            </>
-                                          )}
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                          {bodyObj && bodyObj.attachments && bodyObj.attachments.length > 0 && (
-                            <div className="mb-3.5 p-3 bg-amber-50/40 border border-amber-250 rounded-xl flex flex-col gap-2 text-left animate-fade-in shadow-2xs">
-                              <h5 className="text-[9px] font-black uppercase text-amber-900 tracking-wider flex items-center gap-1">
-                                <FileText className="h-3 w-3 text-amber-700" />
-                                {t("Attachments", "Prílohy", "Mellékletek")} ({bodyObj.attachments.length})
-                              </h5>
-                              <div className="flex flex-wrap gap-2">
-                                {bodyObj.attachments.map((att: any, attIdx: number) => {
-                                  const msgLead = leads.find(l => l.email && l.email.toLowerCase() === email.from.address.toLowerCase()) || null;
-                                  return (
-                                    <div key={attIdx} className="flex items-center gap-2 px-3 py-1.5 bg-white border border-amber-200 rounded-xl text-[10px] font-bold text-slate-800 shadow-3xs">
-                                      <span className="truncate max-w-[150px]">{att.name} ({formatBytes(att.size)})</span>
-                                      <button
-                                        onClick={() => handleDownloadAttachment(email.uid, email.isSent ? 'Sent' : activeFolder, att)}
-                                        className="text-amber-700 hover:text-amber-900 font-extrabold uppercase text-[8px] cursor-pointer"
-                                      >
-                                        {t("Download", "Stiahnuť", "Letöltés")}
-                                      </button>
-                                      <span className="text-slate-350">|</span>
-                                      <button
-                                        onClick={() => handleAddAttachmentToDocs(email.uid, email.isSent ? 'Sent' : activeFolder, att, msgLead)}
-                                        className="text-emerald-700 hover:text-emerald-900 font-extrabold uppercase text-[8px] cursor-pointer"
-                                      >
-                                        {t("Add to Docs", "Pridať do dokumentov", "Hozzáadás a dokumentumokhoz")}
-                                      </button>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                            </div>
-                          )}
-                          {isLoadingDetail && !bodyObj ? (
-                            <div className="flex items-center justify-center py-6 gap-2 text-slate-400">
-                              <Loader2 className="animate-spin text-pink-500" size={16} />
-                              <span className="text-[9px] font-bold uppercase tracking-wider">{t("Decoding part...", "Dekódovanie časti...", "Rész dekódolása...")}</span>
-                            </div>
-                          ) : bodyObj ? (
-                            <iframe 
-                              className="w-full min-h-[220px] max-h-[400px] border-0 bg-transparent"
-                              title={`Thread body ${email.uid}`}
-                              sandbox=""
-                              srcDoc={`
-                                <html>
-                                  <head>
-                                    <style>
-                                      body {
-                                        font-family: system-ui, -apple-system, sans-serif;
-                                        color: #1e293b;
-                                        line-height: 1.5;
-                                        font-size: ${isLargeFont ? '15.5px' : '12.5px'};
-                                        margin: 0;
-                                        padding: 4px;
-                                      }
-                                      a { color: #db2777; text-decoration: none; }
-                                      blockquote { border-left: 2px solid #cbd5e1; padding-left: 10px; color: #64748b; margin: 8px 0; }
-                                    </style>
-                                  </head>
-                                  <body>
-                                    ${bodyObj.html || bodyObj.text || ''}
-                                  </body>
-                                </html>
-                              `}
-                            />
-                          ) : (
-                            <div className="text-center py-6 text-[10px] font-bold text-slate-400 uppercase">
-                              {t("Content not found.", "Obsah sa nenašiel.", "A tartalom nem található.")}
-                            </div>
-                          )}
-                          
-                          {/* Footer Action items inside card */}
-                          <div className="mt-3.5 pt-3 border-t border-slate-100 flex justify-end gap-2.5">
-                            <button
-                              onClick={() => openNewComposer(email.from.address, `Re: ${email.subject}`)}
-                              className="px-3 py-1.5 border border-slate-200 bg-white hover:bg-slate-50 text-[9px] font-bold text-slate-600 hover:text-slate-800 rounded-xl flex items-center gap-1 transition-all cursor-pointer"
-                            >
-                              <Reply size={11} /> {t("Reply", "Odpovedať", "Válasz")}
-                            </button>
-                            <button
-                              onClick={() => handleDeleteEmail(email.uid)}
-                              className="px-3 py-1.5 border border-rose-200 bg-white hover:bg-rose-50 text-[9px] font-bold text-rose-600 hover:text-rose-800 rounded-xl flex items-center gap-1 transition-all cursor-pointer"
-                            >
-                              <Trash2 size={11} /> {t("Delete", "Odstrániť", "Törlés")}
-                            </button>
-                          </div>
-                        </div>
+          activeThread ? (() => {
+            const contact = threadContactOf(activeThread);
+            const threadLead = findLead(contact.address);
+            const threadKey = `thread-${activeThread.id}`;
+            return (
+              <div className="h-full flex flex-col overflow-hidden">
+                {/* Thread header */}
+                <div className="px-6 pt-5 pb-4 border-b border-slate-100 flex items-start justify-between gap-4 shrink-0 text-left">
+                  <div className="min-w-0">
+                    <h3 className="text-xl font-heading font-extrabold text-slate-900 tracking-tight break-words">{activeThread.subject}</h3>
+                    <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-2 text-sm text-slate-500">
+                      <span className="inline-flex items-center gap-2 pl-1 pr-3 py-1 rounded-xl bg-slate-50 border border-slate-200 text-slate-800 font-bold max-w-full">
+                        <span className="h-6 w-6 rounded-lg bg-white border border-slate-200 text-slate-600 text-[11px] font-bold flex items-center justify-center shrink-0">
+                          {initialsOf(contact.name)}
+                        </span>
+                        <span className="truncate">{contact.name}</span>
+                      </span>
+                      <span className="inline-flex items-center gap-1.5">
+                        <MessagesSquare size={15} />
+                        {plural(activeThread.emails.length, ["message", "messages"], ["správa", "správy", "správ"], "üzenet")}
+                      </span>
+                      {threadLead ? renderLeadChip(threadLead) : (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-bold border bg-white text-slate-500 border-slate-200">
+                          👤 {t("Not in CRM", "Nie je v CRM", "Nincs a CRM-ben")}
+                        </span>
                       )}
                     </div>
-                  );
-                })}
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
-              <Mail size={40} className="stroke-[1.5] text-slate-350 animate-pulse" />
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">{t("Select a threaded conversation flow", "Vyberte tok vlákna konverzácie", "Válasszon egy beszélgetésszálat")}</span>
-            </div>
-          )
-        ) : (
-          /* Render Traditional Unthreaded Details */
-          isLoadingDetail ? (
-            <div className="flex flex-col items-center justify-center h-full gap-2 text-slate-400">
-              <Loader2 className="animate-spin text-pink-500" size={32} />
-              <span className="text-[10px] font-bold uppercase tracking-wider">{t("Decoding Message...", "Dekódovanie správy...", "Üzenet dekódolása...")}</span>
-            </div>
-          ) : selectedEmail ? (() => {
-            const bodyObj = threadBodies[selectedEmail.uid];
-            
-            return (
-              <div className="h-full flex flex-col justify-between overflow-hidden">
-                {/* Header */}
-                <div className="border-b border-slate-150 pb-3 flex items-center justify-between gap-3 shrink-0">
-                  <div className="text-left">
-                    <h3 className="text-sm font-heading font-black text-slate-900 uppercase tracking-tight">{selectedEmail.subject || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)")}</h3>
-                    <p className="text-[10px] text-slate-500 font-bold mt-1">
-                      {t("From:", "Od:", "Feladó:")} <strong className="text-slate-800">{selectedEmail.from.name || selectedEmail.from.address}</strong> &lt;{selectedEmail.from.address}&gt;
-                    </p>
                   </div>
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => openNewComposer(selectedEmail.from.address, `Re: ${selectedEmail.subject}`)}
-                      className="p-2 hover:bg-slate-100 text-slate-655 rounded-xl border border-slate-250 hover:text-slate-900 cursor-pointer"
-                      title={t("Reply", "Odpovedať", "Válasz")}
-                    >
-                      <Reply size={15} />
-                    </button>
-                    <button
-                      onClick={() => handleDeleteEmail(selectedEmail.uid)}
-                      className="p-2 hover:bg-rose-50 text-rose-655 rounded-xl border border-rose-250 hover:text-rose-700 cursor-pointer"
-                      title={t("Delete Message", "Odstrániť správu", "Üzenet törlése")}
-                    >
-                      <Trash2 size={15} />
-                    </button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {renderDigestButton(threadKey, threadLead)}
+                    {readToggleButton(activeThread.seen, () => setThreadSeen(activeThread, !activeThread.seen))}
                   </div>
                 </div>
 
-                {/* CRM Match Card */}
-                {matchedClient ? (
-                  <div className="bg-emerald-50 border border-emerald-250 p-3.5 rounded-2xl flex items-center justify-between gap-3 text-left mt-3 shrink-0 animate-fade-in shadow-sm">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xl">🤝</span>
-                      <div>
-                        <h4 className="text-[10px] font-black text-emerald-950 uppercase tracking-tight">{t("CRM Client / Lead", "Klient CRM / Záujemca", "CRM ügyfél / Érdeklődő")}</h4>
-                        <p className="text-[11px] text-emerald-850 font-extrabold mt-0.5">
-                          {t("Name:", "Meno:", "Név:")} <span className="text-emerald-950 font-black">{matchedClient.name}</span> ({matchedClient.email})
-                        </p>
-                      </div>
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => {
-                          setSlideoutLead(matchedClient);
-                          setIsTimelineSlideoutOpen(true);
-                        }}
-                        className="px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 text-emerald-900 border border-emerald-300 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-xs cursor-pointer"
-                      >
-                        {t("View Timeline", "Zobraziť časovú os", "Idővonal megtekintése")}
-                      </button>
-                      <button
-                        onClick={() => {
-                          window.location.hash = `client-${encodeURIComponent(matchedClient.name)}`;
-                        }}
-                        className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-sm cursor-pointer"
-                      >
-                        {t("Open Client", "Otvoriť klienta", "Ügyfél megnyitása")}
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="bg-slate-50 border border-slate-205 p-3.5 rounded-2xl flex items-center justify-between gap-3 text-left mt-3 shrink-0 animate-fade-in shadow-sm">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xl">👤</span>
-                      <div>
-                        <h4 className="text-[10px] font-black text-slate-505 uppercase tracking-tight">{t("Unmatched Sender", "Nepriradený odosielateľ", "Nem párosított feladó")}</h4>
-                        <p className="text-[11px] text-slate-655 font-bold mt-0.5">
-                          {t("Email", "E-mail", "E-mail")} <span className="text-slate-900 font-extrabold">{selectedEmail.from.address}</span> {t("is not registered in CRM.", "nie je registrovaný v CRM.", "nincs regisztrálva a CRM-ben.")}
-                        </p>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setClientFormEmail(selectedEmail.from.address);
-                        setClientFormName(selectedEmail.from.name || "");
-                        setClientFormCity("");
-                        setClientFormPhone("");
-                        setClientFormType("person");
-                        setIsClientSlideoutOpen(true);
-                      }}
-                      style={{ backgroundColor: "#6366f1", color: "#ffffff" }}
-                      className="px-3 py-1.5 hover:bg-indigo-700 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all shadow-sm cursor-pointer"
-                    >
-                      {t("Create Client", "Vytvoriť klienta", "Ügyfél létrehozása")}
-                    </button>
-                  </div>
-                )}
+                {/* Messages, oldest first */}
+                <div className="flex-1 overflow-y-auto px-6 py-5 space-y-3 scrollbar-thin" onScroll={onListScroll}>
+                  {activeThread.emails.map((email) => {
+                    const isExpanded = !!expandedEmailUids[email.uid];
+                    const bodyObj = threadBodies[email.uid];
+                    const party = counterpartOf(email);
+                    const msgLead = findLead(party.address);
 
-                {isOpenAiKeySet && bodyObj && (
-                  <div className="mt-3 p-3.5 bg-purple-50/60 border border-purple-250 rounded-2xl flex flex-col gap-2.5 text-left animate-fade-in shadow-xs">
-                    <div className="flex items-start gap-2.5">
-                      <Brain className="h-4.5 w-4.5 text-purple-650 shrink-0 mt-0.5" />
-                      <div className="space-y-0.5 flex-1">
-                        <div className="flex justify-between items-center cursor-pointer select-none" onClick={() => toggleSummaryCollapse(selectedEmail.uid)}>
-                          <h4 className="text-[10px] font-black text-purple-955 uppercase tracking-tight">{t("AI Mail Summary", "AI súhrn e-mailu", "AI e-mail összefoglaló")}</h4>
-                          <span className="text-purple-650 hover:text-purple-855 transition-colors">
-                            {collapsedSummaries[selectedEmail.uid] ? <ChevronDown size={14} /> : <ChevronUp size={14} />}
-                          </span>
-                        </div>
-                        {!collapsedSummaries[selectedEmail.uid] && (
-                          <>
-                            {loadingSummaries[selectedEmail.uid] ? (
-                              <div className="flex items-center gap-1.5 py-1">
-                                <Loader2 className="h-3 w-3 animate-spin text-purple-600" />
-                                <span className="text-[10px] text-purple-700 font-bold uppercase tracking-wider">{t("Analyzing email content...", "Analyzuje sa obsah e-mailu...", "E-mail tartalmának elemzése...")}</span>
-                              </div>
-                            ) : summaries[selectedEmail.uid] ? (
-                              <p className="text-[11px] text-purple-850 font-bold leading-relaxed">{summaries[selectedEmail.uid]}</p>
-                            ) : (
-                              <p className="text-[10.5px] text-purple-500 italic">{t("No summary available.", "Súhrn nie je k dispozícii.", "Nincs elérhető összefoglaló.")}</p>
+                    return (
+                      <div
+                        key={email.uid}
+                        className={`border rounded-2xl overflow-hidden transition-all duration-200 text-left ${
+                          isExpanded ? "border-slate-200 shadow-sm" : "border-slate-100 hover:border-slate-200 bg-white"
+                        }`}
+                      >
+                        {/* Message header line */}
+                        <div
+                          onClick={() => toggleEmailExpand(email)}
+                          className={`px-4 py-3 flex items-center justify-between gap-3 cursor-pointer select-none ${
+                            isExpanded ? "bg-slate-50 border-b border-slate-200/80" : "bg-transparent"
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <span className={`h-8 w-8 rounded-xl flex items-center justify-center shrink-0 ${
+                              email.isSent ? "bg-pink-100 text-pink-700" : "bg-indigo-100 text-indigo-700"
+                            }`}>
+                              {email.isSent ? <ArrowUpRight size={16} /> : <ArrowDownLeft size={16} />}
+                            </span>
+                            <div className="min-w-0">
+                              <span className="text-sm font-bold text-slate-800 truncate block">
+                                {email.isSent ? `${t("To:", "Komu:", "Címzett:")} ${party.name}` : party.name}
+                              </span>
+                              <span className="text-xs text-slate-500 block mt-0.5 truncate">
+                                {formatFullDate(email.date)}
+                              </span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1 shrink-0" onClick={(e) => e.stopPropagation()}>
+                            {isExpanded && bodyObj && renderDigestButton(email.uid, msgLead, "sm")}
+                            {isExpanded && canEdit && (
+                              <button
+                                type="button"
+                                onClick={() => openNewComposer(party.address, `Re: ${email.subject}`)}
+                                className="h-8 w-8 rounded-xl flex items-center justify-center text-slate-500 hover:bg-slate-100 hover:text-slate-900 transition-all active:scale-95 cursor-pointer"
+                                title={t("Reply", "Odpovedať", "Válasz")}
+                                aria-label={t("Reply", "Odpovedať", "Válasz")}
+                              >
+                                <Reply size={15} />
+                              </button>
                             )}
-                          </>
-                        )}
-                      </div>
-                    </div>
-
-                    {!collapsedSummaries[selectedEmail.uid] && actionItemsMap[selectedEmail.uid] && actionItemsMap[selectedEmail.uid].length > 0 && (
-                      <div className="mt-2 pt-2.5 border-t border-purple-200/50 space-y-2">
-                        <h5 className="text-[9px] font-black uppercase text-purple-955 tracking-wider flex items-center gap-1">
-                          <CheckCircle2 className="h-3 w-3 text-purple-600" />
-                          {t("Suggested Tasks", "Navrhované úlohy", "Javasolt feladatok")}
-                        </h5>
-                        <div className="flex flex-wrap gap-1.5">
-                          {actionItemsMap[selectedEmail.uid].map((item, idx) => {
-                            const matchingTask = tasks.find(t => t.title === item);
-                            const isCreated = !!matchingTask;
-                            const assignedUser = matchingTask && matchingTask.assignedUsers && matchingTask.assignedUsers.length > 0
-                              ? matchingTask.assignedUsers[0]
-                              : null;
-                            return (
-                              <div key={idx} className="relative flex items-center gap-1.5 px-2.5 py-1 bg-white/70 border border-purple-150/40 rounded-full text-[10px] text-purple-900 font-bold hover:bg-white transition-all select-none">
-                                <span>{item}</span>
-                                {isCreated ? (
-                                  <span className="shrink-0 flex items-center gap-1 text-[8px] font-black uppercase text-emerald-600 bg-emerald-100 border border-emerald-200 px-2 py-0.5 rounded-md">
-                                    {assignedUser ? `✓ ${assignedUser.substring(0, 2).toUpperCase()}` : "✓"}
-                                  </span>
-                                ) : (
-                                  <>
-                                    <button
-                                      onClick={() => setAssigningActionItem(assigningActionItem?.item === item ? null : { item, emailUid: selectedEmail.uid })}
-                                      className="shrink-0 text-[8.5px] font-black text-purple-700 hover:text-purple-900 bg-purple-100/80 hover:bg-purple-200/80 px-1.5 py-0.5 rounded-md border border-purple-250/30 cursor-pointer"
-                                    >
-                                      + {t("Assign", "Priradiť", "Hozzárendel")}
-                                    </button>
-                                    
-                                    {assigningActionItem?.item === item && assigningActionItem?.emailUid === selectedEmail.uid && (
-                                      <>
-                                        <div className="fixed inset-0 z-40 bg-transparent" onClick={() => setAssigningActionItem(null)} />
-                                        <div className="absolute left-0 bottom-full mb-1.5 z-50 bg-white border border-slate-250 rounded-xl shadow-2xl p-1 w-[140px] max-h-[150px] overflow-y-auto">
-                                          {users.map(u => (
-                                            <button
-                                              key={u.name}
-                                              type="button"
-                                              onClick={() => {
-                                                handleAddEmailActionItemAsTask(item, selectedEmail.uid, matchedClient, u.name);
-                                                setAssigningActionItem(null);
-                                              }}
-                                              className="w-full text-left px-2 py-1 hover:bg-slate-50 rounded-lg text-[9px] font-black text-slate-700 uppercase tracking-wider cursor-pointer flex items-center gap-1.5"
-                                            >
-                                              <div className="h-4.5 w-4.5 rounded-full bg-indigo-50 border border-indigo-200/40 text-indigo-600 flex items-center justify-center text-[7.5px] font-black shrink-0">
-                                                {u.name.substring(0, 2).toUpperCase()}
-                                              </div>
-                                              <span className="truncate">{u.name}</span>
-                                            </button>
-                                          ))}
-                                        </div>
-                                      </>
-                                    )}
-                                  </>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {bodyObj && bodyObj.attachments && bodyObj.attachments.length > 0 && (
-                  <div className="mt-3 p-3.5 bg-amber-50/40 border border-amber-250 rounded-2xl flex flex-col gap-2 text-left animate-fade-in shadow-xs">
-                    <h5 className="text-[9px] font-black uppercase text-amber-900 tracking-wider flex items-center gap-1">
-                      <FileText className="h-3.5 w-3.5 text-amber-700" />
-                      {t("Attachments", "Prílohy", "Mellékletek")} ({bodyObj.attachments.length})
-                    </h5>
-                    <div className="flex flex-wrap gap-2">
-                      {bodyObj.attachments.map((att: any, attIdx: number) => {
-                        return (
-                          <div key={attIdx} className="flex items-center gap-2 px-3 py-1.5 bg-white border border-amber-200 rounded-xl text-[10px] font-bold text-slate-800 shadow-2xs">
-                            <span className="truncate max-w-[200px]">{att.name} ({formatBytes(att.size)})</span>
+                            {isExpanded && canDelete && (
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteEmail(email.uid)}
+                                className="h-8 w-8 rounded-xl flex items-center justify-center text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-all active:scale-95 cursor-pointer"
+                                title={t("Delete Message", "Odstrániť správu", "Üzenet törlése")}
+                                aria-label={t("Delete Message", "Odstrániť správu", "Üzenet törlése")}
+                              >
+                                <Trash2 size={15} />
+                              </button>
+                            )}
                             <button
-                              onClick={() => handleDownloadAttachment(selectedEmail.uid, selectedEmail.isSent ? 'Sent' : activeFolder, att)}
-                              className="text-amber-700 hover:text-amber-900 font-extrabold uppercase text-[8px] cursor-pointer"
+                              type="button"
+                              onClick={() => toggleEmailExpand(email)}
+                              className="h-8 w-8 rounded-xl flex items-center justify-center text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-all cursor-pointer"
+                              aria-label={isExpanded ? t("Collapse", "Zbaliť", "Összecsukás") : t("Expand", "Rozbaliť", "Kibontás")}
                             >
-                              {t("Download", "Stiahnuť", "Letöltés")}
-                            </button>
-                            <span className="text-slate-355">|</span>
-                            <button
-                              onClick={() => handleAddAttachmentToDocs(selectedEmail.uid, selectedEmail.isSent ? 'Sent' : activeFolder, att, matchedClient)}
-                              className="text-emerald-700 hover:text-emerald-900 font-extrabold uppercase text-[8px] cursor-pointer"
-                            >
-                              {t("Add to Docs", "Pridať do dokumentov", "Hozzáadás a dokumentumokhoz")}
+                              {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                             </button>
                           </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                )}
+                        </div>
 
-                {/* parsed email iframe preview */}
-                <div className="flex-1 overflow-y-auto py-4">
-                  {bodyObj ? (
-                    <iframe 
-                      className="w-full h-full border-0 rounded-2xl bg-transparent"
-                      title={t("Parsed mail content", "Spracovaný obsah pošty", "Feldolgozott levéltartalom")}
-                      sandbox=""
-                      srcDoc={`
-                        <html>
-                          <head>
-                            <style>
-                              body {
-                                font-family: system-ui, -apple-system, sans-serif;
-                                color: #0f172a;
-                                background-color: transparent;
-                                line-height: 1.6;
-                                font-size: ${isLargeFont ? '16px' : '13px'};
-                              }
-                              a { color: #db2777; text-decoration: none; }
-                              a:hover { text-decoration: underline; }
-                              blockquote { border-left: 3px solid #cbd5e1; padding-left: 12px; color: #64748b; margin: 12px 0; }
-                            </style>
-                          </head>
-                          <body>
-                            ${bodyObj.html || bodyObj.text || ''}
-                          </body>
-                        </html>
-                      `}
-                    />
-                  ) : (
-                    <div className="text-center text-slate-400 py-12 text-xs font-semibold">
-                      {t("No message content.", "Žiadny obsah správy.", "Nincs üzenettartalom.")}
-                    </div>
-                  )}
+                        {/* Message body */}
+                        {isExpanded && (
+                          <div className="p-4 bg-white space-y-4">
+                            {isLoadingDetail && !bodyObj ? (
+                              <div className="flex items-center justify-center py-6 gap-2 text-slate-400">
+                                <Loader2 className="animate-spin text-pink-500" size={16} />
+                                <span className="text-sm font-semibold">{t("Decoding part...", "Dekódovanie časti...", "Rész dekódolása...")}</span>
+                              </div>
+                            ) : bodyObj ? (
+                              renderMailFrame(bodyObj, `Thread body ${email.uid}`, "w-full min-h-[220px] max-h-[420px] border-0 bg-transparent")
+                            ) : (
+                              <div className="text-center py-6 text-sm font-semibold text-slate-400">
+                                {t("Content not found.", "Obsah sa nenašiel.", "A tartalom nem található.")}
+                              </div>
+                            )}
+                            {renderAttachments(email, bodyObj, msgLead)}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Thread footer */}
+                <div className="px-6 py-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                  {canEdit ? (
+                    <button
+                      type="button"
+                      onClick={() => openNewComposer(contact.address, `Re: ${activeThread.subject}`)}
+                      className={primaryButtonClass}
+                    >
+                      <Reply size={16} /> {t("Reply Thread", "Odpovedať na vlákno", "Válasz a szálra")}
+                    </button>
+                  ) : <span />}
+                  {renderCrmActions(threadLead, contact)}
                 </div>
               </div>
             );
-          })() : (
-            <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
-              <Mail size={40} className="stroke-[1.5] text-slate-300 animate-pulse" />
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-400">{t("Select a conversation thread", "Vyberte vlákno konverzácie", "Válasszon egy beszélgetésszálat")}</span>
+          })() : emptyPane(t("Select a threaded conversation flow", "Vyberte tok vlákna konverzácie", "Válasszon egy beszélgetésszálat"))
+        ) : (
+          isLoadingDetail ? (
+            <div className="flex flex-col items-center justify-center h-full gap-2 text-slate-400">
+              <Loader2 className="animate-spin text-pink-500" size={32} />
+              <span className="text-sm font-semibold">{t("Decoding Message...", "Dekódovanie správy...", "Üzenet dekódolása...")}</span>
             </div>
-          )
+          ) : selectedEmail ? (() => {
+            const bodyObj = threadBodies[selectedEmail.uid];
+            // `selectedEmail` is the row as it was when clicked; the read flag
+            // lives in `emails`, which the toggle and the refresh keep current.
+            const isSeen = emails.find(e => e.uid === selectedEmail.uid)?.seen ?? selectedEmail.seen;
+            const party = counterpartOf(selectedEmail);
+            const lead = findLead(party.address);
+
+            return (
+              <div className="h-full flex flex-col overflow-hidden">
+                {/* Header */}
+                <div className="px-6 pt-5 pb-4 border-b border-slate-100 flex items-start justify-between gap-4 shrink-0 text-left">
+                  <div className="min-w-0">
+                    <h3 className="text-xl font-heading font-extrabold text-slate-900 tracking-tight break-words">
+                      {selectedEmail.subject || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)")}
+                    </h3>
+                    {renderPartyMeta(selectedEmail, lead)}
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    {bodyObj && renderDigestButton(selectedEmail.uid, lead)}
+                    {readToggleButton(isSeen, () => setSeenFlag(selectedEmail, !isSeen))}
+                    {canDelete && (
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteEmail(selectedEmail.uid)}
+                        className="h-9 w-9 shrink-0 rounded-xl flex items-center justify-center text-slate-500 hover:bg-rose-50 hover:text-rose-600 transition-all active:scale-95 cursor-pointer"
+                        title={t("Delete Message", "Odstrániť správu", "Üzenet törlése")}
+                        aria-label={t("Delete Message", "Odstrániť správu", "Üzenet törlése")}
+                      >
+                        <Trash2 size={17} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* Body + attachments */}
+                <div className="flex-1 min-h-0 flex flex-col gap-5 px-6 py-5">
+                  {bodyObj ? (
+                    renderMailFrame(bodyObj, t("Parsed mail content", "Spracovaný obsah pošty", "Feldolgozott levéltartalom"), "w-full flex-1 min-h-[200px] border-0 bg-transparent")
+                  ) : (
+                    <div className="flex-1 text-center text-slate-400 py-12 text-sm font-semibold">
+                      {t("No message content.", "Žiadny obsah správy.", "Nincs üzenettartalom.")}
+                    </div>
+                  )}
+                  {renderAttachments(selectedEmail, bodyObj, lead)}
+                </div>
+
+                {/* Footer actions */}
+                <div className="px-6 py-4 border-t border-slate-100 flex flex-wrap items-center justify-between gap-3 shrink-0">
+                  {canEdit ? (
+                    <button
+                      type="button"
+                      onClick={() => openNewComposer(party.address, `Re: ${selectedEmail.subject}`)}
+                      className={primaryButtonClass}
+                    >
+                      <Reply size={16} /> {t("Reply", "Odpovedať", "Válasz")}
+                    </button>
+                  ) : <span />}
+                  {renderCrmActions(lead, party)}
+                </div>
+              </div>
+            );
+          })() : emptyPane(t("Select a conversation thread", "Vyberte vlákno konverzácie", "Válasszon egy beszélgetésszálat"))
         )}
       </div>
+
+      {renderDigestPopover()}
 
       {/* COMPOSERS OVERLAY DRAWER */}
       {composers.map(comp => (
@@ -1870,7 +1946,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
                   {t("No activities or email records logged on timeline.", "Na časovej osi nie sú zaznamenané žiadne aktivity ani e-maily.", "Nincsenek tevékenységek vagy e-mail bejegyzések az idővonalon.")}
                 </div>
               ) : (
-                <div className="space-y-4 relative border-l-2 border-slate-150 pl-4 text-left">
+                <div className="space-y-4 relative border-l-2 border-slate-100 pl-4 text-left">
                   {slideoutTimelineEvents.map((event: any) => {
                     const pmName = event.author || slideoutLead.owner || currentUser?.name || "";
                     const pmColor = projectManagerColors[pmName] || "#6366f1";
@@ -1943,9 +2019,9 @@ export const EmailView: React.FC<EmailViewProps> = ({
                             language={systemLanguage}
                             isExpanded={expandedTimelineEventIds.has(event.id)}
                             onToggle={() => toggleTimelineEventExpanded(event.id)}
-                            fadeClassName="from-slate-55 via-slate-55/70"
+                            fadeClassName="from-slate-50 via-slate-50/70"
                           >
-                            <p className="text-[10.5px] text-slate-655 leading-[1.35] font-bold select-text whitespace-pre-wrap">
+                            <p className="text-[10.5px] text-slate-600 leading-[1.35] font-bold select-text whitespace-pre-wrap">
                               {event.content}
                             </p>
                           </TimelineCollapsible>
@@ -1977,7 +2053,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
           <div className="fixed inset-0 -z-10" onClick={closeClientSlideout} />
           
           <div className={`w-full max-w-5xl h-[70vh] bg-white rounded-t-[32px] border-t border-slate-200/80 shadow-2xl p-8 flex flex-col justify-between text-left ${isClosingClient ? "animate-slide-out-bottom" : "animate-slide-in-bottom"}`}>
-            <div className="flex items-center justify-between border-b border-slate-150 pb-3 shrink-0">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
               <div>
                 <span className="text-[10px] font-black uppercase text-pink-500 tracking-wider">{t("CRM Client Registration", "Registrácia klienta CRM", "CRM ügyfél regisztráció")}</span>
                 <h3 className="text-sm font-heading font-black uppercase tracking-tight">{t("Create New Client from Email", "Vytvoriť nového klienta z e-mailu", "Új ügyfél létrehozása e-mailből")}</h3>
@@ -1990,7 +2066,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
               </button>
             </div>
             
-            <form onSubmit={handleCreateClientSubmit} className="flex-1 flex flex-col justify-between text-xs font-bold text-slate-755 mt-6">
+            <form onSubmit={handleCreateClientSubmit} className="flex-1 flex flex-col justify-between text-xs font-bold text-slate-700 mt-6">
               <div className="space-y-6">
                 <div className="grid grid-cols-2 gap-6">
                   <div className="space-y-1.5">
@@ -2050,11 +2126,11 @@ export const EmailView: React.FC<EmailViewProps> = ({
                 </div>
               </div>
               
-              <div className="flex justify-end gap-3 pt-4 border-t border-slate-105 shrink-0">
+              <div className="flex justify-end gap-3 pt-4 border-t border-slate-100 shrink-0">
                 <button
                   type="button"
                   onClick={closeClientSlideout}
-                  className="px-5 py-2.5 border border-slate-250 hover:bg-slate-50 text-slate-600 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                  className="px-5 py-2.5 border border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl text-xs font-bold transition-all cursor-pointer"
                 >
                   {t("Cancel", "Zrušiť", "Mégse")}
                 </button>

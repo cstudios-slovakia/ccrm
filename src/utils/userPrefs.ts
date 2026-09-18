@@ -1,4 +1,6 @@
 import { createContext, useContext } from "react";
+import type { StartMenuLayout } from "./startMenuLayout";
+import type { ProjectListColumn } from "../types";
 
 /**
  * Per-user interface preferences.
@@ -20,14 +22,43 @@ import { createContext, useContext } from "react";
  * to read it without a user object (see getStoredLanguage in translations.ts).
  */
 export interface UserPrefs {
-  /** Theme id. Reserved: main has no theme picker yet. */
+  /** Light palette id — see HERB_THEMES in utils/theme.ts. */
   theme: string;
+  /**
+   * Appearance: "system" | "light" | "dark" | "auto" (sunrise/sunset). Typed as
+   * a plain string so this module stays free of a theme import; utils/theme.ts
+   * validates it with isThemeMode() before anything is applied.
+   *
+   * It is also mirrored into localStorage, because index.html has to know the
+   * answer before the session — and this row — has loaded.
+   */
+  themeMode: string;
   /** Debug affordance: show the error-log quick access in the main sidebar. */
   errorSidebarEnabled: boolean;
   /** Leads screen: table or kanban board. */
   leadsViewMode: "list" | "kanban";
   /** Leads screen: dense rows. */
   leadsCompactMode: boolean;
+  /**
+   * Projects screen: roomy cards or a dense table. Doubles as the "default
+   * view" setting — it is both what the toggle in the list writes and what the
+   * screen opens on, so there is one answer to "which view do I get?" rather
+   * than a stored default quietly disagreeing with the toggle.
+   */
+  projectsViewMode: "grid" | "list";
+  /**
+   * Projects screen: which column the list is ordered by, or null for the
+   * stored order. Loosely typed like themeMode; ProjectsView validates it with
+   * normalizeProjectSort() from utils/projectSort.ts.
+   */
+  projectsSort: { key: string; direction: string } | null;
+  /**
+   * Projects screen: the table's columns while it lists more than one project
+   * type — built-ins only, since an attribute belongs to one type. A list of a
+   * single type follows that type's own `listColumns` instead. `null` means the
+   * default layout. Reconciled by resolveProjectColumns() in utils/projectColumns.ts.
+   */
+  projectsListColumns: ProjectListColumn[] | null;
   /** Leads screen: grouping / sorting. */
   leadsOrderingMode: "state" | "pm" | "created_newest" | "created_oldest" | "size" | "rating";
   /**
@@ -35,20 +66,63 @@ export interface UserPrefs {
    * which is not the same as "none selected" — it falls back to every open state.
    */
   leadsVisibleStates: string[] | null;
+  /**
+   * Finance trend chart: weekly net cash flow, or the running bank balance.
+   *
+   * Only the *choice of curve* is per user. The manual weekly anchors the
+   * cumulative curve is built from are shared workspace data — see
+   * utils/financialTrend.ts.
+   */
+  financialTrendMode: "relative" | "cumulative";
+  /**
+   * Finance trend chart: how many months the forecast runs past the current
+   * week — 3, 6 or 12. Per user for the same reason as the curve choice: it is
+   * how someone likes to read the chart, not a fact about the workspace.
+   */
+  financialProjectionMonths: 3 | 6 | 12;
+  /**
+   * Start Menu launcher: the user's own groups, what sits in each and what
+   * they hid. `null` means "never customised", which is not the same as an
+   * empty layout — it is what makes the built-in groups follow the interface
+   * language. Validated by normalizeStartMenuLayout() in utils/startMenuLayout.ts.
+   */
+  startMenuLayout: StartMenuLayout | null;
   /** Id of the newest release note the user has already opened. */
   seenUpdateId: string | null;
+  /**
+   * Licence notice the user chose never to see again, stored as the SITUATION's
+   * signature rather than a plain boolean (see licenseNoticeSignature in
+   * utils/license.ts). Silencing "expires in three weeks" therefore does not
+   * also silence "expired", and a renewed key brings the notice back.
+   */
+  licenseNoticeSuppressed: string | null;
+  /**
+   * "Don't show again" on the banner that warns an AI section is unusable
+   * because no OpenAI key is configured. Per user, not per browser: someone who
+   * cannot administer the key should not be nagged on every device.
+   */
+  aiKeyBannerDismissed: boolean;
   /** Customised built-in RAG agent, or null while it is still the stock one. */
   ragDefaultAgent: any | null;
 }
 
 export const DEFAULT_USER_PREFS: UserPrefs = {
   theme: "basic",
+  themeMode: "system",
   errorSidebarEnabled: false,
   leadsViewMode: "list",
+  projectsViewMode: "list",
+  projectsSort: null,
+  projectsListColumns: null,
   leadsCompactMode: false,
   leadsOrderingMode: "state",
   leadsVisibleStates: null,
+  financialTrendMode: "relative",
+  financialProjectionMonths: 3,
+  startMenuLayout: null,
   seenUpdateId: null,
+  licenseNoticeSuppressed: null,
+  aiKeyBannerDismissed: false,
   ragDefaultAgent: null,
 };
 
@@ -108,11 +182,22 @@ export function useUserPref<K extends keyof UserPrefs>(
  * migrateLegacyPrefs usage in App.tsx.
  */
 const LEGACY_PREF_KEYS = [
-  "crm_user_theme",
+  // The Start Menu layout is deliberately not here, on two counts: its key is
+  // namespaced by user id, which this list cannot express, and the migration
+  // below only ever runs for a row that has no preferences blob at all — so an
+  // account migrated by an earlier release would have had its launcher layout
+  // dropped on the floor. It gets its own adoption pass in App.tsx instead; see
+  // utils/startMenuLayout.ts.
+  //
+  // `crm_user_theme` is deliberately NOT wiped: since the theme switcher landed
+  // it is no longer only a legacy copy, it is the mirror the pre-paint script in
+  // index.html reads to pick the right palette before the bundle loads. Clearing
+  // it would put a flash of the default theme on every reload.
   "ccrm_error_sidebar_enabled",
   "crm_leads_visible_states",
   "ccrm_seen_update_id",
   "ccrm_custom_default_agent",
+  "crm_financial_trend_mode",
 ];
 
 export const readLegacyPrefs = (): Partial<UserPrefs> => {
@@ -138,6 +223,9 @@ export const readLegacyPrefs = (): Partial<UserPrefs> => {
       if (Array.isArray(parsed)) legacy.leadsVisibleStates = parsed;
     } catch (e) {}
   }
+
+  const trendMode = read("crm_financial_trend_mode");
+  if (trendMode === "relative" || trendMode === "cumulative") legacy.financialTrendMode = trendMode;
 
   const seenUpdateId = read("ccrm_seen_update_id");
   if (seenUpdateId) legacy.seenUpdateId = seenUpdateId;

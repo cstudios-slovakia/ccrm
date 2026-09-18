@@ -8,11 +8,13 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary.tsx'
+import { Agentation } from 'agentation'
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
       <App />
     </ErrorBoundary>
+    {import.meta.env.DEV && <Agentation endpoint="http://localhost:4747" />}
   </StrictMode>,
 )

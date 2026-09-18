@@ -165,7 +165,7 @@ const BANNER_THEMES: Record<string, {
     previewSat: "bg-blue-600 border-blue-700"
   },
   green: {
-    light: "bg-emerald-50/50 border-emerald-250/50 text-emerald-900",
+    light: "bg-emerald-50/50 border-emerald-200/50 text-emerald-900",
     saturated: "bg-emerald-600 border-emerald-700 text-white",
     previewLight: "bg-emerald-100 border-emerald-200",
     previewSat: "bg-emerald-600 border-emerald-700"
@@ -177,7 +177,7 @@ const BANNER_THEMES: Record<string, {
     previewSat: "bg-amber-500 border-amber-600"
   },
   red: {
-    light: "bg-rose-50/50 border-rose-250/50 text-rose-900",
+    light: "bg-rose-50/50 border-rose-200/50 text-rose-900",
     saturated: "bg-rose-600 border-rose-700 text-white",
     previewLight: "bg-rose-100 border-rose-200",
     previewSat: "bg-rose-600 border-rose-700"
@@ -232,7 +232,7 @@ const getBannerIcon = (color: string, variant: string) => {
     color === "red" ? "text-rose-500" :
     color === "purple" ? "text-purple-500" :
     color === "orange" ? "text-orange-500" :
-    color === "gray" ? "text-slate-550" :
+    color === "gray" ? "text-slate-500" :
     "text-blue-500"
   );
   
@@ -604,7 +604,7 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
       {showToolbar && (
         <div 
           style={{ top: toolbarCoords.top, left: toolbarCoords.left }}
-          className="absolute z-[999] flex items-center gap-1.5 bg-white border border-slate-250 text-slate-700 rounded-2xl px-3 py-2 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
+          className="absolute z-[999] flex items-center gap-1.5 bg-white border border-slate-200 text-slate-700 rounded-2xl px-3 py-2 shadow-2xl animate-in fade-in zoom-in-95 duration-150"
           onMouseDown={(e) => e.preventDefault()} // prevent loss of selection focus
         >
           {/* Style Controls */}
@@ -683,7 +683,7 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                 <button onClick={() => applyInlineStyle("hiliteColor", "#bfdbfe")} className="h-4 w-4 rounded-full bg-blue-200 border border-blue-300 hover:scale-110 transition-transform cursor-pointer" />
                 <button onClick={() => applyInlineStyle("hiliteColor", "#fbcfe8")} className="h-4 w-4 rounded-full bg-pink-200 border border-pink-300 hover:scale-110 transition-transform cursor-pointer" />
                 <button onClick={() => applyInlineStyle("hiliteColor", "#ddd6fe")} className="h-4 w-4 rounded-full bg-purple-200 border border-purple-300 hover:scale-110 transition-transform cursor-pointer" />
-                <button onClick={() => applyInlineStyle("hiliteColor", "transparent")} className="h-4 w-4 rounded-full bg-white border border-slate-300 hover:scale-110 transition-transform cursor-pointer flex items-center justify-center text-[10px] text-slate-450 font-bold font-sans">✕</button>
+                <button onClick={() => applyInlineStyle("hiliteColor", "transparent")} className="h-4 w-4 rounded-full bg-white border border-slate-300 hover:scale-110 transition-transform cursor-pointer flex items-center justify-center text-[10px] text-slate-400 font-bold font-sans">✕</button>
               </div>
             </div>
           </div>
@@ -817,7 +817,7 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                         : t("Write block text...", "Napíšte text...", "Írja be a blokk szövegét...")
                     }
                     className={cn(
-                      "outline-none text-slate-800 transition-all w-full leading-relaxed select-text py-1 empty:before:content-[attr(data-placeholder)] empty:before:text-slate-350 empty:before:pointer-events-none",
+                      "outline-none text-slate-800 transition-all w-full leading-relaxed select-text py-1 empty:before:content-[attr(data-placeholder)] empty:before:text-slate-300 empty:before:pointer-events-none",
                       block.type === "paragraph" && "text-sm",
                       block.type === "h1" && "text-2xl font-heading font-extrabold text-slate-900 pt-3 pb-1 tracking-tight",
                       block.type === "h2" && "text-xl font-heading font-extrabold text-slate-900 pt-2 pb-1 tracking-tight",
@@ -891,7 +891,7 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                                     className={cn(
                                       "h-5.5 w-5.5 rounded-full cursor-pointer transition-transform hover:scale-115 border",
                                       BANNER_THEMES[c].previewSat,
-                                      isSelected ? "ring-2 ring-slate-800 ring-offset-1" : "border-slate-250/20"
+                                      isSelected ? "ring-2 ring-slate-800 ring-offset-1" : "border-slate-200/20"
                                     )}
                                     title={`${t("Saturated", "Sýta", "Telített")} ${c}`}
                                   />
@@ -922,7 +922,7 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                         onBlur={(e) => {
                           setBlocks(prev => prev.map(b => b.id === block.id ? { ...b, toggleContent: e.currentTarget.innerHTML } : b));
                         }}
-                        className="outline-none min-h-[20px] text-slate-600 font-normal py-0.5 leading-relaxed empty:before:content-[attr(data-placeholder)] empty:before:text-slate-350"
+                        className="outline-none min-h-[20px] text-slate-600 font-normal py-0.5 leading-relaxed empty:before:content-[attr(data-placeholder)] empty:before:text-slate-300"
                         placeholder={getTranslation(systemLanguage, "editor.toggle_placeholder")}
                       />
                     </div>

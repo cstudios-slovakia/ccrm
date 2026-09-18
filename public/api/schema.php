@@ -23,7 +23,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `email` VARCHAR(150) NOT NULL UNIQUE,
               `password_hash` VARCHAR(255) NOT NULL,
               `sessions_valid_from` DATETIME NULL COMMENT 'Sessions issued before this are rejected (set on password change)',
-              `role` ENUM('admin', 'project_manager', 'viewer') NOT NULL DEFAULT 'viewer',
+              `role` VARCHAR(100) NOT NULL DEFAULT 'Viewer',
               `avatar` VARCHAR(255) NULL,
               `color` VARCHAR(20) NULL,
               `metadata_json` TEXT NULL COMMENT 'Plugin support',
@@ -42,7 +42,7 @@ if (!function_exists('ccrm_schema_statements')) {
 
             // Role Permissions
             "CREATE TABLE IF NOT EXISTS `role_permissions` (
-              `role` ENUM('admin', 'project_manager', 'viewer') NOT NULL,
+              `role` VARCHAR(100) NOT NULL,
               `permission_slug` VARCHAR(100) NOT NULL,
               PRIMARY KEY (`role`, `permission_slug`),
               FOREIGN KEY (`permission_slug`) REFERENCES `permissions` (`slug`) ON DELETE CASCADE
@@ -56,6 +56,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `client_type` ENUM('person', 'business', 'partner') NOT NULL DEFAULT 'person',
               `status` VARCHAR(50) NOT NULL DEFAULT 'new' COMMENT 'Active Pipeline State',
               `source` VARCHAR(50) NOT NULL DEFAULT 'website' COMMENT 'Marketing Source',
+              `traffic_origin` VARCHAR(50) NULL COMMENT 'Channel that first brought the visitor to the site (facebook, instagram, google, direct, ...) - reported by the web form, not chosen in the CRM',
+              `traffic_origin_detail` VARCHAR(255) NULL COMMENT 'Free-text detail for traffic_origin: medium, campaign, referring host, landing page',
               `owner` VARCHAR(100) NOT NULL COMMENT 'Assigned Project Manager Name',
               `value` DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'Estimated Opportunity Worth',
               `rating` INT NOT NULL DEFAULT 3 COMMENT 'Star Rating 1-5',
@@ -76,6 +78,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `metadata_json` TEXT NULL COMMENT 'Plugin support',
               `vat_validation_result` TEXT NULL,
               `follow_ups` TEXT NULL COMMENT 'JSON map: {stateKey: YYYY-MM-DD} of completed follow-ups',
+              `client_category_id` VARCHAR(50) NULL COMMENT 'client_categories.id - not a foreign key, the app clears it when a category is deleted',
+              `archived` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'Archived from the client register',
               `created_at` DATE NOT NULL,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               PRIMARY KEY (`id`),
@@ -110,6 +114,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `author` VARCHAR(100) NULL COMMENT 'CRM user whose action produced this entry. NULL for entries nobody triggered here (incoming mail, public-form inquiries, imports)',
               `audio_file` VARCHAR(255) NULL COMMENT 'Voice note recorded onto the timeline: the path api/upload_audio.php stored the recording at',
               `transcription` TEXT NULL COMMENT 'Speech-to-text transcript of `audio_file`, produced by api/transcribe_meeting.php',
+              `hidden` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'mail entries only: removed from the lead timeline by the user; kept so the mailbox importer does not file it again',
               PRIMARY KEY (`id`),
               FOREIGN KEY (`lead_id`) REFERENCES `leads` (`id`) ON DELETE CASCADE,
               INDEX idx_event_timestamp (`timestamp`),
@@ -129,6 +134,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `owner` VARCHAR(100) NOT NULL COMMENT 'Primary assignee name; empty when unassigned',
               `created_by` VARCHAR(100) NULL COMMENT 'Immutable task creator name; NULL for legacy rows',
               `related_lead_id` VARCHAR(50) NULL,
+              `related_project_id` VARCHAR(50) NULL COMMENT 'Project the task belongs to; NULL when it has none',
               `workflow_id` VARCHAR(50) NULL COMMENT 'Automation that created this task; NULL for hand-made ones',
               `is_locking` TINYINT(1) NOT NULL DEFAULT 0,
               `archived` TINYINT(1) NOT NULL DEFAULT 0,
@@ -140,7 +146,8 @@ if (!function_exists('ccrm_schema_statements')) {
               PRIMARY KEY (`id`),
               FOREIGN KEY (`related_lead_id`) REFERENCES `leads` (`id`) ON DELETE SET NULL,
               INDEX idx_task_status (`status`),
-              INDEX idx_task_deadline (`deadline`)
+              INDEX idx_task_deadline (`deadline`),
+              INDEX idx_task_project (`related_project_id`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
             // Task Assignees
@@ -295,8 +302,14 @@ if (!function_exists('ccrm_schema_statements')) {
               `attributes_json` LONGTEXT NOT NULL,
               `has_timeline` TINYINT(1) NOT NULL DEFAULT 0,
               `has_gantt` TINYINT(1) NOT NULL DEFAULT 0,
+              `has_deadline` TINYINT(1) NOT NULL DEFAULT 0,
+              `deadline_warning_days` INT NOT NULL DEFAULT 0,
+              `deadline_required` TINYINT(1) NOT NULL DEFAULT 0,
+              `has_files` TINYINT(1) NOT NULL DEFAULT 0,
+              `file_fields_json` LONGTEXT NULL,
               `timeline_event_types_json` LONGTEXT NULL,
               `timeline_attributes_json` LONGTEXT NULL,
+              `list_columns_json` LONGTEXT NULL,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
@@ -305,9 +318,17 @@ if (!function_exists('ccrm_schema_statements')) {
             "CREATE TABLE IF NOT EXISTS `projects` (
               `id` VARCHAR(50) NOT NULL PRIMARY KEY,
               `project_type_id` VARCHAR(50) NOT NULL,
+              `name` VARCHAR(200) NULL,
               `lead_id` VARCHAR(50) NULL,
               `client_id` VARCHAR(50) NULL,
               `status` VARCHAR(50) NOT NULL DEFAULT 'active',
+              `rating` TINYINT NULL COMMENT 'Star Rating 1-5, 0 = not rated, NULL = never set',
+              `deadline` DATE NULL,
+              `delay_reason` VARCHAR(500) NULL,
+              `start_date` DATE NULL,
+              `finished_at` DATE NULL,
+              `budget` DECIMAL(14,2) NULL,
+              `custom_files_json` LONGTEXT NULL,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               FOREIGN KEY (`project_type_id`) REFERENCES `project_types` (`id`) ON DELETE CASCADE
@@ -341,6 +362,51 @@ if (!function_exists('ccrm_schema_statements')) {
               `email` VARCHAR(255) NULL,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               INDEX `idx_pwreset_ip_time` (`ip`, `created_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Licence held by THIS installation. At most one row, `id` pinned to
+            // 1 by the primary key: one install, one licence.
+            //
+            // `token` is the only authoritative column — a base64url claim plus
+            // the vendor's signature over it. Everything beside it is a
+            // denormalised copy of what that claim says, kept so the settings
+            // screen and ad-hoc SQL can read the licence without verifying a
+            // signature. Nothing decides anything from those copies: every read
+            // path re-verifies the token (see api/license_client.php), so editing
+            // `expires_at` here changes a display value and not the licence.
+            "CREATE TABLE IF NOT EXISTS `licenses` (
+              `id` TINYINT UNSIGNED NOT NULL DEFAULT 1,
+              `license_key` VARCHAR(64) NOT NULL,
+              `instance_id` VARCHAR(64) NOT NULL COMMENT 'Install this token was issued for',
+              `token` TEXT NOT NULL COMMENT 'base64url(claim).base64url(signature) — the authority',
+              `status` VARCHAR(20) NOT NULL DEFAULT 'unknown' COMMENT 'Last status the vendor stated',
+              `expires_at` DATE NULL,
+              `max_users` INT NULL COMMENT 'Seat ceiling, NULL for unlimited',
+              `customer` VARCHAR(190) NULL,
+              `plan` VARCHAR(60) NULL,
+              `issued_at` DATETIME NULL COMMENT 'When the vendor signed this token',
+              `activated_by` VARCHAR(50) NULL COMMENT 'users.id of whoever entered the key',
+              `activated_at` DATETIME NULL,
+              `last_check_at` DATETIME NULL COMMENT 'Last SUCCESSFUL licence-server check',
+              `last_attempt_at` DATETIME NULL COMMENT 'Last attempt, successful or not (throttle)',
+              `last_error` VARCHAR(255) NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              PRIMARY KEY (`id`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Rate-limit ledger for licence activation attempts. Activation takes
+            // a key typed by a human, so it is a guessing surface like a login
+            // form; without this an admin session could grind the vendor's key
+            // space (and the vendor's server) from inside a customer install.
+            "CREATE TABLE IF NOT EXISTS `license_attempts` (
+              `id` BIGINT AUTO_INCREMENT PRIMARY KEY,
+              `ip` VARCHAR(45) NULL,
+              `user_id` VARCHAR(50) NULL,
+              `outcome` VARCHAR(30) NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              INDEX `idx_license_attempt_time` (`created_at`),
+              INDEX `idx_license_attempt_ip_time` (`ip`, `created_at`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
             // Workflow Definitions
@@ -521,6 +587,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `name` VARCHAR(150) NOT NULL,
               `parent_id` VARCHAR(50) NULL,
               `level` INT NOT NULL DEFAULT 1,
+              `sort_order` INT NOT NULL DEFAULT 0,
               `color` VARCHAR(30) NULL,
               `icon` VARCHAR(50) NULL,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -528,6 +595,21 @@ if (!function_exists('ccrm_schema_statements')) {
               INDEX idx_fc_type (`type`),
               INDEX idx_fc_parent (`parent_id`),
               INDEX idx_fc_level (`level`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Client Categories (3-level customer category tree, the finance tree's shape without a type)
+            "CREATE TABLE IF NOT EXISTS `client_categories` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `name` VARCHAR(150) NOT NULL,
+              `parent_id` VARCHAR(50) NULL,
+              `level` INT NOT NULL DEFAULT 1,
+              `sort_order` INT NOT NULL DEFAULT 0,
+              `color` VARCHAR(30) NULL,
+              `icon` VARCHAR(50) NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX idx_cc_parent (`parent_id`),
+              INDEX idx_cc_level (`level`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
             // Financial Records (Incomes, Invoices, Expenses, Recurring and Single movements)
@@ -552,6 +634,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `recurring_config_json` TEXT NULL,
               `recurring_start_date` DATE NULL,
               `recurring_end_date` DATE NULL,
+              `recurring_amount_history_json` TEXT NULL COMMENT 'Superseded amounts of a recurring rule: [{until, amountPlanned, amountReal}]',
               `project_id` VARCHAR(50) NULL COMMENT 'NULL for Global company-wide record, or linked project ID',
               `client_id` VARCHAR(50) NULL COMMENT 'NULL for Global company-wide record, or linked client ID',
               `invoice_number` VARCHAR(100) NULL,
@@ -567,6 +650,96 @@ if (!function_exists('ccrm_schema_statements')) {
               INDEX idx_fr_project (`project_id`),
               INDEX idx_fr_client (`client_id`),
               INDEX idx_fr_recurring (`is_recurring`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Invoices & Price Offers (Cenové ponuky a Faktúry)
+            "CREATE TABLE IF NOT EXISTS `invoices_offers` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `document_number` VARCHAR(100) NOT NULL,
+              `type` ENUM('price_offer', 'proforma', 'invoice') NOT NULL DEFAULT 'price_offer',
+              `mode` ENUM('default', 'custom', 'external') NOT NULL DEFAULT 'default',
+              `external_provider` VARCHAR(50) NULL,
+              `external_id` VARCHAR(100) NULL,
+              `external_pdf_url` VARCHAR(500) NULL,
+              `lead_id` VARCHAR(50) NOT NULL,
+              `client_id` VARCHAR(50) NULL,
+              `client_name` VARCHAR(150) NOT NULL,
+              `client_email` VARCHAR(150) NULL,
+              `client_phone` VARCHAR(50) NULL,
+              `client_street` VARCHAR(255) NULL,
+              `client_city` VARCHAR(100) NULL,
+              `client_postal_code` VARCHAR(20) NULL,
+              `client_country` VARCHAR(100) NULL DEFAULT 'Slovakia',
+              `client_ico` VARCHAR(50) NULL,
+              `client_dic` VARCHAR(50) NULL,
+              `client_icdph` VARCHAR(50) NULL,
+              `title` VARCHAR(255) NOT NULL,
+              `subject` VARCHAR(255) NOT NULL,
+              `location` VARCHAR(100) NULL,
+              `greeting_note` TEXT NULL,
+              `intro_note` TEXT NULL,
+              `usp_cards_json` TEXT NULL,
+              `reassurance_note` TEXT NULL,
+              `subtotal` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+              `vat_amount` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+              `total_price` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+              `price_range_min` DECIMAL(15,2) NULL,
+              `price_range_max` DECIMAL(15,2) NULL,
+              `currency` VARCHAR(10) NOT NULL DEFAULT 'EUR',
+              `duration_text` VARCHAR(100) NULL,
+              `start_date_text` VARCHAR(100) NULL,
+              `warranty_text` VARCHAR(100) NULL,
+              `next_steps_note` TEXT NULL,
+              `closing_note` TEXT NULL,
+              `sign_off_team` VARCHAR(150) NULL,
+              `custom_template_id` VARCHAR(50) NULL,
+              `custom_template_style_json` TEXT NULL,
+              `status` ENUM('draft', 'sent', 'approved', 'rejected', 'invoiced', 'cancelled') NOT NULL DEFAULT 'draft',
+              `issued_at` DATE NOT NULL,
+              `valid_until` DATE NULL,
+              `due_date` DATE NULL,
+              `file_name` VARCHAR(255) NULL,
+              `file_path` VARCHAR(500) NULL,
+              `created_by` VARCHAR(100) NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX idx_io_doc (`document_number`),
+              INDEX idx_io_type (`type`),
+              INDEX idx_io_lead (`lead_id`),
+              INDEX idx_io_status (`status`),
+              INDEX idx_io_issued (`issued_at`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Invoice & Offer Items (Položky cenovej ponuky / faktúry)
+            "CREATE TABLE IF NOT EXISTS `invoice_offer_items` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `invoice_offer_id` VARCHAR(50) NOT NULL,
+              `warehouse_item_id` VARCHAR(50) NULL,
+              `sku` VARCHAR(100) NULL,
+              `name` VARCHAR(255) NOT NULL,
+              `description` TEXT NULL,
+              `quantity` DECIMAL(12,2) NOT NULL DEFAULT 1.00,
+              `unit` VARCHAR(20) NOT NULL DEFAULT 'ks',
+              `unit_price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+              `vat_rate` DECIMAL(5,2) NOT NULL DEFAULT 20.00,
+              `discount_pct` DECIMAL(5,2) NOT NULL DEFAULT 0.00,
+              `total_price` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
+              FOREIGN KEY (`invoice_offer_id`) REFERENCES `invoices_offers` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // AI Custom PDF Templates (Uložené vygenerované šablóny)
+            "CREATE TABLE IF NOT EXISTS `ai_custom_templates` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `name` VARCHAR(150) NOT NULL,
+              `description` TEXT NULL,
+              `source_pdf_url` VARCHAR(500) NULL,
+              `source_pdf_name` VARCHAR(255) NULL,
+              `colors_json` TEXT NOT NULL,
+              `typography_json` TEXT NOT NULL,
+              `sections_order_json` TEXT NOT NULL,
+              `custom_banner_text` TEXT NULL,
+              `badge_style` VARCHAR(50) NOT NULL DEFAULT 'rounded',
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
         ];
     }
@@ -595,6 +768,11 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'users', 'sessions_valid_from')) {
             $pdo->exec("ALTER TABLE `users` ADD COLUMN `sessions_valid_from` DATETIME NULL AFTER `password_hash`");
         }
+        // Finance categories are ordered by hand (drag & drop in the categories
+        // tab). Existing rows all start at 0 and keep their alphabetical order.
+        if (!ccrm_column_exists($pdo, 'financial_categories', 'sort_order')) {
+            $pdo->exec("ALTER TABLE `financial_categories` ADD COLUMN `sort_order` INT NOT NULL DEFAULT 0 AFTER `level`");
+        }
         // `archived` was added to meeting_notes after the initial release.
         if (!ccrm_column_exists($pdo, 'meeting_notes', 'archived')) {
             $pdo->exec("ALTER TABLE `meeting_notes` ADD COLUMN `archived` TINYINT(1) NOT NULL DEFAULT 0");
@@ -607,6 +785,13 @@ if (!function_exists('ccrm_schema_statements')) {
         // does not stack duplicate follow-ups.
         if (!ccrm_column_exists($pdo, 'tasks', 'workflow_id')) {
             $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `workflow_id` VARCHAR(50) NULL AFTER `related_lead_id`");
+        }
+        // A task can belong to a project and show in that project's Tasks tab.
+        // No foreign key: deleting a project clears the link in sync.php
+        // instead, so the task itself survives on the Tasks board.
+        if (!ccrm_column_exists($pdo, 'tasks', 'related_project_id')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `related_project_id` VARCHAR(50) NULL AFTER `related_lead_id`");
+            $pdo->exec("ALTER TABLE `tasks` ADD INDEX idx_task_project (`related_project_id`)");
         }
         if (!ccrm_column_exists($pdo, 'meeting_tasks', 'start_date')) {
             $pdo->exec("ALTER TABLE `meeting_tasks` ADD COLUMN `start_date` DATE NULL AFTER `description`");
@@ -680,6 +865,73 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'project_types', 'timeline_attributes_json')) {
             $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `timeline_attributes_json` LONGTEXT NULL");
         }
+        // A project type can be time-boxed: its projects carry a deadline and the
+        // list counts down to it, warning `deadline_warning_days` days ahead.
+        // Both default to off, so existing types are untouched.
+        if (!ccrm_column_exists($pdo, 'project_types', 'has_deadline')) {
+            $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `has_deadline` TINYINT(1) NOT NULL DEFAULT 0 AFTER `has_gantt`");
+        }
+        if (!ccrm_column_exists($pdo, 'project_types', 'deadline_warning_days')) {
+            $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `deadline_warning_days` INT NOT NULL DEFAULT 0 AFTER `has_deadline`");
+        }
+        // Built-in attribute settings: whether the deadline must be filled in, and
+        // the "Files" attribute — named document slots (contract, GDPR, ...) whose
+        // uploads live in the type's proj_data_ table like any files attribute.
+        if (!ccrm_column_exists($pdo, 'project_types', 'deadline_required')) {
+            $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `deadline_required` TINYINT(1) NOT NULL DEFAULT 0 AFTER `deadline_warning_days`");
+        }
+        if (!ccrm_column_exists($pdo, 'project_types', 'has_files')) {
+            $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `has_files` TINYINT(1) NOT NULL DEFAULT 0 AFTER `deadline_required`");
+        }
+        if (!ccrm_column_exists($pdo, 'project_types', 'file_fields_json')) {
+            $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `file_fields_json` LONGTEXT NULL AFTER `has_files`");
+        }
+        // How the projects list is laid out for this type: which columns it
+        // shows, in which order, its own attributes included. NULL means the
+        // type has never been arranged and reads as the default layout, so
+        // every existing type keeps exactly the table it has today.
+        if (!ccrm_column_exists($pdo, 'project_types', 'list_columns_json')) {
+            $pdo->exec("ALTER TABLE `project_types` ADD COLUMN `list_columns_json` LONGTEXT NULL AFTER `file_fields_json`");
+        }
+        // Projects had no name of their own — they borrowed the paired lead's,
+        // which left an unpaired project unnameable. NULL on every existing row,
+        // and projectDisplayName() keeps showing the lead's name for those.
+        if (!ccrm_column_exists($pdo, 'projects', 'name')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `name` VARCHAR(200) NULL AFTER `project_type_id`");
+        }
+        if (!ccrm_column_exists($pdo, 'projects', 'deadline')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `deadline` DATE NULL AFTER `status`");
+        }
+        // A project past its deadline must say why. NULL on every existing row,
+        // which is exactly what an unexplained delay looks like to the client.
+        if (!ccrm_column_exists($pdo, 'projects', 'delay_reason')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `delay_reason` VARCHAR(500) NULL AFTER `deadline`");
+        }
+        // When the project really started and really finished, set by hand. NULL
+        // start reads as the creation date on the client; a set finish date
+        // outranks the planned deadline everywhere the project is listed.
+        if (!ccrm_column_exists($pdo, 'projects', 'start_date')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `start_date` DATE NULL AFTER `delay_reason`");
+        }
+        if (!ccrm_column_exists($pdo, 'projects', 'finished_at')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `finished_at` DATE NULL AFTER `start_date`");
+        }
+        // What the project may spend. NULL is "no budget set", which the finance
+        // tab shows as a prompt to set one rather than as a zero ceiling.
+        if (!ccrm_column_exists($pdo, 'projects', 'budget')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `budget` DECIMAL(14,2) NULL AFTER `delay_reason`");
+        }
+        // File slots added on one project only, with their uploads, as one JSON
+        // list. The type's default slots keep their own columns in proj_data_*.
+        if (!ccrm_column_exists($pdo, 'projects', 'custom_files_json')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `custom_files_json` LONGTEXT NULL AFTER `budget`");
+        }
+        // 1.9.56: the project's own 1-5 star priority, the same one a lead
+        // carries. NULL on every existing row — "never rated", which the client
+        // shows as an empty row of stars rather than as one star.
+        if (!ccrm_column_exists($pdo, 'projects', 'rating')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `rating` TINYINT NULL AFTER `status`");
+        }
         if (!ccrm_column_exists($pdo, 'tasks', 'deadline_time')) {
             $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `deadline_time` VARCHAR(5) NULL AFTER `deadline`");
         }
@@ -696,6 +948,22 @@ if (!function_exists('ccrm_schema_statements')) {
         // every referral looked saved and then vanished on the next poll.
         if (!ccrm_column_exists($pdo, 'leads', 'referral_lead_id')) {
             $pdo->exec("ALTER TABLE `leads` ADD COLUMN `referral_lead_id` VARCHAR(50) NULL AFTER `interest_note`");
+        }
+        // 1.9.26: where the visitor came from before they filled in the form
+        // (facebook, instagram, google, direct...). Written by api/pipeline.php
+        // only; the app shows it and never edits it.
+        if (!ccrm_column_exists($pdo, 'leads', 'traffic_origin')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `traffic_origin` VARCHAR(50) NULL AFTER `source`");
+        }
+        if (!ccrm_column_exists($pdo, 'leads', 'traffic_origin_detail')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `traffic_origin_detail` VARCHAR(255) NULL AFTER `traffic_origin`");
+        }
+        // 1.9.32: customer categories and archiving in the client register.
+        if (!ccrm_column_exists($pdo, 'leads', 'client_category_id')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `client_category_id` VARCHAR(50) NULL");
+        }
+        if (!ccrm_column_exists($pdo, 'leads', 'archived')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `archived` TINYINT(1) NOT NULL DEFAULT 0");
         }
         // Business-document timeline events (order, proforma invoice, advance
         // receipt, invoice, delivery note). MySQL silently truncates an unknown
@@ -730,6 +998,12 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         if (!ccrm_column_exists($pdo, 'timeline_events', 'transcription')) {
             $pdo->exec("ALTER TABLE `timeline_events` ADD COLUMN `transcription` TEXT NULL AFTER `audio_file`");
+        }
+        // A mail entry cannot simply be deleted from a lead's timeline: the next
+        // mailbox read would file the message again. Deleting it flags the row
+        // instead, and both sync.php and the importer honour the flag.
+        if (!ccrm_column_exists($pdo, 'timeline_events', 'hidden')) {
+            $pdo->exec("ALTER TABLE `timeline_events` ADD COLUMN `hidden` TINYINT(1) NOT NULL DEFAULT 0 AFTER `transcription`");
         }
         // `tasks`.`status` was originally a fixed ENUM, but task states are
         // user-customizable free text (see Settings > task states / taskStates
@@ -766,10 +1040,53 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'tasks', 'completed_at')) {
             $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `completed_at` VARCHAR(16) NULL AFTER `completed_by`");
         }
+        // A recurring rule is stored as one row, so the reports derive every past
+        // charge from the rule itself. Raising the price used to rewrite the months
+        // already paid at the old one; the superseded amounts now travel with the
+        // rule. Existing rows migrate as NULL, which reads as "always charged what
+        // it charges today" — exactly the behaviour they had before.
+        if (!ccrm_column_exists($pdo, 'financial_records', 'recurring_amount_history_json')) {
+            $pdo->exec("ALTER TABLE `financial_records` ADD COLUMN `recurring_amount_history_json` TEXT NULL AFTER `recurring_end_date`");
+        }
         ccrm_migrate_updated_at_precision($pdo);
         ccrm_migrate_task_states($pdo);
+        ccrm_migrate_list_ids($pdo);
         ccrm_backfill_task_completion_attribution($pdo);
         ccrm_seed_default_financial_categories($pdo);
+        ccrm_migrate_user_role_varchar($pdo);
+    }
+
+    /**
+     * Widen `users.role` (and unused `role_permissions.role`) from the
+     * original ENUM('admin','project_manager','viewer') to VARCHAR(100) so a
+     * custom role name survives a save. Relabels the three legacy values to
+     * the names the registry uses. Idempotent and never throws.
+     */
+    function ccrm_migrate_user_role_varchar(PDO $pdo): void {
+        $widen = function (string $table, string $alter) use ($pdo): void {
+            try {
+                $type = $pdo->query(
+                    "SELECT `DATA_TYPE` FROM `information_schema`.`COLUMNS`
+                     WHERE `TABLE_SCHEMA` = DATABASE()
+                       AND `TABLE_NAME` = " . $pdo->quote($table) . "
+                       AND `COLUMN_NAME` = 'role'"
+                )->fetchColumn();
+                if ($type === 'enum') {
+                    $pdo->exec($alter);
+                }
+            } catch (\Throwable $e) {
+                error_log('[ccrm] ccrm_migrate_user_role_varchar ' . $table . ': ' . $e->getMessage());
+            }
+        };
+        $widen('users', "ALTER TABLE `users` MODIFY COLUMN `role` VARCHAR(100) NOT NULL DEFAULT 'Viewer'");
+        $widen('role_permissions', "ALTER TABLE `role_permissions` MODIFY COLUMN `role` VARCHAR(100) NOT NULL");
+        try {
+            $pdo->exec("UPDATE `users` SET `role` = 'Admin' WHERE `role` = 'admin'");
+            $pdo->exec("UPDATE `users` SET `role` = 'Project Manager' WHERE `role` = 'project_manager'");
+            $pdo->exec("UPDATE `users` SET `role` = 'Viewer' WHERE `role` = 'viewer'");
+        } catch (\Throwable $e) {
+            error_log('[ccrm] ccrm_migrate_user_role_varchar relabel: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -835,6 +1152,48 @@ if (!function_exists('ccrm_schema_statements')) {
                 // same-second window. Never block the sync over this.
                 if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
             }
+        }
+    }
+
+    /**
+     * Freeze the numeric ids that /api/pipeline.php resolves `source_id` and
+     * `category_id` against.
+     *
+     * Until 1.9.19 there was no id to store: the number WAS the item's position
+     * in LEAD_SOURCES / LEAD_CATEGORIES, so reordering either list in Settings
+     * silently re-pointed every form already live on the customer's website.
+     * Seeding from the current order — which is exactly what the positional
+     * scheme was handing out right up to this upgrade — makes today's numbers
+     * permanent rather than incidental, so no existing integration changes
+     * meaning on the way in.
+     *
+     * Runs once per list: a map that already exists is the operator's, and
+     * re-deriving it from the order is the very bug this removes.
+     */
+    function ccrm_migrate_list_ids(PDO $pdo): void {
+        $pairs = [
+            'LEAD_SOURCES' => 'LEAD_SOURCE_IDS',
+            'LEAD_CATEGORIES' => 'LEAD_CATEGORY_IDS',
+        ];
+        try {
+            $read = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = ?");
+            $write = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
+            foreach ($pairs as $listKey => $idsKey) {
+                $read->execute([$idsKey]);
+                $existing = json_decode((string)$read->fetchColumn(), true);
+                if (is_array($existing) && $existing) continue; // already seeded
+
+                $read->execute([$listKey]);
+                $names = json_decode((string)$read->fetchColumn(), true);
+                if (!is_array($names) || !$names) continue; // list not configured yet
+
+                $write->execute([$idsKey, json_encode(ccrm_normalize_list_ids($names, []), JSON_UNESCAPED_UNICODE)]);
+            }
+        } catch (\Throwable $e) {
+            // Never block a sync over this. pipeline.php normalises on the fly
+            // from the same list, so an unseeded install still resolves ids —
+            // this only makes the answer durable.
+            if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
         }
     }
 
@@ -976,6 +1335,74 @@ if (!function_exists('ccrm_schema_statements')) {
     }
 
     /**
+     * Permanent numeric ids for the two operator-editable lists a website form
+     * can address by number: LEAD_SOURCES (`source_id`) and LEAD_CATEGORIES
+     * (`category_id`) in the /api/pipeline.php payload.
+     *
+     * Mirror of normalizeListIds in src/utils/listIds.ts — the rules, and why an
+     * id may never be derived from a list position, are written out there. Both
+     * ends must build the same map from the same inputs, or the settings sync
+     * would push the difference back and forth forever.
+     */
+    function ccrm_normalize_list_ids($names, $saved): array {
+        $out = [];
+        // A JSON list ([...]) is not a name -> id map; only an object is.
+        $isMap = is_array($saved) && (!$saved || array_keys($saved) !== range(0, count($saved) - 1));
+        if ($isMap) {
+            foreach ($saved as $key => $value) {
+                $id = (int)$value;
+                if ((string)$key !== '' && $id > 0) {
+                    $out[(string)$key] = $id;
+                }
+            }
+        }
+
+        $list = [];
+        foreach ((is_array($names) ? $names : []) as $name) {
+            if (is_string($name) && $name !== '') $list[] = $name;
+        }
+
+        $missing = [];
+        foreach ($list as $name) {
+            if (!isset($out[$name])) $missing[$name] = true;
+        }
+        if (!$missing) return $out;
+
+        // Nothing usable stored: reproduce the old positional numbering one last
+        // time, so the ids frozen here are the ones live forms already send.
+        if (!$out) {
+            foreach (array_values($list) as $idx => $name) {
+                if (!isset($out[$name])) $out[$name] = $idx + 1;
+            }
+            return $out;
+        }
+
+        $next = max($out) + 1;
+        foreach (array_keys($missing) as $name) {
+            $out[(string)$name] = $next++;
+        }
+        return $out;
+    }
+
+    /**
+     * The list entry an incoming `source_id` / `category_id` names, or null when
+     * nothing answers to it.
+     *
+     * Deliberately walks the live list rather than the id map: an id retired by
+     * a deletion stays in the map as a tombstone precisely so it can never be
+     * re-issued, and it must not resolve to anything either.
+     */
+    function ccrm_resolve_list_id(int $id, $names, $savedIds): ?string {
+        if ($id <= 0 || !is_array($names)) return null;
+        $ids = ccrm_normalize_list_ids($names, $savedIds);
+        foreach ($names as $name) {
+            if (!is_string($name) || $name === '') continue;
+            if (isset($ids[$name]) && (int)$ids[$name] === $id) return $name;
+        }
+        return null;
+    }
+
+    /**
      * Colour map for task states. Blue → amber → red → green reads as a natural
      * workflow; states beyond the fourth cycle through the same palette.
      */
@@ -1014,6 +1441,11 @@ if (!function_exists('ccrm_schema_statements')) {
             'LEAD_STATES' => $enc($leadStates),
             'LEAD_SOURCES' => $enc($leadSources),
             'LEAD_CATEGORIES' => $enc($leadCategories),
+            // Permanent ids for the two lists /api/pipeline.php addresses by
+            // number. See ccrm_normalize_list_ids: these must never be derived
+            // from list order, or reordering re-points live web forms.
+            'LEAD_SOURCE_IDS' => $enc(ccrm_normalize_list_ids($leadSources, [])),
+            'LEAD_CATEGORY_IDS' => $enc(ccrm_normalize_list_ids($leadCategories, [])),
             'LEAD_STATE_COLORS' => $enc(array_combine($leadStates, ['#3b82f6', '#0ea5e9', '#6366f1', '#10b981', '#ef4444'])),
             'LEAD_SOURCE_COLORS' => $enc(array_combine($leadSources, ['#10b981', '#3b82f6', '#ec4899', '#8b5cf6'])),
             'LEAD_CATEGORY_COLORS' => $enc(array_combine($leadCategories, ['#f59e0b', '#10b981'])),
@@ -1025,137 +1457,83 @@ if (!function_exists('ccrm_schema_statements')) {
     }
 
     /**
-     * Seed default 3-level financial categories hierarchy for Incomes and Expenses.
+     * The sample 3-level financial category tree seeded into a demo installation
+     * (see ccrm_seed_default_financial_categories). Deliberately generic — any
+     * small business selling products or services should recognise it — with
+     * each name given once per supported language.
      */
     function ccrm_default_financial_categories(string $language): array {
         if (!in_array($language, ['en', 'sk', 'hu'], true)) {
             $language = 'sk';
         }
 
-        if ($language === 'en') {
-            return [
-                // Incomes (Level 1)
-                ['id' => 'fc-inc-sales', 'type' => 'income', 'name' => 'Sales of Goods & Materials', 'parent_id' => null, 'level' => 1, 'color' => '#10b981', 'icon' => 'Package'],
-                ['id' => 'fc-inc-slabs', 'type' => 'income', 'name' => 'Laminam Ceramic Slabs', 'parent_id' => 'fc-inc-sales', 'level' => 2, 'color' => '#059669', 'icon' => 'Layers'],
-                ['id' => 'fc-inc-slabs-3', 'type' => 'income', 'name' => 'LAM 3+ (approx 80 €/m²)', 'parent_id' => 'fc-inc-slabs', 'level' => 3, 'color' => '#34d399', 'icon' => 'Circle'],
-                ['id' => 'fc-inc-slabs-5', 'type' => 'income', 'name' => 'LAM 5+ (approx 90 €/m²)', 'parent_id' => 'fc-inc-slabs', 'level' => 3, 'color' => '#10b981', 'icon' => 'Circle'],
-                ['id' => 'fc-inc-slabs-12', 'type' => 'income', 'name' => 'LAM 12+ (approx 250 €/m²)', 'parent_id' => 'fc-inc-slabs', 'level' => 3, 'color' => '#047857', 'icon' => 'Circle'],
-                ['id' => 'fc-inc-supplements', 'type' => 'income', 'name' => 'Adhesives & Accessories', 'parent_id' => 'fc-inc-sales', 'level' => 2, 'color' => '#6ee7b7', 'icon' => 'Box'],
-                ['id' => 'fc-inc-services', 'type' => 'income', 'name' => 'Installation & Realization Services', 'parent_id' => null, 'level' => 1, 'color' => '#3b82f6', 'icon' => 'Wrench'],
-                ['id' => 'fc-inc-assembly', 'type' => 'income', 'name' => 'Assembly & Tiling Works', 'parent_id' => 'fc-inc-services', 'level' => 2, 'color' => '#2563eb', 'icon' => 'Hammer'],
-                ['id' => 'fc-inc-logistics', 'type' => 'income', 'name' => 'Transport & Crane Logistics', 'parent_id' => 'fc-inc-services', 'level' => 2, 'color' => '#60a5fa', 'icon' => 'Truck'],
-                ['id' => 'fc-inc-other', 'type' => 'income', 'name' => 'Other Financial Incomes', 'parent_id' => null, 'level' => 1, 'color' => '#8b5cf6', 'icon' => 'Coins'],
+        // [id, type, parent_id, level, color, icon, [en, sk, hu]]
+        $tree = [
+            // Incomes
+            ['fc-inc-sales', 'income', null, 1, '#10b981', 'Package', ['Sales', 'Predaj', 'Értékesítés']],
+            ['fc-inc-sales-products', 'income', 'fc-inc-sales', 2, '#059669', 'Box', ['Products & goods', 'Produkty a tovar', 'Termékek és áruk']],
+            ['fc-inc-sales-online', 'income', 'fc-inc-sales', 2, '#34d399', 'Globe', ['E-shop & online sales', 'E-shop a online predaj', 'Webshop és online értékesítés']],
+            ['fc-inc-services', 'income', null, 1, '#3b82f6', 'Wrench', ['Services', 'Služby', 'Szolgáltatások']],
+            ['fc-inc-svc-projects', 'income', 'fc-inc-services', 2, '#2563eb', 'Briefcase', ['Project work', 'Projektové práce', 'Projektmunkák']],
+            ['fc-inc-svc-consulting', 'income', 'fc-inc-services', 2, '#60a5fa', 'UserCheck', ['Consulting', 'Poradenstvo', 'Tanácsadás']],
+            ['fc-inc-svc-support', 'income', 'fc-inc-services', 2, '#93c5fd', 'Shield', ['Support & maintenance', 'Podpora a údržba', 'Támogatás és karbantartás']],
+            ['fc-inc-recurring', 'income', null, 1, '#0891b2', 'TrendingUp', ['Recurring revenue', 'Opakované príjmy', 'Ismétlődő bevételek']],
+            ['fc-inc-rec-subscriptions', 'income', 'fc-inc-recurring', 2, '#06b6d4', 'Circle', ['Subscriptions & retainers', 'Predplatné a paušály', 'Előfizetések és átalánydíjak']],
+            ['fc-inc-other', 'income', null, 1, '#8b5cf6', 'Coins', ['Other income', 'Ostatné príjmy', 'Egyéb bevételek']],
 
-                // Expenses (Level 1)
-                ['id' => 'fc-exp-cogs', 'type' => 'expense', 'name' => 'COGS - Direct Material Purchases (ELÁBÉ)', 'parent_id' => null, 'level' => 1, 'color' => '#ef4444', 'icon' => 'Package'],
-                ['id' => 'fc-exp-mat-lam', 'type' => 'expense', 'name' => 'Laminam Material Purchase (Italy)', 'parent_id' => 'fc-exp-cogs', 'level' => 2, 'color' => '#dc2626', 'icon' => 'Layers'],
-                ['id' => 'fc-exp-mat-lam3', 'type' => 'expense', 'name' => 'Material LAM 3+', 'parent_id' => 'fc-exp-mat-lam', 'level' => 3, 'color' => '#f87171', 'icon' => 'Circle'],
-                ['id' => 'fc-exp-mat-lam5', 'type' => 'expense', 'name' => 'Material LAM 5+', 'parent_id' => 'fc-exp-mat-lam', 'level' => 3, 'color' => '#ef4444', 'icon' => 'Circle'],
-                ['id' => 'fc-exp-mat-lam12', 'type' => 'expense', 'name' => 'Material LAM 12+', 'parent_id' => 'fc-exp-mat-lam', 'level' => 3, 'color' => '#b91c1c', 'icon' => 'Circle'],
-                ['id' => 'fc-exp-mat-pack', 'type' => 'expense', 'name' => 'Packaging & Pallets', 'parent_id' => 'fc-exp-cogs', 'level' => 2, 'color' => '#fca5a5', 'icon' => 'Box'],
-                ['id' => 'fc-exp-freight', 'type' => 'expense', 'name' => 'International Freight & Transport', 'parent_id' => 'fc-exp-cogs', 'level' => 2, 'color' => '#ea580c', 'icon' => 'Truck'],
-                ['id' => 'fc-exp-marketing', 'type' => 'expense', 'name' => 'Marketing & Advertising', 'parent_id' => null, 'level' => 1, 'color' => '#f59e0b', 'icon' => 'Megaphone'],
-                ['id' => 'fc-exp-mkt-online', 'type' => 'expense', 'name' => 'Online Ads & Performance', 'parent_id' => 'fc-exp-marketing', 'level' => 2, 'color' => '#d97706', 'icon' => 'Globe'],
-                ['id' => 'fc-exp-mkt-meta', 'type' => 'expense', 'name' => 'Meta FB / IG Ads', 'parent_id' => 'fc-exp-mkt-online', 'level' => 3, 'color' => '#fbbf24', 'icon' => 'Share2'],
-                ['id' => 'fc-exp-mkt-google', 'type' => 'expense', 'name' => 'Google Ads', 'parent_id' => 'fc-exp-mkt-online', 'level' => 3, 'color' => '#f59e0b', 'icon' => 'Search'],
-                ['id' => 'fc-exp-mkt-seo', 'type' => 'expense', 'name' => 'SEO Optimization', 'parent_id' => 'fc-exp-mkt-online', 'level' => 3, 'color' => '#b45309', 'icon' => 'TrendingUp'],
-                ['id' => 'fc-exp-mkt-creative', 'type' => 'expense', 'name' => 'Agency, Graphic & Copywriting', 'parent_id' => 'fc-exp-marketing', 'level' => 2, 'color' => '#fb923c', 'icon' => 'PenTool'],
-                ['id' => 'fc-exp-payroll', 'type' => 'expense', 'name' => 'Payroll & Subcontractors', 'parent_id' => null, 'level' => 1, 'color' => '#8b5cf6', 'icon' => 'Users'],
-                ['id' => 'fc-exp-pay-exec', 'type' => 'expense', 'name' => 'Executive & Management Salary', 'parent_id' => 'fc-exp-payroll', 'level' => 2, 'color' => '#7c3aed', 'icon' => 'Briefcase'],
-                ['id' => 'fc-exp-pay-staff', 'type' => 'expense', 'name' => 'Staff & Assemblers Payroll', 'parent_id' => 'fc-exp-payroll', 'level' => 2, 'color' => '#6d28d9', 'icon' => 'UserCheck'],
-                ['id' => 'fc-exp-pay-comm', 'type' => 'expense', 'name' => 'Sales & Partner Commissions', 'parent_id' => 'fc-exp-payroll', 'level' => 2, 'color' => '#a78bfa', 'icon' => 'Percent'],
-                ['id' => 'fc-exp-overhead', 'type' => 'expense', 'name' => 'Overhead, Facility & Rent', 'parent_id' => null, 'level' => 1, 'color' => '#0891b2', 'icon' => 'Building'],
-                ['id' => 'fc-exp-ovh-rent', 'type' => 'expense', 'name' => 'Showroom & Warehouse Rent', 'parent_id' => 'fc-exp-overhead', 'level' => 2, 'color' => '#0e7490', 'icon' => 'Home'],
-                ['id' => 'fc-exp-ovh-util', 'type' => 'expense', 'name' => 'Utilities & Office Accounting', 'parent_id' => 'fc-exp-overhead', 'level' => 2, 'color' => '#06b6d4', 'icon' => 'FileText'],
-                ['id' => 'fc-exp-ovh-sec', 'type' => 'expense', 'name' => 'Security & Insurance', 'parent_id' => 'fc-exp-overhead', 'level' => 2, 'color' => '#67e8f9', 'icon' => 'Shield']
-            ];
-        }
-
-        if ($language === 'hu') {
-            return [
-                // Incomes (Level 1)
-                ['id' => 'fc-inc-sales', 'type' => 'income', 'name' => 'Termék- és anyagértékesítés', 'parent_id' => null, 'level' => 1, 'color' => '#10b981', 'icon' => 'Package'],
-                ['id' => 'fc-inc-slabs', 'type' => 'income', 'name' => 'Laminam kerámia lapok', 'parent_id' => 'fc-inc-sales', 'level' => 2, 'color' => '#059669', 'icon' => 'Layers'],
-                ['id' => 'fc-inc-slabs-3', 'type' => 'income', 'name' => 'LAM 3+ (kb. 80 €/m²)', 'parent_id' => 'fc-inc-slabs', 'level' => 3, 'color' => '#34d399', 'icon' => 'Circle'],
-                ['id' => 'fc-inc-slabs-5', 'type' => 'income', 'name' => 'LAM 5+ (kb. 90 €/m²)', 'parent_id' => 'fc-inc-slabs', 'level' => 3, 'color' => '#10b981', 'icon' => 'Circle'],
-                ['id' => 'fc-inc-slabs-12', 'type' => 'income', 'name' => 'LAM 12+ (kb. 250 €/m²)', 'parent_id' => 'fc-inc-slabs', 'level' => 3, 'color' => '#047857', 'icon' => 'Circle'],
-                ['id' => 'fc-inc-supplements', 'type' => 'income', 'name' => 'Kiegészítő anyagok és ragasztók', 'parent_id' => 'fc-inc-sales', 'level' => 2, 'color' => '#6ee7b7', 'icon' => 'Box'],
-                ['id' => 'fc-inc-services', 'type' => 'income', 'name' => 'Szolgáltatások és kivitelezés', 'parent_id' => null, 'level' => 1, 'color' => '#3b82f6', 'icon' => 'Wrench'],
-                ['id' => 'fc-inc-assembly', 'type' => 'income', 'name' => 'Beépítés és burkolási munkák', 'parent_id' => 'fc-inc-services', 'level' => 2, 'color' => '#2563eb', 'icon' => 'Hammer'],
-                ['id' => 'fc-inc-logistics', 'type' => 'income', 'name' => 'Szállítás és logisztika', 'parent_id' => 'fc-inc-services', 'level' => 2, 'color' => '#60a5fa', 'icon' => 'Truck'],
-                ['id' => 'fc-inc-other', 'type' => 'income', 'name' => 'Egyéb bevételek', 'parent_id' => null, 'level' => 1, 'color' => '#8b5cf6', 'icon' => 'Coins'],
-
-                // Expenses (Level 1)
-                ['id' => 'fc-exp-cogs', 'type' => 'expense', 'name' => 'ELÁBÉ - Közvetlen anyagbeszerzés', 'parent_id' => null, 'level' => 1, 'color' => '#ef4444', 'icon' => 'Package'],
-                ['id' => 'fc-exp-mat-lam', 'type' => 'expense', 'name' => 'Laminam anyagbeszerzés (Olaszország)', 'parent_id' => 'fc-exp-cogs', 'level' => 2, 'color' => '#dc2626', 'icon' => 'Layers'],
-                ['id' => 'fc-exp-mat-lam3', 'type' => 'expense', 'name' => 'Anyag LAM 3+', 'parent_id' => 'fc-exp-mat-lam', 'level' => 3, 'color' => '#f87171', 'icon' => 'Circle'],
-                ['id' => 'fc-exp-mat-lam5', 'type' => 'expense', 'name' => 'Anyag LAM 5+', 'parent_id' => 'fc-exp-mat-lam', 'level' => 3, 'color' => '#ef4444', 'icon' => 'Circle'],
-                ['id' => 'fc-exp-mat-lam12', 'type' => 'expense', 'name' => 'Anyag LAM 12+', 'parent_id' => 'fc-exp-mat-lam', 'level' => 3, 'color' => '#b91c1c', 'icon' => 'Circle'],
-                ['id' => 'fc-exp-mat-pack', 'type' => 'expense', 'name' => 'Raklapok és csomagolóanyag', 'parent_id' => 'fc-exp-cogs', 'level' => 2, 'color' => '#fca5a5', 'icon' => 'Box'],
-                ['id' => 'fc-exp-freight', 'type' => 'expense', 'name' => 'Fuvar és kamionos szállítás', 'parent_id' => 'fc-exp-cogs', 'level' => 2, 'color' => '#ea580c', 'icon' => 'Truck'],
-                ['id' => 'fc-exp-marketing', 'type' => 'expense', 'name' => 'Marketing és hirdetés', 'parent_id' => null, 'level' => 1, 'color' => '#f59e0b', 'icon' => 'Megaphone'],
-                ['id' => 'fc-exp-mkt-online', 'type' => 'expense', 'name' => 'Online hirdetések', 'parent_id' => 'fc-exp-marketing', 'level' => 2, 'color' => '#d97706', 'icon' => 'Globe'],
-                ['id' => 'fc-exp-mkt-meta', 'type' => 'expense', 'name' => 'Meta FB / IG hirdetés', 'parent_id' => 'fc-exp-mkt-online', 'level' => 3, 'color' => '#fbbf24', 'icon' => 'Share2'],
-                ['id' => 'fc-exp-mkt-google', 'type' => 'expense', 'name' => 'Google Ads', 'parent_id' => 'fc-exp-mkt-online', 'level' => 3, 'color' => '#f59e0b', 'icon' => 'Search'],
-                ['id' => 'fc-exp-mkt-seo', 'type' => 'expense', 'name' => 'SEO optimalizáció', 'parent_id' => 'fc-exp-mkt-online', 'level' => 3, 'color' => '#b45309', 'icon' => 'TrendingUp'],
-                ['id' => 'fc-exp-mkt-creative', 'type' => 'expense', 'name' => 'Ügynökség, grafika és szövegírás', 'parent_id' => 'fc-exp-marketing', 'level' => 2, 'color' => '#fb923c', 'icon' => 'PenTool'],
-                ['id' => 'fc-exp-payroll', 'type' => 'expense', 'name' => 'Munkabér és jutalékok', 'parent_id' => null, 'level' => 1, 'color' => '#8b5cf6', 'icon' => 'Users'],
-                ['id' => 'fc-exp-pay-exec', 'type' => 'expense', 'name' => 'Vezér bére', 'parent_id' => 'fc-exp-payroll', 'level' => 2, 'color' => '#7c3aed', 'icon' => 'Briefcase'],
-                ['id' => 'fc-exp-pay-staff', 'type' => 'expense', 'name' => 'Munkatársak és szerelők bére', 'parent_id' => 'fc-exp-payroll', 'level' => 2, 'color' => '#6d28d9', 'icon' => 'UserCheck'],
-                ['id' => 'fc-exp-pay-comm', 'type' => 'expense', 'name' => 'Értékesítési jutalékok és partnerek', 'parent_id' => 'fc-exp-payroll', 'level' => 2, 'color' => '#a78bfa', 'icon' => 'Percent'],
-                ['id' => 'fc-exp-overhead', 'type' => 'expense', 'name' => 'Rezsi és bérleti díj', 'parent_id' => null, 'level' => 1, 'color' => '#0891b2', 'icon' => 'Building'],
-                ['id' => 'fc-exp-ovh-rent', 'type' => 'expense', 'name' => 'Showroom és raktár bérleti díj', 'parent_id' => 'fc-exp-overhead', 'level' => 2, 'color' => '#0e7490', 'icon' => 'Home'],
-                ['id' => 'fc-exp-ovh-util', 'type' => 'expense', 'name' => 'Irodai rezsi, utazás és könyvelés', 'parent_id' => 'fc-exp-overhead', 'level' => 2, 'color' => '#06b6d4', 'icon' => 'FileText'],
-                ['id' => 'fc-exp-ovh-sec', 'type' => 'expense', 'name' => 'Biztonsági szolgálat és biztosítás', 'parent_id' => 'fc-exp-overhead', 'level' => 2, 'color' => '#67e8f9', 'icon' => 'Shield']
-            ];
-        }
-
-        // Slovak (default)
-        return [
-            // Incomes (Level 1)
-            ['id' => 'fc-inc-sales', 'type' => 'income', 'name' => 'Predaj tovaru a materiálu', 'parent_id' => null, 'level' => 1, 'color' => '#10b981', 'icon' => 'Package'],
-            ['id' => 'fc-inc-slabs', 'type' => 'income', 'name' => 'Laminam keramické dosky', 'parent_id' => 'fc-inc-sales', 'level' => 2, 'color' => '#059669', 'icon' => 'Layers'],
-            ['id' => 'fc-inc-slabs-3', 'type' => 'income', 'name' => 'Dosky LAM 3+ (cca 80 €/m²)', 'parent_id' => 'fc-inc-slabs', 'level' => 3, 'color' => '#34d399', 'icon' => 'Circle'],
-            ['id' => 'fc-inc-slabs-5', 'type' => 'income', 'name' => 'Dosky LAM 5+ (cca 90 €/m²)', 'parent_id' => 'fc-inc-slabs', 'level' => 3, 'color' => '#10b981', 'icon' => 'Circle'],
-            ['id' => 'fc-inc-slabs-12', 'type' => 'income', 'name' => 'Dosky LAM 12+ (cca 250 €/m²)', 'parent_id' => 'fc-inc-slabs', 'level' => 3, 'color' => '#047857', 'icon' => 'Circle'],
-            ['id' => 'fc-inc-supplements', 'type' => 'income', 'name' => 'Doplnkový materiál a lepidlá', 'parent_id' => 'fc-inc-sales', 'level' => 2, 'color' => '#6ee7b7', 'icon' => 'Box'],
-            ['id' => 'fc-inc-services', 'type' => 'income', 'name' => 'Služby a realizácie', 'parent_id' => null, 'level' => 1, 'color' => '#3b82f6', 'icon' => 'Wrench'],
-            ['id' => 'fc-inc-assembly', 'type' => 'income', 'name' => 'Montážne a obkladačské práce', 'parent_id' => 'fc-inc-services', 'level' => 2, 'color' => '#2563eb', 'icon' => 'Hammer'],
-            ['id' => 'fc-inc-logistics', 'type' => 'income', 'name' => 'Doprava a logistika', 'parent_id' => 'fc-inc-services', 'level' => 2, 'color' => '#60a5fa', 'icon' => 'Truck'],
-            ['id' => 'fc-inc-other', 'type' => 'income', 'name' => 'Ostatné príjmy', 'parent_id' => null, 'level' => 1, 'color' => '#8b5cf6', 'icon' => 'Coins'],
-
-            // Expenses (Level 1)
-            ['id' => 'fc-exp-cogs', 'type' => 'expense', 'name' => 'ELÁBÉ - Priamy nákup tovaru a materiálu', 'parent_id' => null, 'level' => 1, 'color' => '#ef4444', 'icon' => 'Package'],
-            ['id' => 'fc-exp-mat-lam', 'type' => 'expense', 'name' => 'Nákup materiálu Laminam (Taliansko)', 'parent_id' => 'fc-exp-cogs', 'level' => 2, 'color' => '#dc2626', 'icon' => 'Layers'],
-            ['id' => 'fc-exp-mat-lam3', 'type' => 'expense', 'name' => 'Materiál LAM 3+', 'parent_id' => 'fc-exp-mat-lam', 'level' => 3, 'color' => '#f87171', 'icon' => 'Circle'],
-            ['id' => 'fc-exp-mat-lam5', 'type' => 'expense', 'name' => 'Materiál LAM 5+', 'parent_id' => 'fc-exp-mat-lam', 'level' => 3, 'color' => '#ef4444', 'icon' => 'Circle'],
-            ['id' => 'fc-exp-mat-lam12', 'type' => 'expense', 'name' => 'Materiál LAM 12+', 'parent_id' => 'fc-exp-mat-lam', 'level' => 3, 'color' => '#b91c1c', 'icon' => 'Circle'],
-            ['id' => 'fc-exp-mat-pack', 'type' => 'expense', 'name' => 'Palety a obalový materiál', 'parent_id' => 'fc-exp-cogs', 'level' => 2, 'color' => '#fca5a5', 'icon' => 'Box'],
-            ['id' => 'fc-exp-freight', 'type' => 'expense', 'name' => 'Kamiónová preprava a clo', 'parent_id' => 'fc-exp-cogs', 'level' => 2, 'color' => '#ea580c', 'icon' => 'Truck'],
-            ['id' => 'fc-exp-marketing', 'type' => 'expense', 'name' => 'Marketing a reklama', 'parent_id' => null, 'level' => 1, 'color' => '#f59e0b', 'icon' => 'Megaphone'],
-            ['id' => 'fc-exp-mkt-online', 'type' => 'expense', 'name' => 'Online reklama a výkon', 'parent_id' => 'fc-exp-marketing', 'level' => 2, 'color' => '#d97706', 'icon' => 'Globe'],
-            ['id' => 'fc-exp-mkt-meta', 'type' => 'expense', 'name' => 'Meta FB / IG reklama', 'parent_id' => 'fc-exp-mkt-online', 'level' => 3, 'color' => '#fbbf24', 'icon' => 'Share2'],
-            ['id' => 'fc-exp-mkt-google', 'type' => 'expense', 'name' => 'Google Ads', 'parent_id' => 'fc-exp-mkt-online', 'level' => 3, 'color' => '#f59e0b', 'icon' => 'Search'],
-            ['id' => 'fc-exp-mkt-seo', 'type' => 'expense', 'name' => 'SEO optimalizácia webu', 'parent_id' => 'fc-exp-mkt-online', 'level' => 3, 'color' => '#b45309', 'icon' => 'TrendingUp'],
-            ['id' => 'fc-exp-mkt-creative', 'type' => 'expense', 'name' => 'Agentúra, grafika a copywriting', 'parent_id' => 'fc-exp-marketing', 'level' => 2, 'color' => '#fb923c', 'icon' => 'PenTool'],
-            ['id' => 'fc-exp-payroll', 'type' => 'expense', 'name' => 'Mzdové náklady a provízie', 'parent_id' => null, 'level' => 1, 'color' => '#8b5cf6', 'icon' => 'Users'],
-            ['id' => 'fc-exp-pay-exec', 'type' => 'expense', 'name' => 'Vedenie a manažment (Vezér bére)', 'parent_id' => 'fc-exp-payroll', 'level' => 2, 'color' => '#7c3aed', 'icon' => 'Briefcase'],
-            ['id' => 'fc-exp-pay-staff', 'type' => 'expense', 'name' => 'Montážnici, technici a skladníci', 'parent_id' => 'fc-exp-payroll', 'level' => 2, 'color' => '#6d28d9', 'icon' => 'UserCheck'],
-            ['id' => 'fc-exp-pay-comm', 'type' => 'expense', 'name' => 'Provízie architektom a predajcom', 'parent_id' => 'fc-exp-payroll', 'level' => 2, 'color' => '#a78bfa', 'icon' => 'Percent'],
-            ['id' => 'fc-exp-overhead', 'type' => 'expense', 'name' => 'Prevádzková réžia a priestory', 'parent_id' => null, 'level' => 1, 'color' => '#0891b2', 'icon' => 'Building'],
-            ['id' => 'fc-exp-ovh-rent', 'type' => 'expense', 'name' => 'Nájom showroomu a skladu', 'parent_id' => 'fc-exp-overhead', 'level' => 2, 'color' => '#0e7490', 'icon' => 'Home'],
-            ['id' => 'fc-exp-ovh-util', 'type' => 'expense', 'name' => 'Energie, cestovné a účtovníctvo', 'parent_id' => 'fc-exp-overhead', 'level' => 2, 'color' => '#06b6d4', 'icon' => 'FileText'],
-            ['id' => 'fc-exp-ovh-sec', 'type' => 'expense', 'name' => 'Bezpečnostná služba a poistenie', 'parent_id' => 'fc-exp-overhead', 'level' => 2, 'color' => '#67e8f9', 'icon' => 'Shield']
+            // Expenses
+            ['fc-exp-cogs', 'expense', null, 1, '#ef4444', 'Package', ['Goods & materials', 'Nákup tovaru a materiálu', 'Áru- és anyagbeszerzés']],
+            ['fc-exp-cogs-goods', 'expense', 'fc-exp-cogs', 2, '#dc2626', 'Box', ['Goods for resale', 'Tovar na predaj', 'Továbbértékesítési áru']],
+            ['fc-exp-cogs-materials', 'expense', 'fc-exp-cogs', 2, '#f87171', 'Layers', ['Materials & supplies', 'Materiál a spotrebný tovar', 'Anyagok és fogyóeszközök']],
+            ['fc-exp-cogs-shipping', 'expense', 'fc-exp-cogs', 2, '#ea580c', 'Truck', ['Shipping & delivery', 'Doprava a doručenie', 'Szállítás és kiszállítás']],
+            ['fc-exp-marketing', 'expense', null, 1, '#f59e0b', 'Megaphone', ['Marketing & advertising', 'Marketing a reklama', 'Marketing és hirdetés']],
+            ['fc-exp-mkt-online', 'expense', 'fc-exp-marketing', 2, '#d97706', 'Globe', ['Online advertising', 'Online reklama', 'Online hirdetések']],
+            ['fc-exp-mkt-meta', 'expense', 'fc-exp-mkt-online', 3, '#fbbf24', 'Share2', ['Meta (Facebook / Instagram)', 'Meta (Facebook / Instagram)', 'Meta (Facebook / Instagram)']],
+            ['fc-exp-mkt-google', 'expense', 'fc-exp-mkt-online', 3, '#f59e0b', 'Search', ['Google Ads', 'Google Ads', 'Google Ads']],
+            ['fc-exp-mkt-seo', 'expense', 'fc-exp-mkt-online', 3, '#b45309', 'TrendingUp', ['SEO', 'SEO', 'SEO']],
+            ['fc-exp-mkt-creative', 'expense', 'fc-exp-marketing', 2, '#fb923c', 'PenTool', ['Agency, design & content', 'Agentúra, grafika a obsah', 'Ügynökség, grafika és tartalom']],
+            ['fc-exp-payroll', 'expense', null, 1, '#8b5cf6', 'Users', ['Payroll & contractors', 'Mzdy a externisti', 'Bérek és alvállalkozók']],
+            ['fc-exp-pay-salaries', 'expense', 'fc-exp-payroll', 2, '#7c3aed', 'Briefcase', ['Salaries & contributions', 'Mzdy a odvody', 'Bérek és járulékok']],
+            ['fc-exp-pay-contractors', 'expense', 'fc-exp-payroll', 2, '#6d28d9', 'UserCheck', ['Contractors & freelancers', 'Externisti a živnostníci', 'Alvállalkozók és szabadúszók']],
+            ['fc-exp-pay-comm', 'expense', 'fc-exp-payroll', 2, '#a78bfa', 'Percent', ['Commissions', 'Provízie', 'Jutalékok']],
+            ['fc-exp-overhead', 'expense', null, 1, '#0891b2', 'Building', ['Operations & overhead', 'Prevádzka a réžia', 'Működés és rezsi']],
+            ['fc-exp-ovh-rent', 'expense', 'fc-exp-overhead', 2, '#0e7490', 'Home', ['Rent', 'Nájom priestorov', 'Bérleti díj']],
+            ['fc-exp-ovh-util', 'expense', 'fc-exp-overhead', 2, '#06b6d4', 'FileText', ['Utilities & telecom', 'Energie a telekomunikácie', 'Rezsi és telekommunikáció']],
+            ['fc-exp-ovh-software', 'expense', 'fc-exp-overhead', 2, '#22d3ee', 'Layers', ['Software & subscriptions', 'Softvér a predplatné', 'Szoftverek és előfizetések']],
+            ['fc-exp-ovh-travel', 'expense', 'fc-exp-overhead', 2, '#67e8f9', 'Truck', ['Travel', 'Cestovné', 'Utazás']],
+            ['fc-exp-admin', 'expense', null, 1, '#64748b', 'FileText', ['Admin & professional services', 'Administratíva a služby', 'Adminisztráció és szakmai szolgáltatások']],
+            ['fc-exp-adm-accounting', 'expense', 'fc-exp-admin', 2, '#475569', 'FileText', ['Accounting & legal', 'Účtovníctvo a právne služby', 'Könyvelés és jogi szolgáltatások']],
+            ['fc-exp-adm-insurance', 'expense', 'fc-exp-admin', 2, '#94a3b8', 'Shield', ['Insurance', 'Poistenie', 'Biztosítás']],
+            ['fc-exp-adm-bank', 'expense', 'fc-exp-admin', 2, '#cbd5e1', 'Coins', ['Bank fees', 'Bankové poplatky', 'Banki díjak']],
+            ['fc-exp-adm-taxes', 'expense', 'fc-exp-admin', 2, '#334155', 'Percent', ['Taxes & fees', 'Dane a poplatky', 'Adók és illetékek']],
         ];
+
+        $nameIndex = ['en' => 0, 'sk' => 1, 'hu' => 2][$language];
+        return array_map(static function (array $c) use ($nameIndex): array {
+            return [
+                'id' => $c[0],
+                'type' => $c[1],
+                'name' => $c[6][$nameIndex],
+                'parent_id' => $c[2],
+                'level' => $c[3],
+                'color' => $c[4],
+                'icon' => $c[5],
+            ];
+        }, $tree);
     }
 
     /**
-     * Seeds default financial categories into financial_categories table if table exists and is empty.
+     * Seeds the sample financial categories into an empty financial_categories
+     * table — demo installations only. They are sample data like the demo leads,
+     * so a real installation starts empty and builds its own.
      */
     function ccrm_seed_default_financial_categories(PDO $pdo): void {
         try {
             $hasTable = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'financial_categories'")->fetchColumn();
             if ($hasTable === 0) return;
+
+            $demoMode = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'DEMO_MODE'");
+            if (!$demoMode || $demoMode->fetchColumn() !== 'true') return;
 
             $count = (int)$pdo->query("SELECT COUNT(*) FROM `financial_categories`")->fetchColumn();
             if ($count > 0) return;

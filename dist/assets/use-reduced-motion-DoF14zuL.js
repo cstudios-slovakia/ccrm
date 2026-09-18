@@ -1,0 +1,1 @@
+import{Mt as e,Nt as t,Pt as n,co as r,so as i}from"./index-CL8f4rTg.js";var a=r(i(),1);function o(){!t.current&&e();let[r]=(0,a.useState)(n.current);return r}export{o as t};

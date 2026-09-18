@@ -98,6 +98,25 @@ export const canEditTask = (
         isTaskCreatedBy(task, user.name)),
   );
 
+/**
+ * Who may archive a task, or bring an archived one back: the person who
+ * created it, and nobody else — not an assignee, not an admin. Archiving hides
+ * the task from every calendar at once, so it is the author's call.
+ *
+ * Tasks created before `createdBy` was recorded have no author to ask; for
+ * those the assignees stand in, the same fallback canDeleteTask uses, so a
+ * legacy task is never left with nobody able to archive it.
+ */
+export const canArchiveTask = (
+  task: Task,
+  user: UserProfile | undefined,
+): boolean =>
+  Boolean(
+    user &&
+      (isTaskCreatedBy(task, user.name) ||
+        (!task.createdBy && isTaskAssignedTo(task, user.name))),
+  );
+
 export const canDeleteTask = (
   task: Task,
   user: UserProfile | undefined,

@@ -3,10 +3,14 @@ import * as Icons from "lucide-react";
 import { 
   Folder, FolderPlus, Plus, ChevronRight, Calendar, 
   FileText, Trash2, Edit3, Move, X, Download, 
-  UploadCloud, Search, Briefcase, Users
+  UploadCloud, Search, Briefcase, Users, Hash, Coins, Lock
 } from "lucide-react";
 import type { UnifiedEntryRegistry, UnifiedEntryRow } from "../types";
 import { formatDateLocalized } from "../utils/localTime";
+import { CURRENCY_OPTIONS, currencyForRegion, formatMoney } from "../utils/currency";
+import { CustomSelect } from "./ui/CustomSelect";
+import { ClientSelect } from "./ui/ClientSelect";
+import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 
 interface UnifiedEntryViewProps {
   registry: UnifiedEntryRegistry;
@@ -15,6 +19,11 @@ interface UnifiedEntryViewProps {
   systemLanguage: "en" | "sk" | "hu";
   leads?: any[]; // Passed down from App to allow linking client
   subPath?: string | null;
+  /** Configured system currency ("" / null = follow the display language). Only the
+      default for a new money entry — every row carries its own currency. */
+  systemCurrency?: string | null;
+  /** Role access for this unified-entry registry. `edit: false` is browse/download only. */
+  access?: ModuleAccess;
 }
 
 // Resolved dynamically from Lucide Icons collection
@@ -22,12 +31,20 @@ interface UnifiedEntryViewProps {
 export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
   registry,
   rows,
-  setRows,
+  setRows: setRowsRaw,
   systemLanguage,
   leads = [],
-  subPath = null
+  subPath = null,
+  systemCurrency = null,
+  access = FULL_MODULE_ACCESS
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+  const canEdit = access.edit;
+  const canDelete = access.delete;
+  const setRows: typeof setRowsRaw = (updater) => {
+    if (!canEdit) return;
+    setRowsRaw(updater);
+  };
   const [searchQuery, setSearchQuery] = useState("");
 
   // Modals / Editors state
@@ -43,12 +60,12 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
   const [formDueDate, setFormDueDate] = useState("");
   const [formWarningDays, setFormWarningDays] = useState(0);
   const [formClientId, setFormClientId] = useState("");
-  const [clientSearchQuery, setClientSearchQuery] = useState("");
-  const [isClientDropdownOpen, setIsClientDropdownOpen] = useState(false);
   const [formLeadId, setFormLeadId] = useState("");
-  const [leadSearchQuery, setLeadSearchQuery] = useState("");
-  const [isLeadDropdownOpen, setIsLeadDropdownOpen] = useState(false);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
+  const [formNumber, setFormNumber] = useState("");
+  const [formMoneyAmount, setFormMoneyAmount] = useState("");
+  const defaultCurrency = systemCurrency || currencyForRegion(systemLanguage);
+  const [formMoneyCurrency, setFormMoneyCurrency] = useState(defaultCurrency);
   const [formFile, setFormFile] = useState<{
     fileName: string;
     fileSize: string;
@@ -74,11 +91,10 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
         setFormDueDate(entryRow.dueDate || "");
         setFormWarningDays(entryRow.warningDays || 0);
         setFormClientId(entryRow.clientId || "");
-        const cl = entryRow.clientId ? leads.find(l => l.id === entryRow.clientId) : null;
-        setClientSearchQuery(cl ? cl.name : "");
         setFormLeadId(entryRow.leadId || "");
-        const ld = entryRow.leadId ? leads.find(l => l.id === entryRow.leadId) : null;
-        setLeadSearchQuery(ld ? ld.name : "");
+        setFormNumber(entryRow.numberValue !== undefined && entryRow.numberValue !== null ? String(entryRow.numberValue) : "");
+        setFormMoneyAmount(entryRow.moneyAmount !== undefined && entryRow.moneyAmount !== null ? String(entryRow.moneyAmount) : "");
+        setFormMoneyCurrency(entryRow.moneyCurrency || defaultCurrency);
         setFormFile(entryRow.fileName ? {
           fileName: entryRow.fileName,
           fileSize: entryRow.fileSize || "",
@@ -93,6 +109,8 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
   const isFileActive = registry.modules.includes("file") || (registry.foldersEnabled && registry.folderModules?.includes("file"));
   const isClientActive = registry.modules.includes("client") || (registry.foldersEnabled && registry.folderModules?.includes("client"));
   const isLeadActive = registry.modules.includes("lead") || (registry.foldersEnabled && registry.folderModules?.includes("lead"));
+  const isNumberActive = registry.modules.includes("number") || (registry.foldersEnabled && registry.folderModules?.includes("number"));
+  const isMoneyActive = registry.modules.includes("money") || (registry.foldersEnabled && registry.folderModules?.includes("money"));
 
   const folderSingularEn = registry.folderName || "Folder";
   const folderSingularSk = registry.folderName || "priečinok";
@@ -141,6 +159,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
   };
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (!canEdit) return;
     const file = e.target.files?.[0];
     if (!file) return;
 
@@ -179,45 +198,49 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
   };
 
   const handleOpenCreateEntry = () => {
+    if (!canEdit) return;
     setEditingRow(null);
     setEditingIsFolder(false);
     setFormTitle("");
     setFormDueDate("");
     setFormWarningDays(0);
     setFormClientId("");
-    setClientSearchQuery("");
     setFormLeadId("");
-    setLeadSearchQuery("");
+    setFormNumber("");
+    setFormMoneyAmount("");
+    setFormMoneyCurrency(defaultCurrency);
     setFormFile(null);
     setIsEditing(true);
   };
 
   const handleOpenCreateFolder = () => {
+    if (!canEdit) return;
     setEditingRow(null);
     setEditingIsFolder(true);
     setFormTitle("");
     setFormDueDate("");
     setFormWarningDays(0);
     setFormClientId("");
-    setClientSearchQuery("");
     setFormLeadId("");
-    setLeadSearchQuery("");
+    setFormNumber("");
+    setFormMoneyAmount("");
+    setFormMoneyCurrency(defaultCurrency);
     setFormFile(null);
     setIsEditing(true);
   };
 
   const handleOpenEditRow = (row: UnifiedEntryRow) => {
+    if (!canEdit) return;
     setEditingRow(row);
     setEditingIsFolder(row.isFolder);
     setFormTitle(row.title || "");
     setFormDueDate(row.dueDate || "");
     setFormWarningDays(row.warningDays || 0);
     setFormClientId(row.clientId || "");
-    const cl = row.clientId ? leads.find(l => l.id === row.clientId) : null;
-    setClientSearchQuery(cl ? cl.name : "");
     setFormLeadId(row.leadId || "");
-    const ld = row.leadId ? leads.find(l => l.id === row.leadId) : null;
-    setLeadSearchQuery(ld ? ld.name : "");
+    setFormNumber(row.numberValue !== undefined && row.numberValue !== null ? String(row.numberValue) : "");
+    setFormMoneyAmount(row.moneyAmount !== undefined && row.moneyAmount !== null ? String(row.moneyAmount) : "");
+    setFormMoneyCurrency(row.moneyCurrency || defaultCurrency);
     setFormFile(row.fileName ? {
       fileName: row.fileName,
       fileSize: row.fileSize || "",
@@ -227,8 +250,18 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
     setIsEditing(true);
   };
 
+  // An empty box means "no value", not zero — the row keeps the field unset so
+  // the table shows a dash rather than a misleading 0.
+  const parseAmount = (raw: string): number | undefined => {
+    const trimmed = raw.trim().replace(",", ".");
+    if (!trimmed) return undefined;
+    const parsed = Number(trimmed);
+    return Number.isFinite(parsed) ? parsed : undefined;
+  };
+
   const handleSaveEntry = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canEdit) return;
 
     const activeModules = editingIsFolder 
       ? (registry.folderModules || ["title"]) 
@@ -245,6 +278,9 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             warningDays: activeModules.includes("due_date") ? formWarningDays : undefined,
             clientId: activeModules.includes("client") ? formClientId : undefined,
             leadId: activeModules.includes("lead") ? formLeadId : undefined,
+            numberValue: activeModules.includes("number") ? parseAmount(formNumber) : undefined,
+            moneyAmount: activeModules.includes("money") ? parseAmount(formMoneyAmount) : undefined,
+            moneyCurrency: activeModules.includes("money") ? formMoneyCurrency : undefined,
             fileName: activeModules.includes("file") ? formFile?.fileName : undefined,
             fileSize: activeModules.includes("file") ? formFile?.fileSize : undefined,
             fileType: activeModules.includes("file") ? formFile?.fileType : undefined,
@@ -265,6 +301,9 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
         warningDays: activeModules.includes("due_date") ? formWarningDays : undefined,
         clientId: activeModules.includes("client") ? formClientId : undefined,
         leadId: activeModules.includes("lead") ? formLeadId : undefined,
+        numberValue: activeModules.includes("number") ? parseAmount(formNumber) : undefined,
+        moneyAmount: activeModules.includes("money") ? parseAmount(formMoneyAmount) : undefined,
+        moneyCurrency: activeModules.includes("money") ? formMoneyCurrency : undefined,
         fileName: activeModules.includes("file") ? formFile?.fileName : undefined,
         fileSize: activeModules.includes("file") ? formFile?.fileSize : undefined,
         fileType: activeModules.includes("file") ? formFile?.fileType : undefined,
@@ -280,6 +319,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
 
   const handleSaveDedicatedEntry = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canEdit) return;
     if (!editingEntryRow) return;
 
     const activeModules = registry.modules;
@@ -293,6 +333,9 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
           warningDays: activeModules.includes("due_date") ? formWarningDays : undefined,
           clientId: activeModules.includes("client") ? formClientId : undefined,
           leadId: activeModules.includes("lead") ? formLeadId : undefined,
+          numberValue: activeModules.includes("number") ? parseAmount(formNumber) : undefined,
+          moneyAmount: activeModules.includes("money") ? parseAmount(formMoneyAmount) : undefined,
+          moneyCurrency: activeModules.includes("money") ? formMoneyCurrency : undefined,
           fileName: activeModules.includes("file") ? formFile?.fileName : undefined,
           fileSize: activeModules.includes("file") ? formFile?.fileSize : undefined,
           fileType: activeModules.includes("file") ? formFile?.fileType : undefined,
@@ -308,93 +351,22 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
 
   const renderClientSelector = () => {
     const linkedClient = formClientId ? leads.find(l => l.id === formClientId) : null;
-    const filteredLeads = leads.filter(lead => {
-      if (lead.id === "unassigned-docs") return false;
-      const q = clientSearchQuery.toLowerCase().trim();
-      if (!q) return true;
-      return (lead.name && lead.name.toLowerCase().includes(q)) || 
-             (lead.phone && lead.phone.includes(q)) || 
-             (lead.email && lead.email.toLowerCase().includes(q)) ||
-             (lead.city && lead.city.toLowerCase().includes(q)) ||
-             (lead.companyId && lead.companyId.toLowerCase().includes(q)) ||
-             (lead.contactPerson && lead.contactPerson.toLowerCase().includes(q));
-    });
 
     return (
       <div className="flex flex-col gap-1.5 relative">
-        <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
+        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
           {t("Linked Client", "Priradený klient", "Hozzárendelt ügyfél")}
         </label>
-        
-        <div className="relative">
-          <div className="relative z-10">
-            <input
-              type="text"
-              value={clientSearchQuery}
-              onChange={(e) => {
-                setClientSearchQuery(e.target.value);
-                if (!e.target.value) {
-                  setFormClientId("");
-                }
-                setIsClientDropdownOpen(true);
-              }}
-              onFocus={() => setIsClientDropdownOpen(true)}
-              className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700"
-              placeholder={t("Search client...", "Vyhľadať klienta...", "Ügyfél keresése...")}
-            />
-            <Search className="h-4 w-4 text-slate-400 absolute left-3 top-3.5" />
-            {clientSearchQuery && (
-              <button
-                type="button"
-                onClick={() => {
-                  setClientSearchQuery("");
-                  setFormClientId("");
-                  setIsClientDropdownOpen(true);
-                }}
-                className="absolute right-3 top-3 text-slate-400 hover:text-slate-650 cursor-pointer"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-
-          {isClientDropdownOpen && (
-            <>
-              <div 
-                className="fixed inset-0 z-[2999]" 
-                onClick={() => setIsClientDropdownOpen(false)}
-              />
-              <div className="absolute z-[3000] w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto divide-y divide-slate-100">
-                {filteredLeads.length === 0 ? (
-                  <div className="p-3 text-center text-slate-400 text-xs">
-                    {t("No clients found", "Žiadni klienti sa nenašli", "Nincs találat az ügyfelekre")}
-                  </div>
-                ) : (
-                  filteredLeads.map(lead => (
-                    <button
-                      key={lead.id}
-                      type="button"
-                      onClick={() => {
-                        setFormClientId(lead.id);
-                        setClientSearchQuery(lead.name);
-                        setIsClientDropdownOpen(false);
-                      }}
-                      className="w-full text-left px-3.5 py-2.5 hover:bg-slate-50 text-xs font-semibold text-slate-700 flex flex-col gap-0.5 cursor-pointer"
-                    >
-                      <span className="font-bold text-slate-800">{lead.name}</span>
-                      <span className="text-[10px] text-slate-400 truncate">
-                        {lead.city ? `${lead.city} • ` : ""}{lead.email || t("No email", "Žiadny e-mail", "Nincs e-mail")} • {lead.phone || t("No phone", "Žiadny telefón", "Nincs telefonszám")}
-                      </span>
-                    </button>
-                  ))
-                )}
-              </div>
-            </>
-          )}
-        </div>
+        <ClientSelect
+          leads={leads.filter(l => l.id !== "unassigned-docs")}
+          value={formClientId}
+          onChange={setFormClientId}
+          noneLabel={t("No linked client", "Bez priradeného klienta", "Nincs hozzárendelt ügyfél")}
+          placeholder={t("Search client...", "Vyhľadať klienta...", "Ügyfél keresése...")}
+        />
 
         {linkedClient && (
-          <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-250 text-emerald-800 text-xs font-semibold space-y-2 relative shadow-sm animate-in fade-in slide-in-from-top-1 duration-150 mt-1.5">
+          <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 text-emerald-800 text-xs font-semibold space-y-2 relative shadow-sm animate-in fade-in slide-in-from-top-1 duration-150 mt-1.5">
             <div className="flex items-center justify-between border-b border-emerald-100 pb-1.5 mb-1.5">
               <div className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[10px] text-emerald-700">
                 <Users className="h-3.5 w-3.5" />
@@ -435,93 +407,23 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
 
   const renderLeadSelector = () => {
     const linkedLead = formLeadId ? leads.find(l => l.id === formLeadId) : null;
-    const filteredLeads = leads.filter(lead => {
-      if (lead.id === "unassigned-docs") return false;
-      const q = leadSearchQuery.toLowerCase().trim();
-      if (!q) return true;
-      return (lead.name && lead.name.toLowerCase().includes(q)) || 
-             (lead.phone && lead.phone.includes(q)) || 
-             (lead.email && lead.email.toLowerCase().includes(q)) ||
-             (lead.city && lead.city.toLowerCase().includes(q)) ||
-             (lead.companyId && lead.companyId.toLowerCase().includes(q)) ||
-             (lead.contactPerson && lead.contactPerson.toLowerCase().includes(q));
-    });
 
     return (
       <div className="flex flex-col gap-1.5 relative">
-        <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
+        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
           {t("Linked Lead", "Priradený lead", "Hozzárendelt lead")}
         </label>
-        
-        <div className="relative">
-          <div className="relative z-10">
-            <input
-              type="text"
-              value={leadSearchQuery}
-              onChange={(e) => {
-                setLeadSearchQuery(e.target.value);
-                if (!e.target.value) {
-                  setFormLeadId("");
-                }
-                setIsLeadDropdownOpen(true);
-              }}
-              onFocus={() => setIsLeadDropdownOpen(true)}
-              className="w-full pl-9 pr-9 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700"
-              placeholder={t("Search lead...", "Vyhľadať lead...", "Lead keresése...")}
-            />
-            <Search className="h-4 w-4 text-slate-400 absolute left-3 top-3.5" />
-            {leadSearchQuery && (
-              <button
-                type="button"
-                onClick={() => {
-                  setLeadSearchQuery("");
-                  setFormLeadId("");
-                  setIsLeadDropdownOpen(true);
-                }}
-                className="absolute right-3 top-3 text-slate-400 hover:text-slate-650 cursor-pointer"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            )}
-          </div>
-
-          {isLeadDropdownOpen && (
-            <>
-              <div 
-                className="fixed inset-0 z-[2999]" 
-                onClick={() => setIsLeadDropdownOpen(false)}
-              />
-              <div className="absolute z-[3000] w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl max-h-48 overflow-y-auto divide-y divide-slate-100">
-                {filteredLeads.length === 0 ? (
-                  <div className="p-3 text-center text-slate-400 text-xs">
-                    {t("No leads found", "Žiadne leady sa nenašli", "Nincs találat a leadekre")}
-                  </div>
-                ) : (
-                  filteredLeads.map(lead => (
-                    <button
-                      key={lead.id}
-                      type="button"
-                      onClick={() => {
-                        setFormLeadId(lead.id);
-                        setLeadSearchQuery(lead.name);
-                        setIsLeadDropdownOpen(false);
-                      }}
-                      className="w-full text-left px-3.5 py-2.5 hover:bg-slate-50 text-xs font-semibold text-slate-700 flex flex-col gap-0.5 cursor-pointer"
-                    >
-                      <span className="font-bold text-slate-800">{lead.name}</span>
-                      <span className="text-[10px] text-slate-400 truncate">
-                        {lead.city ? `${lead.city} • ` : ""}{lead.email || t("No email", "Žiadny e-mail", "Nincs e-mail")} • {lead.phone || t("No phone", "Žiadny telefón", "Nincs telefonszám")}
-                      </span>
-                    </button>
-                  ))
-                )}
-              </div>
-            </>
-          )}
-        </div>
+        <ClientSelect
+          leads={leads.filter(l => l.id !== "unassigned-docs")}
+          value={formLeadId}
+          onChange={setFormLeadId}
+          addKind="lead"
+          noneLabel={t("No linked lead", "Bez priradeného leadu", "Nincs hozzárendelt lead")}
+          placeholder={t("Search lead...", "Vyhľadať lead...", "Lead keresése...")}
+        />
 
         {linkedLead && (
-          <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-250 text-indigo-800 text-xs font-semibold space-y-2 relative shadow-sm animate-in fade-in slide-in-from-top-1 duration-150 mt-1.5">
+          <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200 text-indigo-800 text-xs font-semibold space-y-2 relative shadow-sm animate-in fade-in slide-in-from-top-1 duration-150 mt-1.5">
             <div className="flex items-center justify-between border-b border-indigo-100 pb-1.5 mb-1.5">
               <div className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[10px] text-indigo-700">
                 <Briefcase className="h-3.5 w-3.5" />
@@ -529,7 +431,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
               </div>
               <a
                 href={`#lead-${encodeURIComponent(linkedLead.id)}`}
-                className="text-[10px] text-indigo-600 hover:text-indigo-955 font-black underline flex items-center gap-0.5"
+                className="text-[10px] text-indigo-600 hover:text-indigo-950 font-black underline flex items-center gap-0.5"
               >
                 {t("View Profile", "Profil leadu", "Profil megtekintése")}
                 <ChevronRight className="h-3 w-3" />
@@ -560,7 +462,52 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
     );
   };
 
+  const renderNumberField = () => (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+        {t("Number", "Číslo", "Szám")}
+      </label>
+      <input
+        type="number"
+        step="any"
+        value={formNumber}
+        onChange={(e) => setFormNumber(e.target.value)}
+        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700"
+        placeholder={t("e.g. 12", "napr. 12", "pl. 12")}
+      />
+    </div>
+  );
+
+  // Amount and currency travel together: the currency is stored on the row, so
+  // two entries in the same registry can be priced in different currencies.
+  const renderMoneyField = () => (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+        {t("Amount", "Suma", "Összeg")}
+      </label>
+      <div className="flex items-center gap-2">
+        <input
+          type="number"
+          step="any"
+          value={formMoneyAmount}
+          onChange={(e) => setFormMoneyAmount(e.target.value)}
+          className="flex-1 min-w-0 px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700"
+          placeholder={t("e.g. 1500", "napr. 1500", "pl. 1500")}
+        />
+        <div className="w-28 shrink-0">
+          <CustomSelect
+            value={formMoneyCurrency}
+            onChange={setFormMoneyCurrency}
+            className="!text-xs"
+            options={CURRENCY_OPTIONS.map(c => ({ value: c.code, label: `${c.code} ${c.symbol}` }))}
+          />
+        </div>
+      </div>
+    </div>
+  );
+
   const handleDeleteItem = (id: string, isFolder: boolean) => {
+    if (!canDelete) return;
     const confirmMsg = isFolder
       ? t(
           `Deleting a ${folderSingularEn.toLowerCase()} will delete all its nested contents recursively. Proceed?`,
@@ -585,7 +532,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
   };
 
   const handleMoveItem = (targetFolderId: string | null) => {
-    if (!movingItem) return;
+    if (!canEdit || !movingItem) return;
     setRows(prev => prev.map(r => {
       if (r.id === movingItem.id) {
         return { ...r, parentId: targetFolderId };
@@ -684,32 +631,40 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
           >
             <ChevronRight className="h-4 w-4 rotate-180" />
           </button>
-          <div>
+          <div className="flex-1 min-w-0">
             <h2 className="text-xl font-heading font-bold text-slate-900 uppercase tracking-wider">
               {t(`Details & Editing: ${entrySingularEn.toLowerCase()}`, `Detail a úprava: ${entrySingularSk.toLowerCase()}`, `${entrySingularHu.toLowerCase()} részletei és szerkesztése`)}
             </h2>
-            <p className="text-xs text-slate-550 uppercase font-bold tracking-wider mt-0.5">
+            <p className="text-xs text-slate-500 uppercase font-bold tracking-wider mt-0.5">
               {editingEntryRow.title || t("Untitled", "Bez názvu", "Névtelen")}
             </p>
           </div>
+          {!canEdit && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider shrink-0">
+              <Lock className="h-3.5 w-3.5" />
+              {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
+            </span>
+          )}
         </div>
 
         {/* Edit Form */}
         <div className="max-w-2xl bg-white rounded-3xl border border-slate-200 shadow-xl p-6 text-left">
-          <form onSubmit={handleSaveDedicatedEntry} className="space-y-6">
+          <form onSubmit={handleSaveDedicatedEntry}>
+          <fieldset disabled={!canEdit} className="space-y-6">
             {/* Title module */}
             {activeModules.includes("title") && (
               <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                   {t("Title / Name", "Titulok / Názov", "Cím / Név")}
                 </label>
                 <input
                   type="text"
                   value={formTitle}
                   onChange={(e) => setFormTitle(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700 disabled:bg-slate-50 disabled:text-slate-500"
                   placeholder={t("Enter name...", "Zadajte názov...", "Adjon meg egy nevet...")}
                   required
+                  disabled={!canEdit}
                 />
               </div>
             )}
@@ -718,7 +673,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             {activeModules.includes("due_date") && (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                     {t("Due Date", "Termín (Due Date)", "Határidő")}
                   </label>
                   <input
@@ -730,7 +685,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                 </div>
                 
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
+                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                     {t("Warning days before due date", "Počet dní pre varovanie pred termínom", "Figyelmeztetés napokban a határidő előtt")}
                   </label>
                   <input
@@ -748,7 +703,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             {/* File module */}
             {activeModules.includes("file") && (
               <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                   {t("Attachment (File)", "Príloha (Súbor)", "Melléklet (Fájl)")}
                 </label>
                 {formFile ? (
@@ -764,11 +719,12 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                       <a
                         href={formFile.filePath}
                         download
-                        className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-500 hover:text-indigo-650 transition-colors"
+                        className="p-1.5 hover:bg-slate-200 rounded-lg text-slate-500 hover:text-indigo-600 transition-colors"
                         title={t("Download file", "Stiahnuť súbor", "Fájl letöltése")}
                       >
                         <Download className="h-4 w-4" />
                       </a>
+                      {canEdit && (
                       <button
                         type="button"
                         onClick={() => setFormFile(null)}
@@ -777,9 +733,10 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                       >
                         <Trash2 className="h-4 w-4" />
                       </button>
+                      )}
                     </div>
                   </div>
-                ) : (
+                ) : canEdit ? (
                   <div className="relative border-2 border-dashed border-slate-200 hover:border-indigo-500 rounded-2xl p-6 transition-all bg-slate-50/50 hover:bg-indigo-50/5 text-center cursor-pointer group">
                     <input
                       type="file"
@@ -789,7 +746,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                     />
                     <div className="flex flex-col items-center gap-2">
                       <UploadCloud className="h-8 w-8 text-slate-400 group-hover:text-indigo-500 transition-colors" />
-                      <span className="text-xs font-bold text-slate-500 group-hover:text-indigo-650 transition-colors">
+                      <span className="text-xs font-bold text-slate-500 group-hover:text-indigo-600 transition-colors">
                         {isUploading
                           ? t("Uploading...", "Nahráva sa...", "Feltöltés...")
                           : t("Click or drag file here", "Kliknite alebo pretiahnite súbor sem", "Kattintson vagy húzza ide a fájlt")}
@@ -797,18 +754,27 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                       <span className="text-[10px] text-slate-400">{t("Max size: 50MB", "Max. veľkosť: 50MB", "Max. méret: 50MB")}</span>
                     </div>
                   </div>
+                ) : (
+                  <span className="text-xs text-slate-400">{t("No attachment", "Žiadna príloha", "Nincs melléklet")}</span>
                 )}
               </div>
             )}
+
+            {/* Number module */}
+            {activeModules.includes("number") && renderNumberField()}
+
+            {/* Money module */}
+            {activeModules.includes("money") && renderMoneyField()}
 
             {/* Client module */}
             {activeModules.includes("client") && renderClientSelector()}
 
             {/* Lead module */}
             {activeModules.includes("lead") && renderLeadSelector()}
+          </fieldset>
 
             {/* Footer Buttons */}
-            <div className="flex justify-end gap-3 border-t border-slate-100 pt-5">
+            <div className="flex justify-end gap-3 border-t border-slate-100 pt-5 mt-6">
               <button
                 type="button"
                 onClick={() => {
@@ -818,6 +784,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
               >
                 {t("Cancel", "Zrušiť", "Mégse")}
               </button>
+              {canEdit && (
               <button
                 type="submit"
                 className="px-5 py-2.5 rounded-xl text-white text-xs font-black uppercase tracking-wider shadow-md hover:shadow-lg transition-all cursor-pointer"
@@ -825,6 +792,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
               >
                 {t("Save Changes", "Uložiť zmeny", "Módosítások mentése")}
               </button>
+              )}
             </div>
           </form>
         </div>
@@ -855,7 +823,13 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2 shrink-0 flex-wrap">
-          {registry.foldersEnabled && (
+          {!canEdit && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider">
+              <Lock className="h-3.5 w-3.5" />
+              {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
+            </span>
+          )}
+          {canEdit && registry.foldersEnabled && (
             <button
               type="button"
               onClick={handleOpenCreateFolder}
@@ -865,6 +839,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
               {t("New " + folderSingularEn, "Nový " + folderSingularSk.toLowerCase(), "Új " + folderSingularHu.toLowerCase())}
             </button>
           )}
+          {canEdit && (
           <button
             type="button"
             onClick={handleOpenCreateEntry}
@@ -874,6 +849,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             <Plus className="h-4.5 w-4.5" />
             {t("New " + entrySingularEn, "Nový " + entrySingularSk.toLowerCase(), "Új " + entrySingularHu.toLowerCase())}
           </button>
+          )}
         </div>
       </div>
  
@@ -885,7 +861,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             const isLast = idx === arr.length - 1;
             return (
               <React.Fragment key={crumb.id || "root"}>
-                {idx > 0 && <ChevronRight className="h-3 w-3 text-slate-350" />}
+                {idx > 0 && <ChevronRight className="h-3 w-3 text-slate-300" />}
                 {isLast ? (
                   <span className="text-slate-700 font-extrabold">{crumb.name}</span>
                 ) : (
@@ -900,6 +876,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                     }}
                     onDrop={(e) => {
                       e.preventDefault();
+                      if (!canEdit) return;
                       const draggedId = e.dataTransfer.getData("text/plain");
                       if (draggedId && draggedId !== crumb.id) {
                         setRows(prev => prev.map(r => {
@@ -910,7 +887,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                         }));
                       }
                     }}
-                    className="hover:text-indigo-650 transition-colors cursor-pointer"
+                    className="hover:text-indigo-600 transition-colors cursor-pointer"
                   >
                     {crumb.name}
                   </button>
@@ -933,7 +910,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
           {searchQuery && (
             <button
               onClick={() => setSearchQuery("")}
-              className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-650 text-xs"
+              className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 text-xs"
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -960,10 +937,12 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-slate-100 bg-slate-50/50 text-[10px] font-black uppercase tracking-wider text-slate-450 select-none">
+                <tr className="border-b border-slate-100 bg-slate-50/50 text-[10px] font-black uppercase tracking-wider text-slate-400 select-none">
                   <th className="py-3.5 px-6">{t(`Title / ${folderSingularEn}`, `Názov / ${folderSingularSk}`, `Cím / ${folderSingularHu}`)}</th>
                   {isDueDateActive && <th className="py-3.5 px-4">{t("Due Date", "Termín", "Határidő")}</th>}
                   {isFileActive && <th className="py-3.5 px-4">{t("Attachment", "Súbor", "Melléklet")}</th>}
+                  {isNumberActive && <th className="py-3.5 px-4">{t("Number", "Číslo", "Szám")}</th>}
+                  {isMoneyActive && <th className="py-3.5 px-4">{t("Amount", "Suma", "Összeg")}</th>}
                   {isClientActive && <th className="py-3.5 px-4">{t("Client", "Klient", "Ügyfél")}</th>}
                   {isLeadActive && <th className="py-3.5 px-4">{t("Lead", "Lead", "Lead")}</th>}
                   <th className="py-3.5 px-6 text-right">{t("Actions", "Akcie", "Műveletek")}</th>
@@ -1008,7 +987,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                       className={`hover:bg-slate-50/50 transition-colors group cursor-pointer ${
                         dragOverFolderId === row.id ? "bg-indigo-50/80 border-y border-indigo-300" : ""
                       }`}
-                      draggable={true}
+                      draggable={canEdit}
                       onDragStart={(e) => {
                         e.dataTransfer.setData("text/plain", row.id);
                       }}
@@ -1028,6 +1007,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                       onDrop={(e) => {
                         e.preventDefault();
                         setDragOverFolderId(null);
+                        if (!canEdit) return;
                         const draggedId = e.dataTransfer.getData("text/plain");
                         if (draggedId && draggedId !== row.id) {
                           // Prevent dragging a folder inside itself
@@ -1063,7 +1043,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                         {row.isFolder ? (() => {
                           const IconComponent = (Icons as any)[registry.icon] || Icons.Folder;
                           return (
-                            <div className="flex items-center gap-3 text-indigo-650 hover:text-indigo-850 font-black uppercase tracking-wider">
+                            <div className="flex items-center gap-3 text-indigo-600 hover:text-indigo-800 font-black uppercase tracking-wider">
                               <div className="h-8 w-8 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 shrink-0 shadow-sm">
                                 <IconComponent className="h-4 w-4" />
                               </div>
@@ -1100,7 +1080,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                             <a
                               href={row.filePath}
                               download
-                              className="inline-flex items-center gap-1 text-indigo-650 hover:text-indigo-850 font-bold hover:underline"
+                              className="inline-flex items-center gap-1 text-indigo-600 hover:text-indigo-800 font-bold hover:underline"
                               title={t("Download attachment", "Stiahnuť prílohu", "Melléklet letöltése")}
                             >
                               <Download className="h-3.5 w-3.5" />
@@ -1113,13 +1093,41 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                         </td>
                       )}
 
+                      {/* Number */}
+                      {isNumberActive && (
+                        <td className="py-3 px-4 text-slate-500">
+                          {rowModules.includes("number") && row.numberValue !== undefined && row.numberValue !== null ? (
+                            <span className="inline-flex items-center gap-1.5 text-slate-700 font-bold tabular-nums">
+                              <Hash className="h-3.5 w-3.5 text-slate-400" />
+                              {row.numberValue.toLocaleString()}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300">-</span>
+                          )}
+                        </td>
+                      )}
+
+                      {/* Money */}
+                      {isMoneyActive && (
+                        <td className="py-3 px-4 text-slate-500">
+                          {rowModules.includes("money") && row.moneyAmount !== undefined && row.moneyAmount !== null ? (
+                            <span className="inline-flex items-center gap-1.5 text-slate-700 font-bold tabular-nums">
+                              <Coins className="h-3.5 w-3.5 text-slate-400" />
+                              {formatMoney(row.moneyAmount, row.moneyCurrency || defaultCurrency, systemLanguage, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                            </span>
+                          ) : (
+                            <span className="text-slate-300">-</span>
+                          )}
+                        </td>
+                      )}
+
                       {/* Client */}
                       {isClientActive && (
                         <td className="py-3 px-4 text-slate-500">
                           {rowModules.includes("client") && linkedClient ? (
                             <a
                               href={`#client-${encodeURIComponent(linkedClient.name)}`}
-                              className="inline-flex items-center gap-1 text-indigo-650 hover:underline font-bold"
+                              className="inline-flex items-center gap-1 text-indigo-600 hover:underline font-bold"
                             >
                               <Users className="h-3.5 w-3.5 text-slate-400" />
                               <span>{linkedClient.name}</span>
@@ -1138,7 +1146,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                             {rowModules.includes("lead") && linkedLead ? (
                               <a
                                 href={`#lead-${encodeURIComponent(linkedLead.id)}`}
-                                className="inline-flex items-center gap-1 text-indigo-650 hover:underline font-bold"
+                                className="inline-flex items-center gap-1 text-indigo-600 hover:underline font-bold"
                               >
                                 <Briefcase className="h-3.5 w-3.5 text-slate-400" />
                                 <span>{linkedLead.name}</span>
@@ -1153,7 +1161,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                       {/* Action buttons */}
                       <td className="py-3 px-6 text-right">
                         <div className="flex items-center justify-end gap-2 opacity-80 group-hover:opacity-100 transition-opacity">
-                          {registry.foldersEnabled && (
+                          {canEdit && registry.foldersEnabled && (
                             <button
                               type="button"
                               onClick={() => {
@@ -1166,6 +1174,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                               <Move className="h-4 w-4" />
                             </button>
                           )}
+                          {canEdit && (
                           <button
                             type="button"
                             onClick={() => {
@@ -1182,6 +1191,8 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                           >
                             <Edit3 className="h-4 w-4" />
                           </button>
+                          )}
+                          {canDelete && (
                           <button
                             type="button"
                             onClick={() => handleDeleteItem(row.id, row.isFolder)}
@@ -1190,6 +1201,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                           >
                             <Trash2 className="h-4 w-4" />
                           </button>
+                          )}
                         </div>
                       </td>
                     </tr>
@@ -1201,7 +1213,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
       </div>
 
       {/* New / Edit Row Modal Dialog (Folders and Entries Unified) */}
-      {isEditing && (() => {
+      {isEditing && canEdit && (() => {
         const activeFormModules = editingIsFolder ? (registry.folderModules || ["title"]) : registry.modules;
         return (
           <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-[2000] p-4">
@@ -1216,7 +1228,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                         ? t(`Edit ${entrySingularEn}`, `Upraviť ${entrySingularSk.toLowerCase()}`, `${entrySingularHu} szerkesztése`)
                         : t(`New ${entrySingularEn}`, `Nový ${entrySingularSk}`, `Új ${entrySingularHu}`))}
                 </h3>
-                <button onClick={() => setIsEditing(false)} className="text-slate-400 hover:text-slate-650">
+                <button onClick={() => setIsEditing(false)} className="text-slate-400 hover:text-slate-600">
                   <X className="h-5 w-5" />
                 </button>
               </div>
@@ -1225,7 +1237,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                 {/* Title module */}
                 {(activeFormModules.includes("title") || editingIsFolder) && (
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                       {editingIsFolder
                         ? t(`${folderSingularEn} Name`, `Názov pre ${folderSingularSk.toLowerCase()}`, `${folderSingularHu} neve`)
                         : t(`${entrySingularEn} Name`, `Názov pre ${entrySingularSk.toLowerCase()}`, `${entrySingularHu} neve`)} *
@@ -1248,7 +1260,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                 {activeFormModules.includes("due_date") && (
                   <div className="space-y-3">
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                         {t("Due Date", "Termín (Due Date)", "Határidő")}
                       </label>
                       <input
@@ -1260,7 +1272,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                     </div>
                     
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
+                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                         {t("Warning days before due date", "Počet dní pre varovanie pred termínom", "Figyelmeztetés napokban a határidő előtt")}
                       </label>
                       <input
@@ -1278,7 +1290,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                 {/* File module */}
                 {activeFormModules.includes("file") && (
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-bold text-slate-450 uppercase tracking-wider">
+                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
                       {t("Attachment (File)", "Príloha (Súbor)", "Melléklet (Fájl)")}
                     </label>
                     {formFile ? (
@@ -1286,7 +1298,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                         <div className="flex items-center gap-2 truncate">
                           <FileText className="h-4.5 w-4.5 text-slate-400 shrink-0" />
                           <span className="font-semibold text-slate-700 truncate">{formFile.fileName}</span>
-                          <span className="text-[9px] text-slate-450 font-bold shrink-0">({formFile.fileSize})</span>
+                          <span className="text-[9px] text-slate-400 font-bold shrink-0">({formFile.fileSize})</span>
                         </div>
                         <button
                           type="button"
@@ -1316,6 +1328,12 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                     )}
                   </div>
                 )}
+
+                {/* Number module */}
+                {activeFormModules.includes("number") && renderNumberField()}
+
+                {/* Money module */}
+                {activeFormModules.includes("money") && renderMoneyField()}
 
                 {/* Client module */}
                 {activeFormModules.includes("client") && renderClientSelector()}
@@ -1348,7 +1366,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
 
 
       {/* Move Item Folder Selection Modal Dialog */}
-      {isMoving && movingItem && (
+      {isMoving && canEdit && movingItem && (
         <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-[2000] p-4 select-none">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full border border-slate-100 shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4 text-left">
@@ -1361,16 +1379,16 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             </div>
 
             <div className="space-y-4 text-left">
-              <span className="text-[10px] font-bold text-slate-450 uppercase tracking-wider block">
+              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
                 {t(`Select target ${folderSingularEn.toLowerCase()}`, `Vyberte cieľový ${folderSingularSk.toLowerCase()}`, `Válassza ki a cél ${folderSingularHu.toLowerCase()} elemet`)}
               </span>
 
-              <div className="max-h-60 overflow-y-auto space-y-1 pr-1 border border-slate-150 rounded-2xl p-2 bg-slate-50/50">
+              <div className="max-h-60 overflow-y-auto space-y-1 pr-1 border border-slate-100 rounded-2xl p-2 bg-slate-50/50">
                 {/* Root option */}
                 <button
                   type="button"
                   onClick={() => handleMoveItem(null)}
-                  className="w-full flex items-center gap-2 p-2.5 rounded-xl hover:bg-white border border-transparent hover:border-slate-200 text-xs font-bold text-slate-650 hover:text-indigo-650 transition-all text-left cursor-pointer"
+                  className="w-full flex items-center gap-2 p-2.5 rounded-xl hover:bg-white border border-transparent hover:border-slate-200 text-xs font-bold text-slate-600 hover:text-indigo-600 transition-all text-left cursor-pointer"
                 >
                   <Folder className="h-4 w-4 text-slate-400" />
                   <span>/ ({t("Root", "Koreň", "Gyökér")})</span>
@@ -1381,7 +1399,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                     key={folder.id}
                     type="button"
                     onClick={() => handleMoveItem(folder.id)}
-                    className="w-full flex items-center gap-2 p-2.5 rounded-xl hover:bg-white border border-transparent hover:border-slate-200 text-xs font-bold text-slate-650 hover:text-indigo-650 transition-all text-left cursor-pointer"
+                    className="w-full flex items-center gap-2 p-2.5 rounded-xl hover:bg-white border border-transparent hover:border-slate-200 text-xs font-bold text-slate-600 hover:text-indigo-600 transition-all text-left cursor-pointer"
                   >
                     <Folder className="h-4 w-4 text-amber-500 fill-amber-50" />
                     <span className="truncate">{folder.title}</span>

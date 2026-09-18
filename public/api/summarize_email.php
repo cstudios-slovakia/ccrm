@@ -53,97 +53,28 @@ try {
     exit;
 }
 
-// Helper functions to fetch email detail from IMAP if body is not supplied
-function get_imap_credentials_helper($settings) {
-    $user = !empty($settings['imapUsername']) ? $settings['imapUsername'] : (isset($settings['username']) ? $settings['username'] : '');
-    $pass = !empty($settings['imapPassword']) ? $settings['imapPassword'] : (isset($settings['password']) ? $settings['password'] : '');
-    return [$user, $pass];
-}
+// The mailbox code lives in mail_broker.php and is shared, not copied: this
+// file used to carry its own IMAP fetch, which is how it kept marking messages
+// read (a BODY[] fetch without FT_PEEK) after the broker had been fixed. The
+// broker returns early when included from another endpoint, so only its helpers
+// are picked up here.
+require_once __DIR__ . '/mail_broker.php';
 
-function get_imap_mailbox_string_helper($settings, $folder = '') {
-    $host = $settings['imapHost'];
-    $port = $settings['imapPort'];
-    // Validate the certificate by default; opt out per mailbox for an internal
-    // server with a self-signed cert. Mirrors mail_broker.php.
-    $certOpt = !empty($settings['imapAllowSelfSigned']) ? '/novalidate-cert' : '/validate-cert';
-    $sec = isset($settings['imapSecure']) ? $settings['imapSecure'] : 'ssl';
-    $ssl = $certOpt;
-    if ($sec === 'ssl' || $sec === true) {
-        $ssl = '/ssl' . $certOpt;
-    } elseif ($sec === 'tls') {
-        $ssl = '/tls' . $certOpt;
-    }
-    if ($settings['provider'] === 'exchange') {
-        $host = !empty($settings['imapHost']) ? $settings['imapHost'] : 'outlook.office365.com';
-        $port = '993';
-        $ssl = '/ssl' . $certOpt;
-    }
-    return "{" . "$host:$port/imap$ssl" . "}$folder";
-}
-
-function decode_imap_body_helper($body, $encoding) {
-    if ($encoding == 3) { // BASE64
-        return base64_decode($body);
-    } elseif ($encoding == 4) { // QUOTED-PRINTABLE
-        return quoted_printable_decode($body);
-    }
-    return $body;
-}
-
-function fetch_imap_email_body_helper($settings, $folder, $uid) {
-    $mailbox = get_imap_mailbox_string_helper($settings, $folder);
-    list($imapUser, $imapPass) = get_imap_credentials_helper($settings);
+// Plain text of one message, for the AI prompt only. Never marks it read.
+function ccrm_summary_body_from_mailbox($settings, $folder, $uid) {
+    $mailbox = get_imap_mailbox_string($settings, $folder);
+    list($imapUser, $imapPass) = get_imap_credentials($settings);
     $imapStream = @imap_open($mailbox, $imapUser, $imapPass, 0, 1, ['DISABLE_AUTHENTICATOR' => 'GSSAPI']);
     if (!$imapStream) {
         return '';
     }
-    
-    $msgNo = @imap_msgno($imapStream, $uid);
-    if (!$msgNo) {
-        $msgNo = $uid;
-    }
-    
-    $html = '';
-    $text = '';
-    
-    $structure = imap_fetchstructure($imapStream, $msgNo);
-    if ($structure) {
-        if (isset($structure->parts) && count($structure->parts)) {
-            foreach ($structure->parts as $partNo => $part) {
-                if (isset($part->parts)) {
-                    foreach ($part->parts as $nestedPartNo => $nestedPart) {
-                        $partStr = ($partNo + 1) . '.' . ($nestedPartNo + 1);
-                        $body = imap_fetchbody($imapStream, $msgNo, $partStr);
-                        $body = decode_imap_body_helper($body, $nestedPart->encoding);
-                        if (isset($nestedPart->subtype) && $nestedPart->subtype === 'HTML') {
-                            $html = $body;
-                        } elseif (isset($nestedPart->subtype) && $nestedPart->subtype === 'PLAIN') {
-                            $text = $body;
-                        }
-                    }
-                } else {
-                    $body = imap_fetchbody($imapStream, $msgNo, (string)($partNo + 1));
-                    $body = decode_imap_body_helper($body, $part->encoding);
-                    if (isset($part->subtype) && $part->subtype === 'HTML') {
-                        $html = $body;
-                    } elseif (isset($part->subtype) && $part->subtype === 'PLAIN') {
-                        $text = $body;
-                    }
-                }
-            }
-        } else {
-            $body = imap_body($imapStream, $msgNo);
-            $body = decode_imap_body_helper($body, $structure->encoding);
-            if (isset($structure->subtype) && $structure->subtype === 'HTML') {
-                $html = $body;
-            } else {
-                $text = $body;
-            }
-        }
-    }
-    
+    // Never fall back to treating the UID as a sequence number - that reads
+    // (and summarises) a different message once the mailbox has had a deletion.
+    $msgNo = @imap_msgno($imapStream, (int)$uid);
+    $text = $msgNo ? fetch_email_body_text($imapStream, $msgNo) : '';
     @imap_close($imapStream);
-    return !empty($html) ? $html : $text;
+    @imap_errors();
+    return $text;
 }
 
 if (empty($body) && $folder !== 'thread') {
@@ -155,7 +86,7 @@ if (empty($body) && $folder !== 'thread') {
         $emailSettings = ccrm_decrypt_email_settings($metadata['emailSettings'] ?? null);
         if ($emailSettings && ($emailSettings['isValidated'] ?? false)) {
             try {
-                $imapBody = fetch_imap_email_body_helper($emailSettings, $folder, $emailUid);
+                $imapBody = ccrm_summary_body_from_mailbox($emailSettings, $folder, $emailUid);
                 if ($imapBody) {
                     $body = $imapBody;
                 }
@@ -233,16 +164,19 @@ Output structure:
 
 Email Subject: " . $subject . "\n\nEmail Content:\n" . $plainTextBody;
 
+$emailModel = ccrm_ai_model();
 $payload = [
-    'model' => ccrm_ai_model(),
+    'model' => $emailModel,
     'messages' => [
         [
             'role' => 'user',
             'content' => $prompt
         ]
     ],
-    'temperature' => 0.3
 ];
+if (ccrm_ai_model_supports_temperature($emailModel)) {
+    $payload['temperature'] = 0.3;
+}
 
 // IMAP-fetched bodies frequently contain bytes that are not valid UTF-8 (e.g.
 // Slovak text in ISO-8859-2 / Windows-1250). json_encode() returns false on

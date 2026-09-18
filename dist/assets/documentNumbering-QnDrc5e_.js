@@ -1,0 +1,1 @@
+function e(e,t,n,r=4){let i=`${t}-${n}-`,a=e.reduce((e,t)=>{if(!t||!t.startsWith(i))return e;let n=parseInt(t.slice(i.length),10);return Number.isFinite(n)&&n>e?n:e},0);return`${i}${String(a+1).padStart(r,`0`)}`}export{e as t};

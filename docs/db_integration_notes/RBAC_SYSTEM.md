@@ -1,175 +1,111 @@
-# Role-Based Access Control (RBAC) System Design
+# Role-based access control (RBAC)
 
-This document details the architectural strategy for securing the Laminam CRM modules and views based on assigned user roles. It ensures proper permissions tracking for actions like editing templates, deleting records, or adjusting marketing metrics.
+How CCRM decides what a signed-in user may see and change. Rebuilt in
+1.9.45; the earlier version of this document described a design that was never
+implemented.
 
----
+## Where the truth lives
 
-## 1. Mapped User Roles & Permissions Matrix
+| Piece | Location |
+| --- | --- |
+| Permission registry and resolver (client) | `src/utils/permissions.ts` |
+| Same registry and resolver (server) | `api/permissions.php` — a port of the file above; change both together |
+| Role registry (data) | `system_settings` row `ROLES_RBAC`: JSON array of `{ name, permissions, defaultNavLayout? }` |
+| A user's role | `users.role` — the role **name** as it appears in the registry (`VARCHAR(100)`; was an enum until 1.9.45) |
+| Settings UI | Settings → Users → *Roles & permissions* tab (`SettingsView.tsx`) |
+| App wiring | `buildAccess(currentUser, roles)` in `App.tsx`; the resolver is passed to the sidebar, start menu, header and every view |
 
-The Laminam CRM maps specific application functions (permission slugs) to the three standard system roles. The table below represents this flipped mapping, where rows show application features/functions and columns denote authorization status across each role:
+## The model
 
-| Function / Permission Slug | Feature Area / Description | `viewer` (Guest) | `project_manager` (PM) | `admin` (Owner) |
-| :--- | :--- | :---: | :---: | :---: |
-| **`leads.view`** | Access and view lead records, basic details, and pipeline stages. | ✅ | ✅ | ✅ |
-| **`leads.create`** | Add new business, partner, or personal lead prospects to the database. | ❌ | ✅ | ✅ |
-| **`leads.edit`** | Modify contact info, estimated deal values, star ratings, and category tags. | ❌ | ✅ | ✅ |
-| **`leads.delete`** | Permanently remove lead profiles and all associated event timelines. | ❌ | ❌ | ✅ |
-| **`tasks.view`** | Inspect task deadlines, boards, Kanban state, and team assignments. | ✅ | ✅ | ✅ |
-| **`tasks.create`** | Generate new check-list actions and assignees. | ❌ | ✅ | ✅ |
-| **`tasks.edit`** | Move task cards across todo, in-progress, blocked, and done columns. | ❌ | ✅ | ✅ |
-| **`tasks.delete`** | Permanently delete checklists and assignees structures. | ❌ | ❌ | ✅ |
-| **`timeline.log`** | Log timeline history notes, phone call diaries, and custom descriptions. | ❌ | ✅ | ✅ |
-| **`timeline.delete`** | Purge timeline records from the history feed. | ❌ | ❌ | ✅ |
-| **`calendar.view`** | View team schedules, events, booked intervals, and calendar slots. | ✅ | ✅ | ✅ |
-| **`calendar.create`** | Place new bookings, customer events, and schedule meetings. | ❌ | ✅ | ✅ |
-| **`calendar.edit`** | Modify timing, title, or details of existing booking allocations. | ❌ | ✅ | ✅ |
-| **`calendar.delete`** | Cancel and remove scheduled calendar event slots. | ❌ | ❌ | ✅ |
-| **`time_records.view`**| Browse logged stop-watch intervals and work-hour charts. | ✅ | ✅ | ✅ |
-| **`time_records.log`** | Start, stop, and manually record time-tracking stopwatch sessions. | ❌ | ✅ | ✅ |
-| **`newsletter.view`** | Browse saved marketing email campaigns and subscriber metrics. | ✅ | ✅ | ✅ |
-| **`newsletter.edit`** | Create, draft, and modify template HTML email newsletters. | ❌ | ✅ | ✅ |
-| **`newsletter.send`** | Trigger bulk mailing processes to registered newsletter targets. | ❌ | ❌ | ✅ |
-| **`hr.view`** | Browse registered employees, system users list, and roles. | ✅ | ✅ | ✅ |
-| **`hr.edit`** | Modify worker rosters, department information, or wage specifications. | ❌ | ❌ | ✅ |
-| **`files.view`** | Download and review uploaded documents, offers, and proposals. | ✅ | ✅ | ✅ |
-| **`files.create`** | Upload contract proposals, receipts, and offer attachments. | ❌ | ✅ | ✅ |
-| **`files.delete`** | Remove static documentation from the storage and database record list. | ❌ | ❌ | ✅ |
-| **`general_config`** | Change application branding, UI colors, active language, and currencies. | ❌ | ❌ | ✅ |
-| **`pm_managers`** | Create, edit, suspend, or upgrade Project Manager user profiles. | ❌ | ❌ | ✅ |
-| **`pipeline_stages`** | Rearrange, rename, add, or delete statuses in the lead pipeline Kanban. | ❌ | ❌ | ✅ |
-| **`traffic_sources`** | Customize marketing channels, categories, and their color associations. | ❌ | ❌ | ✅ |
-| **`system_reset`** | Wipe out mock CRM seed data, empty logs, or wipe databases cleanly. | ❌ | ❌ | ✅ |
+Permissions are grouped into **sections**, one per app module (Dashboard,
+Tasks, Leads, Clients, Projects, Invoices & offers, Warehouse, Finance,
+Meetings, Files, Mail client, Custom records, Automation, Social media,
+Analytics overview, Updates & news, RAG AI assistant, Settings).
 
----
+Two kinds of permission exist:
 
-## 2. Dynamic UI Component Authorization
+- **Access** — `nothing | view | edit`. Guards a module and its records.
+  `nothing` hides the module from the sidebar, the start menu, search and the
+  router (a direct URL shows the *No access* panel). `view` opens it read-only:
+  every control that creates or changes a record is hidden and the handlers
+  refuse to run. `edit` allows creating and changing records.
+- **Toggle** — on or off. A single action (`leads.delete`, `tasks.view_all`,
+  `system_reset`, `nav_edit`) or a module with nothing to edit (`overview`,
+  `updates`, `rag_ai`). A toggle can *require* an access permission at a level:
+  `leads.delete` is only effective when `leads` is at `edit`. The matrix shows
+  such a toggle dimmed until its requirement is met.
 
-To enforce this structure cleanly within the React front-end, wrap vulnerable elements or routes inside a dedicated, lightweight `<Authorize />` component or evaluate permissions explicitly.
+Every section has a **section switch** per role in the matrix: it sets every
+permission in the section to its maximum (edit / on) or to nothing / off. A
+mixed section shows a partial state.
 
-### 2.1. Permission Guard Component
-Create the guard layout inside a new component file `src/components/Authorize.tsx`:
+Values are stored as `"edit" | "view" | "nothing"`; a toggle stores `edit` for
+on and `nothing` for off, so the role blob keeps one value type.
 
-```tsx
-import React from 'react';
-import { useAuth } from '../hooks/useAuth'; // Custom hook connecting to backend profile
+### Resolution rules
 
-interface AuthorizeProps {
-  permission: string;
-  fallback?: React.ReactNode;
-  children: React.ReactNode;
-}
+`resolveRolePermissions(role)` returns a full map for every registered key:
 
-export const Authorize: React.FC<AuthorizeProps> = ({ 
-  permission, 
-  fallback = null, 
-  children 
-}) => {
-  const { user } = useAuth();
+1. A stored value wins.
+2. Otherwise the legacy keys folded into this permission are read
+   (`tasks.view` / `tasks.create` / `tasks.edit` → `tasks`, `files.view` /
+   `files.create` → `files`, `rag_view` → `rag_ai`, …).
+3. Otherwise the definition's `legacyDefault` applies — the behaviour the app
+   had before the key existed. Content modules default to `edit`, settings
+   categories to `nothing`, `tasks.delete` to off (it was already enforced).
+   This is what keeps an existing installation working after the upgrade: a
+   role that only ever had settings keys still opens every module it could
+   open yesterday.
 
-  if (!user) return <>{fallback}</>;
+A role created in the matrix starts from `newRoleDefault` (everything off
+except the home dashboard at `view`, updates on and `tasks.view_all` on) and is
+written out in full, so it never depends on legacy defaults.
 
-  // Admin always authorized
-  if (user.role === 'admin') return <>{children}</>;
+**Admin** (role name compared case-insensitively) is not resolved from the
+matrix at all: it is `edit` / on for everything, on the client and the server.
+The Admin column in the matrix is locked.
 
-  // Check custom permission slates
-  const hasPermission = checkUserPermission(user.role, permission);
-  if (hasPermission) return <>{children}</>;
+A user whose role name is not in the registry resolves to **nothing** — they
+can open personal settings and log out, and nothing else. The users list marks
+such accounts with an *Unknown role* badge so an administrator can reassign
+them. Before 1.9.45 the database column was an enum, so every custom role was
+silently stored as `viewer`; the schema migration widens the column and
+relabels the legacy values (`admin` → `Admin`, `project_manager` →
+`Project Manager`, `viewer` → `Viewer`). Accounts that show `Viewer` after the
+upgrade are the ones that had lost their custom role and need reassigning.
 
-  return <>{fallback}</>;
-};
+### Route guard
 
-// Simple permissions checker
-export function checkUserPermission(role: string, permissionSlug: string): boolean {
-  if (role === 'admin') return true;
+`permissionKeyForRoute(routeId)` maps a hash route to the key that guards it
+(`lead-…` → `leads`, `client-…` → `clients`, `dash_…` → `dashboard.custom`,
+`ue_…` → `unified_entries`, `settings…` → any settings key, `user-…` →
+`pm_managers`, `personal-settings` → open to everyone). The sidebar and the
+start menu hide what the router would refuse; `firstAllowedRoute(access)` picks
+the landing page for a denied redirect.
 
-  const PM_PERMISSIONS = [
-    'leads.view', 'leads.create', 'leads.edit',
-    'tasks.view', 'tasks.create', 'tasks.edit',
-    'timeline.log',
-    'calendar.view', 'calendar.create', 'calendar.edit',
-    'time_records.log',
-    'newsletter.view', 'newsletter.create', 'newsletter.edit',
-    'hr.view',
-    'files.view', 'files.create'
-  ];
+## Server-side enforcement
 
-  const VIEWER_PERMISSIONS = [
-    'leads.view',
-    'tasks.view',
-    'calendar.view',
-    'time_records.view',
-    'newsletter.view',
-    'hr.view',
-    'files.view'
-  ];
+The UI hides controls; `sync.php` is the backstop. On every POST it resolves the
+caller's permissions once and, per collection, requires `edit` on the owning
+module. A collection the caller may not edit is neither written nor pruned by
+delete-by-omission; where the module's delete toggle is off, writes go through
+but deletions are skipped. Skipped collections are listed in the response as
+`permissionSkipped` and logged. The role registry and global settings stay
+admin-only. `upload.php` requires `edit` on at least one content module.
 
-  if (role === 'project_manager') {
-    return PM_PERMISSIONS.includes(permissionSlug);
-  }
+GET responses are **not** filtered by permission: modules reference each
+other's records (a project shows its client, an invoice its items), so hiding a
+collection from the payload would break views the user is allowed to open.
+Hiding data at the API level is a possible follow-up, not something the UI
+relies on.
 
-  if (role === 'viewer') {
-    return VIEWER_PERMISSIONS.includes(permissionSlug);
-  }
+## Adding a permission
 
-  return false;
-}
-```
-
----
-
-## 3. Practical Frontend UI Protections
-
-Here are concrete examples of how to apply this security paradigm across existing Laminam CRM components.
-
-### 3.1. Disabling In-Place Star Ratings for Guests
-Inside [src/components/LeadsDatagrid.tsx](file:///Users/erik/Documents/vibe%20coding/crm/src/components/LeadsDatagrid.tsx), prevent guest users from changing ratings directly by evaluating user roles before firing updates:
-
-```tsx
-const handleStarRatingClick = (leadId: string, value: number) => {
-  if (currentUser.role === 'viewer') {
-    alert("Unauthorized Action: Viewers cannot modify lead ratings.");
-    return;
-  }
-  
-  // Proceed with rating update...
-};
-```
-
-### 3.2. Restricting settings View Panel Access
-Conditionally block settings panels inside `src/components/Sidebar.tsx` to hide configurations from PMs or Guest profiles:
-
-```tsx
-<Authorize permission="settings.manage" fallback={null}>
-  <a 
-    href="#settings"
-    className={`flex items-center gap-3 px-4 py-3 rounded-2xl text-xs font-extrabold transition-all uppercase tracking-wider ${
-      activeTab === "settings" ? "bg-blue-600 text-white shadow-lg" : "text-slate-550 hover:bg-slate-100"
-    }`}
-  >
-    <Settings className="h-4.5 w-4.5" />
-    Settings
-  </a>
-</Authorize>
-```
-
-### 3.3. Disabling lead Deletions
-Ensure the action buttons are conditionally hidden in Lead/Client view rows:
-
-```tsx
-{currentUser.role === 'admin' && (
-  <button 
-    onClick={() => handleDeleteLead(lead.id)}
-    className="p-2 bg-rose-50 text-rose-600 hover:bg-rose-100 rounded-xl transition-all"
-    title="Delete Lead Opportunity"
-  >
-    <Trash2 className="h-3.5 w-3.5" />
-  </button>
-)}
-```
-
----
-
-## 4. API-Level Backend Authorization (Essential)
-
-> [!CAUTION]
-> Frontend checks are purely for UX aesthetics (hiding buttons). **Backend authorization is mandatory.** Every REST endpoint in the PHP/Laravel controllers must validate the JWT token or session roles on every single write request before updating MySQL records.
+1. Add the definition to `PERMISSION_SECTIONS` in `src/utils/permissions.ts`
+   (key, kind, `legacyDefault`, `newRoleDefault`, optional `requires`).
+2. Mirror it in `ccrm_permission_sections()` in `api/permissions.php`.
+3. Add its label and description to the matrix in `SettingsView.tsx`.
+4. Enforce it: `access.can(key)` / `access.canEdit(key)` /
+   `access.module(key)` in the view, and the collection mapping in `sync.php`
+   if it guards synced data.
+5. Extend `src/utils/permissions.test.ts`.

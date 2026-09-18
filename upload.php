@@ -11,8 +11,36 @@ if (php_sapi_name() !== 'cli') {
         exit;
     }
 
-    // SECURITY: only authenticated users may upload files.
-    ccrm_require_auth();
+    // SECURITY: only authenticated users may upload files, and only when they
+    // may edit at least one content module that stores attachments.
+    $sessionUser = ccrm_require_auth();
+    $configFile = __DIR__ . '/config.php';
+    if (!file_exists($configFile)) {
+        http_response_code(503);
+        echo json_encode(['success' => false, 'error' => 'CRM is not installed.']);
+        exit;
+    }
+    require_once $configFile;
+    try {
+        $pdo = get_db_connection();
+    } catch (\Throwable $e) {
+        http_response_code(503);
+        echo json_encode(['success' => false, 'error' => 'Database connection failed.']);
+        exit;
+    }
+    $perms = ccrm_user_permissions($pdo, $sessionUser);
+    $uploadOk = false;
+    foreach (['files', 'leads', 'clients', 'projects', 'meetings', 'invoices', 'warehouse', 'unified_entries', 'tasks', 'email'] as $mod) {
+        if (ccrm_perm_can_edit($perms, $mod)) {
+            $uploadOk = true;
+            break;
+        }
+    }
+    if (!$uploadOk) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'You do not have permission to upload files.']);
+        exit;
+    }
 
     if (!isset($_FILES['file']) || !isset($_POST['eventId'])) {
         http_response_code(400);

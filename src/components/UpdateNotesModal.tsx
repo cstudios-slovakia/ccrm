@@ -101,7 +101,7 @@ export const UpdateNotesModal: React.FC<UpdateNotesModalProps> = ({
                   {activeUpdate.title}
                 </h3>
               </div>
-              <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-455 mt-1 select-none">
+              <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-400 mt-1 select-none">
                 <Calendar className="h-3.5 w-3.5" />
                 <span>
                   {new Date(activeUpdate.postDate).toLocaleDateString(
@@ -196,7 +196,7 @@ export const UpdateNotesModal: React.FC<UpdateNotesModalProps> = ({
               className={`p-2 rounded-xl border border-slate-200 flex items-center justify-center transition-all bg-white font-bold text-xs gap-1.5 shadow-xs cursor-pointer ${
                 activeIndex === updates.length - 1 
                   ? "opacity-40 cursor-not-allowed border-slate-100" 
-                  : "hover:border-slate-350 text-slate-700 hover:bg-slate-50"
+                  : "hover:border-slate-300 text-slate-700 hover:bg-slate-50"
               }`}
               title={t("Older Update", "Staršia aktualizácia", "Régebbi frissítés")}
             >
@@ -212,7 +212,7 @@ export const UpdateNotesModal: React.FC<UpdateNotesModalProps> = ({
               className={`p-2 rounded-xl border border-slate-200 flex items-center justify-center transition-all bg-white font-bold text-xs gap-1.5 shadow-xs cursor-pointer ${
                 activeIndex === 0 
                   ? "opacity-40 cursor-not-allowed border-slate-100" 
-                  : "hover:border-slate-350 text-slate-700 hover:bg-slate-50"
+                  : "hover:border-slate-300 text-slate-700 hover:bg-slate-50"
               }`}
               title={t("Newer Update", "Novšia aktualizácia", "Újabb frissítés")}
             >

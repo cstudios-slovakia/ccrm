@@ -210,6 +210,9 @@ try {
         foreach ($settings as $k => $v) {
             $insSet->execute([$k, $v]);
         }
+        // Sample finance categories are demo data. The schema pass above ran
+        // before DEMO_MODE existed, so it seeded nothing.
+        ccrm_seed_default_financial_categories($pdo);
 
         // Demo accounts (password: "password"), stored hashed.
         $demoUsers = [

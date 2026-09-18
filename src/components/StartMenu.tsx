@@ -3,15 +3,19 @@ import * as Icons from "lucide-react";
 import {
   LayoutDashboard, BarChart3, Briefcase, TableProperties, Users,
   Package, Coins, PencilLine, FolderOpen, Mail, Brain, Workflow,
-  Globe, Sparkles, Settings, User, LogOut, Search, X, ChevronRight,
+  Globe, Sparkles, Settings, User, Search, X, ChevronRight,
   Check, Pencil, GripVertical, Pin, RotateCcw, Plus,
-  Archive, EyeOff, Trash2, FolderPlus
+  Archive, EyeOff, Trash2, FolderPlus, ListTodo
 } from "lucide-react";
 import type { UserProfile, RolePermission, UnifiedEntryRegistry, CustomDashboard } from "../types";
 import type { Language } from "../utils/translations";
 import { getTranslation } from "../utils/translations";
+import { useUserPref } from "../utils/userPrefs";
+import type { StartMenuGroup } from "../utils/startMenuLayout";
+import { normalizeStartMenuLayout } from "../utils/startMenuLayout";
 import { SOCIAL_MEDIA_ENABLED } from "../utils/featureFlags";
 import { FlockIcon } from "./icons/FlockIcon";
+import { isHomeDashboard } from "../utils/dashboardWidgets";
 
 interface StartMenuProps {
   isOpen: boolean;
@@ -25,21 +29,17 @@ interface StartMenuProps {
   showSettings?: boolean;
   showMailIcon?: boolean;
   showRagAi?: boolean;
+  /** Route gate from the permission resolver; tiles for closed routes are not offered. */
+  canOpenRoute: (routeId: string) => boolean;
   customDashboards?: CustomDashboard[];
   unifiedEntries?: UnifiedEntryRegistry[];
   onOpenCreateDashboard?: () => void;
   pinnedSidebarItems?: string[];
   onTogglePinToSidebar?: (itemId: string) => void;
-  onLogout?: () => void;
 }
 
-export interface MenuGroup {
-  id: string;
-  name: string;
-  iconName?: string;
-  color?: string;
-  isCustom?: boolean;
-}
+/** The stored group shape, defined next to the layout it is persisted in. */
+export type MenuGroup = StartMenuGroup;
 
 export interface NavMenuItem {
   id: string;
@@ -65,12 +65,12 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   showSettings = true,
   showMailIcon = false,
   showRagAi = false,
+  canOpenRoute,
   customDashboards = [],
   unifiedEntries = [],
   onOpenCreateDashboard,
   pinnedSidebarItems = [],
-  onTogglePinToSidebar,
-  onLogout
+  onTogglePinToSidebar
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
@@ -96,9 +96,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
   const inputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-
-  // Storage key for user custom start menu layout
-  const storageKey = `ccrm_start_menu_groups_v2_${currentUser?.id || "guest"}`;
 
   // Default initial groups configuration
   const defaultGroups: MenuGroup[] = useMemo(() => [
@@ -128,30 +125,22 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     }
   ], [systemLanguage, t]);
 
-  const [groups, setGroups] = useState<MenuGroup[]>(defaultGroups);
-  const [groupItemsMap, setGroupItemsMap] = useState<Record<string, string[]>>({});
-  const [unusedItemIds, setUnusedItemIds] = useState<string[]>([]);
+  // The layout is per user and follows the account to any browser: it lives in
+  // the user's row (metadata_json.preferences.startMenuLayout), the same home as
+  // the default landing page and the sidebar nav order this menu already saved
+  // there. On the login screen there is no row to write to, and useUserPref
+  // keeps the change in memory for the session rather than needing a "guest"
+  // branch of its own.
+  const [storedLayout, setStoredLayout] = useUserPref("startMenuLayout");
+  const layout = useMemo(() => normalizeStartMenuLayout(storedLayout), [storedLayout]);
 
-  // Load saved groups & layout from localStorage
-  useEffect(() => {
-    try {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed.groups) && parsed.groups.length > 0) {
-          setGroups(parsed.groups);
-        }
-        if (parsed.groupItems) {
-          setGroupItemsMap(parsed.groupItems);
-        }
-        if (Array.isArray(parsed.unused)) {
-          setUnusedItemIds(parsed.unused);
-        }
-      }
-    } catch {
-      // ignore
-    }
-  }, [storageKey]);
+  // Derived, not mirrored into state: a layout saved on another device arrives
+  // through a sync and has to show up here, which a copy taken once on mount
+  // would not do. No stored groups means the built-in ones, in the interface
+  // language currently selected.
+  const groups: MenuGroup[] = layout && layout.groups.length > 0 ? layout.groups : defaultGroups;
+  const groupItemsMap = layout?.groupItems ?? {};
+  const unusedItemIds = layout?.unused ?? [];
 
   // Persist helper
   const persistLayout = (
@@ -159,31 +148,18 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     nextGroupItems: Record<string, string[]>,
     nextUnused: string[]
   ) => {
-    try {
-      localStorage.setItem(
-        storageKey,
-        JSON.stringify({
-          groups: nextGroups,
-          groupItems: nextGroupItems,
-          unused: nextUnused
-        })
-      );
-    } catch {
-      // ignore
-    }
+    setStoredLayout({
+      groups: nextGroups,
+      groupItems: nextGroupItems,
+      unused: nextUnused
+    });
   };
 
-  // Reset to default layout
+  // Reset to default layout: clear the preference rather than remove a key, so
+  // the reset reaches the other machines this account is signed in on too.
   const handleResetLayout = () => {
     if (window.confirm(t("Reset Start Menu to default groups and layout?", "Obnoviť predvolené skupiny a rozloženie Štart menu?", "Visszaállítja a Start menü alapértelmezett csoportjait és elrendezését?"))) {
-      setGroups(defaultGroups);
-      setGroupItemsMap({});
-      setUnusedItemIds([]);
-      try {
-        localStorage.removeItem(storageKey);
-      } catch {
-        // ignore
-      }
+      setStoredLayout(null);
     }
   };
 
@@ -242,10 +218,10 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     const items: NavMenuItem[] = [
       // 1. BUSINESS & OPERATIONS
       {
-        id: "dashboard",
-        label: t("Task Dashboard", "Panel úloh", "Feladat Irányítópult"),
+        id: "tasks",
+        label: getTranslation(systemLanguage, "sidebar.tasks"),
         description: t("Kanban workflow, sprints & team tasks", "Kanban nástenka, šprinty a tímové úlohy", "Kanban tábla, sprintek és feladatok"),
-        icon: LayoutDashboard,
+        icon: ListTodo,
         color: "#ff5d00",
         bgColor: "rgba(255, 93, 0, 0.12)",
         defaultSection: "operations"
@@ -255,7 +231,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         label: t("Projects", "Projekty", "Projektek"),
         description: t("Project timelines, budget & milestones", "Časové osy, rozpočty a míľniky projektov", "Projekt ütemtervek, költségvetések"),
         icon: Briefcase,
-        color: "#a855f7",
+        color: "var(--color-purple-500)",
         bgColor: "rgba(168, 85, 247, 0.12)",
         defaultSection: "operations"
       },
@@ -264,7 +240,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         label: getTranslation(systemLanguage, "sidebar.leads"),
         description: t("Pipeline stages, conversions & leads datagrid", "Fázy predaja, konverzie a datagrid leadov", "Értékesítési tölcsér és leadek"),
         icon: TableProperties,
-        color: "#2563eb",
+        color: "var(--color-blue-600)",
         bgColor: "rgba(37, 99, 235, 0.12)",
         defaultSection: "operations"
       },
@@ -273,7 +249,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         label: getTranslation(systemLanguage, "sidebar.clients"),
         description: t("Client profiles, address book & contract history", "Profily klientov, adresár a história zmlúv", "Ügyfélprofilok és előzmények"),
         icon: Users,
-        color: "#059669",
+        color: "var(--color-emerald-600)",
         bgColor: "rgba(5, 150, 105, 0.12)",
         defaultSection: "operations"
       },
@@ -282,8 +258,17 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         label: getTranslation(systemLanguage, "sidebar.warehouse"),
         description: t("Inventory stock, FEFO batches & material movements", "Skladové zásoby, FEFO šarže a pohyby materiálu", "Raktárkészlet, FEFO tételek és mozgások"),
         icon: Package,
-        color: "#1e3a8a",
+        color: "var(--color-blue-900)",
         bgColor: "rgba(30, 58, 138, 0.12)",
+        defaultSection: "operations"
+      },
+      {
+        id: "invoices",
+        label: t("Invoices & Price Offers", "Cenové ponuky & Faktúry", "Ajánlatok és számlák"),
+        description: t("Price offers, PDF templates & accounting sync", "Cenové ponuky, PDF šablóny a fakturácia", "Árajánlatok, PDF sablonok és számlázás"),
+        icon: Icons.FileText || Coins,
+        color: "var(--color-indigo-500)",
+        bgColor: "rgba(99, 102, 241, 0.12)",
         defaultSection: "operations"
       },
       {
@@ -291,25 +276,35 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         label: getTranslation(systemLanguage, "sidebar.financial"),
         description: t("Cash flow trend, matrix table, ledger & recurring rules", "Trend cashflow, tabuľka, pohyby a trvalé príkazy", "Cashflow trend, mátrix tábla, mozgások"),
         icon: Coins,
-        color: "#10b981",
+        color: "var(--color-emerald-500)",
         bgColor: "rgba(16, 185, 129, 0.12)",
         defaultSection: "operations"
       },
 
       // 2. ANALYTICS & DASHBOARDS
       {
-        id: "overview",
+        id: "dashboard",
         label: getTranslation(systemLanguage, "sidebar.dashboard"),
+        description: t("Widget board of live metrics, charts & tables", "Nástenka so živými metrikami, grafmi a tabuľkami", "Élő mutatók, diagramok és táblázatok"),
+        icon: LayoutDashboard,
+        color: "var(--color-indigo-600)",
+        bgColor: "rgba(79, 70, 229, 0.12)",
+        defaultSection: "analytics"
+      },
+      {
+        id: "overview",
+        label: getTranslation(systemLanguage, "sidebar.analytics"),
         description: t("Executive BI overview & marketing funnel metrics", "Manažérske BI reporty a marketingové metriky", "Vezetői BI és marketing mutatók"),
         icon: BarChart3,
-        color: "#0891b2",
+        color: "var(--color-cyan-600)",
         bgColor: "rgba(8, 145, 178, 0.12)",
         defaultSection: "analytics"
       },
 
       // Dynamic Custom Dashboards
       ...customDashboards
-        .filter((d) => !d.archived)
+        // The built-in Dashboard lives in the same list but has its own entry.
+        .filter((d) => !d.archived && !isHomeDashboard(d.id))
         .map((d) => {
           const IconComp = (Icons as any)[d.icon] || LayoutDashboard;
           return {
@@ -349,7 +344,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         label: getTranslation(systemLanguage, "sidebar.meetings"),
         description: t("Voice recordings, AI notes & meeting minutes", "Hlasové nahrávky, AI poznámky a zápisy zo stretnutí", "Hangfelvételek, AI jegyzetek és memók"),
         icon: PencilLine,
-        color: "#4f46e5",
+        color: "var(--color-indigo-600)",
         bgColor: "rgba(79, 70, 229, 0.12)",
         defaultSection: "collaboration"
       },
@@ -358,7 +353,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         label: getTranslation(systemLanguage, "sidebar.files"),
         description: t("Central cloud document repository & attachments", "Centrálne úložisko dokumentov a príloh", "Központi dokumentumtár és csatolmányok"),
         icon: FolderOpen,
-        color: "#b45309",
+        color: "var(--color-amber-700)",
         bgColor: "rgba(180, 83, 9, 0.12)",
         defaultSection: "collaboration"
       }
@@ -370,7 +365,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         label: t("Mail Client", "Pošta", "Levelezés"),
         description: t("Integrated IMAP/SMTP corporate email client", "Integrovaná firemná pošta a schránka", "Integrált vállalati levelezőkliens"),
         icon: Mail,
-        color: "#db2777",
+        color: "var(--color-pink-600)",
         bgColor: "rgba(219, 39, 119, 0.12)",
         defaultSection: "collaboration"
       });
@@ -382,7 +377,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         label: t("RAG AI Assistant", "RAG AI Asistent", "RAG AI Asszisztens"),
         description: t("Vector-indexed company knowledge AI chat", "Firemný znalostný AI asistent s vektorovou DB", "Vállalati tudásbázis AI asszisztens"),
         icon: Brain,
-        color: "#8b5cf6",
+        color: "var(--color-violet-500)",
         bgColor: "rgba(139, 92, 246, 0.12)",
         defaultSection: "collaboration"
       });
@@ -403,7 +398,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       label: t("Automation", "Automatizácia", "Automatizálás"),
       description: t("Event triggers, webhook integrations & rule builder", "Udalosťové spúšťače, webhooky a automatické pravidlá", "Eseményvezérelt munkafolyamatok és webhookok"),
       icon: Workflow,
-      color: "#6b21a8",
+      color: "var(--color-purple-800)",
       bgColor: "rgba(107, 33, 168, 0.12)",
       defaultSection: "collaboration"
     });
@@ -414,7 +409,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         label: t("Social Media", "Sociálne siete", "Közösségi média"),
         description: t("Social post scheduling & cross-platform publishing", "Plánovanie príspevkov a publikovanie na sociálne siete", "Közösségi média bejegyzések időzítése"),
         icon: Globe,
-        color: "#f43f5e",
+        color: "var(--color-rose-500)",
         bgColor: "rgba(244, 63, 94, 0.12)",
         defaultSection: "collaboration"
       });
@@ -426,7 +421,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       label: t("Personal Settings", "Osobné nastavenia", "Személyes beállítások"),
       description: t("Theme mode, error sidebar & user profile", "Vzhľad aplikácie, panel chýb a osobný profil", "Téma, hibaoldalsáv és személyes profil"),
       icon: User,
-      color: "#0284c7",
+      color: "var(--color-sky-600)",
       bgColor: "rgba(2, 132, 199, 0.12)",
       defaultSection: "system"
     });
@@ -437,7 +432,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         label: getTranslation(systemLanguage, "sidebar.settings"),
         description: t("Roles & permissions, lead stages, branding & DB", "Roly a oprávnenia, fázy leadov, branding a DB", "Szerepkörök, jogosultságok, branding és DB"),
         icon: Settings,
-        color: "#475569",
+        color: "var(--color-slate-600)",
         bgColor: "rgba(71, 85, 105, 0.12)",
         defaultSection: "system"
       });
@@ -448,12 +443,14 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       label: t("Updates & What's New", "Novinky a verzie", "Újdonságok"),
       description: t("System changelog, release notes & improvements", "História verzií, novinky a vylepšenia systému", "Verziótörténet és újdonságok"),
       icon: Sparkles,
-      color: "#d97706",
+      color: "var(--color-amber-600)",
       bgColor: "rgba(217, 119, 6, 0.12)",
       defaultSection: "system"
     });
 
-    return items;
+    // Drop every tile the role may not open (custom dashboards and registries
+    // included) so the launcher never advertises a route the router would deny.
+    return items.filter((item) => canOpenRoute(item.id));
   }, [
     systemLanguage,
     customDashboards,
@@ -461,6 +458,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     showMailIcon,
     showRagAi,
     showSettings,
+    canOpenRoute,
     t
   ]);
 
@@ -534,7 +532,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       isCustom: true
     };
     const nextGroups = [...groups, newGroup];
-    setGroups(nextGroups);
     setEditingGroupId(newId);
     setEditingGroupName(newName);
     persistLayout(nextGroups, groupItemsMap, unusedItemIds);
@@ -548,7 +545,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     const nextGroups = groups.map((g) =>
       g.id === groupId ? { ...g, name: editingGroupName.trim() } : g
     );
-    setGroups(nextGroups);
     setEditingGroupId(null);
     persistLayout(nextGroups, groupItemsMap, unusedItemIds);
   };
@@ -563,9 +559,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       delete nextGroupItems[groupId];
       const nextUnused = Array.from(new Set([...unusedItemIds, ...itemsToMove]));
 
-      setGroups(nextGroups);
-      setGroupItemsMap(nextGroupItems);
-      setUnusedItemIds(nextUnused);
       persistLayout(nextGroups, nextGroupItems, nextUnused);
     }
   };
@@ -597,7 +590,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     const [moved] = nextGroups.splice(fromIdx, 1);
     nextGroups.splice(toIdx, 0, moved);
 
-    setGroups(nextGroups);
     setDraggedGroupId(null);
     setDragOverGroupId(null);
     persistLayout(nextGroups, groupItemsMap, unusedItemIds);
@@ -669,8 +661,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     const insertIdx = targetIndex !== undefined && targetIndex >= 0 ? targetIndex : targetList.length;
     targetList.splice(insertIdx, 0, draggedItemId);
 
-    setGroupItemsMap(nextGroupItems);
-    setUnusedItemIds(nextUnused);
     persistLayout(groups, nextGroupItems, nextUnused);
 
     setDraggedItemId(null);
@@ -703,8 +693,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
     const nextUnused = Array.from(new Set([...resolvedGroupsData.unused.map((i) => i.id), draggedItemId]));
 
-    setGroupItemsMap(nextGroupItems);
-    setUnusedItemIds(nextUnused);
     persistLayout(groups, nextGroupItems, nextUnused);
 
     setDraggedItemId(null);
@@ -723,8 +711,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     }
     const nextUnused = Array.from(new Set([...resolvedGroupsData.unused.map((i) => i.id), itemId]));
 
-    setGroupItemsMap(nextGroupItems);
-    setUnusedItemIds(nextUnused);
     persistLayout(groups, nextGroupItems, nextUnused);
   };
 
@@ -744,8 +730,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     }
     nextGroupItems[targetGroupId].push(item.id);
 
-    setGroupItemsMap(nextGroupItems);
-    setUnusedItemIds(nextUnused);
     persistLayout(groups, nextGroupItems, nextUnused);
   };
 
@@ -1284,7 +1268,12 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
         {/* Footer: User Profile & Quick Actions */}
         <div className="p-4 sm:px-6 bg-slate-50/90  border-t border-slate-100  flex items-center justify-between gap-3 text-xs">
-          <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => handleItemClick("personal-settings")}
+            title={t("Profile", "Profil", "Profil")}
+            className="flex items-center gap-3 -mx-2 px-2 py-1.5 rounded-xl text-left hover:bg-white border border-transparent hover:border-slate-200 transition-colors cursor-pointer group"
+          >
             <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-indigo-600 to-indigo-400 text-white font-bold flex items-center justify-center text-xs shadow-sm">
               {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : "U"}
             </div>
@@ -1296,28 +1285,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 {currentUser?.role || "Member"}
               </span>
             </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => handleItemClick("personal-settings")}
-              className="px-3 py-1.5 rounded-xl bg-white  border border-slate-200  hover:bg-slate-100 text-slate-700  font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1.5"
-            >
-              <User className="h-3.5 w-3.5 text-slate-500" />
-              <span>{t("Profile", "Profil", "Profil")}</span>
-            </button>
-            {onLogout && (
-              <button
-                type="button"
-                onClick={onLogout}
-                className="px-3 py-1.5 rounded-xl bg-rose-500 hover:bg-rose-600 text-white font-semibold text-xs transition-colors cursor-pointer flex items-center gap-1.5 shadow-sm"
-              >
-                <LogOut className="h-3.5 w-3.5" />
-                <span>{t("Sign Out", "Odhlásiť", "Kijelentkezés")}</span>
-              </button>
-            )}
-          </div>
+            <User className="h-3.5 w-3.5 text-slate-400 group-hover:text-slate-600 transition-colors" />
+          </button>
         </div>
       </div>
     </div>

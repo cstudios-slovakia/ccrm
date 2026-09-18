@@ -12,6 +12,10 @@ them up:
   directly into the server's web document root and pulling updates with
   `git`/`php ccrm update` — there is no build step on the server.
 
+**New here?** Read [Local Development Setup](#local-development-setup), then
+**[docs/TESTING.md](docs/TESTING.md)** — how to run the tests, what they cover
+and where the results go.
+
 ## Local Development Setup
 
 1. Clone the repo and install JS dependencies:
@@ -110,8 +114,96 @@ On the server:
 ```bash
 php ccrm update
 ```
-Pulls `origin/main`, runs `composer install`, publishes `dist/` over the
-docroot, and runs DB migrations — see the `ccrm` script at the repo root.
+Checks the licence, pulls `origin/main`, runs `composer install`, publishes
+`dist/` over the docroot, and runs DB migrations — see the `ccrm` script at the
+repo root.
+
+This is the only update path today, and it needs an SSH session on the host.
+A design for updating from a button in the UI (and on a schedule) — feasibility,
+risks and a staged implementation plan — is written up in
+[`docs/in-app-updates.md`](docs/in-app-updates.md). **Not implemented yet.**
+
+#### Tracking a different branch on a non-production box
+
+An install updates from **the branch it has checked out**, so a box put on a
+feature branch keeps following that branch with a plain `php ccrm update` — no
+configuration needed. Production sits on `main`, so nothing changes there.
+
+Every run echoes where the choice came from:
+
+```
+Deploy branch: 1.9-jackfruit (checked-out branch)
+```
+
+To pin a box to a branch other than the one checked out, record it in the
+checkout's own git config:
+
+```bash
+git config ccrm.deployBranch 1.6-grapefruit-fix
+php ccrm update      # -> Deploy branch: 1.6-grapefruit-fix (git config ccrm.deployBranch)
+```
+
+Prefer this over `export CCRM_DEPLOY_BRANCH=...` in `~/.bashrc`: an environment
+variable is invisible to cron and to the shell you exported it in, so the next
+plain `php ccrm update` silently reverts to the old branch. `git config` lives
+with the checkout and holds for every invocation. Undo it with
+`git config --unset ccrm.deployBranch`.
+
+`CCRM_DEPLOY_BRANCH=<branch>` **outranks the git config**, as a one-off override
+for a single run:
+
+```bash
+CCRM_DEPLOY_BRANCH=main php ccrm update
+```
+
+That precedence is also the one way `git config ccrm.deployBranch` appears not to
+work: if the variable is exported in the shell (a profile, a wrapper script, a
+leftover `export` from an earlier session) it wins on every run in that shell,
+and the echoed source line says so:
+
+```
+Deploy branch: 1.9-jackfruit (CCRM_DEPLOY_BRANCH)
+```
+
+If that source is `CCRM_DEPLOY_BRANCH` when you expected your git config, the
+update now prints a warning naming both values. Clear the variable and whatever
+exports it:
+
+```bash
+unset CCRM_DEPLOY_BRANCH
+grep -n CCRM_DEPLOY_BRANCH ~/.bashrc ~/.bash_profile ~/.profile ~/.zshrc
+php ccrm update      # -> Deploy branch: main (git config ccrm.deployBranch)
+```
+
+The pull is **fast-forward only**. A deployment checkout has no history of its
+own, so anything else means the checkout and the branch have genuinely diverged
+— the update stops and says which branch it is on versus which one it was told
+to pull, instead of merging an unrelated branch into a live site.
+
+### Licensing
+
+An installation needs a valid licence key **to receive updates**. That is the
+only thing a licence controls: nothing in the running CRM is disabled by an
+expired, missing, or revoked licence, and a lapsed customer keeps a fully
+working app. Ahead of expiry the app shows a dismissible banner, and Settings →
+Licence is where a key is entered.
+
+```bash
+php ccrm license status              # what is installed, and does it allow updates
+php ccrm license set <key-or-token>  # activate
+php ccrm license check               # force a re-check with the licence server
+```
+
+The licence server is a Craft CMS channel plus a small module, and its answers
+are cryptographically signed — so neither a substituted licence server nor an
+edit to the CCRM database can mint a licence, and a vendor outage does not stop
+a valid customer updating. Full architecture and setup:
+[`docs/licensing/README.md`](docs/licensing/README.md).
+
+**A shipped build must have `CCRM_LICENSE_PUBLIC_KEY` filled in** (in both
+`api/license_client.php` and `public/api/license_client.php`). While it is
+empty the product reports "licensing is not configured", shows no banner and
+gates nothing.
 
 ### Legacy: Composer-package consumption
 
@@ -132,82 +224,43 @@ retest it before relying on it if you need this path.
 - `config.php`, `api_key.txt` and `uploads/` are git-ignored. Never commit real
   credentials.
 
+## Testing
+
+Full guide: **[docs/TESTING.md](docs/TESTING.md)**.
+
+```bash
+npm run test:qa:setup     # once per machine - downloads Chromium
+npm run test:qa           # audit the app in a real browser
+npm run test:unit         # fast unit tests
+npm test                  # both
+```
+
+Two suites:
+
+- **Unit tests** (`npm run test:unit`) — plain `node --test` over
+  `src/**/*.test.ts`. No dependencies, runs in under a second.
+- **QA audit** (`npm run test:qa`) — Playwright drives the real app in Chromium
+  and reports every action whose **actual** result differed from its
+  **expected** result, with a screenshot and a proposed fix. Covers navigation,
+  every module, tabs, drill-downs, create/edit forms and every dropdown.
+
+The QA suite mocks `/sync.php`, `/api/*` and `/upload.php` and seeds its own
+data, so it needs **no Docker, no PHP and no database** — just the Vite dev
+server, which it starts for you. It never touches a real backend.
+
+Results are saved per run under `test-results/runs/<timestamp>-<kind>/`
+(report + findings + screenshots, self-contained), with the latest always at
+`test-results/qa-audit-report.md`. The verdict prints in your terminal as soon
+as the run ends; reopen it any time with `npm run test:qa:report`.
+
+**When to run it:** any time you like, and always when you finish a feature or
+a fix. It also runs automatically — `npm run deploy` refuses to ship if the
+audit finds a HIGH-severity defect, and GitHub Actions runs it on every push
+and pull request.
+
 ## Development
 
 The database DDL lives in a single source of truth: `public/api/schema.php`,
 copied into `dist/api/schema.php` by `npm run build` (the PHP API and
 `.htaccess` live in `public/` and are copied into `dist/` on build).
 
----
-
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
-
-Currently, two official plugins are available:
-
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
-
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
-
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
-
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```

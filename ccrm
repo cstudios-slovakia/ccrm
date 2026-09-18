@@ -18,6 +18,10 @@ switch ($command) {
     case 'migrate':
         ccrm_migrate();
         break;
+    case 'license':
+    case 'licence':
+        ccrm_license_cli(isset($args[2]) ? $args[2] : 'status', isset($args[3]) ? $args[3] : null);
+        break;
     case 'help':
     default:
         ccrm_help();
@@ -27,23 +31,283 @@ switch ($command) {
 function ccrm_help() {
     echo "CCRM CLI Tool\n";
     echo "Usage:\n";
-    echo "  php ccrm update   - Pulls latest code, runs composer install, publishes assets, and migrates DB\n";
-    echo "  php ccrm migrate  - Runs database migrations manually\n";
-    echo "  php ccrm help     - Shows this help message\n";
+    echo "  php ccrm update            - Pulls latest code, runs composer install, publishes assets, and migrates DB\n";
+    echo "  php ccrm migrate           - Runs database migrations manually\n";
+    echo "  php ccrm license status    - Shows this installation's licence and whether it allows updates\n";
+    echo "  php ccrm license set <key> - Activates a licence key (or imports an offline licence token)\n";
+    echo "  php ccrm license check     - Forces an immediate re-check with the licence server\n";
+    echo "  php ccrm help              - Shows this help message\n";
+}
+
+/**
+ * Load config.php + the schema + the licensing client and open a connection.
+ * Returns a PDO, or null when this checkout is not installed / reachable —
+ * callers decide whether that is fatal.
+ */
+function ccrm_cli_pdo() {
+    global $pdo, $db_connection_error;
+
+    $configFile = __DIR__ . '/config.php';
+    if (!file_exists($configFile)) {
+        $configFile = __DIR__ . '/public/config.php';
+    }
+    if (!file_exists($configFile)) {
+        return null;
+    }
+    require_once $configFile;
+    if (!function_exists('get_db_connection')) {
+        return null;
+    }
+
+    foreach (['/api', '/dist/api', '/public/api'] as $dir) {
+        if (file_exists(__DIR__ . $dir . '/license_client.php')) {
+            require_once __DIR__ . $dir . '/schema.php';
+            require_once __DIR__ . $dir . '/license_client.php';
+            break;
+        }
+    }
+
+    try {
+        $pdo = get_db_connection();
+        // The licences table may not exist yet on an install that has not been
+        // migrated since licensing shipped.
+        if (function_exists('ccrm_apply_schema')) {
+            ccrm_apply_schema($pdo);
+        }
+        return $pdo;
+    } catch (\Throwable $e) {
+        echo "Error: could not connect to the database: " . $e->getMessage() . "\n";
+        return null;
+    }
+}
+
+/** Human wording for the status codes ccrm_license_state() produces. */
+function ccrm_license_describe($code) {
+    $map = [
+        'unconfigured' => 'licensing is not configured in this build',
+        'none'         => 'no licence key has been entered on this installation',
+        'invalid'      => 'the stored licence does not verify for this installation',
+        'revoked'      => 'the licence has been revoked',
+        'suspended'    => 'the licence is suspended',
+        'expired'      => 'the licence has expired',
+        'expiring'     => 'the licence is valid but expires soon',
+        'active'       => 'the licence is valid',
+        'stale_check'  => 'the licence has not been confirmed with the licence server for too long',
+        'not_configured' => 'licensing is not configured in this build',
+    ];
+    return isset($map[$code]) ? $map[$code] : (string) $code;
+}
+
+function ccrm_license_print_state(array $state) {
+    echo "  Status:        " . $state['status'] . " (" . ccrm_license_describe($state['status']) . ")\n";
+    if (!empty($state['keyMasked'])) {
+        echo "  Key:           " . $state['keyMasked'] . "\n";
+    }
+    if (!empty($state['customer'])) {
+        echo "  Licensed to:   " . $state['customer'] . "\n";
+    }
+    if (!empty($state['expiresAt'])) {
+        echo "  Expires:       " . $state['expiresAt']
+            . ($state['daysRemaining'] !== null ? " (" . $state['daysRemaining'] . " day(s))" : "") . "\n";
+    }
+    if ($state['maxUsers'] !== null) {
+        echo "  Seats:         " . $state['seatsUsed'] . " of " . $state['maxUsers'] . "\n";
+    }
+    if (!empty($state['lastCheckAt'])) {
+        echo "  Last checked:  " . $state['lastCheckAt'] . "\n";
+    }
+    if (!empty($state['lastError'])) {
+        echo "  Last error:    " . $state['lastError'] . "\n";
+    }
+    echo "  Updates:       " . ($state['updatesAllowed'] ? "allowed" : "BLOCKED — " . ccrm_license_describe($state['updatesBlockedReason'])) . "\n";
+}
+
+function ccrm_license_cli($sub, $value) {
+    $pdo = ccrm_cli_pdo();
+    if ($pdo === null) {
+        echo "Error: CCRM is not installed here (no config.php), or the database is unreachable.\n";
+        exit(1);
+    }
+    if (!function_exists('ccrm_license_state')) {
+        echo "Error: the licensing client (api/license_client.php) was not found in this checkout.\n";
+        exit(1);
+    }
+
+    switch ($sub) {
+        case 'set':
+            if ($value === null || trim($value) === '') {
+                echo "Usage: php ccrm license set <licence-key|licence-token>\n";
+                exit(1);
+            }
+            $input = trim($value);
+            // One argument, two shapes — the same rule the HTTP endpoint uses.
+            $looksLikeToken = (substr_count($input, '.') === 1 && strlen($input) > 80);
+            echo $looksLikeToken
+                ? "Importing an offline licence token...\n"
+                : "Activating licence key with the licence server...\n";
+            $result = $looksLikeToken
+                ? ccrm_license_import_token($pdo, $input, null)
+                : ccrm_license_activate($pdo, $input, null);
+            if (!$result['ok']) {
+                echo "Failed: " . $result['error'] . "\n";
+                ccrm_license_print_state(ccrm_license_state($pdo));
+                exit(1);
+            }
+            echo "Licence stored.\n";
+            ccrm_license_print_state(ccrm_license_state($pdo));
+            break;
+
+        case 'check':
+            echo "Re-checking with the licence server...\n";
+            $result = ccrm_license_refresh($pdo, true);
+            if (!$result['ok']) {
+                echo "Check failed: " . $result['error'] . " (the cached licence stays in effect)\n";
+            } else {
+                echo "Licence confirmed.\n";
+            }
+            ccrm_license_print_state(ccrm_license_state($pdo));
+            if (!$result['ok']) {
+                exit(1);
+            }
+            break;
+
+        case 'status':
+        default:
+            ccrm_license_print_state(ccrm_license_state($pdo));
+            break;
+    }
+}
+
+/**
+ * The branch `ccrm update` pulls from, and where that choice came from.
+ *
+ * Most explicit source wins:
+ *
+ *   1. CCRM_DEPLOY_BRANCH=<branch> — a one-off override for this invocation,
+ *      meant for `CCRM_DEPLOY_BRANCH=x php ccrm update` and nothing else. Left
+ *      exported in a shell profile it outranks the git config below on every
+ *      run in that shell, which looks exactly like `git config` being ignored
+ *      — so when the two disagree the update says so out loud.
+ *   2. `git config ccrm.deployBranch <branch>` — persistent for this checkout,
+ *      and the right way to pin a box that permanently follows something other
+ *      than main. An env var in ~/.bashrc is not: it is invisible to cron, and
+ *      to the shell you exported it in, which is how an install ends up being
+ *      told to pull `main` into a feature-branch checkout and dying on
+ *      "divergent branches".
+ *   3. the branch that is actually checked out — a checkout on X updates from
+ *      origin/X. Production sits on `main`, so nothing changes there.
+ *   4. `main`, when HEAD is detached and git can tell us nothing.
+ *
+ * @return array{0: string, 1: string, 2: string}
+ *         [branch, human-readable source, warning to print or '']
+ */
+function ccrm_deploy_branch() {
+    $out = array();
+    exec("git config --get ccrm.deployBranch", $out, $status);
+    $configured = $status === 0 ? trim((string) reset($out)) : '';
+
+    $env = trim((string) getenv('CCRM_DEPLOY_BRANCH'));
+    if ($env !== '') {
+        // A pinned checkout whose operator also has the variable exported sees
+        // the pin quietly ignored. The env var still wins — a one-off override a
+        // stale config could veto would be worse — but it no longer wins silently.
+        $warning = '';
+        if ($configured !== '' && $configured !== $env) {
+            $warning =
+                "\n"
+                . "Warning: CCRM_DEPLOY_BRANCH=$env is set in this environment and overrides\n"
+                . "         `git config ccrm.deployBranch` ($configured). Pulling '$env'.\n"
+                . "         To make the git config take effect, clear the variable and\n"
+                . "         whatever exports it:\n"
+                . "           unset CCRM_DEPLOY_BRANCH\n"
+                . "           grep -n CCRM_DEPLOY_BRANCH ~/.bashrc ~/.bash_profile ~/.profile ~/.zshrc\n"
+                . "\n";
+        }
+        return array($env, 'CCRM_DEPLOY_BRANCH', $warning);
+    }
+
+    if ($configured !== '') {
+        return array($configured, 'git config ccrm.deployBranch', '');
+    }
+
+    $head = ccrm_current_branch();
+    if ($head !== '') {
+        return array($head, 'checked-out branch', '');
+    }
+
+    return array('main', 'default', '');
+}
+
+/**
+ * The checked-out branch name, or '' when HEAD is detached or this is not a git
+ * checkout.
+ */
+function ccrm_current_branch() {
+    $out = array();
+    exec("git rev-parse --abbrev-ref HEAD", $out, $status);
+    $head = $status === 0 ? trim((string) reset($out)) : '';
+    return $head === 'HEAD' ? '' : $head;
 }
 
 function ccrm_update() {
     echo "Starting CCRM Update Process...\n";
 
-    // Deploy branch: defaults to `main` (what production instances pull). A
-    // non-production box (staging/demo) can temporarily track a feature branch
-    // instead by exporting CCRM_DEPLOY_BRANCH=<branch> before running update.
-    // Unset it (or set it back to `main`) to return to the production branch.
-    $branch = trim((string) getenv('CCRM_DEPLOY_BRANCH'));
-    if ($branch === '') {
-        $branch = 'main';
+    // Which branch this install tracks. See ccrm_deploy_branch() for where the
+    // answer comes from and why the checked-out branch is the sane default.
+    list($branch, $branchSource, $branchWarning) = ccrm_deploy_branch();
+    echo "Deploy branch: $branch ($branchSource)\n";
+    if ($branchWarning !== '') {
+        echo $branchWarning;
     }
-    echo "Deploy branch: $branch\n";
+
+    // 0. Licence gate.
+    //
+    // This is the ONLY thing a licence controls. Nothing below this point
+    // touches the running application, and nothing anywhere else in the product
+    // is disabled by an expired or missing licence — an install that stops
+    // updating keeps serving its users exactly as it did yesterday.
+    //
+    // Deliberately fail-OPEN in three situations, because refusing to update is
+    // also a way to leave a customer stuck on a version with a security bug:
+    //   - licensing is not configured in this build (no public key compiled in);
+    //   - CCRM is not installed here yet (no config.php / no database);
+    //   - the licence server is unreachable but the cached, signed claim is
+    //     still inside its validity and its offline window.
+    // The last two are handled inside ccrm_license_gate_update().
+    $licensePdo = ccrm_cli_pdo();
+    if ($licensePdo !== null && function_exists('ccrm_license_gate_update')) {
+        echo "Checking licence...\n";
+        $gate = ccrm_license_gate_update($licensePdo);
+        $state = $gate['state'];
+        if (!$gate['allowed']) {
+            echo "\n";
+            echo "Update refused: " . ccrm_license_describe($gate['reason']) . ".\n";
+            ccrm_license_print_state($state);
+            echo "\n";
+            echo "Enter a licence key in Settings -> Licence, or run:\n";
+            echo "  php ccrm license set <licence-key>\n";
+            echo "\n";
+            echo "The application itself is unaffected and keeps running normally.\n";
+            exit(1);
+        }
+        if ($state['status'] === 'expiring') {
+            echo "Licence valid, expires " . $state['expiresAt']
+                . " (" . $state['daysRemaining'] . " day(s) left).\n";
+        } elseif ($state['status'] === 'unconfigured') {
+            echo "Licence check skipped: licensing is not configured in this build.\n";
+        } else {
+            echo "Licence OK.\n";
+        }
+    } else {
+        echo "Licence check skipped (CCRM is not installed here yet).\n";
+    }
+
+    // Snapshot the version we're on before pulling, so the final summary can
+    // report what changed. Read from source rather than requiring/building it
+    // (there is no build step on the server).
+    $versionFile = __DIR__ . '/src/utils/version.ts';
+    $oldVersion = ccrm_read_version($versionFile);
+
 
     // 1. Check for local modifications blocking git pull
     echo "Checking git status...\n";
@@ -65,15 +329,37 @@ function ccrm_update() {
     //    always authoritative. Line-ending normalization or a stale FTP/rsync
     //    upload over the checkout can leave these hashed assets "modified"; that
     //    is noise, not a real change worth blocking a deploy over.
+    //  - every root file that also exists under public/ (api/*.php, sync.php,
+    //    upload.php, sw.js, manifest.json, icons, .htaccess, ...): the repo root
+    //    IS the docroot, and step 4 below publishes public/ -> dist/ -> root on
+    //    every run. The root copy is therefore publish OUTPUT, not input — its
+    //    git content is irrelevant because publish overwrites it moments later.
+    //    If a commit ever edits public/api/x.php without mirroring it to
+    //    api/x.php, the publish leaves the root copy permanently "modified" and
+    //    every subsequent update would refuse to run, with nothing on the server
+    //    to blame (this blocked deploys after v1.8.28/v1.8.30 for
+    //    api/agent_utils.php). Discarding is the correct resolution: git — and
+    //    specifically public/ — always wins. `npm run build` now runs
+    //    scripts/sync-backend.mjs so the two copies cannot drift in a commit;
+    //    this branch is the belt to that braces, and the drift warning after the
+    //    pull below reports it if it ever happens again.
     $isAutoRestore = function ($file) {
         static $exact = ['index.html', 'vendor/composer/installed.php'];
-        return in_array($file, $exact, true) || strpos($file, 'dist/') === 0;
+        if (in_array($file, $exact, true) || strpos($file, 'dist/') === 0) {
+            return true;
+        }
+        // Publish output: a root path with a public/ counterpart. Files under
+        // public/ itself are NOT publish output (nothing writes to public/), so
+        // a dirty public/... must still stop the update.
+        return strpos($file, 'public/') !== 0
+            && $file !== ''
+            && file_exists(__DIR__ . '/public/' . $file);
     };
     $toRestore = array_filter($dirty, $isAutoRestore);
     if (!empty($toRestore)) {
         foreach ($toRestore as $file) {
             echo "Restoring $file to avoid conflict...\n";
-            passthru("git checkout -- " . escapeshellarg($file));
+            passthru("git checkout — " . escapeshellarg($file));
         }
     }
 
@@ -103,11 +389,39 @@ function ccrm_update() {
 
     // 2. Pull latest code
     echo "Pulling latest code from origin/$branch...\n";
-    passthru("git pull origin " . escapeshellarg($branch), $pullResult);
+    // --ff-only: a deployment checkout has no history of its own, so this pull is
+    // always a fast-forward. Without the flag git either refuses outright ("Need
+    // to specify how to reconcile divergent branches") or — once someone follows
+    // that hint and sets pull.rebase — quietly merges an unrelated branch into
+    // the live site. Failing is the correct outcome; the operator gets told what
+    // is actually wrong below instead of a wall of git hints.
+    passthru("git pull --ff-only origin " . escapeshellarg($branch), $pullResult);
     if ($pullResult !== 0) {
         echo "Error: git pull failed.\n";
+        $head = ccrm_current_branch();
+        if ($head !== '' && $head !== $branch) {
+            echo "\n";
+            echo "This checkout is on branch '$head', but the update was told to pull '$branch'.\n";
+            echo "If '$head' is the branch this install should follow, record it once:\n";
+            echo "  git config ccrm.deployBranch " . escapeshellarg($head) . "\n";
+            echo "and every future `php ccrm update` follows it — no environment variable,\n";
+            echo "so it holds for cron too, and for a shell you did not export it in.\n";
+        } else {
+            echo "\n";
+            echo "The checkout is not a fast-forward of origin/$branch: it has commits of\n";
+            echo "its own, or the branch was rewritten upstream. Inspect with:\n";
+            echo "  git log --oneline origin/$branch..HEAD\n";
+        }
         exit(1);
     }
+
+    // 2b. Report (but do not block on) backend copies that drifted apart in the
+    //     COMMIT itself — i.e. public/api/x.php and api/x.php holding different
+    //     code in git. Publish resolves it in public/'s favour, so the deploy is
+    //     still correct and consistent; it just means the repo is lying about
+    //     what the root copy contains, and someone should run
+    //     `npm run sync:backend` on the build machine and commit the result.
+    ccrm_report_backend_drift();
 
     // 3. Run composer install
     echo "Running composer install to update dependencies...\n";
@@ -148,7 +462,7 @@ function ccrm_update() {
             // frontend is always exactly the one we just pulled. (Extra untracked
             // old bundles left in dist/assets are harmless — index.html points at
             // the correct hash.)
-            passthru("git checkout -- dist/index.html dist/assets");
+            passthru("git checkout — dist/index.html dist/assets");
         }
         \CCRM\Installer::copyDir(__DIR__ . '/dist', __DIR__, ['config.php']);
     }
@@ -183,7 +497,95 @@ function ccrm_update() {
         echo "Tip: set CCRM_HEALTHCHECK_URL to enable an automatic post-deploy health check.\n";
     }
 
-    echo "\nSuccess! CCRM updated successfully to the latest version.\n";
+    $newVersion = ccrm_read_version($versionFile);
+    if ($newVersion !== null && $oldVersion !== null && $oldVersion !== $newVersion) {
+        $from = ccrm_color($oldVersion, '33'); // yellow: what we came from
+        $to = ccrm_color($newVersion, '32');   // green: what we landed on
+        echo "\n" . ccrm_color('Success!', '32') . " CCRM updated from version $from to the latest $to.\n";
+    } elseif ($newVersion !== null) {
+        echo "\n" . ccrm_color('Success!', '32') . " CCRM updated successfully. Already on the latest version (" . ccrm_color($newVersion, '32') . ").\n";
+    } else {
+        echo "\n" . ccrm_color('Success!', '32') . " CCRM updated successfully to the latest version.\n";
+    }
+}
+
+// The backend PHP is committed twice: once under public/ (the source Vite
+// copies into dist/) and once in the repo root (the docroot the server actually
+// serves, refreshed from dist/ by the publish step). A commit that touches only
+// one of the two makes the deployed code and the repo-root code disagree, so
+// warn about it here — loudly, but without failing the deploy: publish already
+// resolved it in public/'s favour, which is the correct code.
+function ccrm_report_backend_drift() {
+    $lines = [];
+    exec("git ls-tree -r HEAD", $lines, $status);
+    if ($status !== 0 || empty($lines)) {
+        return;
+    }
+
+    $blobs = [];
+    foreach ($lines as $line) {
+        // "<mode> <type> <object>\t<path>"
+        $parts = explode("\t", $line, 2);
+        if (count($parts) !== 2) {
+            continue;
+        }
+        $meta = preg_split('/\s+/', trim($parts[0]));
+        if (count($meta) < 3) {
+            continue;
+        }
+        $blobs[$parts[1]] = $meta[2];
+    }
+
+    // Mirrored by scripts/sync-backend.mjs — keep the exclusions in step with it.
+    $skip = ['index.html', 'assets/', 'update-screenshots/', 'config.php'];
+    $drift = [];
+    foreach ($blobs as $path => $hash) {
+        if (strpos($path, 'public/') !== 0) {
+            continue;
+        }
+        $rel = substr($path, strlen('public/'));
+        foreach ($skip as $prefix) {
+            if ($rel === $prefix || strpos($rel, $prefix) === 0) {
+                continue 2;
+            }
+        }
+        if (isset($blobs[$rel]) && $blobs[$rel] !== $hash) {
+            $drift[] = $rel;
+        }
+    }
+
+    if (empty($drift)) {
+        return;
+    }
+
+    echo ccrm_color('Warning:', '33') . " committed backend copies disagree between public/ and the repo root:\n";
+    foreach ($drift as $file) {
+        echo "  - $file (serving public/$file)\n";
+    }
+    echo "The deploy is fine — publish always uses public/ — but the repo-root copy is stale.\n";
+    echo "On the build machine run `npm run sync:backend` and commit the result.\n";
+}
+
+function ccrm_read_version($file) {
+    if (!file_exists($file)) {
+        return null;
+    }
+    $contents = file_get_contents($file);
+    if ($contents !== false && preg_match('/VERSION\s*=\s*"([^"]+)"/', $contents, $m)) {
+        return $m[1];
+    }
+    return null;
+}
+
+// Wraps text in an ANSI color code, but only when output is a real terminal
+// (a TTY) that's likely to render it — avoids dumping escape codes into log
+// files or CI output when stdout is redirected.
+function ccrm_color($text, $code) {
+    $isTty = function_exists('posix_isatty') && defined('STDOUT') && posix_isatty(STDOUT);
+    if (!$isTty) {
+        return $text;
+    }
+    return "\033[{$code}m{$text}\033[0m";
 }
 
 function ccrm_migrate() {

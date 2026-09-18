@@ -176,7 +176,7 @@ try {
                     'title' => $row['name'],
                     'subtitle' => trim($subtitle, ' | '),
                     'excerpt' => get_excerpt($excerptText, $query),
-                    'url' => $isClient ? '#client-' . urlencode($row['name']) : '#lead-' . $row['id']
+                    'url' => $isClient ? '#client-' . rawurlencode($row['name']) : '#lead-' . $row['id']
                 ]
             ];
         }

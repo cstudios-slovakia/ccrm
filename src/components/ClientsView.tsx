@@ -7,21 +7,44 @@ import {
   Calendar, ArrowLeft, Plus, TrendingUp, PencilLine, FileText,
   X, FolderOpen, Download, Trash2, SlidersHorizontal,
   CornerDownLeft, CornerLeftDown, Loader2, Brain,
-  ChevronLeft, ChevronRight, Milestone, Coins
+  ChevronLeft, ChevronRight, Milestone, Coins, Archive, ArchiveRestore, Settings,
+  AlertTriangle
 } from "lucide-react";
-import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus } from "../types";
+import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus, ClientCategory } from "../types";
+import { FULL_MODULE_ACCESS } from "../utils/permissions";
+import type { ModuleAccess } from "../utils/permissions";
+import { ClientCategoryBadge, ClientCategoryManager, ClientCategorySelect } from "./ClientCategories";
+import { clientCategoryFilterIds, clientCategoryPath } from "../utils/clientCategoryTree";
 import { cn } from "../utils/cn";
 import { BlockEditor } from "./BlockEditor";
 import { VoiceRecorderCard } from "./VoiceRecorderCard";
 import { CustomSelect } from "./ui/CustomSelect";
+import { CompanyLookupSpinner, CompanySuggestions } from "./ui/CompanySuggestions";
+import { useCompanyLookup } from "../utils/useCompanyLookup";
+import type { CompanyDetails, CompanyLookupField, CompanySuggestion } from "../utils/companyRegistry";
+import { registryCountryOf } from "../utils/companyRegistry";
 import { TimelineAuthorBadge } from "./TimelineAuthorBadge";
 import { TimelineCollapsible } from "./TimelineCollapsible";
 import type { EditorBlock } from "./BlockEditor";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
+import { AiKeyBanner } from "./ui/AiKeyBanner";
+import {
+  hasOpenAiKey,
+  isAiKeyProblem,
+  networkAiApiError,
+  openAiSettings,
+  readAiApiError,
+  translateAiApiError,
+} from "../utils/aiConfig";
 import { resolveCurrencySymbol, formatMoney } from "../utils/currency";
-import { resolveAssigneeName } from "../utils/taskSelectors";
+import { resolveAssigneeName, type TaskAccess } from "../utils/taskSelectors";
 import { todayLocal, nowLocalStamp, formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
+import { chartTheme, useAppearance } from "../utils/theme";
+import { mergeFinancialRecord, derivePaidDate, FINANCIAL_STATUS_OPTIONS } from "../utils/financialRecordMerge";
+import { splitRecordAmounts } from "../utils/financialOverviewTable";
+import { categoryBreadcrumbs } from "../utils/financialCategoryTree";
+import { isOutgoingMail } from "../utils/mailTimeline";
 
 interface ClientsViewProps {
   leads: Lead[];
@@ -42,7 +65,34 @@ interface ClientsViewProps {
   setFinancialRecords?: React.Dispatch<React.SetStateAction<FinancialRecord[]>>;
   financialCategories?: FinancialCategory[];
   setFinancialCategories?: React.Dispatch<React.SetStateAction<FinancialCategory[]>>;
+  /** Customer categories (the Categories panel of the client register). */
+  clientCategories?: ClientCategory[];
+  setClientCategories?: (updater: ClientCategory[] | ((prev: ClientCategory[]) => ClientCategory[])) => void;
+  /**
+   * The user's access to the clients module. `edit` unlocks everything that
+   * creates or changes a client and what is filed under it, `delete` the
+   * controls that remove something. Defaults to full access so callers that
+   * predate the role matrix keep working unchanged.
+   */
+  access?: ModuleAccess;
+  /**
+   * What the server enforces on `financialRecords` (the `financial` module) —
+   * separate from `access` above, which is the *clients* module's answer. The
+   * client invoice panel writes into a collection this view's own permission
+   * does not cover, so it needs its own gate. Defaults to full access so a
+   * caller that has not wired it yet loses nothing.
+   */
+  financeAccess?: ModuleAccess;
+  /**
+   * What the server enforces on `tasks` — separate from `access`, which is the
+   * *clients* module's answer. The follow-up task logged against a future
+   * event writes into a collection this view's own permission does not cover.
+   */
+  taskAccess?: TaskAccess;
 }
+
+/** The "without a category" row of the category filter. Not a real category id. */
+const NO_CLIENT_CATEGORY = "__none__";
 
 
 interface FinancialReportViewProps {
@@ -51,6 +101,10 @@ interface FinancialReportViewProps {
 }
 
 export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summary, systemLanguage }) => {
+  // chart.js paints to a canvas, so its axis, grid and legend colours cannot
+  // come from CSS — they are literals rebuilt whenever the appearance flips.
+  const appearance = useAppearance();
+  const chart = chartTheme(appearance);
   const chartRef = useRef<HTMLCanvasElement | null>(null);
   const chartInstanceRef = useRef<any>(null);
 
@@ -147,7 +201,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
                 weight: 'bold',
                 size: 10
               },
-              color: '#334155'
+              color: chart.label
             }
           },
           tooltip: {
@@ -164,7 +218,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
           y: {
             beginAtZero: true,
             ticks: {
-              color: '#64748b',
+              color: chart.tick,
               font: {
                 family: 'Google Sans, sans-serif',
                 size: 9,
@@ -173,12 +227,12 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
               callback: (value: any) => '€' + value.toLocaleString()
             },
             grid: {
-              color: '#f1f5f9'
+              color: chart.grid
             }
           },
           x: {
             ticks: {
-              color: '#64748b',
+              color: chart.tick,
               font: {
                 family: 'Google Sans, sans-serif',
                 size: 10,
@@ -198,7 +252,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
         chartInstanceRef.current.destroy();
       }
     };
-  }, [parsedData, systemLanguage]);
+  }, [parsedData, systemLanguage, appearance]);
 
   const renderBeautifulReport = (text: string) => {
     if (!text) return null;
@@ -225,7 +279,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
     const flushList = (key: string) => {
       if (listItems.length > 0) {
         elements.push(
-          <ul key={`list-${key}`} className="space-y-1 my-3 pl-5 list-disc text-slate-650 font-semibold leading-relaxed">
+          <ul key={`list-${key}`} className="space-y-1 my-3 pl-5 list-disc text-slate-600 font-semibold leading-relaxed">
             {listItems.map((item, idx) => (
               <li key={idx} dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(item) }} />
             ))}
@@ -239,7 +293,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
       if (tableRows.length > 0) {
         elements.push(
           <div key={`table-${key}`} className="overflow-x-auto my-4 rounded-xl border border-slate-200 shadow-sm bg-white">
-            <table className="min-w-full divide-y divide-slate-250 text-[11px]">
+            <table className="min-w-full divide-y divide-slate-200 text-[11px]">
               <thead className="bg-slate-50">
                 <tr>
                   {tableRows[0].map((cell, idx) => (
@@ -283,11 +337,11 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
         );
       } else if (h2Match) {
         elements.push(
-          <h3 key={i} className="text-xs font-black text-slate-850 uppercase tracking-wide mt-5 mb-2 flex items-center gap-1.5" dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(h2Match[1]) }} />
+          <h3 key={i} className="text-xs font-black text-slate-800 uppercase tracking-wide mt-5 mb-2 flex items-center gap-1.5" dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(h2Match[1]) }} />
         );
       } else if (h3Match) {
         elements.push(
-          <h4 key={i} className="text-[11px] font-black text-slate-650 uppercase tracking-wider mt-4 mb-1.5" dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(h3Match[1]) }} />
+          <h4 key={i} className="text-[11px] font-black text-slate-600 uppercase tracking-wider mt-4 mb-1.5" dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(h3Match[1]) }} />
         );
       } else if (listMatch) {
         listItems.push(formatInlineMarkdown(listMatch[1]));
@@ -313,7 +367,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
   return (
     <div className="space-y-6">
       {parsedData.years.length > 0 && (
-        <div className="p-4 rounded-2xl bg-white border border-slate-150 shadow-sm space-y-3">
+        <div className="p-4 rounded-2xl bg-white border border-slate-100 shadow-sm space-y-3">
           <div className="flex items-center justify-between border-b border-slate-100 pb-2">
             <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
               {systemLanguage === 'sk' ? 'Graf vývoja hospodárenia' : systemLanguage === 'hu' ? 'Pénzügyi trend diagram' : 'Financial Trend Chart'}
@@ -349,9 +403,27 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   currencyCode,
   financialRecords = [],
   setFinancialRecords,
-  financialCategories = []
+  financialCategories = [],
+  clientCategories = [],
+  setClientCategories,
+  access = FULL_MODULE_ACCESS,
+  financeAccess = FULL_MODULE_ACCESS,
+  taskAccess
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+  // Role gates. `view` is what let the user in; read-only users still search,
+  // filter, open a profile and download what they can see. Deleting is never
+  // open to a role that cannot edit, whatever the delete toggle says.
+  const canEdit = access.edit;
+  const canDelete = canEdit && access.delete;
+  // The invoice panel writes financialRecords, which the server gates on the
+  // `financial` module, not `clients` — so it needs its own edit/delete
+  // answer rather than inheriting canEdit/canDelete above.
+  const canEditFinance = financeAccess.edit;
+  const canDeleteFinance = financeAccess.edit && financeAccess.delete;
+  // The follow-up task logged against a future event writes `tasks`, which the
+  // server gates on the `tasks` module, not `clients`.
+  const canCreateTask = taskAccess ? taskAccess.create : canEdit;
   const currencySymbol = resolveCurrencySymbol(currencyCode, systemLanguage);
   const money = (value: number, opts?: Intl.NumberFormatOptions) => formatMoney(value, currencyCode, systemLanguage, opts);
   const [searchQuery, setSearchQuery] = useState("");
@@ -360,14 +432,26 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [filterCity, setFilterCity] = useState("");
   const [filterPM, setFilterPM] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  // Active clients or the archive — the two never share the list, so a
+  // restore is always one tab away, the way archived tasks work.
+  const [clientArchiveScope, setClientArchiveScope] = useState<"active" | "archived">("active");
+  // "" = every category, NO_CLIENT_CATEGORY = clients filed under none.
+  const [filterClientCategory, setFilterClientCategory] = useState("");
+  // The categories manager takes the list's place while it is open.
+  const [clientsSubView, setClientsSubView] = useState<"list" | "settings">("list");
 
   // Reset pagination to page 1 on filter changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedType, filterCity, filterPM]);
+  }, [searchQuery, selectedType, filterCity, filterPM, clientArchiveScope, filterClientCategory]);
   
   // State hook to toggle detail card edit mode
   const [isEditingProfile, setIsEditingProfile] = useState(false);
+
+  // A role change while the profile form is open must not leave it unlocked.
+  useEffect(() => {
+    if (!canEdit && isEditingProfile) setIsEditingProfile(false);
+  }, [canEdit, isEditingProfile]);
 
   // Register Client Drawer & Input States
   const [showRegisterDrawer, setShowRegisterDrawer] = useState(false);
@@ -398,13 +482,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [newClientOwner, setNewClientOwner] = useState(projectManagers[0] || "");
   const [newClientValue, setNewClientValue] = useState("");
   const [newClientCategories, setNewClientCategories] = useState<string[]>([]);
+  const [newClientCategoryId, setNewClientCategoryId] = useState("");
 
-  // RegisterUZ autocomplete state
-  const [suggestions, setSuggestions] = useState<any[]>([]);
-  const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
-  const [activeSuggestionInput, setActiveSuggestionInput] = useState<"name" | "companyId" | "profileName" | "profileCompanyId" | null>(null);
-  const suggestionTimeoutRef = useRef<any>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
+  // Company registry type-ahead for the register drawer. The client profile
+  // panel keeps its own instance, declared next to the profile form state.
+  const registerLookup = useCompanyLookup<CompanyLookupField>({
+    country: newClientCountry,
+    enabled: newClientType !== "person"
+  });
 
   // VAT validation state
   const [newClientVatStatus, setNewClientVatStatus] = useState<"idle" | "checking" | "valid" | "invalid" | "error">("idle");
@@ -436,7 +521,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   // between "checking" and the verdict, the "Saving…" pill never went away and the
   // unload guard blocked reloading the page. Only the explicit onBlur check writes.
   const validateVatCode = async (vat: string, isProfile: boolean, opts?: { persist?: boolean }) => {
-    const persist = opts?.persist !== false;
+    // A read-only role may see the verdict, never write it into the record.
+    const persist = canEdit && opts?.persist !== false;
     const cleanVat = vat.replace(/[^A-Za-z0-9]/g, "").trim();
     if (cleanVat.length < 4) {
       if (isProfile) {
@@ -564,337 +650,103 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
 
 
+  // A private person has no entry in any company register.
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setSuggestions([]);
-        setActiveSuggestionInput(null);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (newClientType === "person") {
-      setSuggestions([]);
-      setIsLoadingSuggestions(false);
-      setActiveSuggestionInput(null);
-    }
+    if (newClientType === "person") registerLookup.close();
   }, [newClientType]);
 
-  useEffect(() => {
-    return () => {
-      if (suggestionTimeoutRef.current) {
-        clearTimeout(suggestionTimeoutRef.current);
-      }
-    };
-  }, []);
+  // ------------------------------------------------------- company registry
+  // Typing a name, IČO, DIČ or IČ DPH into the register drawer searches the
+  // public registers; picking a row fills in everything they publish. Both
+  // Slovak registers are covered, so a sole trader (zrsr.sk) resolves exactly
+  // like a company (orsr.sk) does — see utils/companyRegistry.ts.
 
-  const fetchSuggestions = async (val: string, inputType: "name" | "companyId" | "profileName" | "profileCompanyId", country: string = newClientCountry) => {
-    if (val.trim().length < 3) {
-      setSuggestions([]);
-      setIsLoadingSuggestions(false);
-      setActiveSuggestionInput(inputType);
+  const registryToast = (message: string, kind?: string) => {
+    if (typeof (window as any).showToast === "function") (window as any).showToast(message, kind);
+  };
+
+  const registryLoadingMsg = t("Loading company details...", "Načítavam údaje z registra...", "Cégadatok betöltése...");
+  const registrySuccessMsg = t("Company details loaded successfully!", "Údaje o firme úspešne načítané!", "Cégadatok sikeresen betöltve!");
+  const registryErrorMsg = t("Error loading company details.", "Chyba pri načítaní údajov z registra.", "Hiba a cégadatok betöltésekor.");
+
+  /** Prefix a bare DIČ into an IČ DPH the way each country writes it. */
+  const registryVatId = (taxId: string, country: string) =>
+    taxId ? `${registryCountryOf(country) === "CZ" ? "CZ" : "SK"}${taxId}` : "";
+
+  const applyRegistryToNewClient = (details: CompanyDetails) => {
+    if (details.name) setNewClientName(details.name);
+    if (details.companyId) setNewClientCompanyId(details.companyId);
+    if (details.taxId) setNewClientTaxId(details.taxId);
+    if (details.street) setNewClientStreet(details.street);
+    if (details.city) setNewClientCity(details.city);
+    if (details.postalCode) setNewClientPostalCode(details.postalCode);
+    if (details.country) setNewClientCountry(details.country);
+    // The statutory body doubles as a contact person, but never over one the
+    // user has already written down.
+    if (details.contactPerson && !newClientContactPerson.trim()) setNewClientContactPerson(details.contactPerson);
+
+    setNewClientEstablishmentDate(details.establishmentDate || "");
+    setNewClientLegalForm(details.legalForm || "");
+    setNewClientSkNace(details.skNace || "");
+    setNewClientOrganizationSize(details.organizationSize || "");
+    setNewClientOwnershipType(details.ownershipType || "");
+    setNewClientDataSource(details.dataSource || "");
+    setNewClientDissolutionDate(details.dissolutionDate || "");
+    setNewClientRegion(details.region || "");
+    setNewClientDistrict(details.district || "");
+
+    // Sole traders have no published DIČ, so there is no IČ DPH to derive and
+    // whatever the user typed stays — only the verdict badge resets.
+    if (details.vatId) {
+      setNewClientVatId(details.vatId);
+      validateVatCode(details.vatId, false);
+    } else {
+      setNewClientVatStatus("idle");
+      setNewClientVatResult(null);
+    }
+  };
+
+  const handleSelectRegistrySuggestion = async (item: CompanySuggestion) => {
+    registryToast(registryLoadingMsg);
+    const details = await registerLookup.select(item, newClientCountry);
+
+    if (details) {
+      applyRegistryToNewClient(details);
+      registryToast(registrySuccessMsg);
       return;
     }
 
-    const isSlovakia = country === "Slovakia";
-    const isCzechia = country === "Czechia" || country === "Czech Republic";
-
-    if (!isSlovakia && !isCzechia) {
-      setSuggestions([]);
-      setIsLoadingSuggestions(false);
-      setActiveSuggestionInput(inputType);
-      return;
+    // The register answered the search but not the detail call — keep what the
+    // picked row already carried instead of dropping the choice.
+    if (item.name) setNewClientName(item.name);
+    if (item.companyId) setNewClientCompanyId(item.companyId);
+    if (item.taxId) {
+      setNewClientTaxId(item.taxId);
+      const vat = registryVatId(item.taxId, newClientCountry);
+      setNewClientVatId(vat);
+      if (vat) validateVatCode(vat, false);
     }
-
-    setIsLoadingSuggestions(true);
-    setActiveSuggestionInput(inputType);
-    try {
-      const endpoint = isSlovakia
-        ? `/api/registeruz.php?action=suggest&query=${encodeURIComponent(val)}`
-        : `/api/ares_cz.php?action=suggest&query=${encodeURIComponent(val)}`;
-      const res = await fetch(endpoint);
-      const data = await res.json();
-      if (Array.isArray(data)) {
-        setSuggestions(data);
-      } else {
-        setSuggestions([]);
-      }
-    } catch (err) {
-      console.error("Error fetching suggestions", err);
-      setSuggestions([]);
-    } finally {
-      setIsLoadingSuggestions(false);
-    }
+    registryToast(registryErrorMsg, "error");
   };
 
   const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setNewClientName(val);
-    
-    if (newClientType === "person") return;
-    
-    if (suggestionTimeoutRef.current) {
-      clearTimeout(suggestionTimeoutRef.current);
-    }
-    
-    suggestionTimeoutRef.current = setTimeout(() => {
-      fetchSuggestions(val, "name");
-    }, 350);
+    setNewClientName(e.target.value);
+    registerLookup.search("name", e.target.value, newClientCountry);
   };
 
   const handleCompanyIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setNewClientCompanyId(val);
-    
-    if (newClientType === "person") return;
-    
-    if (suggestionTimeoutRef.current) {
-      clearTimeout(suggestionTimeoutRef.current);
-    }
-    
-    suggestionTimeoutRef.current = setTimeout(() => {
-      fetchSuggestions(val, "companyId", newClientCountry);
-    }, 350);
+    setNewClientCompanyId(e.target.value);
+    registerLookup.search("companyId", e.target.value, newClientCountry);
   };
 
-  const handleProfileNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setProfileName(val);
-    
-    if (profileType === "person") return;
-    
-    if (suggestionTimeoutRef.current) {
-      clearTimeout(suggestionTimeoutRef.current);
-    }
-    
-    suggestionTimeoutRef.current = setTimeout(() => {
-      fetchSuggestions(val, "profileName", profileCountry);
-    }, 350);
+  const handleTaxIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setNewClientTaxId(e.target.value);
+    registerLookup.search("taxId", e.target.value, newClientCountry);
   };
 
-  const handleProfileCompanyIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value;
-    setProfileCompanyId(val);
-    
-    if (profileType === "person") return;
-    
-    if (suggestionTimeoutRef.current) {
-      clearTimeout(suggestionTimeoutRef.current);
-    }
-    
-    suggestionTimeoutRef.current = setTimeout(() => {
-      fetchSuggestions(val, "profileCompanyId", profileCountry);
-    }, 350);
-  };
-
-  const stripHtml = (html: string) => {
-    return html.replace(/<[^>]*>/g, "");
-  };
-
-  const handleSelectSuggestion = async (item: any) => {
-    const isProfile = activeSuggestionInput === "profileName" || activeSuggestionInput === "profileCompanyId";
-    
-    setSuggestions([]);
-    setActiveSuggestionInput(null);
-    
-    const loadingMsg = systemLanguage === "sk" ? "Načítavam údaje z registra..." : systemLanguage === "hu" ? "Cégadatok betöltése..." : "Loading company details...";
-    const successMsg = systemLanguage === "sk" ? "Údaje o firme úspešne načítané!" : systemLanguage === "hu" ? "Cégadatok sikeresen betöltve!" : "Company details loaded successfully!";
-    const errorMsg = systemLanguage === "sk" ? "Chyba pri načítaní údajov z registra." : systemLanguage === "hu" ? "Hiba a cégadatok betöltésekor." : "Error loading company details.";
-    
-    if (typeof (window as any).showToast === "function") {
-      (window as any).showToast(loadingMsg);
-    }
-    
-    const country = isProfile ? profileCountry : newClientCountry;
-    const isSlovakia = country === "Slovakia";
-    const isCzechia = country === "Czechia" || country === "Czech Republic";
-
-    try {
-      const endpoint = isSlovakia
-        ? `/api/registeruz.php?action=detail&id=${item.id}`
-        : `/api/ares_cz.php?action=detail&id=${item.id}`;
-
-      const res = await fetch(endpoint);
-      if (!res.ok) throw new Error("Failed to fetch detail");
-      const detail = await res.json();
-      
-      if (isSlovakia) {
-        if (detail && detail.id) {
-          const nameVal = detail.nazovUJ || stripHtml(item.entityName) || "";
-          const companyIdVal = detail.ico || item.entNumber || "";
-          const taxIdVal = detail.dic || item.taxNumber || "";
-          
-          let vatVal = "";
-          if (detail.dic) {
-            vatVal = `SK${detail.dic}`;
-          } else if (item.taxNumber) {
-            vatVal = `SK${item.taxNumber}`;
-          }
-          
-          if (isProfile) {
-            setProfileName(nameVal);
-            setProfileCompanyId(companyIdVal);
-            setProfileTaxId(taxIdVal);
-            setProfileVatId(vatVal);
-            setProfileCity(detail.mesto || "");
-            setProfileStreet(detail.ulica || "");
-            setProfilePostalCode(detail.psc || "");
-            setProfileCountry("Slovakia");
-            setProfileEstablishmentDate(detail.datumZalozenia || "");
-            setProfileLegalForm(detail.pravnaForma || "");
-            setProfileSkNace(detail.skNace || "");
-            setProfileOrganizationSize(detail.velkostOrganizacie || "");
-            setProfileOwnershipType(detail.druhVlastnictva || "");
-            setProfileDataSource(detail.zdrojDat || "");
-            setProfileDissolutionDate(detail.datumZrusenia || "");
-            setProfileRegion(detail.kraj || "");
-            setProfileDistrict(detail.okres || "");
-          } else {
-            setNewClientName(nameVal);
-            setNewClientCompanyId(companyIdVal);
-            setNewClientTaxId(taxIdVal);
-            setNewClientVatId(vatVal);
-            if (vatVal) {
-              validateVatCode(vatVal, false);
-            } else {
-              setNewClientVatStatus("idle");
-              setNewClientVatResult(null);
-            }
-            setNewClientCity(detail.mesto || "");
-            setNewClientStreet(detail.ulica || "");
-            setNewClientPostalCode(detail.psc || "");
-            setNewClientCountry("Slovakia");
-            setNewClientEstablishmentDate(detail.datumZalozenia || "");
-            setNewClientLegalForm(detail.pravnaForma || "");
-            setNewClientSkNace(detail.skNace || "");
-            setNewClientOrganizationSize(detail.velkostOrganizacie || "");
-            setNewClientOwnershipType(detail.druhVlastnictva || "");
-            setNewClientDataSource(detail.zdrojDat || "");
-            setNewClientDissolutionDate(detail.datumZrusenia || "");
-            setNewClientRegion(detail.kraj || "");
-            setNewClientDistrict(detail.okres || "");
-          }
-          
-          if (typeof (window as any).showToast === "function") {
-            (window as any).showToast(successMsg);
-          }
-        } else {
-          throw new Error("Invalid detail response");
-        }
-      } else if (isCzechia) {
-        if (detail && (detail.ico || detail.icoId)) {
-          const nameVal = detail.obchodniJmeno || stripHtml(item.entityName) || "";
-          const companyIdVal = detail.ico || item.entNumber || "";
-          
-          let rawDic = detail.dic || item.taxNumber || "";
-          let cleanedTaxId = rawDic;
-          if (rawDic.toUpperCase().startsWith("CZ")) {
-            cleanedTaxId = rawDic.substring(2);
-          }
-          
-          let vatVal = rawDic;
-          if (!vatVal && detail.ico) {
-            vatVal = `CZ${detail.ico}`;
-          }
-          
-          const sidlo = detail.sidlo || {};
-          const cityVal = sidlo.nazevObce || "";
-          const streetPart = sidlo.nazevUlice || sidlo.nazevCastiObce || sidlo.nazevObce || "";
-          const houseNo = sidlo.cisloDomovni || "";
-          const orientNo = sidlo.cisloOrientacni || "";
-          let streetVal = streetPart;
-          if (houseNo || orientNo) {
-            streetVal += " " + houseNo + (orientNo ? "/" + orientNo : "");
-          }
-          
-          if (isProfile) {
-            setProfileName(nameVal);
-            setProfileCompanyId(companyIdVal);
-            setProfileTaxId(cleanedTaxId);
-            setProfileVatId(vatVal);
-            setProfileStreet(streetVal.trim());
-            setProfileCity(cityVal);
-            setProfilePostalCode(sidlo.psc ? String(sidlo.psc) : "");
-            setProfileCountry(profileCountry);
-            setProfileEstablishmentDate(detail.datumVzniku || "");
-            setProfileLegalForm(detail.pravniForma || "");
-            setProfileRegion(sidlo.nazevKraje || "");
-            setProfileDistrict(sidlo.nazevOkresu || "");
-          } else {
-            setNewClientName(nameVal);
-            setNewClientCompanyId(companyIdVal);
-            setNewClientTaxId(cleanedTaxId);
-            setNewClientVatId(vatVal);
-            if (vatVal) {
-              validateVatCode(vatVal, false);
-            } else {
-              setNewClientVatStatus("idle");
-              setNewClientVatResult(null);
-            }
-            setNewClientStreet(streetVal.trim());
-            setNewClientCity(cityVal);
-            setNewClientPostalCode(sidlo.psc ? String(sidlo.psc) : "");
-            setNewClientCountry(newClientCountry);
-            setNewClientEstablishmentDate(detail.datumVzniku || "");
-            setNewClientLegalForm(detail.pravniForma || "");
-            setNewClientRegion(sidlo.nazevKraje || "");
-            setNewClientDistrict(sidlo.nazevOkresu || "");
-          }
-          
-          if (typeof (window as any).showToast === "function") {
-            (window as any).showToast(successMsg);
-          }
-        } else {
-          throw new Error("Invalid detail response");
-        }
-      }
-    } catch (err) {
-      console.error("Error fetching detail", err);
-      const isCzech = country === "Czechia" || country === "Czech Republic";
-      
-      const nameVal = stripHtml(item.entityName) || "";
-      const companyIdVal = item.entNumber || "";
-      
-      let rawTax = item.taxNumber || "";
-      let cleanedTax = rawTax;
-      if (isCzech && rawTax.toUpperCase().startsWith("CZ")) {
-        cleanedTax = rawTax.substring(2);
-      }
-      
-      let vatVal = rawTax;
-      if (!vatVal && item.entNumber) {
-        vatVal = isCzech ? `CZ${item.entNumber}` : `SK${item.entNumber}`;
-      } else if (vatVal && !isCzech && !vatVal.toUpperCase().startsWith("SK")) {
-        vatVal = `SK${vatVal}`;
-      }
-      
-      if (isProfile) {
-        setProfileName(nameVal);
-        setProfileCompanyId(companyIdVal);
-        setProfileTaxId(cleanedTax);
-        setProfileVatId(vatVal);
-      } else {
-        setNewClientName(nameVal);
-        setNewClientCompanyId(companyIdVal);
-        setNewClientTaxId(cleanedTax);
-        setNewClientVatId(vatVal);
-        if (vatVal) {
-          validateVatCode(vatVal, false);
-        } else {
-          setNewClientVatStatus("idle");
-          setNewClientVatResult(null);
-        }
-      }
-
-      if (typeof (window as any).showToast === "function") {
-        (window as any).showToast(errorMsg, "error");
-      }
-    }
+  const handleVatIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setNewClientVatId(e.target.value);
+    registerLookup.search("vatId", e.target.value, newClientCountry);
   };
 
   useEffect(() => {
@@ -913,6 +765,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
   const handleRegisterClient = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canEdit) return;
     if (!newClientName.trim()) {
       (window as any).showToast(t("Client name is required!", "Meno klienta je povinné!", "Az ügyfél neve kötelező!"));
       return;
@@ -956,6 +809,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       region: newClientType !== "person" ? newClientRegion.trim() : undefined,
       district: newClientType !== "person" ? newClientDistrict.trim() : undefined,
       categories: newClientCategories,
+      clientCategoryId: newClientCategoryId || null,
       timeline: [
         {
           id: `ev-${Date.now()}`,
@@ -999,6 +853,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     setNewClientOwner(projectManagers[0] || "");
     setNewClientValue("");
     setNewClientCategories([]);
+    setNewClientCategoryId("");
     setNewClientVatStatus("idle");
     setNewClientVatResult(null);
     
@@ -1046,6 +901,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       district: string;
       timeline: TimelineEvent[];
       categories: string[];
+      clientCategoryId: string | null;
+      archived: boolean;
       aiSummary?: string;
       aiSummaryFingerprint?: string;
       financialSummary?: string;
@@ -1093,6 +950,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           district: lead.district || "",
           timeline: lead.timeline || [],
           categories: [],
+          clientCategoryId: lead.clientCategoryId || null,
+          archived: !!lead.archived,
           aiSummary: lead.aiSummary || "",
           aiSummaryFingerprint: lead.aiSummaryFingerprint || "",
           financialSummary: lead.financialSummary || "",
@@ -1103,6 +962,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           profilesMap[clientKey].aiSummary = lead.aiSummary;
           profilesMap[clientKey].aiSummaryFingerprint = lead.aiSummaryFingerprint;
         }
+        if (!profilesMap[clientKey].clientCategoryId && lead.clientCategoryId) {
+          profilesMap[clientKey].clientCategoryId = lead.clientCategoryId;
+        }
+        // Archived only while every lead of the profile is: a new deal under the
+        // same name brings the client back into the register on its own.
+        profilesMap[clientKey].archived = profilesMap[clientKey].archived && !!lead.archived;
         if (lead.financialSummary && !profilesMap[clientKey].financialSummary) {
           profilesMap[clientKey].financialSummary = lead.financialSummary;
         }
@@ -1146,7 +1011,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   // Find active client details based on URL deep routing
   const activeClient = useMemo(() => {
     if (!initialSelectedClient) return null;
-    return clientProfiles.find(c => c.name.toLowerCase() === initialSelectedClient.toLowerCase()) || null;
+    const lookupName = initialSelectedClient.split("?")[0];
+    return clientProfiles.find(c => c.name.toLowerCase() === lookupName.toLowerCase()) || null;
   }, [clientProfiles, initialSelectedClient]);
 
   // RegisterUZ dynamically loaded statement list states
@@ -1218,41 +1084,62 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
   const [clientEmails, setClientEmails] = useState<TimelineEvent[]>([]);
   const [isLoadingMails, setIsLoadingMails] = useState(false);
+  // Why the mail half of the timeline is empty, when it is empty for a reason.
+  const [clientMailError, setClientMailError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!activeClient || !activeClient.email || !userEmailSettings || !userEmailSettings.isValidated) {
       setClientEmails([]);
+      setClientMailError(null);
       return;
     }
 
     const fetchClientMails = async () => {
       setIsLoadingMails(true);
-      try {
-        const inboxRes = await fetch(
-          `/api/mail_broker.php?action=get_emails&folder=INBOX&email=${encodeURIComponent(activeClient.email)}`,
-          { headers: { "X-User-Email": currentUser.email } }
-        );
-        const inboxData = await inboxRes.json();
-        
-        let sentEmails: any[] = [];
+      // An unreachable mailbox used to fail in silence — the Sent request in an
+      // empty catch, the INBOX one only in the console — so a client nobody could
+      // read mail for looked exactly like a client nobody had written to.
+      let mailError: string | null = null;
+      const readMails = async (folder: string) => {
         try {
-          const sentRes = await fetch(
-            `/api/mail_broker.php?action=get_emails&folder=Sent&email=${encodeURIComponent(activeClient.email)}`,
-            { headers: { "X-User-Email": currentUser.email } }
+          const res = await fetch(
+            `/api/mail_broker.php?action=get_emails&folder=${encodeURIComponent(folder)}&email=${encodeURIComponent(activeClient.email!)}`
           );
-          const sentData = await sentRes.json();
-          if (sentData.success && Array.isArray(sentData.emails)) {
-            sentEmails = sentData.emails;
+          const data = await res.json();
+          if (data && data.success && Array.isArray(data.emails)) {
+            return data.emails as any[];
           }
-        } catch (e) {}
+          mailError = (data && data.error) || t(
+            `Could not read the ${folder} folder.`,
+            `Priečinok ${folder} sa nepodarilo načítať.`,
+            `A(z) ${folder} mappát nem sikerült beolvasni.`
+          );
+        } catch (e) {
+          mailError = t(
+            "The mail server could not be reached.",
+            "Poštový server je nedostupný.",
+            "A levelezőszerver nem érhető el."
+          );
+        }
+        return [] as any[];
+      };
+
+      try {
+        const [inboxMails, sentEmails] = await Promise.all([
+          readMails("INBOX"),
+          readMails("Sent"),
+        ]);
+        const inboxData = { success: true, emails: inboxMails };
 
         const combinedEmails: TimelineEvent[] = [];
         
         const processMail = (mail: any) => {
-          const isOutgoing = mail.from?.address?.toLowerCase() === currentUser?.email?.toLowerCase();
+          const isOutgoing = isOutgoingMail(mail, currentUser?.email);
           const folderPrefix = isOutgoing ? "sent" : "inbox";
           return {
-            id: `email-${folderPrefix}-${mail.uid}`,
+            // Server-issued id, so the merge below recognises the row it already
+            // stored for this message instead of rendering it a second time.
+            id: mail.event_id || `email-${folderPrefix}-${mail.uid}`,
             type: "email" as const,
             timestamp: mail.date.substring(0, 16),
             title: mail.subject || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)"),
@@ -1283,8 +1170,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         });
 
         setClientEmails(combinedEmails);
+        setClientMailError(mailError);
       } catch (err) {
         console.error("Failed to load timeline client emails", err);
+        setClientMailError(t(
+          "The mail server could not be reached.",
+          "Poštový server je nedostupný.",
+          "A levelezőszerver nem érhető el."
+        ));
       } finally {
         setIsLoadingMails(false);
       }
@@ -1345,6 +1238,83 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [profileRegion, setProfileRegion] = useState("");
   const [profileDistrict, setProfileDistrict] = useState("");
   const [profileCategories, setProfileCategories] = useState<string[]>([]);
+  const [profileClientCategoryId, setProfileClientCategoryId] = useState("");
+
+  // The same registry autofill as the register drawer, on the client profile.
+  const profileLookup = useCompanyLookup<CompanyLookupField>({
+    country: profileCountry,
+    enabled: isEditingProfile && profileType !== "person"
+  });
+
+  const applyRegistryToProfile = (details: CompanyDetails) => {
+    if (details.name) setProfileName(details.name);
+    if (details.companyId) setProfileCompanyId(details.companyId);
+    if (details.taxId) setProfileTaxId(details.taxId);
+    if (details.street) setProfileStreet(details.street);
+    if (details.city) setProfileCity(details.city);
+    if (details.postalCode) setProfilePostalCode(details.postalCode);
+    if (details.country) setProfileCountry(details.country);
+    if (details.contactPerson && !profileContactPerson.trim()) setProfileContactPerson(details.contactPerson);
+
+    setProfileEstablishmentDate(details.establishmentDate || "");
+    setProfileLegalForm(details.legalForm || "");
+    setProfileSkNace(details.skNace || "");
+    setProfileOrganizationSize(details.organizationSize || "");
+    setProfileOwnershipType(details.ownershipType || "");
+    setProfileDataSource(details.dataSource || "");
+    setProfileDissolutionDate(details.dissolutionDate || "");
+    setProfileRegion(details.region || "");
+    setProfileDistrict(details.district || "");
+
+    if (details.vatId) {
+      setProfileVatId(details.vatId);
+      validateVatCode(details.vatId, true);
+    } else {
+      setProfileVatStatus("idle");
+      setProfileVatResult(null);
+    }
+  };
+
+  const handleSelectProfileSuggestion = async (item: CompanySuggestion) => {
+    registryToast(registryLoadingMsg);
+    const details = await profileLookup.select(item, profileCountry);
+
+    if (details) {
+      applyRegistryToProfile(details);
+      registryToast(registrySuccessMsg);
+      return;
+    }
+
+    if (item.name) setProfileName(item.name);
+    if (item.companyId) setProfileCompanyId(item.companyId);
+    if (item.taxId) {
+      setProfileTaxId(item.taxId);
+      const vat = registryVatId(item.taxId, profileCountry);
+      setProfileVatId(vat);
+      if (vat) validateVatCode(vat, true);
+    }
+    registryToast(registryErrorMsg, "error");
+  };
+
+  const handleProfileNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setProfileName(e.target.value);
+    profileLookup.search("name", e.target.value, profileCountry);
+  };
+
+  const handleProfileCompanyIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setProfileCompanyId(e.target.value);
+    profileLookup.search("companyId", e.target.value, profileCountry);
+  };
+
+  const handleProfileTaxIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setProfileTaxId(e.target.value);
+    profileLookup.search("taxId", e.target.value, profileCountry);
+  };
+
+  const handleProfileVatIdChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setProfileVatId(e.target.value);
+    profileLookup.search("vatId", e.target.value, profileCountry);
+  };
 
   // Timeline events whose truncated content the user expanded via "Show more"
   const [expandedTimelineEventIds, setExpandedTimelineEventIds] = useState<Set<string>>(new Set());
@@ -1418,10 +1388,18 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     if (!activeClient) return [];
     const leadIds = (activeClient.associatedLeads || []).map((l: any) => l.id);
     const primaryId = activeClient.associatedLeads?.[0]?.id;
-    return financialRecords.filter((r) => (primaryId && r.clientId === primaryId) || r.clientId === activeClient.name || (r.clientId && leadIds.includes(r.clientId)));
+    return financialRecords.filter((r) =>
+      r.type === "income" && !r.projectId &&
+      ((primaryId && r.clientId === primaryId) || r.clientId === activeClient.name || (r.clientId && leadIds.includes(r.clientId)))
+    );
   }, [financialRecords, activeClient]);
 
   const handleOpenClientInvoiceModal = (inv?: FinancialRecord) => {
+    if (!canEdit) return;
+    // This secondary form has no recurring UI at all and can never
+    // faithfully represent a recurring rule — it must be edited from
+    // Financial Management → Recurring instead.
+    if (inv?.isRecurring) return;
     if (inv) {
       setClientInvEditing(inv);
       setClientInvTitle(inv.title);
@@ -1450,41 +1428,50 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
   const handleSaveClientInvoice = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!clientInvTitle.trim() || !activeClient) return;
+    if (!canEditFinance || !clientInvTitle.trim() || !activeClient) return;
 
-    let path = "";
-    if (clientInvCategoryId) {
-      const cat = financialCategories.find((c) => c.id === clientInvCategoryId);
-      if (cat) path = cat.name;
-    }
-
-    const clientIdVal = activeClient.associatedLeads?.[0]?.id || activeClient.name;
-
-    const payload: FinancialRecord = {
+    const formValues: Partial<FinancialRecord> & Pick<FinancialRecord, "id"> = {
       id: clientInvEditing?.id || `fr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-      type: "income",
-      subtype: "invoice",
       title: clientInvTitle.trim(),
       description: clientInvDescription.trim() || null,
       categoryId: clientInvCategoryId || null,
-      categoryPath: path || null,
       amountPlanned: Number(clientInvPlanned) || 0,
       amountReal: Number(clientInvReal) || 0,
       currency: currencyCode || "EUR",
       status: clientInvStatus,
       issueDate: clientInvIssueDate,
       dueDate: clientInvDueDate || null,
-      paidDate: clientInvStatus === "paid" ? todayLocal() : null,
-      paymentMethod: "bank_transfer",
-      isRecurring: false,
-      projectId: null,
-      clientId: clientIdVal,
       invoiceNumber: clientInvNumber.trim() || null,
-      taxRate: 20,
-      createdBy: (window as any).ccrmCurrentUser?.email || "Admin",
-      createdAt: clientInvEditing?.createdAt || new Date().toISOString(),
-      updatedAt: new Date().toISOString()
+      paidDate: derivePaidDate(clientInvEditing, clientInvStatus)
     };
+
+    // Only recompute the category breadcrumb when the category actually
+    // changed (or this is a brand-new record) — otherwise omit it so the
+    // merge preserves whatever breadcrumb the record already had.
+    const previousCategoryId = clientInvEditing?.categoryId || "";
+    if (!clientInvEditing || clientInvCategoryId !== previousCategoryId) {
+      formValues.categoryPath = clientInvCategoryId
+        ? categoryBreadcrumbs(financialCategories, clientInvCategoryId).map((c) => c.name).join(" > ") || null
+        : null;
+    }
+
+    if (!clientInvEditing) {
+      // A brand-new invoice from this tab is always a one-off income tied
+      // to this client, never project-scoped and never recurring — set the
+      // fields the form does not render, but only once, at creation.
+      const clientIdVal = activeClient.associatedLeads?.[0]?.id || activeClient.name;
+      formValues.type = "income";
+      formValues.subtype = "invoice";
+      formValues.paymentMethod = "bank_transfer";
+      formValues.isRecurring = false;
+      formValues.projectId = null;
+      formValues.clientId = clientIdVal;
+      formValues.taxRate = 20;
+      formValues.createdBy = (window as any).ccrmCurrentUser?.email || "Admin";
+      formValues.createdAt = new Date().toISOString();
+    }
+
+    const payload = mergeFinancialRecord(clientInvEditing, formValues);
 
     if (setFinancialRecords) {
       setFinancialRecords((prev) => {
@@ -1501,6 +1488,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   };
 
   const handleDeleteClientInvoice = (id: string) => {
+    if (!canDeleteFinance) return;
     if (confirm(t("Delete this invoice?", "Vymazať túto faktúru?", "Törli ezt a számlát?"))) {
       if (setFinancialRecords) {
         setFinancialRecords((prev) => prev.filter((r) => r.id !== id));
@@ -1508,9 +1496,31 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     }
   };
 
+  /**
+   * Report an AI endpoint failure in the user's own language, and — when the
+   * fix is an admin setting rather than something they did wrong — put the way
+   * to fix it in the toast itself.
+   */
+  const showAiFailure = (error: ReturnType<typeof networkAiApiError> | Awaited<ReturnType<typeof readAiApiError>>) => {
+    console.error("[financial report]", error.code, error.message);
+    if (typeof (window as any).showToast !== "function") return;
+    const message = translateAiApiError(error, systemLanguage);
+    if (isAiKeyProblem(error.code)) {
+      (window as any).showToast(
+        message,
+        { label: t("Open settings", "Otvoriť nastavenia", "Beállítások megnyitása"), onClick: openAiSettings },
+        "error"
+      );
+      return;
+    }
+    (window as any).showToast(message, "error");
+  };
+
   const handleDownloadStatement = async (statementId: string, client: any) => {
-    if (!client) return;
-    
+    // The PDF link itself still works for a read-only role; only the AI
+    // summary written back into the record is skipped.
+    if (!client || !canEdit) return;
+
     // Switch to financial status tab to show loading state
     setActiveDetailTab("financial_status");
     setIsAnalyzingFinancial(true);
@@ -1526,9 +1536,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       });
       
       if (!res.ok) {
-        throw new Error("Financial analysis failed");
+        // The body carries the real reason (no API key, company not in the
+        // registry, OpenAI refused…). Reading only res.ok used to throw it away
+        // and leave the user with one generic "it failed" toast.
+        showAiFailure(await readAiApiError(res));
+        return;
       }
-      
+
       const result = await res.json();
       if (result.success && result.summary) {
         setLeads(prev => prev.map(lead => {
@@ -1544,13 +1558,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           (window as any).showToast(t("Financial analysis successfully generated!", "Finančná analýza bola úspešne vygenerovaná!", "A pénzügyi elemzés sikeresen elkészült!"));
         }
       } else {
-        throw new Error(result.message || "Failed to generate summary");
+        showAiFailure({
+          code: typeof result.code === "string" ? result.code : "unknown",
+          message: result.message || "Failed to generate summary",
+          status: res.status,
+        });
       }
     } catch (e: any) {
-      console.error(e);
-      if (typeof (window as any).showToast === "function") {
-        (window as any).showToast(t("Failed to generate financial analysis.", "Nepodarilo sa vygenerovať analýzu.", "Nem sikerült létrehozni a pénzügyi elemzést."));
-      }
+      showAiFailure(networkAiApiError(e));
     } finally {
       setIsAnalyzingFinancial(false);
     }
@@ -1571,9 +1586,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       });
       
       if (!res.ok) {
-        throw new Error("Financial report generation failed");
+        // Same as above: the failure reason lives in the body, not in the status.
+        showAiFailure(await readAiApiError(res));
+        return;
       }
-      
+
       const result = await res.json();
       if (result.success && result.report) {
         setLeads(prev => prev.map(lead => {
@@ -1589,13 +1606,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           (window as any).showToast(t("Financial report successfully generated!", "Finančný report bol úspešne vygenerovaný!", "A pénzügyi jelentés sikeresen elkészült!"));
         }
       } else {
-        throw new Error(result.message || "Failed to generate report");
+        showAiFailure({
+          code: typeof result.code === "string" ? result.code : "unknown",
+          message: result.message || "Failed to generate report",
+          status: res.status,
+        });
       }
     } catch (e: any) {
-      console.error(e);
-      if (typeof (window as any).showToast === "function") {
-        (window as any).showToast(t("Failed to generate financial report.", "Nepodarilo sa vygenerovať finančný report.", "Nem sikerült létrehozni a pénzügyi jelentést."));
-      }
+      showAiFailure(networkAiApiError(e));
     } finally {
       setIsAnalyzingFinancial(false);
     }
@@ -1658,7 +1676,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     return `${detailsStr}#${timelineStr}#${activeClient.leadsCount}#${tasksStr}`;
   }, [activeClient, activeClientTasks]);
 
-  const isOpenAiConfigured = !!(integrationsConfig?.openAiKey && integrationsConfig.openAiKey.trim() !== "");
+  const isOpenAiConfigured = hasOpenAiKey(integrationsConfig);
 
   // Recording timer
   useEffect(() => {
@@ -2135,6 +2153,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         setProfileRegion(activeClient.region || "");
         setProfileDistrict(activeClient.district || "");
         setProfileCategories(activeClient.categories || []);
+        setProfileClientCategoryId(activeClient.clientCategoryId || "");
         
         if (clientNameChanged) {
           setIsEditingProfile(false); // Reset to read-only by default on transition to a new client
@@ -2187,7 +2206,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           dissolutionDate: profileType !== "person" ? profileDissolutionDate.trim() : undefined,
           region: profileType !== "person" ? profileRegion.trim() : undefined,
           district: profileType !== "person" ? profileDistrict.trim() : undefined,
-          categories: profileCategories
+          categories: profileCategories,
+          clientCategoryId: profileClientCategoryId || null
         };
       }
       return lead;
@@ -2278,7 +2298,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       content: contentString,
       // Whoever is logging it right now, not the client's owner: the two are
       // frequently different people and the timeline has to say which one acted.
-      author: currentUser?.name || ""
+      author: currentUser?.name || "",
+      // The only e-mail this form can log is one we sent, but the flag was never
+      // set, so a hand-logged mail rendered with the Incoming badge under an
+      // outgoing title.
+      ...(logType === "email" ? { isOutgoing: true } : {})
     };
 
     const offerAmt = parseFloat(logAmount);
@@ -2289,7 +2313,16 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         newEvent.fileName = logFileName;
         newEvent.fileSize = logFileSize;
         newEvent.fileType = logFileType;
-        if (uploadedFilePath) newEvent.filePath = uploadedFilePath;
+        if (uploadedFilePath) {
+          newEvent.filePath = uploadedFilePath;
+          // `filePath` has no column of its own — only attachments_json
+          // survives a sync round trip. Without this the stored path is
+          // lost on the next reload and the preview has to guess the URL
+          // back from the event id and the file name.
+          newEvent.attachments = [
+            { name: logFileName, size: logFileSize, path: uploadedFilePath }
+          ];
+        }
       }
     } else if (logType === "appointment") {
       newEvent.extraTime = logTime;
@@ -2316,9 +2349,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       return lead;
     }));
 
-    // Auto-create PM task if the event is in the future
+    // Auto-create PM task if the event is in the future. Gated on the tasks
+    // module, not clients — the server drops this write on `tasks.edit`, and a
+    // role that can log the event but not create tasks must not lose it
+    // silently by seeing it appear and then vanish.
     const eventDateTime = new Date(`${logDate}T${logTimeOfEvent}:00`);
-    if (eventDateTime.getTime() > Date.now()) {
+    if (canCreateTask && eventDateTime.getTime() > Date.now()) {
       let deadlineVal = logDate;
 
       // Find original lead from activeClient
@@ -2424,6 +2460,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       fileSize: uploadFileSize,
       fileType: uploadFileType,
       filePath: uploadedFilePath,
+      // `filePath` has no column of its own — only attachments_json
+      // survives a sync round trip. Without this the stored path is
+      // lost on the next reload and the preview has to guess the URL
+      // back from the event id and the file name.
+      attachments: uploadedFilePath
+        ? [{ name: uploadFileName, size: uploadFileSize, path: uploadedFilePath }]
+        : undefined,
       author: currentUser?.name || "",
     };
 
@@ -2452,6 +2495,26 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     return Array.from(cities).sort();
   }, [clientProfiles]);
 
+  // Picking a main category also finds the clients filed under its subcategories.
+  const categoryFilterIds = useMemo(
+    () =>
+      filterClientCategory && filterClientCategory !== NO_CLIENT_CATEGORY
+        ? clientCategoryFilterIds(clientCategories, filterClientCategory)
+        : null,
+    [clientCategories, filterClientCategory]
+  );
+
+  const archivedClientsCount = useMemo(() => clientProfiles.filter(c => c.archived).length, [clientProfiles]);
+
+  // Clients filed directly under each category, for the counts in the manager.
+  const clientCountsByCategory = useMemo(() => {
+    const counts: Record<string, number> = {};
+    clientProfiles.forEach(c => {
+      if (c.clientCategoryId) counts[c.clientCategoryId] = (counts[c.clientCategoryId] || 0) + 1;
+    });
+    return counts;
+  }, [clientProfiles]);
+
   // Filter clients list
   const processedClients = useMemo(() => {
     return clientProfiles
@@ -2468,9 +2531,20 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         
         const matchesPM = filterPM === "" || client.owner.toLowerCase() === filterPM.toLowerCase();
 
-        return matchesSearch && matchesType && matchesCity && matchesPM;
+        const matchesArchive = clientArchiveScope === "archived" ? client.archived : !client.archived;
+
+        // A category id that no longer exists counts as no category.
+        const hasKnownCategory = !!client.clientCategoryId && clientCategories.some(c => c.id === client.clientCategoryId);
+        const matchesCategory =
+          filterClientCategory === ""
+            ? true
+            : filterClientCategory === NO_CLIENT_CATEGORY
+              ? !hasKnownCategory
+              : !!client.clientCategoryId && !!categoryFilterIds?.has(client.clientCategoryId);
+
+        return matchesSearch && matchesType && matchesCity && matchesPM && matchesArchive && matchesCategory;
       });
-  }, [clientProfiles, searchQuery, selectedType, filterCity, filterPM]);
+  }, [clientProfiles, searchQuery, selectedType, filterCity, filterPM, clientArchiveScope, filterClientCategory, categoryFilterIds, clientCategories]);
 
   // Paginated subset of clients
   const paginatedClients = useMemo(() => {
@@ -2479,6 +2553,35 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   }, [processedClients, currentPage]);
 
 
+
+  // Archive or restore a client profile. A profile is every lead sharing the
+  // name, so all of them change together — the same rule the profile editor uses.
+  const setClientArchived = (clientName: string, archived: boolean) => {
+    const key = clientName.trim().toLowerCase();
+    setLeads(prev => prev.map(lead =>
+      lead.name.trim().toLowerCase() === key && !!lead.archived !== archived ? { ...lead, archived } : lead
+    ));
+    (window as any).showToast?.(
+      archived
+        ? t(
+            "Client archived — hidden from the client list. Find it under Archived.",
+            "Klient archivovaný — zmizne zo zoznamu klientov. Nájdete ho v Archíve.",
+            "Ügyfél archiválva — eltűnik az ügyféllistáról. Az Archívumban találja."
+          )
+        : t("Client restored — back in the client list.", "Klient obnovený — je späť v zozname klientov.", "Ügyfél visszaállítva — újra az ügyféllistán.")
+    );
+  };
+
+  // Deleted categories take their clients with them only as far as the filing:
+  // the clients stay, uncategorised.
+  const handleClientCategoriesDeleted = (ids: Set<string>) => {
+    if (filterClientCategory && ids.has(filterClientCategory)) setFilterClientCategory("");
+    setLeads(prev =>
+      prev.some(l => l.clientCategoryId && ids.has(l.clientCategoryId))
+        ? prev.map(l => (l.clientCategoryId && ids.has(l.clientCategoryId) ? { ...l, clientCategoryId: null } : l))
+        : prev
+    );
+  };
 
   const getInitials = (name: string) => {
     return name
@@ -2537,7 +2640,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         return {
           dotBg: "bg-slate-600 border-slate-700 text-white shadow-md",
           cardBorder: "border-l-4 border-l-slate-500 border-y-slate-200 border-r-slate-200",
-          badgeBg: "bg-slate-50 text-slate-750 border-slate-200"
+          badgeBg: "bg-slate-50 text-slate-700 border-slate-200"
         };
     }
   };
@@ -2581,19 +2684,35 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
         {/* Back header */}
         <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => { window.location.hash = "clients"; }}
-            className="px-4.5 py-3 rounded-2xl bg-white border-2 border-slate-300 text-slate-700 hover:text-slate-955 hover:border-slate-850 transition-all text-xs font-extrabold uppercase tracking-wider flex items-center gap-2 shadow-sm"
+            className="px-4.5 py-3 rounded-2xl bg-white border-2 border-slate-300 text-slate-700 hover:text-slate-950 hover:border-slate-800 transition-all text-xs font-extrabold uppercase tracking-wider flex items-center gap-2 shadow-sm"
           >
             <ArrowLeft className="h-4.5 w-4.5 stroke-[2.5]" /> {getTranslation(systemLanguage, "common.back_to_clients")}
           </button>
+          <button
+            type="button"
+            onClick={() => setClientArchived(activeClient.name, !activeClient.archived)}
+            className={`px-4 py-3 rounded-2xl border-2 transition-all text-xs font-extrabold uppercase tracking-wider flex items-center gap-2 shadow-sm active:scale-95 cursor-pointer ${
+              activeClient.archived
+                ? "bg-emerald-600 border-emerald-700 text-white hover:bg-emerald-700"
+                : "bg-white border-slate-200 text-slate-500 hover:text-slate-900 hover:border-slate-400"
+            }`}
+          >
+            {activeClient.archived ? <ArchiveRestore className="h-4 w-4 stroke-[2.5]" /> : <Archive className="h-4 w-4 stroke-[2.5]" />}
+            {activeClient.archived
+              ? t("Restore client", "Obnoviť klienta", "Ügyfél visszaállítása")
+              : t("Archive client", "Archivovať klienta", "Ügyfél archiválása")}
+          </button>
+          </div>
 
           <div className="flex items-center gap-3">
             {/* AI Summary Purple Card */}
             {(!isOpenAiConfigured && !localSummary) ? (
-              <div className="flex items-center gap-2.5 bg-purple-50/50 border border-purple-250 p-2.5 px-3.5 rounded-2xl max-w-md text-xs font-bold text-purple-800 shadow-sm">
+              <div className="flex items-center gap-2.5 bg-purple-50/50 border border-purple-200 p-2.5 px-3.5 rounded-2xl max-w-md text-xs font-bold text-purple-800 shadow-sm">
                 <Brain className="h-5 w-5 text-purple-400 shrink-0" />
-                <span className="text-[10px] text-purple-650 italic">
+                <span className="text-[10px] text-purple-600 italic">
                   {systemLanguage === "sk" ? "AI zhrnutie nie je k dispozícii. Nastavte OpenAI kľúč v nastaveniach." : systemLanguage === "hu" ? "Az AI összefoglaló nem érhető el. Állítsa be az OpenAI kulcsot a beállításokban." : "AI summary unavailable. Configure OpenAI Key in settings."}
                 </span>
               </div>
@@ -2602,7 +2721,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 <Brain className={`h-5 w-5 text-purple-600 shrink-0 ${isGeneratingSummary ? 'animate-pulse' : ''}`} />
                 <div>
                   {isGeneratingSummary && !localSummary ? (
-                    <span className="text-[10px] text-purple-650 italic animate-pulse flex items-center gap-1.5">
+                    <span className="text-[10px] text-purple-600 italic animate-pulse flex items-center gap-1.5">
                       <Loader2 className="h-3 w-3 animate-spin text-purple-600" />
                       {systemLanguage === "sk" ? "Generuje sa AI zhrnutie..." : systemLanguage === "hu" ? "AI összefoglaló generálása..." : "Generating AI summary..."}
                     </span>
@@ -2626,12 +2745,23 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           </div>
         </div>
 
+        {activeClient.archived && (
+          <div className="flex items-center gap-2.5 px-5 py-3 rounded-2xl border-2 border-amber-300 bg-amber-50 text-amber-800 text-xs font-bold animate-in fade-in slide-in-from-top-2 duration-200">
+            <Archive className="h-4 w-4 shrink-0 stroke-[2.5]" />
+            {t(
+              "This client is archived — it is hidden from the client list until you restore it.",
+              "Tento klient je archivovaný — v zozname klientov sa nezobrazuje, kým ho neobnovíte.",
+              "Ez az ügyfél archiválva van — visszaállításig nem jelenik meg az ügyféllistán."
+            )}
+          </div>
+        )}
+
         {/* Master Dual-Panel Dashboard Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           
           {/* LEFT PANEL: Comprehensive Details Form */}
-          <div className="lg:col-span-5 glass-panel p-6 rounded-[28px] border-2 border-emerald-450 bg-white shadow-xl space-y-6">
-            <div className="border-b-2 border-slate-150 pb-4 flex items-center justify-between gap-2.5">
+          <div className="lg:col-span-5 glass-panel p-6 rounded-[28px] border-2 border-emerald-400 bg-white shadow-xl space-y-6">
+            <div className="border-b-2 border-slate-100 pb-4 flex items-center justify-between gap-2.5">
               <div className="flex items-center gap-2.5">
                 <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-2 border-emerald-700 flex items-center justify-center font-heading font-black text-sm shadow-md">
                   {getInitials(profileName || activeClient.name)}
@@ -2720,31 +2850,15 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           : "bg-transparent border-0 pl-0 text-slate-900 text-sm font-black cursor-default select-all"
                       }`}
                     />
-                    {isEditingProfile && isLoadingSuggestions && activeSuggestionInput === "profileName" && (
-                      <div className="absolute right-3 top-2.5">
-                        <Loader2 className="h-4 w-4 animate-spin text-emerald-500" />
-                      </div>
-                    )}
+                    <CompanyLookupSpinner visible={isEditingProfile && profileLookup.isLoading && profileLookup.activeField === "name"} />
                   </div>
-                  {isEditingProfile && activeSuggestionInput === "profileName" && suggestions.length > 0 && (
-                    <div 
-                      ref={dropdownRef}
-                      className="absolute left-0 right-0 top-full mt-1 bg-white rounded-2xl border border-slate-200 shadow-xl max-h-60 overflow-y-auto z-[999]"
-                    >
-                      {suggestions.map((item, idx) => (
-                        <div
-                          key={item.id || idx}
-                          onClick={() => handleSelectSuggestion(item)}
-                          className="px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer border-b border-slate-100 last:border-0 text-left cursor-pointer"
-                        >
-                          <div className="font-bold text-slate-800 text-[11px]">{stripHtml(item.entityName)}</div>
-                          <div className="text-[10px] text-slate-400 mt-0.5">
-                            {item.entNumber && `IČO: ${item.entNumber}`}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
+                  <CompanySuggestions
+                    suggestions={profileLookup.suggestions}
+                    visible={isEditingProfile && profileLookup.activeField === "name"}
+                    onSelect={handleSelectProfileSuggestion}
+                    onDismiss={profileLookup.close}
+                    systemLanguage={systemLanguage}
+                  />
                 </div>
                 <div className="space-y-1">
                   <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{getTranslation(systemLanguage, "profile.client_type")}</label>
@@ -2904,59 +3018,72 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                 : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all"
                             }`}
                           />
-                          {isEditingProfile && isLoadingSuggestions && activeSuggestionInput === "profileCompanyId" && (
-                            <div className="absolute right-2 top-2">
-                              <Loader2 className="h-3.5 w-3.5 animate-spin text-emerald-500" />
-                            </div>
-                          )}
+                          <CompanyLookupSpinner
+                            visible={isEditingProfile && profileLookup.isLoading && profileLookup.activeField === "companyId"}
+                            className="right-2"
+                          />
                         </div>
-                        {isEditingProfile && activeSuggestionInput === "profileCompanyId" && suggestions.length > 0 && (
-                          <div 
-                            ref={dropdownRef}
-                            className="absolute left-0 right-0 top-full mt-1 bg-white rounded-2xl border border-slate-200 shadow-xl max-h-60 overflow-y-auto z-[999]"
-                          >
-                            {suggestions.map((item, idx) => (
-                              <div
-                                key={item.id || idx}
-                                onClick={() => handleSelectSuggestion(item)}
-                                className="px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer border-b border-slate-100 last:border-0 text-left cursor-pointer"
-                              >
-                                <div className="font-bold text-slate-800 text-[11px]">{stripHtml(item.entityName)}</div>
-                                <div className="text-[10px] text-slate-400 mt-0.5">
-                                  {item.entNumber && `IČO: ${item.entNumber}`}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{getTranslation(systemLanguage, "profile.tax_id")}</label>
-                        <input
-                          type="text"
-                          readOnly={!isEditingProfile}
-                          value={profileTaxId}
-                          onChange={(e) => setProfileTaxId(e.target.value)}
-                          className={`w-full px-2 py-1.5 rounded-lg focus:outline-none ${
-                            isEditingProfile 
-                              ? "bg-white border-2 border-slate-200 text-slate-800" 
-                              : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all"
-                          }`}
+                        <CompanySuggestions
+                          suggestions={profileLookup.suggestions}
+                          visible={isEditingProfile && profileLookup.activeField === "companyId"}
+                          onSelect={handleSelectProfileSuggestion}
+                          onDismiss={profileLookup.close}
+                          systemLanguage={systemLanguage}
                         />
                       </div>
-                      <div className="space-y-1">
+                      <div className="space-y-1 relative">
+                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{getTranslation(systemLanguage, "profile.tax_id")}</label>
+                        <div className="relative">
+                          <input
+                            type="text"
+                            readOnly={!isEditingProfile}
+                            value={profileTaxId}
+                            onChange={handleProfileTaxIdChange}
+                            className={`w-full px-2 py-1.5 rounded-lg focus:outline-none pr-7 ${
+                              isEditingProfile
+                                ? "bg-white border-2 border-slate-200 text-slate-800"
+                                : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all"
+                            }`}
+                          />
+                          <CompanyLookupSpinner
+                            visible={isEditingProfile && profileLookup.isLoading && profileLookup.activeField === "taxId"}
+                            className="right-2"
+                          />
+                        </div>
+                        <CompanySuggestions
+                          suggestions={profileLookup.suggestions}
+                          visible={isEditingProfile && profileLookup.activeField === "taxId"}
+                          onSelect={handleSelectProfileSuggestion}
+                          onDismiss={profileLookup.close}
+                          systemLanguage={systemLanguage}
+                        />
+                      </div>
+                      <div className="space-y-1 relative">
                         <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{getTranslation(systemLanguage, "profile.vat_id")}</label>
-                        <input
-                          type="text"
-                          readOnly={!isEditingProfile}
-                          value={profileVatId}
-                          onChange={(e) => setProfileVatId(e.target.value)}
-                          onBlur={() => validateVatCode(profileVatId, true)}
-                          className={`w-full px-2 py-1.5 rounded-lg focus:outline-none ${
-                            isEditingProfile 
-                              ? "bg-white border-2 border-slate-200 text-slate-800" 
-                              : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all"
-                          }`}
+                        <div className="relative">
+                          <input
+                            type="text"
+                            readOnly={!isEditingProfile}
+                            value={profileVatId}
+                            onChange={handleProfileVatIdChange}
+                            onBlur={() => validateVatCode(profileVatId, true)}
+                            className={`w-full px-2 py-1.5 rounded-lg focus:outline-none pr-7 ${
+                              isEditingProfile
+                                ? "bg-white border-2 border-slate-200 text-slate-800"
+                                : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all"
+                            }`}
+                          />
+                          <CompanyLookupSpinner
+                            visible={isEditingProfile && profileLookup.isLoading && profileLookup.activeField === "vatId"}
+                            className="right-2"
+                          />
+                        </div>
+                        <CompanySuggestions
+                          suggestions={profileLookup.suggestions}
+                          visible={isEditingProfile && profileLookup.activeField === "vatId"}
+                          onSelect={handleSelectProfileSuggestion}
+                          onDismiss={profileLookup.close}
+                          systemLanguage={systemLanguage}
                         />
                         {renderVatValidation(profileVatStatus, profileVatResult)}
                       </div>
@@ -2977,7 +3104,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[8px] font-black text-slate-455 uppercase tracking-wider flex items-center gap-1"><Globe className="h-3 w-3" /> {getTranslation(systemLanguage, "profile.website")}</label>
+                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1"><Globe className="h-3 w-3" /> {getTranslation(systemLanguage, "profile.website")}</label>
                         <input
                           type="text"
                           readOnly={!isEditingProfile}
@@ -2987,7 +3114,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           className={`w-full px-3 py-1.5 rounded-lg focus:outline-none ${
                             isEditingProfile 
                               ? "bg-white border-2 border-slate-200 text-slate-800" 
-                              : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all text-blue-650 underline"
+                              : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all text-blue-600 underline"
                           }`}
                         />
                       </div>
@@ -3128,10 +3255,31 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 )}
               </div>
 
-              {/* Client Categories */}
+              {/* Customer category (Clients → Categories) */}
+              <div className="border-t-2 border-slate-100 pt-4 space-y-1 text-left">
+                <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                  <Layers className="h-3 w-3" /> {t("Client Category", "Kategória klienta", "Ügyfélkategória")}
+                </label>
+                {isEditingProfile ? (
+                  <ClientCategorySelect
+                    value={profileClientCategoryId}
+                    onChange={setProfileClientCategoryId}
+                    categories={clientCategories}
+                    t={t}
+                  />
+                ) : clientCategoryPath(clientCategories, profileClientCategoryId).length > 0 ? (
+                  <div className="pt-1">
+                    <ClientCategoryBadge categories={clientCategories} categoryId={profileClientCategoryId} className="text-[10px]" />
+                  </div>
+                ) : (
+                  <span className="block pt-1 text-[10px] text-slate-400 italic">{t("None", "Žiadne", "Nincs")}</span>
+                )}
+              </div>
+
+              {/* Interested categories (lead interest, set in Settings) */}
               <div className="border-t-2 border-slate-100 pt-4 space-y-2 text-left">
                 <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1">
-                  📁 {systemLanguage === "sk" ? "Kategórie Klienta" : systemLanguage === "hu" ? "Ügyfél kategóriák" : "Client Categories"}
+                  📁 {systemLanguage === "sk" ? "Zaujímavé kategórie" : systemLanguage === "hu" ? "Érdeklődési kategóriák" : "Interested Categories"}
                 </label>
                 {isEditingProfile ? (
                   <div className="grid grid-cols-2 gap-2 bg-emerald-50/5 border border-slate-200/60 p-3 rounded-2xl">
@@ -3143,7 +3291,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           className={`flex items-center gap-2 p-2 rounded-xl border text-[10px] font-black uppercase tracking-wide cursor-pointer transition-all ${
                             isChecked 
                               ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700" 
-                              : "bg-white border-slate-200/60 text-slate-500 hover:border-slate-350"
+                              : "bg-white border-slate-200/60 text-slate-500 hover:border-slate-300"
                           }`}
                         >
                           <input 
@@ -3172,7 +3320,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       profileCategories.map((cat) => (
                         <span 
                           key={cat}
-                          className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-255 text-[9px] font-extrabold uppercase"
+                          className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] font-extrabold uppercase"
                         >
                           {cat}
                         </span>
@@ -3199,7 +3347,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
           {/* RIGHT PANEL: Chronological Event Timeline & Interactive Logger (Combined) */}
           <div className="lg:col-span-7">
-            <div className="glass-panel p-6 rounded-[28px] border-2 border-emerald-450 bg-white shadow-xl space-y-6">
+            <div className="glass-panel p-6 rounded-[28px] border-2 border-emerald-400 bg-white shadow-xl space-y-6">
               
               {/* Tab Navigation Switches */}
               <div className="flex flex-wrap justify-start border-b-2 border-slate-100 pb-2.5 gap-2">
@@ -3209,7 +3357,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   className={`px-5 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all text-center flex items-center justify-center gap-2 border-2 ${
                     activeDetailTab === "timeline"
                       ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/10 border-emerald-700"
-                      : "text-slate-550 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border-slate-200"
+                      : "text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border-slate-200"
                   }`}
                 >
                   <Clock className="h-4.5 w-4.5 stroke-[2.5]" /> {getTranslation(systemLanguage, "common.history_timeline")}
@@ -3220,7 +3368,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   className={`px-5 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all text-center flex items-center justify-center gap-2 border-2 ${
                     activeDetailTab === "files"
                       ? "bg-[#5c4033] text-white shadow-md shadow-[#5c4033]/15 border-[#3d2b1f]"
-                      : "text-slate-550 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border-slate-200"
+                      : "text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border-slate-200"
                   }`}
                 >
                   <FileText className="h-4.5 w-4.5 stroke-[2.5]" /> {getTranslation(systemLanguage, "common.attached_files")} ({activeClient.timeline.filter(e => e.fileName).length})
@@ -3231,7 +3379,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   className={`px-5 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all text-center flex items-center justify-center gap-2 border-2 ${
                     activeDetailTab === "leads"
                       ? "bg-blue-600 text-white shadow-md shadow-blue-500/10 border-blue-700"
-                      : "text-slate-550 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border-slate-200"
+                      : "text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border-slate-200"
                   }`}
                 >
                   <Layers className="h-4.5 w-4.5 stroke-[2.5]" /> {systemLanguage === "sk" ? "Aktívne Leady" : systemLanguage === "hu" ? "Aktív leadek" : "Active Leads"} ({(activeClient.associatedLeads || []).filter((l: any) => l.status.toLowerCase() !== "won" && l.status.toLowerCase() !== "lost").length})
@@ -3243,7 +3391,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     className={`px-5 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all text-center flex items-center justify-center gap-2 border-2 ${
                       activeDetailTab === "financial_status"
                         ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/10 border-indigo-700"
-                        : "text-slate-550 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border-slate-200"
+                        : "text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border-slate-200"
                     }`}
                   >
                     <TrendingUp className="h-4.5 w-4.5 stroke-[2.5]" /> {t("Financial Report", "Finančný report", "Pénzügyi jelentés")}
@@ -3255,7 +3403,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   className={`px-5 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all text-center flex items-center justify-center gap-2 border-2 ${
                     activeDetailTab === "invoices"
                       ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/10 border-emerald-700"
-                      : "text-slate-550 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border-slate-200"
+                      : "text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border-slate-200"
                   }`}
                 >
                   <Coins className="h-4.5 w-4.5 stroke-[2.5]" /> {t("Invoices & Billing", "Faktúry a platby", "Számlák és fizetések")} ({clientInvoices.length})
@@ -3274,7 +3422,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       
                       {/* Event Category Switcher */}
                       <div className="space-y-1">
-                        <label className="text-[8px] font-black text-slate-450 uppercase tracking-wider">{getTranslation(systemLanguage, "common.event_type")}</label>
+                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{getTranslation(systemLanguage, "common.event_type")}</label>
                         <div className="grid grid-cols-5 gap-1.5 bg-slate-100 p-1.5 rounded-xl border-2 border-slate-200">
                           {(["phone", "email", "note", "offer", "appointment"] as const).map(type => {
                             const colors = getEventColors(type);
@@ -3286,7 +3434,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                 className={`py-2 rounded-lg font-black text-[9px] uppercase tracking-wider transition-all text-center flex items-center justify-center gap-1 ${
                                   logType === type 
                                     ? `${colors.dotBg} border-2 shadow` 
-                                    : "text-slate-550 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
+                                    : "text-slate-500 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
                                 }`}
                               >
                                 {renderEventIcon(type)}
@@ -3304,7 +3452,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       </div>
 
                       {/* Conditional form fields - Expand-down conditionally */}
-                      <div className={`grid transition-all duration-300 ease-in-out ${logType ? "grid-rows-[1fr] opacity-100 mt-4 border-t border-slate-150 pt-4" : "grid-rows-[0fr] opacity-0 overflow-hidden"}`}>
+                      <div className={`grid transition-all duration-300 ease-in-out ${logType ? "grid-rows-[1fr] opacity-100 mt-4 border-t border-slate-100 pt-4" : "grid-rows-[0fr] opacity-0 overflow-hidden"}`}>
                         <div className="overflow-hidden space-y-4">
                           
                           {/* Date and Time selectors for the event */}
@@ -3407,7 +3555,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                           className={`py-1.5 rounded-lg font-black text-[9px] uppercase tracking-wider transition-all text-center flex items-center justify-center gap-1.5 ${
                                             logFileType === type 
                                               ? "bg-amber-700 text-white border border-amber-800 shadow" 
-                                              : "text-slate-550 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
+                                              : "text-slate-500 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
                                           }`}
                                         >
                                           <span>
@@ -3488,11 +3636,32 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </div>
 
                   {/* Timeline event log */}
-                  <div className="border-t-2 border-slate-150 pt-6 space-y-4">
-                    <h3 className="text-xs font-black text-slate-450 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
+                  <div className="border-t-2 border-slate-100 pt-6 space-y-4">
+                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
                       <Clock className="h-4.5 w-4.5 text-emerald-600 animate-pulse stroke-[2.5]" /> {getTranslation(systemLanguage, "common.chronological_timeline")}
                       {isLoadingMails && <span className="ml-2 text-[9px] text-emerald-500 font-extrabold uppercase animate-pulse">{t("Syncing Mail...", "Synchronizujem poštu...", "Levelek szinkronizálása...")}</span>}
                     </h3>
+
+                    {/* An unreachable mailbox must not read as "this client was
+                        never written to". Say so, above whatever did load. */}
+                    {clientMailError && (
+                      <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-800">
+                        <AlertTriangle className="h-4 w-4 shrink-0 stroke-[2.5] mt-px" />
+                        <span>
+                          {t(
+                            "E-mails are missing from this timeline: ",
+                            "V tejto histórii chýbajú e-maily: ",
+                            "Ebből az előzményből hiányoznak az e-mailek: "
+                          )}
+                          {clientMailError}{" "}
+                          {t(
+                            "Check Personal Settings → E-mail.",
+                            "Skontrolujte Osobné nastavenia → E-mail.",
+                            "Ellenőrizze: Személyes beállítások → E-mail."
+                          )}
+                        </span>
+                      </div>
+                    )}
 
                     {activeClientTimeline.length === 0 ? (
                       <div className="py-12 text-center text-slate-400">
@@ -3547,7 +3716,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                         color={projectManagerColors[event.author || ""]}
                                       />
                                     </div>
-                                    <span className="block md:hidden text-[9px] font-black text-slate-450 uppercase tracking-wider">
+                                    <span className="block md:hidden text-[9px] font-black text-slate-400 uppercase tracking-wider">
                                       {formatTimestampLocalized(event.timestamp, systemLanguage)}
                                     </span>
                                   </div>
@@ -3642,11 +3811,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                         <span className="text-[9px] font-extrabold text-slate-400">({event.fileSize})</span>
                                       </div>
                                       <a 
-                                        href={event.filePath || `/uploads/${event.id}_${event.fileName}`}
+                                        href={event.attachments?.[0]?.path || event.filePath || `/uploads/${event.id}_${event.fileName}`}
                                         download={event.fileName}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="px-2.5 py-1 rounded bg-amber-100 border border-amber-300 hover:bg-amber-250 transition-all text-[8px] font-black uppercase text-amber-800 tracking-wider shadow-sm cursor-pointer"
+                                        className="px-2.5 py-1 rounded bg-amber-100 border border-amber-300 hover:bg-amber-200 transition-all text-[8px] font-black uppercase text-amber-800 tracking-wider shadow-sm cursor-pointer"
                                       >
                                         {t("View File", "Zobraziť súbor", "Fájl megtekintése")}
                                       </a>
@@ -3665,7 +3834,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                             <div className="h-0.5 bg-emerald-500/35 flex-1"></div>
                             <span className="text-[9px] font-black uppercase text-emerald-800 bg-emerald-100 border-2 border-emerald-300 px-4 py-1.5 rounded-full tracking-widest shadow-sm flex items-center gap-1.5 shrink-0 select-text">
                               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping"></span>
-                              {t("Today", "Dnes", "Ma")} ({new Date().toISOString().substring(0, 10)})
+                              {t("Today", "Dnes", "Ma")} ({formatDateLocalized(todayLocal(), systemLanguage)})
                             </span>
                             <div className="h-0.5 bg-emerald-500/35 flex-1"></div>
                           </div>
@@ -3683,7 +3852,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                               
                               {/* Left Date / Time part */}
                               <div className="hidden md:block w-[100px] text-right pt-1.5 shrink-0 select-text">
-                                <span className="text-[10px] font-black text-slate-550 uppercase tracking-wider block">
+                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">
                                   {formatDateLocalized(event.timestamp, systemLanguage)}
                                 </span>
                                 <span className="text-[9px] font-extrabold text-slate-400 block mt-0.5">
@@ -3833,11 +4002,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                         <span className="text-[9px] font-extrabold text-slate-400">({event.fileSize})</span>
                                       </div>
                                       <a 
-                                        href={event.filePath || `/uploads/${event.id}_${event.fileName}`}
+                                        href={event.attachments?.[0]?.path || event.filePath || `/uploads/${event.id}_${event.fileName}`}
                                         download={event.fileName}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="px-2.5 py-1 rounded bg-amber-100 border border-amber-300 hover:bg-amber-250 transition-all text-[8px] font-black uppercase text-amber-800 tracking-wider shadow-sm cursor-pointer"
+                                        className="px-2.5 py-1 rounded bg-amber-100 border border-amber-300 hover:bg-amber-200 transition-all text-[8px] font-black uppercase text-amber-800 tracking-wider shadow-sm cursor-pointer"
                                       >
                                         {t("View File", "Zobraziť súbor", "Fájl megtekintése")}
                                       </a>
@@ -3866,7 +4035,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     <form onSubmit={handleAttachFile} className="space-y-4 text-xs font-bold">
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         <div className="space-y-1">
-                          <label className="text-[9px] font-black text-slate-550 uppercase tracking-wider block pl-0.5">{t("Upload File", "Nahrať súbor", "Fájl feltöltése")} *</label>
+                          <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider block pl-0.5">{t("Upload File", "Nahrať súbor", "Fájl feltöltése")} *</label>
                           <div className="flex items-center gap-2">
                             <label className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100/80 text-amber-800 border-2 border-amber-300 transition-all cursor-pointer text-[10px] font-black uppercase shadow-sm select-none shrink-0">
                               <FolderOpen className="h-4 w-4" />
@@ -3900,7 +4069,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                               placeholder={t("No file chosen", "Nie je vybraný žiadny súbor", "Nincs kiválasztott fájl")}
                               value={uploadFileName ? `${uploadFileName} (${uploadFileSize})` : ""}
                               readOnly
-                              className="flex-1 px-3 py-2 rounded-xl bg-white border-2 border-slate-200 focus:outline-none text-[10px] text-slate-550 font-bold"
+                              className="flex-1 px-3 py-2 rounded-xl bg-white border-2 border-slate-200 focus:outline-none text-[10px] text-slate-500 font-bold"
                             />
                             {uploadFileName && (
                               <button 
@@ -3915,7 +4084,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         </div>
 
                         <div className="space-y-1">
-                          <label className="text-[9px] font-black text-slate-550 uppercase tracking-wider block pl-0.5">{t("Document Category", "Kategória dokumentu", "Dokumentum kategória")} *</label>
+                          <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider block pl-0.5">{t("Document Category", "Kategória dokumentu", "Dokumentum kategória")} *</label>
                           <div className="grid grid-cols-3 gap-2 bg-white p-1 rounded-xl border-2 border-slate-200">
                             {(["offer", "contract", "invoice"] as const).map(type => (
                               <button
@@ -3925,7 +4094,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                 className={`py-2 rounded-lg font-black text-[9px] uppercase tracking-wider transition-all text-center flex items-center justify-center gap-1.5 ${
                                   uploadFileType === type 
                                     ? "bg-amber-600 text-white border border-amber-700 shadow" 
-                                    : "text-slate-550 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200/50"
+                                    : "text-slate-500 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200/50"
                                 }`}
                               >
                                 <span>
@@ -3940,7 +4109,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       </div>
 
                       <div className="space-y-1">
-                        <label className="text-[9px] font-black text-slate-550 uppercase tracking-wider block pl-0.5">{t("Document Description / Remarks", "Popis dokumentu / Poznámky", "Dokumentum leírása / Megjegyzések")} *</label>
+                        <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider block pl-0.5">{t("Document Description / Remarks", "Popis dokumentu / Poznámky", "Dokumentum leírása / Megjegyzések")} *</label>
                         <input
                           type="text"
                           required
@@ -3962,7 +4131,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                   {/* Attached Documents List */}
                   <div className="space-y-4">
-                    <h3 className="text-xs font-black text-slate-450 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
+                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
                       <FileText className="h-4.5 w-4.5 text-emerald-600 stroke-[2.5]" /> {t("Attached Client Documents", "Pripojené dokumenty klienta", "Csatolt ügyféldokumentumok")} ({activeClient.timeline.filter(e => e.fileName).length})
                     </h3>
 
@@ -3978,7 +4147,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           return (
                             <div 
                               key={file.id} 
-                              className="p-4 rounded-2xl bg-white border-2 border-slate-150 shadow-md flex items-center justify-between gap-4 hover:border-slate-300 transition-all group"
+                              className="p-4 rounded-2xl bg-white border-2 border-slate-100 shadow-md flex items-center justify-between gap-4 hover:border-slate-300 transition-all group"
                             >
                               <div className="flex items-center gap-3 min-w-0">
                                 <div className={`h-10 w-10 rounded-xl flex items-center justify-center border shrink-0 transition-transform group-hover:scale-105 ${
@@ -3994,7 +4163,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                   <span className="text-xs font-black text-slate-800 uppercase tracking-wide truncate">
                                     {file.fileName}
                                   </span>
-                                  <span className="text-[10px] text-slate-450 font-bold uppercase tracking-wider flex items-center gap-1.5 mt-0.5">
+                                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1.5 mt-0.5">
                                     <span className={`px-1.5 py-0.5 rounded text-[8px] border font-black ${
                                       file.fileType === "contract"
                                         ? "bg-amber-100/50 text-amber-800 border-amber-200"
@@ -4006,7 +4175,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                     </span>
                                     &bull; {file.fileSize || t("Unknown size", "Neznáma veľkosť", "Ismeretlen méret")} &bull; {formatDateLocalized(file.timestamp, systemLanguage)}
                                   </span>
-                                  <p className="text-[10px] text-slate-505 font-bold mt-1 leading-normal italic line-clamp-1">
+                                  <p className="text-[10px] text-slate-500 font-bold mt-1 leading-normal italic line-clamp-1">
                                     "{file.content}"
                                   </p>
                                 </div>
@@ -4014,7 +4183,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                               <div className="flex items-center gap-1.5 shrink-0">
                                 <a
-                                  href={(file as any).filePath || `/uploads/${file.id}_${file.fileName}`}
+                                  href={file.attachments?.[0]?.path || (file as any).filePath || `/uploads/${file.id}_${file.fileName}`}
                                   download={file.fileName}
                                   target="_blank"
                                   rel="noopener noreferrer"
@@ -4065,7 +4234,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
               {activeDetailTab === "leads" && (
                 <div className="space-y-4 text-left">
-                  <h3 className="text-xs font-black text-slate-450 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
+                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
                     <Layers className="h-4.5 w-4.5 text-blue-600 stroke-[2.5]" /> {systemLanguage === "sk" ? "Aktívne obchodné prípady (Leady)" : systemLanguage === "hu" ? "Aktív leadek" : "Active Leads / Deals"}
                   </h3>
                   {((activeClient.associatedLeads || []).filter((l: any) => l.status.toLowerCase() !== "won" && l.status.toLowerCase() !== "lost")).length === 0 ? (
@@ -4090,14 +4259,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           return (
                             <div 
                               key={lead.id} 
-                              className="p-4 rounded-2xl border-2 border-slate-150 bg-slate-50/50 hover:bg-slate-50 transition-all shadow-sm flex items-center justify-between gap-4 cursor-pointer"
+                              className="p-4 rounded-2xl border-2 border-slate-100 bg-slate-50/50 hover:bg-slate-50 transition-all shadow-sm flex items-center justify-between gap-4 cursor-pointer"
                               onClick={() => {
                                 window.location.hash = `lead-${lead.id}`;
                               }}
                             >
                               <div className="min-w-0">
                                 <h4 className="font-heading font-black text-xs uppercase text-slate-800 tracking-tight truncate max-w-[280px]">{lead.name || t("Untitled Lead", "Lead bez názvu", "Cím nélküli lead")}</h4>
-                                <div className="flex flex-wrap items-center gap-2 mt-1.5 text-[9px] font-black uppercase text-slate-450 tracking-wider">
+                                <div className="flex flex-wrap items-center gap-2 mt-1.5 text-[9px] font-black uppercase text-slate-400 tracking-wider">
                                   <span>{t("Worth", "Hodnota", "Érték")}: <strong className="text-emerald-700 font-extrabold">{money(lead.value)}</strong></span>
                                   <span>&bull;</span>
                                   <span>PM: <strong className="text-slate-600 font-extrabold">{lead.owner || t("Unassigned", "Nepriradené", "Nincs hozzárendelve")}</strong></span>
@@ -4123,27 +4292,32 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               {activeDetailTab === "financial_status" && (
                 <div className="space-y-4 text-left">
                   <div className="flex items-center justify-between border-b-2 border-slate-100 pb-2">
-                    <h3 className="text-xs font-black text-slate-455 uppercase tracking-wider flex items-center gap-1.5">
+                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
                       <TrendingUp className="h-4.5 w-4.5 text-indigo-600 stroke-[2.5]" /> 
                       {t("AI Financial Report", "AI Finančný report", "AI pénzügyi jelentés")}
                     </h3>
-                    {activeClient.clientType !== "person" && activeClient.companyId && (
+                    {/* Only the regenerate affordance lives in the header. While no
+                        report exists the empty state below already offers "create",
+                        and showing both put two buttons for one action on screen. */}
+                    {activeClient.clientType !== "person" && activeClient.companyId && activeClient.financialSummary && (
                       <button
                         type="button"
                         disabled={isAnalyzingFinancial}
                         onClick={handleCreateFinancialReport}
-                        className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 disabled:bg-slate-200 text-indigo-800 border border-indigo-300 text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer disabled:cursor-not-allowed"
+                        className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 disabled:bg-slate-200 text-indigo-800 border border-indigo-300 text-[10px] font-black uppercase tracking-wider transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:-translate-y-0.5 hover:shadow-md active:scale-95 cursor-pointer disabled:cursor-not-allowed disabled:hover:translate-y-0"
                       >
                         <Brain className="h-3.5 w-3.5 text-indigo-600" />
-                        <span>
-                          {activeClient.financialSummary
-                            ? t("Regenerate Report", "Pre-generovať report", "Jelentés újragenerálása")
-                            : t("Create Report", "Vytvoriť report", "Jelentés létrehozása")}
-                        </span>
+                        <span>{t("Regenerate Report", "Pre-generovať report", "Jelentés újragenerálása")}</span>
                       </button>
                     )}
                   </div>
-                  
+
+                  <AiKeyBanner
+                    integrationsConfig={integrationsConfig}
+                    language={systemLanguage}
+                    feature={t("AI financial report", "AI finančný report", "AI pénzügyi jelentés")}
+                  />
+
                   {isAnalyzingFinancial ? (
                     <div className="py-12 flex flex-col items-center justify-center gap-3 text-xs text-slate-500 font-bold uppercase">
                       <Loader2 className="h-6 w-6 animate-spin text-indigo-500" />
@@ -4152,7 +4326,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   ) : activeClient.financialSummary ? (
                     <FinancialReportView summary={activeClient.financialSummary} systemLanguage={systemLanguage} />
                   ) : (
-                    <div className="py-10 text-center text-slate-455 text-xs font-black uppercase tracking-wider flex flex-col items-center justify-center gap-3 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                    <div className="py-10 text-center text-slate-400 text-xs font-black uppercase tracking-wider flex flex-col items-center justify-center gap-3 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
                       <Brain className="h-8 w-8 text-indigo-300 animate-pulse" />
                       <div>
                         {t("No financial report has been generated yet.", "Žiadny finančný report nie je vygenerovaný.", "Még nem készült pénzügyi jelentés.")}
@@ -4160,14 +4334,15 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       {activeClient.clientType !== "person" && activeClient.companyId ? (
                         <button
                           type="button"
+                          disabled={isAnalyzingFinancial}
                           onClick={handleCreateFinancialReport}
-                          className="mt-2 px-4 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white border-2 border-indigo-700 text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md active:scale-95 cursor-pointer"
+                          className="mt-2 px-4 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white border-2 border-indigo-700 text-[10px] font-black uppercase tracking-wider transition-all duration-200 flex items-center gap-1.5 shadow-md hover:-translate-y-0.5 hover:shadow-lg active:scale-95 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                           <Brain className="h-4 w-4" />
                           <span>{t("Create Financial Report", "Vytvoriť finančný report", "Pénzügyi jelentés létrehozása")}</span>
                         </button>
                       ) : (
-                        <div className="text-[10px] text-slate-450 font-semibold lowercase tracking-tight max-w-sm mt-1">
+                        <div className="text-[10px] text-slate-400 font-semibold lowercase tracking-tight max-w-sm mt-1">
                           {t("the client must have a company ID configured to generate a financial report.", "na vytvorenie reportu musí mať klient vyplnené IČO.", "a pénzügyi jelentés létrehozásához az ügyfélnek beállított cégazonosítóval kell rendelkeznie.")}
                         </div>
                       )}
@@ -4177,7 +4352,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   {/* RegisterUZ Financial Statements (Slovak Register) */}
                   {activeClient.clientType !== "person" && activeClient.companyId && (
                     <div className="space-y-4 pt-6 border-t-2 border-slate-100">
-                      <h3 className="text-xs font-black text-slate-450 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
+                      <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
                         <Download className="h-4.5 w-4.5 text-emerald-600 stroke-[2.5]" /> 
                         {systemLanguage === "sk" ? "Registre: Účtovné závierky (PDF)" : systemLanguage === "hu" ? "Regiszter: Pénzügyi beszámolók (PDF)" : "Registry: Financial Statements (PDF)"}
                       </h3>
@@ -4188,7 +4363,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           <span>{t("Loading statements from registry...", "Načítavam závierky z registra...", "Beszámolók betöltése a regiszterből...")}</span>
                         </div>
                       ) : registryStatements.length === 0 ? (
-                        <div className="py-6 text-center text-slate-455 text-xs font-extrabold uppercase tracking-wide">
+                        <div className="py-6 text-center text-slate-400 text-xs font-extrabold uppercase tracking-wide">
                           {t("No financial statements found in registry", "Žiadne závierky neboli nájdené v registri", "Nem találhatók pénzügyi beszámolók a regiszterben")}
                         </div>
                       ) : (
@@ -4197,7 +4372,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                             const label = `${stmt.typ || "Závierka"} (${stmt.obdobieOd || ""} - ${stmt.obdobieDo || ""})`;
                             const reportIds = stmt.idUctovnychVykazov || [];
                             return (
-                              <div key={stmt.id} className="p-4 rounded-2xl bg-white border-2 border-slate-150 shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4 hover:border-slate-350 transition-all text-left">
+                              <div key={stmt.id} className="p-4 rounded-2xl bg-white border-2 border-slate-100 shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4 hover:border-slate-300 transition-all text-left">
                                 <div className="flex items-center gap-3">
                                   <div className="h-10 w-10 rounded-xl bg-purple-50 text-purple-700 border border-purple-200 flex items-center justify-center shrink-0">
                                     <FileText className="h-5 w-5 stroke-[2.5]" />
@@ -4267,22 +4442,24 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       </p>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => handleOpenClientInvoiceModal()}
-                      className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md shadow-emerald-500/20 active:scale-95 cursor-pointer shrink-0"
-                    >
-                      <Plus className="h-4 w-4" />
-                      <span>{t("+ New Invoice", "+ Nová faktúra", "+ Új számla")}</span>
-                    </button>
+                    {canEditFinance && (
+                      <button
+                        type="button"
+                        onClick={() => handleOpenClientInvoiceModal()}
+                        className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md shadow-emerald-500/20 active:scale-95 cursor-pointer shrink-0"
+                      >
+                        <Plus className="h-4 w-4" />
+                        <span>{t("New Invoice", "Nová faktúra", "Új számla")}</span>
+                      </button>
+                    )}
                   </div>
 
                   {/* Client Financial Summary Cards */}
                   {clientInvoices.length > 0 && (() => {
                     const totalPlanned = clientInvoices.reduce((acc, r) => acc + (r.amountPlanned || 0), 0);
-                    const totalReal = clientInvoices.reduce((acc, r) => acc + (r.amountReal || 0), 0);
-                    const pendingAmount = clientInvoices.filter(r => r.status === "pending" || r.status === "planned").reduce((acc, r) => acc + (r.amountPlanned || 0), 0);
-                    const overdueAmount = clientInvoices.filter(r => r.status === "overdue").reduce((acc, r) => acc + (r.amountPlanned || 0), 0);
+                    const totalReal = clientInvoices.reduce((acc, r) => acc + splitRecordAmounts(r).real, 0);
+                    const pendingAmount = clientInvoices.filter(r => r.status === "pending" || r.status === "planned" || r.status === "partially_paid").reduce((acc, r) => acc + splitRecordAmounts(r).estimated, 0);
+                    const overdueAmount = clientInvoices.filter(r => r.status === "overdue").reduce((acc, r) => acc + splitRecordAmounts(r).estimated, 0);
 
                     return (
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
@@ -4294,7 +4471,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         <div className="p-3.5 rounded-2xl bg-amber-50/50 border border-amber-200">
                           <span className="text-[10px] font-bold text-amber-700 uppercase block">{t("Pending Payment", "Čaká na úhradu", "Fizetésre vár")}</span>
                           <div className="text-base font-black text-amber-900 mt-0.5">{money(pendingAmount)}</div>
-                          <span className="text-[10px] text-amber-600">{clientInvoices.filter(r => r.status === "pending" || r.status === "planned").length} {t("invoices", "faktúr", "számla")}</span>
+                          <span className="text-[10px] text-amber-600">{clientInvoices.filter(r => r.status === "pending" || r.status === "planned" || r.status === "partially_paid").length} {t("invoices", "faktúr", "számla")}</span>
                         </div>
                         <div className="p-3.5 rounded-2xl bg-rose-50/50 border border-rose-200">
                           <span className="text-[10px] font-bold text-rose-700 uppercase block">{t("Overdue", "Po splatnosti", "Lejárt")}</span>
@@ -4310,13 +4487,16 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     <div className="py-12 text-center text-slate-400 text-xs font-semibold flex flex-col items-center justify-center gap-3 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
                       <Coins className="h-8 w-8 text-slate-300 animate-bounce" />
                       <div>{t("No invoices created for this client yet.", "Pre tohto klienta zatiaľ neboli vystavené žiadne faktúry.", "Még nincsenek számlák rögzítve ehhez az ügyfélhez.")}</div>
-                      <button
-                        type="button"
-                        onClick={() => handleOpenClientInvoiceModal()}
-                        className="px-4 py-2 rounded-xl bg-emerald-600 text-white text-xs font-bold shadow-sm"
-                      >
-                        {t("+ Issue First Invoice", "+ Vystaviť prvú faktúru", "+ Első számla kiállítása")}
-                      </button>
+                      {canEditFinance && (
+                        <button
+                          type="button"
+                          onClick={() => handleOpenClientInvoiceModal()}
+                          className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                        >
+                          <Plus className="h-3.5 w-3.5" />
+                          {t("Issue First Invoice", "Vystaviť prvú faktúru", "Első számla kiállítása")}
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <div className="overflow-x-auto border border-slate-200 rounded-2xl">
@@ -4365,22 +4545,27 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                               </td>
                               <td className="py-3 px-3 text-right">
                                 <div className="flex items-center justify-end gap-1">
-                                  <button
-                                    type="button"
-                                    onClick={() => handleOpenClientInvoiceModal(inv)}
-                                    className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors cursor-pointer"
-                                    title={t("Edit invoice", "Upraviť faktúru", "Számla szerkesztése")}
-                                  >
-                                    <PencilLine className="h-3.5 w-3.5" />
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() => handleDeleteClientInvoice(inv.id)}
-                                    className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
-                                    title={t("Delete invoice", "Vymazať faktúru", "Számla törlése")}
-                                  >
-                                    <Trash2 className="h-3.5 w-3.5" />
-                                  </button>
+                                  {canEditFinance && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenClientInvoiceModal(inv)}
+                                      disabled={inv.isRecurring}
+                                      className="p-1.5 text-slate-400 hover:text-indigo-600 rounded-lg hover:bg-indigo-50 transition-colors cursor-pointer disabled:opacity-40 disabled:hover:text-slate-400 disabled:hover:bg-transparent disabled:cursor-not-allowed"
+                                      title={inv.isRecurring ? t("This is a recurring rule — edit it from Financial Management → Recurring.", "Toto je opakovaná platba — upravte ju v Finančnom prehľade → Opakované platby.", "Ez egy ismétlődő szabály — szerkessze a Pénzügyek → Ismétlődők nézetben.") : t("Edit invoice", "Upraviť faktúru", "Számla szerkesztése")}
+                                    >
+                                      <PencilLine className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                  {canDeleteFinance && (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteClientInvoice(inv.id)}
+                                      className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition-colors cursor-pointer"
+                                      title={t("Delete invoice", "Vymazať faktúru", "Számla törlése")}
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
                                 </div>
                               </td>
                             </tr>
@@ -4482,10 +4667,21 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                 onChange={(e) => setClientInvStatus(e.target.value as any)}
                                 className="w-full px-3 py-2 rounded-xl border border-slate-200 bg-slate-50"
                               >
-                                <option value="planned">{t("Planned", "Plánované", "Tervezett")}</option>
-                                <option value="pending">{t("Pending", "Čaká na úhradu", "Függő")}</option>
-                                <option value="paid">{t("Paid", "Uhradené", "Fizetve")}</option>
-                                <option value="overdue">{t("Overdue", "Po splatnosti", "Lejárt")}</option>
+                                {FINANCIAL_STATUS_OPTIONS.map((s) => (
+                                  <option key={s} value={s}>
+                                    {s === "planned"
+                                      ? t("Planned", "Plánované", "Tervezett")
+                                      : s === "pending"
+                                      ? t("Pending", "Čaká na úhradu", "Függő")
+                                      : s === "partially_paid"
+                                      ? t("Partially Paid", "Čiastočne uhradené", "Részben fizetve")
+                                      : s === "paid"
+                                      ? t("Paid", "Uhradené", "Fizetve")
+                                      : s === "overdue"
+                                      ? t("Overdue", "Po splatnosti", "Lejárt")
+                                      : t("Cancelled", "Zrušené", "Törölve")}
+                                  </option>
+                                ))}
                               </select>
                             </div>
                           </div>
@@ -4547,32 +4743,86 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
 
       {/* 1. Title header */}
-      <div className="flex flex-col border-b border-slate-100 pb-4">
-        <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-          <Users className="h-6 w-6 text-emerald-600" /> {getTranslation(systemLanguage, "clients.title")}
-        </h2>
-        <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
-          {getTranslation(systemLanguage, "clients.subtitle")}
-        </p>
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-100 pb-4">
+        <div className="flex flex-col">
+          <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+            <Users className="h-6 w-6 text-emerald-600" /> {getTranslation(systemLanguage, "clients.title")}
+          </h2>
+          <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
+            {getTranslation(systemLanguage, "clients.subtitle")}
+          </p>
+          {!canEdit && (
+            <span className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider w-fit">
+              {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
+            </span>
+          )}
+        </div>
+
+        {/* Settings — a single quiet button in, and a single way back out. */}
+        <div className="flex items-center gap-2 self-start md:self-auto">
+          {clientsSubView === "settings" ? (
+            <button
+              type="button"
+              onClick={() => setClientsSubView("list")}
+              className="flex items-center gap-1.5 pl-3 pr-4 py-2.5 rounded-2xl border border-slate-200 bg-white text-slate-600 font-heading font-bold text-xs uppercase tracking-wider hover:bg-slate-50 hover:text-slate-900 transition-all cursor-pointer"
+            >
+              <ChevronLeft className="h-4 w-4 shrink-0" />
+              <span>{t("Back to clients", "Späť na klientov", "Vissza az ügyfelekhez")}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setClientsSubView("settings")}
+              title={t("Client settings", "Nastavenia klientov", "Ügyfél beállítások")}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-slate-400 font-heading font-bold text-xs uppercase tracking-wider hover:bg-slate-100 hover:text-slate-700 transition-all cursor-pointer"
+            >
+              <Settings className="h-4 w-4 shrink-0" />
+              <span className="hidden sm:inline">{t("Settings", "Nastavenia", "Beállítások")}</span>
+            </button>
+          )}
+        </div>
       </div>
 
+      {clientsSubView === "settings" ? (
+        <div className="space-y-6">
+          <div className="flex flex-col">
+            <h3 className="font-heading font-black text-slate-800 text-[15px] uppercase tracking-widest">
+              {t("Client Categories", "Kategórie klientov", "Ügyfélkategóriák")}
+            </h3>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mt-0.5">
+              {t("Organize clients into categories and subcategories", "Usporiadajte klientov do kategórií a podkategórií", "Ügyfelek rendezése kategóriákba és alkategóriákba")}
+            </p>
+          </div>
+          <ClientCategoryManager
+            categories={clientCategories}
+            setCategories={(updater) => setClientCategories?.(updater)}
+            onCategoriesDeleted={handleClientCategoriesDeleted}
+            clientCounts={clientCountsByCategory}
+            t={t}
+            readOnly={!canEdit}
+            canDelete={canDelete}
+          />
+        </div>
+      ) : (
+      <>
       {/* 2. Control search & filter bar */}
-      <div className="glass-panel p-6 rounded-[28px] border-2 border-emerald-450 bg-white shadow-lg space-y-4">
+      <div className="glass-panel p-6 rounded-[28px] border-2 border-emerald-400 bg-white shadow-lg space-y-4">
         <div className="flex flex-col sm:flex-row items-center gap-3 w-full">
-          
+
           {/* Saturated & Prominent Search Input */}
-          <div className="relative flex-1 w-full">
+          <div className="relative flex-1 w-full min-w-[220px]">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-emerald-600 stroke-[2.5]" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={getTranslation(systemLanguage, "clients.filter.search")}
-              className="w-full pl-12 pr-4 py-3 rounded-2xl bg-emerald-50/15 border-2 border-emerald-250 text-xs text-slate-800 placeholder:text-slate-400 font-extrabold focus:outline-none focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all shadow-inner"
+              className="w-full pl-12 pr-4 py-3 rounded-2xl bg-emerald-50/15 border-2 border-emerald-200 text-xs text-slate-800 placeholder:text-slate-400 font-extrabold focus:outline-none focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all shadow-inner"
             />
           </div>
 
           {/* Register New Client Button */}
+          {canEdit && (
           <button
             type="button"
             onClick={() => setShowRegisterDrawer(true)}
@@ -4581,6 +4831,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             <Plus className="h-4.5 w-4.5 text-emerald-100 stroke-[2.5]" />
             {systemLanguage === "sk" ? "Registrovať klienta" : systemLanguage === "hu" ? "Ügyfél regisztráció" : "Register Client"}
           </button>
+          )}
 
           {/* Saturated Client Type Selector */}
           <div className="relative w-full sm:w-[180px] shrink-0">
@@ -4608,7 +4859,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             className={`p-3.5 rounded-2xl border-2 transition-all flex items-center justify-center shadow-sm shrink-0 active:scale-95 ${
               showFilterDrawer
                 ? "bg-emerald-700 text-white border-emerald-800 shadow-md shadow-emerald-700/25"
-                : "bg-slate-50 border-slate-250 text-slate-550 hover:bg-slate-100 hover:text-slate-800"
+                : "bg-slate-50 border-slate-200 text-slate-500 hover:bg-slate-100 hover:text-slate-800"
             }`}
             title={showFilterDrawer ? t("Close Filters Drawer", "Zavrieť panel filtrov", "Szűrőpanel bezárása") : t("Open Filters Drawer", "Otvoriť panel filtrov", "Szűrőpanel megnyitása")}
           >
@@ -4618,9 +4869,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         </div>
 
         {/* Collapsible Filter Panel (Collapses smoothly using modern CSS grid/height transitions) */}
-        <div className={`grid transition-all duration-350 ease-in-out ${showFilterDrawer ? "grid-rows-[1fr] opacity-100 border-t border-slate-150 pt-4" : "grid-rows-[0fr] opacity-0 overflow-hidden"}`}>
+        <div className={`grid transition-all duration-350 ease-in-out ${showFilterDrawer ? "grid-rows-[1fr] opacity-100 border-t border-slate-100 pt-4" : "grid-rows-[0fr] opacity-0 invisible overflow-hidden pointer-events-none"}`} aria-hidden={!showFilterDrawer}>
           <div className="overflow-hidden">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pb-1">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pb-1">
               
               {/* City Location Filter */}
               <div className="space-y-1.5">
@@ -4650,14 +4901,55 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 />
               </div>
 
+              {/* Customer category — a main category also matches its subcategories */}
+              <div className="space-y-1.5">
+                <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider pl-0.5">{t("Filter by Client Category", "Filtrovať podľa kategórie klienta", "Szűrés ügyfélkategória szerint")}</label>
+                <ClientCategorySelect
+                  value={filterClientCategory}
+                  onChange={setFilterClientCategory}
+                  categories={clientCategories}
+                  t={t}
+                  leadingOptions={[
+                    { value: "", label: t("All categories", "Všetky kategórie", "Minden kategória") },
+                    { value: NO_CLIENT_CATEGORY, label: t("Without a category", "Bez kategórie", "Kategória nélkül") },
+                  ]}
+                />
+              </div>
+
             </div>
           </div>
         </div>
 
       </div>
 
+      {/* Active clients or the archive — aligned to the right */}
+      <div className="flex justify-end">
+        <div className="flex items-center gap-1 p-1 w-fit rounded-2xl bg-slate-100 border border-slate-200 select-none">
+          {([
+            { scope: "active" as const, Icon: Users, label: t("Active clients", "Aktívni klienti", "Aktív ügyfelek"), count: clientProfiles.length - archivedClientsCount },
+            { scope: "archived" as const, Icon: Archive, label: t("Archived", "Archivovaní", "Archivált"), count: archivedClientsCount },
+          ]).map(({ scope, Icon, label, count }) => (
+            <button
+              key={scope}
+              type="button"
+              aria-pressed={clientArchiveScope === scope}
+              onClick={() => setClientArchiveScope(scope)}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-200 active:scale-95 cursor-pointer ${
+                clientArchiveScope === scope ? "bg-white text-emerald-700 shadow-sm" : "text-slate-500 hover:text-slate-800"
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5 stroke-[2.5]" />
+              {label}
+              <span className={`px-1.5 py-0.5 rounded-full text-[9px] tabular-nums ${clientArchiveScope === scope ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-500"}`}>
+                {count}
+              </span>
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* 3. Clients Data Grid Table */}
-      <div className="glass-panel rounded-[28px] border-2 border-emerald-450 bg-white shadow-xl overflow-hidden">
+      <div className="glass-panel rounded-[28px] border-2 border-emerald-400 bg-white shadow-xl overflow-hidden">
         <div className="overflow-x-auto lg:overflow-x-auto scrollbar-thin">
           <table className="w-full border-collapse text-left block lg:table">
             <thead className="hidden lg:table-header-group">
@@ -4669,16 +4961,23 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "leads.table.type")}</th>
                 <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "leads.table.pm")}</th>
                 <th className="sticky top-0 bg-white z-10 py-4 px-4 text-center border-b-2 border-slate-100">{getTranslation(systemLanguage, "clients.card.leads_count")}</th>
-                <th className="sticky top-0 bg-white z-10 py-4 px-6 rounded-tr-[24px] text-right border-b-2 border-slate-100">{getTranslation(systemLanguage, "clients.card.total_value")}</th>
+                <th className="sticky top-0 bg-white z-10 py-4 px-6 text-right border-b-2 border-slate-100">{getTranslation(systemLanguage, "clients.card.total_value")}</th>
+                <th className="sticky top-0 bg-white z-10 py-4 px-4 rounded-tr-[24px] border-b-2 border-slate-100 w-12">
+                  <span className="sr-only">{t("Actions", "Akcie", "Műveletek")}</span>
+                </th>
               </tr>
             </thead>
 
             <tbody className="divide-y-0 lg:divide-y lg:divide-emerald-100 text-xs block lg:table-row-group">
               {processedClients.length === 0 ? (
                 <tr className="block lg:table-row">
-                  <td colSpan={8} className="py-16 px-6 text-center text-slate-400 block lg:table-cell w-full lg:w-auto">
+                  <td colSpan={9} className="py-16 px-6 text-center text-slate-400 block lg:table-cell w-full lg:w-auto">
                     <div className="text-2xl mb-2 animate-bounce">👥</div>
-                    <div className="font-black text-slate-700 uppercase tracking-wider">{t("No registered clients found", "Nenašli sa žiadni registrovaní klienti", "Nem található regisztrált ügyfél")}</div>
+                    <div className="font-black text-slate-700 uppercase tracking-wider">
+                      {clientArchiveScope === "archived"
+                        ? t("No archived clients found", "Nenašli sa žiadni archivovaní klienti", "Nem található archivált ügyfél")
+                        : t("No registered clients found", "Nenašli sa žiadni registrovaní klienti", "Nem található regisztrált ügyfél")}
+                    </div>
                     <div className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider mt-0.5">{t("We aggregate clients automatically from your leads database.", "Klientov automaticky agregujeme z vašej databázy leadov.", "Az ügyfeleket automatikusan összesítjük a lead-adatbázisából.")}</div>
                   </td>
                 </tr>
@@ -4697,11 +4996,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           {getInitials(client.name)}
                         </div>
                         <div className="flex flex-col">
-                          <span className="line-clamp-1 group-hover:text-emerald-700 transition-colors font-black text-sm lg:text-xs text-slate-850">{client.name}</span>
+                          <span className="line-clamp-1 group-hover:text-emerald-700 transition-colors font-black text-sm lg:text-xs text-slate-800">{client.name}</span>
                           {client.categories && client.categories.length > 0 && (
                             <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider line-clamp-1 mt-0.5">
                               {client.categories.join(", ")}
                             </span>
+                          )}
+                          {clientCategoryPath(clientCategories, client.clientCategoryId).length > 0 && (
+                            <ClientCategoryBadge categories={clientCategories} categoryId={client.clientCategoryId} className="mt-1 w-fit" />
                           )}
                         </div>
                       </div>
@@ -4712,7 +5014,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       {client.phone ? (
                         <span className="flex items-center gap-1"><Phone className="h-3 w-3 text-emerald-500 stroke-[2.5]" /> {client.phone}</span>
                       ) : (
-                        <span className="text-slate-350 italic">{t("None", "Žiadne", "Nincs")}</span>
+                        <span className="text-slate-300 italic">{t("None", "Žiadne", "Nincs")}</span>
                       )}
                     </td>
 
@@ -4721,7 +5023,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       {client.email ? (
                         <span className="flex items-center gap-1 truncate max-w-[140px]"><Mail className="h-3 w-3 text-emerald-500 stroke-[2.5]" /> {client.email}</span>
                       ) : (
-                        <span className="text-slate-350 italic">{t("None", "Žiadne", "Nincs")}</span>
+                        <span className="text-slate-300 italic">{t("None", "Žiadne", "Nincs")}</span>
                       )}
                     </td>
 
@@ -4729,7 +5031,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     <td className="inline-flex items-center lg:table-cell py-1 lg:py-3.5 px-0 lg:px-4 text-slate-700 font-black mr-3.5">
                       <div className="flex items-center gap-1">
                         <MapPin className="h-3.5 w-3.5 text-emerald-500 stroke-[2.5] shrink-0" />
-                        <span className="line-clamp-1 text-slate-650">
+                        <span className="line-clamp-1 text-slate-600">
                           {client.street ? `${client.street}, ` : ""}
                           {client.city || ""}
                           {client.country ? ` (${client.country})` : ""}
@@ -4785,6 +5087,22 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           {money(client.totalValue, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                       </div>
+                    </td>
+
+                    {/* Archive / restore */}
+                    <td className="inline-flex items-center lg:table-cell py-1.5 lg:py-3.5 px-0 lg:px-4 lg:text-right">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setClientArchived(client.name, !client.archived);
+                        }}
+                        title={client.archived ? t("Restore client", "Obnoviť klienta", "Ügyfél visszaállítása") : t("Archive client", "Archivovať klienta", "Ügyfél archiválása")}
+                        aria-label={client.archived ? t("Restore client", "Obnoviť klienta", "Ügyfél visszaállítása") : t("Archive client", "Archivovať klienta", "Ügyfél archiválása")}
+                        className="p-2 rounded-xl text-slate-400 hover:text-emerald-700 hover:bg-emerald-50 active:scale-90 transition-all duration-150 cursor-pointer"
+                      >
+                        {client.archived ? <ArchiveRestore className="h-4 w-4 stroke-[2.5]" /> : <Archive className="h-4 w-4 stroke-[2.5]" />}
+                      </button>
                     </td>
 
                   </tr>
@@ -4883,6 +5201,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           </div>
         </div>
       </div>
+      </>
+      )}
 
       {/* TIMELINE EMAIL DETAIL SLIDEOUT OVERLAY */}
       {(selectedTimelineEmail || isClosingEmailDetail) && typeof document !== "undefined" && createPortal(
@@ -4912,11 +5232,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 </div>
               ) : timelineEmailDetailBody ? (
                 <div className="flex-1 flex flex-col justify-between">
-                  <div className="border-b border-slate-150 pb-3 mb-4 text-left">
-                    <p className="text-[10px] text-slate-550 font-bold">
+                  <div className="border-b border-slate-100 pb-3 mb-4 text-left">
+                    <p className="text-[10px] text-slate-500 font-bold">
                       {t("Subject", "Predmet", "Tárgy")}: <strong className="text-slate-800">{selectedTimelineEmail.title}</strong>
                     </p>
-                    <p className="text-[10px] text-slate-550 font-bold mt-1">
+                    <p className="text-[10px] text-slate-500 font-bold mt-1">
                       {t("Date", "Dátum", "Dátum")}: <span className="text-slate-700">{formatTimestampLocalized(selectedTimelineEmail.timestamp, systemLanguage)}</span>
                     </p>
                   </div>
@@ -4949,7 +5269,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         `}
                       />
                     ) : (
-                      <div className="text-left text-xs text-slate-700 font-semibold whitespace-pre-wrap leading-relaxed select-text p-4 bg-slate-50 rounded-2xl border border-slate-150">
+                      <div className="text-left text-xs text-slate-700 font-semibold whitespace-pre-wrap leading-relaxed select-text p-4 bg-slate-50 rounded-2xl border border-slate-100">
                         {timelineEmailDetailBody.text || t("No message content.", "Žiadny obsah správy.", "Nincs üzenettartalom.")}
                       </div>
                     )}
@@ -4971,11 +5291,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
       {/* REGISTER NEW CLIENT SLIDEOUT OVERLAY */}
       {(showRegisterDrawer || isClosingRegisterDrawer) && (
-        <div className={`fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-50 flex flex-col justify-end ${isClosingRegisterDrawer ? "animate-fade-out" : "animate-fade-in"}`}>
+        <div className={`fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-[100000] flex flex-col justify-end ${isClosingRegisterDrawer ? "animate-fade-out" : "animate-fade-in"}`}>
           {/* Backdrop click close */}
           <div className="flex-1" onClick={closeRegisterDrawer} />
           
-          <div className={`w-full max-w-4xl mx-auto bg-white rounded-t-[32px] border-t-2 border-emerald-450 shadow-2xl flex flex-col relative max-h-[85vh] ${isClosingRegisterDrawer ? "animate-slide-out-bottom" : "animate-slide-in-bottom"}`}>
+          <div className={`w-full max-w-4xl mx-auto bg-white rounded-t-[32px] border-t-2 border-emerald-400 shadow-2xl flex flex-col relative max-h-[85vh] ${isClosingRegisterDrawer ? "animate-slide-out-bottom" : "animate-slide-in-bottom"}`}>
             {/* Header */}
             <div className="bg-white border-b border-slate-100 px-6 py-5 rounded-t-[30px] flex items-center justify-between shrink-0">
               <div className="text-left">
@@ -5005,7 +5325,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 {/* Client Type Radio Group */}
                 <div className="bg-slate-50/50 p-4 rounded-2xl border border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                   <div className="text-left">
-                    <span className="text-[10px] font-black uppercase text-slate-450 tracking-wider">
+                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
                       {systemLanguage === "sk" ? "Typ klienta" : systemLanguage === "hu" ? "Ügyfél típusa" : "Client Type"}
                     </span>
                     <p className="text-[10px] font-bold text-slate-400 mt-0.5">
@@ -5026,7 +5346,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                             "px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider cursor-pointer transition-all flex items-center gap-1.5 select-none",
                             active 
                               ? "bg-white text-emerald-700 shadow-sm border border-slate-200/50" 
-                              : "text-slate-450 hover:text-slate-600 border border-transparent"
+                              : "text-slate-400 hover:text-slate-600 border border-transparent"
                           )}
                         >
                           <input
@@ -5046,7 +5366,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
                       {systemLanguage === "sk" ? "Krajina" : systemLanguage === "hu" ? "Ország" : "Country"}
                     </label>
                     <CustomSelect
@@ -5057,7 +5377,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </div>
                   
                   <div className="md:col-span-2 space-y-1 relative">
-                    <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
                       {systemLanguage === "sk" ? "Meno klienta *" : systemLanguage === "hu" ? "Ügyfél neve *" : "Client Name *"}
                     </label>
                     <div className="relative">
@@ -5069,37 +5389,19 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         placeholder={systemLanguage === "sk" ? "napr. Ján Novák alebo Acme Corp" : systemLanguage === "hu" ? "pl. Kiss János vagy Acme Corp" : "e.g. Ján Novák or Acme Corp"}
                         className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold pr-9"
                       />
-                      {isLoadingSuggestions && activeSuggestionInput === "name" && (
-                        <div className="absolute right-3 top-2.5">
-                          <Loader2 className="h-4 w-4 animate-spin text-emerald-500" />
-                        </div>
-                      )}
+                      <CompanyLookupSpinner visible={registerLookup.isLoading && registerLookup.activeField === "name"} />
                     </div>
-                    {activeSuggestionInput === "name" && suggestions.length > 0 && (
-                      <div 
-                        ref={dropdownRef}
-                        className="absolute left-0 right-0 top-full mt-1 bg-white rounded-2xl border border-slate-200 shadow-xl max-h-60 overflow-y-auto z-[999]"
-                      >
-                        {suggestions.map((item, idx) => (
-                          <div
-                            key={item.id || idx}
-                            onClick={() => handleSelectSuggestion(item)}
-                            className="px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer border-b border-slate-100 last:border-0 text-left cursor-pointer"
-                          >
-                            <div className="font-bold text-slate-800 text-[11px]">{stripHtml(item.entityName)}</div>
-                            <div className="text-[10px] text-slate-400 mt-0.5">
-                              {item.entNumber && `IČO: ${item.entNumber}`}
-                              {item.entNumber && item.taxNumber && " | "}
-                              {item.taxNumber && `DIČ: ${item.taxNumber}`}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    <CompanySuggestions
+                      suggestions={registerLookup.suggestions}
+                      visible={registerLookup.activeField === "name"}
+                      onSelect={handleSelectRegistrySuggestion}
+                      onDismiss={registerLookup.close}
+                      systemLanguage={systemLanguage}
+                    />
                   </div>
                   
                   <div className="md:col-span-1 space-y-1">
-                    <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
                       {systemLanguage === "sk" ? `Odhadovaná hodnota (${currencySymbol})` : systemLanguage === "hu" ? `Becsült érték (${currencySymbol})` : `Estimated Worth (${currencySymbol})`}
                     </label>
                     <input
@@ -5114,7 +5416,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
                       {systemLanguage === "sk" ? "Telefónne číslo" : systemLanguage === "hu" ? "Telefonszám" : "Phone Number"}
                     </label>
                     <input
@@ -5127,7 +5429,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </div>
                   
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
                       {systemLanguage === "sk" ? "E-mailová adresa" : systemLanguage === "hu" ? "E-mail cím" : "Email Address"}
                     </label>
                     <input
@@ -5140,7 +5442,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
                       {systemLanguage === "sk" ? "Priradený PM manažér" : systemLanguage === "hu" ? "Hozzárendelt PM menedzser" : "Assigned PM Manager"}
                     </label>
                     <CustomSelect
@@ -5161,7 +5463,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div className="space-y-1 md:col-span-2">
-                    <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
                       {systemLanguage === "sk" ? "Ulica a číslo" : systemLanguage === "hu" ? "Utca, házszám" : "Street Address"}
                     </label>
                     <input
@@ -5174,7 +5476,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </div>
                   
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
                       {systemLanguage === "sk" ? "Mesto" : systemLanguage === "hu" ? "Város" : "City"}
                     </label>
                     <input
@@ -5187,7 +5489,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
                       {systemLanguage === "sk" ? "PSČ" : systemLanguage === "hu" ? "Irányítószám" : "Postal Code"}
                     </label>
                     <input
@@ -5200,9 +5502,22 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </div>
                 </div>
 
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
+                    {t("Client Category", "Kategória klienta", "Ügyfélkategória")}
+                  </label>
+                  <ClientCategorySelect
+                    value={newClientCategoryId}
+                    onChange={setNewClientCategoryId}
+                    categories={clientCategories}
+                    t={t}
+                    size="sm"
+                  />
+                </div>
+
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
                   <div className="space-y-1 md:col-span-4">
-                    <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
                       {systemLanguage === "sk" ? "Zaujímavé kategórie" : systemLanguage === "hu" ? "Érdeklődési kategóriák" : "Interested Categories"}
                     </label>
                     <div className="flex flex-wrap gap-1.5 pt-1">
@@ -5244,7 +5559,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                     <div className="space-y-1 relative">
-                      <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
                         {systemLanguage === "sk" ? "IČO (Identifikačné číslo)" : systemLanguage === "hu" ? "Cégjegyzékszám (IČO)" : "Company ID (IČO)"}
                       </label>
                       <div className="relative">
@@ -5255,59 +5570,61 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           placeholder={t("e.g. 36123456", "napr. 36123456", "pl. 36123456")}
                           className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold pr-9"
                         />
-                        {isLoadingSuggestions && activeSuggestionInput === "companyId" && (
-                          <div className="absolute right-3 top-2.5">
-                            <Loader2 className="h-4 w-4 animate-spin text-emerald-500" />
-                          </div>
-                        )}
+                        <CompanyLookupSpinner visible={registerLookup.isLoading && registerLookup.activeField === "companyId"} />
                       </div>
-                      {activeSuggestionInput === "companyId" && suggestions.length > 0 && (
-                        <div 
-                          ref={dropdownRef}
-                          className="absolute left-0 right-0 top-full mt-1 bg-white rounded-2xl border border-slate-200 shadow-xl max-h-60 overflow-y-auto z-[999]"
-                        >
-                          {suggestions.map((item, idx) => (
-                            <div
-                              key={item.id || idx}
-                              onClick={() => handleSelectSuggestion(item)}
-                              className="px-4 py-3 hover:bg-slate-50 transition-colors cursor-pointer border-b border-slate-100 last:border-0 text-left cursor-pointer"
-                            >
-                              <div className="font-bold text-slate-800 text-[11px]">{stripHtml(item.entityName)}</div>
-                              <div className="text-[10px] text-slate-400 mt-0.5">
-                                {item.entNumber && `IČO: ${item.entNumber}`}
-                                {item.entNumber && item.taxNumber && " | "}
-                                {item.taxNumber && `DIČ: ${item.taxNumber}`}
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
+                      <CompanySuggestions
+                        suggestions={registerLookup.suggestions}
+                        visible={registerLookup.activeField === "companyId"}
+                        onSelect={handleSelectRegistrySuggestion}
+                        onDismiss={registerLookup.close}
+                        systemLanguage={systemLanguage}
+                      />
                     </div>
                     
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                    <div className="space-y-1 relative">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
                         {systemLanguage === "sk" ? "DIČ (Daňové registračné číslo)" : systemLanguage === "hu" ? "Adószám (DIČ)" : "Tax ID (DIČ)"}
                       </label>
-                      <input
-                        type="text"
-                        value={newClientTaxId}
-                        onChange={(e) => setNewClientTaxId(e.target.value)}
-                        placeholder={t("e.g. 2021234567", "napr. 2021234567", "pl. 2021234567")}
-                        className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={newClientTaxId}
+                          onChange={handleTaxIdChange}
+                          placeholder={t("e.g. 2021234567", "napr. 2021234567", "pl. 2021234567")}
+                          className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold pr-9"
+                        />
+                        <CompanyLookupSpinner visible={registerLookup.isLoading && registerLookup.activeField === "taxId"} />
+                      </div>
+                      <CompanySuggestions
+                        suggestions={registerLookup.suggestions}
+                        visible={registerLookup.activeField === "taxId"}
+                        onSelect={handleSelectRegistrySuggestion}
+                        onDismiss={registerLookup.close}
+                        systemLanguage={systemLanguage}
                       />
                     </div>
 
-                    <div className="space-y-1">
-                      <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                    <div className="space-y-1 relative">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
                         {systemLanguage === "sk" ? "IČ DPH" : systemLanguage === "hu" ? "Közösségi adószám (IČ DPH)" : "VAT ID (IČ DPH)"}
                       </label>
-                      <input
-                        type="text"
-                        value={newClientVatId}
-                        onChange={(e) => setNewClientVatId(e.target.value)}
-                        onBlur={() => validateVatCode(newClientVatId, false)}
-                        placeholder={t("e.g. SK2021234567", "napr. SK2021234567", "pl. SK2021234567")}
-                        className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
+                      <div className="relative">
+                        <input
+                          type="text"
+                          value={newClientVatId}
+                          onChange={handleVatIdChange}
+                          onBlur={() => validateVatCode(newClientVatId, false)}
+                          placeholder={t("e.g. SK2021234567", "napr. SK2021234567", "pl. SK2021234567")}
+                          className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold pr-9"
+                        />
+                        <CompanyLookupSpinner visible={registerLookup.isLoading && registerLookup.activeField === "vatId"} />
+                      </div>
+                      <CompanySuggestions
+                        suggestions={registerLookup.suggestions}
+                        visible={registerLookup.activeField === "vatId"}
+                        onSelect={handleSelectRegistrySuggestion}
+                        onDismiss={registerLookup.close}
+                        systemLanguage={systemLanguage}
                       />
                       {renderVatValidation(newClientVatStatus, newClientVatResult)}
                     </div>
@@ -5315,7 +5632,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="space-y-1">
-                      <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
                         {systemLanguage === "sk" ? "Kontaktná osoba" : systemLanguage === "hu" ? "Kapcsolattartó személy" : "Contact Person"}
                       </label>
                       <input
@@ -5328,7 +5645,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     </div>
                     
                     <div className="space-y-1">
-                      <label className="text-[9px] font-black text-slate-455 uppercase tracking-wider block">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
                         {systemLanguage === "sk" ? "Webstránka" : systemLanguage === "hu" ? "Weboldal" : "Website URL"}
                       </label>
                       <input

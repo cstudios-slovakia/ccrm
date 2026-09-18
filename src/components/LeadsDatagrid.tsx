@@ -1,8 +1,11 @@
 import React, { useState, useMemo, useEffect, useCallback } from "react";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { useUserPref } from "../utils/userPrefs";
-import { resolveAssigneeName } from "../utils/taskSelectors";
-// import { createPortal } from "react-dom";
+import { canArchiveTask, resolveAssigneeName, type TaskAccess } from "../utils/taskSelectors";
+import { liftAccent } from "../utils/accentColor";
+import { isOutgoingMail, mergeLeadTimeline, withTimelineEvent } from "../utils/mailTimeline";
+import { useConfirmDialog } from "./ui/ConfirmDialog";
+import { createPortal } from "react-dom";
 import {
     Users,
     MapPin,
@@ -49,6 +52,10 @@ import {
     Truck,
     Flag,
     Star,
+    Link2,
+    Unlink,
+    AlarmClock,
+    AlertTriangle,
 } from "lucide-react";
 import type {
     Lead,
@@ -59,8 +66,18 @@ import type {
     UserProfile,
     Project,
     ProjectType,
+    LeadAssignmentSettings,
 } from "../types";
 import { DOCUMENT_EVENT_TYPES } from "../types";
+import { DEFAULT_LEAD_ASSIGNMENT, isAutoAssignActive } from "../utils/leadAssignment";
+import { pairableProjects, projectsForLead } from "../utils/projectAutoCreate";
+import {
+  DEFAULT_PROJECT_STATUS,
+  projectStatusBadgeClass,
+  projectStatusLabel,
+} from "../utils/projects";
+import { evaluateLeadSla, type LeadSlaStatus, type LeadStateSla } from "../utils/leadSla";
+import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 
 // Named preset deadline times offered in the gate quick-add picker, mirroring the
 // task dashboard's Add-task drawer. A "Custom" option reveals a free time input so
@@ -184,123 +201,10 @@ const InlineDeadlineTimePicker: React.FC<{
     );
 };
 
-// Searchable lead/referral picker (item 6): a select whose options are filtered by a fulltext
-// search box at the top of the dropdown. Reused by the new-lead popup and the lead detail panel.
-const SearchableLeadSelect: React.FC<{
-    leads: Lead[];
-    value: string;
-    onChange: (id: string) => void;
-    excludeId?: string;
-    systemLanguage: Language;
-}> = ({ leads, value, onChange, excludeId, systemLanguage }) => {
-    const [open, setOpen] = useState(false);
-    const [query, setQuery] = useState("");
-    const ref = React.useRef<HTMLDivElement>(null);
-    const noneLabel =
-        systemLanguage === "sk"
-            ? "Žiadny referral"
-            : systemLanguage === "hu"
-              ? "Nincs ajánló"
-              : "No referral source";
-    const searchLabel =
-        systemLanguage === "sk"
-            ? "Hľadať..."
-            : systemLanguage === "hu"
-              ? "Keresés..."
-              : "Search...";
-    const emptyLabel =
-        systemLanguage === "sk"
-            ? "Žiadne výsledky"
-            : systemLanguage === "hu"
-              ? "Nincs találat"
-              : "No matches";
-    const options = leads.filter((l) => l.id !== excludeId);
-    const filtered = query.trim()
-        ? options.filter((l) =>
-              `${l.name} ${l.city || ""}`
-                  .toLowerCase()
-                  .includes(query.trim().toLowerCase()),
-          )
-        : options;
-    const selected = leads.find((l) => l.id === value);
-
-    useEffect(() => {
-        const handler = (e: MouseEvent) => {
-            if (ref.current && !ref.current.contains(e.target as Node))
-                setOpen(false);
-        };
-        if (open) document.addEventListener("mousedown", handler);
-        return () => document.removeEventListener("mousedown", handler);
-    }, [open]);
-
-    return (
-        <div className="relative" ref={ref}>
-            <button
-                type="button"
-                onClick={() => setOpen((o) => !o)}
-                className="w-full px-4 py-2.5 rounded-xl bg-blue-50/10 border border-blue-100 text-xs text-slate-800 focus:outline-none flex items-center justify-between gap-2 cursor-pointer text-left hover:border-blue-200 transition-colors"
-            >
-                <span
-                    className={
-                        selected ? "truncate" : "truncate text-slate-400"
-                    }
-                >
-                    {selected
-                        ? `${selected.name} (${selected.city || "N/A"})`
-                        : noneLabel}
-                </span>
-                <ChevronDown className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-            </button>
-            {open && (
-                <div className="absolute left-0 right-0 top-full mt-1 bg-white rounded-2xl border border-slate-200 shadow-xl max-h-64 overflow-y-auto z-[999] animate-in fade-in zoom-in-95 duration-150">
-                    <div className="p-2 sticky top-0 bg-white border-b border-slate-100 z-10">
-                        <input
-                            autoFocus
-                            value={query}
-                            onChange={(e) => setQuery(e.target.value)}
-                            placeholder={searchLabel}
-                            className="w-full px-3 py-1.5 rounded-lg bg-slate-50 border border-slate-200 text-xs focus:outline-none focus:border-indigo-400"
-                        />
-                    </div>
-                    <button
-                        type="button"
-                        onClick={() => {
-                            onChange("");
-                            setOpen(false);
-                            setQuery("");
-                        }}
-                        className="w-full text-left px-4 py-2 text-xs font-semibold text-slate-500 hover:bg-slate-50 cursor-pointer"
-                    >
-                        {noneLabel}
-                    </button>
-                    {filtered.map((l) => (
-                        <button
-                            type="button"
-                            key={l.id}
-                            onClick={() => {
-                                onChange(l.id);
-                                setOpen(false);
-                                setQuery("");
-                            }}
-                            className={`w-full text-left px-4 py-2 text-xs hover:bg-indigo-50 cursor-pointer ${l.id === value ? "bg-indigo-50 font-bold text-indigo-700" : "text-slate-700"}`}
-                        >
-                            {l.name}{" "}
-                            <span className="text-slate-400">
-                                ({l.city || "N/A"})
-                            </span>
-                        </button>
-                    ))}
-                    {filtered.length === 0 && (
-                        <div className="px-4 py-3 text-xs text-slate-400 text-center">
-                            {emptyLabel}
-                        </div>
-                    )}
-                </div>
-            )}
-        </div>
-    );
-};
 import { CustomSelect } from "./ui/CustomSelect";
+import { ClientSelect } from "./ui/ClientSelect";
+import { StarRating } from "./ui/StarRating";
+import { matchesRatingFilter, ratingFilterOptions } from "../utils/rating";
 import { TimelineAuthorBadge } from "./TimelineAuthorBadge";
 import { TimelineCollapsible } from "./TimelineCollapsible";
 import { BlockEditor } from "./BlockEditor";
@@ -310,10 +214,191 @@ import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import {
     todayLocal,
+    todayLocalPlusDays,
     formatDateLocalized,
     // formatTimestampLocalized — only used by the commented-out e-mail full view
 } from "../utils/localTime";
 import { formatMoney } from "../utils/currency";
+
+// "1 deň / 2-4 dni / 5+ dní" — Slovak counts differently above four, and a badge
+// reading "3 dní" is the kind of thing an operator never stops noticing.
+const slaDays = (n: number, lang: Language): string =>
+    lang === "sk"
+        ? `${n} ${n === 1 ? "deň" : n < 5 ? "dni" : "dní"}`
+        : lang === "hu"
+          ? `${n} nap`
+          : `${n} ${n === 1 ? "day" : "days"}`;
+
+/*
+  "This lead has been sitting in its phase past its limit."
+
+  The limit is set per phase in Settings -> Pipeline stages (see utils/leadSla.ts);
+  this badge is what an operator actually sees for it, in the leads list, on the
+  kanban card and on the lead itself. It flickers on purpose: a breached lead is
+  one row among a hundred, and a static amber pill is exactly what the eye learns
+  to skip. The animation is `animate-sla-flicker` in index.css and holds still
+  under prefers-reduced-motion.
+*/
+const SlaBreachBadge: React.FC<{
+    sla: LeadSlaStatus;
+    lang: Language;
+    /** "full" spells the numbers out (lead detail); "compact" is the list pill. */
+    variant?: "compact" | "full";
+}> = ({ sla, lang, variant = "compact" }) => {
+    const days = (n: number) => slaDays(n, lang);
+
+    const title =
+        lang === "sk"
+            ? `V tejto fáze už ${days(sla.daysInPhase)} — limit je ${days(sla.limitDays)}, prekročený o ${days(sla.overdueDays)}. Posuňte lead do ďalšej fázy.`
+            : lang === "hu"
+              ? `Már ${days(sla.daysInPhase)} ebben a fázisban — a határidő ${days(sla.limitDays)}, ${days(sla.overdueDays)} késés. Léptesse tovább a leadet.`
+              : `In this phase for ${days(sla.daysInPhase)} — the limit is ${days(sla.limitDays)}, so it is ${days(sla.overdueDays)} overdue. Move the lead on.`;
+
+    return (
+        <span
+            role="status"
+            title={title}
+            className={`animate-sla-flicker inline-flex items-center gap-1 shrink-0 rounded-full border border-rose-300 bg-rose-50 text-rose-700 font-black uppercase tracking-wider cursor-help ${
+                variant === "full"
+                    ? "px-2.5 py-1 text-[10px]"
+                    : "px-1.5 py-0.5 text-[9px]"
+            }`}
+        >
+            <AlarmClock
+                className={variant === "full" ? "h-3.5 w-3.5 stroke-[2.5]" : "h-3 w-3 stroke-[2.5]"}
+            />
+            {variant === "full"
+                ? `${lang === "sk" ? "SLA prekročené" : lang === "hu" ? "SLA túllépve" : "SLA overdue"} · ${sla.daysInPhase}/${sla.limitDays} ${lang === "hu" ? "nap" : lang === "sk" ? "dní" : "days"}`
+                : `+${sla.overdueDays} ${lang === "hu" ? "nap" : lang === "sk" ? "d" : "d"}`}
+        </span>
+    );
+};
+
+type LeadStatusSelectorProps = {
+    status: string;
+    onChange: (newStatus: string) => void;
+    isEditing?: boolean;
+    leadStates: string[];
+    leadStateParents: Record<string, string>;
+    leadStageGroups?: Record<string, "new" | "in_progress" | "closed">;
+    leadStateColors: Record<string, string>;
+    systemLanguage: Language;
+};
+
+/** Module-scoped so hover/filter re-renders of the grid do not remount the dropdown. */
+const LeadStatusSelector: React.FC<LeadStatusSelectorProps> = ({
+    status,
+    onChange,
+    isEditing = true,
+    leadStates,
+    leadStateParents,
+    leadStageGroups,
+    leadStateColors,
+    systemLanguage,
+}) => {
+    const sName = (status || "").toLowerCase();
+    const activeMain = leadStateParents[sName] || sName;
+    const hasSubstates = leadStates.some(
+        (s) => leadStateParents[s.toLowerCase()] === activeMain,
+    );
+    const activeSubstates = leadStates.filter(
+        (s) => leadStateParents[s.toLowerCase()] === activeMain,
+    );
+    const currentSub = leadStateParents[sName] ? sName : "";
+    const getStateColor = (stateName: string) => {
+        if (!leadStateColors) return "#64748b";
+        return leadStateColors[(stateName || "").toLowerCase()] || "#64748b";
+    };
+    const mainColor = getStateColor(activeMain);
+    const subColor = currentSub ? getStateColor(currentSub) : mainColor;
+
+    const majorStates = (["new", "in_progress", "closed"] as const).flatMap(
+        (group) =>
+            leadStates.filter(
+                (s) =>
+                    !leadStateParents[s.toLowerCase()] &&
+                    (leadStageGroups?.[s.toLowerCase()] || "in_progress") === group,
+            ),
+    );
+
+    if (!isEditing) {
+        if (leadStateParents[sName]) {
+            return (
+                <span
+                    className="inline-flex items-center px-2.5 py-1 rounded-full text-[9px] font-extrabold uppercase border shadow-sm text-white select-none leading-none tracking-wider"
+                    style={{
+                        background: `linear-gradient(135deg, ${mainColor}, ${subColor})`,
+                        borderColor: "transparent",
+                    }}
+                >
+                    {leadStateParents[sName].toUpperCase()} &gt; {sName.toUpperCase()}
+                </span>
+            );
+        }
+        return (
+            <span
+                className="inline-flex items-center px-2.5 py-1 rounded-full text-[9px] font-extrabold uppercase border shadow-sm text-white select-none leading-none tracking-wider"
+                style={{ backgroundColor: mainColor, borderColor: mainColor }}
+            >
+                {sName.toUpperCase()}
+            </span>
+        );
+    }
+
+    return (
+        <div
+            className="flex flex-col items-center lg:items-start gap-1 justify-center"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+        >
+            <CustomSelect
+                size="sm"
+                value={activeMain}
+                onChange={onChange}
+                className="!font-black !uppercase !tracking-wider !shadow-sm"
+                style={{
+                    backgroundColor: `${mainColor}18`,
+                    color: mainColor,
+                    borderColor: `${mainColor}35`,
+                }}
+                options={majorStates.map((state) => ({
+                    value: state.toLowerCase(),
+                    label: state,
+                }))}
+            />
+            {hasSubstates && (
+                <CustomSelect
+                    size="sm"
+                    value={currentSub}
+                    onChange={(newSub) => onChange(newSub || activeMain)}
+                    className="!font-black !uppercase !tracking-wider !shadow-sm"
+                    style={{
+                        background: currentSub
+                            ? `linear-gradient(to right, ${mainColor}18, ${subColor}18)`
+                            : `${mainColor}10`,
+                        color: subColor,
+                        borderColor: `${subColor}30`,
+                    }}
+                    options={[
+                        {
+                            value: "",
+                            label:
+                                systemLanguage === "sk"
+                                    ? "-- Žiadny podstav --"
+                                    : systemLanguage === "hu"
+                                      ? "-- Nincs al-állapot --"
+                                      : "-- No Substate --",
+                        },
+                        ...activeSubstates.map((sub) => ({
+                            value: sub.toLowerCase(),
+                            label: `↳ ${sub}`,
+                        })),
+                    ]}
+                />
+            )}
+        </div>
+    );
+};
 
 // Separates the old from the new state inside a `status_change` event's content.
 // `timeline_events` has no column for the pair, so it is stored as plain text —
@@ -394,7 +479,7 @@ const CalendarPane: React.FC<{
 
             <div className="grid grid-cols-8 gap-y-1 text-center items-center">
                 {/* Week column header */}
-                <span className="text-[8px] font-black text-slate-350 uppercase tracking-wider">
+                <span className="text-[8px] font-black text-slate-300 uppercase tracking-wider">
                     {systemLanguage === "sk"
                         ? "Týž"
                         : systemLanguage === "hu"
@@ -415,7 +500,7 @@ const CalendarPane: React.FC<{
                     return (
                         <React.Fragment key={weekIdx}>
                             {/* Week Number Label */}
-                            <span className="text-[9px] font-bold text-slate-450 py-1 bg-slate-50/50 rounded-lg">
+                            <span className="text-[9px] font-bold text-slate-400 py-1 bg-slate-50/50 rounded-lg">
                                 {weekNumbers[weekIdx]}
                             </span>
 
@@ -468,12 +553,12 @@ const CalendarPane: React.FC<{
                                         "bg-purple-100/65 text-purple-800 rounded-none h-7 w-full";
                                 } else {
                                     dayClass +=
-                                        "text-slate-700 hover:text-purple-650";
+                                        "text-slate-700 hover:text-purple-600";
                                 }
 
                                 if (isToday && !isStart && !isEnd && !inRange) {
                                     dayClass +=
-                                        " border-2 border-purple-650 bg-purple-50/50";
+                                        " border-2 border-purple-600 bg-purple-50/50";
                                 }
 
                                 return (
@@ -742,10 +827,30 @@ interface LeadsDatagridProps {
     integrationsConfig?: any;
     leadStageGroups?: Record<string, "new" | "in_progress" | "closed">;
     projectTypes?: ProjectType[];
+    /** Every project in the system; the ones paired with a lead are looked up by `leadId`. */
+    projects?: Project[];
     setProjects?: React.Dispatch<React.SetStateAction<Project[]>>;
     setActiveTab?: (tab: string) => void;
     leadStateFollowUp?: Record<string, boolean>;
+    /** Per-phase SLA in days, keyed by lowercased state name (Settings -> Pipeline stages). */
+    leadStateSla?: LeadStateSla;
+    /** Rules for handing an ownerless new lead to a project manager (Settings -> Users). */
+    leadAssignment?: LeadAssignmentSettings;
     currencyCode?: string | null;
+    /**
+     * What the current user may do with leads (role matrix, `leads` +
+     * `leads.delete`). `edit: false` renders the grid and the detail read-only;
+     * `delete: false` hides every delete control on its own. Defaults to full
+     * access so the component keeps working where the caller passes nothing.
+     */
+    access?: ModuleAccess;
+    /**
+     * What the server enforces on `tasks` — separate from `access` above, which
+     * is the *leads* module's answer. Every task this screen creates as a side
+     * effect (a locking follow-up, a future-event reminder) writes into a
+     * collection this view's own permission does not cover.
+     */
+    taskAccess?: TaskAccess;
 }
 
 export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
@@ -776,15 +881,45 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     integrationsConfig,
     leadStageGroups = {},
     projectTypes = [],
+    projects = [],
     setProjects,
     setActiveTab,
     leadStateFollowUp = {},
+    leadStateSla = {},
+    leadAssignment = DEFAULT_LEAD_ASSIGNMENT,
     currencyCode,
+    access = FULL_MODULE_ACCESS,
+    taskAccess,
 }) => {
     const t = (en: string, sk: string, hu: string) =>
         systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+
+    // Role gates. Every mutating handler checks these itself too, so a keyboard
+    // shortcut, a context menu or a stale button can never write past them.
+    const canEdit = access.edit;
+    const canDelete = access.delete;
+    // A task created or changed here (a locking follow-up, a future-event
+    // reminder, its status, its assignee) writes `tasks`, which the server
+    // gates on the `tasks` module, not `leads` — so these need their own
+    // answer rather than inheriting canEdit.
+    const canCreateTask = taskAccess ? taskAccess.create : canEdit;
+    const canEditGateTask = taskAccess ? taskAccess.edit : canEdit;
+
+    // Shown at the top of the list and of the detail when the role only reads.
+    const readOnlyNotice = !canEdit ? (
+        <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider shadow-sm w-fit">
+            <Lock className="h-3.5 w-3.5 stroke-[2.5]" />
+            {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
+        </div>
+    ) : null;
     const money = (value: number, opts?: Intl.NumberFormatOptions) =>
         formatMoney(value, currencyCode, systemLanguage, opts);
+
+    // True when a new lead left without a project manager will actually be given
+    // one (Settings -> Users -> automatic lead assignment). The server makes the
+    // pick on sync, so the create form deliberately leaves the owner blank and
+    // says so, instead of quietly defaulting to whoever is first in the list.
+    const autoAssignActive = isAutoAssignActive(leadAssignment, projectManagers);
 
     // Lead states flagged as "follow-up" in Settings, in the configured order.
     // Each becomes its own checkbox on the lead so several follow-up rounds can be
@@ -793,6 +928,31 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const followUpStates = leadStates.filter(
         (s) => !!leadStateFollowUp[s.toLowerCase()],
     );
+
+    /*
+      Leads past the SLA limit of the phase they are in, keyed by lead id.
+      Only breached leads are kept, so every call site is a plain lookup.
+
+      Recomputed whenever the leads or the limits change, which is also what keeps
+      "today" from going stale in a tab left open across midnight — any edit to any
+      lead re-reads the clock.
+    */
+    const breachedSlaById = useMemo(() => {
+        const out: Record<string, LeadSlaStatus> = {};
+        if (!Object.keys(leadStateSla).length) return out;
+        const today = todayLocal();
+        leads.forEach((l) => {
+            const sla = evaluateLeadSla(
+                l,
+                leadStateSla,
+                leadStageGroups,
+                leadStateParents,
+                today,
+            );
+            if (sla?.isBreached) out[l.id] = sla;
+        });
+        return out;
+    }, [leads, leadStateSla, leadStageGroups, leadStateParents]);
     const getSafeStateColor = (stateName: string) => {
         if (!leadStateColors) return "#64748b";
         const key = (stateName || "").toLowerCase();
@@ -815,125 +975,24 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         );
     };
 
-    const StatusSelector: React.FC<{
-        status: string;
-        onChange: (newStatus: string) => void;
-        isEditing?: boolean;
-    }> = ({ status, onChange, isEditing = true }) => {
-        const sName = (status || "").toLowerCase();
-        const activeMain = leadStateParents[sName] || sName;
-        const hasSubstates = leadStates.some(
-            (s) => leadStateParents[s.toLowerCase()] === activeMain,
+    const StatusSelector = useMemo(() => {
+        const Bound: React.FC<{
+            status: string;
+            onChange: (newStatus: string) => void;
+            isEditing?: boolean;
+        }> = (props) => (
+            <LeadStatusSelector
+                {...props}
+                leadStates={leadStates}
+                leadStateParents={leadStateParents}
+                leadStageGroups={leadStageGroups}
+                leadStateColors={leadStateColors}
+                systemLanguage={systemLanguage}
+            />
         );
-        const activeSubstates = leadStates.filter(
-            (s) => leadStateParents[s.toLowerCase()] === activeMain,
-        );
-        const currentSub = leadStateParents[sName] ? sName : "";
-
-        const mainColor = getSafeStateColor(activeMain);
-        const subColor = currentSub ? getSafeStateColor(currentSub) : mainColor;
-
-        const handleMainChange = (newMain: string) => {
-            onChange(newMain);
-        };
-
-        const handleSubChange = (newSub: string) => {
-            if (newSub) {
-                onChange(newSub);
-            } else {
-                onChange(activeMain);
-            }
-        };
-
-        // Order major states exactly like the Settings pipeline table: grouped by
-        // stage group (new → in_progress → closed), preserving the configured
-        // leadStates order within each group.
-        const majorStates = (["new", "in_progress", "closed"] as const).flatMap(
-            (group) =>
-                leadStates.filter(
-                    (s) =>
-                        !leadStateParents[s.toLowerCase()] &&
-                        (leadStageGroups[s.toLowerCase()] || "in_progress") ===
-                            group,
-                ),
-        );
-
-        if (!isEditing) {
-            if (leadStateParents[sName]) {
-                return (
-                    <span
-                        className="inline-flex items-center px-2.5 py-1 rounded-full text-[9px] font-extrabold uppercase border shadow-sm text-white select-none leading-none tracking-wider"
-                        style={{
-                            background: `linear-gradient(135deg, ${mainColor}, ${subColor})`,
-                            borderColor: "transparent",
-                        }}
-                    >
-                        {leadStateParents[sName].toUpperCase()} &gt;{" "}
-                        {sName.toUpperCase()}
-                    </span>
-                );
-            } else {
-                return (
-                    <span
-                        className="inline-flex items-center px-2.5 py-1 rounded-full text-[9px] font-extrabold uppercase border shadow-sm text-white select-none leading-none tracking-wider"
-                        style={{
-                            backgroundColor: mainColor,
-                            borderColor: mainColor,
-                        }}
-                    >
-                        {sName.toUpperCase()}
-                    </span>
-                );
-            }
-        }
-
-        return (
-            <div className="flex flex-col items-center lg:items-start gap-1 justify-center">
-                {/* Main Dropdown */}
-                <CustomSelect
-                    size="sm"
-                    value={activeMain}
-                    onChange={handleMainChange}
-                    className="!font-black !uppercase !tracking-wider !shadow-sm"
-                    style={{
-                        backgroundColor: `${mainColor}18`,
-                        color: mainColor,
-                        borderColor: `${mainColor}35`,
-                    }}
-                    options={majorStates.map((state) => ({ value: state.toLowerCase(), label: state }))}
-                />
-
-                {/* Substate Dropdown */}
-                {hasSubstates && (
-                    <CustomSelect
-                        size="sm"
-                        value={currentSub}
-                        onChange={handleSubChange}
-                        className="!font-black !uppercase !tracking-wider !shadow-sm"
-                        style={{
-                            background: currentSub
-                                ? `linear-gradient(to right, ${mainColor}18, ${subColor}18)`
-                                : `${mainColor}10`,
-                            color: subColor,
-                            borderColor: `${subColor}30`,
-                        }}
-                        options={[
-                            {
-                                value: "",
-                                label:
-                                    systemLanguage === "sk"
-                                        ? "-- Žiadny podstav --"
-                                        : systemLanguage === "hu"
-                                          ? "-- Nincs al-állapot --"
-                                          : "-- No Substate --",
-                            },
-                            ...activeSubstates.map((sub) => ({ value: sub.toLowerCase(), label: `↳ ${sub}` })),
-                        ]}
-                    />
-                )}
-            </div>
-        );
-    };
+        Bound.displayName = "StatusSelector";
+        return Bound;
+    }, [leadStates, leadStateParents, leadStageGroups, leadStateColors, systemLanguage]);
 
     const getSafePMColor = (pmName: string) => {
         if (!projectManagerColors) return "#64748b";
@@ -1685,6 +1744,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const [isConvertDropdownOpen, setIsConvertDropdownOpen] = useState(false);
 
     const handleConvertToProject = (type: ProjectType) => {
+        if (!canEdit) return;
         if (!activeLead || !setProjects || !setActiveTab) return;
 
         setIsConvertDropdownOpen(false);
@@ -1733,7 +1793,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             projectTypeId: type.id,
             leadId: activeLead.id,
             clientId: activeLead.id,
-            status: "active",
+            status: DEFAULT_PROJECT_STATUS,
             managers: activeLead.owner ? [activeLead.owner] : [],
             data: dynamicData,
             timeline: [],
@@ -1752,6 +1812,68 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
         setActiveTab("projects");
         window.location.hash = `projects?edit=${newProj.id}`;
+    };
+
+    /* ── LEAD ↔ PROJECT PAIRING ──────────────────────────────────────────
+       The pairing is one field on the project (`leadId`), edited from either
+       end: "Paired lead / client" on the project itself, and the card below on
+       the lead. One lead can carry several projects, so the lead side is always
+       a lookup rather than a stored list. */
+
+    // The unpaired project waiting in the "pair an existing project" picker.
+    const [pairProjectId, setPairProjectId] = useState("");
+
+    const openProject = (projectId: string) => {
+        if (!setActiveTab) return;
+        setActiveTab("projects");
+        window.location.hash = `projects?edit=${projectId}`;
+    };
+
+    const handlePairProject = (projectId: string) => {
+        if (!canEdit) return;
+        if (!activeLead || !setProjects || !projectId) return;
+        setProjects((prev) =>
+            prev.map((p) =>
+                p.id === projectId
+                    ? { ...p, leadId: activeLead.id, clientId: activeLead.id }
+                    : p,
+            ),
+        );
+        setPairProjectId("");
+        (window as any).showToast(
+            t(
+                "Project paired with this lead.",
+                "Projekt bol spárovaný s týmto leadom.",
+                "A projekt párosítva lett ezzel a leaddel.",
+            ),
+        );
+    };
+
+    const handleUnpairProject = (projectId: string) => {
+        if (!canEdit || !setProjects) return;
+        if (
+            !window.confirm(
+                t(
+                    "Unpair this project from the lead? The project itself is kept.",
+                    "Zrušiť spárovanie projektu s leadom? Samotný projekt zostane zachovaný.",
+                    "Megszünteti a projekt párosítását a leaddel? Maga a projekt megmarad.",
+                ),
+            )
+        ) {
+            return;
+        }
+        setProjects((prev) =>
+            prev.map((p) =>
+                p.id === projectId ? { ...p, leadId: null, clientId: null } : p,
+            ),
+        );
+        (window as any).showToast(
+            t(
+                "Project unpaired.",
+                "Spárovanie projektu bolo zrušené.",
+                "A projekt párosítása megszűnt.",
+            ),
+        );
     };
 
     const [leadName, setLeadName] = useState("");
@@ -1812,6 +1934,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     useEffect(() => {
         if (!activeLead || !activeLeadFingerprint || !isOpenAiConfigured)
             return;
+        // The summary is written back onto the lead, so a read-only role only
+        // ever sees the one somebody with edit access already generated.
+        if (!canEdit) return;
         if (activeLead.aiSummaryFingerprint === activeLeadFingerprint) return;
         if (isGeneratingSummary) return;
 
@@ -1971,6 +2096,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const [logDocumentFiles, setLogDocumentFiles] = useState<File[]>([]);
     const [isUploadingDocuments, setIsUploadingDocuments] = useState(false);
 
+    // In-app confirmation for deletes (replaces window.confirm).
+    const [confirmAction, confirmDialog] = useConfirmDialog();
     // Inline edit/delete of an already-logged timeline event
     const [editingEventId, setEditingEventId] = useState<string | null>(null);
     const [editingEventDraft, setEditingEventDraft] = useState("");
@@ -2005,11 +2132,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     // Inline locking task states
     const [inlineTaskTitle, setInlineTaskTitle] = useState("");
-    const [inlineTaskDeadline, setInlineTaskDeadline] = useState(() => {
-        const d = new Date();
-        d.setDate(d.getDate() + 3);
-        return d.toISOString().split("T")[0];
-    });
+    const [inlineTaskDeadline, setInlineTaskDeadline] = useState(() =>
+        todayLocalPlusDays(3)
+    );
     const [inlineTaskDeadlineTime, setInlineTaskDeadlineTime] =
         useState("16:00");
     const [inlineTaskIsLocking, setInlineTaskIsLocking] = useState(true);
@@ -2059,6 +2184,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     const [leadEmails, setLeadEmails] = useState<TimelineEvent[]>([]);
     const [isLoadingMails, setIsLoadingMails] = useState(false);
+    // Why the mail half of the timeline is empty, when it is empty for a reason.
+    const [leadMailError, setLeadMailError] = useState<string | null>(null);
 
     // // --- TIMELINE EMAIL VIEW DRAWER STATE ---
     // const [selectedTimelineEmail, setSelectedTimelineEmail] = useState<
@@ -2144,39 +2271,65 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             !userEmailSettings.isValidated
         ) {
             setLeadEmails([]);
+            setLeadMailError(null);
             return;
         }
 
         const fetchLeadMails = async () => {
             setIsLoadingMails(true);
-            try {
-                const inboxRes = await fetch(
-                    `/api/mail_broker.php?action=get_emails&folder=INBOX&email=${encodeURIComponent(activeLead.email || "")}`,
-                    { headers: { "X-User-Email": currentUser.email } },
-                );
-                const inboxData = await inboxRes.json();
-
-                let sentEmails: any[] = [];
+            // A mailbox that cannot be reached used to fail in total silence: the
+            // Sent request was wrapped in an empty catch and the INBOX one only
+            // reached the console. The timeline then rendered as "no history" and
+            // stayed that way for months while every sent mail went unrecorded.
+            // Whatever the server says now goes on screen.
+            let mailError: string | null = null;
+            const readMails = async (folder: string) => {
                 try {
-                    const sentRes = await fetch(
-                        `/api/mail_broker.php?action=get_emails&folder=Sent&email=${encodeURIComponent(activeLead.email || "")}`,
-                        { headers: { "X-User-Email": currentUser.email } },
+                    const res = await fetch(
+                        `/api/mail_broker.php?action=get_emails&folder=${encodeURIComponent(folder)}&email=${encodeURIComponent(activeLead.email || "")}`,
                     );
-                    const sentData = await sentRes.json();
-                    if (sentData.success && Array.isArray(sentData.emails)) {
-                        sentEmails = sentData.emails;
+                    const data = await res.json();
+                    if (data && data.success && Array.isArray(data.emails)) {
+                        return data.emails as any[];
                     }
-                } catch (e) {}
+                    mailError =
+                        (data && data.error) ||
+                        t(
+                            `Could not read the ${folder} folder.`,
+                            `Priečinok ${folder} sa nepodarilo načítať.`,
+                            `A(z) ${folder} mappát nem sikerült beolvasni.`,
+                        );
+                } catch (e) {
+                    mailError = t(
+                        "The mail server could not be reached.",
+                        "Poštový server je nedostupný.",
+                        "A levelezőszerver nem érhető el.",
+                    );
+                }
+                return [] as any[];
+            };
+
+            try {
+                const [inboxEmails, sentEmails] = await Promise.all([
+                    readMails("INBOX"),
+                    readMails("Sent"),
+                ]);
 
                 const combinedEmails: TimelineEvent[] = [];
 
                 const processMail = (mail: any) => {
                     const isOutgoing =
-                        mail.from?.address?.toLowerCase() ===
-                        currentUser?.email?.toLowerCase();
+                        isOutgoingMail(mail, currentUser?.email);
                     const folderPrefix = isOutgoing ? "sent" : "inbox";
                     return {
-                        id: `email-${folderPrefix}-${mail.uid}`,
+                        // The server hands back the id it stores this message under.
+                        // Minting a different one here ("email-sent-<uid>") meant the
+                        // de-duplication below never matched the stored row, so every
+                        // imported mail rendered twice. Keep the old shape only as a
+                        // fallback for a backend that predates `event_id`.
+                        id:
+                            mail.event_id ||
+                            `email-${folderPrefix}-${mail.uid}`,
                         type: "email" as const,
                         timestamp: mail.date.substring(0, 16),
                         title:
@@ -2196,18 +2349,23 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     };
                 };
 
-                if (inboxData.success && Array.isArray(inboxData.emails)) {
-                    inboxData.emails.forEach((m: any) =>
-                        combinedEmails.push(processMail(m)),
-                    );
-                }
-                sentEmails.forEach((m: any) =>
-                    combinedEmails.push(processMail(m)),
-                );
+                // A message the user deleted from this timeline is still in the
+                // mailbox; the server flags it so it is not filed again.
+                [...inboxEmails, ...sentEmails]
+                    .filter((m: any) => !m.timeline_hidden)
+                    .forEach((m: any) => combinedEmails.push(processMail(m)));
 
                 setLeadEmails(combinedEmails);
+                setLeadMailError(mailError);
             } catch (err) {
                 console.error("Failed to load timeline lead emails", err);
+                setLeadMailError(
+                    t(
+                        "The mail server could not be reached.",
+                        "Poštový server je nedostupný.",
+                        "A levelezőszerver nem érhető el.",
+                    ),
+                );
             } finally {
                 setIsLoadingMails(false);
             }
@@ -2218,12 +2376,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     const activeLeadTimeline = useMemo(() => {
         if (!activeLead) return [];
-        const standardEvents = activeLead.timeline || [];
-        const emailIds = new Set(leadEmails.map((e) => e.id));
-        const merged = [
-            ...standardEvents.filter((e) => !emailIds.has(e.id)),
-            ...leadEmails,
-        ];
+        const merged = mergeLeadTimeline(activeLead.timeline || [], leadEmails);
         return merged.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
     }, [activeLead, leadEmails]);
 
@@ -2272,7 +2425,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 return {
                     dotBg: "bg-emerald-600 border-emerald-700 text-white shadow-md shadow-emerald-500/20",
                     badgeBg:
-                        "bg-emerald-55 text-emerald-700 border-emerald-200",
+                        "bg-emerald-50 text-emerald-700 border-emerald-200",
                 };
             case "appointment":
                 return {
@@ -2517,7 +2670,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 (window as any).previewFile(path, att.name);
                             }
                         }}
-                        className="flex items-center justify-between gap-2 bg-slate-50/50 p-2.5 rounded-xl border border-slate-150 hover:bg-slate-100/80 cursor-pointer transition-colors"
+                        className="flex items-center justify-between gap-2 bg-slate-50/50 p-2.5 rounded-xl border border-slate-100 hover:bg-slate-100/80 cursor-pointer transition-colors"
                     >
                         <div className="flex items-center gap-2 min-w-0">
                             <span className="text-[13px] shrink-0">
@@ -2553,7 +2706,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             </div>
                         </div>
                         {att.size && (
-                            <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[8.5px] border border-amber-250 font-black shrink-0">
+                            <span className="px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[8.5px] border border-amber-200 font-black shrink-0">
                                 {att.size}
                             </span>
                         )}
@@ -2565,7 +2718,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     const handleUpdateLeadProfile = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!activeLead) return;
+        if (!canEdit || !activeLead) return;
         if (!leadName.trim() || !leadValue.trim()) {
             (window as any).showToast(
                 t(
@@ -2638,7 +2791,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     const handleAddLeadTimelineEvent = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (!activeLead || !logType) return;
+        if (!canEdit || !activeLead || !logType) return;
 
         let contentString = logContent.trim();
         let titleString = "";
@@ -2906,6 +3059,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             // Whoever is logging it right now, not the lead's owner: the two are
             // frequently different people and the timeline has to say which one acted.
             author: currentUser?.name || "",
+            // The only e-mail this form can log is one we sent ("Direct Email
+            // Sent"), but the flag was never set, so every hand-logged mail
+            // rendered with the Incoming badge under an outgoing title.
+            isOutgoing: logType === "email" ? true : undefined,
         };
 
         setLeads((prev) =>
@@ -2928,9 +3085,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             }),
         );
 
-        // Auto-create PM task if the event is in the future
+        // Auto-create PM task if the event is in the future. Gated on the tasks
+        // module, not leads — a role that can log the event but not create
+        // tasks must not have the write dropped silently by the server.
         const eventDateTime = new Date(`${logDate}T${logTimeOfEvent}:00`);
-        if (eventDateTime.getTime() > Date.now()) {
+        if (canCreateTask && eventDateTime.getTime() > Date.now()) {
             let deadlineVal = logDate;
 
             const taskTitle =
@@ -3009,6 +3168,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     // plain text so they can be edited in a simple textarea (they re-render fine
     // as plain text).
     const handleStartEditEvent = (event: TimelineEvent) => {
+        if (!canEdit) return;
         let text = event.content || "";
         if (event.type === "note" && text.trim().startsWith("[")) {
             try {
@@ -3034,7 +3194,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     };
 
     const handleSaveEditEvent = (eventId: string) => {
-        if (!activeLead) return;
+        if (!canEdit || !activeLead) return;
         const nextContent = editingEventDraft;
         // Timestamps drive the whole timeline (ordering, the future/past split and
         // the "today" divider), so a half-filled date/time is dropped rather than
@@ -3043,22 +3203,21 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             editingEventDate && editingEventTime
                 ? `${editingEventDate} ${editingEventTime}`
                 : null;
+        // A mail read live from the mailbox may not be in the stored timeline
+        // yet; withTimelineEvent adds it so the edit has something to land on.
+        const edited = activeLeadTimeline.find((e) => e.id === eventId);
+        if (!edited) return;
         setLeads((prev) =>
             prev.map((l) =>
                 l.id === activeLead.id
                     ? {
                           ...l,
-                          timeline: (l.timeline || []).map((e) =>
-                              e.id === eventId
-                                  ? {
-                                        ...e,
-                                        content: nextContent,
-                                        ...(nextTimestamp
-                                            ? { timestamp: nextTimestamp }
-                                            : {}),
-                                    }
-                                  : e,
-                          ),
+                          timeline: withTimelineEvent(l.timeline || [], edited, {
+                              content: nextContent,
+                              ...(nextTimestamp
+                                  ? { timestamp: nextTimestamp }
+                                  : {}),
+                          }),
                       }
                     : l,
             ),
@@ -3079,7 +3238,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const renderEventTimestampFields = () => (
         <div className="grid grid-cols-2 gap-2">
             <div className="flex flex-col gap-1">
-                <label className="text-[8px] font-black text-slate-450 uppercase tracking-wider">
+                <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">
                     {t("Date", "Dátum", "Dátum")}
                 </label>
                 <input
@@ -3090,7 +3249,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 />
             </div>
             <div className="flex flex-col gap-1">
-                <label className="text-[8px] font-black text-slate-450 uppercase tracking-wider">
+                <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">
                     {t("Time", "Čas", "Idő")}
                 </label>
                 <input
@@ -3103,28 +3262,47 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         </div>
     );
 
-    const handleDeleteTimelineEvent = (eventId: string) => {
-        if (!activeLead) return;
-        const ok = window.confirm(
-            t(
+    const handleDeleteTimelineEvent = async (eventId: string) => {
+        if (!canDelete || !activeLead) return;
+        const target = activeLeadTimeline.find((e) => e.id === eventId);
+        if (!target) return;
+        const ok = await confirmAction({
+            title: t(
                 "Delete this event from the lead history?",
                 "Odstrániť túto udalosť z histórie leadu?",
                 "Törli ezt az eseményt a lead előzményeiből?",
             ),
-        );
+            confirmLabel: t("Delete", "Odstrániť", "Törlés"),
+            cancelLabel: t("Cancel", "Zrušiť", "Mégse"),
+            danger: true,
+        });
         if (!ok) return;
+        // An imported mail cannot just be dropped: sync.php never deletes mail
+        // rows by omission, and the next mailbox read would file it again. It is
+        // flagged `hidden` instead, which both honour. The message itself stays
+        // in the mailbox.
+        const isMailEntry = eventId.startsWith("email-");
         setLeads((prev) =>
             prev.map((l) =>
                 l.id === activeLead.id
                     ? {
                           ...l,
-                          timeline: (l.timeline || []).filter(
-                              (e) => e.id !== eventId,
-                          ),
+                          timeline: isMailEntry
+                              ? withTimelineEvent(l.timeline || [], target, {
+                                    hidden: true,
+                                })
+                              : (l.timeline || []).filter(
+                                    (e) => e.id !== eventId,
+                                ),
                       }
                     : l,
             ),
         );
+        // The stored row is left out of the next server read, so the live copy
+        // fetched before the delete must not stand in for it meanwhile.
+        if (isMailEntry) {
+            setLeadEmails((prev) => prev.filter((e) => e.id !== eventId));
+        }
         if (editingEventId === eventId) handleCancelEditEvent();
         (window as any).showToast?.(
             t(
@@ -3140,7 +3318,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     // live in api/task.php), so dropping the row from local state alone left it
     // in the database and the next poll or reload brought it straight back.
     const handleDeleteGateTask = async (task: Task) => {
-        if (deletingTaskIds.has(task.id)) return;
+        if (!canDelete || deletingTaskIds.has(task.id)) return;
         const confirmed = window.confirm(
             t(
                 `Permanently delete "${task.title}"? This cannot be undone.`,
@@ -3190,7 +3368,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     const handleAddInlineLockingTask = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!activeLead) return;
+        if (!canEdit || !canCreateTask || !activeLead) return;
         if (!inlineTaskTitle.trim()) {
             (window as any).showToast(
                 systemLanguage === "sk"
@@ -3229,9 +3407,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
         setTasks((prev) => [newLockingTask, ...prev]);
         setInlineTaskTitle("");
-        const d = new Date();
-        d.setDate(d.getDate() + 3);
-        setInlineTaskDeadline(d.toISOString().split("T")[0]);
+        setInlineTaskDeadline(todayLocalPlusDays(3));
         setInlineTaskDeadlineTime("16:00");
         setInlineTaskIsLocking(true);
         setInlineTaskAssignee(assignee);
@@ -3266,7 +3442,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     // Save edited client properties across ALL associated database leads
     const handleSaveClientDetails = (e: React.FormEvent) => {
         e.preventDefault();
-        if (!selectedClientName) return;
+        if (!canEdit || !selectedClientName) return;
         if (!editClientName.trim()) {
             (window as any).showToast(
                 t(
@@ -3303,6 +3479,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     // Initialize inline editing
     const startInlineEdit = (lead: Lead) => {
+        if (!canEdit) return;
         setEditingRowId(lead.id);
         setInlineName(lead.name);
         setInlineCity(lead.city);
@@ -3314,6 +3491,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     // Save inline edit
     const saveInlineEdit = (id: string) => {
+        if (!canEdit) return;
         if (!inlineName.trim() || !inlineValue.trim()) {
             (window as any).showToast(
                 t(
@@ -3355,20 +3533,28 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         setEditingRowId(null);
     };
 
-    // Delete lead
-    const handleDeleteLead = (id: string, name: string) => {
+    // Delete lead — resolves true when the user confirmed and it was removed.
+    // An in-app dialog, not window.confirm(): the native one blocks the page and
+    // hangs automated browser clients until the tab is closed by hand.
+    const handleDeleteLead = async (id: string, name: string): Promise<boolean> => {
+        if (!canDelete) return false;
         if (
-            confirm(
-                systemLanguage === "sk"
-                    ? `Naozaj chcete vymazať lead pre "${name}"?`
-                    : systemLanguage === "hu"
-                      ? `Biztosan törölni szeretné a(z) "${name}" leadet?`
-                      : `Are you sure you want to delete the lead for "${name}"?`,
-            )
+            await confirmAction({
+                title: t(
+                    `Are you sure you want to delete the lead for "${name}"?`,
+                    `Naozaj chcete vymazať lead pre "${name}"?`,
+                    `Biztosan törölni szeretné a(z) "${name}" leadet?`,
+                ),
+                confirmLabel: t("Delete", "Odstrániť", "Törlés"),
+                cancelLabel: t("Cancel", "Zrušiť", "Mégse"),
+                danger: true,
+            })
         ) {
             setLeads((prev) => prev.filter((l) => l.id !== id));
             if (editingRowId === id) setEditingRowId(null);
+            return true;
         }
+        return false;
     };
 
     /**
@@ -3406,6 +3592,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
      * @param newStatus String target stage status key (e.g. "contacted", "accepted")
      */
     const handleUpdateLeadState = (id: string, newStatus: string) => {
+        if (!canEdit) return false;
         const lead = leads.find((l) => l.id === id);
         if (lead && lead.status !== newStatus) {
             // An archived task is out of every calendar and task list, so it must
@@ -3493,6 +3680,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
      */
     const handleCreateLead = (e: React.FormEvent) => {
         e.preventDefault();
+        if (!canEdit) return;
         if (!newLeadName.trim() || !newLeadValue.trim()) {
             (window as any).showToast(
                 t(
@@ -3556,12 +3744,25 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         setSelectedExistingClient("");
     };
 
+    // The grid's own universe. A `client-*` id is a client-register record (a won
+    // client, or a contact pulled in from invoicing) and `unassigned-docs` is a
+    // synthetic bucket -- neither is a pipeline lead. The header counters have to
+    // start from the same set the list renders, or an install whose leads table is
+    // all imported clients reports "434 active" above an empty pipeline.
+    const pipelineLeads = useMemo(
+        () =>
+            leads.filter(
+                (lead) =>
+                    lead.id !== "unassigned-docs" &&
+                    !(lead.id || "").startsWith("client-"),
+            ),
+        [leads],
+    );
+
     // Filter and Sort leads
     const processedLeads = useMemo(() => {
-        return leads
+        return pipelineLeads
             .filter((lead) => {
-                if (lead.id === "unassigned-docs") return false;
-                if (lead.id && lead.id.startsWith("client-")) return false;
                 // Email and phone are searchable too: leads that share a client name are
                 // otherwise indistinguishable in the list, and the contact details are the
                 // only thing that tells them apart.
@@ -3597,16 +3798,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         selectedCity.toLowerCase();
 
                 // Rating is optional on a lead, so an unrated one counts as 0
-                // and only matches the explicit "not rated" option.
-                const leadRatingValue = lead.rating || 0;
-                const matchesRating =
-                    selectedRating === "all" ||
-                    (selectedRating === "none"
-                        ? leadRatingValue === 0
-                        : selectedRating.startsWith("min")
-                          ? leadRatingValue >=
-                            Number(selectedRating.slice(3))
-                          : leadRatingValue === Number(selectedRating));
+                // and only matches the explicit "not rated" option. The rules
+                // live in utils/rating.ts — the projects list offers the same
+                // dropdown and has to mean the same thing by it.
+                const matchesRating = matchesRatingFilter(
+                    lead.rating,
+                    selectedRating,
+                );
 
                 let matchesOfferDate = true;
                 if (
@@ -3676,7 +3874,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             })
             .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     }, [
-        leads,
+        pipelineLeads,
         searchQuery,
         selectedState,
         selectedSource,
@@ -4008,39 +4206,18 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             .toUpperCase();
     };
 
+    /* The star row itself now lives in ui/StarRating — projects carry the same
+       rating, and the two lists have to draw it the same way. */
     const renderStars = (
         rating: number = 0,
         onChange?: (r: number) => void,
-    ) => {
-        return (
-            <div
-                className="flex items-center gap-1 select-none animate-fade-in"
-                onClick={(e) => e.stopPropagation()}
-            >
-                {[1, 2, 3, 4, 5].map((star) => {
-                    const isFilled = star <= rating;
-                    return (
-                        <button
-                            key={star}
-                            type="button"
-                            onClick={() => onChange && onChange(star)}
-                            disabled={!onChange}
-                            className={`focus:outline-none transition-all duration-150 p-0.5 ${onChange ? "cursor-pointer hover:scale-130 active:scale-90" : "cursor-default"}`}
-                            aria-label={`${t("Rate", "Hodnotiť", "Értékelés")} ${star}`}
-                        >
-                            <div
-                                className={`h-2 w-2 rounded-full transition-colors duration-150 ${
-                                    isFilled
-                                        ? "bg-amber-500 shadow-sm animate-pulse"
-                                        : "bg-slate-200"
-                                }`}
-                            />
-                        </button>
-                    );
-                })}
-            </div>
-        );
-    };
+    ) => (
+        <StarRating
+            rating={rating}
+            onChange={onChange}
+            userLanguage={systemLanguage}
+        />
+    );
 
     // PM Workload Graph Data Calculations (Unused)
     /*
@@ -4105,7 +4282,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             "A lead rekord nem található",
                         )}
                     </h2>
-                    <p className="text-xs text-slate-650 font-semibold">
+                    <p className="text-xs text-slate-600 font-semibold">
                         {t("The lead ID '", "ID leadu '", "A lead azonosító '")}
                         {initialSelectedLeadId}
                         {t(
@@ -4132,82 +4309,42 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
         return (
             <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
-                {/* Back header */}
-                <div className="flex items-center justify-between gap-4 flex-wrap">
-                    <button
-                        onClick={() => {
-                            window.location.hash = "leads";
-                        }}
-                        className="h-12 shrink-0 px-4.5 rounded-2xl bg-white border-2 border-slate-300 text-slate-700 hover:text-slate-955 hover:border-slate-850 transition-all text-xs font-extrabold uppercase tracking-wider leading-tight flex items-center gap-2 shadow-sm"
-                    >
-                        <ArrowLeft className="h-4.5 w-4.5 stroke-[2.5] shrink-0" />{" "}
-                        {getTranslation(systemLanguage, "common.back_to_leads")}
-                    </button>
+                {confirmDialog}
+                {/* Header: back on the left, value + actions on the right.
+                    Every control shares one height, radius and border weight. */}
+                <div className="space-y-3">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div className="flex items-center gap-3 flex-wrap min-w-0">
+                        <button
+                            onClick={() => {
+                                window.location.hash = "leads";
+                            }}
+                            className="h-11 shrink-0 px-4 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:border-slate-300 hover:bg-slate-50 active:scale-[0.98] transition-all text-xs font-bold uppercase tracking-wider flex items-center gap-2 shadow-sm cursor-pointer"
+                        >
+                            <ArrowLeft className="h-4 w-4 stroke-[2.5] shrink-0" />
+                            {getTranslation(systemLanguage, "common.back_to_leads")}
+                        </button>
+                        {readOnlyNotice}
+                    </div>
 
-                    <div className="flex flex-1 min-w-0 items-center justify-end gap-3 flex-wrap">
-                        {/* AI Summary Purple Card */}
-                        {!isOpenAiConfigured && !localSummary ? (
-                            <div className="flex min-w-0 items-center gap-2.5 bg-purple-50/50 border border-purple-250 p-2.5 px-3.5 rounded-2xl max-w-md text-xs font-bold text-purple-800 shadow-sm">
-                                <Brain className="h-5 w-5 text-purple-400 shrink-0" />
-                                <span className="text-[10px] text-purple-650 italic">
-                                    {systemLanguage === "sk"
-                                        ? "AI zhrnutie nie je k dispozícii. Nastavte OpenAI kľúč v nastaveniach."
-                                        : systemLanguage === "hu"
-                                          ? "Az AI összefoglaló nem érhető el. Állítsa be az OpenAI kulcsot a beállításokban."
-                                          : "AI summary unavailable. Configure OpenAI Key in settings."}
+                    <div className="flex items-center justify-end gap-2.5 flex-wrap">
+                            <div className="h-11 inline-flex items-center gap-2 px-4 rounded-xl bg-white border border-slate-200 shadow-sm whitespace-nowrap">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                                    {getTranslation(
+                                        systemLanguage,
+                                        "common.lead_value",
+                                    )}
+                                </span>
+                                <span className="text-sm font-black text-slate-900 tabular-nums">
+                                    {money(activeLead.value, {
+                                        minimumFractionDigits: 2,
+                                    })}
                                 </span>
                             </div>
-                        ) : localSummary || isGeneratingSummary ? (
-                            <div className="flex min-w-0 items-center gap-2.5 bg-purple-50 border-2 border-purple-200 p-2.5 px-3.5 rounded-2xl max-w-xl text-xs font-bold text-purple-900 shadow-sm hover:shadow-md transition-all animate-fade-in">
-                                <Brain
-                                    className={`h-5 w-5 text-purple-600 shrink-0 ${isGeneratingSummary ? "animate-pulse" : ""}`}
-                                />
-                                <div>
-                                    {isGeneratingSummary && !localSummary ? (
-                                        <span className="text-[10px] text-purple-650 italic animate-pulse flex items-center gap-1.5">
-                                            <Loader2 className="h-3 w-3 animate-spin text-purple-600" />
-                                            {systemLanguage === "sk"
-                                                ? "Generuje sa AI zhrnutie..."
-                                                : systemLanguage === "hu"
-                                                  ? "AI összefoglaló generálása..."
-                                                  : "Generating AI summary..."}
-                                        </span>
-                                    ) : (
-                                        <p className="leading-relaxed text-[11px] font-semibold">
-                                            {localSummary}
-                                            {isGeneratingSummary && (
-                                                <span className="ml-1 text-[9px] text-purple-500 animate-pulse">
-                                                    (
-                                                    {systemLanguage === "sk"
-                                                        ? "Aktualizuje sa..."
-                                                        : systemLanguage ===
-                                                            "hu"
-                                                          ? "Frissítés..."
-                                                          : "Updating..."}
-                                                    )
-                                                </span>
-                                            )}
-                                        </p>
-                                    )}
-                                </div>
-                            </div>
-                        ) : null}
-
-                        {/* Lead value + Convert button — wrap together, value first */}
-                        <div className="flex items-center justify-end gap-3 flex-wrap">
-                            <span className="h-12 inline-flex items-center text-xs font-black uppercase tracking-widest text-blue-800 bg-blue-100 border-2 border-blue-300 px-4 rounded-2xl shadow-inner whitespace-nowrap">
-                                {getTranslation(
-                                    systemLanguage,
-                                    "common.lead_value",
-                                )}
-                                :{" "}
-                                {money(activeLead.value, {
-                                    minimumFractionDigits: 2,
-                                })}
-                            </span>
 
                             {/* Convert to Project Button */}
-                            {projectTypes &&
+                            {canEdit &&
+                            projectTypes &&
                             projectTypes.length > 0 &&
                             setProjects &&
                             setActiveTab && (
@@ -4218,7 +4355,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 !isConvertDropdownOpen,
                                             )
                                         }
-                                        className="h-12 px-4.5 rounded-2xl bg-purple-600 hover:bg-purple-700 text-white font-black text-xs uppercase tracking-wider leading-tight flex items-center gap-1.5 shadow-md shadow-purple-600/10 cursor-pointer"
+                                        className="h-11 px-4 rounded-xl bg-purple-600 hover:bg-purple-700 active:scale-[0.98] transition-all text-white font-bold text-xs uppercase tracking-wider flex items-center gap-2 shadow-sm shadow-purple-600/20 cursor-pointer"
                                     >
                                         <Briefcase className="h-4.5 w-4.5" />
                                         <span>
@@ -4264,8 +4401,80 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     )}
                                 </div>
                             )}
-                        </div>
+
+                            {canDelete && (
+                                <button
+                                    onClick={async () => {
+                                        if (
+                                            await handleDeleteLead(
+                                                activeLead.id,
+                                                activeLead.name,
+                                            )
+                                        ) {
+                                            window.location.hash = "leads";
+                                        }
+                                    }}
+                                    className="h-11 w-11 shrink-0 rounded-xl bg-white border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 active:scale-95 transition-all flex items-center justify-center shadow-sm cursor-pointer"
+                                    title={t(
+                                        "Delete Lead",
+                                        "Odstrániť lead",
+                                        "Lead törlése",
+                                    )}
+                                    aria-label={t(
+                                        "Delete Lead",
+                                        "Odstrániť lead",
+                                        "Lead törlése",
+                                    )}
+                                >
+                                    <Trash2 className="h-4 w-4" />
+                                </button>
+                            )}
                     </div>
+                </div>
+
+                {/* AI summary — its own full-width strip, so a long summary
+                    never stretches the button row */}
+                {!isOpenAiConfigured && !localSummary ? (
+                    <div className="flex items-center gap-2.5 px-4 py-2.5 rounded-xl bg-purple-50/50 border border-purple-100 text-[11px] font-medium italic text-purple-600">
+                        <Brain className="h-4 w-4 text-purple-400 shrink-0" />
+                        {systemLanguage === "sk"
+                            ? "AI zhrnutie nie je k dispozícii. Nastavte OpenAI kľúč v nastaveniach."
+                            : systemLanguage === "hu"
+                              ? "Az AI összefoglaló nem érhető el. Állítsa be az OpenAI kulcsot a beállításokban."
+                              : "AI summary unavailable. Configure OpenAI Key in settings."}
+                    </div>
+                ) : localSummary || isGeneratingSummary ? (
+                    <div className="flex items-start gap-3 px-4 py-3 rounded-xl bg-purple-50/70 border border-purple-200 text-purple-950 animate-fade-in">
+                        <Brain
+                            className={`h-4.5 w-4.5 mt-px text-purple-600 shrink-0 ${isGeneratingSummary ? "animate-pulse" : ""}`}
+                        />
+                        {isGeneratingSummary && !localSummary ? (
+                            <span className="text-xs text-purple-600 italic animate-pulse flex items-center gap-1.5">
+                                <Loader2 className="h-3.5 w-3.5 animate-spin text-purple-600" />
+                                {systemLanguage === "sk"
+                                    ? "Generuje sa AI zhrnutie..."
+                                    : systemLanguage === "hu"
+                                      ? "AI összefoglaló generálása..."
+                                      : "Generating AI summary..."}
+                            </span>
+                        ) : (
+                            <p className="text-xs leading-relaxed font-medium">
+                                {localSummary}
+                                {isGeneratingSummary && (
+                                    <span className="ml-1.5 text-[10px] text-purple-500 animate-pulse">
+                                        (
+                                        {systemLanguage === "sk"
+                                            ? "Aktualizuje sa..."
+                                            : systemLanguage === "hu"
+                                              ? "Frissítés..."
+                                              : "Updating..."}
+                                        )
+                                    </span>
+                                )}
+                            </p>
+                        )}
+                    </div>
+                ) : null}
                 </div>
 
                 {/* Master Dual-Panel Dashboard Grid */}
@@ -4274,7 +4483,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     <div className="lg:col-span-5 space-y-6">
                         {/* 1. Client Profile Card (On Top) */}
                         {clientCardData && (
-                            <div className="glass-panel p-6 rounded-[28px] border-2 border-emerald-450 bg-emerald-50/70 shadow-xl space-y-4 text-emerald-950">
+                            <div className="glass-panel p-6 rounded-[28px] border-2 border-emerald-400 bg-emerald-50/70 shadow-xl space-y-4 text-emerald-950">
                                 <div className="border-b-2 border-emerald-200/50 pb-2 flex items-center justify-between gap-2">
                                     <span className="text-xs font-black text-emerald-700 uppercase tracking-wider flex items-center gap-1.5">
                                         <Briefcase className="h-4.5 w-4.5 text-emerald-600 stroke-[2.5] shrink-0" />{" "}
@@ -4283,7 +4492,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             "common.client_relationship_card",
                                         )}
                                     </span>
-                                    <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-emerald-100 text-emerald-800 border border-emerald-250 uppercase tracking-wider animate-pulse shrink-0">
+                                    <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 uppercase tracking-wider animate-pulse shrink-0">
                                         {getTranslation(
                                             systemLanguage,
                                             "common.synced_profile",
@@ -4297,7 +4506,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             {getInitials(clientCardData.name)}
                                         </div>
                                         <div>
-                                            <h4 className="text-sm font-black text-slate-850 line-clamp-1">
+                                            <h4 className="text-sm font-black text-slate-800 line-clamp-1">
                                                 {clientCardData.name}
                                             </h4>
                                             {isEditingLead ? (
@@ -4370,7 +4579,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         </div>
                                     </div>
 
-                                    <div className="grid grid-cols-2 gap-3 text-[11px] bg-white/70 p-3 rounded-xl border border-emerald-250/50">
+                                    <div className="grid grid-cols-2 gap-3 text-[11px] bg-white/70 p-3 rounded-xl border border-emerald-200/50">
                                         <div className="space-y-0.5">
                                             <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">
                                                 {getTranslation(
@@ -4385,7 +4594,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                         {clientCardData.phone}
                                                     </span>
                                                 ) : (
-                                                    <span className="text-slate-350 italic">
+                                                    <span className="text-slate-300 italic">
                                                         {getTranslation(
                                                             systemLanguage,
                                                             "profile.none_added",
@@ -4408,7 +4617,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                         {clientCardData.email}
                                                     </span>
                                                 ) : (
-                                                    <span className="text-slate-350 italic">
+                                                    <span className="text-slate-300 italic">
                                                         {getTranslation(
                                                             systemLanguage,
                                                             "profile.none_added",
@@ -4480,7 +4689,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         )}
 
                         {/* 2. Lead Details Panel (On Bottom) */}
-                        <div className="glass-panel p-6 rounded-[28px] border-2 border-blue-450 bg-white shadow-xl space-y-6 overflow-hidden relative">
+                        <div className="glass-panel p-6 rounded-[28px] border-2 border-blue-400 bg-white shadow-xl space-y-6 overflow-hidden relative">
                             {/* Block header — same shape as every other block header */}
                             <div className="border-b-2 border-slate-100 pb-2 flex items-center justify-between gap-2">
                                 <span className="text-xs font-black text-blue-700 uppercase tracking-wider flex items-center gap-1.5">
@@ -4492,9 +4701,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 </span>
 
                                 {/* Pencil Toggle edit button */}
+                                {canEdit && (
                                 <button
                                     type="button"
                                     onClick={() => {
+                                        if (!canEdit) return;
                                         if (isEditingLead) {
                                             // Revert changes on toggle off
                                             setLeadName(activeLead.name);
@@ -4543,6 +4754,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         <PencilLine className="h-4.5 w-4.5 stroke-[2.5]" />
                                     )}
                                 </button>
+                                )}
                             </div>
 
                             {/* Lead state section: the pipeline strip sits directly under
@@ -4633,19 +4845,46 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                                 {/* Lead state — always editable, no edit toggle needed */}
                                 <div className="space-y-1">
-                                    <label className="text-[9px] font-black text-slate-555 uppercase tracking-wider">
+                                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">
                                         {getTranslation(
                                             systemLanguage,
                                             "profile.lead_state",
                                         )}
                                     </label>
-                                    <div className="select-none">
+                                    <div className="select-none flex items-center gap-2 flex-wrap">
                                         <StatusSelector
                                             status={leadStatus}
                                             onChange={handleDirectLeadStateChange}
-                                            isEditing={true}
+                                            isEditing={canEdit}
                                         />
+                                        {breachedSlaById[activeLead.id] && (
+                                            <SlaBreachBadge
+                                                sla={breachedSlaById[activeLead.id]}
+                                                lang={systemLanguage}
+                                                variant="full"
+                                            />
+                                        )}
                                     </div>
+
+                                    {/* The badge alone says a limit was passed; this
+                                        says by how long and since when, which is what
+                                        someone opening the lead is about to ask. */}
+                                    {breachedSlaById[activeLead.id] && (
+                                        <p className="text-[10px] font-bold text-rose-600 leading-relaxed pt-1">
+                                            {(() => {
+                                                const sla = breachedSlaById[activeLead.id];
+                                                const since = formatDateLocalized(
+                                                    sla.enteredAt.slice(0, 10),
+                                                    systemLanguage,
+                                                );
+                                                return t(
+                                                    `Unchanged since ${since} — ${slaDays(sla.overdueDays, systemLanguage)} past this phase's limit of ${slaDays(sla.limitDays, systemLanguage)}.`,
+                                                    `Bez zmeny od ${since} — o ${slaDays(sla.overdueDays, systemLanguage)} viac, než dovoľuje limit tejto fázy (${slaDays(sla.limitDays, systemLanguage)}).`,
+                                                    `${since} óta változatlan — ${slaDays(sla.overdueDays, systemLanguage)} a fázis ${slaDays(sla.limitDays, systemLanguage)} határidején túl.`,
+                                                );
+                                            })()}
+                                        </p>
+                                    )}
                                 </div>
                             </div>
 
@@ -4840,6 +5079,44 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             )}
                                         </div>
                                     </div>
+
+                                    {/* Traffic origin — where the visitor came from before
+                                        the form (facebook, instagram, google, direct...).
+                                        Reported by the web-form webhook, never edited here:
+                                        it is a fact about the visit, not a choice. */}
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">
+                                            {getTranslation(
+                                                systemLanguage,
+                                                "profile.traffic_origin",
+                                            )}
+                                        </label>
+                                        {activeLead.trafficOrigin ? (
+                                            <div
+                                                className="pt-2 px-3 cursor-default"
+                                                title={
+                                                    activeLead.trafficOriginDetail ||
+                                                    undefined
+                                                }
+                                            >
+                                                <div className="text-slate-900 text-sm font-black uppercase tracking-wider select-all">
+                                                    🧭 {activeLead.trafficOrigin}
+                                                </div>
+                                                {activeLead.trafficOriginDetail && (
+                                                    <div className="text-[10px] text-slate-400 font-medium truncate max-w-[260px]">
+                                                        {activeLead.trafficOriginDetail}
+                                                    </div>
+                                                )}
+                                            </div>
+                                        ) : (
+                                            <div className="pt-2 px-3 text-slate-400 text-xs font-bold uppercase tracking-wider cursor-default">
+                                                {getTranslation(
+                                                    systemLanguage,
+                                                    "profile.traffic_origin_unknown",
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
 
                                 {/* Categories Interest Selection or List display */}
@@ -4863,8 +5140,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                         key={cat}
                                                         className={`flex items-center gap-2 px-3 py-1.5 border rounded-xl cursor-pointer text-[9px] font-black uppercase transition-all select-none ${
                                                             isChecked
-                                                                ? "bg-blue-50 border-blue-300 text-blue-755 shadow-sm"
-                                                                : "bg-white border-slate-150 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                                                                ? "bg-blue-50 border-blue-300 text-blue-700 shadow-sm"
+                                                                : "bg-white border-slate-100 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
                                                         }`}
                                                     >
                                                         <input
@@ -4893,7 +5170,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                     );
                                                                 }
                                                             }}
-                                                            className="rounded border-slate-350 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5 shrink-0"
+                                                            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5 shrink-0"
                                                         />
                                                         <span className="truncate">
                                                             {cat}
@@ -4991,12 +5268,16 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                               : "Referred by client"}
                                     </label>
                                     {isEditingLead ? (
-                                        <SearchableLeadSelect
+                                        <ClientSelect
                                             leads={leads}
                                             value={leadReferralId}
                                             onChange={setLeadReferralId}
-                                            excludeId={activeLead.id}
-                                            systemLanguage={systemLanguage}
+                                            excludeIds={[activeLead.id]}
+                                            noneLabel={t(
+                                                "No referral source",
+                                                "Žiadny referral",
+                                                "Nincs ajánló",
+                                            )}
                                         />
                                     ) : (
                                         <div className="pt-1">
@@ -5087,9 +5368,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                         {/* 3. Pipeline Stage Gate & Tasks Card */}
                         <div className="glass-panel p-6 rounded-[28px] border-2 border-violet-400 bg-white shadow-xl space-y-4">
-                            <div className="border-b-2 border-slate-150 pb-2 flex items-center justify-between gap-2">
+                            <div className="border-b-2 border-slate-100 pb-2 flex items-center justify-between gap-2">
                                 <span className="text-xs font-black text-violet-700 uppercase tracking-wider flex items-center gap-1.5">
-                                    <CheckSquare className="h-4.5 w-4.5 text-violet-650 stroke-[2.5] shrink-0" />
+                                    <CheckSquare className="h-4.5 w-4.5 text-violet-600 stroke-[2.5] shrink-0" />
                                     {systemLanguage === "sk"
                                         ? "FÁZOVÁ BRÁNA A ÚLOHY"
                                         : systemLanguage === "hu"
@@ -5110,7 +5391,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     ).length;
                                     return (
                                         <span className="flex items-center gap-1">
-                                            <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-violet-50 text-violet-750 border border-violet-200">
+                                            <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-violet-50 text-violet-700 border border-violet-200">
                                                 {leadTasks.length -
                                                     archivedCount}
                                             </span>
@@ -5155,7 +5436,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     <input
                                                         type="checkbox"
                                                         checked={!!doneAt}
+                                                        disabled={!canEdit}
                                                         onChange={(e) => {
+                                                            if (!canEdit)
+                                                                return;
                                                             const checked =
                                                                 e.target
                                                                     .checked;
@@ -5245,7 +5529,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                               ? "bg-emerald-50/20 border-emerald-100"
                                                               : task.isLocking
                                                                 ? "bg-rose-50/20 border-rose-200"
-                                                                : "bg-slate-50/50 border-slate-150"
+                                                                : "bg-slate-50/50 border-slate-100"
                                                     }`}
                                                 >
                                                     <div className="flex items-start gap-2.5">
@@ -5253,12 +5537,15 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                         <div className="relative shrink-0 select-none mt-0.5">
                                                             <CustomSelect
                                                                 size="sm"
+                                                                disabled={!canEditGateTask}
                                                                 value={
                                                                     task.status
                                                                 }
                                                                 onChange={(
                                                                     newStatus,
                                                                 ) => {
+                                                                    if (!canEditGateTask)
+                                                                        return;
                                                                     const now =
                                                                         new Date();
                                                                     const completedAtStr =
@@ -5367,7 +5654,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                             "BLOKUJE: lead sa nedá posunúť do ďalšej fázy, kým nie je táto úloha dokončená.",
                                                                             "BLOKKOL: a lead nem léphet a következő fázisba, amíg ez a feladat el nem készül.",
                                                                         )}
-                                                                        className="inline-flex items-center gap-0.5 text-[7.5px] font-black text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded-md uppercase border border-rose-150 cursor-help"
+                                                                        className="inline-flex items-center gap-0.5 text-[7.5px] font-black text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded-md uppercase border border-rose-100 cursor-help"
                                                                     >
                                                                         <Lock className="h-2 w-2 text-rose-500" />
                                                                         {systemLanguage ===
@@ -5451,6 +5738,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                         ];
                                                                     return (
                                                                         <CustomSelect
+                                                                            disabled={!canEditGateTask}
                                                                             value={
                                                                                 assignees[0] ||
                                                                                 ""
@@ -5458,6 +5746,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                             onChange={(
                                                                                 next,
                                                                             ) => {
+                                                                                if (!canEditGateTask)
+                                                                                    return;
                                                                                 setTasks(
                                                                                     (
                                                                                         prev,
@@ -5486,7 +5776,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                             unstyled
                                                                             className={`text-[7.5px] font-black px-1.5 py-0.5 rounded-md uppercase border max-w-[120px] ${
                                                                                 isMine
-                                                                                    ? "text-indigo-600 bg-indigo-50 border-indigo-150"
+                                                                                    ? "text-indigo-600 bg-indigo-50 border-indigo-100"
                                                                                     : "text-slate-500 bg-slate-100 border-slate-200"
                                                                             }`}
                                                                             options={
@@ -5533,7 +5823,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                 "Obnoviť úlohu",
                                                                 "Feladat visszaállítása",
                                                             )}
-                                                            className="text-slate-400 hover:text-emerald-600 transition-colors p-1"
+                                                            // Restoring is the creator's call, like archiving — see canArchiveTask.
+                                                            disabled={!canArchiveTask(task, currentUser ?? undefined)}
+                                                            className="text-slate-400 hover:text-emerald-600 transition-colors p-1 disabled:cursor-not-allowed disabled:opacity-35 disabled:hover:text-slate-400"
                                                         >
                                                             <ArchiveRestore className="h-3.5 w-3.5" />
                                                         </button>
@@ -5662,8 +5954,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             }
                                             className={`w-full px-3 py-1.5 rounded-xl border font-black text-[9px] uppercase tracking-wider transition-all flex items-center justify-center gap-1 ${
                                                 inlineTaskIsLocking
-                                                    ? "bg-rose-50 border-rose-250 text-rose-700 font-extrabold"
-                                                    : "bg-slate-50 border-slate-200 text-slate-550"
+                                                    ? "bg-rose-50 border-rose-200 text-rose-700 font-extrabold"
+                                                    : "bg-slate-50 border-slate-200 text-slate-500"
                                             }`}
                                         >
                                             <Lock className="h-3 w-3" />
@@ -5723,13 +6015,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                                 <button
                                     type="submit"
-                                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-650 text-white font-black text-[10px] uppercase tracking-wider shadow hover:shadow-violet-600/10 hover:scale-[1.01] transition-all cursor-pointer border border-violet-550/20"
+                                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-black text-[10px] uppercase tracking-wider shadow hover:shadow-violet-600/10 hover:scale-[1.01] transition-all cursor-pointer border border-violet-500/20 flex items-center justify-center gap-1.5"
                                 >
+                                    <Plus className="h-3.5 w-3.5" />
                                     {systemLanguage === "sk"
-                                        ? "+ Pridať úlohu fázovej brány"
+                                        ? "Pridať úlohu fázovej brány"
                                         : systemLanguage === "hu"
-                                          ? "+ Kapu feladat hozzáadása"
-                                          : "+ Add Pipeline Gate Task"}
+                                          ? "Kapu feladat hozzáadása"
+                                          : "Add Pipeline Gate Task"}
                                 </button>
                             </form>
                         </div>
@@ -5737,7 +6030,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                     {/* RIGHT PANEL: Timeline History & Quick Logger */}
                     <div className="lg:col-span-7">
-                        <div className="glass-panel p-6 rounded-[28px] border-2 border-blue-450 bg-white shadow-xl space-y-6">
+                        <div className="glass-panel p-6 rounded-[28px] border-2 border-blue-400 bg-white shadow-xl space-y-6">
                             {/* Logger form */}
                             <div>
                                 <h3 className="text-xs font-black text-blue-700 uppercase tracking-wider mb-4 flex items-center gap-1.5 border-b-2 border-slate-100 pb-2">
@@ -5784,7 +6077,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                             className={`py-2 rounded-lg font-black text-[9px] uppercase tracking-wider transition-all text-center flex items-center justify-center gap-1 ${
                                                                 logType === type
                                                                     ? `${colors.dotBg} border-2 shadow`
-                                                                    : "text-slate-550 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
+                                                                    : "text-slate-500 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
                                                             }`}
                                                         >
                                                             {renderEventIcon(
@@ -5829,7 +6122,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                         logType ===
                                                                         type
                                                                             ? `${colors.dotBg} border-2 shadow`
-                                                                            : "text-slate-550 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
+                                                                            : "text-slate-500 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
                                                                     }`}
                                                                 >
                                                                     {renderEventIcon(
@@ -5851,7 +6144,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                                     {/* Expand-down conditionally */}
                                     <div
-                                        className={`grid transition-all duration-300 ease-in-out ${logType ? "grid-rows-[1fr] opacity-100 mt-4 border-t border-slate-150 pt-4" : "grid-rows-[0fr] opacity-0 overflow-hidden"}`}
+                                        className={`grid transition-all duration-300 ease-in-out ${logType ? "grid-rows-[1fr] opacity-100 mt-4 border-t border-slate-100 pt-4" : "grid-rows-[0fr] opacity-0 overflow-hidden"}`}
                                     >
                                         <div className="overflow-hidden space-y-4">
                                             {/* Date and Time selectors for the event */}
@@ -6065,7 +6358,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                     logFileType ===
                                                                                     type
                                                                                         ? "bg-amber-700 text-white border border-amber-800 shadow"
-                                                                                        : "text-slate-550 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
+                                                                                        : "text-slate-500 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
                                                                                 }`}
                                                                             >
                                                                                 <span>
@@ -6415,9 +6708,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             </div>
 
                             {/* Chronological timeline */}
-                            <div className="border-t-2 border-slate-150 pt-6 space-y-4">
-                                <h3 className="text-xs font-black text-slate-450 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
-                                    <Clock className="h-4.5 w-4.5 text-blue-650 animate-pulse stroke-[2.5]" />{" "}
+                            <div className="border-t-2 border-slate-100 pt-6 space-y-4">
+                                <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
+                                    <Clock className="h-4.5 w-4.5 text-blue-600 animate-pulse stroke-[2.5]" />{" "}
                                     {getTranslation(
                                         systemLanguage,
                                         "common.chronological_timeline",
@@ -6432,6 +6725,28 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         </span>
                                     )}
                                 </h3>
+
+                                {/* An unreachable mailbox must not read as "this
+                                    customer was never written to". Say so, once,
+                                    above the entries that did load. */}
+                                {leadMailError && (
+                                    <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-800">
+                                        <AlertTriangle className="h-4 w-4 shrink-0 stroke-[2.5] mt-px" />
+                                        <span>
+                                            {t(
+                                                "E-mails are missing from this timeline: ",
+                                                "V tejto histórii chýbajú e-maily: ",
+                                                "Ebből az előzményből hiányoznak az e-mailek: ",
+                                            )}
+                                            {leadMailError}{" "}
+                                            {t(
+                                                "Check Personal Settings → E-mail.",
+                                                "Skontrolujte Osobné nastavenia → E-mail.",
+                                                "Ellenőrizze: Személyes beállítások → E-mail.",
+                                            )}
+                                        </span>
+                                    </div>
+                                )}
 
                                 {activeLeadTimeline.length === 0 ? (
                                     <div className="py-12 text-center text-slate-400">
@@ -6496,7 +6811,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                         <div className="absolute -left-[7px] top-[14px] w-3 h-3 bg-white border-l-2 border-b-2 border-slate-200 transform rotate-45 hidden md:block"></div>
 
                                                         <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 border-b-2 border-slate-100 pb-2 mb-2.5">
-                                                            <h4 className="font-heading font-black text-[11px] uppercase tracking-tight text-slate-850 leading-snug break-words min-w-0 flex-1 basis-[60%] pt-0.5">
+                                                            <h4 className="font-heading font-black text-[11px] uppercase tracking-tight text-slate-800 leading-snug break-words min-w-0 flex-1 basis-[60%] pt-0.5">
                                                                 {event.title}
                                                             </h4>
                                                             <div className="flex flex-wrap items-center justify-end gap-1.5 ml-auto">
@@ -6509,7 +6824,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                             "",
                                                                     )}
                                                                 />
-                                                                <span className="px-2.5 py-0.5 rounded-full text-[8.5px] font-extrabold uppercase border bg-purple-50 text-purple-700 border-purple-250">
+                                                                <span className="px-2.5 py-0.5 rounded-full text-[8.5px] font-extrabold uppercase border bg-purple-50 text-purple-700 border-purple-200">
                                                                     {getTranslation(
                                                                         systemLanguage,
                                                                         "timeline.upcoming_meet",
@@ -6837,7 +7152,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     <div className="w-full border-t-2 border-dashed border-blue-400"></div>
                                                 </div>
                                                 <div className="relative flex justify-center">
-                                                    <span className="bg-blue-100 text-blue-750 text-[9px] font-black uppercase px-4 py-1.5 rounded-full border-2 border-blue-300 shadow-md flex items-center gap-1">
+                                                    <span className="bg-blue-100 text-blue-700 text-[9px] font-black uppercase px-4 py-1.5 rounded-full border-2 border-blue-300 shadow-md flex items-center gap-1">
                                                         <span className="h-2 w-2 rounded-full bg-blue-500 animate-ping" />{" "}
                                                         {getTranslation(
                                                             systemLanguage,
@@ -6916,7 +7231,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                         <div className="absolute -left-[7px] top-[14px] w-3 h-3 bg-white border-l-2 border-b-2 border-slate-200 transform rotate-45 hidden md:block"></div>
 
                                                         <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 border-b-2 border-slate-100 pb-2 mb-2.5">
-                                                            <h4 className="font-heading font-black text-[11px] uppercase tracking-tight text-slate-850 leading-snug break-words min-w-0 flex-1 basis-[60%] pt-0.5">
+                                                            <h4 className="font-heading font-black text-[11px] uppercase tracking-tight text-slate-800 leading-snug break-words min-w-0 flex-1 basis-[60%] pt-0.5">
                                                                 {event.title}
                                                             </h4>
                                                             {event.type ===
@@ -6961,6 +7276,52 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                         @{" "}
                                                                         {pmName}
                                                                     </span>
+                                                                    {/* Imported mail is correctable too: sync.php
+                                                                        applies the edit, and a delete hides the
+                                                                        entry without touching the mailbox. */}
+                                                                    {editingEventId !==
+                                                                        event.id && (
+                                                                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={(
+                                                                                    e,
+                                                                                ) => {
+                                                                                    e.stopPropagation();
+                                                                                    handleStartEditEvent(
+                                                                                        event,
+                                                                                    );
+                                                                                }}
+                                                                                className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                                                                title={t(
+                                                                                    "Edit event",
+                                                                                    "Upraviť udalosť",
+                                                                                    "Esemény szerkesztése",
+                                                                                )}
+                                                                            >
+                                                                                <PencilLine className="h-3.5 w-3.5" />
+                                                                            </button>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={(
+                                                                                    e,
+                                                                                ) => {
+                                                                                    e.stopPropagation();
+                                                                                    handleDeleteTimelineEvent(
+                                                                                        event.id,
+                                                                                    );
+                                                                                }}
+                                                                                className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                                                                                title={t(
+                                                                                    "Delete event",
+                                                                                    "Odstrániť udalosť",
+                                                                                    "Esemény törlése",
+                                                                                )}
+                                                                            >
+                                                                                <Trash2 className="h-3.5 w-3.5" />
+                                                                            </button>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                             ) : (
                                                                 <div className="flex flex-wrap items-center justify-end gap-1.5 ml-auto">
@@ -7295,6 +7656,176 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     </div>
                 </div>
 
+                {/* Linked Projects Card — moved below both panels so it reads
+                    as the last thing in the lead detail, after the timeline. */}
+                {setProjects && projectTypes.length > 0 && (() => {
+                    const linked = projectsForLead(projects, activeLead.id);
+                    const available = pairableProjects(projects);
+                    const typeOf = (typeId: string) =>
+                        projectTypes.find((pt) => pt.id === typeId);
+                    const statusLabel = (status: string) => projectStatusLabel(status, t);
+                    const statusClass = projectStatusBadgeClass;
+
+                    return (
+                        <div className="glass-panel p-6 rounded-[28px] border-2 border-purple-400 bg-white shadow-xl space-y-4">
+                            <div className="border-b-2 border-slate-100 pb-2 flex items-center justify-between gap-2">
+                                <span className="text-xs font-black text-purple-700 uppercase tracking-wider flex items-center gap-1.5">
+                                    <Briefcase className="h-4.5 w-4.5 text-purple-600 stroke-[2.5] shrink-0" />
+                                    {t(
+                                        "LINKED PROJECTS",
+                                        "SPÁROVANÉ PROJEKTY",
+                                        "KAPCSOLT PROJEKTEK",
+                                    )}
+                                </span>
+                                <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-purple-50 text-purple-700 border border-purple-200">
+                                    {linked.length}
+                                </span>
+                            </div>
+
+                            {linked.length === 0 ? (
+                                <p className="text-[11px] font-semibold text-slate-400 italic">
+                                    {t(
+                                        "No project is paired with this lead yet.",
+                                        "S týmto leadom zatiaľ nie je spárovaný žiadny projekt.",
+                                        "Még nincs projekt párosítva ehhez a leadhez.",
+                                    )}
+                                </p>
+                            ) : (
+                                <div className="space-y-2">
+                                    {linked.map((p) => {
+                                        const pType = typeOf(p.projectTypeId);
+                                        return (
+                                            <div
+                                                key={p.id}
+                                                className="flex items-center gap-2.5 rounded-2xl border border-slate-200 bg-slate-50/60 px-3 py-2.5 hover:border-purple-300 transition-colors"
+                                            >
+                                                <span
+                                                    className="h-2.5 w-2.5 rounded-full shrink-0"
+                                                    style={{
+                                                        backgroundColor:
+                                                            pType?.color ||
+                                                            "#a855f7",
+                                                    }}
+                                                />
+                                                <div className="min-w-0 flex-1">
+                                                    <span className="block text-[11px] font-black text-slate-800 truncate">
+                                                        {pType?.name ||
+                                                            t(
+                                                                "Unknown project type",
+                                                                "Neznámy typ projektu",
+                                                                "Ismeretlen projekt típus",
+                                                            )}
+                                                    </span>
+                                                    {p.managers &&
+                                                        p.managers.length > 0 && (
+                                                            <span className="block text-[9px] font-bold text-slate-400 truncate mt-0.5">
+                                                                {p.managers.join(
+                                                                    ", ",
+                                                                )}
+                                                            </span>
+                                                        )}
+                                                </div>
+                                                <span
+                                                    className={`px-2 py-0.5 rounded-full text-[8px] font-black border shrink-0 ${statusClass(p.status)}`}
+                                                >
+                                                    {statusLabel(p.status)}
+                                                </span>
+                                                {setActiveTab && (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() =>
+                                                            openProject(p.id)
+                                                        }
+                                                        className="p-1.5 rounded-lg text-slate-400 hover:text-purple-600 hover:bg-purple-50 transition-colors cursor-pointer shrink-0"
+                                                        title={t(
+                                                            "Open project",
+                                                            "Otvoriť projekt",
+                                                            "Projekt megnyitása",
+                                                        )}
+                                                    >
+                                                        <ArrowRight className="h-3.5 w-3.5" />
+                                                    </button>
+                                                )}
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        handleUnpairProject(p.id)
+                                                    }
+                                                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer shrink-0"
+                                                    title={t(
+                                                        "Unpair project",
+                                                        "Zrušiť spárovanie",
+                                                        "Párosítás megszüntetése",
+                                                    )}
+                                                >
+                                                    <Unlink className="h-3.5 w-3.5" />
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            )}
+
+                            {/* Pair an existing project. Only projects that
+                                belong to nobody are offered — re-pointing one
+                                that is already paired elsewhere would silently
+                                take it off the other lead. */}
+                            <div className="pt-1 space-y-2">
+                                <label className="block text-[9px] font-black text-slate-400 uppercase tracking-wider">
+                                    {t(
+                                        "Pair an existing project",
+                                        "Spárovať existujúci projekt",
+                                        "Meglévő projekt párosítása",
+                                    )}
+                                </label>
+                                {available.length === 0 ? (
+                                    <p className="text-[10px] font-semibold text-slate-400 italic">
+                                        {t(
+                                            "Every project already belongs to a lead. Use “Convert to Project” above to create a new one.",
+                                            "Všetky projekty už patria niektorému leadu. Nový vytvoríte tlačidlom „Konvertovať na projekt“ vyššie.",
+                                            "Minden projekt már egy leadhez tartozik. Újat a fenti „Konvertálás projektté” gombbal hozhat létre.",
+                                        )}
+                                    </p>
+                                ) : (
+                                    <div className="flex items-center gap-2">
+                                        <div className="flex-1 min-w-0">
+                                            <CustomSelect
+                                                size="sm"
+                                                value={pairProjectId}
+                                                onChange={setPairProjectId}
+                                                placeholder={t(
+                                                    "Choose a project...",
+                                                    "Vyberte projekt...",
+                                                    "Válasszon projektet...",
+                                                )}
+                                                options={available.map((p) => ({
+                                                    value: p.id,
+                                                    // Projects carry no name of
+                                                    // their own, so the type plus
+                                                    // the tail of the id is what
+                                                    // tells two of a kind apart.
+                                                    label: `${typeOf(p.projectTypeId)?.name || p.projectTypeId} · ${p.id.slice(-4)}`,
+                                                }))}
+                                            />
+                                        </div>
+                                        <button
+                                            type="button"
+                                            disabled={!pairProjectId}
+                                            onClick={() =>
+                                                handlePairProject(pairProjectId)
+                                            }
+                                            className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:bg-slate-200 disabled:text-slate-400 disabled:cursor-not-allowed text-white font-black text-[9px] uppercase tracking-wider transition-colors cursor-pointer shrink-0"
+                                        >
+                                            <Link2 className="h-3.5 w-3.5" />
+                                            {t("Pair", "Spárovať", "Párosítás")}
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    );
+                })()}
+
                 {/* TIMELINE EMAIL DETAIL SLIDEOUT OVERLAY — commented out on request.
                     E-mails now expand inline in the timeline via "Show more", so there is
                     no separate full view. To bring it back, uncomment this block, the card
@@ -7350,8 +7881,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         // </div>
                                     // ) : timelineEmailDetailBody ? (
                                         // <div className="flex-1 flex flex-col justify-between">
-                                            // <div className="border-b border-slate-150 pb-3 mb-4 text-left">
-                                                // <p className="text-[10px] text-slate-550 font-bold">
+                                            // <div className="border-b border-slate-100 pb-3 mb-4 text-left">
+                                                // <p className="text-[10px] text-slate-500 font-bold">
                                                     // {t(
                                                         // "Subject:",
                                                         // "Predmet:",
@@ -7363,7 +7894,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                         // }
                                                     // </strong>
                                                 // </p>
-                                                // <p className="text-[10px] text-slate-550 font-bold mt-1">
+                                                // <p className="text-[10px] text-slate-500 font-bold mt-1">
                                                     // {t(
                                                         // "Date:",
                                                         // "Dátum:",
@@ -7410,7 +7941,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                           // `}
                                                     // />
                                                 // ) : (
-                                                    // <div className="text-left text-xs text-slate-700 font-semibold whitespace-pre-wrap leading-relaxed select-text p-4 bg-slate-50 rounded-2xl border border-slate-150">
+                                                    // <div className="text-left text-xs text-slate-700 font-semibold whitespace-pre-wrap leading-relaxed select-text p-4 bg-slate-50 rounded-2xl border border-slate-100">
                                                         // {timelineEmailDetailBody.text ||
                                                             // t(
                                                                 // "No message content.",
@@ -7448,6 +7979,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     return (
         <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
+            {confirmDialog}
             {/* 0. Title header */}
             <div className="flex flex-col border-b border-slate-100 pb-4">
                 <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
@@ -7482,7 +8014,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                       : "Leads Status"}
                             </span>
                             <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black bg-blue-50 text-blue-600 border border-blue-100 uppercase tracking-wider">
-                                {leads.length}{" "}
+                                {pipelineLeads.length}{" "}
                                 {systemLanguage === "sk"
                                     ? "aktívnych"
                                     : systemLanguage === "hu"
@@ -7513,12 +8045,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         ? {
                                               backgroundColor: `${stateColor}08`,
                                               borderColor: `${stateColor}18`,
-                                              color: stateColor,
+                                              color: liftAccent(stateColor),
                                           }
                                         : {
-                                              backgroundColor: "#f8fafc",
-                                              borderColor: "#e2e8f0",
-                                              color: "#94a3b8",
+                                              // Theme tokens, not literals: the hardcoded slate here
+                                              // left the inactive chip white-on-white in dark mode.
+                                              backgroundColor: "rgb(var(--muted))",
+                                              borderColor: "rgb(var(--border))",
+                                              color: "rgb(var(--muted-foreground))",
                                               opacity: 0.7,
                                           }
                                 }
@@ -7530,11 +8064,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         isActive
                                             ? {
                                                   backgroundColor: `${stateColor}12`,
-                                                  color: stateColor,
+                                                  color: liftAccent(stateColor),
                                               }
                                             : {
-                                                  backgroundColor: "#e2e8f0",
-                                                  color: "#94a3b8",
+                                                  backgroundColor: "rgb(var(--border))",
+                                                  color: "rgb(var(--muted-foreground))",
                                               }
                                     }
                                 >
@@ -7548,9 +8082,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
             {/* 2. Control search, filter, and sort bar (Blue accents) */}
             <div className="glass-panel p-6 rounded-[28px] border border-blue-100 bg-white/90 shadow-glass space-y-4 relative z-30">
-                <div className="flex flex-col sm:flex-row items-center gap-4 justify-between border-b border-slate-100/80 pb-4">
+                <div className="flex flex-wrap items-center gap-4 justify-between border-b border-slate-100/80 pb-4">
                     <div className="flex items-center gap-2.5 w-full sm:max-w-md">
-                        <div className="relative flex-1">
+                        <div className="relative flex-1 min-w-[11rem]">
                             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-blue-500" />
                             <input
                                 type="text"
@@ -7571,7 +8105,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             className={`px-4 py-2.5 rounded-2xl text-xs font-extrabold border transition-all flex items-center gap-1.5 shadow-sm shrink-0 uppercase tracking-wider ${
                                 showFilters
                                     ? "bg-blue-50 border-blue-300 text-blue-700 font-black shadow-blue-100"
-                                    : "bg-white border-slate-200/60 hover:bg-slate-50 text-slate-650"
+                                    : "bg-white border-slate-200/60 hover:bg-slate-50 text-slate-600"
                             }`}
                         >
                             <SlidersHorizontal className="h-4 w-4 text-blue-500" />
@@ -7609,7 +8143,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         )}
                     </div>
 
-                    <div className="flex flex-col sm:flex-row items-center gap-3 w-full sm:w-auto">
+                    <div className="flex flex-wrap items-center justify-center gap-3 w-full sm:w-auto">
                         {/* View Mode Toggle: List vs Kanban */}
                         <div className="flex bg-slate-100 p-0.5 rounded-2xl border border-slate-200 gap-0.5 select-none shrink-0 w-full sm:w-auto justify-center">
                             <button
@@ -7618,7 +8152,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 ${
                                     viewMode === "list"
                                         ? "bg-blue-600 text-white shadow-md shadow-blue-600/10"
-                                        : "text-slate-550 hover:text-slate-800 hover:bg-slate-200/50"
+                                        : "text-slate-500 hover:text-slate-800 hover:bg-slate-200/50"
                                 }`}
                             >
                                 <TableProperties className="h-3.5 w-3.5" />
@@ -7634,7 +8168,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 ${
                                     viewMode === "kanban"
                                         ? "bg-blue-600 text-white shadow-md shadow-blue-600/10"
-                                        : "text-slate-555 hover:text-slate-800 hover:bg-slate-200/50"
+                                        : "text-slate-500 hover:text-slate-800 hover:bg-slate-200/50"
                                 }`}
                             >
                                 <Layers className="h-3.5 w-3.5" />
@@ -7653,7 +8187,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             className={`px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer flex items-center gap-1.5 border shrink-0 ${
                                 compactMode
                                     ? "bg-indigo-600 border-indigo-700 text-white shadow-md shadow-indigo-600/10"
-                                    : "bg-white border-slate-200 text-slate-550 hover:text-slate-800 hover:bg-slate-200/50"
+                                    : "bg-white border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-200/50"
                             }`}
                         >
                             <Minimize2 className="h-3.5 w-3.5" />
@@ -7744,7 +8278,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             onClick={() => {
                                 setNewLeadStatus(leadStates[0] || "");
                                 setNewLeadSource(leadSources[0] || "");
-                                setNewLeadOwner(projectManagers[0] || "");
+                                setNewLeadOwner(
+                                    autoAssignActive
+                                        ? ""
+                                        : projectManagers[0] || "",
+                                );
                                 setIsModalOpen(true);
                             }}
                             className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-blue-600 hover:bg-blue-500 text-white text-xs font-extrabold shadow-lg shadow-blue-600/25 transition-all flex items-center justify-center gap-2 group hover:-translate-y-0.5"
@@ -7968,7 +8506,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             !isOfferDatePickerOpen,
                                         )
                                     }
-                                    className="w-full flex items-center justify-between gap-1.5 bg-white border border-slate-200/70 rounded-xl px-2.5 py-1.5 text-left text-[11px] font-bold text-slate-750 hover:border-blue-400 transition-colors"
+                                    className="w-full flex items-center justify-between gap-1.5 bg-white border border-slate-200/70 rounded-xl px-2.5 py-1.5 text-left text-[11px] font-bold text-slate-700 hover:border-blue-400 transition-colors"
                                 >
                                     <div className="flex items-center gap-1.5 truncate">
                                         <Calendar className="h-3.5 w-3.5 text-blue-500 shrink-0" />
@@ -8001,7 +8539,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 setOfferPresetName("All Time");
                                                 setIsOfferDatePickerOpen(false);
                                             }}
-                                            className="text-slate-400 hover:text-slate-650 rounded-full"
+                                            className="text-slate-400 hover:text-slate-600 rounded-full"
                                         >
                                             <X className="h-3 w-3" />
                                         </button>
@@ -8508,43 +9046,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     size="sm"
                                     unstyled
                                     className="text-[11px] font-bold text-slate-700 uppercase tracking-wider w-full justify-between gap-2"
-                                    options={[
-                                        {
-                                            value: "all",
-                                            label: t(
-                                                "All ratings",
-                                                "Všetky hodnotenia",
-                                                "Minden értékelés",
-                                            ),
-                                        },
-                                        {
-                                            value: "min4",
-                                            label: `★★★★ ${t("and up", "a viac", "és felette")}`,
-                                        },
-                                        {
-                                            value: "min3",
-                                            label: `★★★ ${t("and up", "a viac", "és felette")}`,
-                                        },
-                                        ...[5, 4, 3, 2, 1].map((stars) => ({
-                                            value: String(stars),
-                                            label: `${"★".repeat(stars)}${"☆".repeat(5 - stars)}`,
-                                        })),
-                                        {
-                                            value: "none",
-                                            label: t(
-                                                "Not rated",
-                                                "Bez hodnotenia",
-                                                "Nincs értékelve",
-                                            ),
-                                        },
-                                    ]}
+                                    options={ratingFilterOptions(t)}
                                 />
                             </div>
                         </div>
                     </div>
                 )}
 
-                {leads.length === 0 && (
+                {pipelineLeads.length === 0 && (
                     <div className="flex flex-col items-center justify-center text-center py-16 px-6 gap-3">
                         <div className="h-14 w-14 rounded-2xl bg-blue-50 border border-blue-100 flex items-center justify-center">
                             <TableProperties className="h-7 w-7 text-blue-500" />
@@ -8664,13 +9173,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 orderingMode === "pm") && (
                                                 <tr
                                                     onClick={() =>
-                                                        toggleGroupCollapse(
-                                                            group.state,
-                                                        )
+                                                        toggleGroupCollapse(group.state)
                                                     }
                                                     className="block lg:table-row bg-transparent cursor-pointer hover:opacity-80 transition-all select-none"
                                                 >
-                                                    <td
+                                                    <th
+                                                        scope="colgroup"
                                                         colSpan={9}
                                                         className={`px-4 lg:px-6 font-bold align-middle select-none block lg:table-cell w-full lg:w-auto ${compactMode ? "py-1" : "py-1.5"}`}
                                                         style={{
@@ -8680,8 +9188,15 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     >
                                                         <div className="flex items-center justify-between w-full gap-2">
                                                             <div className="flex items-center gap-2 shrink-0">
-                                                                <span
-                                                                    className="text-[10px] select-none opacity-60"
+                                                                <button
+                                                                    type="button"
+                                                                    aria-expanded={!isCollapsed}
+                                                                    aria-label={isCollapsed ? "Expand group" : "Collapse group"}
+                                                                    onClick={(e) => {
+                                                                        e.stopPropagation();
+                                                                        toggleGroupCollapse(group.state);
+                                                                    }}
+                                                                    className="text-[10px] select-none opacity-60 hover:opacity-100 transition-opacity cursor-pointer"
                                                                     style={{
                                                                         color: stateColor,
                                                                         marginRight:
@@ -8691,7 +9206,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                     {isCollapsed
                                                                         ? "▶"
                                                                         : "▼"}
-                                                                </span>
+                                                                </button>
                                                                 <span
                                                                     className="text-[11px] font-black uppercase tracking-wider font-heading"
                                                                     style={{
@@ -8767,7 +9282,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                 )}
                                                             </span>
                                                         </div>
-                                                    </td>
+                                                    </th>
                                                 </tr>
                                             )}
 
@@ -8807,11 +9322,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                     );
 
                                                                 return (
-                                                                    <>
+                                                                    <React.Fragment key={lead.id}>
                                                                         <tr
-                                                                            key={
-                                                                                lead.id
-                                                                            }
                                                                             onMouseEnter={() =>
                                                                                 setHoveredLeadId(
                                                                                     lead.id,
@@ -9009,7 +9521,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                 ) : (
                                                                                     <div className="flex items-center gap-1">
                                                                                         <MapPin className="h-3.5 w-3.5 text-blue-400 shrink-0" />
-                                                                                        <span className="border-b border-transparent hover:border-blue-400/50 transition-all text-slate-650">
+                                                                                        <span className="border-b border-transparent hover:border-blue-400/50 transition-all text-slate-600">
                                                                                             {
                                                                                                 lead.city
                                                                                             }
@@ -9158,11 +9670,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                     </div>
                                                                                 ) : (
                                                                                     <span
-                                                                                        className="px-2 py-0.5 rounded text-[9px] font-extrabold uppercase border select-none transition-colors"
+                                                                                        className="px-2 py-0.5 rounded text-[9px] font-extrabold uppercase border select-none transition-colors whitespace-nowrap"
                                                                                         style={{
                                                                                             backgroundColor: `${getSafeSourceColor(lead.source)}15`,
-                                                                                            color: getSafeSourceColor(
-                                                                                                lead.source,
+                                                                                            color: liftAccent(
+                                                                                                getSafeSourceColor(lead.source),
                                                                                             ),
                                                                                             borderColor: `${getSafeSourceColor(lead.source)}35`,
                                                                                         }}
@@ -9237,8 +9749,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                                 className="px-2.5 py-0.5 lg:py-1 rounded-full border text-[9px] lg:text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all shadow-sm"
                                                                                                 style={{
                                                                                                     backgroundColor: `${getSafePMColor(lead.owner)}15`,
-                                                                                                    color: getSafePMColor(
-                                                                                                        lead.owner,
+                                                                                                    color: liftAccent(
+                                                                                                        getSafePMColor(lead.owner),
                                                                                                     ),
                                                                                                     borderColor: `${getSafePMColor(lead.owner)}30`,
                                                                                                 }}
@@ -9261,7 +9773,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                         lead,
                                                                                     )
                                                                                 }
-                                                                                className={`inline-flex items-center lg:table-cell px-0 lg:px-4 font-heading font-black text-blue-755 cursor-pointer mr-3.5 ${cellPy}`}
+                                                                                className={`inline-flex items-center lg:table-cell px-0 lg:px-4 font-heading font-black text-blue-700 cursor-pointer mr-3.5 ${cellPy}`}
                                                                             >
                                                                                 {isInlineEditing ? (
                                                                                     <input
@@ -9332,6 +9844,21 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                                 )
                                                                                             }
                                                                                         />
+                                                                                        {breachedSlaById[
+                                                                                            lead.id
+                                                                                        ] && (
+                                                                                            <SlaBreachBadge
+                                                                                                sla={
+                                                                                                    breachedSlaById[
+                                                                                                        lead
+                                                                                                            .id
+                                                                                                    ]
+                                                                                                }
+                                                                                                lang={
+                                                                                                    systemLanguage
+                                                                                                }
+                                                                                            />
+                                                                                        )}
                                                                                     </div>
 
                                                                                     {/* Next Task or Next State */}
@@ -9442,7 +9969,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                                     null,
                                                                                                 );
                                                                                             }}
-                                                                                            className="h-6 w-6 rounded bg-slate-200 text-slate-650 flex items-center justify-center shadow hover:bg-slate-350 transition-colors"
+                                                                                            className="h-6 w-6 rounded bg-slate-200 text-slate-600 flex items-center justify-center shadow hover:bg-slate-300 transition-colors"
                                                                                             title={t(
                                                                                                 "Cancel Inline Edit",
                                                                                                 "Zrušiť priamu úpravu",
@@ -9517,7 +10044,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                     className="p-0 border-none select-none block lg:table-cell w-full lg:w-auto"
                                                                                 >
                                                                                     <div
-                                                                                        className="w-full flex items-center gap-[1px] select-none bg-slate-205 transition-all duration-300 overflow-hidden"
+                                                                                        className="w-full flex items-center gap-[1px] select-none bg-slate-200 transition-all duration-300 overflow-hidden"
                                                                                         style={{
                                                                                             height:
                                                                                                 hoveredLeadId ===
@@ -9785,13 +10312,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                     colSpan={
                                                                                         9
                                                                                     }
-                                                                                    className="px-6 pb-3 pt-1 text-[10px] font-medium text-purple-650 tracking-wide text-left block lg:table-cell"
+                                                                                    className="px-6 pb-3 pt-1 text-[10px] font-medium text-purple-600 tracking-wide text-left block lg:table-cell"
                                                                                 >
                                                                                     <div className="flex items-center gap-2 flex-wrap">
                                                                                         <span
                                                                                             className="italic"
                                                                                             style={{
-                                                                                                color: "#7c3aed",
+                                                                                                color: "rgb(var(--accent))",
                                                                                             }}
                                                                                         >
                                                                                             {generateAiSummary(
@@ -9809,7 +10336,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                 </td>
                                                                             </tr>
                                                                         )}
-                                                                    </>
+                                                                    </React.Fragment>
                                                                 );
                                                             })}
                                                         {hasMore && (
@@ -9922,7 +10449,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     </span>
                                                 </div>
                                                 <div className="flex items-center gap-1.5">
-                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-slate-100 text-slate-500 border border-slate-205 leading-none shrink-0 shadow-sm">
+                                                    <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-slate-100 text-slate-500 border border-slate-200 leading-none shrink-0 shadow-sm">
                                                         {group.leads.length}
                                                     </span>
                                                     <span className="text-[10px] font-extrabold text-indigo-700">
@@ -9938,7 +10465,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 className={`flex-1 flex flex-col overflow-y-auto max-h-[490px] pr-1.5 scrollbar-thin ${compactMode ? "gap-2" : "gap-3"}`}
                                             >
                                                 {group.leads.length === 0 ? (
-                                                    <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-[10px] font-black text-slate-350 uppercase tracking-widest border border-dashed border-slate-200 rounded-[20px] min-h-[250px] bg-slate-100/10">
+                                                    <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-[10px] font-black text-slate-300 uppercase tracking-widest border border-dashed border-slate-200 rounded-[20px] min-h-[250px] bg-slate-100/10">
                                                         {t(
                                                             "No Leads",
                                                             "Žiadne leady",
@@ -9987,7 +10514,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                             lead.id
                                                                         }
                                                                         draggable="true"
-                                                                        onDragStart={() => {
+                                                                        onDragStart={(e) => {
+                                                                            const target = e.target as HTMLElement;
+                                                                            if (target.closest('button, input, textarea, a, [aria-haspopup="listbox"]')) {
+                                                                                e.preventDefault();
+                                                                                return;
+                                                                            }
                                                                             setDraggedLeadId(
                                                                                 lead.id,
                                                                             );
@@ -10006,10 +10538,21 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                 : "p-4 gap-2.5"
                                                                         }`}
                                                                     >
-                                                                        {/* Row 1: Hover Actions */}
+                                                                        {/* Row 1: SLA warning (always on) + hover actions */}
                                                                         <div
-                                                                            className={`flex items-center justify-end shrink-0 ${compactMode ? "h-2" : "h-4"}`}
+                                                                            className={`flex items-center justify-between gap-1 shrink-0 ${compactMode ? "min-h-2" : "min-h-4"}`}
                                                                         >
+                                                                            {/* Kanban is the other reading of the same list, so a
+                                                                                breached lead has to be as obvious here as in a row. */}
+                                                                            {breachedSlaById[lead.id] ? (
+                                                                                <SlaBreachBadge
+                                                                                    sla={breachedSlaById[lead.id]}
+                                                                                    lang={systemLanguage}
+                                                                                />
+                                                                            ) : (
+                                                                                <span />
+                                                                            )}
+
                                                                             {/* Card quick actions on hover */}
                                                                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                                                                                 <button
@@ -10091,7 +10634,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                         {/* Row 4: Location & Client Type Badges */}
                                                                         <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
                                                                             <div className="flex items-center gap-0.5 text-[8.5px] font-bold text-slate-500">
-                                                                                <MapPin className="h-3 w-3 text-slate-450 shrink-0" />
+                                                                                <MapPin className="h-3 w-3 text-slate-400 shrink-0" />
                                                                                 <span>
                                                                                     {
                                                                                         lead.city
@@ -10151,7 +10694,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                             {/* PM Avatar & Source */}
                                                                             <div className="flex items-center gap-2">
                                                                                 <span
-                                                                                    className="px-1.5 py-0.5 rounded text-[7.5px] font-black uppercase border select-none leading-none tracking-wider"
+                                                                                    className="px-1.5 py-0.5 rounded text-[7.5px] font-black uppercase border select-none leading-none tracking-wider whitespace-nowrap"
                                                                                     style={{
                                                                                         backgroundColor: `${getSafeSourceColor(leadSource)}15`,
                                                                                         color: getSafeSourceColor(
@@ -10291,7 +10834,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                             {
                                                                                                 value: "",
                                                                                                 label: (
-                                                                                                    <span style={{ color: "#475569" }}>
+                                                                                                    <span style={{ color: "rgb(var(--muted-foreground))" }}>
                                                                                                         {systemLanguage ===
                                                                                                         "sk"
                                                                                                             ? "Žiadny podstav"
@@ -10382,15 +10925,17 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         <strong className="text-blue-600">
                             {processedLeads.length}
                         </strong>{" "}
-                        {t("of", "z", "/")} {leads.length}{" "}
+                        {t("of", "z", "/")} {pipelineLeads.length}{" "}
                         {t("leads", "leadov", "lead")}
                     </div>
                 </div>
             </div>
 
-            {(isModalOpen || isClosingModal) && (
+            {(isModalOpen || isClosingModal) &&
+                typeof document !== "undefined" &&
+                createPortal(
                 <div
-                    className={`fixed inset-0 z-[9999] flex items-end justify-center bg-slate-900/35 backdrop-blur-sm ${isClosingModal ? "animate-fade-out" : "animate-fade-in"}`}
+                    className={`fixed inset-0 z-[100000] flex items-end justify-center bg-slate-900/35 backdrop-blur-sm ${isClosingModal ? "animate-fade-out" : "animate-fade-in"}`}
                 >
                     {/* Click backdrop to close */}
                     <div
@@ -10399,9 +10944,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     />
 
                     <div
-                        className={`w-full max-w-2xl rounded-t-[32px] border-t border-x border-blue-100 shadow-2xl p-7 space-y-6 relative z-10 ${isClosingModal ? "animate-slide-out-bottom" : "animate-slide-in-bottom"}`}
+                        className={`w-full max-w-2xl max-h-[min(100vh,100dvh)] overflow-y-auto rounded-t-[32px] border-t border-x border-blue-100 shadow-2xl p-7 space-y-6 relative z-10 ${isClosingModal ? "animate-slide-out-bottom" : "animate-slide-in-bottom"}`}
                         style={{
-                            background: "#ffffff",
+                            background: "rgb(var(--card))",
                             backdropFilter: "none",
                         }}
                     >
@@ -10464,7 +11009,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
                                                 clientMode === "new"
                                                     ? "bg-white text-blue-600 shadow-sm font-black"
-                                                    : "text-slate-550 hover:text-slate-800 font-bold"
+                                                    : "text-slate-500 hover:text-slate-800 font-bold"
                                             }`}
                                         >
                                             {t(
@@ -10487,7 +11032,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
                                                 clientMode === "existing"
                                                     ? "bg-white text-blue-600 shadow-sm font-black"
-                                                    : "text-slate-550 hover:text-slate-800 font-bold"
+                                                    : "text-slate-500 hover:text-slate-800 font-bold"
                                             }`}
                                         >
                                             {t(
@@ -10501,6 +11046,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                                 {clientMode === "existing" ? (
                                     <CustomSelect
+                                        searchable
                                         value={selectedExistingClient}
                                         onChange={(v) =>
                                             handleSelectExistingClient(v)
@@ -10696,17 +11242,45 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     <CustomSelect
                                         value={newLeadOwner}
                                         onChange={(v) => setNewLeadOwner(v)}
-                                        options={projectManagers.map((pm) => ({
-                                            value: pm,
-                                            label: pm,
-                                        }))}
+                                        placeholder={t(
+                                            "Unassigned",
+                                            "Nepriradené",
+                                            "Nincs kiosztva",
+                                        )}
+                                        options={[
+                                            ...(autoAssignActive
+                                                ? [
+                                                      {
+                                                          value: "",
+                                                          label: t(
+                                                              "Assign automatically",
+                                                              "Priradiť automaticky",
+                                                              "Automatikus kiosztás",
+                                                          ),
+                                                      },
+                                                  ]
+                                                : []),
+                                            ...projectManagers.map((pm) => ({
+                                                value: pm,
+                                                label: pm,
+                                            })),
+                                        ]}
                                     />
+                                    {autoAssignActive && !newLeadOwner && (
+                                        <p className="text-[9px] font-semibold text-slate-400 leading-snug pt-0.5">
+                                            {t(
+                                                "The next manager in the rotation is picked when the lead is saved.",
+                                                "Pri uložení leadu sa vyberie ďalší manažér v poradí.",
+                                                "A lead mentésekor a sorban következő menedzser kerül kiválasztásra.",
+                                            )}
+                                        </p>
+                                    )}
                                 </div>
                             </div>
 
                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                 <div className="space-y-1">
-                                    <label className="text-[10px] font-bold text-slate-550 uppercase tracking-wider flex items-center gap-1.5">
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
                                         <Flag className="h-3.5 w-3.5 text-blue-500" />{" "}
                                         {t(
                                             "Lead State",
@@ -10749,7 +11323,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             {/* Category interest selection grid */}
                             <div className="space-y-2 border-t border-slate-100 pt-3">
                                 <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
-                                    <Tag className="h-4 w-4 text-blue-605" />{" "}
+                                    <Tag className="h-4 w-4 text-blue-600" />{" "}
                                     {t(
                                         "Interested Categories / Services",
                                         "Kategórie záujmu / Služby",
@@ -10765,8 +11339,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 key={cat}
                                                 className={`flex items-center gap-2 px-3 py-1.5 border rounded-xl cursor-pointer text-[9px] font-black uppercase transition-all select-none ${
                                                     isChecked
-                                                        ? "bg-blue-50 border-blue-300 text-blue-750 shadow-sm"
-                                                        : "bg-white border-slate-150 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
+                                                        ? "bg-blue-50 border-blue-300 text-blue-700 shadow-sm"
+                                                        : "bg-white border-slate-100 text-slate-500 hover:bg-slate-50 hover:text-slate-700"
                                                 }`}
                                             >
                                                 <input
@@ -10790,7 +11364,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                             );
                                                         }
                                                     }}
-                                                    className="rounded border-slate-350 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5 shrink-0"
+                                                    className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 h-3.5 w-3.5 shrink-0"
                                                 />
                                                 <span className="truncate">
                                                     {cat}
@@ -10837,11 +11411,15 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         "Lead ajánlás (Ügyfél által ajánlott)",
                                     )}
                                 </label>
-                                <SearchableLeadSelect
+                                <ClientSelect
                                     leads={leads}
                                     value={newLeadReferralId}
                                     onChange={setNewLeadReferralId}
-                                    systemLanguage={systemLanguage}
+                                    noneLabel={t(
+                                        "No referral source",
+                                        "Žiadny referral",
+                                        "Nincs ajánló",
+                                    )}
                                 />
                             </div>
 
@@ -10854,7 +11432,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         "Lead prioritás értékelése",
                                     )}
                                 </label>
-                                <div className="flex items-center gap-1 bg-slate-50 p-2 rounded-xl border border-slate-150 w-fit">
+                                <div className="flex items-center gap-1 bg-slate-50 p-2 rounded-xl border border-slate-100 w-fit">
                                     {renderStars(
                                         newLeadRating,
                                         setNewLeadRating,
@@ -10884,25 +11462,28 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             </div>
                         </form>
                     </div>
-                </div>
+                </div>,
+                document.body,
             )}
 
             {/* --- CLIENT INSPECT SLIDEOUT RIGHT DRAWER (Per rules.md) --- */}
-            {(selectedClientName || isClosingClient) && (
+            {(selectedClientName || isClosingClient) &&
+                typeof document !== "undefined" &&
+                createPortal(
                 <div
-                    className={`fixed inset-0 z-[9999] flex justify-end bg-slate-900/35 backdrop-blur-sm ${isClosingClient ? "animate-fade-out" : "animate-fade-in"}`}
+                    className={`fixed inset-0 z-[100000] flex justify-end bg-slate-900/35 backdrop-blur-sm ${isClosingClient ? "animate-fade-out" : "animate-fade-in"}`}
                 >
                     <div className="flex-1" onClick={closeClientDrawer} />
 
                     <div
                         className={`h-screen w-full sm:w-[500px] border-l border-emerald-100/50 shadow-2xl flex flex-col justify-between p-6 ${isClosingClient ? "animate-slide-out-right" : "animate-slide-in-right"}`}
                         style={{
-                            background: "#ffffff",
+                            background: "rgb(var(--card))",
                             backdropFilter: "none",
                         }}
                     >
                         {/* Header info */}
-                        <div className="flex items-center justify-between border-b border-slate-150 pb-4">
+                        <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                             <div className="flex items-center gap-3">
                                 <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500/10 to-emerald-500/20 text-emerald-700 border border-emerald-200 flex items-center justify-center font-heading font-black text-sm">
                                     {getInitials(
@@ -10912,7 +11493,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     )}
                                 </div>
                                 <div className="flex flex-col">
-                                    <span className="text-[9px] text-emerald-650 font-extrabold uppercase tracking-wider">
+                                    <span className="text-[9px] text-emerald-600 font-extrabold uppercase tracking-wider">
                                         {t(
                                             "Active Client Profile",
                                             "Aktívny profil klienta",
@@ -10979,7 +11560,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     onChange={(e) =>
                                         setEditClientCity(e.target.value)
                                     }
-                                    className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-850 focus:outline-none focus:bg-white focus:border-emerald-500"
+                                    className="w-full px-4 py-2.5 rounded-xl bg-slate-50 border border-slate-200 text-xs text-slate-800 focus:outline-none focus:bg-white focus:border-emerald-500"
                                 />
                             </div>
 
@@ -11078,7 +11659,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     )}
                                 </label>
 
-                                <div className="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-150">
+                                <div className="space-y-2 bg-slate-50 p-3 rounded-xl border border-slate-100">
                                     {selectedClientName &&
                                         leads
                                             .filter(
@@ -11135,7 +11716,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         </form>
 
                         {/* Bottom Actions */}
-                        <div className="pt-4 border-t border-slate-150 flex gap-3">
+                        <div className="pt-4 border-t border-slate-100 flex gap-3">
                             <button
                                 type="button"
                                 onClick={closeClientDrawer}
@@ -11157,7 +11738,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             </button>
                         </div>
                     </div>
-                </div>
+                </div>,
+                document.body,
             )}
         </div>
     );

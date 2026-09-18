@@ -670,6 +670,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $block .= "- File Attachment: " . $r['file_name'] . " (" . ($r['file_size'] ?? '') . ")\n";
                 }
 
+                if (isset($r['number_value']) && $r['number_value'] !== null) {
+                    $block .= "- Number: " . (0 + $r['number_value']) . "\n";
+                }
+                if (isset($r['money_amount']) && $r['money_amount'] !== null) {
+                    $block .= "- Amount / Suma: " . (0 + $r['money_amount']) . " " . ($r['money_currency'] ?: '') . "\n";
+                }
+
                 $context_blocks[] = [
                     'text' => $block,
                     'score' => $score,
@@ -1097,11 +1104,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         'Content-Type: application/json',
         'Authorization: Bearer ' . $openAiKey
     ]);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode([
-        'model' => ccrm_ai_model(),
+    $chatModel = ccrm_ai_model();
+    $chatPayload = [
+        'model' => $chatModel,
         'messages' => $payloadMessages,
-        'temperature' => 0.4
-    ], JSON_INVALID_UTF8_SUBSTITUTE));
+    ];
+    if (ccrm_ai_model_supports_temperature($chatModel)) {
+        $chatPayload['temperature'] = 0.4;
+    }
+    curl_setopt($ch, CURLOPT_POSTFIELDS, json_encode($chatPayload, JSON_INVALID_UTF8_SUBSTITUTE));
 
     $response = curl_exec($ch);
     $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);

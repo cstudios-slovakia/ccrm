@@ -5,6 +5,7 @@ import {
     Calendar as CalendarIcon,
     ChevronLeft,
     ChevronRight,
+    Eye,
     Lock,
     Briefcase,
     Plus,
@@ -17,14 +18,23 @@ import {
     List,
     Archive as ArchiveIcon,
     Clock,
+    FolderKanban,
     Trash2,
     Users,
 } from "lucide-react";
-import type { Task, UserProfile, Lead } from "../types";
+import type { Task, UserProfile, Lead, Project } from "../types";
 import type { Language } from "../utils/translations";
 import { CalendarPane } from "./Dashboard";
 import { CustomSelect } from "./ui/CustomSelect";
+import { ClientSelect } from "./ui/ClientSelect";
+import { DeadlineTimePicker, TaskEditDrawer, taskProjectOptions } from "./TaskEditDrawer";
+import { projectDisplayName } from "../utils/projects";
+import { taskPriorityLabel, taskStateLabel } from "../utils/taskLabels";
+import { requestTaskDeletion } from "../utils/taskApi";
+import { isTaskOverdue as isTaskOverdueShared } from "../utils/projectTasks";
+import { nowLocalStamp } from "../utils/localTime";
 import {
+    canArchiveTask as userCanArchiveTask,
     canDeleteTask as userCanDeleteTask,
     canEditTask as userCanEditTask,
     isActiveTask,
@@ -231,7 +241,7 @@ const BUCKET_TONES = {
         title: "text-amber-600",
         chevron: "text-amber-500 group-hover/btn:text-amber-700",
         emptyBorder: "border-amber-200/50",
-        emptyText: "text-amber-550",
+        emptyText: "text-amber-500",
     },
     slate: {
         shell: "bg-slate-50/50 border border-slate-200",
@@ -242,102 +252,12 @@ const BUCKET_TONES = {
     },
 } as const;
 
-// Named preset deadline times offered in the picker. "End of day (23:59)" was removed
-// in favour of a "Custom" option that lets the user type any specific time.
-// Kept in step with GATE_DEADLINE_TIME_PRESETS in LeadsDatagrid so the task drawer
-// and the pipeline-gate quick-add offer the same choices.
-const DEADLINE_TIME_PRESETS = ["09:00", "10:00", "12:00", "14:00", "16:00", "17:00", "19:00"];
-
-// Deadline-time picker shared by the Add and Edit task drawers. Offers the named
-// presets plus a "Custom" option that reveals a free time input. Defined at module
-// scope (stable identity) so its internal state survives parent re-renders and the
-// custom <input> keeps focus while typing.
-const DeadlineTimePicker: React.FC<{
-    value: string;
-    onChange: (val: string) => void;
-    t: (en: string, sk: string, hu: string) => string;
-}> = ({ value, onChange, t }) => {
-    const currentValue = value || "";
-    // Tasks stored before deadline times existed (and the demo seed) have no time at
-    // all. That empty value matches no <option>, and React then silently marks the
-    // FIRST option as selected — the picker showed "Morning (10:00)" while the task
-    // still had no time, so re-picking 10:00 fired no change event and the card kept
-    // rendering the 23:59 fallback. An explicit placeholder option keeps the empty
-    // state addressable so any real choice registers as a change.
-    const isUnset = currentValue === "";
-    const isPreset = DEADLINE_TIME_PRESETS.includes(currentValue);
-    // Custom mode is active when the value isn't a named preset (e.g. a legacy 23:59
-    // or a hand-typed time) or once the user explicitly opens the custom input.
-    const [customOpen, setCustomOpen] = useState(!isPreset && !isUnset);
-    const showCustom = customOpen || (!isPreset && !isUnset);
-
-    const presetLabel = (p: string) => {
-        switch (p) {
-            case "09:00":
-                return t("Early morning (9:00)", "Skoro ráno (9:00)", "Kora reggel (9:00)");
-            case "10:00":
-                return t("Morning (10:00)", "Ráno (10:00)", "Reggel (10:00)");
-            case "12:00":
-                return t("Noon (12:00)", "Poludnie (12:00)", "Dél (12:00)");
-            case "14:00":
-                return t("Early afternoon (14:00)", "Skoré popoludnie (14:00)", "Kora délután (14:00)");
-            case "16:00":
-                return t("Afternoon (16:00)", "Popoludnie (16:00)", "Délután (16:00)");
-            case "17:00":
-                return t("End of workday (17:00)", "Koniec pracovného dňa (17:00)", "Munkanap vége (17:00)");
-            case "19:00":
-                return t("Evening (19:00)", "Večer (19:00)", "Este (19:00)");
-            default:
-                return p;
-        }
-    };
-
-    return (
-        <div className="space-y-1.5">
-            <CustomSelect
-                value={showCustom ? "custom" : currentValue}
-                onChange={(v) => {
-                    if (v === "custom") {
-                        setCustomOpen(true);
-                        if (!currentValue) onChange("12:00");
-                    } else {
-                        setCustomOpen(false);
-                        onChange(v);
-                    }
-                }}
-                options={[
-                    ...(isUnset && !showCustom
-                        ? [
-                              {
-                                  value: "",
-                                  label: t(
-                                      "Not set — end of day (23:59)",
-                                      "Nenastavené — koniec dňa (23:59)",
-                                      "Nincs megadva — nap vége (23:59)",
-                                  ),
-                              },
-                          ]
-                        : []),
-                    ...DEADLINE_TIME_PRESETS.map((p) => ({ value: p, label: presetLabel(p) })),
-                    { value: "custom", label: t("Custom…", "Vlastný čas…", "Egyéni időpont…") },
-                ]}
-            />
-            {showCustom && (
-                <input
-                    type="time"
-                    value={currentValue}
-                    onChange={(e) => onChange(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none bg-white font-bold"
-                />
-            )}
-        </div>
-    );
-};
-
 interface TaskDashboardViewProps {
     tasks: Task[];
     setTasks: React.Dispatch<React.SetStateAction<Task[]>>;
     leads: Lead[];
+    /** For the task drawers' "Project" field and the project badge on a card. */
+    projects?: Project[];
     users?: UserProfile[]; // made optional to avoid TS errors if not passed
     systemLanguage: Language;
     currentUser?: UserProfile;
@@ -352,6 +272,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     tasks,
     setTasks,
     leads,
+    projects = [],
     users = [],
     systemLanguage,
     currentUser,
@@ -404,6 +325,24 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         userCanEditTask(task, currentUser, taskAccess);
     const mayDeleteTask = (task: Task) =>
         userCanDeleteTask(task, currentUser, taskAccess);
+    // Archiving is the creator's call alone — see canArchiveTask. It still
+    // changes the task, so a read-only role (no tasks edit access) cannot do
+    // it even to its own tasks.
+    const mayArchiveTask = (task: Task) =>
+        taskAccess.edit && userCanArchiveTask(task, currentUser);
+    const readOnlyHint = () => t(
+        "Read-only access — you cannot change tasks.",
+        "Iba na čítanie — úlohy nemôžete meniť.",
+        "Csak olvasható hozzáférés — a feladatok nem módosíthatók.",
+    );
+    const archiveDeniedHint = () =>
+        !taskAccess.edit
+            ? readOnlyHint()
+            : t(
+                  "Only the person who created this task can archive it.",
+                  "Úlohu môže archivovať iba ten, kto ju vytvoril.",
+                  "Csak a feladat létrehozója archiválhatja.",
+              );
     const myTasks = tasks.filter(isMyTask).filter((task) => !task.archived);
 
     // Inclusive date-range check against a YYYY-MM-DD string (item 9 calendar filters)
@@ -461,35 +400,17 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
               ? ["Hét", "Ked", "Sze", "Csü", "Pén", "Szo", "Vas"]
               : ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-    // Priority label (low/medium/high) — matches the filter dropdown wording.
-    const priorityLabel = (prio: string) => {
-        switch ((prio || "").toLowerCase()) {
-            case "high":
-                return t("High", "Vysoká", "Magas");
-            case "medium":
-                return t("Medium", "Stredná", "Közepes");
-            case "low":
-                return t("Low", "Nízka", "Alacsony");
-            default:
-                return prio;
-        }
-    };
+    // Shared with the task drawer and a project's Tasks tab — see utils/taskLabels.
+    const priorityLabel = (prio: string) => taskPriorityLabel(prio, t);
+    const stateLabel = (st: string) => taskStateLabel(st, t);
 
-    // Task-state label — translates the canonical default states; falls back to
-    // the raw value for any custom states configured in Settings.
-    const stateLabel = (st: string) => {
-        switch ((st || "").toLowerCase()) {
-            case "new":
-                return t("New", "Nové", "Új");
-            case "in progress":
-                return t("In progress", "Prebieha", "Folyamatban");
-            case "blocked":
-                return t("Blocked", "Blokované", "Blokkolva");
-            case "done":
-                return t("Done", "Hotovo", "Kész");
-            default:
-                return st;
-        }
+    // The name a task's project goes by on a card; empty when it has none.
+    const projectNameFor = (task: Task) => {
+        if (!task.relatedProjectId) return "";
+        const project = projects.find((p) => p.id === task.relatedProjectId);
+        return project
+            ? projectDisplayName(project, leads, t("Untitled project", "Projekt bez názvu", "Névtelen projekt"))
+            : "";
     };
 
     // Locale used to render dates in the region format configured in Settings.
@@ -599,7 +520,6 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     // Edit Task Drawer State
     const [editingTask, setEditingTask] = useState<Task | null>(null);
-    const [isClosingEditDrawer, setIsClosingEditDrawer] = useState(false);
     const [deletingTaskIds, setDeletingTaskIds] = useState<Set<string>>(new Set());
 
     // Global view filters & user list memo
@@ -658,14 +578,6 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [autoOpenAddTask, setAutoOpenAddTask]);
 
-    const closeEditDrawer = () => {
-        setIsClosingEditDrawer(true);
-        setTimeout(() => {
-            setEditingTask(null);
-            setIsClosingEditDrawer(false);
-        }, 350);
-    };
-
     const closeAddDrawer = () => {
         setIsClosingDrawer(true);
         setTimeout(() => {
@@ -686,6 +598,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     );
     const [newDeadlineTime, setNewDeadlineTime] = useState("16:00");
     const [newRelatedLeadId, setNewRelatedLeadId] = useState("");
+    const [newRelatedProjectId, setNewRelatedProjectId] = useState("");
     const [newIsLocking, setNewIsLocking] = useState(false);
     const [newAssignedUser, setNewAssignedUser] = useState(defaultUserName);
 
@@ -699,6 +612,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         setNewDeadline(deadlineDateStr || toLocalDateStr(new Date()));
         setNewDeadlineTime("16:00");
         setNewRelatedLeadId("");
+        setNewRelatedProjectId("");
         setNewIsLocking(false);
         setNewAssignedUser(defaultUserName);
     };
@@ -924,7 +838,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     };
 
     const handleArchiveTask = (task: Task) => {
-        if (!mayEditTask(task)) return;
+        if (!mayArchiveTask(task)) return;
         setTasks((prev) =>
             prev.map((t) =>
                 t.id === task.id ? { ...t, archived: true } : t,
@@ -944,7 +858,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     };
 
     const handleUnarchiveTask = (task: Task) => {
-        if (!mayEditTask(task)) return;
+        if (!mayArchiveTask(task)) return;
         setTasks((prev) =>
             prev.map((t) =>
                 t.id === task.id ? { ...t, archived: false } : t,
@@ -973,15 +887,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         if (!confirmed) return;
         setDeletingTaskIds((prev) => new Set(prev).add(task.id));
         try {
-            const response = await fetch("/api/task.php", {
-                method: "DELETE",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ id: task.id }),
-            });
-            const result = await response.json().catch(() => ({}));
-            if (!response.ok || result.success !== true) {
-                throw new Error(result.message || "Task deletion failed.");
-            }
+            await requestTaskDeletion(task.id);
             setTasks((prev) => prev.filter((item) => item.id !== task.id));
             if (typeof (window as any).showToast === "function") {
                 (window as any).showToast(
@@ -1038,6 +944,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             createdBy: myName,
             assignedUsers: newAssignedUser ? [newAssignedUser] : [],
             relatedLeadId: newRelatedLeadId || undefined,
+            relatedProjectId: newRelatedProjectId || undefined,
             isLocking: newRelatedLeadId ? newIsLocking : false,
         };
 
@@ -1279,7 +1186,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                       "Vissza a havi naptárhoz",
                                   )}
                         </button>
-                        <h2 className="text-2xl font-black text-slate-850 tracking-tight flex items-center gap-2">
+                        <h2 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2">
                             <CalendarIcon className="h-6 w-6 text-indigo-600 stroke-[2.5]" />
                             {dayDate.toLocaleDateString(dateLocale, {
                                 weekday: "long",
@@ -1366,7 +1273,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         }}
                         className={`px-3 py-1.5 rounded-lg font-black text-[10px] uppercase tracking-wider transition-all cursor-pointer ${
                             cfg.scope === scope
-                                ? "bg-white text-indigo-650 shadow-sm border border-slate-200/50"
+                                ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
                                 : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
                         }`}
                     >
@@ -1442,26 +1349,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     );
 
     // --- TASK BUCKETS ---
-    const isTaskOverdue = (task: Task) => {
-        if (isDoneState(task.status)) return false;
-
-        const now = new Date();
-        const currentDateStr = toLocalDateStr(now);
-
-        if (task.deadline < currentDateStr) {
-            return true;
-        }
-
-        if (task.deadline === currentDateStr) {
-            const currentHours = String(now.getHours()).padStart(2, "0");
-            const currentMinutes = String(now.getMinutes()).padStart(2, "0");
-            const currentTimeStr = `${currentHours}:${currentMinutes}`;
-            const limitTime = task.deadlineTime || "23:59";
-            return currentTimeStr > limitTime;
-        }
-
-        return false;
-    };
+    const isTaskOverdue = (task: Task) => isTaskOverdueShared(task, taskStates, nowLocalStamp());
 
     const tomorrowStr = toLocalDateStr(new Date(today.getTime() + 86400000));
     const overdueTasks = myTasks.filter((t) => isTaskOverdue(t)).sort(byDeadline);
@@ -1543,30 +1431,47 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 e.stopPropagation();
                                 handleArchiveTask(task);
                             }}
-                            className="p-1 hover:bg-slate-100 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 rounded-lg text-slate-400 hover:text-slate-650 transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-35"
-                            disabled={!mayEditTask(task)}
-                            title={t(
-                                "Archive Task",
-                                "Archivovať úlohu",
-                                "Feladat archiválása",
-                            )}
+                            className="p-1 hover:bg-slate-100 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 rounded-lg text-slate-400 hover:text-slate-600 transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-35"
+                            disabled={!mayArchiveTask(task)}
+                            title={
+                                mayArchiveTask(task)
+                                    ? t(
+                                          "Archive Task",
+                                          "Archivovať úlohu",
+                                          "Feladat archiválása",
+                                      )
+                                    : archiveDeniedHint()
+                            }
                         >
                             <ArchiveIcon className="h-3.5 w-3.5" />
                         </button>
+                        {/* The drawer opens for everyone who can see the
+                            task; without edit rights it renders read-only. */}
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
                                 setEditingTask(task);
                             }}
-                            className="p-1 hover:bg-slate-100 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 rounded-lg text-slate-400 hover:text-slate-650 transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-35"
-                            disabled={!mayEditTask(task)}
-                            title={t(
-                                "Edit Task",
-                                "Upraviť úlohu",
-                                "Feladat szerkesztése",
-                            )}
+                            className="p-1 hover:bg-slate-100 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 rounded-lg text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+                            title={
+                                mayEditTask(task)
+                                    ? t(
+                                          "Edit Task",
+                                          "Upraviť úlohu",
+                                          "Feladat szerkesztése",
+                                      )
+                                    : t(
+                                          "View Task",
+                                          "Zobraziť úlohu",
+                                          "Feladat megtekintése",
+                                      )
+                            }
                         >
-                            <Settings className="h-3.5 w-3.5" />
+                            {mayEditTask(task) ? (
+                                <Settings className="h-3.5 w-3.5" />
+                            ) : (
+                                <Eye className="h-3.5 w-3.5" />
+                            )}
                         </button>
                     </div>
                 </div>
@@ -1641,6 +1546,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         </span>
                     )}
 
+                    {projectNameFor(task) && (
+                        <span className="text-[9px] font-bold text-purple-700 flex items-center gap-1 bg-purple-50 px-1.5 py-0.5 rounded-md truncate max-w-[140px]">
+                            <FolderKanban className="h-2.5 w-2.5 shrink-0" />
+                            <span className="truncate">{projectNameFor(task)}</span>
+                        </span>
+                    )}
+
                     {task.assignedUsers && task.assignedUsers.length > 0 && (
                         <span className="text-[9px] font-bold text-indigo-600 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-[120px]">
                             <span className="h-1 w-1 rounded-full bg-indigo-500 shrink-0" />
@@ -1670,7 +1582,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         return (
             <div
                 key={task.id}
-                className="p-2.5 rounded-xl border border-slate-200 bg-white hover:border-slate-350 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-sm hover:shadow"
+                className="p-2.5 rounded-xl border border-slate-200 bg-white hover:border-slate-300 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-sm hover:shadow"
             >
                 <div className="flex-1 min-w-0 flex items-center gap-3">
                     {/* Priority dot indicator */}
@@ -1708,6 +1620,12 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                             ?.name ||
                                             "Lead"}
                                     </span>
+                                </span>
+                            )}
+                            {projectNameFor(task) && (
+                                <span className="text-[9px] font-bold text-purple-700 flex items-center gap-0.5 bg-purple-50 px-1.5 py-0.5 rounded-md truncate max-w-[140px]">
+                                    <FolderKanban className="h-2.5 w-2.5 shrink-0" />
+                                    <span className="truncate">{projectNameFor(task)}</span>
                                 </span>
                             )}
                         </div>
@@ -1775,7 +1693,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     task,
                                 )
                             }
-                            className="px-2.5 py-1.5 border border-indigo-255 hover:bg-indigo-50 text-indigo-650 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+                            disabled={!mayEditTask(task)}
+                            title={
+                                mayEditTask(task) ? undefined : readOnlyHint()
+                            }
+                            className="px-2.5 py-1.5 border border-indigo-200 hover:bg-indigo-50 text-indigo-600 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:active:scale-100"
                         >
                             <RotateCcw className="h-3 w-3 stroke-[2.5]" />
                             {t(
@@ -1784,21 +1706,23 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 "Visszaállítás",
                             )}
                         </button>
-                        <button
-                            onClick={() =>
-                                handleDeleteTask(
-                                    task,
-                                )
-                            }
-                            title={t(
-                                "Delete permanently",
-                                "Natrvalo odstrániť",
-                                "Végleges törlés",
-                            )}
-                            className="px-2 py-1.5 border border-rose-200 hover:bg-rose-50 text-rose-600 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
-                        >
-                            <Trash2 className="h-3 w-3 stroke-[2.5]" />
-                        </button>
+                        {mayDeleteTask(task) && (
+                            <button
+                                onClick={() =>
+                                    handleDeleteTask(
+                                        task,
+                                    )
+                                }
+                                title={t(
+                                    "Delete permanently",
+                                    "Natrvalo odstrániť",
+                                    "Végleges törlés",
+                                )}
+                                className="px-2 py-1.5 border border-rose-200 hover:bg-rose-50 text-rose-600 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+                            >
+                                <Trash2 className="h-3 w-3 stroke-[2.5]" />
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>
@@ -2060,7 +1984,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         return (
             <div className="flex-1 min-h-0 flex flex-col gap-6 animate-in fade-in slide-in-from-top-4 duration-300">
                 {/* FILTERS */}
-                <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-150 shadow-sm shrink-0">
+                <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm shrink-0">
                     <div className="flex items-center gap-2">
                         <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
                             {t(
@@ -2270,7 +2194,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                 }}
                                                 className={`px-3 py-1.5 rounded-lg font-black text-[10px] uppercase tracking-wider transition-all cursor-pointer ${
                                                     globalRightView === mode
-                                                        ? "bg-white text-indigo-650 shadow-sm border border-slate-200/50"
+                                                        ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
                                                         : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
                                                 }`}
                                             >
@@ -2448,7 +2372,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             onClick={() => setViewMode("calendar")}
                             className={`px-4 py-2 rounded-lg font-black text-xs uppercase tracking-wider transition-all cursor-pointer ${
                                 viewMode === "calendar"
-                                    ? "bg-white text-indigo-650 shadow-sm border border-slate-200/50"
+                                    ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
                                     : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
                             }`}
                         >
@@ -2458,7 +2382,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             onClick={() => setViewMode("global")}
                             className={`px-4 py-2 rounded-lg font-black text-xs uppercase tracking-wider transition-all cursor-pointer ${
                                 viewMode === "global"
-                                    ? "bg-white text-indigo-650 shadow-sm border border-slate-200/50"
+                                    ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
                                     : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
                             }`}
                         >
@@ -2472,7 +2396,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             onClick={() => setViewMode("archive")}
                             className={`px-4 py-2 rounded-lg font-black text-xs uppercase tracking-wider transition-all cursor-pointer ${
                                 viewMode === "archive"
-                                    ? "bg-white text-indigo-650 shadow-sm border border-slate-200/50"
+                                    ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
                                     : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
                             }`}
                         >
@@ -2519,7 +2443,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                         }}
                                         className={`px-3 py-1.5 rounded-lg font-black text-[10px] uppercase tracking-wider transition-all cursor-pointer ${
                                             archiveView === mode
-                                                ? "bg-white text-indigo-650 shadow-sm border border-slate-200/50"
+                                                ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
                                                 : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
                                         }`}
                                     >
@@ -2791,7 +2715,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                             task,
                                                         )
                                                     }
-                                                    className="px-2.5 py-1.5 border border-indigo-255 hover:bg-indigo-50 text-indigo-650 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+                                                    disabled={!mayArchiveTask(task)}
+                                                    title={
+                                                        mayArchiveTask(task)
+                                                            ? undefined
+                                                            : archiveDeniedHint()
+                                                    }
+                                                    className="px-2.5 py-1.5 border border-indigo-200 hover:bg-indigo-50 text-indigo-600 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:active:scale-100"
                                                 >
                                                     <RotateCcw className="h-3 w-3 stroke-[2.5]" />
                                                     {t(
@@ -2800,19 +2730,21 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                         "Archiválás visszavonása",
                                                     )}
                                                 </button>
-                                                <button
-                                                    onClick={() =>
-                                                        handleDeleteTask(task)
-                                                    }
-                                                    title={t(
-                                                        "Delete permanently",
-                                                        "Natrvalo odstrániť",
-                                                        "Végleges törlés",
-                                                    )}
-                                                    className="px-2 py-1.5 border border-rose-200 hover:bg-rose-50 text-rose-600 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
-                                                >
-                                                    <Trash2 className="h-3 w-3 stroke-[2.5]" />
-                                                </button>
+                                                {mayDeleteTask(task) && (
+                                                    <button
+                                                        onClick={() =>
+                                                            handleDeleteTask(task)
+                                                        }
+                                                        title={t(
+                                                            "Delete permanently",
+                                                            "Natrvalo odstrániť",
+                                                            "Végleges törlés",
+                                                        )}
+                                                        className="px-2 py-1.5 border border-rose-200 hover:bg-rose-50 text-rose-600 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+                                                    >
+                                                        <Trash2 className="h-3 w-3 stroke-[2.5]" />
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
                                     ))}
@@ -2835,7 +2767,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     resetNewTaskForm();
                                     setIsAddDrawerOpen(true);
                                 }}
-                                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-indigo-600/20 transition-all active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 flex items-center justify-center gap-2 cursor-pointer border-2 border-indigo-550 disabled:cursor-not-allowed disabled:opacity-50"
+                                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-indigo-600/20 transition-all active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 flex items-center justify-center gap-2 cursor-pointer border-2 border-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
                                 disabled={!taskAccess.create}
                             >
                                 <Plus className="h-4 w-4 stroke-[3]" />
@@ -2854,7 +2786,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 )}
                                 className={`shrink-0 py-2.5 px-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer border-2 ${
                                     isCompact
-                                        ? "bg-indigo-600 text-white border-indigo-550 shadow-lg shadow-indigo-600/20"
+                                        ? "bg-indigo-600 text-white border-indigo-500 shadow-lg shadow-indigo-600/20"
                                         : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600"
                                 }`}
                             >
@@ -2947,7 +2879,32 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             )}
 
             {renderAddDrawer()}
-            {renderEditDrawer()}
+            {editingTask && (
+                <TaskEditDrawer
+                    key={editingTask.id}
+                    task={editingTask}
+                    leads={leads}
+                    projects={projects}
+                    users={users}
+                    taskStates={taskStates}
+                    systemLanguage={systemLanguage}
+                    currentUserName={currentUser?.name || defaultUserName}
+                    canEdit={mayEditTask(editingTask)}
+                    canArchive={mayArchiveTask(editingTask)}
+                    onSave={(next) => {
+                        if (!mayEditTask(next)) return;
+                        setTasks((prev) =>
+                            prev.map((tk) => (tk.id === next.id ? next : tk)),
+                        );
+                    }}
+                    onToggleArchive={(next) =>
+                        next.archived
+                            ? handleUnarchiveTask(next)
+                            : handleArchiveTask(next)
+                    }
+                    onClose={() => setEditingTask(null)}
+                />
+            )}
         </div>
     );
 
@@ -3118,6 +3075,19 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         </div>
 
                         <div className="space-y-1">
+                            <label className="text-[9px] font-black text-slate-500 uppercase flex items-center gap-1">
+                                <FolderKanban className="h-3 w-3" />
+                                {t("Project", "Projekt", "Projekt")}
+                            </label>
+                            <CustomSelect
+                                searchable
+                                value={newRelatedProjectId}
+                                onChange={setNewRelatedProjectId}
+                                options={taskProjectOptions(projects, leads, t)}
+                            />
+                        </div>
+
+                        <div className="space-y-1">
                             <label className="text-[9px] font-black text-slate-500 uppercase">
                                 {t(
                                     "Link to Lead/Client",
@@ -3125,19 +3095,16 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     "Összekapcsolás ügyféllel",
                                 )}
                             </label>
-                            <CustomSelect
+                            <ClientSelect
+                                leads={leads}
                                 value={newRelatedLeadId}
                                 onChange={(v) => {
                                     setNewRelatedLeadId(v);
                                     if (!v) setNewIsLocking(false);
                                 }}
-                                options={[
-                                    {
-                                        value: "",
-                                        label: t("-- None --", "-- Žiadny --", "-- Nincs --"),
-                                    },
-                                    ...leads.map((l) => ({ value: l.id, label: l.name })),
-                                ]}
+                                showCity={false}
+                                addKind="lead"
+                                noneLabel={t("-- None --", "-- Žiadny --", "-- Nincs --")}
                             />
                         </div>
 
@@ -3168,406 +3135,6 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         >
                             {t("Save Task", "Uložiť", "Mentés")}
                         </button>
-                    </form>
-                </div>
-            </div>,
-            document.body,
-        );
-    }
-
-    // Helper function to render Edit drawer
-    function renderEditDrawer() {
-        if (!editingTask && !isClosingEditDrawer) return null;
-        if (typeof document === "undefined") return null;
-
-        // Fallback to empty values if task is unset during animation finish
-        const currentTask: Task = editingTask || {
-            id: "",
-            title: "",
-            description: "",
-            status: taskStates[0] || "New",
-            priority: "medium",
-            startDate: "",
-            deadline: "",
-            owner: "",
-            assignedUsers: [],
-            relatedLeadId: "",
-            isLocking: false,
-        };
-
-        return createPortal(
-            <div className="fixed inset-0 z-[100000] flex justify-end">
-                <div
-                    onClick={closeEditDrawer}
-                    className={`absolute inset-0 bg-slate-900/40 backdrop-blur-sm ${isClosingEditDrawer ? "animate-fade-out" : "animate-fade-in"}`}
-                />
-                <div
-                    className={`relative w-full max-w-md bg-white shadow-2xl h-full flex flex-col p-6 overflow-y-auto ${isClosingEditDrawer ? "animate-slide-out-right" : "animate-slide-in-right"}`}
-                >
-                    <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-                        <h2 className="text-sm font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                            <CheckSquare className="h-5 w-5 text-indigo-600" />
-                            {t(
-                                "Edit Task",
-                                "Upraviť úlohu",
-                                "Feladat szerkesztése",
-                            )}
-                        </h2>
-                        <button
-                            onClick={closeEditDrawer}
-                            className="p-1 hover:bg-slate-100 rounded-lg text-slate-400"
-                        >
-                            <X className="h-5 w-5" />
-                        </button>
-                    </div>
-
-                    <form
-                        onSubmit={(e) => {
-                            e.preventDefault();
-                            if (!mayEditTask(currentTask)) return;
-                            setTasks((prev) =>
-                                prev.map((tk) =>
-                                    tk.id === currentTask.id ? currentTask : tk,
-                                ),
-                            );
-                            closeEditDrawer();
-                        }}
-                        className="flex-1 py-5 space-y-5 text-xs font-bold"
-                    >
-                        <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase">
-                                {t("Task Title", "Názov", "Cím")}
-                            </label>
-                            <input
-                                type="text"
-                                required
-                                value={currentTask.title}
-                                onChange={(e) =>
-                                    setEditingTask((prev) =>
-                                        prev
-                                            ? { ...prev, title: e.target.value }
-                                            : null,
-                                    )
-                                }
-                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none"
-                            />
-                        </div>
-
-                        <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase">
-                                {t("Description", "Popis", "Leírás")}
-                            </label>
-                            <textarea
-                                rows={3}
-                                value={currentTask.description}
-                                onChange={(e) =>
-                                    setEditingTask((prev) =>
-                                        prev
-                                            ? {
-                                                  ...prev,
-                                                  description: e.target.value,
-                                              }
-                                            : null,
-                                    )
-                                }
-                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none resize-none"
-                            />
-                        </div>
-
-                        <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase">
-                                {t(
-                                    "Start Date",
-                                    "Dátum začiatku",
-                                    "Kezdő dátum",
-                                )}
-                            </label>
-                            <input
-                                type="date"
-                                value={currentTask.startDate || ""}
-                                onChange={(e) =>
-                                    setEditingTask((prev) =>
-                                        prev
-                                            ? {
-                                                  ...prev,
-                                                  startDate: e.target.value,
-                                              }
-                                            : null,
-                                    )
-                                }
-                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none"
-                            />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1">
-                                <label className="text-[9px] font-black text-slate-500 uppercase">
-                                    {t("Deadline Date", "Termín", "Határidő")}
-                                </label>
-                                <input
-                                    type="date"
-                                    required
-                                    value={currentTask.deadline}
-                                    onChange={(e) =>
-                                        setEditingTask((prev) =>
-                                            prev
-                                                ? {
-                                                      ...prev,
-                                                      deadline: e.target.value,
-                                                  }
-                                                : null,
-                                        )
-                                    }
-                                    className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none"
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-[9px] font-black text-slate-500 uppercase">
-                                    {t(
-                                        "Deadline Time",
-                                        "Čas termínu",
-                                        "Határidő időpontja",
-                                    )}
-                                </label>
-                                <DeadlineTimePicker
-                                    value={currentTask.deadlineTime || ""}
-                                    onChange={(val) =>
-                                        setEditingTask((prev) =>
-                                            prev
-                                                ? {
-                                                      ...prev,
-                                                      deadlineTime: val,
-                                                  }
-                                                : null,
-                                        )
-                                    }
-                                    t={t}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase">
-                                {t(
-                                    "Task Status",
-                                    "Stav úlohy",
-                                    "Feladat állapota",
-                                )}
-                            </label>
-                            <CustomSelect
-                                value={currentTask.status}
-                                onChange={(val) => {
-                                    const now = new Date();
-                                    const completedAtStr = isDoneState(val)
-                                        ? toLocalDateStr(now) +
-                                          " " +
-                                          now
-                                              .toTimeString()
-                                              .split(" ")[0]
-                                              .substring(0, 5)
-                                        : undefined;
-                                    const completedByName = isDoneState(val)
-                                        ? currentUser?.name || defaultUserName
-                                        : undefined;
-                                    setEditingTask((prev) =>
-                                        prev
-                                            ? {
-                                                  ...prev,
-                                                  status: val,
-                                                  completedBy: completedByName,
-                                                  completedAt: completedAtStr,
-                                              }
-                                            : null,
-                                    );
-                                }}
-                                options={taskStates.map((st) => ({ value: st, label: stateLabel(st) }))}
-                            />
-                        </div>
-
-                        <div className="space-y-1.5">
-                            <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">
-                                {t("Priority", "Priorita", "Prioritás")}
-                            </label>
-                            <div className="grid grid-cols-3 gap-2 bg-slate-50 p-1.5 rounded-xl border-2 border-slate-200">
-                                {(["low", "medium", "high"] as const).map(
-                                    (prio) => (
-                                        <button
-                                            key={prio}
-                                            type="button"
-                                            onClick={() =>
-                                                setEditingTask((prev) =>
-                                                    prev
-                                                        ? {
-                                                              ...prev,
-                                                              priority: prio,
-                                                          }
-                                                        : null,
-                                                )
-                                            }
-                                            className={`py-2 rounded-lg font-black text-[9px] uppercase transition-all ${
-                                                currentTask.priority === prio
-                                                    ? prio === "high"
-                                                        ? "bg-rose-600 text-white"
-                                                        : prio === "medium"
-                                                          ? "bg-amber-500 text-white"
-                                                          : "bg-slate-600 text-white"
-                                                    : "bg-white text-slate-500 hover:bg-slate-100"
-                                            }`}
-                                        >
-                                            {priorityLabel(prio)}
-                                        </button>
-                                    ),
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase">
-                                {t(
-                                    "Assign Project Manager",
-                                    "Priradiť projektového manažéra",
-                                    "Projektmenedzser kijelölése",
-                                )}
-                            </label>
-                            <CustomSelect
-                                value={currentTask.assignedUsers?.[0] || ""}
-                                onChange={(v) =>
-                                    setEditingTask((prev) => {
-                                        if (!prev) return null;
-                                        const newUsers = v ? [v] : [];
-                                        return {
-                                            ...prev,
-                                            assignedUsers: newUsers,
-                                            owner: v,
-                                        };
-                                    })
-                                }
-                                options={[
-                                    {
-                                        value: "",
-                                        label: t(
-                                            "-- Unassigned --",
-                                            "-- Nepriradený --",
-                                            "-- Kijelöletlen --",
-                                        ),
-                                    },
-                                    ...users.map((u) => ({
-                                        value: u.name,
-                                        label: `${u.name} (${u.role})`,
-                                    })),
-                                ]}
-                            />
-                        </div>
-
-                        <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase">
-                                {t(
-                                    "Link to Lead/Client",
-                                    "Prepojiť so záujemcom",
-                                    "Összekapcsolás ügyféllel",
-                                )}
-                            </label>
-                            <CustomSelect
-                                value={currentTask.relatedLeadId || ""}
-                                onChange={(v) => {
-                                    const leadId = v || undefined;
-                                    setEditingTask((prev) =>
-                                        prev
-                                            ? {
-                                                  ...prev,
-                                                  relatedLeadId: leadId,
-                                                  isLocking: leadId
-                                                      ? prev.isLocking
-                                                      : false,
-                                              }
-                                            : null,
-                                    );
-                                }}
-                                options={[
-                                    {
-                                        value: "",
-                                        label: t("-- None --", "-- Žiadny --", "-- Nincs --"),
-                                    },
-                                    ...leads.map((l) => ({ value: l.id, label: l.name })),
-                                ]}
-                            />
-                        </div>
-
-                        {currentTask.relatedLeadId && (
-                            <div className="p-3 rounded-xl bg-violet-50/50 border border-violet-100 flex items-center justify-between">
-                                <span className="text-[10px] font-black text-violet-700 uppercase flex items-center gap-1">
-                                    <Lock className="h-3 w-3" />{" "}
-                                    {t(
-                                        "Block Pipeline Stage",
-                                        "Zablokovať fázu pipeline",
-                                        "Folyamat szakasz zárolása",
-                                    )}
-                                </span>
-                                <input
-                                    type="checkbox"
-                                    checked={currentTask.isLocking || false}
-                                    onChange={(e) =>
-                                        setEditingTask((prev) =>
-                                            prev
-                                                ? {
-                                                      ...prev,
-                                                      isLocking:
-                                                          e.target.checked,
-                                                  }
-                                                : null,
-                                        )
-                                    }
-                                    className="h-4 w-4 cursor-pointer"
-                                />
-                            </div>
-                        )}
-
-                        <button
-                            type="submit"
-                            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 text-white rounded-xl font-black text-xs uppercase shadow-lg shadow-indigo-600/20 transition-all disabled:cursor-not-allowed disabled:opacity-50"
-                            disabled={!mayEditTask(currentTask)}
-                        >
-                            {t(
-                                "Save Changes",
-                                "Uložiť zmeny",
-                                "Módosítások mentése",
-                            )}
-                        </button>
-
-                        {currentTask.id && mayEditTask(currentTask) && (
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    if (currentTask.archived) {
-                                        handleUnarchiveTask(currentTask);
-                                    } else {
-                                        handleArchiveTask(currentTask);
-                                    }
-                                    closeEditDrawer();
-                                }}
-                                className="w-full py-2.5 border-2 border-slate-200 hover:bg-slate-50 text-slate-600 rounded-xl font-black text-[10px] uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer"
-                            >
-                                {currentTask.archived ? (
-                                    <>
-                                        <RotateCcw className="h-3.5 w-3.5" />
-                                        {t(
-                                            "Unarchive Task",
-                                            "Zrušiť archiváciu úlohy",
-                                            "Feladat archiválásának visszavonása",
-                                        )}
-                                    </>
-                                ) : (
-                                    <>
-                                        <ArchiveIcon className="h-3.5 w-3.5" />
-                                        {t(
-                                            "Archive Task",
-                                            "Archivovať úlohu",
-                                            "Feladat archiválása",
-                                        )}
-                                    </>
-                                )}
-                            </button>
-                        )}
                     </form>
                 </div>
             </div>,

@@ -7,11 +7,12 @@ import {
   User, Briefcase, BarChart3,
   X, Globe,
   ChevronDown, ChevronUp, ChevronRight,
+  CalendarClock, Hourglass, Telescope,
   Landmark, Check, Pencil,
   CalendarDays, Target, Maximize2, Minimize2,
   ArrowUpRight, ArrowDownRight, ArrowUpDown,
   SlidersHorizontal,
-  Copy, Sparkles
+  Copy, Sparkles, GripVertical, UserPlus
 } from "lucide-react";
 import type {
   FinancialRecord,
@@ -23,10 +24,174 @@ import type {
   Lead,
   UserProfile
 } from "../types";
-import { CustomSelect } from "./ui/CustomSelect";
+import { CustomSelect, DropdownSearchRow } from "./ui/CustomSelect";
+import { ClientSelect } from "./ui/ClientSelect";
+import { useQuickAddClient } from "./ui/QuickAddClient";
+import { ColorPicker } from "./ui/ColorPicker";
+import { inheritedColor, nextCategoryColor } from "../utils/color";
 import type { Language } from "../utils/translations";
 import { formatMoney } from "../utils/currency";
 import { todayLocal, formatDateLocalized } from "../utils/localTime";
+import {
+  categoryBreadcrumbs,
+  categoryChildren,
+  categoryDescendantIds,
+  moveCategory,
+  nextCategorySortOrder,
+  resolveCategoryDrop,
+  type CategoryDropPosition,
+  type CategoryDropTarget
+} from "../utils/financialCategoryTree";
+import { useDragAutoScroll } from "../hooks/useDragAutoScroll";
+import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
+import { useUserPref } from "../utils/userPrefs";
+import {
+  DEFAULT_BANK_BALANCE,
+  EMPTY_FINANCIAL_TREND,
+  type FinancialTrendSettings
+} from "../utils/financialTrend";
+import {
+  effectiveRecurringEndDate,
+  isoDaysBetween,
+  lastRecurringOccurrenceOnOrBefore,
+  nextRecurringChargeAfter,
+  pauseRecurringRule,
+  recurringAmountHistoryAfterChange,
+  recurringChargeAmount,
+  recurringEarliestRepriceDate,
+  recurringCharges,
+  recurringOccurrences,
+  recurringPlannedAmountAt,
+  recurringTotalInRange,
+  shiftIsoDate,
+  toggleRecurringPause,
+  type RecurringRule
+} from "../utils/recurringExpenses";
+import {
+  UNCATEGORIZED_ROW_ID,
+  aggregateOverviewTable,
+  isRecurringChargeSettled,
+  overviewRecordDate,
+  recurringOwnRowCharge,
+  splitRecordAmounts
+} from "../utils/financialOverviewTable";
+import {
+  claimedRecordIds,
+  futureTotals,
+  futureWindow,
+  hasFutureBeyond,
+  projectFutureMovements,
+  type FutureMovement,
+  type FutureMovementSource
+} from "../utils/futureMovements";
+import {
+  ledgerRecordSplit,
+  projectPastRecurringCharges,
+  type PastRecurringCharge
+} from "../utils/pastRecurringCharges";
+
+// Trend graph forecast horizons. `futureWeeks` is the number of whole weeks the
+// projection runs past the current one — 13 weeks is the usual "3 months".
+type ProjectionMonths = 3 | 6 | 12;
+
+const PROJECTION_HORIZONS: { months: ProjectionMonths; futureWeeks: number }[] = [
+  { months: 3, futureWeeks: 13 },
+  { months: 6, futureWeeks: 26 },
+  { months: 12, futureWeeks: 52 }
+];
+
+const TREND_PAST_WEEKS = 4;
+
+const futureWeeksFor = (months: ProjectionMonths) =>
+  PROJECTION_HORIZONS.find((h) => h.months === months)?.futureWeeks ?? 13;
+
+// Slovak numerals agree with their noun: 2-4 take the nominative plural
+// ("3 mesiace"), 5 and up the genitive ("6 mesiacov").
+const skMonths = (n: number) => (n < 5 ? `${n} mesiace` : `${n} mesiacov`);
+const skNextMonths = (n: number) =>
+  n < 5 ? `nasledujúce ${n} mesiace` : `nasledujúcich ${n} mesiacov`;
+
+// Payment statuses offered by the inline picker in the movements ledger, in the
+// order a record usually travels through them.
+const MOVEMENT_STATUSES: FinancialStatus[] = [
+  "planned",
+  "pending",
+  "paid",
+  "partially_paid",
+  "overdue",
+  "cancelled"
+];
+
+const MOVEMENT_STATUS_DOT: Record<FinancialStatus, string> = {
+  planned: "bg-slate-400",
+  pending: "bg-amber-500",
+  paid: "bg-emerald-500",
+  partially_paid: "bg-sky-500",
+  overdue: "bg-rose-500",
+  cancelled: "bg-slate-300"
+};
+
+/**
+ * The forecast overlay in the movements ledger.
+ *
+ * A forecast row is money that has not moved: it has no record behind it, it
+ * cannot be edited or deleted, and it must never read as something that
+ * happened. Violet is the app's "projected" colour — the cash-flow chart
+ * already plots its forecast in it — and the dashed left rail plus the tinted,
+ * lighter amount carry that through to the row.
+ */
+const FORECAST_ROW_CLASS =
+  "bg-violet-50/70 hover:bg-violet-100/70 border-l-[3px] border-dashed border-l-violet-400 transition-colors group";
+
+/**
+ * A charge a recurring rule has already made. It is settled money, so it reads
+ * like any other movement; the solid purple rail (the recurring icon's colour)
+ * marks it as drawn from the rule's schedule rather than stored on its own,
+ * the settled counterpart of the forecast's dashed violet one.
+ */
+const RECURRING_CHARGE_ROW_CLASS =
+  "hover:bg-slate-50/80 border-l-[3px] border-l-purple-300 transition-colors group";
+
+/** What each forecast row is derived from, for its badge. */
+const FORECAST_SOURCE_ICON: Record<FutureMovementSource, typeof RefreshCw> = {
+  recurring: RefreshCw,
+  due: CalendarClock,
+  scheduled: Hourglass
+};
+
+/**
+ * One line of the movements ledger: a stored movement, a charge a recurring
+ * rule has already made, or a movement that is only expected. All three are
+ * filed under a `date` so they can be merged into a single chronology and
+ * grouped by month together.
+ */
+type MovementLedgerRow =
+  | { kind: "record"; key: string; date: string; record: FinancialRecord }
+  | { kind: "charge"; key: string; date: string; charge: PastRecurringCharge }
+  | { kind: "forecast"; key: string; date: string; forecast: FutureMovement };
+
+/**
+ * Money only really moved for these two, so switching a row into them has to ask
+ * for the amount that was actually settled instead of guessing it.
+ */
+const statusNeedsRealAmount = (status: FinancialStatus): status is "paid" | "partially_paid" =>
+  status === "paid" || status === "partially_paid";
+
+/**
+ * Which bucket a movement's own scope falls into, computed once from the
+ * record itself. A project-scoped record also carries the project's
+ * `clientId` (see `handleSaveTransaction`), so checking `clientId` alone
+ * would also catch project records under "Client" — project takes priority.
+ */
+const movementScope = (rec: Pick<FinancialRecord, "projectId" | "clientId">): "global" | "project" | "client" =>
+  rec.projectId ? "project" : rec.clientId ? "client" : "global";
+
+/** Shared look of the transaction form: one label style, one 40px field style. */
+const FORM_LABEL = "text-xs font-semibold text-slate-600 block mb-1.5";
+const FORM_INPUT =
+  "w-full h-10 px-3.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 hover:border-slate-300 transition-colors duration-150 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20";
+const FORM_TEXTAREA =
+  "w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 hover:border-slate-300 transition-colors duration-150 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20 resize-y";
 
 interface SearchableCategorySelectProps {
   value: string;
@@ -35,6 +200,8 @@ interface SearchableCategorySelectProps {
   filterType?: FinancialType | "all";
   allowAll?: boolean;
   placeholder?: string;
+  /** "md" matches the 40px fields of the transaction form; "sm" is the compact filter-bar trigger. */
+  size?: "sm" | "md";
   t: (en: string, sk: string, hu: string) => string;
 }
 
@@ -45,6 +212,7 @@ const SearchableCategorySelect: React.FC<SearchableCategorySelectProps> = ({
   filterType = "all",
   allowAll = true,
   placeholder,
+  size = "sm",
   t
 }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -72,18 +240,12 @@ const SearchableCategorySelect: React.FC<SearchableCategorySelectProps> = ({
 
   const selectedCategory = categories.find((c) => c.id === value);
 
-  // Build full hierarchy breadcrumb for search and display
-  const getCategoryPath = (cat: FinancialCategory): string => {
-    const parts = [cat.name];
-    let curr = cat;
-    while (curr.parentId) {
-      const p = categories.find((c) => c.id === curr.parentId);
-      if (!p) break;
-      parts.unshift(p.name);
-      curr = p;
-    }
-    return parts.join(" ➔ ");
-  };
+  // Build full hierarchy breadcrumb for search and display — guarded against a
+  // cyclic parentId chain, which would otherwise loop forever (see F14).
+  const getCategoryPath = (cat: FinancialCategory): string =>
+    categoryBreadcrumbs(categories, cat.id)
+      .map((c) => c.name)
+      .join(" ➔ ");
 
   const filteredCategories = useMemo(() => {
     return categories
@@ -105,14 +267,14 @@ const SearchableCategorySelect: React.FC<SearchableCategorySelectProps> = ({
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full py-1.5 px-3 bg-slate-50  border border-slate-200  hover:border-emerald-500 rounded-xl text-xs text-left flex items-center justify-between gap-2 transition-all cursor-pointer shadow-2xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+        className={`w-full ${size === "md" ? "h-10 px-3.5 bg-white" : "py-1.5 px-3 bg-slate-50"} border border-slate-200 hover:border-emerald-500 rounded-xl text-xs text-left flex items-center justify-between gap-2 transition-all cursor-pointer shadow-2xs focus:outline-none focus:ring-2 focus:ring-emerald-500/20`}
       >
         <div className="flex items-center gap-2 truncate flex-1 min-w-0">
           {selectedCategory ? (
             <>
               <span
                 className="w-2.5 h-2.5 rounded-full shrink-0"
-                style={{ backgroundColor: selectedCategory.color || (selectedCategory.type === "income" ? "#10b981" : "#f43f5e") }}
+                style={{ backgroundColor: inheritedColor(categories, selectedCategory.id) || (selectedCategory.type === "income" ? "#10b981" : "#f43f5e") }}
               />
               <span className="font-semibold text-slate-800  truncate">
                 {getCategoryPath(selectedCategory)}
@@ -225,7 +387,7 @@ const SearchableCategorySelect: React.FC<SearchableCategorySelectProps> = ({
                       <div className="flex items-center gap-2 truncate">
                         <span
                           className="w-2 h-2 rounded-full shrink-0"
-                          style={{ backgroundColor: c.color || "#f43f5e" }}
+                          style={{ backgroundColor: inheritedColor(categories, c.id) || "#f43f5e" }}
                         />
                         <span className={c.level === 1 ? "font-bold text-slate-900 " : "font-normal"}>
                           {c.level === 1 ? c.name : c.level === 2 ? `↳ ${c.name}` : `↳↳ ${c.name}`}
@@ -265,7 +427,7 @@ const SearchableCategorySelect: React.FC<SearchableCategorySelectProps> = ({
                       <div className="flex items-center gap-2 truncate">
                         <span
                           className="w-2 h-2 rounded-full shrink-0"
-                          style={{ backgroundColor: c.color || "#10b981" }}
+                          style={{ backgroundColor: inheritedColor(categories, c.id) || "#10b981" }}
                         />
                         <span className={c.level === 1 ? "font-bold text-slate-900 " : "font-normal"}>
                           {c.level === 1 ? c.name : c.level === 2 ? `↳ ${c.name}` : `↳↳ ${c.name}`}
@@ -315,6 +477,7 @@ const SearchableScopeSelect: React.FC<SearchableScopeSelectProps> = ({
   const [search, setSearch] = useState("");
   const dropdownRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const quickAdd = useQuickAddClient();
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -447,26 +610,22 @@ const SearchableScopeSelect: React.FC<SearchableScopeSelectProps> = ({
       {isOpen && (
         <div className="absolute top-full left-0 right-0 mt-1.5 z-[100] bg-white  border border-slate-200  rounded-2xl shadow-2xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-150 flex flex-col min-w-[300px]">
           {/* Search Header */}
-          <div className="p-2 border-b border-slate-100  flex items-center gap-2 bg-slate-50/70 ">
-            <Search className="h-3.5 w-3.5 text-slate-400 shrink-0 ml-1" />
-            <input
-              ref={inputRef}
-              type="text"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t("Search projects or clients...", "Hľadať projekty alebo klientov...", "Keresés projekt vagy ügyfél szerint...")}
-              className="w-full bg-transparent text-xs text-slate-800  placeholder:text-slate-400 focus:outline-none"
-            />
-            {search && (
-              <button
-                type="button"
-                onClick={() => setSearch("")}
-                className="p-1 text-slate-400 hover:text-slate-600 "
-              >
-                <X className="h-3 w-3" />
-              </button>
-            )}
-          </div>
+          <DropdownSearchRow
+            inputRef={inputRef}
+            value={search}
+            onChange={setSearch}
+            placeholder={t("Search projects or clients...", "Hľadať projekty alebo klientov...", "Keresés projekt vagy ügyfél szerint...")}
+            addNewIcon={<UserPlus className="h-4 w-4" />}
+            addNewLabel={t("Add a new client", "Pridať nového klienta", "Új ügyfél hozzáadása")}
+            onAddNew={
+              quickAdd.enabled
+                ? () => {
+                    setIsOpen(false);
+                    quickAdd.open((lead) => onChange(`client:${lead.id}`));
+                  }
+                : undefined
+            }
+          />
 
           {/* List Options */}
           <div className="max-h-64 overflow-y-auto p-1.5 space-y-1 scrollbar-thin">
@@ -615,6 +774,12 @@ interface FinancialManagementViewProps {
   setFinancialRecords: React.Dispatch<React.SetStateAction<FinancialRecord[]>>;
   financialCategories: FinancialCategory[];
   setFinancialCategories: React.Dispatch<React.SetStateAction<FinancialCategory[]>>;
+  /**
+   * Manual weekly bank-balance anchors for the trend chart. Shared workspace
+   * data, not a per-browser setting — see utils/financialTrend.ts.
+   */
+  financialTrend?: FinancialTrendSettings;
+  setFinancialTrend?: (next: FinancialTrendSettings) => void;
   projects: Project[];
   leads: Lead[];
   users: UserProfile[];
@@ -622,24 +787,77 @@ interface FinancialManagementViewProps {
   currencyCode?: string | null;
   onOpenProject?: (projectId: string) => void;
   onOpenClient?: (clientId: string) => void;
+  /** Role access for the financial module. `edit: false` renders the view read-only. */
+  access?: ModuleAccess;
 }
 
 export const FinancialManagementView: React.FC<FinancialManagementViewProps> = ({
   financialRecords = [],
-  setFinancialRecords,
+  setFinancialRecords: setFinancialRecordsRaw,
   financialCategories = [],
-  setFinancialCategories,
+  setFinancialCategories: setFinancialCategoriesRaw,
+  financialTrend = EMPTY_FINANCIAL_TREND,
+  setFinancialTrend,
   projects = [],
   leads = [],
   userLanguage,
   currencyCode,
   onOpenProject,
-  onOpenClient
+  onOpenClient,
+  access = FULL_MODULE_ACCESS
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
+  const canEdit = access.edit;
+  const canDelete = access.delete;
+  const setFinancialRecords: typeof setFinancialRecordsRaw = (updater) => {
+    if (!canEdit) return;
+    setFinancialRecordsRaw(updater);
+  };
+  const setFinancialCategories: typeof setFinancialCategoriesRaw = (updater) => {
+    if (!canEdit) return;
+    setFinancialCategoriesRaw(updater);
+  };
 
   const money = (v: number) => formatMoney(v, currencyCode, userLanguage);
+
+  const movementStatusLabel = (status: FinancialStatus) => {
+    switch (status) {
+      case "planned": return t("Planned", "Plánované", "Tervezett");
+      case "pending": return t("Pending", "Čaká na úhradu", "Fizetésre vár");
+      case "paid": return t("Paid", "Uhradené", "Fizetve");
+      case "partially_paid": return t("Partially Paid", "Čiastočne uhradené", "Részben fizetve");
+      case "overdue": return t("Overdue", "Po splatnosti", "Lejárt");
+      case "cancelled": return t("Cancelled", "Zrušené", "Törölve");
+      default: return status;
+    }
+  };
+
+  const movementStatusBadgeClass = (status: FinancialStatus) =>
+    status === "paid"
+      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+      : status === "partially_paid"
+        ? "bg-sky-50 text-sky-700 border-sky-200"
+        : status === "pending"
+          ? "bg-amber-50 text-amber-700 border-amber-200"
+          : status === "overdue"
+            ? "bg-rose-50 text-rose-700 border-rose-200"
+            : "bg-slate-100 text-slate-600 border-slate-200";
+
+  const movementStatusOptions = useMemo(
+    () =>
+      MOVEMENT_STATUSES.map((s) => ({
+        value: s,
+        label: (
+          <span className="inline-flex items-center gap-1.5">
+            <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${MOVEMENT_STATUS_DOT[s]}`} />
+            <span>{movementStatusLabel(s)}</span>
+          </span>
+        ),
+        searchText: movementStatusLabel(s)
+      })),
+    [userLanguage]
+  );
 
   // Helper to parse subtab & query parameters from URL hash
   const parseFinancialUrlState = () => {
@@ -662,7 +880,6 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       project: params.get("project") || "all",
       client: params.get("client") || "all",
       status: params.get("status") || "all",
-      time: (params.get("time") as "this_month" | "next_month" | "this_quarter" | "this_year" | "all" | "custom") || "this_month",
       category: params.get("category") || "all",
     };
   };
@@ -673,7 +890,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const [activeTab, setActiveTab] = useState<"overview" | "table" | "movements" | "recurring" | "categories">(initialUrlState.tab);
 
   // Overview Matrix Table State
-  const [tableGranularity, setTableGranularity] = useState<"week" | "month" | "quarter" | "year">("month");
+  const [tableGranularity, setTableGranularity] = useState<"week" | "month" | "quarter" | "half" | "year">("month");
   const [tableYear, setTableYear] = useState<number>(new Date().getFullYear());
   const [tableValueMode, setTableValueMode] = useState<"both" | "real" | "estimated" | "total">("both");
   const [expandedCatIds, setExpandedCatIds] = useState<Set<string>>(() => new Set());
@@ -687,6 +904,41 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       return next;
     });
   };
+
+  // A search match must always be visible, even inside a branch nobody has
+  // manually expanded — otherwise a level-3 hit renders under a still-collapsed
+  // level-1 row and never reaches the screen (see F18).
+  useEffect(() => {
+    const q = tableSearchQuery.trim().toLowerCase();
+    if (!q) return;
+    const toExpand = new Set<string>();
+    financialCategories.forEach((cat) => {
+      if (cat.name.toLowerCase().includes(q)) {
+        categoryBreadcrumbs(financialCategories, cat.id)
+          .slice(0, -1)
+          .forEach((ancestor) => toExpand.add(ancestor.id));
+      }
+    });
+    if (toExpand.size === 0) return;
+    setExpandedCatIds((prev) => {
+      let changed = false;
+      const next = new Set(prev);
+      toExpand.forEach((id) => {
+        if (!next.has(id)) {
+          next.add(id);
+          changed = true;
+        }
+      });
+      return changed ? next : prev;
+    });
+  }, [tableSearchQuery, financialCategories]);
+
+  // The Total/Net rows are deliberately never filtered by the category search
+  // — they always add up to the true total — so this makes that explicit
+  // instead of silently disagreeing with the (filtered) rows above them (see F18).
+  const tableSearchTotalSuffix = tableSearchQuery.trim()
+    ? t(" (of all categories)", " (za všetky kategórie)", " (minden kategóriára)")
+    : "";
 
 
 
@@ -777,7 +1029,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const [catTreeType, setCatTreeType] = useState<FinancialType>("expense");
   const [newCatName, setNewCatName] = useState("");
   const [newCatParentId, setNewCatParentId] = useState<string>("");
-  const [newCatColor, setNewCatColor] = useState("#3b82f6");
+  const [newCatColor, setNewCatColor] = useState("");
+  // Until a colour is picked on purpose, a subcategory inherits its parent's and
+  // a main category gets the next colour no other main category of its type has.
+  const [newCatColorTouched, setNewCatColorTouched] = useState(false);
 
   // Transaction Form fields
   const [formType, setFormType] = useState<FinancialType>("expense");
@@ -809,6 +1064,12 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const [formYearlyMonth, setFormYearlyMonth] = useState<number>(1);
   const [formRecurringStartDate, setFormRecurringStartDate] = useState(todayLocal());
   const [formRecurringEndDate, setFormRecurringEndDate] = useState("");
+  // The real planned end a pause tucks away, restored on resume — see
+  // `pauseRecurringRule`. Only ever written by the "Zrušené" status shortcut
+  // below; the end-date field itself is untouched by it.
+  const [formRecurringPlannedEndDate, setFormRecurringPlannedEndDate] = useState<string | null>(null);
+  // The day a changed recurring amount takes effect; "" = from the next charge.
+  const [formAmountAppliesFrom, setFormAmountAppliesFrom] = useState("");
 
 
 
@@ -828,148 +1089,136 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const [movementsEndDate, setMovementsEndDate] = useState<string>("");
   const [movementsSortOrder, setMovementsSortOrder] = useState<"desc" | "asc">("desc");
   const [movementsVisibleCount, setMovementsVisibleCount] = useState<number>(40);
-  const [isMovementsAdvancedOpen, setIsMovementsAdvancedOpen] = useState<boolean>(false);
+  // A filter seeded from the URL hash must not land hidden inside a collapsed
+  // drawer — the user would see filtered results with no visible reason why.
+  const [isMovementsAdvancedOpen, setIsMovementsAdvancedOpen] = useState<boolean>(
+    initialUrlState.category !== "all" ||
+      initialUrlState.scope !== "all" ||
+      initialUrlState.project !== "all" ||
+      initialUrlState.client !== "all"
+  );
+
+  // Forecast overlay: expected movements drawn into the ledger alongside the
+  // real ones. A recurring rule charges forever, so the overlay only ever holds
+  // a bounded window — one month to start with, widened a month per click.
+  const [showFutureMovements, setShowFutureMovements] = useState<boolean>(false);
+  const [futureHorizonMonths, setFutureHorizonMonths] = useState<number>(1);
 
   // Sentinel ref for infinite scroll
   const movementsSentinelRef = useRef<HTMLDivElement | null>(null);
 
-  // Helper to get 3-level breadcrumbs for any category ID
-  const getCategoryBreadcrumbs = (catId?: string | null): FinancialCategory[] => {
-    if (!catId) return [];
-    const cat = financialCategories.find((c) => c.id === catId);
-    if (!cat) return [];
-    const path: FinancialCategory[] = [cat];
-    let current = cat;
-    while (current.parentId) {
-      const parent = financialCategories.find((c) => c.id === current.parentId);
-      if (!parent) break;
-      path.unshift(parent);
-      current = parent;
+  // Helper to get breadcrumbs for any category ID, guarded against a cyclic
+  // `parentId` chain (see F14) by the shared, cycle-guarded walker.
+  const getCategoryBreadcrumbs = (catId?: string | null): FinancialCategory[] =>
+    catId ? categoryBreadcrumbs(financialCategories, catId) : [];
+
+  // The day a real movement is filed under in the ledger — cash basis, the
+  // same rule the trend and the overview table use (see F3), so a movement
+  // cannot land in three different months across the three tabs.
+  const movementLedgerDate = (rec: FinancialRecord): string => overviewRecordDate(rec);
+
+  /**
+   * Everything the filter bar asks of one ledger line, in one place.
+   *
+   * The real movements and the forecast overlay have to read the filters
+   * identically, or a movement would drop out of one and not the other. What
+   * differs between them is the date the line is filed under (the day it was
+   * entered versus the day the money is expected) and the figure the value
+   * range is measured against (the whole movement versus what is still
+   * outstanding), so both arrive as arguments instead of being read off the
+   * record.
+   */
+  const movementMatchesFilters = useMemo(() => {
+    const query = movementsSearch.trim().toLowerCase();
+
+    // A category filter matches the category itself and everything under it.
+    // `categoryDescendantIds` is already guarded against a cyclic `parentId`
+    // (see F14); it does not include the starting id itself, so it is added
+    // back in here.
+    let categoryIds: Set<string> | null = null;
+    if (movementsCategoryId !== "all") {
+      categoryIds = new Set<string>([
+        movementsCategoryId,
+        ...categoryDescendantIds(financialCategories, movementsCategoryId)
+      ]);
     }
-    return path;
-  };
 
-  // Movements Filter Hook
-  const filteredMovements = useMemo(() => {
-    let list = [...financialRecords];
+    // Every preset is a plain inclusive range once resolved; `-31` as an end is
+    // safe because no date inside the month can sort past it.
+    const now = new Date();
+    const monthRange = (d: Date): { start: string; end: string } => {
+      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+      return { start: `${ym}-01`, end: `${ym}-31` };
+    };
+    let range: { start: string | null; end: string | null } = { start: null, end: null };
+    if (movementsDatePreset === "this_month") {
+      range = monthRange(now);
+    } else if (movementsDatePreset === "last_month") {
+      // Anchored on the 1st: stepping the month on today's own date makes
+      // "31 February" on 31 March, which JS normalises to 3 March, and the
+      // preset would quietly show the current month instead of the previous one.
+      range = monthRange(new Date(now.getFullYear(), now.getMonth() - 1, 1));
+    } else if (movementsDatePreset === "this_quarter") {
+      const q = Math.floor(now.getMonth() / 3);
+      const y = now.getFullYear();
+      range = {
+        start: `${y}-${String(q * 3 + 1).padStart(2, "0")}-01`,
+        end: `${y}-${String(q * 3 + 3).padStart(2, "0")}-31`
+      };
+    } else if (movementsDatePreset === "this_year") {
+      const y = now.getFullYear();
+      range = { start: `${y}-01-01`, end: `${y}-12-31` };
+    } else if (movementsDatePreset === "custom") {
+      range = { start: movementsStartDate || null, end: movementsEndDate || null };
+    }
 
-    // 1. Search Query
-    if (movementsSearch.trim()) {
-      const q = movementsSearch.toLowerCase();
-      list = list.filter((r) => {
-        const project = projects.find((p) => p.id === r.projectId);
+    const min = movementsMinAmount === "" ? null : parseFloat(movementsMinAmount);
+    const max = movementsMaxAmount === "" ? null : parseFloat(movementsMaxAmount);
+
+    return (rec: FinancialRecord, dateIso: string, amount: number): boolean => {
+      // 1. Search Query
+      if (query) {
+        const project = projects.find((p) => p.id === rec.projectId);
         const projectLead = project ? leads.find((l) => l.id === project.clientId || l.id === project.leadId) : null;
         const projectTitle = project ? (projectLead ? `${projectLead.name} (${project.id.slice(0, 8)})` : `Projekt ${project.id.slice(0, 8)}`) : "";
-        const client = leads.find((l) => l.id === r.clientId || l.id === project?.clientId || l.id === project?.leadId);
-        const catBreadcrumbs = getCategoryBreadcrumbs(r.categoryId).map((c) => c.name).join(" ");
-        return (
-          r.title.toLowerCase().includes(q) ||
-          (r.description && r.description.toLowerCase().includes(q)) ||
-          (r.invoiceNumber && r.invoiceNumber.toLowerCase().includes(q)) ||
-          (catBreadcrumbs && catBreadcrumbs.toLowerCase().includes(q)) ||
-          (projectTitle && projectTitle.toLowerCase().includes(q)) ||
-          (client && client.name.toLowerCase().includes(q))
-        );
-      });
-    }
-
-    // 2. Type Filter (income vs expense)
-    if (movementsType !== "all") {
-      list = list.filter((r) => r.type === movementsType);
-    }
-
-    // 3. Category Filter (match self or any descendants)
-    if (movementsCategoryId !== "all") {
-      const descendantCatIds = new Set<string>([movementsCategoryId]);
-      const addChildren = (parentId: string) => {
-        financialCategories.filter((c) => c.parentId === parentId).forEach((child) => {
-          descendantCatIds.add(child.id);
-          addChildren(child.id);
-        });
-      };
-      addChildren(movementsCategoryId);
-      list = list.filter((r) => r.categoryId && descendantCatIds.has(r.categoryId));
-    }
-
-    // 4. Scope / Project / Client
-    if (movementsScope === "global") {
-      list = list.filter((r) => !r.projectId && !r.clientId);
-    } else if (movementsScope === "project") {
-      if (movementsProjectId !== "all") {
-        list = list.filter((r) => r.projectId === movementsProjectId);
-      } else {
-        list = list.filter((r) => !!r.projectId);
+        const client = leads.find((l) => l.id === rec.clientId || l.id === project?.clientId || l.id === project?.leadId);
+        const catBreadcrumbs = getCategoryBreadcrumbs(rec.categoryId).map((c) => c.name).join(" ");
+        const hit =
+          rec.title.toLowerCase().includes(query) ||
+          (!!rec.description && rec.description.toLowerCase().includes(query)) ||
+          (!!rec.invoiceNumber && rec.invoiceNumber.toLowerCase().includes(query)) ||
+          (!!catBreadcrumbs && catBreadcrumbs.toLowerCase().includes(query)) ||
+          (!!projectTitle && projectTitle.toLowerCase().includes(query)) ||
+          (!!client && client.name.toLowerCase().includes(query));
+        if (!hit) return false;
       }
-    } else if (movementsScope === "client") {
-      if (movementsClientId !== "all") {
-        list = list.filter((r) => r.clientId === movementsClientId);
-      } else {
-        list = list.filter((r) => !!r.clientId);
-      }
-    }
 
-    // 5. Value Range
-    if (movementsMinAmount !== "") {
-      const min = parseFloat(movementsMinAmount);
-      if (!isNaN(min)) {
-        list = list.filter((r) => (r.amountReal > 0 ? r.amountReal : r.amountPlanned) >= min);
-      }
-    }
-    if (movementsMaxAmount !== "") {
-      const max = parseFloat(movementsMaxAmount);
-      if (!isNaN(max)) {
-        list = list.filter((r) => (r.amountReal > 0 ? r.amountReal : r.amountPlanned) <= max);
-      }
-    }
+      // 2. Type Filter (income vs expense)
+      if (movementsType !== "all" && rec.type !== movementsType) return false;
 
-    // 6. Date Range / Presets
-    if (movementsDatePreset === "this_month") {
-      const now = new Date();
-      const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
-      list = list.filter((r) => (r.paidDate || r.issueDate || "").startsWith(ym));
-    } else if (movementsDatePreset === "last_month") {
-      const d = new Date();
-      d.setMonth(d.getMonth() - 1);
-      const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-      list = list.filter((r) => (r.paidDate || r.issueDate || "").startsWith(ym));
-    } else if (movementsDatePreset === "this_quarter") {
-      const now = new Date();
-      const q = Math.floor(now.getMonth() / 3);
-      const startM = q * 3 + 1;
-      const endM = q * 3 + 3;
-      const y = now.getFullYear();
-      const start = `${y}-${String(startM).padStart(2, "0")}-01`;
-      const end = `${y}-${String(endM).padStart(2, "0")}-31`;
-      list = list.filter((r) => {
-        const date = r.paidDate || r.issueDate || "";
-        return date >= start && date <= end;
-      });
-    } else if (movementsDatePreset === "this_year") {
-      const y = String(new Date().getFullYear());
-      list = list.filter((r) => (r.paidDate || r.issueDate || "").startsWith(y));
-    } else if (movementsDatePreset === "custom") {
-      if (movementsStartDate) {
-        list = list.filter((r) => (r.paidDate || r.issueDate || "") >= movementsStartDate);
-      }
-      if (movementsEndDate) {
-        list = list.filter((r) => (r.paidDate || r.issueDate || "") <= movementsEndDate);
-      }
-    }
+      // 3. Category Filter (match self or any descendants)
+      if (categoryIds && !(rec.categoryId && categoryIds.has(rec.categoryId))) return false;
 
-    // 7. Chronological Sorting
-    list.sort((a, b) => {
-      const dateA = a.paidDate || a.issueDate || "";
-      const dateB = b.paidDate || b.issueDate || "";
-      if (movementsSortOrder === "desc") {
-        return dateB.localeCompare(dateA);
-      } else {
-        return dateA.localeCompare(dateB);
+      // 4. Scope / Project / Client — scope is computed once (project takes
+      // priority over client, see `movementScope`), so "Client" cannot also
+      // list a project record just because it carries the project's clientId.
+      if (movementsScope !== "all") {
+        if (movementScope(rec) !== movementsScope) return false;
+        if (movementsScope === "project" && movementsProjectId !== "all" && rec.projectId !== movementsProjectId) return false;
+        if (movementsScope === "client" && movementsClientId !== "all" && rec.clientId !== movementsClientId) return false;
       }
-    });
 
-    return list;
+      // 5. Value Range
+      if (min !== null && !isNaN(min) && amount < min) return false;
+      if (max !== null && !isNaN(max) && amount > max) return false;
+
+      // 6. Date Range / Presets
+      if (range.start !== null && dateIso < range.start) return false;
+      if (range.end !== null && dateIso > range.end) return false;
+
+      return true;
+    };
   }, [
-    financialRecords,
     movementsSearch,
     movementsType,
     movementsCategoryId,
@@ -981,28 +1230,302 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     movementsDatePreset,
     movementsStartDate,
     movementsEndDate,
-    movementsSortOrder,
     financialCategories,
     projects,
     leads
   ]);
 
+  // Movements Filter Hook
+  const filteredMovements = useMemo(() => {
+    const list = financialRecords.filter((rec) => {
+      // The value range is measured against the record's whole value (real +
+      // estimated), the same figure `splitRecordAmounts` gives every other
+      // reader, not an ad hoc "real if any, else planned" guess (see F4).
+      const { real, estimated } = splitRecordAmounts(rec);
+      return movementMatchesFilters(rec, movementLedgerDate(rec), real + estimated);
+    });
+
+    // 7. Chronological Sorting
+    list.sort((a, b) => {
+      const dateA = movementLedgerDate(a);
+      const dateB = movementLedgerDate(b);
+      return movementsSortOrder === "desc" ? dateB.localeCompare(dateA) : dateA.localeCompare(dateB);
+    });
+
+    return list;
+  }, [financialRecords, movementMatchesFilters, movementsSortOrder]);
+
+  // ==========================================
+  // 3b. FORECAST OVERLAY — movements that have not happened yet
+  // ==========================================
+
+  // Frozen for the render, so every figure on screen is cut off at the same day.
+  const forecastToday = todayLocal();
+
+  // A rule is paused when its schedule's effective end date has already
+  // passed — pausing stamps `recurringEndDate = today` rather than flipping
+  // `status` (see F2 / `handleToggleRecurringActive`), and a rule paused the
+  // old way, by `status` alone, reads as ended on the day it was last touched
+  // (`effectiveRecurringEndDate`). This is the one place "active vs paused"
+  // is decided for display.
+  const isRecurringPaused = (
+    rec: Pick<FinancialRecord, "recurringEndDate" | "status" | "updatedAt" | "issueDate">
+  ): boolean => {
+    const end = effectiveRecurringEndDate(rec);
+    return !!end && end <= forecastToday;
+  };
+
+  const forecastRange = useMemo(
+    () => futureWindow(forecastToday, futureHorizonMonths),
+    [forecastToday, futureHorizonMonths]
+  );
+
+  // Expected movements inside the loaded window, filtered exactly like the real
+  // ones. See utils/futureMovements.ts for where they come from.
+  const filteredFutureMovements = useMemo(() => {
+    if (!showFutureMovements) return [] as FutureMovement[];
+    return projectFutureMovements(financialRecords, forecastRange.startIso, forecastRange.endIso).filter((m) =>
+      movementMatchesFilters(m.record, m.date, m.amount)
+    );
+  }, [showFutureMovements, financialRecords, forecastRange, movementMatchesFilters]);
+
+  // Only offer another month when widening the window would actually draw
+  // something — an open-ended rule always would, a finished one never does.
+  const canLoadAnotherForecastMonth = useMemo(() => {
+    if (!showFutureMovements) return false;
+    return hasFutureBeyond(financialRecords, forecastToday, futureHorizonMonths, (m) =>
+      movementMatchesFilters(m.record, m.date, m.amount)
+    );
+  }, [showFutureMovements, financialRecords, forecastToday, futureHorizonMonths, movementMatchesFilters]);
+
+  const forecastSummary = useMemo(() => futureTotals(filteredFutureMovements), [filteredFutureMovements]);
+
+  /**
+   * Records the overlay has taken over.
+   *
+   * An invoice issued in August and payable in October is one movement, drawn
+   * on the day the money is expected — so the ledger has to stop drawing it in
+   * August, or the same invoice would be counted in both months. Claims follow
+   * what is actually on screen: a forecast row the filters hide leaves its
+   * record exactly where it was.
+   */
+  const forecastClaimedIds = useMemo(() => claimedRecordIds(filteredFutureMovements), [filteredFutureMovements]);
+
+  // ==========================================
+  // 3c. PAST RECURRING CHARGES — what the rules have already charged
+  // ==========================================
+
+  // One row per charge a recurring rule has made up to and including today,
+  // counted as settled — the same charges the overview table and the trend
+  // count, so a month here adds up to the same figure there. Cut off at
+  // `forecastToday`, the day before the overlay starts, so no charge is drawn
+  // on both sides or on neither. See utils/pastRecurringCharges.ts, also for
+  // how a rule's own row is drawn among its charges.
+  const pastRecurring = useMemo(
+    () => projectPastRecurringCharges(financialRecords, forecastToday),
+    [financialRecords, forecastToday]
+  );
+
+  const filteredPastCharges = useMemo(
+    () => pastRecurring.charges.filter((c) => movementMatchesFilters(c.record, c.date, c.amount)),
+    [pastRecurring, movementMatchesFilters]
+  );
+
+  /** What a forecast row is derived from, in words, for its badge. */
+  const forecastSourceLabel = (source: FutureMovementSource): string =>
+    source === "recurring"
+      ? t("Recurring", "Pravidelné", "Ismétlődő")
+      : source === "due"
+      ? t("Due", "Splatné", "Esedékes")
+      : t("Scheduled", "Naplánované", "Ütemezett");
+
+  // Slovak numerals agree with their noun: 1 takes the singular, 2-4 the
+  // nominative plural, 5 and up the genitive.
+  const skExactMonths = (n: number) => (n === 1 ? "1 mesiac" : n < 5 ? `${n} mesiace` : `${n} mesiacov`);
+  const skExpected = (n: number) => (n === 1 ? "očakávaný" : n < 5 ? "očakávané" : "očakávaných");
+  const skMovements = (n: number) => (n === 1 ? "pohyb" : n < 5 ? "pohyby" : "pohybov");
+
+  /** "2 expected" / "2 očakávané" / "2 várható" — the count chip on a divider. */
+  const expectedCountLabel = (n: number): string =>
+    `${n} ${t("expected", skExpected(n), "várható")}`;
+
+  const forecastHorizonLabel = (n: number): string =>
+    t(`${n} month${n === 1 ? "" : "s"} ahead`, `na ${skExactMonths(n)} dopredu`, `${n} hónapra előre`);
+
+  /** How far off a forecast row is, so a date in the table reads as a distance. */
+  const daysAheadLabel = (dateIso: string): string => {
+    const days = isoDaysBetween(forecastToday, dateIso);
+    if (days <= 0) return t("today", "dnes", "ma");
+    if (days === 1) return t("tomorrow", "zajtra", "holnap");
+    return t(`in ${days} days`, `o ${days} ${days < 5 ? "dni" : "dní"}`, `${days} nap múlva`);
+  };
+
+  /**
+   * Title, category and scope cells of a settled ledger line. A stored movement
+   * and a charge its recurring rule made read them off the same record, so
+   * both kinds of line draw them here.
+   */
+  const renderLedgerSourceCells = (rec: FinancialRecord) => {
+    const project = projects.find((p) => p.id === rec.projectId);
+    const client = leads.find((l) => l.id === rec.clientId || l.id === project?.clientId || l.id === project?.leadId);
+    const catBreadcrumbs = getCategoryBreadcrumbs(rec.categoryId);
+    const rootCat = catBreadcrumbs[0];
+    const isExpense = rec.type === "expense";
+
+    return (
+      <>
+        {/* 2. Title & Reference & Recurring Badge */}
+        <td className="py-3 px-4">
+          <div className="font-bold text-slate-900  flex items-center gap-1.5">
+            <span className="truncate max-w-[280px]" title={rec.title}>
+              {rec.title}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 mt-0.5">
+            {rec.invoiceNumber && (
+              <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-100  text-slate-600  font-semibold">
+                {rec.invoiceNumber}
+              </span>
+            )}
+            {rec.description && (
+              <span className="text-[11px] text-slate-400 truncate max-w-[220px]" title={rec.description}>
+                {rec.description}
+              </span>
+            )}
+          </div>
+        </td>
+
+        {/* 3. 3-Level Category Breadcrumbs */}
+        <td className="py-3 px-4">
+          {catBreadcrumbs.length > 0 ? (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span
+                className="h-2 w-2 rounded-full shrink-0 shadow-2xs"
+                style={{ backgroundColor: rootCat?.color || (isExpense ? "#f43f5e" : "#10b981") }}
+              />
+              {catBreadcrumbs.map((c, idx) => (
+                <React.Fragment key={c.id}>
+                  {idx > 0 && <span className="text-[10px] text-slate-400">›</span>}
+                  <span
+                    className={`text-[11px] ${
+                      idx === catBreadcrumbs.length - 1
+                        ? "font-bold text-slate-800 "
+                        : "font-normal text-slate-500 "
+                    }`}
+                  >
+                    {c.name}
+                  </span>
+                </React.Fragment>
+              ))}
+            </div>
+          ) : (
+            <span className="text-slate-400 italic text-[11px]">
+              {t("Uncategorized", "Bez kategórie", "Kategória nélkül")}
+            </span>
+          )}
+        </td>
+
+        {/* 4. Link / Scope (Project or Client or Global) */}
+        <td className="py-3 px-4">
+          {rec.projectId ? (
+            (() => {
+              const projectLead = project ? leads.find((l) => l.id === project.leadId || l.id === project.clientId) : null;
+              const pName = projectLead ? `${projectLead.name}` : `Projekt ${rec.projectId.slice(0, 8)}`;
+              return (
+                <button
+                  type="button"
+                  onClick={() => onOpenProject?.(rec.projectId!)}
+                  className="inline-flex items-center gap-1.5 px-2 py-1 bg-indigo-50  hover:bg-indigo-100 text-indigo-700  rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  <Briefcase className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate max-w-[140px]" title={pName}>
+                    {pName}
+                  </span>
+                </button>
+              );
+            })()
+          ) : rec.clientId ? (
+            <button
+              type="button"
+              onClick={() => onOpenClient?.(rec.clientId!)}
+              className="inline-flex items-center gap-1.5 px-2 py-1 bg-emerald-50  hover:bg-emerald-100 text-emerald-700  rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+            >
+              <User className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate max-w-[140px]" title={client?.name || rec.clientId}>
+                {client?.name || rec.clientId.slice(0, 8)}
+              </span>
+            </button>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-[11px] text-slate-500 font-medium">
+              <Globe className="h-3 w-3 text-slate-400 shrink-0" />
+              <span>{t("Global Company", "Globálne firemné", "Globális vállalati")}</span>
+            </span>
+          )}
+        </td>
+      </>
+    );
+  };
+
+  /** The recurring icon next to a ledger value: on a rule's own row and on every charge it made. */
+  const renderRecurringValueIcon = (rec: FinancialRecord) => (
+    <span
+      className="p-1 rounded-md bg-purple-50  text-purple-600  border border-purple-200 "
+      title={t(
+        `Recurring movement (${rec.recurringFrequency || "monthly"})`,
+        `Pravidelný pohyb (${rec.recurringFrequency || "mesačne"})`,
+        `Rendszeres tétel (${rec.recurringFrequency || "havi"})`
+      )}
+    >
+      <RefreshCw className="h-3 w-3" />
+    </span>
+  );
+
   // Group filtered movements by Month with summary subtotals
   const groupedMovementsByMonth = useMemo(() => {
-    const groups: Array<{
+    type Group = {
       monthKey: string; // e.g. "2026-08"
       monthLabel: string; // e.g. "August 2026"
+      /** `real + estimated` — what the month is worth once everything settles. */
       totalIncome: number;
       totalExpense: number;
+      /** Settled vs still-expected, split the same way `splitRecordAmounts` does everywhere else (see F4). */
+      incomeReal: number;
+      incomeEstimated: number;
+      expenseReal: number;
+      expenseEstimated: number;
       net: number;
-      records: FinancialRecord[];
-    }> = [];
+      /** The forecast half of the month, kept apart so it never reads as settled. */
+      expectedIncome: number;
+      expectedExpense: number;
+      expectedNet: number;
+      forecastCount: number;
+      rows: MovementLedgerRow[];
+    };
 
-    const map = new Map<string, (typeof groups)[0]>();
-
+    const rows: MovementLedgerRow[] = [];
     filteredMovements.forEach((rec) => {
-      const dateStr = rec.paidDate || rec.issueDate || "1970-01-01";
-      const monthKey = dateStr.slice(0, 7); // "YYYY-MM"
+      if (forecastClaimedIds.has(rec.id)) return;
+      // A rule row that falls on one of its charge days is that charge: the
+      // charge row below draws it, once.
+      if (pastRecurring.claimedIds.has(rec.id)) return;
+      rows.push({ kind: "record", key: rec.id, date: movementLedgerDate(rec) || "1970-01-01", record: rec });
+    });
+    filteredPastCharges.forEach((charge) => {
+      rows.push({ kind: "charge", key: charge.id, date: charge.date, charge });
+    });
+    filteredFutureMovements.forEach((forecast) => {
+      rows.push({ kind: "forecast", key: forecast.id, date: forecast.date, forecast });
+    });
+
+    rows.sort((a, b) =>
+      movementsSortOrder === "desc" ? b.date.localeCompare(a.date) : a.date.localeCompare(b.date)
+    );
+
+    const groups: Group[] = [];
+    const map = new Map<string, Group>();
+
+    rows.forEach((row) => {
+      const monthKey = row.date.slice(0, 7); // "YYYY-MM"
 
       let group = map.get(monthKey);
       if (!group) {
@@ -1024,37 +1547,97 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           monthLabel,
           totalIncome: 0,
           totalExpense: 0,
+          incomeReal: 0,
+          incomeEstimated: 0,
+          expenseReal: 0,
+          expenseEstimated: 0,
           net: 0,
-          records: []
+          expectedIncome: 0,
+          expectedExpense: 0,
+          expectedNet: 0,
+          forecastCount: 0,
+          rows: []
         };
         map.set(monthKey, group);
         groups.push(group);
       }
 
-      const amount = rec.amountReal > 0 ? rec.amountReal : rec.amountPlanned;
-      if (rec.type === "income") {
-        group.totalIncome += amount;
+      if (row.kind === "record" || row.kind === "charge") {
+        // A past charge has happened, so all of it is settled. A rule row a
+        // charge before it already covers is drawn, but adds nothing.
+        const type = row.kind === "record" ? row.record.type : row.charge.type;
+        const { real, estimated } =
+          row.kind === "record" ? ledgerRecordSplit(row.record, pastRecurring) : { real: row.charge.amount, estimated: 0 };
+        if (type === "income") {
+          group.incomeReal += real;
+          group.incomeEstimated += estimated;
+          group.totalIncome += real + estimated;
+        } else {
+          group.expenseReal += real;
+          group.expenseEstimated += estimated;
+          group.totalExpense += real + estimated;
+        }
+        group.net = group.totalIncome - group.totalExpense;
       } else {
-        group.totalExpense += amount;
+        if (row.forecast.type === "income") group.expectedIncome += row.forecast.amount;
+        else group.expectedExpense += row.forecast.amount;
+        group.expectedNet = group.expectedIncome - group.expectedExpense;
+        group.forecastCount += 1;
       }
-      group.net = group.totalIncome - group.totalExpense;
-      group.records.push(rec);
+
+      group.rows.push(row);
     });
 
     return groups;
-  }, [filteredMovements, userLanguage]);
+  }, [
+    filteredMovements,
+    filteredPastCharges,
+    filteredFutureMovements,
+    forecastClaimedIds,
+    pastRecurring,
+    movementsSortOrder,
+    userLanguage
+  ]);
 
-  // Total summary of all currently filtered movements
+  // Total summary of everything currently on the ledger, settled and expected
+  // kept apart — a forecast must never be added into a figure that reads as
+  // money already in the account.
   const movementsSummary = useMemo(() => {
     let income = 0;
     let expense = 0;
-    filteredMovements.forEach((r) => {
-      const val = r.amountReal > 0 ? r.amountReal : r.amountPlanned;
-      if (r.type === "income") income += val;
-      else expense += val;
+    let incomeReal = 0;
+    let incomeEstimated = 0;
+    let expenseReal = 0;
+    let expenseEstimated = 0;
+    let recordCount = 0;
+    groupedMovementsByMonth.forEach((group) => {
+      income += group.totalIncome;
+      expense += group.totalExpense;
+      incomeReal += group.incomeReal;
+      incomeEstimated += group.incomeEstimated;
+      expenseReal += group.expenseReal;
+      expenseEstimated += group.expenseEstimated;
+      recordCount += group.rows.length - group.forecastCount;
     });
-    return { income, expense, net: income - expense, count: filteredMovements.length };
-  }, [filteredMovements]);
+    return {
+      income,
+      expense,
+      // Settled vs still-expected, so the ledger's own pills can finally show
+      // "Real"/"Skutočnosť" apart from "Est"/"Plán" instead of one blended
+      // figure with no concept of what has actually happened (see F4).
+      incomeReal,
+      incomeEstimated,
+      expenseReal,
+      expenseEstimated,
+      net: income - expense,
+      count: recordCount,
+      expectedIncome: forecastSummary.income,
+      expectedExpense: forecastSummary.expense,
+      expectedNet: forecastSummary.net,
+      forecastCount: filteredFutureMovements.length,
+      rowCount: recordCount + filteredFutureMovements.length
+    };
+  }, [groupedMovementsByMonth, forecastSummary, filteredFutureMovements.length]);
 
   // Infinite Scroll IntersectionObserver
   useEffect(() => {
@@ -1064,7 +1647,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       (entries) => {
         if (entries[0].isIntersecting) {
           setMovementsVisibleCount((prev) => {
-            if (prev < filteredMovements.length) {
+            if (prev < movementsSummary.rowCount) {
               return prev + 40;
             }
             return prev;
@@ -1079,7 +1662,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     }
 
     return () => observer.disconnect();
-  }, [activeTab, filteredMovements.length]);
+  }, [activeTab, movementsSummary.rowCount]);
 
   // Reset visible count when filters change
   useEffect(() => {
@@ -1096,7 +1679,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     movementsDatePreset,
     movementsStartDate,
     movementsEndDate,
-    movementsSortOrder
+    movementsSortOrder,
+    showFutureMovements,
+    futureHorizonMonths
   ]);
 
   const hasActiveMovementsFilters =
@@ -1136,6 +1721,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
   // Helper to open modal for creating a new recurring expense
   const handleOpenCreateRecurringModal = (type: FinancialType = "expense", scope: "global" | "project" | "client" = "global") => {
+    if (!canEdit) return;
     setEditingRecord(null);
     setFormType(type);
     setFormSubtype("expense");
@@ -1164,6 +1750,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     setFormYearlyMonth(1);
     setFormRecurringStartDate(todayLocal());
     setFormRecurringEndDate("");
+    setFormRecurringPlannedEndDate(null);
+    setFormAmountAppliesFrom("");
     setIsModalOpen(true);
   };
 
@@ -1173,6 +1761,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       ...rec,
       id: `fr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
       title: `${rec.title} (Copy)`,
+      // The copy is a new rule — it never charged the original's older prices.
+      recurringAmountHistory: null,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };
@@ -1180,29 +1770,23 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     (window as any).showToast?.(t("Recurring expense duplicated", "Pravidelný výdavok bol skopírovaný", "Ismétlődő tétel duplikálva"));
   };
 
-  // Helper to toggle active vs paused status
+  // Helper to toggle active vs paused status.
+  //
+  // A pause is an end date, not a status change (see F2): flipping `status`
+  // used to retroactively erase or reclassify every charge the rule had
+  // already made, because the aggregation guarded on `status === "cancelled"`
+  // for the whole rule. `recurringCharges` already honours `recurringEndDate`
+  // exactly, so pausing only needs to stop future charges — stamp today as the
+  // end date; resuming clears it. `status` is left untouched either way.
   const handleToggleRecurringActive = (recId: string) => {
+    const today = todayLocal();
     setFinancialRecords((prev) =>
-      prev.map((r) => {
-        if (r.id === recId) {
-          const nextStatus: FinancialStatus = r.status === "cancelled" ? "planned" : "cancelled";
-          return {
-            ...r,
-            status: nextStatus,
-            updatedAt: new Date().toISOString()
-          };
-        }
-        return r;
-      })
+      prev.map((r) =>
+        r.id === recId
+          ? { ...r, ...toggleRecurringPause(r, today), updatedAt: new Date().toISOString() }
+          : r
+      )
     );
-  };
-
-  // Helper to calculate monthly equivalent cost of a recurring expense
-  const getMonthlyEquivalent = (amount: number, freq?: FinancialRecurringFrequency | null): number => {
-    if (!freq || freq === "monthly") return amount;
-    if (freq === "weekly") return amount * (52 / 12);
-    if (freq === "yearly") return amount / 12;
-    return amount;
   };
 
   // Helper to compute human-readable recurrence description
@@ -1258,38 +1842,15 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     return t(`Monthly on day ${day}`, `Mesačne ${day}. dňa`, `Havonta ${day}. napon`);
   };
 
-  // Helper to calculate the next due date for a recurring rule
-  const getNextRecurringDueDate = (rec: FinancialRecord): { dateStr: string; daysLeft: number } => {
-    const today = new Date();
-    const cfg = rec.recurringConfig || {};
-    const freq = rec.recurringFrequency || "monthly";
-
-    let targetDate = new Date(today.getFullYear(), today.getMonth(), today.getDate());
-
-    if (freq === "monthly") {
-      const dayOfMonth = Math.min(cfg.dayOfMonth ?? 1, 28);
-      targetDate = new Date(today.getFullYear(), today.getMonth(), dayOfMonth);
-      if (targetDate < today) {
-        targetDate = new Date(today.getFullYear(), today.getMonth() + 1, dayOfMonth);
-      }
-    } else if (freq === "weekly") {
-      const targetDay = cfg.dayOfWeek ?? 1; // Monday = 1
-      const currentDay = today.getDay();
-      let diff = targetDay - currentDay;
-      if (diff <= 0) diff += 7;
-      targetDate = new Date(today.getFullYear(), today.getMonth(), today.getDate() + diff);
-    } else if (freq === "yearly") {
-      const month = (cfg.month ?? 1) - 1;
-      targetDate = new Date(today.getFullYear(), month, 1);
-      if (targetDate < today) {
-        targetDate = new Date(today.getFullYear() + 1, month, 1);
-      }
-    }
-
-    const diffTime = targetDate.getTime() - today.getTime();
-    const daysLeft = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
-    const dateStr = targetDate.toISOString().split("T")[0];
-    return { dateStr, daysLeft };
+  // The rule's next charge, read off the same calendar the projections use, so
+  // the date in the table is the date the cash-flow week is billed on. Null once
+  // the rule has run past its end date — there is no next charge to show.
+  const getNextRecurringDueDate = (rec: FinancialRecord): { dateStr: string; daysLeft: number } | null => {
+    const today = todayLocal();
+    // Two years ahead covers the longest cadence (yearly) from any starting day.
+    const next = recurringOccurrences(rec, today, shiftIsoDate(today, 731))[0];
+    if (!next) return null;
+    return { dateStr: next, daysLeft: Math.max(0, isoDaysBetween(today, next)) };
   };
 
   // Filtered recurring records list
@@ -1313,9 +1874,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     }
 
     if (recurringStatusFilter === "active") {
-      list = list.filter((r) => r.status !== "cancelled");
+      list = list.filter((r) => !isRecurringPaused(r));
     } else if (recurringStatusFilter === "paused") {
-      list = list.filter((r) => r.status === "cancelled");
+      list = list.filter((r) => isRecurringPaused(r));
     }
 
     if (recurringScopeFilter === "global") {
@@ -1327,9 +1888,19 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     }
 
     return list;
-  }, [financialRecords, recurringSearch, recurringFreqFilter, recurringStatusFilter, recurringScopeFilter, financialCategories]);
+  }, [financialRecords, recurringSearch, recurringFreqFilter, recurringStatusFilter, recurringScopeFilter, financialCategories, forecastToday]);
 
-  // Summary KPIs for recurring overhead
+  // Summary KPIs for recurring overhead.
+  //
+  // Priced by summing `recurringCharges` over the next 12 months from today —
+  // the same calendar-accurate, history- and end-date-aware math the Overview
+  // Table already uses, so these cards can never disagree with the table for
+  // the same rules (see F17). Reads the *filtered* list, so the cards respect
+  // whatever is selected in the filter bar above them, the same as the list
+  // they sit above (see F18). `activeCount` is whether a rule still has any
+  // charge left in that forward window, not `status` — a rule whose
+  // `recurringEndDate` has already passed contributes 0 and is no longer
+  // "active", the same thing `isRecurringPaused` says for the row badge.
   const recurringMetrics = useMemo<{
     activeCount: number;
     pausedCount: number;
@@ -1337,52 +1908,59 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     totalMonthlyIncome: number;
     totalAnnualExpense: number;
     totalAnnualIncome: number;
-    nextUpcoming: { record: FinancialRecord; daysLeft: number; dateStr: string } | null;
+    nextUpcoming: { record: FinancialRecord; daysLeft: number; dateStr: string; amount: number } | null;
   }>(() => {
-    const allRecurring = financialRecords.filter((r) => r.isRecurring);
-    const activeRecurring = allRecurring.filter((r) => r.status !== "cancelled");
-    const activeExpenses = activeRecurring.filter((r) => r.type === "expense");
-    const activeIncomes = activeRecurring.filter((r) => r.type === "income");
+    const allRecurring = filteredRecurringRecords;
+    const rangeStart = forecastToday;
+    const rangeEnd = shiftIsoDate(forecastToday, 365);
 
-    const totalMonthlyExpense = activeExpenses.reduce((sum, r) => {
-      const amount = r.amountReal > 0 ? r.amountReal : r.amountPlanned;
-      return sum + getMonthlyEquivalent(amount, r.recurringFrequency);
-    }, 0);
+    let totalAnnualExpense = 0;
+    let totalAnnualIncome = 0;
+    let activeCount = 0;
 
-    const totalMonthlyIncome = activeIncomes.reduce((sum, r) => {
-      const amount = r.amountReal > 0 ? r.amountReal : r.amountPlanned;
-      return sum + getMonthlyEquivalent(amount, r.recurringFrequency);
-    }, 0);
+    allRecurring.forEach((r) => {
+      const total = recurringTotalInRange(r, rangeStart, rangeEnd);
+      if (total > 0) activeCount += 1;
+      if (r.type === "income") totalAnnualIncome += total;
+      else totalAnnualExpense += total;
+    });
 
-    const totalAnnualExpense = totalMonthlyExpense * 12;
-    const totalAnnualIncome = totalMonthlyIncome * 12;
-
-    // Find closest upcoming recurring charge
-    let nextUpcoming: { record: FinancialRecord; daysLeft: number; dateStr: string } | null = null;
-    activeExpenses.forEach((rec) => {
-      const { dateStr, daysLeft } = getNextRecurringDueDate(rec);
-      if (!nextUpcoming || daysLeft < nextUpcoming.daysLeft) {
-        nextUpcoming = { record: rec, daysLeft, dateStr };
+    // Find the closest upcoming recurring charge across both expense AND
+    // income rules — priced at the amount that will actually be in force on
+    // that date (history-aware), not a real-first snapshot of today's fields.
+    let nextUpcoming: { record: FinancialRecord; daysLeft: number; dateStr: string; amount: number } | null = null;
+    allRecurring.forEach((rec) => {
+      const next = getNextRecurringDueDate(rec);
+      if (!next) return;
+      if (!nextUpcoming || next.daysLeft < nextUpcoming.daysLeft) {
+        nextUpcoming = {
+          record: rec,
+          daysLeft: next.daysLeft,
+          dateStr: next.dateStr,
+          amount: recurringPlannedAmountAt(rec, next.dateStr)
+        };
       }
     });
 
     return {
-      activeCount: activeRecurring.length,
-      pausedCount: allRecurring.length - activeRecurring.length,
-      totalMonthlyExpense,
-      totalMonthlyIncome,
+      activeCount,
+      pausedCount: allRecurring.length - activeCount,
+      totalMonthlyExpense: totalAnnualExpense / 12,
+      totalMonthlyIncome: totalAnnualIncome / 12,
       totalAnnualExpense,
       totalAnnualIncome,
       nextUpcoming
     };
-  }, [financialRecords]);
+  }, [filteredRecurringRecords, forecastToday]);
 
   // Quick seed standard overhead templates
   const handleQuickSeedRecurringExpenses = () => {
-    const rentCat = financialCategories.find(c => c.name.includes("Nájom") || c.name.includes("Rent") || c.name.includes("Office"))?.id || null;
-    const itCat = financialCategories.find(c => c.name.includes("Software") || c.name.includes("Hosting") || c.name.includes("IT"))?.id || null;
-    const salaryCat = financialCategories.find(c => c.name.includes("Mzdy") || c.name.includes("Salaries") || c.name.includes("Personnel"))?.id || null;
-    const accountCat = financialCategories.find(c => c.name.includes("Účtovníctvo") || c.name.includes("Accounting") || c.name.includes("Admin"))?.id || null;
+    // Every seeded record below is an expense, so a same-named income category
+    // (e.g. an income "Office services") must never win the match (see F24).
+    const rentCat = financialCategories.find(c => c.type === "expense" && (c.name.includes("Nájom") || c.name.includes("Rent") || c.name.includes("Office")))?.id || null;
+    const itCat = financialCategories.find(c => c.type === "expense" && (c.name.includes("Software") || c.name.includes("Hosting") || c.name.includes("IT")))?.id || null;
+    const salaryCat = financialCategories.find(c => c.type === "expense" && (c.name.includes("Mzdy") || c.name.includes("Salaries") || c.name.includes("Personnel")))?.id || null;
+    const accountCat = financialCategories.find(c => c.type === "expense" && (c.name.includes("Účtovníctvo") || c.name.includes("Accounting") || c.name.includes("Admin")))?.id || null;
 
     const templates: FinancialRecord[] = [
       {
@@ -1487,26 +2065,34 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const [hoveredWeekIdx, setHoveredWeekIdx] = useState<number | null>(null);
   const [isWeeklyTableOpen, setIsWeeklyTableOpen] = useState(false);
 
-  // Trend Graph Mode: "relative" (weekly net cash flow) vs "cumulative" (running bank account balance)
-  const [trendMode, setTrendMode] = useState<"relative" | "cumulative">(() => {
-    return (localStorage.getItem("crm_financial_trend_mode") as "relative" | "cumulative") || "relative";
-  });
+  // Trend Graph Mode: "relative" (weekly net cash flow) vs "cumulative" (running
+  // bank account balance).
+  //
+  // Which curve you are looking at is a per-user preference, so it lives in the
+  // user's DB row and follows the account to another browser rather than being
+  // stranded in this one's localStorage.
+  const [trendMode, setTrendMode] = useUserPref("financialTrendMode");
 
-  // User calibrated Bank Account Balances per week (independent key per week: startIso "2026-08-17")
-  const [weeklyBankBalances, setWeeklyBankBalances] = useState<Record<string, number>>(() => {
-    try {
-      const saved = localStorage.getItem("crm_financial_weekly_bank_balances");
-      if (saved) return JSON.parse(saved);
-    } catch (e) {
-      console.error("Error parsing weekly bank balances", e);
-    }
-    return {};
-  });
+  // How far forward the trend graph projects: 3, 6 or 12 months. Per user and
+  // DB-backed for the same reason as trendMode above.
+  const [projectionMonths, setProjectionMonths] = useUserPref("financialProjectionMonths");
 
-  const [defaultBankBalance] = useState<number>(() => {
-    const saved = localStorage.getItem("crm_financial_current_bank_balance");
-    return saved !== null ? parseFloat(saved) : 48500;
-  });
+  // Bank balances reconciled against the real statement, one per week, keyed by
+  // the week's Monday ("2026-08-17").
+  //
+  // Shared workspace data, not a browser setting: these anchors *define* the
+  // shape of the projection curve, so a balance one person verifies has to be
+  // the balance everyone sees. They used to live in localStorage, which gave
+  // every browser its own chart — whoever calibrated a week saw one projection
+  // and every colleague saw another, built from the default starting balance.
+  const weeklyBankBalances = financialTrend.weeklyBankBalances;
+  const defaultBankBalance = financialTrend.currentBankBalance ?? DEFAULT_BANK_BALANCE;
+
+  /** Write the anchors back to the shared dataset; a no-op without edit rights. */
+  const saveTrend = (weekly: Record<string, number>) => {
+    if (!canEdit || !setFinancialTrend) return;
+    setFinancialTrend({ ...financialTrend, weeklyBankBalances: weekly });
+  };
 
   // Modal / Popover state for calibrating any week
   const [calibratingWeek, setCalibratingWeek] = useState<{
@@ -1527,6 +2113,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     cumulativeBalance: number;
     isManuallyCalibrated: boolean;
   }) => {
+    // Anchors are shared data now, so the server enforces the financial edit
+    // permission on them. Opening the dialog for someone who cannot save would
+    // show a change that silently never reaches anyone else.
+    if (!canEdit || !setFinancialTrend) return;
     setCalibratingWeek({
       startIso: b.startIso,
       weekLabel: b.weekLabel,
@@ -1540,26 +2130,31 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
   const handleSaveWeeklyCalibration = (startIso: string, val: number) => {
     const sanitized = isNaN(val) ? 0 : val;
-    const updated = { ...weeklyBankBalances, [startIso]: sanitized };
-    setWeeklyBankBalances(updated);
-    localStorage.setItem("crm_financial_weekly_bank_balances", JSON.stringify(updated));
+    saveTrend({ ...weeklyBankBalances, [startIso]: sanitized });
     setCalibratingWeek(null);
   };
 
   const handleResetWeeklyCalibration = (startIso: string) => {
     const updated = { ...weeklyBankBalances };
     delete updated[startIso];
-    setWeeklyBankBalances(updated);
-    localStorage.setItem("crm_financial_weekly_bank_balances", JSON.stringify(updated));
+    saveTrend(updated);
     setCalibratingWeek(null);
   };
 
   const handleSetTrendMode = (mode: "relative" | "cumulative") => {
     setTrendMode(mode);
-    localStorage.setItem("crm_financial_trend_mode", mode);
   };
 
-  // 18-Week Dataset: 4 Past Weeks + Current Week + 13 Future Weeks (Next 3 Months)
+  const handleSetProjectionMonths = (months: ProjectionMonths) => {
+    setProjectionMonths(months);
+  };
+
+  // Weeks the forecast covers, and the width of the whole dataset:
+  // 4 past weeks + the current one + the horizon's future weeks.
+  const projectionFutureWeeks = futureWeeksFor(projectionMonths);
+  const projectionTotalWeeks = TREND_PAST_WEEKS + 1 + projectionFutureWeeks;
+
+  // Weekly dataset: 4 past weeks + current week + the selected forecast horizon
   const weeklyTrendData = useMemo(() => {
     const now = new Date();
 
@@ -1577,14 +2172,15 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
     const pad = (n: number) => String(n).padStart(2, "0");
     const toYMD = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const todayIso = toYMD(now);
 
     // Find Monday of current week
     const currentDay = now.getDay();
     const mondayDiff = currentDay === 0 ? -6 : 1 - currentDay;
     const currentMonday = new Date(now.getFullYear(), now.getMonth(), now.getDate() + mondayDiff, 0, 0, 0, 0);
 
-    const totalPastWeeks = 4;
-    const totalFutureWeeks = 13; // 3 months = ~13 weeks
+    const totalPastWeeks = TREND_PAST_WEEKS;
+    const totalFutureWeeks = projectionFutureWeeks;
 
     const buckets: {
       index: number;
@@ -1669,30 +2265,25 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     financialRecords.forEach((rec) => {
       if (rec.isRecurring) return;
 
-      const recDateStr = rec.paidDate || rec.dueDate || rec.issueDate;
+      // Cash basis, the same rule the ledger and the overview table use (see F3).
+      const recDateStr = overviewRecordDate(rec);
       if (!recDateStr) return;
 
       buckets.forEach((b) => {
         if (recDateStr >= b.startIso && recDateStr <= b.endIso) {
-          const amt = rec.amountReal > 0 ? rec.amountReal : (rec.amountPlanned || 0);
-          const plannedAmt = rec.amountPlanned || rec.amountReal || 0;
+          // Settled money is real, the rest of the plan is still expected — the
+          // same split the overview table uses, so a partial payment shows its
+          // paid part as real here too instead of as a plan.
+          const { real, estimated } = splitRecordAmounts(rec);
 
           if (rec.type === "income") {
-            if (rec.status === "paid") {
-              b.incomeReal += amt;
-            } else if (b.isFuture) {
-              b.incomeProjected += plannedAmt;
-            } else {
-              b.incomePlanned += plannedAmt;
-            }
+            b.incomeReal += real;
+            if (b.isFuture) b.incomeProjected += estimated;
+            else b.incomePlanned += estimated;
           } else {
-            if (rec.status === "paid") {
-              b.expenseReal += amt;
-            } else if (b.isFuture) {
-              b.expenseProjected += plannedAmt;
-            } else {
-              b.expensePlanned += plannedAmt;
-            }
+            b.expenseReal += real;
+            if (b.isFuture) b.expenseProjected += estimated;
+            else b.expensePlanned += estimated;
           }
 
           b.items.push({
@@ -1706,59 +2297,38 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     });
 
     // 2. Project Recurring Movements across the weeks
+    //
+    // Each charge is priced at the amount that was in force on its own date, so
+    // editing a rule's amount today does not rewrite the weeks already behind
+    // us — see utils/recurringExpenses.ts.
     financialRecords.forEach((rec) => {
       if (!rec.isRecurring) return;
-
-      const amt = rec.amountPlanned > 0 ? rec.amountPlanned : (rec.amountReal || 0);
-      if (!amt) return;
-
-      const config: any = rec.recurringConfig || null;
+      // No `status === "cancelled"` guard here (see F2): a pause is an end
+      // date (or, for a rule paused the old way, `effectiveRecurringEndDate`
+      // reading `status`), and `recurringCharges` already stops charging past
+      // it on its own — gating on `status` too used to erase every
+      // already-elapsed charge the moment a rule was paused.
 
       const freq = rec.recurringFrequency || "monthly";
 
       buckets.forEach((b) => {
-        const bStart = new Date(b.startIso);
-        const bEnd = new Date(b.endIso);
+        recurringCharges(rec, b.startIso, b.endIso).forEach(({ date, amount: amt }) => {
+          if (!amt) return;
+          // A charge is real once its date has arrived, whatever week it
+          // falls in — the same rule the overview table uses (Problem A):
+          // past weeks are always settled, future weeks never are, and the
+          // current week splits on the charge's own date rather than being
+          // real or projected as a whole.
+          const settled = isRecurringChargeSettled(date, todayIso);
 
-        if (rec.recurringStartDate && new Date(rec.recurringStartDate) > bEnd) return;
-        if (rec.recurringEndDate && new Date(rec.recurringEndDate) < bStart) return;
-
-        let occursInWeek = false;
-
-        if (freq === "weekly") {
-          occursInWeek = true;
-        } else if (freq === "monthly") {
-          const targetDay = config?.dayOfMonth || 1;
-          for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
-            const checkDate = new Date(bStart);
-            checkDate.setDate(checkDate.getDate() + dayOffset);
-            if (checkDate.getDate() === targetDay) {
-              occursInWeek = true;
-              break;
-            }
-          }
-        } else if (freq === "yearly") {
-          const targetMonth = (config?.month || 1) - 1;
-          const targetDay = config?.day || 1;
-          for (let dayOffset = 0; dayOffset < 7; dayOffset++) {
-            const checkDate = new Date(bStart);
-            checkDate.setDate(checkDate.getDate() + dayOffset);
-            if (checkDate.getMonth() === targetMonth && checkDate.getDate() === targetDay) {
-              occursInWeek = true;
-              break;
-            }
-          }
-        }
-
-        if (occursInWeek) {
           if (rec.type === "income") {
-            if (b.isPast || b.isCurrent) {
+            if (settled) {
               b.incomeReal += amt;
             } else {
               b.incomeProjected += amt;
             }
           } else {
-            if (b.isPast || b.isCurrent) {
+            if (settled) {
               b.expenseReal += amt;
             } else {
               b.expenseProjected += amt;
@@ -1772,8 +2342,31 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             isRecurring: true,
             frequency: freq
           });
-        }
+        });
       });
+
+      // The rule's own row, when it precedes its schedule — the same first
+      // charge the overview table counts (see `recurringOwnRowCharge`).
+      const ownRow = recurringOwnRowCharge(rec);
+      const ownBucket = ownRow && buckets.find((b) => ownRow.date >= b.startIso && ownRow.date <= b.endIso);
+      if (ownRow && ownBucket) {
+        if (rec.type === "income") {
+          ownBucket.incomeReal += ownRow.real;
+          if (ownBucket.isFuture) ownBucket.incomeProjected += ownRow.estimated;
+          else ownBucket.incomePlanned += ownRow.estimated;
+        } else {
+          ownBucket.expenseReal += ownRow.real;
+          if (ownBucket.isFuture) ownBucket.expenseProjected += ownRow.estimated;
+          else ownBucket.expensePlanned += ownRow.estimated;
+        }
+        ownBucket.items.push({
+          title: `🔄 ${rec.title}`,
+          amount: ownRow.real + ownRow.estimated,
+          type: rec.type,
+          isRecurring: true,
+          frequency: freq
+        });
+      }
     });
 
     // 3. Final totals & Net Difference per week
@@ -1836,7 +2429,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     }
 
     return buckets;
-  }, [financialRecords, weeklyBankBalances, defaultBankBalance]);
+  }, [financialRecords, weeklyBankBalances, defaultBankBalance, projectionFutureWeeks]);
 
   // Smooth Bezier path generator for SVG plotline
   const generateSmoothPath = (pts: { x: number; y: number }[]) => {
@@ -1868,19 +2461,14 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
   // Build hierarchical category helper for forms and tree view
   const categoryTree = useMemo(() => {
-    const buildTree = (type: FinancialType) => {
-      const items = financialCategories.filter((c) => c.type === type);
-      const roots = items.filter((c) => !c.parentId || c.level === 1);
-
-      return roots.map((root) => {
-        const level2Children = items.filter((c) => c.parentId === root.id);
-        const level2Tree = level2Children.map((l2) => {
-          const level3Children = items.filter((c) => c.parentId === l2.id);
-          return { ...l2, children: level3Children };
-        });
-        return { ...root, children: level2Tree };
-      });
-    };
+    const buildTree = (type: FinancialType) =>
+      categoryChildren(financialCategories, type, null).map((root) => ({
+        ...root,
+        children: categoryChildren(financialCategories, type, root.id).map((l2) => ({
+          ...l2,
+          children: categoryChildren(financialCategories, type, l2.id)
+        }))
+      }));
 
     return {
       incomeTree: buildTree("income"),
@@ -1888,11 +2476,23 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     };
   }, [financialCategories]);
 
+  // Categories tab: dragging a row rewrites its position, level and parent together.
+  const [draggedCategoryId, setDraggedCategoryId] = useState<string | null>(null);
+  const [categoryDropTarget, setCategoryDropTarget] = useState<CategoryDropTarget | null>(null);
+  const categoryTreeRef = useRef<HTMLDivElement | null>(null);
+  useDragAutoScroll(draggedCategoryId !== null, categoryTreeRef);
+
+  // A colour picker fires on every pixel the pointer crosses, so the swatch
+  // previews a local draft and only the colour the user settles on is saved.
+  const [categoryColorDrafts, setCategoryColorDrafts] = useState<Record<string, string>>({});
+  const categoryColorTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
   // Overview Table Matrix Data Calculation Hook
   const overviewTableData = useMemo(() => {
     const pad = (n: number) => String(n).padStart(2, "0");
     const toYMD = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
     const now = new Date();
+    const todayIso = toYMD(now);
 
     // 1. Build Period Columns based on tableGranularity
     let columns: {
@@ -1965,6 +2565,28 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           isFuture
         };
       });
+    } else if (tableGranularity === "half") {
+      columns = [
+        { id: `${tableYear}-H1`, label: `H1`, subLabel: t("Jan - Jun", "Jan - Jún", "Jan - Jún"), startMonth: 0, endMonth: 5 },
+        { id: `${tableYear}-H2`, label: `H2`, subLabel: t("Jul - Dec", "Júl - Dec", "Júl - Dec"), startMonth: 6, endMonth: 11 }
+      ].map((h) => {
+        const startDate = new Date(tableYear, h.startMonth, 1, 0, 0, 0, 0);
+        const endDate = new Date(tableYear, h.endMonth + 1, 0, 23, 59, 59, 999);
+        const isCurrent = now >= startDate && now <= endDate;
+        const isFuture = startDate > now;
+
+        return {
+          id: h.id,
+          label: h.label,
+          subLabel: `${h.subLabel} ${tableYear}`,
+          startDate,
+          endDate,
+          startIso: toYMD(startDate),
+          endIso: toYMD(endDate),
+          isCurrent,
+          isFuture
+        };
+      });
     } else if (tableGranularity === "year") {
       const years = [tableYear - 2, tableYear - 1, tableYear, tableYear + 1, tableYear + 2];
       columns = years.map((y) => {
@@ -2000,196 +2622,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       }));
     }
 
-    // 2. Aggregate Records into cellMap: cellMap[categoryId][colId] = { real, estimated, total }
-    type CellVal = { real: number; estimated: number; total: number };
-    const createEmptyCell = (): CellVal => ({ real: 0, estimated: 0, total: 0 });
-
-    const directCellMap: Record<string, Record<string, CellVal>> = {};
-
-    const addDirect = (catId: string, colId: string, amt: number, isReal: boolean) => {
-      if (!catId || !colId || amt <= 0) return;
-      if (!directCellMap[catId]) directCellMap[catId] = {};
-      if (!directCellMap[catId][colId]) directCellMap[catId][colId] = createEmptyCell();
-
-      if (isReal) {
-        directCellMap[catId][colId].real += amt;
-      } else {
-        directCellMap[catId][colId].estimated += amt;
-      }
-      directCellMap[catId][colId].total += amt;
-    };
-
-    // Distribute single records
-    financialRecords.forEach((rec) => {
-      if (rec.isRecurring) return;
-      const recDate = rec.issueDate || rec.paidDate || rec.dueDate || "";
-      if (!recDate || !rec.categoryId) return;
-
-      const amt = rec.amountReal && rec.amountReal > 0 ? rec.amountReal : rec.amountPlanned;
-      const isReal = rec.status === "paid";
-
-      columns.forEach((col) => {
-        if (recDate >= col.startIso && recDate <= col.endIso) {
-          addDirect(rec.categoryId!, col.id, amt, isReal);
-        }
-      });
-    });
-
-    // Distribute recurring records
-    financialRecords.forEach((rec) => {
-      if (!rec.isRecurring || !rec.categoryId) return;
-      const amt = rec.amountPlanned > 0 ? rec.amountPlanned : (rec.amountReal || 0);
-      if (!amt) return;
-
-      const config: any = rec.recurringConfig || null;
-      const freq = rec.recurringFrequency || "monthly";
-
-      columns.forEach((col) => {
-        if (rec.recurringStartDate && new Date(rec.recurringStartDate) > col.endDate) return;
-        if (rec.recurringEndDate && new Date(rec.recurringEndDate) < col.startDate) return;
-
-        let occurrences = 0;
-        if (tableGranularity === "month") {
-          if (freq === "monthly") occurrences = 1;
-          else if (freq === "weekly") occurrences = 4;
-          else if (freq === "yearly" && col.startDate.getMonth() === (config?.month ? config.month - 1 : 0)) occurrences = 1;
-        } else if (tableGranularity === "quarter") {
-          if (freq === "monthly") occurrences = 3;
-          else if (freq === "weekly") occurrences = 13;
-          else if (freq === "yearly") occurrences = 1;
-        } else if (tableGranularity === "year") {
-          if (freq === "monthly") occurrences = 12;
-          else if (freq === "weekly") occurrences = 52;
-          else if (freq === "yearly") occurrences = 1;
-        } else {
-          // week
-          if (freq === "weekly") occurrences = 1;
-          else if (freq === "monthly" && col.startDate.getDate() <= 7) occurrences = 1;
-        }
-
-        if (occurrences > 0) {
-          const totalAmt = amt * occurrences;
-          const isReal = !col.isFuture && rec.status === "paid";
-          addDirect(rec.categoryId!, col.id, totalAmt, isReal);
-        }
-      });
-    });
-
-    // 3. Hierarchical Rollup:
-    const rolledUpCellMap: Record<string, Record<string, CellVal>> = {};
-
-    const getCell = (catId: string, colId: string): CellVal => {
-      if (!rolledUpCellMap[catId]) rolledUpCellMap[catId] = {};
-      if (!rolledUpCellMap[catId][colId]) {
-        rolledUpCellMap[catId][colId] = createEmptyCell();
-      }
-      return rolledUpCellMap[catId][colId];
-    };
-
-    // Copy direct sums
-    financialCategories.forEach((cat) => {
-      columns.forEach((col) => {
-        const direct = directCellMap[cat.id]?.[col.id] || createEmptyCell();
-        const target = getCell(cat.id, col.id);
-        target.real += direct.real;
-        target.estimated += direct.estimated;
-        target.total += direct.total;
-      });
-    });
-
-    // Add Level 3 to Level 2
-    financialCategories.filter((c) => c.level === 3 && c.parentId).forEach((l3) => {
-      columns.forEach((col) => {
-        const l3Val = getCell(l3.id, col.id);
-        const l2Val = getCell(l3.parentId!, col.id);
-        l2Val.real += l3Val.real;
-        l2Val.estimated += l3Val.estimated;
-        l2Val.total += l3Val.total;
-      });
-    });
-
-    // Add Level 2 to Level 1
-    financialCategories.filter((c) => c.level === 2 && c.parentId).forEach((l2) => {
-      columns.forEach((col) => {
-        const l2Val = getCell(l2.id, col.id);
-        const l1Val = getCell(l2.parentId!, col.id);
-        l1Val.real += l2Val.real;
-        l1Val.estimated += l2Val.estimated;
-        l1Val.total += l2Val.total;
-      });
-    });
-
-    // 4. Compute Totals across all periods for each category
-    const rowTotals: Record<string, CellVal> = {};
-    financialCategories.forEach((cat) => {
-      rowTotals[cat.id] = createEmptyCell();
-      columns.forEach((col) => {
-        const v = getCell(cat.id, col.id);
-        rowTotals[cat.id].real += v.real;
-        rowTotals[cat.id].estimated += v.estimated;
-        rowTotals[cat.id].total += v.total;
-      });
-    });
-
-    // 5. Compute Section Summary Totals for each Column
-    const totalExpensesByCol: Record<string, CellVal> = {};
-    const totalIncomesByCol: Record<string, CellVal> = {};
-    const netCashFlowByCol: Record<string, CellVal> = {};
-
-    const totalExpenseSummary: CellVal = createEmptyCell();
-    const totalIncomeSummary: CellVal = createEmptyCell();
-    const netSummary: CellVal = createEmptyCell();
-
-    const rootExpenses = financialCategories.filter((c) => c.type === "expense" && (!c.parentId || c.level === 1));
-    const rootIncomes = financialCategories.filter((c) => c.type === "income" && (!c.parentId || c.level === 1));
-
-    columns.forEach((col) => {
-      const expCell = createEmptyCell();
-      rootExpenses.forEach((root) => {
-        const v = getCell(root.id, col.id);
-        expCell.real += v.real;
-        expCell.estimated += v.estimated;
-        expCell.total += v.total;
-      });
-      totalExpensesByCol[col.id] = expCell;
-      totalExpenseSummary.real += expCell.real;
-      totalExpenseSummary.estimated += expCell.estimated;
-      totalExpenseSummary.total += expCell.total;
-
-      const incCell = createEmptyCell();
-      rootIncomes.forEach((root) => {
-        const v = getCell(root.id, col.id);
-        incCell.real += v.real;
-        incCell.estimated += v.estimated;
-        incCell.total += v.total;
-      });
-      totalIncomesByCol[col.id] = incCell;
-      totalIncomeSummary.real += incCell.real;
-      totalIncomeSummary.estimated += incCell.estimated;
-      totalIncomeSummary.total += incCell.total;
-
-      const netCell = {
-        real: incCell.real - expCell.real,
-        estimated: incCell.estimated - expCell.estimated,
-        total: incCell.total - expCell.total
-      };
-      netCashFlowByCol[col.id] = netCell;
-      netSummary.real += netCell.real;
-      netSummary.estimated += netCell.estimated;
-      netSummary.total += netCell.total;
-    });
-
-    return {
-      columns,
-      rolledUpCellMap,
-      rowTotals,
-      totalExpensesByCol,
-      totalIncomesByCol,
-      netCashFlowByCol,
-      totalExpenseSummary,
-      totalIncomeSummary,
-      netSummary
-    };
+    // 2. Aggregate every movement into the matrix — which row it lands on, how
+    // much of it is settled versus still expected, and how the category levels
+    // roll up — lives in utils/financialOverviewTable.ts so it can be unit-tested.
+    return { columns, ...aggregateOverviewTable(financialRecords, financialCategories, columns, todayIso) };
   }, [financialCategories, financialRecords, tableGranularity, tableYear, weeklyTrendData]);
 
   // Helper to render a cell value formatted by tableValueMode with distinct colors (Expense = Red, Income = Green)
@@ -2343,7 +2779,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
           {/* Period Columns */}
           {overviewTableData.columns.map((col) => {
-            const cellVal = overviewTableData.rolledUpCellMap[cat.id]?.[col.id] || { real: 0, estimated: 0, total: 0 };
+            const cellVal = overviewTableData.cells[cat.id]?.[col.id] || { real: 0, estimated: 0, total: 0 };
             return (
               <td
                 key={cat.id + "-" + col.id}
@@ -2368,8 +2804,74 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     );
   };
 
+  // The row for movements that have no usable category: none set, the category
+  // deleted, or a category from the other side of the ledger. It is a level-1
+  // row of its section, so what it holds is part of the section's totals and
+  // cannot go missing from "Skutočnosť" just because nobody filed it yet.
+  const renderUncategorizedMatrixRow = (type: "expense" | "income"): React.ReactNode => {
+    const rowId = UNCATEGORIZED_ROW_ID[type];
+    if (!overviewTableData.hasUncategorized[type]) return null;
+
+    const label = t("Uncategorized", "Bez kategórie", "Kategória nélkül");
+    const q = tableSearchQuery.trim().toLowerCase();
+    if (q && !label.toLowerCase().includes(q)) return null;
+
+    const rowTotal = overviewTableData.rowTotals[rowId] || { real: 0, estimated: 0, total: 0 };
+
+    return (
+      <tr
+        key={"cat-row-" + rowId}
+        data-uncategorized-row={type}
+        className="hover:bg-slate-50  transition-colors bg-slate-50/60  font-bold"
+      >
+        <td className="w-[320px] min-w-[320px] max-w-[320px] py-2 px-3 sticky left-0 z-20 border-r-2 border-slate-200  shadow-[2px_0_4px_rgba(0,0,0,0.04)] select-none bg-slate-50  font-bold text-xs text-slate-500  italic">
+          <div
+            className="flex items-center gap-1.5"
+            title={t(
+              "Movements without a category, or whose category no longer exists. Assign one in the Movements tab.",
+              "Pohyby bez kategórie alebo s kategóriou, ktorá už neexistuje. Kategóriu im priradíte v záložke Pohyby.",
+              "Kategória nélküli mozgások, vagy amelyek kategóriája már nem létezik. A Mozgások fülön rendelhet hozzájuk kategóriát."
+            )}
+          >
+            <span className="w-3.5 shrink-0" />
+            <span className="h-2.5 w-2.5 rounded-full shrink-0 border border-dashed border-slate-400" />
+            <span className="truncate max-w-[220px]">{label}</span>
+          </div>
+        </td>
+
+        {overviewTableData.columns.map((col) => {
+          const cellVal = overviewTableData.cells[rowId]?.[col.id] || { real: 0, estimated: 0, total: 0 };
+          return (
+            <td
+              key={rowId + "-" + col.id}
+              className={`py-1.5 px-3 text-right ${col.isCurrent ? "bg-indigo-50/20  border-x border-indigo-100 " : ""}`}
+            >
+              {renderTableCellValue(cellVal, type, 1)}
+            </td>
+          );
+        })}
+
+        <td className="py-1.5 px-4 text-right font-bold bg-slate-50  border-l border-slate-200  sticky right-0 z-20">
+          {renderTableCellValue(rowTotal, type, 1)}
+        </td>
+      </tr>
+    );
+  };
+
+  // Switching the side of the ledger drops a category from the other side. The
+  // picker only offers matching categories, but it kept whatever was already
+  // selected, so an income could be saved under an expense category.
+  const switchFormType = (type: FinancialType) => {
+    setFormType(type);
+    if (formCategoryId) {
+      const cat = financialCategories.find((c) => c.id === formCategoryId);
+      if (cat && cat.type !== type) setFormCategoryId("");
+    }
+  };
+
   // Open Creation Modal with preset type & scope
   const handleOpenCreateModal = (type: FinancialType, defaultScope: "global" | "project" | "client" = "global") => {
+    if (!canEdit) return;
     setEditingRecord(null);
     setFormType(type);
     setFormSubtype(type === "income" ? "invoice" : "regular");
@@ -2398,6 +2900,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     setFormYearlyMonth(1);
     setFormRecurringStartDate(todayLocal());
     setFormRecurringEndDate("");
+    setFormRecurringPlannedEndDate(null);
+    setFormAmountAppliesFrom("");
     setIsModalOpen(true);
   };
 
@@ -2416,7 +2920,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     setFormDueDate(rec.dueDate || "");
     setFormPaidDate(rec.paidDate || "");
     setFormPaymentMethod(rec.paymentMethod || "bank_transfer");
-    setFormScope(rec.projectId ? "project" : rec.clientId ? "client" : "global");
+    setFormScope(movementScope(rec));
     setFormProjectId(rec.projectId || "");
     setFormClientId(rec.clientId || "");
     setFormInvoiceNumber(rec.invoiceNumber || "");
@@ -2433,9 +2937,36 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     setFormYearlyMonth(cfg.month ?? 1);
     setFormRecurringStartDate(rec.recurringStartDate || rec.issueDate || todayLocal());
     setFormRecurringEndDate(rec.recurringEndDate || "");
+    setFormRecurringPlannedEndDate(rec.recurringPlannedEndDate || null);
+    setFormAmountAppliesFrom("");
 
     setIsModalOpen(true);
   };
+
+  /** The recurring rule exactly as the form currently describes it. */
+  const formRecurringRule = (): RecurringRule => ({
+    amountPlanned: Number(formAmountPlanned) || 0,
+    amountReal: Number(formAmountReal) || 0,
+    isRecurring: formIsRecurring,
+    recurringFrequency: formRecurringFreq,
+    recurringConfig: {
+      dayOfWeek: formRecurringFreq === "weekly" ? formWeeklyDay : formNthDayOfWeek,
+      monthlyType: formMonthlyType,
+      dayOfMonth: formDayOfMonth,
+      weekOfMonth: formWeekOfMonth,
+      month: formYearlyMonth
+    },
+    recurringStartDate: formRecurringStartDate,
+    recurringEndDate: formRecurringEndDate || null,
+    recurringAmountHistory: editingRecord?.recurringAmountHistory || null
+  });
+
+  /**
+   * The first day a changed recurring amount is in force: the date picked in
+   * the form, else the rule's next charge after today, else today.
+   */
+  const repriceFrom = (): string =>
+    formAmountAppliesFrom || nextRecurringChargeAfter(formRecurringRule(), todayLocal()) || todayLocal();
 
   // Save Transaction
   const handleSaveTransaction = (e: React.FormEvent) => {
@@ -2463,15 +2994,23 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       }
     }
 
-    const recConfig = formIsRecurring
-      ? {
-          dayOfWeek: formRecurringFreq === "weekly" ? formWeeklyDay : formNthDayOfWeek,
-          monthlyType: formMonthlyType,
-          dayOfMonth: formDayOfMonth,
-          weekOfMonth: formWeekOfMonth,
-          month: formYearlyMonth
-        }
-      : null;
+    const recConfig = formIsRecurring ? formRecurringRule().recurringConfig : null;
+
+    const nextAmounts = {
+      amountPlanned: Number(formAmountPlanned) || 0,
+      amountReal: Number(formAmountReal) || 0
+    };
+
+    // Changing what a recurring rule costs must not re-price the charges it has
+    // already made: the old amount is pinned up to the day before the new one
+    // takes effect — the next charge unless the form says otherwise. A one-off
+    // record has nothing to pin.
+    const amountHistory =
+      editingRecord && editingRecord.isRecurring && formIsRecurring
+        ? recurringAmountHistoryAfterChange(editingRecord, nextAmounts, repriceFrom())
+        : formIsRecurring
+          ? editingRecord?.recurringAmountHistory || null
+          : null;
 
     const recordPayload: FinancialRecord = {
       id: editingRecord?.id || `fr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
@@ -2481,8 +3020,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       description: formDescription.trim() || null,
       categoryId: formCategoryId || null,
       categoryPath: path || null,
-      amountPlanned: Number(formAmountPlanned) || 0,
-      amountReal: Number(formAmountReal) || 0,
+      amountPlanned: nextAmounts.amountPlanned,
+      amountReal: nextAmounts.amountReal,
       currency: currencyCode || "EUR",
       status: formStatus,
       issueDate: formIssueDate,
@@ -2494,6 +3033,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       recurringConfig: recConfig,
       recurringStartDate: formIsRecurring ? formRecurringStartDate : null,
       recurringEndDate: formIsRecurring ? formRecurringEndDate || null : null,
+      recurringPlannedEndDate: formIsRecurring ? formRecurringPlannedEndDate || null : null,
+      recurringAmountHistory: amountHistory,
       projectId: formScope === "project" && formProjectId ? formProjectId : null,
       clientId: formScope === "client" && formClientId ? formClientId : (formScope === "project" && formProjectId ? (projects.find(p => p.id === formProjectId)?.clientId || projects.find(p => p.id === formProjectId)?.leadId || null) : null),
       invoiceNumber: formInvoiceNumber.trim() || null,
@@ -2516,13 +3057,143 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     (window as any).showToast?.(t("Financial record saved!", "Finančný záznam bol uložený!", "Pénzügyi tétel mentve!"));
   };
 
+  // ==========================================
+  // INLINE PAYMENT STATUS EDITING (MOVEMENTS LEDGER)
+  // ==========================================
+
+  /**
+   * The row-level status picker waiting for the settled amount. `paid` and
+   * `partially_paid` both write `amountReal`, so the dropdown parks the intended
+   * status here and only commits once the user confirms a number.
+   */
+  const [statusPrompt, setStatusPrompt] = useState<{
+    record: FinancialRecord;
+    nextStatus: "paid" | "partially_paid";
+    amount: string;
+  } | null>(null);
+  const statusPromptInputRef = useRef<HTMLInputElement | null>(null);
+
+  const patchMovement = (id: string, patch: Partial<FinancialRecord>) => {
+    setFinancialRecords((prev) =>
+      prev.map((r) => (r.id === id ? { ...r, ...patch, updatedAt: new Date().toISOString() } : r))
+    );
+  };
+
+  const handleInlineStatusChange = (rec: FinancialRecord, nextStatus: FinancialStatus) => {
+    if (!canEdit || nextStatus === rec.status) return;
+
+    if (rec.isRecurring && nextStatus === "cancelled") {
+      // "Zrušené" on a recurring rule's own row pauses the schedule instead
+      // of marking the row cancelled (option A of Problem B, finance
+      // consistency audit F2): the same mechanism as the pause toggle, so
+      // every tab — table, trend, ledger, forecast — reads the rule as
+      // stopped from today. `status` is left untouched, so this never creates
+      // a new legacy-style cancelled rule.
+      patchMovement(rec.id, pauseRecurringRule(rec, todayLocal()));
+      (window as any).showToast?.(
+        t("Recurring rule paused", "Pravidelná platba pozastavená", "Ismétlődő tétel szüneteltetve")
+      );
+      return;
+    }
+
+    if (statusNeedsRealAmount(nextStatus)) {
+      // Fully paid defaults to the planned figure; a partial payment has no
+      // sensible default, so it starts from whatever was already settled.
+      const suggested =
+        nextStatus === "paid"
+          ? rec.amountReal > 0
+            ? rec.amountReal
+            : rec.amountPlanned
+          : rec.amountReal > 0
+            ? rec.amountReal
+            : 0;
+      setStatusPrompt({
+        record: rec,
+        nextStatus,
+        amount: suggested > 0 ? String(suggested) : ""
+      });
+      return;
+    }
+
+    patchMovement(rec.id, { status: nextStatus });
+    (window as any).showToast?.(
+      t(
+        `Status changed to "${movementStatusLabel(nextStatus)}"`,
+        `Stav zmenený na „${movementStatusLabel(nextStatus)}“`,
+        `Állapot módosítva: „${movementStatusLabel(nextStatus)}”`
+      )
+    );
+  };
+
+  const handleConfirmStatusAmount = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!statusPrompt) return;
+
+    const { record, nextStatus, amount } = statusPrompt;
+    const parsed = parseFloat(amount.replace(",", "."));
+    if (!isFinite(parsed) || parsed <= 0) {
+      alert(
+        t(
+          "Enter the amount that was actually paid.",
+          "Zadajte sumu, ktorá bola skutočne uhradená.",
+          "Adja meg a tényleges fizetett összeget."
+        )
+      );
+      statusPromptInputRef.current?.focus();
+      return;
+    }
+
+    const amountReal = Math.round(parsed * 100) / 100;
+    patchMovement(record.id, {
+      status: nextStatus,
+      amountReal,
+      // This is a statement about the charge being *settled*, i.e. the last
+      // occurrence on or before today — not a forward-looking price change
+      // (see F1 of the derived-numbers audit). Pin the old figure to the
+      // charges strictly before the one just settled.
+      recurringAmountHistory: recurringAmountHistoryAfterChange(
+        record,
+        { amountPlanned: record.amountPlanned || 0, amountReal },
+        lastRecurringOccurrenceOnOrBefore(record, todayLocal())
+      ),
+      // A settlement without a date would drop out of every month bucket.
+      paidDate: record.paidDate || todayLocal()
+    });
+
+    setStatusPrompt(null);
+    (window as any).showToast?.(
+      nextStatus === "paid"
+        ? t(
+            `Marked as paid — ${money(amountReal)}`,
+            `Označené ako uhradené — ${money(amountReal)}`,
+            `Fizetettként jelölve — ${money(amountReal)}`
+          )
+        : t(
+            `Partial payment recorded — ${money(amountReal)}`,
+            `Čiastočná úhrada zaznamenaná — ${money(amountReal)}`,
+            `Részleges fizetés rögzítve — ${money(amountReal)}`
+          )
+    );
+  };
+
   // Delete Transaction
   const handleDeleteTransaction = (id: string) => {
+    if (!canDelete) return;
     if (confirm(t("Are you sure you want to delete this financial record?", "Naozaj chcete vymazať tento finančný záznam?", "Biztosan törölni szeretné ezt a tételt?"))) {
       setFinancialRecords((prev) => prev.filter((r) => r.id !== id));
       (window as any).showToast?.(t("Record deleted", "Záznam bol vymazaný", "Tétel törölve"));
     }
   };
+
+  const suggestedRootCatColor = useMemo(
+    () => nextCategoryColor(financialCategories.filter((c) => c.type === catTreeType && !c.parentId).map((c) => c.color)),
+    [financialCategories, catTreeType]
+  );
+  const newCatFormColor = newCatColorTouched
+    ? newCatColor
+    : newCatParentId
+      ? inheritedColor(financialCategories, newCatParentId) || suggestedRootCatColor
+      : suggestedRootCatColor;
 
   // Create Category
   const handleCreateCategory = (e: React.FormEvent) => {
@@ -2532,7 +3203,11 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     let parentLevel = 1;
     if (newCatParentId) {
       const parent = financialCategories.find((c) => c.id === newCatParentId);
-      if (parent) {
+      // A parent from the other side of the ledger (stale selection left over
+      // from the Expense/Income switcher, see F1) is treated the same as no
+      // parent found at all — the new category is created as a root of its
+      // own type instead of silently nesting under the wrong section.
+      if (parent && parent.type === catTreeType) {
         parentLevel = parent.level + 1;
       }
     }
@@ -2548,7 +3223,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       name: newCatName.trim(),
       parentId: newCatParentId || null,
       level: parentLevel as 1 | 2 | 3,
-      color: newCatColor,
+      sortOrder: nextCategorySortOrder(financialCategories, catTreeType, newCatParentId || null),
+      color: newCatColorTouched ? newCatColor : newCatParentId ? null : suggestedRootCatColor,
       icon: parentLevel === 1 ? "Layers" : parentLevel === 2 ? "Folder" : "Tag",
       createdAt: new Date().toISOString()
     };
@@ -2556,11 +3232,13 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     setFinancialCategories((prev) => [...prev, newCat]);
     setNewCatName("");
     setNewCatParentId("");
+    setNewCatColorTouched(false);
     (window as any).showToast?.(t("Category added!", "Kategória bola pridaná!", "Kategória hozzáadva!"));
   };
 
   // Delete Category
   const handleDeleteCategory = (id: string) => {
+    if (!canDelete) return;
     if (confirm(t("Delete category and its subcategories?", "Vymazať kategóriu a všetky jej podkategórie?", "Törli a kategóriát és alkategóriáit?"))) {
       // Find all nested child ids recursively
       const toDeleteIds = new Set<string>([id]);
@@ -2576,25 +3254,192 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       }
 
       setFinancialCategories((prev) => prev.filter((c) => !toDeleteIds.has(c.id)));
+      // The movements filed under them stay, now uncategorized, so every tab keeps counting them.
+      setFinancialRecords((prev) =>
+        prev.some((r) => r.categoryId && toDeleteIds.has(r.categoryId))
+          ? prev.map((r) =>
+              r.categoryId && toDeleteIds.has(r.categoryId)
+                ? { ...r, categoryId: null, categoryPath: null, updatedAt: new Date().toISOString() }
+                : r
+            )
+          : prev
+      );
       (window as any).showToast?.(t("Category removed", "Kategória odstránená", "Kategória eltávolítva"));
     }
+  };
+
+  const endCategoryDrag = () => {
+    setDraggedCategoryId(null);
+    setCategoryDropTarget(null);
+  };
+
+  const handleCategoryDragStart = (e: React.DragEvent<HTMLElement>, id: string) => {
+    e.stopPropagation();
+    e.dataTransfer.effectAllowed = "move";
+    e.dataTransfer.setData("text/plain", id); // Firefox will not start a drag without data
+    setDraggedCategoryId(id);
+  };
+
+  /**
+   * The top quarter of a row drops before it, the bottom quarter after it and
+   * the middle inside it. When the row cannot take the dragged category as a
+   * child (too deep), the middle falls back to the nearer edge.
+   */
+  const categoryDropFromPointer = (e: React.DragEvent<HTMLElement>, targetId: string | null): CategoryDropTarget | null => {
+    if (!draggedCategoryId) return null;
+    let candidates: CategoryDropPosition[] = ["after"];
+    if (targetId !== null) {
+      const rect = e.currentTarget.getBoundingClientRect();
+      const ratio = (e.clientY - rect.top) / Math.max(rect.height, 1);
+      const nearerEdge: CategoryDropPosition = ratio < 0.5 ? "before" : "after";
+      candidates = ratio < 0.25 ? ["before"] : ratio > 0.75 ? ["after"] : ["inside", nearerEdge];
+    }
+    for (const position of candidates) {
+      const drop = { targetId, position };
+      if (resolveCategoryDrop(financialCategories, draggedCategoryId, drop)) return drop;
+    }
+    return null;
+  };
+
+  const handleCategoryDragOver = (e: React.DragEvent<HTMLElement>, targetId: string | null) => {
+    if (!draggedCategoryId) return;
+    e.stopPropagation();
+    const drop = categoryDropFromPointer(e, targetId);
+    if (!drop) {
+      e.dataTransfer.dropEffect = "none";
+      if (categoryDropTarget) setCategoryDropTarget(null);
+      return;
+    }
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    if (categoryDropTarget?.targetId !== drop.targetId || categoryDropTarget?.position !== drop.position) {
+      setCategoryDropTarget(drop);
+    }
+  };
+
+  const handleCategoryDrop = (e: React.DragEvent<HTMLElement>) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const dragId = draggedCategoryId;
+    const drop = categoryDropTarget;
+    endCategoryDrag();
+    if (!dragId || !drop) return;
+
+    const next = moveCategory(financialCategories, dragId, drop);
+    if (!next || next === financialCategories) return;
+    setFinancialCategories((prev) => moveCategory(prev, dragId, drop) ?? prev);
+    (window as any).showToast?.(t("Category moved", "Kategória bola presunutá", "Kategória áthelyezve"));
+  };
+
+  const categoryColor = (cat: FinancialCategory | undefined | null): string | null =>
+    cat ? categoryColorDrafts[cat.id] ?? cat.color ?? null : null;
+
+  const handleCategoryColorChange = (id: string, color: string) => {
+    setCategoryColorDrafts((drafts) => ({ ...drafts, [id]: color }));
+    clearTimeout(categoryColorTimers.current[id]);
+    categoryColorTimers.current[id] = setTimeout(() => {
+      delete categoryColorTimers.current[id];
+      setFinancialCategories((prev) => prev.map((c) => (c.id === id && c.color !== color ? { ...c, color } : c)));
+      setCategoryColorDrafts((drafts) => {
+        const rest = { ...drafts };
+        delete rest[id];
+        return rest;
+      });
+    }, 400);
+  };
+
+  const CATEGORY_ROW_STYLES = {
+    1: {
+      row: "p-3.5 bg-slate-50/80 border-b border-slate-100",
+      swatch: "h-3.5 w-3.5",
+      name: "font-bold text-xs text-slate-900 uppercase tracking-wider",
+      badge: "px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-200 text-slate-600",
+      badgeText: "Level 1",
+      trash: "h-3.5 w-3.5"
+    },
+    2: {
+      row: "p-2 rounded-xl bg-white border border-slate-100",
+      swatch: "h-3 w-3",
+      name: "font-semibold text-xs text-slate-800",
+      badge: "px-1.5 py-0.2 rounded text-[10px] bg-slate-100 text-slate-500",
+      badgeText: "Level 2",
+      trash: "h-3 w-3"
+    },
+    3: {
+      row: "p-1.5 px-3 rounded-lg bg-slate-50 border border-slate-100 text-xs",
+      swatch: "h-2.5 w-2.5",
+      name: "text-slate-700 font-medium",
+      badge: "text-[10px] text-slate-400",
+      badgeText: "(Level 3)",
+      trash: "h-3 w-3"
+    }
+  } as const;
+
+  /** One draggable row of the category tree; `inheritedColor` is shown while the category has none of its own. */
+  const renderCategoryRow = (cat: FinancialCategory, level: 1 | 2 | 3, inheritedColor?: string | null) => {
+    const styles = CATEGORY_ROW_STYLES[level];
+    const drop = draggedCategoryId && categoryDropTarget?.targetId === cat.id ? categoryDropTarget.position : null;
+    const shownColor = categoryColor(cat) || inheritedColor || "#6366f1";
+
+    return (
+      <div
+        key={cat.id}
+        draggable
+        onDragStart={(e) => handleCategoryDragStart(e, cat.id)}
+        onDragEnd={endCategoryDrag}
+        onDragOver={(e) => handleCategoryDragOver(e, cat.id)}
+        onDrop={handleCategoryDrop}
+        title={t("Drag to reorder or move under another category", "Potiahnutím zmeníte poradie alebo nadradenú kategóriu", "Húzza az átrendezéshez vagy áthelyezéshez")}
+        className={`group relative flex items-center justify-between cursor-grab active:cursor-grabbing transition-[opacity,background-color,box-shadow] duration-150 ${styles.row} ${
+          draggedCategoryId === cat.id ? "opacity-40" : ""
+        } ${drop === "inside" ? "ring-2 ring-inset ring-indigo-400 !bg-indigo-50" : ""}`}
+      >
+        {drop === "before" && (
+          <span className="pointer-events-none absolute inset-x-2 top-0 h-0.5 rounded-full bg-indigo-500 animate-in fade-in duration-150" />
+        )}
+        {drop === "after" && (
+          <span className="pointer-events-none absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-indigo-500 animate-in fade-in duration-150" />
+        )}
+
+        <div className="flex items-center gap-2 min-w-0">
+          <GripVertical className="h-3.5 w-3.5 shrink-0 text-slate-300 group-hover:text-indigo-500 transition-colors duration-150" />
+          <ColorPicker
+            value={shownColor}
+            onChange={(color) => handleCategoryColorChange(cat.id, color)}
+            title={t("Change color", "Zmeniť farbu", "Szín módosítása")}
+            className={styles.swatch}
+          />
+          <span className={`truncate ${styles.name}`}>{cat.name}</span>
+          <span className={`shrink-0 ${styles.badge}`}>{styles.badgeText}</span>
+        </div>
+        {canDelete && (
+        <button
+          onClick={() => handleDeleteCategory(cat.id)}
+          className="p-1 text-slate-400 hover:text-rose-600 transition-colors duration-150 cursor-pointer"
+          title={t("Delete category", "Vymazať", "Törlés")}
+        >
+          <Trash2 className={styles.trash} />
+        </button>
+        )}
+      </div>
+    );
   };
 
   // Shared Transaction Form Fields (used in both Slideout Drawer for Edit and Center Popup for Create)
   const renderTransactionFormFields = () => (
     <>
-      {/* Type Switcher (Income vs Expense) */}
-      <div className="grid grid-cols-2 gap-2 p-1 bg-slate-100  rounded-2xl">
+      {/* 1. Type — income or expense */}
+      <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-2xl">
         <button
           type="button"
           onClick={() => {
-            setFormType("income");
+            switchFormType("income");
             if (!formInvoiceNumber) {
               setFormInvoiceNumber(`FA-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`);
             }
           }}
-          className={`py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-            formType === "income" ? "bg-emerald-600 text-white shadow-sm" : "text-slate-600 "
+          className={`h-10 rounded-xl text-xs font-bold transition-all duration-150 cursor-pointer flex items-center justify-center gap-1.5 active:scale-[0.98] ${
+            formType === "income" ? "bg-emerald-600 text-white shadow-sm" : "text-slate-600 hover:bg-white/70 hover:text-slate-800"
           }`}
         >
           <TrendingUp className="h-4 w-4" />
@@ -2602,9 +3447,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         </button>
         <button
           type="button"
-          onClick={() => setFormType("expense")}
-          className={`py-2 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-            formType === "expense" ? "bg-rose-600 text-white shadow-sm" : "text-slate-600 "
+          onClick={() => switchFormType("expense")}
+          className={`h-10 rounded-xl text-xs font-bold transition-all duration-150 cursor-pointer flex items-center justify-center gap-1.5 active:scale-[0.98] ${
+            formType === "expense" ? "bg-rose-600 text-white shadow-sm" : "text-slate-600 hover:bg-white/70 hover:text-slate-800"
           }`}
         >
           <TrendingDown className="h-4 w-4" />
@@ -2612,136 +3457,41 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         </button>
       </div>
 
-      {/* Title & Invoice # */}
+      {/* 2. Title & document number */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div className="sm:col-span-2">
-          <label className="text-xs font-bold text-slate-700  block mb-1">
-            {t("Movement Title *", "Názov finančného pohybu *", "Tétel megnevezése *")}
+          <label className={FORM_LABEL}>
+            {t("Title *", "Názov *", "Megnevezés *")}
           </label>
           <input
             type="text"
             required
+            maxLength={255}
             value={formTitle}
             onChange={(e) => setFormTitle(e.target.value)}
             placeholder={formType === "income" ? t("e.g. Countertop supply & installation", "napr. Dodávka a montáž kuchynskej linky", "pl. Konyhapult szállítása és beépítése") : t("e.g. Material purchase, Office rent...", "napr. Nákup materiálu, Nájom skladu...", "pl. Anyagbeszerzés, Irodabérlet...")}
-            className="w-full px-3.5 py-2.5 bg-slate-50  border border-slate-200  rounded-xl text-xs text-slate-800  focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className={FORM_INPUT}
           />
         </div>
 
         <div>
-          <label className="text-xs font-bold text-slate-700  block mb-1">
-            {t("Invoice # / Doc Ref", "Číslo faktúry / Dokladu", "Számlaszám")}
+          <label className={FORM_LABEL}>
+            {t("Document No.", "Číslo dokladu", "Bizonylatszám")}
           </label>
           <input
             type="text"
             value={formInvoiceNumber}
             onChange={(e) => setFormInvoiceNumber(e.target.value)}
             placeholder="FA-2026-0001"
-            className="w-full px-3.5 py-2.5 bg-slate-50  border border-slate-200  rounded-xl text-xs font-mono text-slate-800  focus:outline-none focus:ring-2 focus:ring-emerald-500"
+            className={`${FORM_INPUT} font-mono`}
           />
         </div>
       </div>
 
-      {/* Scope (Global vs Project vs Client) */}
-      <div className="p-4 rounded-2xl bg-slate-50  border border-slate-200  space-y-3">
-        <label className="text-xs font-bold text-slate-700  block">
-          {t("Financial Scope & Association", "Rozsah a priradenie", "Hatókör és hozzárendelés")}
-        </label>
-        <div className="grid grid-cols-3 gap-2 text-xs font-semibold">
-          <button
-            type="button"
-            onClick={() => setFormScope("global")}
-            className={`py-2 px-3 rounded-xl border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-              formScope === "global"
-                ? "bg-emerald-50 border-emerald-500 text-emerald-700 font-bold  "
-                : "bg-white  border-slate-200  text-slate-600"
-            }`}
-          >
-            <Globe className="h-3.5 w-3.5" />
-            {t("Global Company", "Globálne firemné", "Globális vállalati")}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setFormScope("project")}
-            className={`py-2 px-3 rounded-xl border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-              formScope === "project"
-                ? "bg-indigo-50 border-indigo-500 text-indigo-700 font-bold  "
-                : "bg-white  border-slate-200  text-slate-600"
-            }`}
-          >
-            <Briefcase className="h-3.5 w-3.5" />
-            {t("Project", "Projekt", "Projekt")}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setFormScope("client")}
-            className={`py-2 px-3 rounded-xl border transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-              formScope === "client"
-                ? "bg-teal-50 border-teal-500 text-teal-700 font-bold  "
-                : "bg-white  border-slate-200  text-slate-600"
-            }`}
-          >
-            <User className="h-3.5 w-3.5" />
-            {t("Client", "Klient", "Ügyfél")}
-          </button>
-        </div>
-
-        {/* Project Selector if Project Scope */}
-        {formScope === "project" && (
-          <div className="pt-2 animate-in fade-in">
-            <label className="text-[11px] font-bold text-slate-500 block mb-1">
-              {t("Select Associated Project *", "Vyberte projekt *", "Válasszon projektet *")}
-            </label>
-            <CustomSelect
-              value={formProjectId}
-              onChange={(val) => setFormProjectId(val)}
-              placeholder={t("-- Select Project --", "-- Vyberte projekt --", "-- Válasszon --")}
-              options={[
-                { value: "", label: t("-- Select Project --", "-- Vyberte projekt --", "-- Válasszon --") },
-                ...projects.map((p) => {
-                  const lead = leads.find((l) => l.id === p.leadId || l.id === p.clientId);
-                  return {
-                    value: p.id,
-                    label: lead ? `${lead.name} (${lead.city || ""})` : p.id,
-                  };
-                }),
-              ]}
-              size="sm"
-              className="w-full text-xs font-semibold rounded-xl"
-            />
-          </div>
-        )}
-
-        {/* Client Selector if Client Scope */}
-        {formScope === "client" && (
-          <div className="pt-2 animate-in fade-in">
-            <label className="text-[11px] font-bold text-slate-500 block mb-1">
-              {t("Select Associated Client *", "Vyberte klienta *", "Válasszon ügyfelet *")}
-            </label>
-            <CustomSelect
-              value={formClientId}
-              onChange={(val) => setFormClientId(val)}
-              placeholder={t("-- Select Client --", "-- Vyberte klienta --", "-- Válasszon ügyfelet --")}
-              options={[
-                { value: "", label: t("-- Select Client --", "-- Vyberte klienta --", "-- Válasszon ügyfelet --") },
-                ...leads.map((l) => ({
-                  value: l.id,
-                  label: `${l.name} (${l.city || "N/A"})`,
-                })),
-              ]}
-              size="sm"
-              className="w-full text-xs font-semibold rounded-xl"
-            />
-          </div>
-        )}
-      </div>
-
-      {/* 3-Level Category Selector */}
+      {/* 3. Category */}
       <div>
-        <label className="text-xs font-bold text-slate-700  block mb-1">
-          {t("Category Classification (3 Levels)", "Klasifikácia kategórie (3 úrovne)", "Kategória besorolás")}
+        <label className={FORM_LABEL}>
+          {t("Category", "Kategória", "Kategória")}
         </label>
         <SearchableCategorySelect
           value={formCategoryId}
@@ -2749,55 +3499,31 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           categories={financialCategories}
           filterType={formType}
           allowAll={false}
+          size="md"
           placeholder={t("-- Select Category --", "-- Vyberte kategóriu --", "-- Válasszon kategóriát --")}
           t={t}
         />
       </div>
 
-      {/* PLANNED & REAL AMOUNTS */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-2xl bg-slate-50  border border-slate-200 ">
-        <div>
-          <label className="text-xs font-bold text-slate-700  block mb-1 flex items-center justify-between">
-            <span>{t("Planned Amount (€) *", "Plánovaná suma (€) *", "Tervezett összeg (€) *")}</span>
-            <span className="text-[10px] text-slate-400 font-normal">{t("Budget / Target", "Rozpočet / Cieľ", "Költségvetés")}</span>
-          </label>
-          <input
-            type="number"
-            step="0.01"
-            required
-            value={formAmountPlanned}
-            onChange={(e) => setFormAmountPlanned(e.target.value ? parseFloat(e.target.value) : "")}
-            placeholder="0.00"
-            className="w-full px-3.5 py-2 bg-white  border border-slate-200  rounded-xl text-sm font-bold text-slate-900  focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          />
-        </div>
-
-        <div>
-          <label className="text-xs font-bold text-slate-700  block mb-1 flex items-center justify-between">
-            <span>{t("Real / Paid Amount (€)", "Skutočná / Reálna suma (€)", "Valós / Fizetett összeg (€)")}</span>
-            <span className="text-[10px] text-slate-400 font-normal">{t("Actual realized", "Skutočne zaplatené", "Tényleges")}</span>
-          </label>
-          <input
-            type="number"
-            step="0.01"
-            value={formAmountReal}
-            onChange={(e) => setFormAmountReal(e.target.value ? parseFloat(e.target.value) : "")}
-            placeholder="0.00"
-            className="w-full px-3.5 py-2 bg-white  border border-slate-200  rounded-xl text-sm font-bold text-slate-900  focus:outline-none focus:ring-2 focus:ring-emerald-500"
-          />
-        </div>
-      </div>
-
-      {/* Status, Dates, Payment Method */}
+      {/* 4. Status & dates */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
-          <label className="text-xs font-bold text-slate-700  block mb-1">
-            {t("Payment Status", "Stav úhrady", "Fizetési állapot")}
+          <label className={FORM_LABEL}>
+            {t("Status", "Stav úhrady", "Állapot")}
           </label>
           <CustomSelect
             value={formStatus}
             onChange={(val) => {
               const newSt = val as FinancialStatus;
+              if (formIsRecurring && newSt === "cancelled") {
+                // "Zrušené" on a recurring row pauses it (option A of Problem
+                // B): end date = today, planned end kept, `status` left as-is
+                // — the same mechanism `handleInlineStatusChange` and the
+                // pause toggle use, so every tab agrees on when it stopped.
+                setFormRecurringPlannedEndDate(formRecurringEndDate || null);
+                setFormRecurringEndDate(todayLocal());
+                return;
+              }
               setFormStatus(newSt);
               if (newSt === "paid" && (!formAmountReal || formAmountReal === 0) && formAmountPlanned) {
                 setFormAmountReal(formAmountPlanned);
@@ -2812,55 +3538,192 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               { value: "cancelled", label: t("Cancelled", "Zrušené", "Törölve") },
             ]}
             size="sm"
-            className="w-full text-xs font-semibold rounded-xl bg-slate-50 border-slate-200"
+            className="h-10 !px-3.5 text-xs rounded-xl"
           />
         </div>
 
         <div>
-          <label className="text-xs font-bold text-slate-700  block mb-1">
-            {t("Issue / Scheduled Date", "Dátum vystavenia / naplánovania", "Kiállítási / tervezett dátum")}
+          <label className={FORM_LABEL}>
+            {t("Issue Date *", "Dátum vystavenia *", "Kiállítás dátuma *")}
           </label>
           <input
             type="date"
             required
             value={formIssueDate}
             onChange={(e) => setFormIssueDate(e.target.value)}
-            className="w-full px-3 py-2 bg-slate-50  border border-slate-200  rounded-xl text-xs"
+            className={FORM_INPUT}
           />
         </div>
 
         <div>
-          <label className="text-xs font-bold text-slate-700  block mb-1">
-            {t("Due Date", "Dátum splatnosti", "Esedékesség dátuma")}
+          <label className={FORM_LABEL}>
+            {t("Due Date", "Dátum splatnosti", "Esedékesség")}
           </label>
           <input
             type="date"
             value={formDueDate}
             onChange={(e) => setFormDueDate(e.target.value)}
-            className="w-full px-3 py-2 bg-slate-50  border border-slate-200  rounded-xl text-xs"
+            className={FORM_INPUT}
           />
         </div>
       </div>
 
-      {/* RECURRING PAYMENT CONFIG */}
-      <div className="p-4 rounded-2xl bg-indigo-50/50  border border-indigo-100  space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <RefreshCw className="h-4 w-4 text-indigo-600 " />
-            <span className="text-xs font-bold text-slate-900 ">
-              {t("Recurring Movement Schedule", "Pravidelná / opakujúca sa platba", "Rendszeres / ismétlődő tétel")}
-            </span>
+      {/* 5. Amounts — planned vs actually paid */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-200">
+        <div>
+          <label className={`${FORM_LABEL} flex items-baseline justify-between gap-2`}>
+            <span>{t("Planned Amount *", "Plánovaná suma *", "Tervezett összeg *")}</span>
+            <span className="text-[10px] font-medium text-slate-400">{t("Budget / target", "Rozpočet / cieľ", "Költségvetés")}</span>
+          </label>
+          <div className="relative">
+            <input
+              type="number"
+              step="0.01"
+              required
+              value={formAmountPlanned}
+              onChange={(e) => setFormAmountPlanned(e.target.value ? parseFloat(e.target.value) : "")}
+              placeholder="0.00"
+              className={`${FORM_INPUT} pr-9 !text-sm font-bold tabular-nums`}
+            />
+            <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">€</span>
           </div>
-          <label className="relative inline-flex items-center cursor-pointer">
+        </div>
+
+        <div>
+          <label className={`${FORM_LABEL} flex items-baseline justify-between gap-2`}>
+            <span>{t("Paid Amount", "Skutočná suma", "Fizetett összeg")}</span>
+            <span className="text-[10px] font-medium text-slate-400">{t("Actually settled", "Skutočne uhradené", "Ténylegesen fizetve")}</span>
+          </label>
+          <div className="relative">
+            <input
+              type="number"
+              step="0.01"
+              value={formAmountReal}
+              onChange={(e) => setFormAmountReal(e.target.value ? parseFloat(e.target.value) : "")}
+              placeholder="0.00"
+              className={`${FORM_INPUT} pr-9 !text-sm font-bold tabular-nums`}
+            />
+            <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">€</span>
+          </div>
+        </div>
+
+        {/* A price change on a recurring rule only ever moves forward — say so
+            before the user saves, so nobody expects the past to follow. */}
+        {(() => {
+          if (!editingRecord?.isRecurring || !formIsRecurring) return null;
+
+          // What a charge is worth before and after this edit — the same figure
+          // the forecasts price with, so the hint only speaks up when they move.
+          const previousAmount = recurringChargeAmount({
+            amountPlanned: Number(editingRecord.amountPlanned) || 0,
+            amountReal: Number(editingRecord.amountReal) || 0
+          });
+          const nextPair = {
+            amountPlanned: Number(formAmountPlanned) || 0,
+            amountReal: Number(formAmountReal) || 0
+          };
+          const nextAmount = recurringChargeAmount(nextPair);
+          const history = editingRecord.recurringAmountHistory || [];
+          const appliesFromIso = repriceFrom();
+          const lastChargedIso = shiftIsoDate(appliesFromIso, -1);
+
+          const amountMoved = Math.round(nextAmount * 100) !== Math.round(previousAmount * 100);
+          if (!amountMoved && history.length === 0) return null;
+
+          // The same call the save makes: it pins nothing when the rule has
+          // not charged before the chosen day — that is a correction, and the
+          // date only matters once there is a charge to keep at the old price.
+          const pinsOldAmount =
+            amountMoved &&
+            (recurringAmountHistoryAfterChange(editingRecord, nextPair, appliesFromIso)?.length ?? 0) >
+              history.length;
+
+          const appliesFrom = formatDateLocalized(appliesFromIso, userLanguage);
+          const lastCharged = formatDateLocalized(lastChargedIso, userLanguage);
+          const earliest = recurringEarliestRepriceDate(editingRecord);
+
+          return (
+            <div className="sm:col-span-2 flex items-start gap-2 px-3 py-2 rounded-xl bg-purple-50  border border-purple-200  text-[11px] text-purple-800 ">
+              <RefreshCw className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+              <div className="space-y-1 flex-1 min-w-0">
+                {amountMoved && (
+                  <>
+                    <p className="font-semibold">
+                      {pinsOldAmount
+                        ? t(
+                            `The new amount applies from ${appliesFrom} — charges up to ${lastCharged} keep ${money(previousAmount)}.`,
+                            `Nová suma platí od ${appliesFrom} — platby do ${lastCharged} zostávajú na ${money(previousAmount)}.`,
+                            `Az új összeg ${appliesFrom} napjától érvényes — a ${lastCharged} előtti tételek ${money(previousAmount)} maradnak.`
+                          )
+                        : t(
+                            `Nothing has been charged before ${appliesFrom}, so the amount is simply corrected.`,
+                            `Pred ${appliesFrom} sa nič neúčtovalo, suma sa iba opraví.`,
+                            `${appliesFrom} előtt nem volt terhelés, az összeg egyszerűen javításra kerül.`
+                          )}
+                    </p>
+                    <label className="flex flex-wrap items-center gap-2">
+                      <span className="font-semibold">{t("New amount applies from", "Nová suma platí od", "Az új összeg érvényes ettől")}</span>
+                      <input
+                        type="date"
+                        value={appliesFromIso}
+                        min={earliest ?? undefined}
+                        onChange={(e) => setFormAmountAppliesFrom(e.target.value)}
+                        className="h-7 rounded-lg border border-purple-200 bg-white px-2 text-[11px] font-semibold text-purple-900 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                      />
+                    </label>
+                  </>
+                )}
+                {history.length > 0 && (
+                  <p className="text-purple-600 ">
+                    {t("Earlier amounts:", "Skoršie sumy:", "Korábbi összegek:")}{" "}
+                    {history
+                      .map(
+                        (period) =>
+                          `${money(recurringChargeAmount(period))} ${t("until", "do", "eddig")} ${formatDateLocalized(period.until, userLanguage)}`
+                      )
+                      .join(" · ")}
+                  </p>
+                )}
+              </div>
+            </div>
+          );
+        })()}
+      </div>
+
+      {/* 6. Recurring switch — the whole row toggles */}
+      <div
+        className={`p-4 rounded-2xl border space-y-3 transition-colors duration-200 ${
+          formIsRecurring ? "bg-indigo-50/60 border-indigo-200" : "bg-white border-slate-200 hover:border-slate-300"
+        }`}
+      >
+        <label className="flex items-center justify-between gap-3 cursor-pointer">
+          <span className="flex items-center gap-3 min-w-0">
+            <span
+              className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-colors duration-200 ${
+                formIsRecurring ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-500"
+              }`}
+            >
+              <RefreshCw className="h-4 w-4" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-xs font-bold text-slate-800">
+                {t("Recurring payment", "Opakujúca sa platba", "Ismétlődő tétel")}
+              </span>
+              <span className="block text-[11px] text-slate-500">
+                {t("Repeats automatically every week, month or year", "Automaticky sa opakuje týždenne, mesačne alebo ročne", "Automatikusan ismétlődik hetente, havonta vagy évente")}
+              </span>
+            </span>
+          </span>
+          <span className="relative inline-flex shrink-0 items-center">
             <input
               type="checkbox"
               checked={formIsRecurring}
               onChange={(e) => setFormIsRecurring(e.target.checked)}
               className="sr-only peer"
             />
-            <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
-          </label>
-        </div>
+            <span className="w-9 h-5 bg-slate-200 rounded-full peer-focus-visible:ring-2 peer-focus-visible:ring-indigo-500/40 peer-checked:bg-indigo-600 transition-colors duration-200 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-transform after:duration-200 peer-checked:after:translate-x-4 peer-checked:after:border-white"></span>
+          </span>
+        </label>
 
         {formIsRecurring && (
           <div className="space-y-3 pt-2 border-t border-indigo-100  animate-in fade-in">
@@ -3026,17 +3889,88 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         )}
       </div>
 
-      {/* Description */}
+      {/* 7. Assignment — company-wide, a project or a client */}
+      <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+        <span className="text-xs font-semibold text-slate-600 block">
+          {t("Assignment", "Priradenie", "Hozzárendelés")}
+        </span>
+        <div className="grid grid-cols-3 gap-1 p-1 bg-slate-200/60 rounded-xl text-xs font-semibold">
+          {([
+            { id: "global", icon: Globe, label: t("Company-wide", "Celá firma", "Teljes cég"), active: "text-emerald-700" },
+            { id: "project", icon: Briefcase, label: t("Project", "Projekt", "Projekt"), active: "text-indigo-700" },
+            { id: "client", icon: User, label: t("Client", "Klient", "Ügyfél"), active: "text-teal-700" },
+          ] as const).map(({ id, icon: Icon, label, active }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setFormScope(id)}
+              className={`h-9 px-2 rounded-lg flex items-center justify-center gap-1.5 transition-all duration-150 cursor-pointer active:scale-[0.98] ${
+                formScope === id ? `bg-white shadow-sm font-bold ${active}` : "text-slate-600 hover:text-slate-800 hover:bg-white/60"
+              }`}
+            >
+              <Icon className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate">{label}</span>
+            </button>
+          ))}
+        </div>
+
+        {/* Project Selector if Project Scope */}
+        {formScope === "project" && (
+          <div className="animate-in fade-in duration-150">
+            <label className="text-[11px] font-bold text-slate-500 block mb-1">
+              {t("Select Associated Project *", "Vyberte projekt *", "Válasszon projektet *")}
+            </label>
+            <CustomSelect
+              searchable
+              value={formProjectId}
+              onChange={(val) => setFormProjectId(val)}
+              placeholder={t("-- Select Project --", "-- Vyberte projekt --", "-- Válasszon --")}
+              options={[
+                { value: "", label: t("-- Select Project --", "-- Vyberte projekt --", "-- Válasszon --") },
+                ...projects.map((p) => {
+                  const lead = leads.find((l) => l.id === p.leadId || l.id === p.clientId);
+                  return {
+                    value: p.id,
+                    label: lead ? (lead.city ? `${lead.name} (${lead.city})` : lead.name) : p.id,
+                  };
+                }),
+              ]}
+              size="sm"
+              className="h-10 !px-3.5 text-xs rounded-xl"
+            />
+          </div>
+        )}
+
+        {/* Client Selector if Client Scope */}
+        {formScope === "client" && (
+          <div className="animate-in fade-in duration-150">
+            <label className="text-[11px] font-bold text-slate-500 block mb-1">
+              {t("Select Associated Client *", "Vyberte klienta *", "Válasszon ügyfelet *")}
+            </label>
+            <ClientSelect
+              leads={leads}
+              value={formClientId}
+              onChange={(val) => setFormClientId(val)}
+              placeholder={t("-- Select Client --", "-- Vyberte klienta --", "-- Válasszon ügyfelet --")}
+              noneLabel={t("-- Select Client --", "-- Vyberte klienta --", "-- Válasszon ügyfelet --")}
+              size="sm"
+              className="h-10 !px-3.5 text-xs rounded-xl"
+            />
+          </div>
+        )}
+      </div>
+
+      {/* 8. Note */}
       <div>
-        <label className="text-xs font-bold text-slate-700  block mb-1">
-          {t("Notes / Description", "Poznámka / Popis položiek", "Megjegyzés / leírás")}
+        <label className={FORM_LABEL}>
+          {t("Note", "Poznámka", "Megjegyzés")}
         </label>
         <textarea
-          rows={2}
+          rows={3}
           value={formDescription}
           onChange={(e) => setFormDescription(e.target.value)}
           placeholder={t("Additional details, contract references, itemized breakdown...", "Podrobnosti o položkách, zmluve, podmienkach...", "További részletek...")}
-          className="w-full px-3.5 py-2 bg-slate-50  border border-slate-200  rounded-xl text-xs text-slate-800  focus:outline-none"
+          className={FORM_TEXTAREA}
         />
       </div>
     </>
@@ -3046,7 +3980,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     <div className="space-y-6 pb-16 font-sans">
       {/* 1. TOP HEADER & COMMAND BAR */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-100 pb-4 select-none">
-        <div className="flex flex-col">
+        <div className="flex flex-col min-w-0">
           <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
             <Coins className="h-6 w-6 text-emerald-600" />
             {t("Financial Management & Revenue Control", "Finančný manažment a riadenie výnosov", "Pénzügyi menedzsment és bevételkezelés")}
@@ -3054,30 +3988,39 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
             {t("Track planned vs real cash flows, project revenue profitability, single & recurring expenses, and 3-level categories.", "Sledovanie plánovaných a reálnych tokov, ziskovosti projektov, jednorazových a pravidelných výdavkov a 3 úrovní kategórií.", "Tervezett és valós pénzáramlások, projektjövedelmezőség, rendszeres kiadások és 3 szintű kategóriák.")}
           </p>
+          {!canEdit && (
+            <span className="mt-2 inline-flex items-center w-fit px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider">
+              {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
+            </span>
+          )}
         </div>
 
-        {/* Quick Actions */}
-        <div className="flex flex-wrap items-center gap-2.5">
+        {/* Quick Actions — one row, equal height, never wrapping into a stack */}
+        <div className="flex items-center gap-2 shrink-0">
+          {canEdit && (
           <button
             onClick={() => handleOpenCreateModal("income", "global")}
-            className="flex items-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-2xl shadow-md shadow-emerald-600/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+            className="flex items-center justify-center gap-2 h-10 px-4 whitespace-nowrap bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl shadow-sm shadow-emerald-600/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
           >
             <Plus className="h-4 w-4" />
             <span>{t("New Income / Invoice", "Nový príjem / Faktúra", "Új bevétel / Számla")}</span>
           </button>
+          )}
 
+          {canEdit && (
           <button
             onClick={() => handleOpenCreateModal("expense", "global")}
-            className="flex items-center gap-2 px-4 py-2.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-2xl shadow-md shadow-rose-600/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+            className="flex items-center justify-center gap-2 h-10 px-4 whitespace-nowrap bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-xl shadow-sm shadow-rose-600/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
           >
             <Plus className="h-4 w-4" />
             <span>{t("New Expense", "Nový výdavok", "Új kiadás")}</span>
           </button>
+          )}
         </div>
       </div>
 
       {/* 2. SUB-NAVIGATION TABS */}
-      <div className="flex border-b border-slate-200  overflow-x-auto scrollbar-none gap-2">
+      <div className="flex border-b border-slate-200  overflow-x-auto scrollbar-none gap-2" role="tablist">
         {[
           { id: "overview", label: t("📊 Global Overview & Trend", "📊 Globálny prehľad & Trend", "📊 Globális áttekintés & Trend") },
           { id: "table", label: t("📋 Overview Table", "📋 Prehľadová tabuľka", "📋 Áttekintő táblázat") },
@@ -3087,6 +4030,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         ].map((tab) => (
           <button
             key={tab.id}
+            type="button"
+            role="tab"
+            aria-selected={activeTab === tab.id}
             onClick={() => handleTabChange(tab.id as any)}
             className={`px-4 py-3 text-xs font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
               activeTab === tab.id
@@ -3099,10 +4045,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         ))}
       </div>
 
-      {/* 4. TAB CONTENT 1: GLOBAL OVERVIEW (FOCUSED HYBRID TREND & 3-MONTH PROJECTION) */}
+      {/* 4. TAB CONTENT 1: GLOBAL OVERVIEW (FOCUSED HYBRID TREND & FORWARD PROJECTION) */}
       {activeTab === "overview" && (
         <div className="space-y-6 animate-in fade-in duration-200">
-          {/* HYBRID WEEKLY TREND & 3-MONTH PROJECTION CHART */}
+          {/* HYBRID WEEKLY TREND & FORWARD PROJECTION CHART (3 / 6 / 12 months) */}
           <div className="bg-white  p-6 rounded-3xl border border-slate-200/80  shadow-sm space-y-6">
             {/* 1. Header with Mode Toggle & Bank Balance Calibrators */}
             <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 pb-4 border-b border-slate-100 ">
@@ -3111,8 +4057,16 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   <h3 className="text-base font-bold text-slate-900  flex items-center gap-2">
                     <BarChart3 className="h-5 w-5 text-emerald-500" />
                     {trendMode === "cumulative"
-                      ? t("Weekly Trend & 3-Month Projection (Cumulative Bank Balance)", "Týždenný vývoj a 3-mesačná prognóza (Kumulatívny stav na účte)", "Heti trend és 3 hónapos előrejelzés (Kumulált bankszámla egyenleg)")
-                      : t("Weekly Trend & 3-Month Projection (Relative Cash Flow)", "Týždenný vývoj a 3-mesačná prognóza (Relatívny cash flow)", "Heti trend és 3 hónapos előrejelzés (Relatív pénzáramlás)")}
+                      ? t(
+                          `Weekly Trend & ${projectionMonths}-Month Projection (Cumulative Bank Balance)`,
+                          `Týždenný vývoj a ${projectionMonths}-mesačná prognóza (Kumulatívny stav na účte)`,
+                          `Heti trend és ${projectionMonths} hónapos előrejelzés (Kumulált bankszámla egyenleg)`
+                        )
+                      : t(
+                          `Weekly Trend & ${projectionMonths}-Month Projection (Relative Cash Flow)`,
+                          `Týždenný vývoj a ${projectionMonths}-mesačná prognóza (Relatívny cash flow)`,
+                          `Heti trend és ${projectionMonths} hónapos előrejelzés (Relatív pénzáramlás)`
+                        )}
                   </h3>
                   <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
                     trendMode === "cumulative" 
@@ -3125,9 +4079,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 <p className="text-xs text-slate-500 ">
                   {trendMode === "cumulative"
                     ? t(
-                        "Bars display weekly income & expense. The continuous plotline projects running Bank Account Balance (cumulative cash reserves) forward for the next 3 months. Click any week to calibrate its balance independently.",
-                        "Stĺpce zobrazujú týždenné príjmy a výdavky. Spojitá krivka zobrazuje projektovaný stav na bankovom účte. Kliknutím na ľubovoľný týždeň môžete nezávisle nastaviť jeho zostatok.",
-                        "Az oszlopok a heti bevételeket és kiadásokat mutatják. A folytonos vonal a várható bankszámla egyenleget jelzi. Kattintson bármelyik hétre az egyenleg független beállításához."
+                        `Bars display weekly income & expense. The continuous plotline projects running Bank Account Balance (cumulative cash reserves) forward for the next ${projectionMonths} months. Click any week to calibrate its balance independently.`,
+                        `Stĺpce zobrazujú týždenné príjmy a výdavky. Spojitá krivka zobrazuje projektovaný stav na bankovom účte na ${skNextMonths(projectionMonths)}. Kliknutím na ľubovoľný týždeň môžete nezávisle nastaviť jeho zostatok.`,
+                        `Az oszlopok a heti bevételeket és kiadásokat mutatják. A folytonos vonal a következő ${projectionMonths} hónap várható bankszámla egyenlegét jelzi. Kattintson bármelyik hétre az egyenleg független beállításához.`
                       )
                     : t(
                         "Bars display cumulative weekly income & expense. The continuous plotline traces weekly net difference and future projected revenue (projected income − projected expense).",
@@ -3166,6 +4120,34 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                     <span>{t("Cumulative Balance", "Stav na účte (Kumulatívny)", "Bankszámla egyenleg")}</span>
                   </button>
                 </div>
+
+                {/* Forecast Horizon Pill: how far forward the projection runs */}
+                <div className="bg-slate-100  p-1 rounded-2xl flex items-center gap-1 border border-slate-200/80 ">
+                  <span className="pl-2 pr-1 text-[10px] font-black uppercase tracking-wider text-slate-400  flex items-center gap-1">
+                    <CalendarDays className="h-3.5 w-3.5" />
+                    {t("Horizon", "Horizont", "Időtáv")}
+                  </span>
+                  {PROJECTION_HORIZONS.map((h) => (
+                    <button
+                      key={h.months}
+                      type="button"
+                      onClick={() => handleSetProjectionMonths(h.months)}
+                      title={t(
+                        `Project ${h.months} months forward (${h.futureWeeks} future weeks)`,
+                        `Prognóza na ${skMonths(h.months)} dopredu (${h.futureWeeks} budúcich týždňov)`,
+                        `Előrejelzés ${h.months} hónapra előre (${h.futureWeeks} jövőbeli hét)`
+                      )}
+                      aria-pressed={projectionMonths === h.months}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                        projectionMonths === h.months
+                          ? "bg-white  text-indigo-600  shadow-sm border border-slate-200/80 "
+                          : "text-slate-600  hover:text-slate-900 "
+                      }`}
+                    >
+                      {t(`${h.months}M`, `${h.months}M`, `${h.months}H`)}
+                    </button>
+                  ))}
+                </div>
               </div>
             </div>
 
@@ -3197,7 +4179,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 </div>
                 <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-100  text-slate-600  rounded-lg border border-slate-200 ">
                   <span className="h-2.5 w-2.5 rounded-full bg-indigo-400 animate-ping" />
-                  <span>{t("Future 3-Mo Window", "3-Mesačné okno", "3 Hónapos ablak")}</span>
+                  <span>{t(`Future ${projectionMonths}-Mo Window`, `${projectionMonths}-Mesačné okno`, `${projectionMonths} Hónapos ablak`)}</span>
                 </div>
               </div>
 
@@ -3212,15 +4194,33 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               const N = weeklyTrendData.length;
               if (N === 0) return null;
 
-              const svgWidth = 1000;
               const svgHeight = 360;
               const startX = 65;
-              const graphWidth = 905;
               const topY = 45;
               const graphHeight = 245;
               const bottomY = topY + graphHeight;
-              const stepX = graphWidth / N;
-              const barWidth = Math.min(15, (stepX - 8) / 2);
+
+              // Every week gets a fixed slice of the drawing area, so bars and labels
+              // stay the same size whatever the horizon: a longer forecast widens the
+              // chart and scrolls rather than squeezing 57 weeks onto one screen.
+              // Past three months the slice narrows a little to keep that scrolling
+              // tolerable. (18 weeks x 50 reproduces the original 905-unit graph.)
+              const weekUnits = N <= 20 ? 50 : N <= 36 ? 34 : 26;
+              const graphWidth = N * weekUnits;
+              const svgWidth = startX + graphWidth + 30;
+              const stepX = weekUnits;
+              const barWidth = Math.max(3, Math.min(15, (stepX - 8) / 2));
+
+              // Never render a user unit below a pixel; anything wider than the card
+              // scrolls horizontally instead of shrinking.
+              const minChartWidth = svgWidth;
+
+              // At the narrowest slice the week labels would touch, so every other
+              // one is drawn -- counted out from the current week, so "today" is
+              // always labelled and never crowds its neighbour -- and the date line
+              // underneath is dropped.
+              const labelStride = weekUnits >= 34 ? 1 : 2;
+              const showDateSubLabel = weekUnits >= 34;
 
               // Target value based on active mode
               const getPlotTarget = (b: typeof weeklyTrendData[0]) => trendMode === "cumulative" ? b.cumulativeBalance : b.netDifference;
@@ -3253,7 +4253,11 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               return (
                 <div className="relative select-none">
                   <div className="w-full overflow-x-auto scrollbar-none">
-                    <svg viewBox={`0 0 ${svgWidth} ${svgHeight}`} className="w-full min-w-[800px] h-auto font-sans">
+                    <svg
+                      viewBox={`0 0 ${svgWidth} ${svgHeight}`}
+                      style={{ minWidth: `${minChartWidth}px` }}
+                      className="w-full h-auto font-sans"
+                    >
                       <defs>
                         {/* Gradient for future projection window */}
                         <linearGradient id="futureZoneGrad" x1="0" y1="0" x2="1" y2="0">
@@ -3328,7 +4332,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                       <g transform={`translate(${futureStartX + 12}, ${topY - 8})`}>
                         <rect x="0" y="-14" width="200" height="22" rx="11" fill="#6366f1" fillOpacity="0.15" stroke="#6366f1" strokeWidth="1" />
                         <text x="100" y="1" textAnchor="middle" fill="#6366f1" fontSize="10" fontWeight="900" letterSpacing="0.05em">
-                          {t("🔮 3-MONTH FUTURE FORECAST", "🔮 3-MESAČNÁ PROGNÓZA", "🔮 3 HÓNAPOS ELŐREJELZÉS")}
+                          {t(`🔮 ${projectionMonths}-MONTH FUTURE FORECAST`, `🔮 ${projectionMonths}-MESAČNÁ PROGNÓZA`, `🔮 ${projectionMonths} HÓNAPOS ELŐREJELZÉS`)}
                         </text>
                       </g>
 
@@ -3441,30 +4445,36 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                             )}
 
                             {/* X-Axis Week Labels */}
-                            <text
-                              x={cx}
-                              y={bottomY + 15}
-                              textAnchor="middle"
-                              className={`text-[9px] font-black uppercase ${
-                                b.isCurrent
-                                  ? "fill-indigo-600  font-extrabold"
-                                  : b.isFuture
-                                  ? "fill-purple-600 "
-                                  : "fill-slate-600 "
-                              }`}
-                            >
-                              {b.weekLabel}
-                            </text>
-                            <text
-                              x={cx}
-                              y={bottomY + 27}
-                              textAnchor="middle"
-                              className={`text-[8px] font-medium ${
-                                b.isCurrent ? "fill-indigo-600 font-bold" : "fill-slate-400"
-                              }`}
-                            >
-                              {b.dateRangeLabel.split(" - ")[0]}
-                            </text>
+                            {(idx - currentWeekIdx) % labelStride === 0 && (
+                              <>
+                                <text
+                                  x={cx}
+                                  y={bottomY + 15}
+                                  textAnchor="middle"
+                                  className={`text-[9px] font-black uppercase ${
+                                    b.isCurrent
+                                      ? "fill-indigo-600  font-extrabold"
+                                      : b.isFuture
+                                      ? "fill-purple-600 "
+                                      : "fill-slate-600 "
+                                  }`}
+                                >
+                                  {b.weekLabel}
+                                </text>
+                                {showDateSubLabel && (
+                                  <text
+                                    x={cx}
+                                    y={bottomY + 27}
+                                    textAnchor="middle"
+                                    className={`text-[8px] font-medium ${
+                                      b.isCurrent ? "fill-indigo-600 font-bold" : "fill-slate-400"
+                                    }`}
+                                  >
+                                    {b.dateRangeLabel.split(" - ")[0]}
+                                  </text>
+                                )}
+                              </>
+                            )}
 
                             {/* Current week highlight badge pill */}
                             {b.isCurrent && (
@@ -3677,16 +4687,28 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                     >
                       <CalendarDays className="h-4 w-4" />
                       {isWeeklyTableOpen
-                        ? t("Hide 18-Week Projection Table", "Skryť 18-týždňovú tabuľku prognózy", "18 hetes előrejelzési táblázat elrejtése")
-                        : t("Inspect Full 18-Week Weekly Breakdown (4 Past + 13 Future Weeks)", "Zobraziť podrobnú 18-týždňovú tabuľku (4 minulé + 13 budúcich týždňov)", "Részletes 18 hetes lebontás megtekintése (4 múltbéli + 13 jövőbeli hét)")}
+                        ? t(
+                            `Hide ${projectionTotalWeeks}-Week Projection Table`,
+                            `Skryť ${projectionTotalWeeks}-týždňovú tabuľku prognózy`,
+                            `${projectionTotalWeeks} hetes előrejelzési táblázat elrejtése`
+                          )
+                        : t(
+                            `Inspect Full ${projectionTotalWeeks}-Week Weekly Breakdown (${TREND_PAST_WEEKS} Past + ${projectionFutureWeeks} Future Weeks)`,
+                            `Zobraziť podrobnú ${projectionTotalWeeks}-týždňovú tabuľku (${TREND_PAST_WEEKS} minulé + ${projectionFutureWeeks} budúcich týždňov)`,
+                            `Részletes ${projectionTotalWeeks} hetes lebontás megtekintése (${TREND_PAST_WEEKS} múltbéli + ${projectionFutureWeeks} jövőbeli hét)`
+                          )}
                       {isWeeklyTableOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                     </button>
                     <span className="text-[11px] text-slate-400">
-                      {t("Total Horizon: 18 Weeks (3 Months Forward)", "Časový horizont: 18 týždňov (3 mesiace dopredu)", "Teljes időtáv: 18 hét (3 hónap előre)")}
+                      {t(
+                        `Total Horizon: ${projectionTotalWeeks} Weeks (${projectionMonths} Months Forward)`,
+                        `Časový horizont: ${projectionTotalWeeks} týždňov (${skMonths(projectionMonths)} dopredu)`,
+                        `Teljes időtáv: ${projectionTotalWeeks} hét (${projectionMonths} hónap előre)`
+                      )}
                     </span>
                   </div>
 
-                  {/* 18-Week Data Table */}
+                  {/* Weekly Data Table (4 past weeks + the selected forecast horizon) */}
                   {isWeeklyTableOpen && (
                     <div className="mt-3 overflow-x-auto rounded-2xl border border-slate-200  animate-in fade-in duration-200">
                       <table className="w-full text-left text-xs">
@@ -3753,14 +4775,16 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                 </div>
                               </td>
                               <td className="py-2.5 px-4 text-center">
-                                <button
-                                  type="button"
-                                  onClick={() => handleOpenCalibrator(w)}
-                                  className="px-2 py-1 bg-slate-100  hover:bg-emerald-50  text-slate-600 hover:text-emerald-600 rounded-lg text-[10px] font-bold border border-slate-200  transition-colors inline-flex items-center gap-1 cursor-pointer"
-                                >
-                                  <Pencil className="h-3 w-3" />
-                                  <span>{w.isManuallyCalibrated ? t("Edit", "Upraviť", "Módosít") : t("Calibrate", "Nastaviť", "Beállít")}</span>
-                                </button>
+                                {canEdit && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenCalibrator(w)}
+                                    className="px-2 py-1 bg-slate-100  hover:bg-emerald-50  text-slate-600 hover:text-emerald-600 rounded-lg text-[10px] font-bold border border-slate-200  transition-colors inline-flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <Pencil className="h-3 w-3" />
+                                    <span>{w.isManuallyCalibrated ? t("Edit", "Upraviť", "Módosít") : t("Calibrate", "Nastaviť", "Beállít")}</span>
+                                  </button>
+                                )}
                               </td>
                               <td className="py-2.5 px-4 text-center">
                                 <span className="px-2 py-0.5 rounded-full bg-slate-100  text-[10px] text-slate-600  font-bold">
@@ -3936,6 +4960,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                     { id: "week", label: t("Week", "Týždeň", "Hét") },
                     { id: "month", label: t("Month", "Mesiac", "Hónap") },
                     { id: "quarter", label: t("Quarter", "Kvartál", "Negyedév") },
+                    { id: "half", label: t("Half-year", "Polrok", "Félév") },
                     { id: "year", label: t("Year", "Rok", "Év") }
                   ].map((g) => (
                     <button
@@ -3954,7 +4979,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 </div>
 
                 {/* Year Navigator (for month, quarter, week) */}
-                {(tableGranularity === "month" || tableGranularity === "quarter" || tableGranularity === "week") && (
+                {(tableGranularity === "month" || tableGranularity === "quarter" || tableGranularity === "half" || tableGranularity === "week") && (
                   <div className="flex items-center bg-slate-100  px-1 py-0.5 rounded-xl border border-slate-200 ">
                     <button
                       type="button"
@@ -4084,13 +5109,14 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
                   {/* Render Expense Categories Recursively */}
                   {categoryTree.expenseTree.map((rootCat) => renderCategoryMatrixRow(rootCat, 1, "expense"))}
+                  {renderUncategorizedMatrixRow("expense")}
 
                   {/* SUB-TOTAL EXPENSES ROW */}
                   <tr className="bg-rose-100/60  font-black border-y-2 border-rose-300 ">
                     <td className="w-[320px] min-w-[320px] max-w-[320px] py-3 px-4 sticky left-0 bg-rose-100  z-20 text-rose-800  border-r-2 border-rose-300  shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
                       <div className="flex items-center gap-2 whitespace-nowrap">
                         <ArrowDownRight className="h-4 w-4 text-rose-600 shrink-0" />
-                        <span>{t("Total Expenses", "Výdavky spolu", "Összes kiadás")}</span>
+                        <span>{t("Total Expenses", "Výdavky spolu", "Összes kiadás")}{tableSearchTotalSuffix}</span>
                       </div>
                     </td>
                     {overviewTableData.columns.map((col) => {
@@ -4132,13 +5158,14 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
                   {/* Render Income Categories Recursively */}
                   {categoryTree.incomeTree.map((rootCat) => renderCategoryMatrixRow(rootCat, 1, "income"))}
+                  {renderUncategorizedMatrixRow("income")}
 
                   {/* SUB-TOTAL INCOMES ROW */}
                   <tr className="bg-emerald-100/60  font-black border-y-2 border-emerald-300 ">
                     <td className="w-[320px] min-w-[320px] max-w-[320px] py-3 px-4 sticky left-0 bg-emerald-100  z-20 text-emerald-800  border-r-2 border-emerald-300  shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
                       <div className="flex items-center gap-2 whitespace-nowrap">
                         <ArrowUpRight className="h-4 w-4 text-emerald-600 shrink-0" />
-                        <span>{t("Total Incomes", "Príjmy spolu", "Összes bevétel")}</span>
+                        <span>{t("Total Incomes", "Príjmy spolu", "Összes bevétel")}{tableSearchTotalSuffix}</span>
                       </div>
                     </td>
                     {overviewTableData.columns.map((col) => {
@@ -4172,7 +5199,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                     <td className="w-[320px] min-w-[320px] max-w-[320px] py-3 px-4 sticky left-0 bg-purple-50  z-20 text-purple-900  border-r-2 border-purple-300  shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
                       <div className="flex items-center gap-2 whitespace-nowrap">
                         <Coins className="h-4 w-4 text-purple-600 shrink-0" />
-                        <span>{t("Net Cash Flow (Diff = Income − Expense)", "Čistý rozdiel (Príjmy − Výdavky)", "Nettó eredmény (Bevétel − Kiadás)")}</span>
+                        <span>{t("Net Cash Flow (Diff = Income − Expense)", "Čistý rozdiel (Príjmy − Výdavky)", "Nettó eredmény (Bevétel − Kiadás)")}{tableSearchTotalSuffix}</span>
                       </div>
                     </td>
                     {overviewTableData.columns.map((col) => {
@@ -4208,30 +5235,91 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                     {t("All Financial Movements", "Všetky finančné pohyby", "Összes pénzügyi mozgás")}
                   </h3>
                   <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-slate-100  text-slate-600 ">
-                    {filteredMovements.length}
+                    {movementsSummary.count}
                   </span>
+                  {movementsSummary.forecastCount > 0 && (
+                    <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-violet-100  text-violet-700  border border-violet-200 ">
+                      +{expectedCountLabel(movementsSummary.forecastCount)}
+                    </span>
+                  )}
                 </div>
 
                 {/* Live Total KPI Pills */}
-                <div className="flex items-center gap-2 text-xs font-bold">
-                  <span className="px-2.5 py-1 rounded-xl bg-emerald-50  text-emerald-700  border border-emerald-200 ">
-                    {t("Incomes:", "Príjmy:", "Bevételek:")} +{money(movementsSummary.income)}
-                  </span>
-                  <span className="px-2.5 py-1 rounded-xl bg-rose-50  text-rose-700  border border-rose-200 ">
-                    {t("Expenses:", "Výdavky:", "Kiadások:")} -{money(movementsSummary.expense)}
-                  </span>
-                  <span className={`px-2.5 py-1 rounded-xl border ${
-                    movementsSummary.net >= 0
-                      ? "bg-purple-50  text-purple-700  border-purple-200 "
-                      : "bg-rose-50  text-rose-700  border-rose-200 "
-                  }`}>
-                    {t("Net:", "Čistý rozdiel:", "Nettó:")} {movementsSummary.net >= 0 ? "+" : ""}{money(movementsSummary.net)}
-                  </span>
+                <div className="flex flex-col gap-1">
+                  <div className="flex items-center gap-2 text-xs font-bold">
+                    <span className="px-2.5 py-1 rounded-xl bg-emerald-50  text-emerald-700  border border-emerald-200 ">
+                      {t("Incomes:", "Príjmy:", "Bevételek:")} +{money(movementsSummary.income)}
+                    </span>
+                    <span className="px-2.5 py-1 rounded-xl bg-rose-50  text-rose-700  border border-rose-200 ">
+                      {t("Expenses:", "Výdavky:", "Kiadások:")} -{money(movementsSummary.expense)}
+                    </span>
+                    <span className={`px-2.5 py-1 rounded-xl border ${
+                      movementsSummary.net >= 0
+                        ? "bg-purple-50  text-purple-700  border-purple-200 "
+                        : "bg-rose-50  text-rose-700  border-rose-200 "
+                    }`}>
+                      {t("Net:", "Čistý rozdiel:", "Nettó:")} {movementsSummary.net >= 0 ? "+" : ""}{money(movementsSummary.net)}
+                    </span>
+
+                    {/* The forecast is kept in its own pill: it is not money in the account. */}
+                    {movementsSummary.forecastCount > 0 && (
+                      <span
+                        className="px-2.5 py-1 rounded-xl bg-violet-50  text-violet-700  border border-dashed border-violet-300  flex items-center gap-1.5"
+                        title={t(
+                          "Expected, not settled — this is not counted in the totals on the left",
+                          "Očakávané, neuhradené — nie je započítané v sumách vľavo",
+                          "Várható, nem teljesült — a bal oldali összegek ezt nem tartalmazzák"
+                        )}
+                      >
+                        <Telescope className="h-3.5 w-3.5" />
+                        {t("Expected net:", "Očakávaný rozdiel:", "Várható nettó:")}{" "}
+                        {movementsSummary.expectedNet >= 0 ? "+" : ""}{money(movementsSummary.expectedNet)}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Settled vs still-expected within the totals above, so "Incomes: +X"
+                      is never mistaken for money that has actually arrived (see F4). */}
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-0.5 text-[10px] font-semibold text-slate-400">
+                    <span>
+                      {t("Income:", "Príjmy:", "Bevételek:")} +{money(movementsSummary.incomeReal)}{" "}
+                      {t("settled", "skutočnosť", "tény")} · +{money(movementsSummary.incomeEstimated)}{" "}
+                      {t("expected", "plán", "terv")}
+                    </span>
+                    <span>
+                      {t("Expense:", "Výdavky:", "Kiadások:")} -{money(movementsSummary.expenseReal)}{" "}
+                      {t("settled", "skutočnosť", "tény")} · -{money(movementsSummary.expenseEstimated)}{" "}
+                      {t("expected", "plán", "terv")}
+                    </span>
+                  </div>
                 </div>
               </div>
 
               {/* Actions: Sort order toggle & Quick Add Buttons */}
               <div className="flex flex-wrap items-center gap-2">
+                {/* Forecast overlay toggle */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowFutureMovements((prev) => !prev);
+                    setFutureHorizonMonths(1);
+                  }}
+                  aria-pressed={showFutureMovements}
+                  className={`px-3 py-1.5 text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer transition-colors border ${
+                    showFutureMovements
+                      ? "bg-violet-600 text-white border-violet-600 shadow-xs"
+                      : "bg-violet-50  text-violet-700  border-violet-200  hover:bg-violet-100"
+                  }`}
+                  title={t(
+                    "Draw the movements that have not happened yet into the ledger",
+                    "Zobraziť v knihe aj pohyby, ktoré sa ešte nestali",
+                    "A még meg nem történt tételek megjelenítése a listában"
+                  )}
+                >
+                  <Telescope className="h-3.5 w-3.5" />
+                  <span>{t("Future movements", "Budúce pohyby", "Várható tételek")}</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => setMovementsSortOrder(movementsSortOrder === "desc" ? "asc" : "desc")}
@@ -4242,6 +5330,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   <span>{movementsSortOrder === "desc" ? t("Newest First", "Najnovšie", "Legújabb") : t("Oldest First", "Najstaršie", "Legrégebbi")}</span>
                 </button>
 
+                {canEdit && (
                 <button
                   onClick={() => handleOpenCreateModal("income", "global")}
                   className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
@@ -4249,7 +5338,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   <Plus className="h-3.5 w-3.5" />
                   <span>{t("Income", "Príjem", "Bevétel")}</span>
                 </button>
+                )}
 
+                {canEdit && (
                 <button
                   onClick={() => handleOpenCreateModal("expense", "global")}
                   className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white text-xs font-semibold rounded-xl flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
@@ -4257,8 +5348,86 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   <Plus className="h-3.5 w-3.5" />
                   <span>{t("Expense", "Výdavok", "Kiadás")}</span>
                 </button>
+                )}
               </div>
             </div>
+
+            {/* FORECAST HORIZON STRIP — how far ahead the overlay reaches, and how to widen it */}
+            {showFutureMovements && (
+              <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-2 px-3 py-2.5 rounded-2xl bg-violet-50/70  border border-dashed border-violet-300  animate-in fade-in duration-150">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs">
+                  <span className="flex items-center gap-1.5 font-bold text-violet-900 ">
+                    <Telescope className="h-4 w-4 text-violet-600 shrink-0" />
+                    {t("Forecast", "Prognóza", "Előrejelzés")}
+                  </span>
+                  <span className="font-semibold text-violet-700 ">
+                    {forecastHorizonLabel(futureHorizonMonths)}
+                    <span className="font-medium text-violet-500">
+                      {" · "}
+                      {t("until", "do", "eddig")} {formatDateLocalized(forecastRange.endIso, userLanguage)}
+                    </span>
+                  </span>
+
+                  {movementsSummary.forecastCount > 0 ? (
+                    <span className="flex items-center gap-2 font-bold">
+                      {movementsSummary.expectedIncome > 0 && (
+                        <span className="text-emerald-600 ">+{money(movementsSummary.expectedIncome)}</span>
+                      )}
+                      {movementsSummary.expectedExpense > 0 && (
+                        <span className="text-rose-600 ">-{money(movementsSummary.expectedExpense)}</span>
+                      )}
+                      <span className="text-violet-500 font-semibold">
+                        {movementsSummary.forecastCount}{" "}
+                        {t(
+                          `expected movement${movementsSummary.forecastCount === 1 ? "" : "s"}`,
+                          `${skExpected(movementsSummary.forecastCount)} ${skMovements(movementsSummary.forecastCount)}`,
+                          "várható tétel"
+                        )}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="text-violet-500 font-medium">
+                      {t(
+                        "Nothing expected in this window.",
+                        "V tomto období sa nič neočakáva.",
+                        "Ebben az időszakban nincs várható tétel."
+                      )}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  {futureHorizonMonths > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => setFutureHorizonMonths(1)}
+                      className="px-2.5 py-1.5 text-[11px] font-bold rounded-xl text-violet-600  hover:bg-violet-100  transition-colors cursor-pointer"
+                    >
+                      {t("Back to one month", "Späť na jeden mesiac", "Vissza egy hónapra")}
+                    </button>
+                  )}
+
+                  {canLoadAnotherForecastMonth ? (
+                    <button
+                      type="button"
+                      onClick={() => setFutureHorizonMonths((prev) => prev + 1)}
+                      className="px-3 py-1.5 bg-violet-600 hover:bg-violet-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      <span>{t("Load another month", "Načítať ďalší mesiac", "Még egy hónap")}</span>
+                    </button>
+                  ) : (
+                    <span className="px-3 py-1.5 text-[11px] font-semibold text-violet-500 ">
+                      {t(
+                        "✓ Nothing further is expected",
+                        "✓ Ďalej sa už nič neočakáva",
+                        "✓ Ezután nincs több várható tétel"
+                      )}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Main Filter Bar Row: Search, Type Toggle, Date Preset, Value Range */}
             <div className="grid grid-cols-1 md:grid-cols-12 gap-3 items-center text-xs">
@@ -4494,15 +5663,16 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                     <th className="py-3 px-4 min-w-[220px]">{t("Title & Reference", "Názov & Referencia", "Megnevezés & Hivatkozás")}</th>
                     <th className="py-3 px-4 min-w-[220px]">{t("Category Hierarchy", "Hierarchia kategórie", "Kategória hierarchia")}</th>
                     <th className="py-3 px-4 min-w-[170px]">{t("Link / Scope", "Prepojenie / Rozsah", "Kapcsolat / Hatókör")}</th>
+                    <th className="py-3 px-4 w-[160px]">{t("Payment Status", "Stav úhrady", "Fizetési állapot")}</th>
                     <th className="py-3 px-4 w-[150px] text-right">{t("Value", "Suma / Hodnota", "Összeg / Érték")}</th>
                     <th className="py-3 px-4 w-[90px] text-right">{t("Actions", "Akcie", "Műveletek")}</th>
                   </tr>
                 </thead>
 
                 <tbody className="divide-y divide-slate-100  font-medium">
-                  {filteredMovements.length === 0 ? (
+                  {movementsSummary.rowCount === 0 ? (
                     <tr>
-                      <td colSpan={6} className="py-16 text-center text-slate-400 font-medium space-y-2">
+                      <td colSpan={7} className="py-16 text-center text-slate-400 font-medium space-y-2">
                         <Coins className="h-10 w-10 text-slate-300  mx-auto" />
                         <p className="text-sm font-bold text-slate-700 ">
                           {t("No financial movements found", "Neboli nájdené žiadne finančné pohyby", "Nincs találat a megadott szűrők alapján")}
@@ -4521,175 +5691,400 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                         if (globalRenderCount >= movementsVisibleCount) return null;
 
                         const availableSlot = movementsVisibleCount - globalRenderCount;
-                        const visibleRecordsInGroup = group.records.slice(0, availableSlot);
-                        globalRenderCount += visibleRecordsInGroup.length;
+                        const visibleRows = group.rows.slice(0, availableSlot);
+                        globalRenderCount += visibleRows.length;
+
+                        // A month made up only of expected movements is a month
+                        // that has not happened — its divider says so, instead
+                        // of looking like any other month of history.
+                        const settledInGroup = group.rows.length - group.forecastCount;
+                        const isForecastOnlyMonth = settledInGroup === 0 && group.forecastCount > 0;
 
                         return (
                           <React.Fragment key={"month-grp-" + group.monthKey}>
                             {/* MONTH DIVIDER ROW WITH SUMMARY TOTALS */}
-                            <tr className="bg-slate-100/90  border-y-2 border-slate-300  sticky top-[37px] z-10 shadow-xs">
-                              <td colSpan={6} className="py-2.5 px-4">
+                            <tr className={`border-y-2 sticky top-[37px] z-10 shadow-xs ${
+                              isForecastOnlyMonth
+                                ? "bg-violet-100/90  border-violet-300 "
+                                : "bg-slate-100/90  border-slate-300 "
+                            }`}>
+                              <td colSpan={7} className="py-2.5 px-4">
                                 <div className="flex flex-wrap items-center justify-between gap-3">
                                   <div className="flex items-center gap-2">
-                                    <CalendarDays className="h-4 w-4 text-purple-600 " />
-                                    <span className="font-black text-xs uppercase tracking-wider text-slate-900 ">
+                                    {isForecastOnlyMonth ? (
+                                      <Telescope className="h-4 w-4 text-violet-600 " />
+                                    ) : (
+                                      <CalendarDays className="h-4 w-4 text-purple-600 " />
+                                    )}
+                                    <span className={`font-black text-xs uppercase tracking-wider ${
+                                      isForecastOnlyMonth ? "text-violet-900 " : "text-slate-900 "
+                                    }`}>
                                       {group.monthLabel}
                                     </span>
-                                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white  text-slate-600  border border-slate-200 ">
-                                      {group.records.length} {t("movements", "pohybov", "tétel")}
-                                    </span>
+                                    {settledInGroup > 0 && (
+                                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white  text-slate-600  border border-slate-200 ">
+                                        {settledInGroup} {t("movements", "pohybov", "tétel")}
+                                      </span>
+                                    )}
+                                    {group.forecastCount > 0 && (
+                                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-white  text-violet-700  border border-dashed border-violet-300 ">
+                                        {expectedCountLabel(group.forecastCount)}
+                                      </span>
+                                    )}
                                   </div>
 
-                                  {/* Monthly Subtotals */}
-                                  <div className="flex items-center gap-3 text-xs font-black">
-                                    <span className="text-emerald-700 ">
-                                      +{money(group.totalIncome)}
-                                    </span>
-                                    <span className="text-rose-700 ">
-                                      -{money(group.totalExpense)}
-                                    </span>
-                                    <span className={`px-2 py-0.5 rounded-lg border ${
-                                      group.net >= 0
-                                        ? "bg-emerald-50  text-emerald-700  border-emerald-300 "
-                                        : "bg-rose-50  text-rose-700  border-rose-300 "
-                                    }`}>
-                                      {t("Net:", "Čistý:", "Nettó:")} {group.net >= 0 ? "+" : ""}{money(group.net)}
-                                    </span>
+                                  {/* Monthly subtotals — settled first, expected kept apart from it */}
+                                  <div className="flex flex-wrap items-center gap-3 text-xs font-black">
+                                    {settledInGroup > 0 && (
+                                      <>
+                                        <span className="text-emerald-700  flex flex-col items-end leading-tight">
+                                          <span>+{money(group.totalIncome)}</span>
+                                          {group.incomeEstimated !== 0 && (
+                                            <span className="text-[9px] font-semibold text-emerald-500/80">
+                                              est: +{money(group.incomeEstimated)}
+                                            </span>
+                                          )}
+                                        </span>
+                                        <span className="text-rose-700  flex flex-col items-end leading-tight">
+                                          <span>-{money(group.totalExpense)}</span>
+                                          {group.expenseEstimated !== 0 && (
+                                            <span className="text-[9px] font-semibold text-rose-500/80">
+                                              est: -{money(group.expenseEstimated)}
+                                            </span>
+                                          )}
+                                        </span>
+                                        <span className={`px-2 py-0.5 rounded-lg border ${
+                                          group.net >= 0
+                                            ? "bg-emerald-50  text-emerald-700  border-emerald-300 "
+                                            : "bg-rose-50  text-rose-700  border-rose-300 "
+                                        }`}>
+                                          {t("Net:", "Čistý:", "Nettó:")} {group.net >= 0 ? "+" : ""}{money(group.net)}
+                                        </span>
+                                      </>
+                                    )}
+                                    {group.forecastCount > 0 && (
+                                      <span className="px-2 py-0.5 rounded-lg border border-dashed border-violet-300  bg-violet-50  text-violet-700  flex items-center gap-2">
+                                        <Telescope className="h-3 w-3" />
+                                        <span>{t("Expected:", "Očakávané:", "Várható:")}</span>
+                                        {group.expectedIncome > 0 && <span>+{money(group.expectedIncome)}</span>}
+                                        {group.expectedExpense > 0 && <span>-{money(group.expectedExpense)}</span>}
+                                        {group.expectedIncome > 0 && group.expectedExpense > 0 && (
+                                          <span>
+                                            {t("net", "čistý", "nettó")}{" "}
+                                            {group.expectedNet >= 0 ? "+" : ""}{money(group.expectedNet)}
+                                          </span>
+                                        )}
+                                      </span>
+                                    )}
                                   </div>
                                 </div>
                               </td>
                             </tr>
 
                             {/* MOVEMENT ROWS IN THIS MONTH */}
-                            {visibleRecordsInGroup.map((rec) => {
-                              const project = projects.find((p) => p.id === rec.projectId);
-                              const client = leads.find((l) => l.id === rec.clientId || l.id === project?.clientId || l.id === project?.leadId);
-                              const catBreadcrumbs = getCategoryBreadcrumbs(rec.categoryId);
-                              const rootCat = catBreadcrumbs[0];
+                            {visibleRows.map((row) => {
+                              // A forecast row has no record of its own: nothing
+                              // of it is stored, so it cannot be given a status,
+                              // edited in place or deleted — only followed back
+                              // to the rule or invoice it was derived from.
+                              if (row.kind === "forecast") {
+                                const forecast = row.forecast;
+                                const source = forecast.record;
+                                const forecastProject = projects.find((p) => p.id === source.projectId);
+                                const forecastClient = leads.find(
+                                  (l) => l.id === source.clientId || l.id === forecastProject?.clientId || l.id === forecastProject?.leadId
+                                );
+                                const forecastCrumbs = getCategoryBreadcrumbs(source.categoryId);
+                                const forecastRootCat = forecastCrumbs[0];
+                                const forecastIsExpense = forecast.type === "expense";
+                                const SourceIcon = FORECAST_SOURCE_ICON[forecast.source];
+
+                                return (
+                                  <tr key={row.key} data-forecast="true" className={FORECAST_ROW_CLASS}>
+                                    {/* 1. The day the money is expected, and how far off that is */}
+                                    <td className="py-3 px-4 whitespace-nowrap">
+                                      <div className="font-bold text-violet-900 ">
+                                        {formatDateLocalized(forecast.date, userLanguage)}
+                                      </div>
+                                      <div className="text-[10px] font-medium text-violet-500 mt-0.5">
+                                        {daysAheadLabel(forecast.date)}
+                                      </div>
+                                    </td>
+
+                                    {/* 2. Title & reference, read off the source */}
+                                    <td className="py-3 px-4">
+                                      <div className="font-bold text-violet-900  flex items-center gap-1.5">
+                                        <span className="truncate max-w-[280px]" title={source.title}>
+                                          {source.title}
+                                        </span>
+                                      </div>
+                                      <div className="flex items-center gap-2 mt-0.5">
+                                        {source.invoiceNumber && (
+                                          <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-violet-100/70  text-violet-700  font-semibold">
+                                            {source.invoiceNumber}
+                                          </span>
+                                        )}
+                                        {source.description && (
+                                          <span className="text-[11px] text-violet-400 truncate max-w-[220px]" title={source.description}>
+                                            {source.description}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </td>
+
+                                    {/* 3. Category breadcrumbs of the source */}
+                                    <td className="py-3 px-4">
+                                      {forecastCrumbs.length > 0 ? (
+                                        <div className="flex items-center gap-1.5 flex-wrap opacity-80">
+                                          <span
+                                            className="h-2 w-2 rounded-full shrink-0 shadow-2xs"
+                                            style={{ backgroundColor: forecastRootCat?.color || (forecastIsExpense ? "#f43f5e" : "#10b981") }}
+                                          />
+                                          {forecastCrumbs.map((c, idx) => (
+                                            <React.Fragment key={c.id}>
+                                              {idx > 0 && <span className="text-[10px] text-violet-400">›</span>}
+                                              <span
+                                                className={`text-[11px] ${
+                                                  idx === forecastCrumbs.length - 1
+                                                    ? "font-bold text-violet-800 "
+                                                    : "font-normal text-violet-500 "
+                                                }`}
+                                              >
+                                                {c.name}
+                                              </span>
+                                            </React.Fragment>
+                                          ))}
+                                        </div>
+                                      ) : (
+                                        <span className="text-violet-400 italic text-[11px]">
+                                          {t("Uncategorized", "Bez kategórie", "Kategória nélkül")}
+                                        </span>
+                                      )}
+                                    </td>
+
+                                    {/* 4. Link / Scope of the source */}
+                                    <td className="py-3 px-4">
+                                      {source.projectId ? (
+                                        (() => {
+                                          const projectLead = forecastProject
+                                            ? leads.find((l) => l.id === forecastProject.leadId || l.id === forecastProject.clientId)
+                                            : null;
+                                          const pName = projectLead ? `${projectLead.name}` : `Projekt ${source.projectId!.slice(0, 8)}`;
+                                          return (
+                                            <button
+                                              type="button"
+                                              onClick={() => onOpenProject?.(source.projectId!)}
+                                              className="inline-flex items-center gap-1.5 px-2 py-1 bg-indigo-50/70  hover:bg-indigo-100 text-indigo-700  rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                                            >
+                                              <Briefcase className="h-3.5 w-3.5 shrink-0" />
+                                              <span className="truncate max-w-[140px]" title={pName}>
+                                                {pName}
+                                              </span>
+                                            </button>
+                                          );
+                                        })()
+                                      ) : source.clientId ? (
+                                        <button
+                                          type="button"
+                                          onClick={() => onOpenClient?.(source.clientId!)}
+                                          className="inline-flex items-center gap-1.5 px-2 py-1 bg-emerald-50/70  hover:bg-emerald-100 text-emerald-700  rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                                        >
+                                          <User className="h-3.5 w-3.5 shrink-0" />
+                                          <span className="truncate max-w-[140px]" title={forecastClient?.name || source.clientId}>
+                                            {forecastClient?.name || source.clientId.slice(0, 8)}
+                                          </span>
+                                        </button>
+                                      ) : (
+                                        <span className="inline-flex items-center gap-1 text-[11px] text-violet-500 font-medium">
+                                          <Globe className="h-3 w-3 text-violet-400 shrink-0" />
+                                          <span>{t("Global Company", "Globálne firemné", "Globális vállalati")}</span>
+                                        </span>
+                                      )}
+                                    </td>
+
+                                    {/* 5. Where it came from, in place of a payment status it cannot have */}
+                                    <td className="py-3 px-4">
+                                      <span
+                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border border-dashed border-violet-300  bg-violet-50  text-violet-700 "
+                                        title={t(
+                                          "Expected, not recorded — nothing is stored for this day yet",
+                                          "Očakávané, nezaznamenané — pre tento deň zatiaľ nič nie je uložené",
+                                          "Várható, nem rögzített — erre a napra még nincs mentett tétel"
+                                        )}
+                                      >
+                                        <SourceIcon className="h-3 w-3 shrink-0" />
+                                        {forecastSourceLabel(forecast.source)}
+                                      </span>
+                                    </td>
+
+                                    {/* 6. Value — approximate, and visibly lighter than a settled one */}
+                                    <td className="py-3 px-4 text-right">
+                                      <div className="flex items-center justify-end gap-1.5">
+                                        <span
+                                          className={`font-black text-sm italic ${
+                                            forecastIsExpense ? "text-rose-400 " : "text-emerald-500 "
+                                          }`}
+                                        >
+                                          ≈ {forecastIsExpense ? "-" : "+"}{money(forecast.amount)}
+                                        </span>
+                                      </div>
+                                      <div className="text-[10px] text-violet-400 mt-0.5">
+                                        {t("expected", "očakávané", "várható")}
+                                      </div>
+                                    </td>
+
+                                    {/* 7. The only action there is: open what it was derived from */}
+                                    <td className="py-3 px-4 text-right">
+                                      <div className="flex items-center justify-end gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleOpenEditModal(source)}
+                                          className="p-1.5 hover:bg-violet-100  rounded-lg text-violet-500 hover:text-violet-900  transition-colors cursor-pointer"
+                                          title={t(
+                                            "Open the movement this is expected from",
+                                            "Otvoriť pohyb, z ktorého to vychádza",
+                                            "A várható tétel forrásának megnyitása"
+                                          )}
+                                        >
+                                          <Pencil className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              }
+
+                              // A charge a recurring rule has already made. It
+                              // happened, so it is drawn and counted as settled,
+                              // but nothing of it is stored: no status to set,
+                              // nothing to delete, and editing it means editing
+                              // the rule it was charged by.
+                              if (row.kind === "charge") {
+                                const charge = row.charge;
+                                const chargeIsExpense = charge.type === "expense";
+                                const RecurringIcon = FORECAST_SOURCE_ICON.recurring;
+
+                                return (
+                                  <tr key={row.key} data-recurring-charge="true" className={RECURRING_CHARGE_ROW_CLASS}>
+                                    {/* 1. The day the rule charged */}
+                                    <td className="py-3 px-4 whitespace-nowrap">
+                                      <div className="font-bold text-slate-800 ">
+                                        {formatDateLocalized(charge.date, userLanguage)}
+                                      </div>
+                                    </td>
+
+                                    {renderLedgerSourceCells(charge.record)}
+
+                                    {/* 5. Where it came from, in place of a payment status it cannot have */}
+                                    <td className="py-3 px-4">
+                                      <span
+                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border border-purple-200  bg-purple-50  text-purple-700 "
+                                        title={t(
+                                          "Charged by a recurring rule — drawn from its schedule, not a separately stored movement",
+                                          "Platba pravidelného pohybu — vychádza z jeho plánu, nie je to samostatne uložený pohyb",
+                                          "Ismétlődő tétel terhelése — az ütemezéséből számolva, nem külön mentett tétel"
+                                        )}
+                                      >
+                                        <RecurringIcon className="h-3 w-3 shrink-0" />
+                                        {forecastSourceLabel("recurring")}
+                                      </span>
+                                    </td>
+
+                                    {/* 6. Value — settled, at the price in force on the day */}
+                                    <td className="py-3 px-4 text-right">
+                                      <div className="flex items-center justify-end gap-1.5">
+                                        <span
+                                          className={`font-black text-sm ${
+                                            chargeIsExpense ? "text-rose-600 " : "text-emerald-600 "
+                                          }`}
+                                        >
+                                          {chargeIsExpense ? "-" : "+"}
+                                          {money(charge.amount)}
+                                        </span>
+                                        {renderRecurringValueIcon(charge.record)}
+                                      </div>
+                                    </td>
+
+                                    {/* 7. The only action there is: open the rule it was charged by */}
+                                    <td className="py-3 px-4 text-right">
+                                      <div className="flex items-center justify-end gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleOpenEditModal(charge.record)}
+                                          className="p-1.5 hover:bg-slate-100  rounded-lg text-slate-500 hover:text-slate-900  transition-colors cursor-pointer"
+                                          title={t(
+                                            "Open the recurring rule this charge comes from",
+                                            "Otvoriť pravidelný pohyb, z ktorého platba vychádza",
+                                            "Az ismétlődő tétel megnyitása, amelyből a terhelés származik"
+                                          )}
+                                        >
+                                          <Pencil className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              }
+
+                              const rec = row.record;
                               const isExpense = rec.type === "expense";
-                              const amount = rec.amountReal > 0 ? rec.amountReal : rec.amountPlanned;
+                              // Whole value real + estimated (see F4); the settled/expected
+                              // split is shown separately below as the "est:" subtitle.
+                              const { real: amountReal, estimated: amountEstimated } = splitRecordAmounts(rec);
+                              const amount = amountReal + amountEstimated;
+                              // A recurring rule's own row that a charge before it
+                              // already paid for: still the rule, still drawn, but
+                              // not counted in the month (see pastRecurringCharges.ts).
+                              const isUncountedRuleRow = pastRecurring.uncountedIds.has(rec.id);
 
                               return (
                                 <tr
-                                  key={rec.id}
+                                  key={row.key}
                                   className="hover:bg-slate-50/80  transition-colors group"
                                 >
-                                  {/* 1. Date & Status */}
+                                  {/* 1. Date (status lives in its own editable column) */}
                                   <td className="py-3 px-4 whitespace-nowrap">
                                     <div className="font-bold text-slate-800 ">
                                       {formatDateLocalized(rec.paidDate || rec.issueDate, userLanguage)}
                                     </div>
-                                    <div className="flex items-center gap-1 mt-0.5">
-                                      <span className={`h-1.5 w-1.5 rounded-full ${
-                                        rec.status === "paid"
-                                          ? "bg-emerald-500"
-                                          : rec.status === "pending" || rec.status === "partially_paid"
-                                          ? "bg-amber-500"
-                                          : rec.status === "overdue"
-                                          ? "bg-rose-500"
-                                          : "bg-slate-400"
-                                      }`} />
-                                      <span className="text-[10px] font-medium uppercase text-slate-500 ">
-                                        {rec.status}
-                                      </span>
-                                    </div>
-                                  </td>
-
-                                  {/* 2. Title & Reference & Recurring Badge */}
-                                  <td className="py-3 px-4">
-                                    <div className="font-bold text-slate-900  flex items-center gap-1.5">
-                                      <span className="truncate max-w-[280px]" title={rec.title}>
-                                        {rec.title}
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center gap-2 mt-0.5">
-                                      {rec.invoiceNumber && (
-                                        <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-100  text-slate-600  font-semibold">
-                                          {rec.invoiceNumber}
-                                        </span>
-                                      )}
-                                      {rec.description && (
-                                        <span className="text-[11px] text-slate-400 truncate max-w-[220px]" title={rec.description}>
-                                          {rec.description}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </td>
-
-                                  {/* 3. 3-Level Category Breadcrumbs */}
-                                  <td className="py-3 px-4">
-                                    {catBreadcrumbs.length > 0 ? (
-                                      <div className="flex items-center gap-1.5 flex-wrap">
-                                        <span
-                                          className="h-2 w-2 rounded-full shrink-0 shadow-2xs"
-                                          style={{ backgroundColor: rootCat?.color || (isExpense ? "#f43f5e" : "#10b981") }}
-                                        />
-                                        {catBreadcrumbs.map((c, idx) => (
-                                          <React.Fragment key={c.id}>
-                                            {idx > 0 && <span className="text-[10px] text-slate-400">›</span>}
-                                            <span
-                                              className={`text-[11px] ${
-                                                idx === catBreadcrumbs.length - 1
-                                                  ? "font-bold text-slate-800 "
-                                                  : "font-normal text-slate-500 "
-                                              }`}
-                                            >
-                                              {c.name}
-                                            </span>
-                                          </React.Fragment>
-                                        ))}
+                                    {rec.dueDate && !rec.paidDate && (
+                                      <div className="text-[10px] font-medium text-slate-400 mt-0.5">
+                                        {t("due", "splatnosť", "esedékes")} {formatDateLocalized(rec.dueDate, userLanguage)}
                                       </div>
-                                    ) : (
-                                      <span className="text-slate-400 italic text-[11px]">
-                                        {t("Uncategorized", "Bez kategórie", "Kategória nélkül")}
-                                      </span>
                                     )}
                                   </td>
 
-                                  {/* 4. Link / Scope (Project or Client or Global) */}
+                                  {renderLedgerSourceCells(rec)}
+
+                                  {/* 5. Payment status — editable straight from the row */}
                                   <td className="py-3 px-4">
-                                    {rec.projectId ? (
-                                      (() => {
-                                        const projectLead = project ? leads.find((l) => l.id === project.leadId || l.id === project.clientId) : null;
-                                        const pName = projectLead ? `${projectLead.name}` : `Projekt ${rec.projectId.slice(0, 8)}`;
-                                        return (
-                                          <button
-                                            type="button"
-                                            onClick={() => onOpenProject?.(rec.projectId!)}
-                                            className="inline-flex items-center gap-1.5 px-2 py-1 bg-indigo-50  hover:bg-indigo-100 text-indigo-700  rounded-lg text-xs font-semibold transition-colors cursor-pointer"
-                                          >
-                                            <Briefcase className="h-3.5 w-3.5 shrink-0" />
-                                            <span className="truncate max-w-[140px]" title={pName}>
-                                              {pName}
-                                            </span>
-                                          </button>
-                                        );
-                                      })()
-                                    ) : rec.clientId ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => onOpenClient?.(rec.clientId!)}
-                                        className="inline-flex items-center gap-1.5 px-2 py-1 bg-emerald-50  hover:bg-emerald-100 text-emerald-700  rounded-lg text-xs font-semibold transition-colors cursor-pointer"
-                                      >
-                                        <User className="h-3.5 w-3.5 shrink-0" />
-                                        <span className="truncate max-w-[140px]" title={client?.name || rec.clientId}>
-                                          {client?.name || rec.clientId.slice(0, 8)}
-                                        </span>
-                                      </button>
+                                    {canEdit ? (
+                                      <CustomSelect
+                                        size="sm"
+                                        value={rec.status}
+                                        onChange={(next) => handleInlineStatusChange(rec, next as FinancialStatus)}
+                                        options={movementStatusOptions}
+                                        unstyled
+                                        className={`gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border cursor-pointer hover:brightness-95 ${movementStatusBadgeClass(rec.status)}`}
+                                      />
                                     ) : (
-                                      <span className="inline-flex items-center gap-1 text-[11px] text-slate-500 font-medium">
-                                        <Globe className="h-3 w-3 text-slate-400 shrink-0" />
-                                        <span>{t("Global Company", "Globálne firemné", "Globális vállalati")}</span>
+                                      <span
+                                        className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border ${movementStatusBadgeClass(rec.status)}`}
+                                      >
+                                        <span className={`h-1.5 w-1.5 rounded-full shrink-0 ${MOVEMENT_STATUS_DOT[rec.status]}`} />
+                                        {movementStatusLabel(rec.status)}
                                       </span>
                                     )}
                                   </td>
 
-                                  {/* 5. Value with Color Coding & Recurring Icon */}
+                                  {/* 6. Value with Color Coding & Recurring Icon */}
                                   <td className="py-3 px-4 text-right">
                                     <div className="flex items-center justify-end gap-1.5">
                                       <span
                                         className={`font-black text-sm ${
-                                          isExpense
+                                          isUncountedRuleRow
+                                            ? "text-slate-400 "
+                                            : isExpense
                                             ? "text-rose-600 "
                                             : "text-emerald-600 "
                                         }`}
@@ -4699,29 +6094,31 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                       </span>
 
                                       {/* Recurring Expense/Income icon next to value */}
-                                      {rec.isRecurring && (
-                                        <span
-                                          className="p-1 rounded-md bg-purple-50  text-purple-600  border border-purple-200 "
-                                          title={t(
-                                            `Recurring movement (${rec.recurringFrequency || "monthly"})`,
-                                            `Pravidelný pohyb (${rec.recurringFrequency || "mesačne"})`,
-                                            `Rendszeres tétel (${rec.recurringFrequency || "havi"})`
-                                          )}
-                                        >
-                                          <RefreshCw className="h-3 w-3" />
-                                        </span>
-                                      )}
+                                      {rec.isRecurring && renderRecurringValueIcon(rec)}
                                     </div>
 
-                                    {/* Estimated amount subtitle if different from real */}
-                                    {rec.amountPlanned !== rec.amountReal && rec.amountReal > 0 && (
-                                      <div className="text-[10px] text-slate-400 mt-0.5">
-                                        est: {money(rec.amountPlanned)}
+                                    {isUncountedRuleRow ? (
+                                      <div
+                                        className="text-[10px] text-slate-400 mt-0.5"
+                                        title={t(
+                                          "This row is the recurring rule itself. A charge before it already paid for this period, so it is not added to the month's totals. The rule's charges are the rows marked Recurring.",
+                                          "Tento riadok je samotný pravidelný pohyb. Obdobie už pokryla platba pred ním, preto sa do súčtu mesiaca nepripočítava. Platby pohybu sú riadky označené Pravidelné.",
+                                          "Ez a sor maga az ismétlődő tétel. Az időszakot már egy korábbi terhelés fedezte, ezért nem adódik a havi összeghez. A terhelései az Ismétlődő jelölésű sorok."
+                                        )}
+                                      >
+                                        {t("rule · not counted", "pravidlo · nezapočítané", "szabály · nem számolva")}
                                       </div>
+                                    ) : (
+                                      /* Estimated amount subtitle — the still-outstanding part, same rule as splitRecordAmounts */
+                                      amountEstimated !== 0 && (
+                                        <div className="text-[10px] text-slate-400 mt-0.5">
+                                          est: {money(amountEstimated)}
+                                        </div>
+                                      )
                                     )}
                                   </td>
 
-                                  {/* 6. Action buttons */}
+                                  {/* 7. Action buttons */}
                                   <td className="py-3 px-4 text-right">
                                     <div className="flex items-center justify-end gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
                                       <button
@@ -4755,28 +6152,28 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             </div>
 
             {/* Infinite Scroll Loading Sentinel */}
-            {filteredMovements.length > 0 && (
+            {movementsSummary.rowCount > 0 && (
               <div
                 ref={movementsSentinelRef}
                 className="py-6 border-t border-slate-100  flex items-center justify-center text-xs text-slate-400 font-medium"
               >
-                {movementsVisibleCount < filteredMovements.length ? (
+                {movementsVisibleCount < movementsSummary.rowCount ? (
                   <div className="flex items-center gap-2">
                     <RefreshCw className="h-3.5 w-3.5 animate-spin text-purple-600" />
                     <span>
                       {t(
-                        `Loading more movements... (showing ${Math.min(movementsVisibleCount, filteredMovements.length)} of ${filteredMovements.length})`,
-                        `Načítavam ďalšie pohyby... (zobrazených ${Math.min(movementsVisibleCount, filteredMovements.length)} z ${filteredMovements.length})`,
-                        `További mozgások betöltése... (${Math.min(movementsVisibleCount, filteredMovements.length)} / ${filteredMovements.length})`
+                        `Loading more movements... (showing ${Math.min(movementsVisibleCount, movementsSummary.rowCount)} of ${movementsSummary.rowCount})`,
+                        `Načítavam ďalšie pohyby... (zobrazených ${Math.min(movementsVisibleCount, movementsSummary.rowCount)} z ${movementsSummary.rowCount})`,
+                        `További mozgások betöltése... (${Math.min(movementsVisibleCount, movementsSummary.rowCount)} / ${movementsSummary.rowCount})`
                       )}
                     </span>
                   </div>
                 ) : (
                   <span className="text-slate-400">
                     {t(
-                      `✓ All ${filteredMovements.length} movements loaded`,
-                      `✓ Všetkých ${filteredMovements.length} pohybov načítaných`,
-                      `✓ Mind a(z) ${filteredMovements.length} mozgás betöltve`
+                      `✓ All ${movementsSummary.rowCount} movements loaded`,
+                      `✓ Všetkých ${movementsSummary.rowCount} pohybov načítaných`,
+                      `✓ Mind a(z) ${movementsSummary.rowCount} mozgás betöltve`
                     )}
                   </span>
                 )}
@@ -4790,7 +6187,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       {activeTab === "recurring" && (
         <div className="space-y-4 animate-in fade-in duration-200">
           {/* TOP METRIC CARDS */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
             {/* Card 1: Monthly Recurring Commitment */}
             <div className="p-4 rounded-3xl bg-white  border border-slate-200/80  shadow-sm flex items-center gap-3.5">
               <div className="p-3 rounded-2xl bg-rose-50  text-rose-600 ">
@@ -4818,6 +6215,38 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 </div>
                 <div className="text-lg font-black text-slate-900 ">
                   -{money(recurringMetrics.totalAnnualExpense)}
+                  <span className="text-xs font-semibold text-slate-400 ml-1">/ {t("yr", "rok", "év")}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Card 1b: Monthly Recurring Income */}
+            <div className="p-4 rounded-3xl bg-white  border border-slate-200/80  shadow-sm flex items-center gap-3.5">
+              <div className="p-3 rounded-2xl bg-emerald-50  text-emerald-600 ">
+                <TrendingUp className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  {t("Monthly Recurring Income", "Mesačný pravidelný príjem", "Havi rendszeres bevétel")}
+                </div>
+                <div className="text-lg font-black text-emerald-600 ">
+                  +{money(recurringMetrics.totalMonthlyIncome)}
+                  <span className="text-xs font-semibold text-slate-400 ml-1">/ {t("mo", "mes", "hó")}</span>
+                </div>
+              </div>
+            </div>
+
+            {/* Card 2b: Annual Recurring Income Projection */}
+            <div className="p-4 rounded-3xl bg-white  border border-slate-200/80  shadow-sm flex items-center gap-3.5">
+              <div className="p-3 rounded-2xl bg-emerald-50  text-emerald-600 ">
+                <Calendar className="h-5 w-5" />
+              </div>
+              <div>
+                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+                  {t("Annual Recurring Income Projection", "Ročný projektovaný príjem", "Éves tervezett bevétel")}
+                </div>
+                <div className="text-lg font-black text-slate-900 ">
+                  +{money(recurringMetrics.totalAnnualIncome)}
                   <span className="text-xs font-semibold text-slate-400 ml-1">/ {t("yr", "rok", "év")}</span>
                 </div>
               </div>
@@ -4859,8 +6288,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   }
                   return (
                     <div className="text-xs font-bold text-slate-900  truncate">
-                      <span className="text-rose-600  font-black">
-                        {money(upcoming.record.amountReal || upcoming.record.amountPlanned)}
+                      <span className={`font-black ${upcoming.record.type === "income" ? "text-emerald-600 " : "text-rose-600 "}`}>
+                        {upcoming.record.type === "income" ? "+" : "-"}{money(upcoming.amount)}
                       </span>{" "}
                       – {upcoming.record.title}{" "}
                       <span className="text-[10px] text-amber-600  font-semibold">
@@ -4900,6 +6329,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   </button>
                 )}
 
+                {canEdit && (
                 <button
                   type="button"
                   onClick={() => handleOpenCreateRecurringModal("expense", "global")}
@@ -4908,6 +6338,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   <Plus className="h-4 w-4" />
                   <span>{t("New Recurring Expense", "Nový pravidelný výdavok", "Új rendszeres kiadás")}</span>
                 </button>
+                )}
               </div>
             </div>
 
@@ -5040,11 +6471,33 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                       const client = leads.find((l) => l.id === rec.clientId || l.id === project?.clientId || l.id === project?.leadId);
                       const catBreadcrumbs = getCategoryBreadcrumbs(rec.categoryId);
                       const rootCat = catBreadcrumbs[0];
-                      const isPaused = rec.status === "cancelled";
+                      const isPaused = isRecurringPaused(rec);
                       const amount = rec.amountReal > 0 ? rec.amountReal : rec.amountPlanned;
-                      const monthlyCost = getMonthlyEquivalent(amount, rec.recurringFrequency);
-                      const { dateStr, daysLeft } = getNextRecurringDueDate(rec);
+                      // What this rule actually charges in the current calendar
+                      // month, calendar- and history-aware — the same rule the
+                      // KPI cards above use, so the two can never disagree for
+                      // the same month (see F2 of the derived-numbers audit).
+                      // A flat amount × 52/12 or /12 approximation used to be
+                      // shown here instead, right for no month of a weekly rule.
+                      const currentMonthStart = `${forecastToday.slice(0, 7)}-01`;
+                      const currentMonthDate = new Date(`${forecastToday}T00:00:00.000Z`);
+                      const currentMonthEnd = new Date(
+                        Date.UTC(currentMonthDate.getUTCFullYear(), currentMonthDate.getUTCMonth() + 1, 0)
+                      )
+                        .toISOString()
+                        .slice(0, 10);
+                      const monthlyCost = recurringTotalInRange(rec, currentMonthStart, currentMonthEnd);
+                      const nextCharge = getNextRecurringDueDate(rec);
                       const cadenceText = getRecurrenceDescription(rec);
+                      // Amounts the rule used to charge, so a price rise reads
+                      // as "600 since 17.9." instead of silently restating the
+                      // months that were paid at 500.
+                      const pinnedAmounts = [...(rec.recurringAmountHistory || [])].sort((a, b) =>
+                        a.until.localeCompare(b.until)
+                      );
+                      const priceSince = pinnedAmounts.length
+                        ? shiftIsoDate(pinnedAmounts[pinnedAmounts.length - 1].until, 1)
+                        : null;
 
                       return (
                         <tr
@@ -5091,12 +6544,16 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                             </div>
                             <div className="flex items-center gap-1.5 text-[11px] text-slate-400 mt-1">
                               <Clock className="h-3 w-3 text-slate-400 shrink-0" />
-                              <span>
-                                {t("Next:", "Najbližšie:", "Következő:")} {formatDateLocalized(dateStr, userLanguage)}{" "}
-                                <span className={daysLeft <= 3 ? "text-rose-500 font-bold" : "text-slate-500"}>
-                                  ({daysLeft === 0 ? t("Today", "Dnes", "Ma") : t(`in ${daysLeft}d`, `o ${daysLeft} dní`, `${daysLeft} nap múlva`)})
+                              {nextCharge ? (
+                                <span>
+                                  {t("Next:", "Najbližšie:", "Következő:")} {formatDateLocalized(nextCharge.dateStr, userLanguage)}{" "}
+                                  <span className={nextCharge.daysLeft <= 3 ? "text-rose-500 font-bold" : "text-slate-500"}>
+                                    ({nextCharge.daysLeft === 0 ? t("Today", "Dnes", "Ma") : t(`in ${nextCharge.daysLeft}d`, `o ${nextCharge.daysLeft} dní`, `${nextCharge.daysLeft} nap múlva`)})
+                                  </span>
                                 </span>
-                              </span>
+                              ) : (
+                                <span>{t("No further charges", "Už sa neúčtuje", "Nincs több terhelés")}</span>
+                              )}
                             </div>
                           </td>
 
@@ -5175,6 +6632,19 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                             <div className="text-[10px] text-slate-400 font-medium mt-0.5">
                               ≈ -{money(monthlyCost)} / {t("month", "mesiac", "hónap")}
                             </div>
+                            {priceSince && (
+                              <div
+                                className="text-[10px] text-purple-600  font-semibold mt-0.5"
+                                title={pinnedAmounts
+                                  .map(
+                                    (period) =>
+                                      `${money(recurringChargeAmount(period))} ${t("until", "do", "eddig")} ${formatDateLocalized(period.until, userLanguage)}`
+                                  )
+                                  .join("\n")}
+                              >
+                                {t("since", "od", "ettől")} {formatDateLocalized(priceSince, userLanguage)}
+                              </div>
+                            )}
                           </td>
 
                           {/* 6. Active / Paused Switch */}
@@ -5251,7 +6721,15 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             {/* Incomes vs Expenses tree switcher */}
             <div className="flex items-center gap-2 bg-slate-100  p-1 rounded-2xl">
               <button
-                onClick={() => setCatTreeType("expense")}
+                onClick={() => {
+                  // A parent id from the tree just left behind must not survive
+                  // the switch — it would be silently invisible in the "Parent
+                  // Category" select (its option belongs to the other type) while
+                  // still being submitted, putting the new category's money on
+                  // the wrong side of the ledger (see F1).
+                  setCatTreeType("expense");
+                  setNewCatParentId("");
+                }}
                 className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   catTreeType === "expense" ? "bg-white  text-rose-600 shadow-sm" : "text-slate-500"
                 }`}
@@ -5259,7 +6737,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 {t("Expense Categories", "Kategórie výdavkov", "Kiadási kategóriák")}
               </button>
               <button
-                onClick={() => setCatTreeType("income")}
+                onClick={() => {
+                  setCatTreeType("income");
+                  setNewCatParentId("");
+                }}
                 className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                   catTreeType === "income" ? "bg-white  text-emerald-600 shadow-sm" : "text-slate-500"
                 }`}
@@ -5277,6 +6758,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               </label>
               <input
                 type="text"
+                maxLength={150}
                 value={newCatName}
                 onChange={(e) => setNewCatName(e.target.value)}
                 placeholder={t("e.g. Meta Ads, Truck Transport, LAM 5+...", "napr. Meta Ads, Preprava, LAM 5+...", "pl. Google Ads, Szállítás...")}
@@ -5293,12 +6775,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 onChange={(val) => setNewCatParentId(val)}
                 options={[
                   { value: "", label: t("★ None (Create as Level 1 Root)", "★ Žiadna (Vytvoriť ako Hlavnú L1)", "★ Nincs (Fő L1 kategória)") },
-                  ...financialCategories
-                    .filter((c) => c.type === catTreeType && c.level < 3)
-                    .map((c) => ({
-                      value: c.id,
-                      label: c.level === 1 ? `● ${c.name} (L1)` : `  ↳ ${c.name} (L2)`,
-                    })),
+                  ...(catTreeType === "expense" ? categoryTree.expenseTree : categoryTree.incomeTree).flatMap((l1) => [
+                    { value: l1.id, label: `● ${l1.name} (L1)` },
+                    ...l1.children.map((l2) => ({ value: l2.id, label: `  ↳ ${l2.name} (L2)` })),
+                  ]),
                 ]}
                 size="sm"
                 className="w-full text-xs font-semibold rounded-xl bg-white border-slate-200"
@@ -5306,12 +6786,16 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             </div>
 
             <div>
-              <label className="text-[11px] font-bold text-slate-500 block mb-1">{t("Color", "Farba", "Szín")}</label>
-              <input
-                type="color"
-                value={newCatColor}
-                onChange={(e) => setNewCatColor(e.target.value)}
-                className="h-9 w-12 rounded-xl bg-white  border border-slate-200  cursor-pointer p-0.5"
+              <label className="text-[11px] font-bold text-slate-500 block mb-1">
+                {newCatParentId && !newCatColorTouched ? t("Color (inherited)", "Farba (zdedená)", "Szín (örökölt)") : t("Color", "Farba", "Szín")}
+              </label>
+              <ColorPicker
+                variant="field"
+                value={newCatFormColor}
+                onChange={(color) => {
+                  setNewCatColor(color);
+                  setNewCatColorTouched(true);
+                }}
               />
             </div>
 
@@ -5323,63 +6807,38 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             </button>
           </form>
 
-          {/* Tree Rendering */}
-          <div className="space-y-3">
-            {(catTreeType === "expense" ? categoryTree.expenseTree : categoryTree.incomeTree).map((l1: any) => (
+          {/* Tree Rendering: every row drags — onto a row's edge to sit beside it, onto its middle to go under it */}
+          <p className="-mt-3 text-[11px] text-slate-400 flex items-center gap-1.5">
+            <GripVertical className="h-3.5 w-3.5 shrink-0" />
+            {t(
+              "Drag a category to reorder it or move it under another one; click its colour dot to recolour it.",
+              "Potiahnutím kategórie zmeníte poradie alebo ju presuniete pod inú; kliknutím na farebnú bodku zmeníte farbu.",
+              "Húzással átrendezheti vagy más kategória alá helyezheti; a színes pontra kattintva módosíthatja a színét."
+            )}
+          </p>
+          <div
+            ref={categoryTreeRef}
+            className="space-y-3"
+            onDragLeave={(e) => {
+              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setCategoryDropTarget(null);
+            }}
+          >
+            {(catTreeType === "expense" ? categoryTree.expenseTree : categoryTree.incomeTree).map((l1) => (
               <div key={l1.id} className="border border-slate-200  rounded-2xl overflow-hidden bg-white ">
                 {/* Level 1 Header */}
-                <div className="p-3.5 bg-slate-50/80  flex items-center justify-between border-b border-slate-100 ">
-                  <div className="flex items-center gap-2.5">
-                    <span className="h-3.5 w-3.5 rounded-full shrink-0 shadow-sm" style={{ backgroundColor: l1.color }} />
-                    <span className="font-bold text-xs text-slate-900  uppercase tracking-wider">{l1.name}</span>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-200  text-slate-600 ">Level 1</span>
-                  </div>
-                  <button
-                    onClick={() => handleDeleteCategory(l1.id)}
-                    className="p-1 text-slate-400 hover:text-rose-600"
-                    title={t("Delete category", "Vymazať", "Törlés")}
-                  >
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
+                {renderCategoryRow(l1, 1)}
 
                 {/* Level 2 Children */}
-                {l1.children && l1.children.length > 0 && (
+                {l1.children.length > 0 && (
                   <div className="p-3 space-y-2 bg-slate-50/30 ">
-                    {l1.children.map((l2: any) => (
+                    {l1.children.map((l2) => (
                       <div key={l2.id} className="pl-4 border-l-2 border-slate-200  space-y-2">
-                        <div className="flex items-center justify-between p-2 rounded-xl bg-white  border border-slate-100 ">
-                          <div className="flex items-center gap-2">
-                            <span className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: l2.color || l1.color }} />
-                            <span className="font-semibold text-xs text-slate-800 ">{l2.name}</span>
-                            <span className="px-1.5 py-0.2 rounded text-[10px] bg-slate-100  text-slate-500">Level 2</span>
-                          </div>
-                          <button
-                            onClick={() => handleDeleteCategory(l2.id)}
-                            className="p-1 text-slate-400 hover:text-rose-600"
-                          >
-                            <Trash2 className="h-3 w-3" />
-                          </button>
-                        </div>
+                        {renderCategoryRow(l2, 2, categoryColor(l1))}
 
                         {/* Level 3 Children */}
-                        {l2.children && l2.children.length > 0 && (
+                        {l2.children.length > 0 && (
                           <div className="pl-6 space-y-1">
-                            {l2.children.map((l3: any) => (
-                              <div key={l3.id} className="flex items-center justify-between p-1.5 px-3 rounded-lg bg-slate-50  border border-slate-100  text-xs">
-                                <div className="flex items-center gap-2">
-                                  <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: l3.color || l2.color }} />
-                                  <span className="text-slate-700  font-medium">{l3.name}</span>
-                                  <span className="text-[10px] text-slate-400">(Level 3)</span>
-                                </div>
-                                <button
-                                  onClick={() => handleDeleteCategory(l3.id)}
-                                  className="p-0.5 text-slate-400 hover:text-rose-600"
-                                >
-                                  <Trash2 className="h-3 w-3" />
-                                </button>
-                              </div>
-                            ))}
+                            {l2.children.map((l3) => renderCategoryRow(l3, 3, categoryColor(l2) || categoryColor(l1)))}
                           </div>
                         )}
                       </div>
@@ -5388,6 +6847,25 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 )}
               </div>
             ))}
+
+            {/* Drop zone: the end of the main categories */}
+            {draggedCategoryId && (
+              <div
+                onDragOver={(e) => handleCategoryDragOver(e, null)}
+                onDrop={handleCategoryDrop}
+                className={`animate-in fade-in slide-in-from-bottom-1 duration-200 rounded-2xl border-2 border-dashed px-4 py-3 text-center text-xs font-semibold transition-colors ${
+                  categoryDropTarget?.targetId === null
+                    ? "border-indigo-400 bg-indigo-50 text-indigo-600"
+                    : "border-slate-200 text-slate-400"
+                }`}
+              >
+                {t(
+                  "Drop here to make it a main category (L1) at the end",
+                  "Pustite sem — stane sa hlavnou kategóriou (L1) na konci zoznamu",
+                  "Engedje el ide — fő kategória (L1) lesz a lista végén"
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -5577,6 +7055,148 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           </div>
         </div>
       )}
+
+      {/* 9b. SETTLED-AMOUNT PROMPT (inline status change in the movements ledger) */}
+      {statusPrompt && (() => {
+        const { record, nextStatus, amount } = statusPrompt;
+        const isExpense = record.type === "expense";
+        const parsed = parseFloat(amount.replace(",", "."));
+        const entered = isFinite(parsed) ? parsed : 0;
+        const remaining = Math.round((record.amountPlanned - entered) * 100) / 100;
+
+        return (
+          <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+            <form
+              onSubmit={handleConfirmStatusAmount}
+              className="bg-white rounded-3xl border border-slate-200 shadow-2xl max-w-md w-full overflow-hidden animate-in fade-in-50 zoom-in-95 duration-200"
+            >
+              {/* Header */}
+              <div className="px-6 pt-5 pb-4 flex items-start justify-between gap-3 border-b border-slate-100">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div
+                    className={`p-2.5 rounded-2xl shrink-0 ${
+                      nextStatus === "paid"
+                        ? "bg-emerald-500/10 text-emerald-600"
+                        : "bg-sky-500/10 text-sky-600"
+                    }`}
+                  >
+                    {nextStatus === "paid" ? <CheckCircle2 className="h-5 w-5" /> : <Clock className="h-5 w-5" />}
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-base font-bold text-slate-900">
+                      {nextStatus === "paid"
+                        ? t("Mark as paid", "Označiť ako uhradené", "Megjelölés fizetettként")
+                        : t("Record a partial payment", "Zaznamenať čiastočnú úhradu", "Részleges fizetés rögzítése")}
+                    </h3>
+                    <p className="text-xs text-slate-400 mt-0.5 truncate" title={record.title}>
+                      {record.title}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setStatusPrompt(null)}
+                  className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition-colors cursor-pointer shrink-0"
+                  title={t("Close panel", "Zatvoriť panel", "Bezárás")}
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              {/* Body */}
+              <div className="p-6 space-y-4">
+                <div className="flex items-center justify-between px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200/80">
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                    {t("Planned amount", "Plánovaná suma", "Tervezett összeg")}
+                  </span>
+                  <span className={`text-sm font-black ${isExpense ? "text-rose-600" : "text-emerald-600"}`}>
+                    {isExpense ? "-" : "+"}{money(record.amountPlanned)}
+                  </span>
+                </div>
+
+                <div>
+                  <label htmlFor="status-prompt-amount" className="text-xs font-bold text-slate-700 block mb-1">
+                    {nextStatus === "paid"
+                      ? t("Amount actually paid", "Skutočne uhradená suma", "Tényleges fizetett összeg")
+                      : t("Amount paid so far", "Doteraz uhradená suma", "Eddig fizetett összeg")}
+                  </label>
+                  <input
+                    id="status-prompt-amount"
+                    ref={statusPromptInputRef}
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    autoFocus
+                    value={amount}
+                    onChange={(e) => setStatusPrompt({ ...statusPrompt, amount: e.target.value })}
+                    onFocus={(e) => e.currentTarget.select()}
+                    placeholder="0.00"
+                    className="w-full px-3.5 py-2.5 bg-white border border-slate-200 rounded-xl text-sm font-bold text-slate-900 transition-all duration-150 focus:outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/20"
+                  />
+                  <p className="text-[11px] text-slate-400 mt-1.5">
+                    {t(
+                      "This is written to the movement as its real amount.",
+                      "Táto suma sa zapíše do pohybu ako reálna suma.",
+                      "Ez az összeg kerül a tételbe valós összegként."
+                    )}
+                  </p>
+                </div>
+
+                {nextStatus === "partially_paid" && entered > 0 && (
+                  <div
+                    className={`flex items-center justify-between px-3.5 py-2.5 rounded-2xl border text-xs font-bold ${
+                      remaining > 0
+                        ? "bg-amber-50 text-amber-700 border-amber-200"
+                        : "bg-emerald-50 text-emerald-700 border-emerald-200"
+                    }`}
+                  >
+                    <span className="uppercase tracking-wider">
+                      {remaining > 0
+                        ? t("Still outstanding", "Zostáva doplatiť", "Még hátralévő")
+                        : t("Nothing outstanding", "Nezostáva nič doplatiť", "Nincs hátralék")}
+                    </span>
+                    <span className="font-black">{money(Math.max(remaining, 0))}</span>
+                  </div>
+                )}
+
+                {!record.paidDate && (
+                  <p className="text-[11px] text-slate-400">
+                    {t(
+                      `The payment date is set to today (${formatDateLocalized(todayLocal(), userLanguage)}) — edit the movement to change it.`,
+                      `Dátum úhrady sa nastaví na dnes (${formatDateLocalized(todayLocal(), userLanguage)}) — zmeníte ho v úprave pohybu.`,
+                      `A fizetés dátuma a mai nap lesz (${formatDateLocalized(todayLocal(), userLanguage)}) — a tétel szerkesztésével módosítható.`
+                    )}
+                  </p>
+                )}
+              </div>
+
+              {/* Footer */}
+              <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/80 flex items-center justify-between gap-3">
+                <button
+                  type="button"
+                  onClick={() => setStatusPrompt(null)}
+                  className="px-4 py-2.5 text-xs font-bold text-slate-600 hover:bg-slate-200/70 rounded-xl transition-colors cursor-pointer active:scale-[0.98]"
+                >
+                  {t("Cancel", "Zrušiť", "Mégsem")}
+                </button>
+                <button
+                  type="submit"
+                  className={`px-6 py-2.5 text-white text-xs font-bold rounded-xl cursor-pointer shadow-md transition-all duration-150 active:scale-[0.98] ${
+                    nextStatus === "paid"
+                      ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-600/20"
+                      : "bg-sky-600 hover:bg-sky-700 shadow-sky-600/20"
+                  }`}
+                >
+                  {nextStatus === "paid"
+                    ? t("Confirm payment", "Potvrdiť úhradu", "Fizetés megerősítése")
+                    : t("Save partial payment", "Uložiť čiastočnú úhradu", "Részleges fizetés mentése")}
+                </button>
+              </div>
+            </form>
+          </div>
+        );
+      })()}
 
       {/* 10. CATEGORY TREE MANAGEMENT MODAL */}
       {isCatModalOpen && (

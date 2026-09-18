@@ -8,10 +8,14 @@ import {
   Zap, Clock, UserPlus, Users, CheckSquare, ClipboardList,
   Bot, Calendar, User, Filter, Code, MapPin, Phone, Briefcase, Globe, FileText,
   ChevronDown, ChevronUp, Move, Sparkles, Send, Star, Bell, Flame, Heart, Shield, Wrench, Package, Award, Target, Lock, Search, Sliders, Tag, Gift, Compass, Paperclip, Printer, Headphones, Video, Radio, Megaphone, Bookmark, DollarSign, CreditCard, TrendingUp, BarChart2, HelpCircle, Info, Smile, ThumbsUp,
-  Minus, Maximize2
+  Minus, Maximize2, ArrowRightLeft
 } from "lucide-react";
 import type { Language } from "../utils/translations";
+import type { ProjectType } from "../types";
+import { PROJECT_STATUSES } from "../types";
+import { projectStatusLabel } from "../utils/projects";
 import { CustomSelect } from "./ui/CustomSelect";
+import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 
 const SYSTEM_COLORS = [
   { name: "Purple", hex: "#7e22ce" },
@@ -67,8 +71,12 @@ interface AutomationViewProps {
   taskStates: string[];
   leadStates: string[];
   leadSources: string[];
+  /** Used by the "change project status" action to narrow which project it moves. */
+  projectTypes?: ProjectType[];
   /** Switches the app's main view — used to deep-link into Settings. */
   setAppTab?: (tab: string) => void;
+  /** Role access for the automation module. `edit: false` is list/logs only. */
+  access?: ModuleAccess;
 }
 
 interface VariableInputFieldProps {
@@ -594,6 +602,7 @@ const ConditionBuilder: React.FC<ConditionBuilderProps> = ({
         F("$trigger.owner", t("Assignee", "Zodpovedný", "Felelős"), "select", users.map(u => u.name).filter(Boolean)),
         F("$trigger.deadline", t("Deadline", "Termín", "Határidő")),
         F("$trigger.relatedLeadId", t("Related lead ID", "ID súvisiaceho leadu", "Kapcsolt lead ID")),
+        F("$trigger.relatedProjectId", t("Related project ID", "ID súvisiaceho projektu", "Kapcsolt projekt ID")),
         F("$trigger.isLocking", t("Blocking task", "Blokujúca úloha", "Blokkoló feladat"), "bool"),
         F("$trigger.isAiGenerated", t("Created by AI", "Vytvorené AI", "AI által létrehozva"), "bool"),
       );
@@ -862,8 +871,12 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
   taskStates,
   leadStates,
   leadSources,
-  setAppTab
+  projectTypes = [],
+  setAppTab,
+  access = FULL_MODULE_ACCESS
 }) => {
+  const canEdit = access.edit;
+  const canDelete = access.delete;
   const [workflows, setWorkflows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"list" | "editor" | "logs" | "settings">("list");
@@ -1259,6 +1272,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
   // Save Settings
   const saveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!canEdit) return;
     setSavingSettings(true);
     try {
       const res = await fetch("/api/workflows.php?action=save_settings", {
@@ -1283,6 +1297,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
   // Clone workflow
   const cloneWorkflow = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!canEdit) return;
     try {
       const res = await fetch("/api/workflows.php?action=clone", {
         method: "POST",
@@ -1304,6 +1319,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
   // Toggle active state
   const toggleActive = async (id: string, currentStatus: boolean, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!canEdit) return;
     try {
       const nextStatus = !currentStatus;
       const res = await fetch("/api/workflows.php?action=toggle_active", {
@@ -1324,6 +1340,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
   // Delete workflow
   const deleteWorkflow = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!canDelete) return;
     if (!window.confirm(t("Are you sure you want to delete this workflow?", "Naozaj chcete vymazať tento workflow?", "Biztosan törli ezt a munkafolyamatot?"))) {
       return;
     }
@@ -1343,8 +1360,8 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
     }
   };
 
-  // Initialize new workflow editor
   const handleNewWorkflow = (shouldUpdateHash = true) => {
+    if (!canEdit) return;
     setSelectedWorkflow(null);
     setWorkflowName("");
     setWorkflowDesc("");
@@ -1405,6 +1422,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
 
   // Save workflow
   const saveWorkflow = async () => {
+    if (!canEdit) return;
     if (!workflowName.trim()) {
       showToast(t("Workflow name is required", "Názov workflow je povinný", "A név megadása kötelező"), "error");
       return;
@@ -1442,6 +1460,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
 
   // Add node to editor
   const addNode = (type: "condition" | "splitter" | "ai_agent" | "action", subType = "") => {
+    if (!canEdit) return;
     const newId = `node-${Date.now()}`;
     let name = "";
     let data: any = {};
@@ -1489,6 +1508,31 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
       } else if (subType === "send_email") {
         name = t("Send Email", "Odoslať e-mail", "E-mail küldése");
         data = { type: "send_email", to: "{{$trigger.email}}", subject: "Welcome to CCRM", body: "Hello {{$trigger.name}}, ..." };
+      } else if (subType === "update_project_status") {
+        name = t("Change Project Status", "Zmeniť stav projektu", "Projekt állapotának módosítása");
+        // Defaults to the project paired with the lead the workflow is about —
+        // the case that needs no configuration at all beyond the new status.
+        data = {
+          type: "update_project_status",
+          target: "lead",
+          project_type_id: "any",
+          scope: "latest",
+          project_id: "",
+          status: "active"
+        };
+      } else if (subType === "convert_lead_to_project") {
+        name = t("Convert Lead to Project", "Konvertovať lead na projekt", "Lead konvertálása projektté");
+        // Seeded with the first configured project type so the node is usable
+        // the moment it is dropped; the rest matches what the "Convert to
+        // Project" button on a lead does — the lead's owner manages it, and a
+        // lead that already has such a project is left alone.
+        data = {
+          type: "convert_lead_to_project",
+          project_type_id: projectTypes[0]?.id || "",
+          status: "new",
+          manager: "",
+          skip_if_exists: true
+        };
       } else {
         name = t("Create Client", "Vytvoriť klienta", "Ügyfél létrehozása");
         data = { type: "create_client", name: "{{$trigger.name}}", client_type: "business", status: "new" };
@@ -1518,6 +1562,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
 
   // Remove node
   const removeNode = (nodeId: string) => {
+    if (!canEdit) return;
     if (nodeId === "node-trigger") {
       alert(t("Trigger node cannot be deleted.", "Spúšťací uzol nie je možné vymazať.", "Az indító csomópont nem törölhető."));
       return;
@@ -1536,6 +1581,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
     if (target.closest('button') || target.closest('input') || target.closest('textarea') || target.closest('select') || target.closest('.connection-handle')) {
       return;
     }
+    if (!canEdit) return;
 
     e.stopPropagation();
     const node = nodes.find(n => n.id === nodeId);
@@ -1600,6 +1646,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
 
   const handleStartConnection = (nodeId: string, handleId?: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    if (!canEdit) return;
     setConnectingSource({ nodeId, handleId });
     const node = nodes.find(n => n.id === nodeId);
     if (node) {
@@ -1614,6 +1661,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
 
   const handleCompleteConnection = (targetNodeId: string, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (!canEdit) return;
     if (!connectingSource) return;
     if (connectingSource.nodeId === targetNodeId) {
       setConnectingSource(null);
@@ -1703,6 +1751,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
 
   // Run manual execution test
   const triggerManualRun = async () => {
+    if (!canEdit) return;
     if (!selectedWorkflow) return;
     try {
       const res = await fetch(`/api/workflows.php?action=trigger_manual`, {
@@ -1763,6 +1812,12 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
 
         {/* Global Action Buttons */}
         <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          {!canEdit && (
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider">
+              <Lock className="h-3.5 w-3.5" />
+              {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
+            </span>
+          )}
           {activeTab === "list" ? (
             <>
               <button
@@ -1773,6 +1828,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                 <Settings className="h-4 w-4" />
                 {t("Settings", "Nastavenia", "Beállítások")}
               </button>
+              {canEdit && (
               <button
                 type="button"
                 onClick={() => handleNewWorkflow()}
@@ -1781,6 +1837,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                 <Plus className="h-4.5 w-4.5" />
                 {t("Create Workflow", "Vytvoriť workflow", "Új munkafolyamat")}
               </button>
+              )}
             </>
           ) : (
             <button
@@ -1818,6 +1875,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                 <p className="text-sm text-slate-500 max-w-sm mb-6 font-medium">
                   {t("Set up your first automation to trigger AI actions, notifications or task creation when leads/events change.", "Vytvorte si svoju prvú automatizáciu pre spúšťanie AI akcií, upozornení alebo vytváranie úloh.", "Hozzon létre egy automatizációt a feladatok automatikus indításához.")}
                 </p>
+                {canEdit && (
                 <button
                   type="button"
                   onClick={() => handleNewWorkflow()}
@@ -1826,6 +1884,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                   <Plus className="h-4.5 w-4.5" />
                   {t("Create Workflow", "Vytvoriť workflow", "Új munkafolyamat")}
                 </button>
+                )}
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -1843,6 +1902,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                         {getTriggerIcon(wf.trigger_type)}
                       </div>
                       <div className="flex items-center gap-1">
+                        {canEdit && (
                         <button
                           type="button"
                           onClick={(e) => toggleActive(wf.id, wf.is_active === 1, e)}
@@ -1851,6 +1911,8 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                         >
                           {wf.is_active ? <ToggleRight className="h-6 w-6 text-purple-600" /> : <ToggleLeft className="h-6 w-6 text-slate-400" />}
                         </button>
+                        )}
+                        {canEdit && (
                         <button
                           type="button"
                           onClick={(e) => cloneWorkflow(wf.id, e)}
@@ -1859,6 +1921,8 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                         >
                           <Copy className="h-4 w-4" />
                         </button>
+                        )}
+                        {canDelete && (
                         <button
                           type="button"
                           onClick={(e) => deleteWorkflow(wf.id, e)}
@@ -1867,6 +1931,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                         >
                           <Trash2 className="h-4 w-4" />
                         </button>
+                        )}
                       </div>
                     </div>
 
@@ -1938,6 +2003,8 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
               
               {/* Floating Node Controls Bar */}
               <div ref={pillDropdownRef} className="absolute top-4 left-4 bg-white/95 backdrop-blur border border-slate-200/90 rounded-2xl p-2.5 shadow-lg flex items-center gap-2 z-30">
+                {canEdit && (
+                <>
                 <span className="text-xs font-extrabold text-slate-400 uppercase tracking-wider border-r border-slate-200 pr-3 mr-1 select-none">{t("Add Nodes", "Pridať uzly", "Új csomópontok")}</span>
 
                 {/* AI Agent Pill */}
@@ -2064,6 +2131,28 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                         <span>{t("Create Task", "Vytvoriť úlohu", "Feladat létrehozása")}</span>
                       </button>
 
+                      {/* Projects */}
+                      <div className="mt-1 px-3 py-1 text-[9px] font-extrabold text-purple-600 uppercase tracking-wider bg-purple-50/40 flex items-center gap-1 select-none mb-0.5">
+                        <span className="h-1.5 w-1.5 rounded-full bg-purple-500" />
+                        {t("Projects", "PROJEKTY", "PROJEKTEK")}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => addNode("action", "update_project_status")}
+                        className="w-full flex items-center gap-2.5 px-3.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-purple-50 hover:text-purple-900 text-left transition-colors cursor-pointer"
+                      >
+                        <Briefcase className="h-4 w-4 text-purple-500" />
+                        <span>{t("Change Project Status", "Zmeniť stav projektu", "Projekt állapota")}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => addNode("action", "convert_lead_to_project")}
+                        className="w-full flex items-center gap-2.5 px-3.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-purple-50 hover:text-purple-900 text-left transition-colors cursor-pointer"
+                      >
+                        <ArrowRightLeft className="h-4 w-4 text-purple-500" />
+                        <span>{t("Convert Lead to Project", "Lead na projekt", "Lead projektté")}</span>
+                      </button>
+
                       {/* Email */}
                       <div className="mt-1 px-3 py-1 text-[9px] font-extrabold text-indigo-600 uppercase tracking-wider bg-indigo-50/40 flex items-center gap-1 select-none mb-0.5">
                         <span className="h-1.5 w-1.5 rounded-full bg-indigo-500" />
@@ -2188,6 +2277,9 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                 </div>
                 )}
 
+                </>
+                )}
+
                 {/* Reset View Button */}
                 <button
                   type="button"
@@ -2273,7 +2365,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
 
               {/* Interactive Edge Delete Buttons Layer */}
               <div className="absolute inset-0 pointer-events-none z-20">
-                {edges.map(edge => {
+                {canEdit && edges.map(edge => {
                   const start = getHandleCoords(edge.source, "output", edge.sourceHandle);
                   const end = getHandleCoords(edge.target, "input");
                   const midX = (start.x + end.x) / 2;
@@ -2360,7 +2452,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                               <ChevronUp className="h-3.5 w-3.5" />
                             )}
                           </button>
-                          {node.id !== "node-trigger" && (
+                          {canEdit && node.id !== "node-trigger" && (
                             <button 
                               onClick={(e) => {
                                 e.stopPropagation();
@@ -2412,7 +2504,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                 >
                                   {getTriggerIcon(triggerType)}
                                 </div>
-                                <span className="font-semibold text-slate-750">{getTriggerLabel(triggerType)}</span>
+                                <span className="font-semibold text-slate-700">{getTriggerLabel(triggerType)}</span>
                               </div>
                               <span className="text-slate-400 text-[9px] mr-1">▼</span>
                             </button>
@@ -2656,6 +2748,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                 </div>
                                 <CustomSelect
                                   size="sm"
+                                  className="min-w-0 flex-1"
                                   value={triggerConfig.fromStatus || "any"}
                                   onChange={(v) => setTriggerConfig({ ...triggerConfig, fromStatus: v })}
                                   options={[
@@ -2673,6 +2766,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                 </div>
                                 <CustomSelect
                                   size="sm"
+                                  className="min-w-0 flex-1"
                                   value={triggerConfig.toStatus || "any"}
                                   onChange={(v) => setTriggerConfig({ ...triggerConfig, toStatus: v })}
                                   options={[
@@ -3016,6 +3110,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                     </div>
                                     <CustomSelect
                                       size="sm"
+                                      className="min-w-0 flex-1"
                                       value={node.data.priority || "medium"}
                                       onChange={(v) => updateActionField("priority", v)}
                                       options={[
@@ -3084,6 +3179,217 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                               </div>
                             </div>
                           )}
+
+                          {node.data.type === "update_project_status" && (() => {
+                            const target = node.data.target || "lead";
+                            return (
+                              <div className="space-y-2">
+                                {/* Which project. "Paired with the lead" needs no
+                                    further configuration and covers the common
+                                    case; an explicit id is for a project a
+                                    previous node produced. */}
+                                <div>
+                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("Project", "Projekt", "Projekt")}</label>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <div className="p-1.5 bg-slate-50 border border-slate-100 rounded-lg shrink-0 flex items-center justify-center">
+                                      <Briefcase className="h-3.5 w-3.5 text-slate-400" />
+                                    </div>
+                                    <CustomSelect
+                                      value={target}
+                                      onChange={(v) => updateActionField("target", v)}
+                                      options={[
+                                        { value: "lead", label: t("Paired with the lead", "Spárovaný s leadom", "A leadhez párosított") },
+                                        { value: "project", label: t("A specific project ID", "Konkrétne ID projektu", "Adott projekt azonosító") },
+                                      ]}
+                                    />
+                                  </div>
+                                </div>
+
+                                {target === "project" ? (
+                                  <VariableInputField
+                                    label={t("Project ID", "ID projektu", "Projekt azonosító")}
+                                    value={node.data.project_id || ""}
+                                    onChange={(val) => updateActionField("project_id", val)}
+                                    placeholder="e.g. {{$input.project_id}}"
+                                    icon={<Code className="h-3.5 w-3.5 text-slate-400" />}
+                                    nodes={nodes}
+                                    currentNodeId={node.id}
+                                  />
+                                ) : (
+                                  <div className="grid grid-cols-2 gap-1.5">
+                                    <div>
+                                      <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("Of type", "Typu", "Típusa")}</label>
+                                      <div className="mt-0.5">
+                                        <CustomSelect
+                                          size="sm"
+                                          value={node.data.project_type_id || "any"}
+                                          onChange={(v) => updateActionField("project_type_id", v)}
+                                          options={[
+                                            { value: "any", label: t("Any type", "Akýkoľvek typ", "Bármely típus") },
+                                            ...projectTypes.map((pt) => ({ value: pt.id, label: pt.name })),
+                                          ]}
+                                        />
+                                      </div>
+                                    </div>
+                                    <div>
+                                      <label className="flex items-center gap-1 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                                        {t("How many", "Koľko", "Hány")}
+                                        <span
+                                          className="inline-flex shrink-0 cursor-help"
+                                          title={t(
+                                            "A lead can carry several projects. Newest only moves the one it is working on now.",
+                                            "Lead môže mať viacero projektov. Iba najnovší presunie ten, na ktorom sa práve pracuje.",
+                                            "Egy leadhez több projekt is tartozhat. A legújabb csak az éppen futót mozgatja.",
+                                          )}
+                                        >
+                                          <Info className="h-2.5 w-2.5 text-slate-300" />
+                                        </span>
+                                      </label>
+                                      <div className="mt-0.5">
+                                        <CustomSelect
+                                          size="sm"
+                                          value={node.data.scope || "latest"}
+                                          onChange={(v) => updateActionField("scope", v)}
+                                          options={[
+                                            { value: "latest", label: t("Newest only", "Iba najnovší", "Csak a legújabb") },
+                                            { value: "all", label: t("All of them", "Všetky", "Mindegyik") },
+                                          ]}
+                                        />
+                                      </div>
+                                    </div>
+                                  </div>
+                                )}
+
+                                <div>
+                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("New Status", "Nový stav", "Új állapot")}</label>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <div className="p-1.5 bg-slate-50 border border-slate-100 rounded-lg shrink-0 flex items-center justify-center">
+                                      <Activity className="h-3.5 w-3.5 text-slate-400" />
+                                    </div>
+                                    <CustomSelect
+                                      value={node.data.status || "active"}
+                                      onChange={(v) => updateActionField("status", v)}
+                                      options={PROJECT_STATUSES.map((s) => ({ value: s, label: projectStatusLabel(s, t) }))}
+                                    />
+                                  </div>
+                                </div>
+
+                                <p className="text-[9px] font-semibold text-slate-400 leading-snug">
+                                  {t(
+                                    "A lead with no project yet is skipped, not failed — the run carries on.",
+                                    "Lead bez projektu sa preskočí, nejde o chybu — beh pokračuje ďalej.",
+                                    "A projekt nélküli leadet kihagyja, nem hiba — a futás folytatódik.",
+                                  )}
+                                </p>
+                              </div>
+                            );
+                          })()}
+
+                          {node.data.type === "convert_lead_to_project" && (() => {
+                            /* A type deleted since the node was configured. Kept
+                               visible and flagged rather than silently swapped for
+                               another one — the workflow will say so when it runs. */
+                            const typeId: string = node.data.project_type_id || "";
+                            const typeOptions = projectTypes.map((pt) => ({ value: pt.id, label: pt.name }));
+                            if (typeId && !projectTypes.some((pt) => pt.id === typeId)) {
+                              typeOptions.push({ value: typeId, label: `⚠ ${typeId}` });
+                            }
+                            return (
+                              <div className="space-y-2">
+                                <div>
+                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("Project Type", "Typ projektu", "Projekt típusa")}</label>
+                                  <div className="flex items-center gap-2 mt-0.5">
+                                    <div className="p-1.5 bg-slate-50 border border-slate-100 rounded-lg shrink-0 flex items-center justify-center">
+                                      <Briefcase className="h-3.5 w-3.5 text-slate-400" />
+                                    </div>
+                                    <CustomSelect
+                                      value={typeId}
+                                      onChange={(v) => updateActionField("project_type_id", v)}
+                                      placeholder={t("Choose a type…", "Vyberte typ…", "Válasszon típust…")}
+                                      options={typeOptions}
+                                    />
+                                  </div>
+                                  {!typeOptions.length && (
+                                    <p className="mt-1 text-[9px] font-semibold text-rose-500 leading-snug">
+                                      {t(
+                                        "No project types exist yet. Create one in Projects → Settings first.",
+                                        "Zatiaľ neexistuje žiadny typ projektu. Najprv ho vytvorte v Projekty → Nastavenia.",
+                                        "Még nincs projekttípus. Hozzon létre egyet a Projektek → Beállítások alatt.",
+                                      )}
+                                    </p>
+                                  )}
+                                </div>
+
+                                <div className="grid grid-cols-2 gap-1.5">
+                                  <div>
+                                    <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("Status", "Stav", "Állapot")}</label>
+                                    <div className="mt-0.5">
+                                      <CustomSelect
+                                        size="sm"
+                                        value={node.data.status || "new"}
+                                        onChange={(v) => updateActionField("status", v)}
+                                        options={PROJECT_STATUSES.map((s) => ({ value: s, label: projectStatusLabel(s, t) }))}
+                                      />
+                                    </div>
+                                  </div>
+                                  <div>
+                                    <label className="flex items-center gap-1 text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                                      {t("If one exists", "Ak už existuje", "Ha már létezik")}
+                                      <span
+                                        className="inline-flex shrink-0 cursor-help"
+                                        title={t(
+                                          "A workflow on a lead fires again every time the lead changes. Skipping keeps it from creating the same project twice.",
+                                          "Workflow na leade sa spustí pri každej zmene leadu. Preskočenie zabráni vytvoreniu toho istého projektu dvakrát.",
+                                          "A leadhez kötött workflow minden változáskor újra lefut. A kihagyás megakadályozza, hogy ugyanaz a projekt kétszer jöjjön létre.",
+                                        )}
+                                      >
+                                        <Info className="h-2.5 w-2.5 text-slate-300" />
+                                      </span>
+                                    </label>
+                                    <div className="mt-0.5">
+                                      <CustomSelect
+                                        size="sm"
+                                        value={node.data.skip_if_exists === false ? "always" : "skip"}
+                                        onChange={(v) => updateActionField("skip_if_exists", v === "skip")}
+                                        options={[
+                                          { value: "skip", label: t("Skip the lead", "Preskočiť lead", "Kihagyás") },
+                                          { value: "always", label: t("Convert anyway", "Aj tak konvertovať", "Mindenképp") },
+                                        ]}
+                                      />
+                                    </div>
+                                  </div>
+                                </div>
+
+                                <div>
+                                  <label className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">{t("Project Manager", "Projektový manažér", "Projektmenedzser")}</label>
+                                  <div className="mt-0.5">
+                                    <CustomSelect
+                                      size="sm"
+                                      value={node.data.manager || ""}
+                                      onChange={(v) => updateActionField("manager", v)}
+                                      icon={<User className="h-3.5 w-3.5 text-slate-400 shrink-0" />}
+                                      options={[
+                                        { value: "", label: t("The lead's owner", "Zodpovedný za lead", "A lead felelőse") },
+                                        { value: "__none__", label: t("Unassigned", "Nepriradené", "Nincs felelős") },
+                                        ...(userNames.length
+                                          ? [{ value: "__users__", label: t("Users", "Používatelia", "Felhasználók"), disabled: true }]
+                                          : []),
+                                        ...userNames.map((name) => ({ value: name, label: name })),
+                                      ]}
+                                    />
+                                  </div>
+                                </div>
+
+                                <p className="text-[9px] font-semibold text-slate-400 leading-snug">
+                                  {t(
+                                    "The same conversion as the button on a lead: the new project is paired with the lead, and text fields it recognises are filled in from it. A branch with no lead is skipped, not failed.",
+                                    "Rovnaká konverzia ako tlačidlo na leade: nový projekt sa spáruje s leadom a rozpoznané textové polia sa z neho predvyplnia. Vetva bez leadu sa preskočí, nejde o chybu.",
+                                    "Ugyanaz a konverzió, mint a leaden lévő gomb: az új projekt a leadhez párosul, a felismert szöveges mezők pedig kitöltődnek belőle. A lead nélküli ág kimarad, nem hiba.",
+                                  )}
+                                </p>
+                              </div>
+                            );
+                          })()}
 
                           {node.data.type === "send_email" && (
                             <div className="space-y-2">
@@ -3354,6 +3660,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                 >
                   {t("Cancel", "Zrušiť", "Mégse")}
                 </button>
+                {canEdit && (
                 <button
                   type="button"
                   onClick={saveWorkflow}
@@ -3361,6 +3668,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                 >
                   {t("Save Workflow", "Uložiť workflow", "Mentés")}
                 </button>
+                )}
               </div>
             </div>
           </div>
@@ -3380,6 +3688,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                 </p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
+                {canEdit && (
                 <button
                   type="button"
                   onClick={triggerManualRun}
@@ -3388,6 +3697,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                   <Play className="h-4 w-4" />
                   {t("Trigger Test Run", "Spustiť testovací beh", "Teszt futás indítása")}
                 </button>
+                )}
                 <button
                   type="button"
                   onClick={() => handleViewLogs(selectedWorkflow)}
@@ -3547,8 +3857,10 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                       type="text" 
                       value={apiKeys.cronToken}
                       onChange={(e) => setApiKeys({ ...apiKeys, cronToken: e.target.value })}
-                      className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 focus:outline-none"
+                      disabled={!canEdit}
+                      className="flex-1 px-3 py-2 border border-slate-200 rounded-lg text-sm font-semibold text-slate-700 focus:outline-none disabled:bg-slate-50 disabled:text-slate-500"
                     />
+                    {canEdit && (
                     <button 
                       type="button"
                       onClick={() => setApiKeys({ ...apiKeys, cronToken: Math.random().toString(36).substring(2, 18) })}
@@ -3556,6 +3868,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                     >
                       {t("Regenerate", "Regenerovať", "Újra előállít")}
                     </button>
+                    )}
                   </div>
                 </div>
 
@@ -3588,6 +3901,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                 </div>
 
                 <div className="pt-4 flex justify-end">
+                  {canEdit && (
                   <button
                     type="submit"
                     disabled={savingSettings}
@@ -3595,6 +3909,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                   >
                     {savingSettings ? t("Saving...", "Ukladám...", "Mentés...") : t("Save Settings", "Uložiť nastavenia", "Beállítások mentése")}
                   </button>
+                  )}
                 </div>
               </form>
             </div>

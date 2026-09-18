@@ -14,9 +14,21 @@ export function todayLocal(): string {
   return localNow().toISOString().split("T")[0];
 }
 
+// "YYYY-MM-DD" for today plus `n` days in the user's timezone.
+export function todayLocalPlusDays(n: number): string {
+  const d = localNow();
+  d.setDate(d.getDate() + n);
+  return d.toISOString().split("T")[0];
+}
+
 // "YYYY-MM-DD HH:MM" for right now in the user's timezone.
 export function nowLocalStamp(): string {
   return localNow().toISOString().replace("T", " ").substring(0, 16);
+}
+
+// "YYYY-MM-DD HH:MM:SS" for right now in the user's timezone.
+export function nowLocalDateTime(): string {
+  return localNow().toISOString().replace("T", " ").substring(0, 19);
 }
 
 export function localeCodeFor(lang: Language): string {
