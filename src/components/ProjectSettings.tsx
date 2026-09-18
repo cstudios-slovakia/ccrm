@@ -690,7 +690,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
             { id: "attributes", Icon: ListChecks, label: t("Attributes", "Atribúty", "Attribútumok"), count: attributes.length + (hasDeadline ? 1 : 0) },
             { id: "files", Icon: Paperclip, label: t("Files", "Súbory", "Fájlok"), count: fileFields.length },
             { id: "columns", Icon: Columns3, label: t("Columns", "Stĺpce", "Oszlopok"), count: resolvedColumns.filter(c => c.visible).length },
-          ] as { id: EditSection; Icon: React.ElementType; label: string; count: number | null }[]).map(({ id, Icon, label, count }) => {
+          ] as { id: EditSection; Icon: React.ComponentType<{ className?: string }>; label: string; count: number | null }[]).map(({ id, Icon, label, count }) => {
             const active = editSection === id;
             return (
               <button
