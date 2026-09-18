@@ -254,7 +254,7 @@ mirofish/
 
 ---
 
-## 6. Relevance to CCRM (v1.10-jackfruit)
+## 6. Relevance to CCRM (v1.10-kiwi)
 
 Notice the existing `reality-seed.md` in `../mirofish`: it explicitly models the **CCRM v1.6 launch** (AI boardroom, €1,500 self-hosted license, GDPR concerns, sales managers vs project managers).
 
