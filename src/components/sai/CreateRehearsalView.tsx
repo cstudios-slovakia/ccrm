@@ -1101,23 +1101,23 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
         </div>
 
         {/* Rehearsal Title, Hypothesis, Briefing & Supplementary Files Card */}
-        <div className="p-6 md:p-8 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-8 divide-y divide-slate-100">
+        <div className="rounded-3xl bg-white border border-slate-200/90 shadow-sm overflow-hidden divide-y divide-slate-100">
           
           {/* 1. Simulation Title Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 lg:gap-8 items-start pt-0 first:pt-0">
-            <div className="lg:col-span-1 space-y-1.5 pt-0.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600 bg-purple-50 px-2 py-0.5 rounded-md inline-block border border-purple-200/60">
+          <div className="grid grid-cols-1 lg:grid-cols-5 divide-y lg:divide-y-0 lg:divide-x divide-slate-200/80 items-stretch">
+            <div className="lg:col-span-1 p-5 md:p-6 bg-slate-100/80 flex flex-col justify-start space-y-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 bg-purple-100/80 px-2 py-0.5 rounded-md inline-block border border-purple-200 w-fit">
                 {t('Simulation Title', 'Názov simulácie', 'Szimuláció címe')}
               </span>
-              <h3 className="text-sm font-bold text-slate-900 leading-snug">
+              <h3 className="text-xs font-bold text-slate-900 leading-snug">
                 {t('What is the name of the simulation?', 'Ako sa volá táto simulácia?', 'Mi a szimuláció neve?')}
               </h3>
-              <p className="text-[11px] text-slate-400 font-normal leading-relaxed">
+              <p className="text-[11px] text-slate-500 font-normal leading-relaxed">
                 {t('Give your simulation a clear executive identifier.', 'Zadajte jasný manažérsky identifikátor pre túto simuláciu.', 'Adjon egyértelmű vezetői azonosítót a szimulációnak.')}
               </p>
             </div>
 
-            <div className="lg:col-span-4 space-y-1.5">
+            <div className="lg:col-span-4 p-5 md:p-7 space-y-1.5 bg-white">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center justify-between">
                 <span>{t('Simulation Title', 'Názov simulácie', 'Szimuláció címe')} <span className="text-rose-500">*</span></span>
                 <span className="text-[11px] text-slate-400 font-normal">
@@ -1156,20 +1156,20 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
           </div>
 
           {/* 2. Strategic Hypothesis Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 lg:gap-8 items-start pt-8">
-            <div className="lg:col-span-1 space-y-1.5 pt-0.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-md inline-block border border-indigo-200/60">
+          <div className="grid grid-cols-1 lg:grid-cols-5 divide-y lg:divide-y-0 lg:divide-x divide-slate-200/80 items-stretch">
+            <div className="lg:col-span-1 p-5 md:p-6 bg-slate-100/80 flex flex-col justify-start space-y-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-100/80 px-2 py-0.5 rounded-md inline-block border border-indigo-200 w-fit">
                 {t('Core Variable', 'Kľúčová premenná', 'Fő változó')}
               </span>
-              <h3 className="text-sm font-bold text-slate-900 leading-snug">
+              <h3 className="text-xs font-bold text-slate-900 leading-snug">
                 {t('What key question or change do you want to test?', 'Akú kľúčovú otázku alebo zmenu chcete otestovať?', 'Milyen kulcsfontosságú kérdést vagy változást szeretne tesztelni?')}
               </h3>
-              <p className="text-[11px] text-slate-400 font-normal leading-relaxed">
+              <p className="text-[11px] text-slate-500 font-normal leading-relaxed">
                 {t('Core predictive hypothesis deliberated by the swarm.', 'Kľúčová prediktívna hypotéza, o ktorej bude roj diskutovať.', 'A raj által megvitatott legfontosabb prediktív hipotézis.')}
               </p>
             </div>
 
-            <div className="lg:col-span-4 space-y-1.5">
+            <div className="lg:col-span-4 p-5 md:p-7 space-y-1.5 bg-white">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center justify-between">
                 <span>{t('Strategic Hypothesis / What-If Variable', 'Strategická hypotéza / What-If premenná', 'Stratégiai hipotézis / "Mi lenne, ha" változó')} <span className="text-rose-500">*</span></span>
                 <span className="text-[11px] text-slate-400 font-normal">
@@ -1208,20 +1208,20 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
           </div>
 
           {/* 3. Input Briefing & Announcement Text Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 lg:gap-8 items-start pt-8">
-            <div className="lg:col-span-1 space-y-1.5 pt-0.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-600 bg-purple-50 px-2 py-0.5 rounded-md inline-block border border-purple-200/60">
+          <div className="grid grid-cols-1 lg:grid-cols-5 divide-y lg:divide-y-0 lg:divide-x divide-slate-200/80 items-stretch">
+            <div className="lg:col-span-1 p-5 md:p-6 bg-slate-100/80 flex flex-col justify-start space-y-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 bg-purple-100/80 px-2 py-0.5 rounded-md inline-block border border-purple-200 w-fit">
                 {t('Briefing Context', 'Kontext zadania', 'Forgatókönyv')}
               </span>
-              <h3 className="text-sm font-bold text-slate-900 leading-snug">
+              <h3 className="text-xs font-bold text-slate-900 leading-snug">
                 {t('What do you want to simulate?', 'Čo chcete simulovať?', 'Mit szeretne szimulálni?')}
               </h3>
-              <p className="text-[11px] text-slate-400 font-normal leading-relaxed">
+              <p className="text-[11px] text-slate-500 font-normal leading-relaxed">
                 {t('The announcement, pricing memo, or scenario text agents will read and quote.', 'Znenie tlačovej správy, cenník alebo memorandum, ktoré budú agenti citovať.', 'A közlemény, árlista vagy feljegyzés szövege, amit az ágensek olvasnak.')}
               </p>
             </div>
 
-            <div className="lg:col-span-4 space-y-1.5">
+            <div className="lg:col-span-4 p-5 md:p-7 space-y-1.5 bg-white">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center justify-between">
                 <span>{t('Input Briefing & Announcement Text', 'Vstupné zadanie & Text oznámenia', 'Bemeneti összefoglaló és közlemény')} <span className="text-rose-500">*</span></span>
                 <span className="text-[11px] text-slate-400 font-normal">
@@ -1264,20 +1264,20 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
           </div>
 
           {/* 4. Context Documents Upload (PDF & Markdown) Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 lg:gap-8 items-start pt-8">
-            <div className="lg:col-span-1 space-y-1.5 pt-0.5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md inline-block border border-emerald-200/60">
+          <div className="grid grid-cols-1 lg:grid-cols-5 divide-y lg:divide-y-0 lg:divide-x divide-slate-200/80 items-stretch">
+            <div className="lg:col-span-1 p-5 md:p-6 bg-slate-100/80 flex flex-col justify-start space-y-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md inline-block border border-emerald-200 w-fit">
                 {t('Attachments', 'Prílohy', 'Csatolmányok')}
               </span>
-              <h3 className="text-sm font-bold text-slate-900 leading-snug">
+              <h3 className="text-xs font-bold text-slate-900 leading-snug">
                 {t('Any additional files you want to consider?', 'Máte doplňujúce podklady alebo súbory na zváženie?', 'Vannak további figyelembe veendő fájlok?')}
               </h3>
-              <p className="text-[11px] text-slate-400 font-normal leading-relaxed">
+              <p className="text-[11px] text-slate-500 font-normal leading-relaxed">
                 {t('Attach supporting contracts, pricing policies, specs, or objection battlecards.', 'Priložte zmluvy, cenové smernice, technické špecifikácie alebo odpovede na námietky.', 'Csatoljon szerződéseket, árpolitikát, specifikációkat vagy kifogáskezelési kártyákat.')}
               </p>
             </div>
 
-            <div className="lg:col-span-4 space-y-3">
+            <div className="lg:col-span-4 p-5 md:p-7 space-y-3 bg-white">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
                   <Paperclip className="w-3.5 h-3.5 text-purple-600" />
