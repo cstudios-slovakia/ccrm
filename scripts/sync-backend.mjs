@@ -30,14 +30,24 @@
  * It runs as part of `npm run build`, so the two trees cannot drift apart in a
  * commit.
  *
+ * A root file that was itself deliberately edited (1.9.79's dashboard fix,
+ * committed only at the root before a18e192 caught up `public/`) is the same
+ * class of bug in reverse: this script would silently revert it on the very
+ * next build. `rootFileIsNewer()` (`sync-backend-policy.mjs`) catches that
+ * case — an uncommitted edit sitting only in the root file, or a commit that
+ * touched only the root copy — and refuses to overwrite it instead.
+ *
  * Usage:
  *   node scripts/sync-backend.mjs           # copy public/ -> root where they differ
  *   node scripts/sync-backend.mjs --check   # exit 1 if they differ, change nothing
+ *   node scripts/sync-backend.mjs --force   # overwrite even a root file that looks newer
  */
 
 import { readFileSync, writeFileSync, readdirSync, statSync, existsSync } from 'node:fs';
 import { join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
+import { rootFileIsNewer } from './sync-backend-policy.mjs';
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const publicDir = join(repoRoot, 'public');
@@ -61,8 +71,32 @@ function walk(dir, out = []) {
     return out;
 }
 
+function git(args) {
+    try {
+        return execFileSync('git', args, { cwd: repoRoot, encoding: 'utf8' });
+    } catch {
+        return '';
+    }
+}
+
+const isDirty = (relPath) => git(['status', '--porcelain', '--', relPath]).trim().length > 0;
+
+/** Did the most recent commit touching either copy touch only the root one? */
+function rootOnlyCommitTouched(rootRel, publicRel) {
+    const hash = git(['log', '-1', '--format=%H', '--', rootRel, publicRel]).trim();
+    if (!hash) return false;
+    const touched = git(['show', '--name-only', '--format=', hash, '--', rootRel, publicRel])
+        .split('\n')
+        .map((line) => line.trim())
+        .filter(Boolean);
+    return touched.includes(rootRel) && !touched.includes(publicRel);
+}
+
 const checkOnly = process.argv.includes('--check');
+const force = process.argv.includes('--force');
 const drifted = [];
+const blocked = [];
+const updated = [];
 
 for (const src of walk(publicDir)) {
     const rel = relative(publicDir, src);
@@ -76,8 +110,23 @@ for (const src of walk(publicDir)) {
     const from = readFileSync(src);
     if (from.equals(readFileSync(dest))) continue;
 
-    drifted.push(rel.split(sep).join('/'));
-    if (!checkOnly) writeFileSync(dest, from);
+    const rootRel = rel.split(sep).join('/');
+    const publicRel = ['public', ...rel.split(sep)].join('/');
+    drifted.push(rootRel);
+
+    if (checkOnly) continue;
+
+    if (!force && rootFileIsNewer({
+        rootDirty: isDirty(rootRel),
+        publicDirty: isDirty(publicRel),
+        rootOnlyCommit: rootOnlyCommitTouched(rootRel, publicRel)
+    })) {
+        blocked.push(rootRel);
+        continue;
+    }
+
+    writeFileSync(dest, from);
+    updated.push(rootRel);
 }
 
 if (drifted.length === 0) {
@@ -92,5 +141,13 @@ if (checkOnly) {
     process.exit(1);
 }
 
+if (blocked.length > 0) {
+    console.error('sync-backend: refusing to overwrite root file(s) that look newer than public/, their normal source of truth:');
+    for (const f of blocked) console.error(`  - ${f}`);
+    console.error('If the root edit was a mistake, port it into public/ and re-run. If it was deliberate,');
+    console.error('copy it into public/ yourself, or re-run with --force to overwrite the root copy anyway.');
+    process.exit(1);
+}
+
 console.log('sync-backend: updated root copies from public/:');
-for (const f of drifted) console.log(`  - ${f}`);
+for (const f of updated) console.log(`  - ${f}`);
