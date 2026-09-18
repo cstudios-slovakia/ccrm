@@ -32,6 +32,7 @@ backend and is safe to run at any time.
 | Pure logic in `src/utils` | `npm run test:unit` |
 | One module's UI | `npm run test:qa:crawler` |
 | Sidebar, header or routing | `npm run test:qa:nav` |
+| How `sync.php` or `api/*.php` stores or reads back a field | `npm run test:persistence` — the QA suite mocks the backend and cannot see a value saved under one key and read back under another (TESTING.md 5c) |
 | Anything else, finished | `npm run test:qa` — it scopes itself to what changed |
 
 `npm run test:qa` is **not** a full run by default: it diffs against

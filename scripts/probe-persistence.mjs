@@ -12,6 +12,10 @@ const BASE = process.env.CCRM_PROBE_URL || "http://127.0.0.1:8086";
 const EMAIL = "ccrm-del-probe@local.test";
 const PASS = "probe-pass-9f3K";
 const PREFIX = "ccrm-del-probe-";
+// Throwaway project type for the custom-attribute round-trip. Its dynamic
+// tables are named after the id with everything outside [a-z0-9_] stripped.
+const PT_ID = `${PREFIX}pt-${Date.now()}`;
+const PT_TABLE_STEM = PT_ID.toLowerCase().replace(/[^a-z0-9_]/g, "").replace(/\d+$/, "");
 
 const cookies = new Map();
 
@@ -253,6 +257,62 @@ try {
     console.log("SKIP  project delete — no project type on this install");
   }
 
+  // Custom attributes must read back under the very ids the client knows.
+  // The client mints ids that already start with "attr_" / "file_" / "tattr_";
+  // the column is "attr_" + id, and a reader that stripped every "attr_" turned
+  // column attr_attr_1726_1 into key "1726_1" — the value sat in MySQL and still
+  // showed as empty after a hard refresh (fixed 1.9.83). A throwaway type keeps
+  // this independent of what the install has.
+  {
+    const stamp = Date.now();
+    const attrId = `attr_${stamp}_1`;
+    const fileId = `file_${stamp}_2`;
+    const tlAttrId = `tattr_${stamp}_3`;
+    const files = [{ id: `f-${stamp}`, name: "contract.pdf", size: "1 KB", type: "application/pdf", path: "uploads/probe.pdf" }];
+    const ptCreate = await json("/sync.php", {
+      method: "POST",
+      body: JSON.stringify({
+        syncProtocol: 2,
+        baseSyncedAt: get5.body?.serverTime,
+        projectTypes: [{
+          id: PT_ID, name: `${PREFIX}Type`, description: "", icon: "Briefcase", color: "#a855f7",
+          attributes: [{ id: attrId, name: "Investor", type: "textfield" }],
+          hasTimeline: true, hasGantt: false, hasDeadline: false, deadlineWarningDays: 0, deadlineRequired: false,
+          hasFiles: true, fileFields: [{ id: fileId, name: "Contract" }], listColumns: [],
+          timelineEventTypes: [{ id: `tet_${stamp}`, name: "Note", attributes: [{ id: tlAttrId, name: "Remark", type: "textfield" }] }],
+          timelineAttributes: [],
+        }],
+      }),
+    });
+    check("POST create project type 200", ptCreate.status === 200 && ptCreate.body?.success === true, `status=${ptCreate.status} body=${JSON.stringify(ptCreate.body)?.slice(0, 300)}`);
+
+    const apId = `${PREFIX}attrproj-${stamp}`;
+    const apCreate = await json("/sync.php", {
+      method: "POST",
+      body: JSON.stringify({
+        syncProtocol: 2,
+        baseSyncedAt: ptCreate.body?.serverTime,
+        projects: [{
+          id: apId, name: `${PREFIX}AttrProject`, projectTypeId: PT_ID, status: "active", clientId: null, managers: [],
+          data: { [attrId]: "Ing. Novak", [fileId]: files },
+          timeline: [{ id: `te-${stamp}`, type: "note", timestamp: "2026-01-01 10:00:00", title: "Kickoff", content: "", data: { [tlAttrId]: "first note" } }],
+          gantt: [],
+        }],
+      }),
+    });
+    check("POST create project with attribute values 200", apCreate.status === 200 && apCreate.body?.success === true, `status=${apCreate.status} body=${JSON.stringify(apCreate.body)?.slice(0, 300)}`);
+
+    const getA = await json("/sync.php");
+    const ap = (getA.body?.projects || []).find((p) => p.id === apId);
+    const keys = Object.keys(ap?.data || {});
+    check("project attribute reads back under its own id (attr_ prefix kept)", ap?.data?.[attrId] === "Ing. Novak", `data=${JSON.stringify(ap?.data)}`);
+    let filesBack = null;
+    try { filesBack = typeof ap?.data?.[fileId] === "string" ? JSON.parse(ap.data[fileId]) : ap?.data?.[fileId]; } catch { /* not JSON */ }
+    check("project file slot reads back under its own id", JSON.stringify(filesBack) === JSON.stringify(files), `value=${JSON.stringify(ap?.data?.[fileId])}`);
+    check("no data key lost its prefix", keys.every((k) => k === attrId || k === fileId), `keys=${keys.join(",")}`);
+    check("timeline attribute reads back under its own id", ap?.timeline?.[0]?.data?.[tlAttrId] === "first note", `timeline=${JSON.stringify(ap?.timeline)}`);
+  }
+
   // Invoice last-item (already explicit before this audit).
   const ioId = `${PREFIX}io-${Date.now()}`;
   const ioCreate = await json("/sync.php", {
@@ -295,6 +355,10 @@ $pdo->exec("DELETE FROM leads WHERE id LIKE '${PREFIX}%'");
 $pdo->exec("DELETE FROM warehouses WHERE id LIKE '${PREFIX}%'");
 $pdo->exec("DELETE FROM projects WHERE id LIKE '${PREFIX}%'");
 $pdo->exec("DELETE FROM invoices_offers WHERE id LIKE '${PREFIX}%'");
+$pdo->exec("DELETE FROM project_types WHERE id LIKE '${PREFIX}%'");
+// The throwaway type's dynamic tables — this run's and any earlier run that died.
+$tbls = $pdo->query("SELECT TABLE_NAME FROM information_schema.TABLES WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME LIKE 'proj%${PT_TABLE_STEM}%'")->fetchAll(PDO::FETCH_COLUMN);
+foreach ($tbls as $t) { $pdo->exec("DROP TABLE IF EXISTS " . $t); }
 `);
 } finally {
   phpFile("ccrm-cleanup-user.php", `<?php

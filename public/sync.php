@@ -119,6 +119,32 @@ function ccrm_normalize_financial_trend($raw) {
 // This lets the SPA's `?probe=1` poll detect "nothing changed" without building
 // the multi-MB snapshot, and it is immune to no-op re-saves (a sync POST that
 // writes identical rows leaves the checksum untouched).
+/**
+ * The proj_data_/proj_timeline_ column that holds one custom attribute: its id
+ * lower-cased and stripped to [a-z0-9_], behind an `attr_` prefix. This is the
+ * one place the rule lives. The writers and the readers of those tables must
+ * agree on it exactly, or a value saved under one name is read back under
+ * another and looks lost after a reload — see ccrm_attr_id_for_column().
+ */
+function ccrm_attr_column(string $attrId): string {
+    return 'attr_' . preg_replace('/[^a-z0-9_]/', '', strtolower($attrId));
+}
+
+/**
+ * The attribute id a proj_data_/proj_timeline_ column belongs to, resolved
+ * against the type's own attribute list (built by the reader below).
+ *
+ * The column name alone is not enough: the ids the client mints begin with
+ * "attr_" themselves, and the old read did str_replace('attr_', '', $col),
+ * which stripped that prefix as well — column `attr_attr_1726_1` came back as
+ * key "1726_1", matched no attribute, and every saved value showed as empty
+ * after a hard refresh even though it was in the database. Only for a column
+ * no attribute claims does this fall back to dropping the single leading prefix.
+ */
+function ccrm_attr_id_for_column(array $idByColumn, string $col): string {
+    return $idByColumn[$col] ?? (string)preg_replace('/^attr_/', '', $col);
+}
+
 function ccrm_compute_data_version($pdo) {
     $candidates = ['leads', 'timeline_events', 'lead_categories', 'tasks', 'task_assignees', 'users', 'roles', 'meeting_notes', 'meeting_tasks', 'unified_entries', 'system_settings', 'project_types', 'projects', 'project_managers', 'warehouses', 'suppliers', 'warehouse_items', 'warehouse_stock', 'warehouse_batches', 'warehouse_movements', 'warehouse_movement_items', 'financial_categories', 'client_categories', 'financial_records', 'invoices_offers', 'invoice_offer_items', 'ai_custom_templates'];
     try {
@@ -1118,6 +1144,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             ];
         }
 
+        // Column -> attribute id, per type, for reading proj_data_/proj_timeline_
+        // rows back under the ids the client knows. See ccrm_attr_id_for_column().
+        $attrIdByColumn = [];
+        $tlAttrIdByColumn = [];
+        foreach ($projectTypes as $ptItem) {
+            $map = [];
+            $defs = array_merge(
+                is_array($ptItem['attributes']) ? $ptItem['attributes'] : [],
+                is_array($ptItem['fileFields']) ? $ptItem['fileFields'] : []
+            );
+            foreach ($defs as $attrDef) {
+                if (!is_array($attrDef) || !isset($attrDef['id'])) continue;
+                $map[ccrm_attr_column((string)$attrDef['id'])] = (string)$attrDef['id'];
+            }
+            $attrIdByColumn[$ptItem['id']] = $map;
+
+            // Timeline attributes live under each event type (the writer below
+            // adds a column per timelineEventTypes[].attributes[]); the flat
+            // timelineAttributes list is the older shape and is read too.
+            $tlDefs = is_array($ptItem['timelineAttributes']) ? $ptItem['timelineAttributes'] : [];
+            foreach ((is_array($ptItem['timelineEventTypes']) ? $ptItem['timelineEventTypes'] : []) as $evType) {
+                if (is_array($evType) && is_array($evType['attributes'] ?? null)) {
+                    $tlDefs = array_merge($tlDefs, $evType['attributes']);
+                }
+            }
+            $tlMap = [];
+            foreach ($tlDefs as $attrDef) {
+                if (!is_array($attrDef) || !isset($attrDef['id'])) continue;
+                $tlMap[ccrm_attr_column((string)$attrDef['id'])] = (string)$attrDef['id'];
+            }
+            $tlAttrIdByColumn[$ptItem['id']] = $tlMap;
+        }
+
         // Fetch managers
         $managersByProject = [];
         $mgrStmt = $pdo->query("SELECT `project_id`, `user_id` FROM `project_managers`");
@@ -1164,9 +1223,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 $dRow = $dStmt->fetch(PDO::FETCH_ASSOC);
                 if ($dRow) {
                     $parsedData = [];
+                    $idByCol = $attrIdByColumn[$ptId] ?? [];
                     foreach ($dRow as $col => $val) {
                         if (str_starts_with($col, 'attr_')) {
-                            $parsedData[str_replace('attr_', '', $col)] = $val;
+                            $parsedData[ccrm_attr_id_for_column($idByCol, $col)] = $val;
                         }
                     }
                     $projectItem['data'] = $parsedData;
@@ -1181,9 +1241,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                  $tStmt->execute([$projId]);
                  while ($tRow = $tStmt->fetch(PDO::FETCH_ASSOC)) {
                      $parsedTeData = [];
+                     $tlIdByCol = $tlAttrIdByColumn[$ptId] ?? [];
                      foreach ($tRow as $col => $val) {
                          if (str_starts_with($col, 'attr_')) {
-                             $parsedTeData[str_replace('attr_', '', $col)] = json_decode($val, true) !== null ? json_decode($val, true) : $val;
+                             $parsedTeData[ccrm_attr_id_for_column($tlIdByCol, $col)] = json_decode($val, true) !== null ? json_decode($val, true) : $val;
                          }
                      }
                      $projectItem['timeline'][] = [
@@ -1942,7 +2003,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $expectedCols = ['id', 'project_id', 'created_at', 'updated_at'];
 
                 foreach ($attributes as $attr) {
-                    $colName = "attr_" . preg_replace('/[^a-z0-9_]/', '', strtolower($attr['id']));
+                    $colName = ccrm_attr_column($attr['id']);
                     $expectedCols[] = $colName;
                     if (!in_array($colName, $existingCols)) {
                         $addCol = "ALTER TABLE `{$dataTable}` ADD COLUMN `{$colName}` LONGTEXT NULL";
@@ -2005,7 +2066,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $expectedTcols = ['id', 'project_id', 'type', 'event_type', 'timestamp', 'title', 'content'];
 
                 foreach ($timelineAttributes as $attr) {
-                    $colName = "attr_" . preg_replace('/[^a-z0-9_]/', '', strtolower($attr['id']));
+                    $colName = ccrm_attr_column($attr['id']);
                     $expectedTcols[] = $colName;
                     if (!in_array($colName, $existingTcols)) {
                         $addCol = "ALTER TABLE `{$timelineTable}` ADD COLUMN `{$colName}` LONGTEXT NULL";
@@ -2587,7 +2648,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $vals = [$projId, $projId]; 
                     $updParts = [];
                     foreach ($p['data'] as $k => $v) {
-                        $colName = "attr_" . preg_replace('/[^a-z0-9_]/', '', strtolower($k));
+                        $colName = ccrm_attr_column($k);
                         // Verify column exists
                         if (ccrm_column_exists($pdo, $dataTable, $colName)) {
                             $cols[] = $colName;
@@ -2629,7 +2690,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                         if (isset($te['data']) && is_array($te['data'])) {
                             foreach ($te['data'] as $k => $v) {
-                                $colName = "attr_" . preg_replace('/[^a-z0-9_]/', '', strtolower($k));
+                                $colName = ccrm_attr_column($k);
                                 if (ccrm_column_exists($pdo, $timelineTable, $colName)) {
                                     $cols[] = $colName;
                                     $vals[] = is_array($v) ? json_encode($v) : $v;
