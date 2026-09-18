@@ -16,6 +16,7 @@ import { getTranslation } from "../utils/translations";
 import { CustomSelect } from "./ui/CustomSelect";
 import { TimelineAuthorBadge } from "./TimelineAuthorBadge";
 import { TimelineCollapsible } from "./TimelineCollapsible";
+import { isOutgoingMail } from "../utils/mailTimeline";
 
 interface EmailViewProps {
   currentUser: any;
@@ -426,7 +427,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
 
         const combinedEmails: any[] = [];
         const processMail = (mail: any) => {
-          const isOutgoing = mail.from?.address?.toLowerCase() === currentUser?.email?.toLowerCase();
+          const isOutgoing = isOutgoingMail(mail, currentUser?.email);
           const folderPrefix = isOutgoing ? "sent" : "inbox";
           return {
             // Server-issued id, so the merge below recognises the row it already

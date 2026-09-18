@@ -65,6 +65,9 @@ export interface TimelineEvent {
   // CRM triggered (incoming mail, imported paperwork) and every event written
   // before this field existed simply have no author and render without a name.
   author?: string;
+  // Mail entries only: removed from the lead timeline by the user. The row is
+  // kept so the mailbox importer does not file the message again.
+  hidden?: boolean;
 }
 
 /**

@@ -3,6 +3,8 @@ import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { useUserPref } from "../utils/userPrefs";
 import { canArchiveTask, resolveAssigneeName, type TaskAccess } from "../utils/taskSelectors";
 import { liftAccent } from "../utils/accentColor";
+import { isOutgoingMail, mergeLeadTimeline, withTimelineEvent } from "../utils/mailTimeline";
+import { useConfirmDialog } from "./ui/ConfirmDialog";
 import { createPortal } from "react-dom";
 import {
     Users,
@@ -2094,6 +2096,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const [logDocumentFiles, setLogDocumentFiles] = useState<File[]>([]);
     const [isUploadingDocuments, setIsUploadingDocuments] = useState(false);
 
+    // In-app confirmation for deletes (replaces window.confirm).
+    const [confirmAction, confirmDialog] = useConfirmDialog();
     // Inline edit/delete of an already-logged timeline event
     const [editingEventId, setEditingEventId] = useState<string | null>(null);
     const [editingEventDraft, setEditingEventDraft] = useState("");
@@ -2315,8 +2319,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                 const processMail = (mail: any) => {
                     const isOutgoing =
-                        mail.from?.address?.toLowerCase() ===
-                        currentUser?.email?.toLowerCase();
+                        isOutgoingMail(mail, currentUser?.email);
                     const folderPrefix = isOutgoing ? "sent" : "inbox";
                     return {
                         // The server hands back the id it stores this message under.
@@ -2346,12 +2349,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     };
                 };
 
-                inboxEmails.forEach((m: any) =>
-                    combinedEmails.push(processMail(m)),
-                );
-                sentEmails.forEach((m: any) =>
-                    combinedEmails.push(processMail(m)),
-                );
+                // A message the user deleted from this timeline is still in the
+                // mailbox; the server flags it so it is not filed again.
+                [...inboxEmails, ...sentEmails]
+                    .filter((m: any) => !m.timeline_hidden)
+                    .forEach((m: any) => combinedEmails.push(processMail(m)));
 
                 setLeadEmails(combinedEmails);
                 setLeadMailError(mailError);
@@ -2374,12 +2376,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     const activeLeadTimeline = useMemo(() => {
         if (!activeLead) return [];
-        const standardEvents = activeLead.timeline || [];
-        const emailIds = new Set(leadEmails.map((e) => e.id));
-        const merged = [
-            ...standardEvents.filter((e) => !emailIds.has(e.id)),
-            ...leadEmails,
-        ];
+        const merged = mergeLeadTimeline(activeLead.timeline || [], leadEmails);
         return merged.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
     }, [activeLead, leadEmails]);
 
@@ -3206,22 +3203,21 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             editingEventDate && editingEventTime
                 ? `${editingEventDate} ${editingEventTime}`
                 : null;
+        // A mail read live from the mailbox may not be in the stored timeline
+        // yet; withTimelineEvent adds it so the edit has something to land on.
+        const edited = activeLeadTimeline.find((e) => e.id === eventId);
+        if (!edited) return;
         setLeads((prev) =>
             prev.map((l) =>
                 l.id === activeLead.id
                     ? {
                           ...l,
-                          timeline: (l.timeline || []).map((e) =>
-                              e.id === eventId
-                                  ? {
-                                        ...e,
-                                        content: nextContent,
-                                        ...(nextTimestamp
-                                            ? { timestamp: nextTimestamp }
-                                            : {}),
-                                    }
-                                  : e,
-                          ),
+                          timeline: withTimelineEvent(l.timeline || [], edited, {
+                              content: nextContent,
+                              ...(nextTimestamp
+                                  ? { timestamp: nextTimestamp }
+                                  : {}),
+                          }),
                       }
                     : l,
             ),
@@ -3266,28 +3262,47 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         </div>
     );
 
-    const handleDeleteTimelineEvent = (eventId: string) => {
+    const handleDeleteTimelineEvent = async (eventId: string) => {
         if (!canDelete || !activeLead) return;
-        const ok = window.confirm(
-            t(
+        const target = activeLeadTimeline.find((e) => e.id === eventId);
+        if (!target) return;
+        const ok = await confirmAction({
+            title: t(
                 "Delete this event from the lead history?",
                 "Odstrániť túto udalosť z histórie leadu?",
                 "Törli ezt az eseményt a lead előzményeiből?",
             ),
-        );
+            confirmLabel: t("Delete", "Odstrániť", "Törlés"),
+            cancelLabel: t("Cancel", "Zrušiť", "Mégse"),
+            danger: true,
+        });
         if (!ok) return;
+        // An imported mail cannot just be dropped: sync.php never deletes mail
+        // rows by omission, and the next mailbox read would file it again. It is
+        // flagged `hidden` instead, which both honour. The message itself stays
+        // in the mailbox.
+        const isMailEntry = eventId.startsWith("email-");
         setLeads((prev) =>
             prev.map((l) =>
                 l.id === activeLead.id
                     ? {
                           ...l,
-                          timeline: (l.timeline || []).filter(
-                              (e) => e.id !== eventId,
-                          ),
+                          timeline: isMailEntry
+                              ? withTimelineEvent(l.timeline || [], target, {
+                                    hidden: true,
+                                })
+                              : (l.timeline || []).filter(
+                                    (e) => e.id !== eventId,
+                                ),
                       }
                     : l,
             ),
         );
+        // The stored row is left out of the next server read, so the live copy
+        // fetched before the delete must not stand in for it meanwhile.
+        if (isMailEntry) {
+            setLeadEmails((prev) => prev.filter((e) => e.id !== eventId));
+        }
         if (editingEventId === eventId) handleCancelEditEvent();
         (window as any).showToast?.(
             t(
@@ -3518,17 +3533,22 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         setEditingRowId(null);
     };
 
-    // Delete lead — returns true when the user confirmed and it was removed
-    const handleDeleteLead = (id: string, name: string): boolean => {
+    // Delete lead — resolves true when the user confirmed and it was removed.
+    // An in-app dialog, not window.confirm(): the native one blocks the page and
+    // hangs automated browser clients until the tab is closed by hand.
+    const handleDeleteLead = async (id: string, name: string): Promise<boolean> => {
         if (!canDelete) return false;
         if (
-            confirm(
-                systemLanguage === "sk"
-                    ? `Naozaj chcete vymazať lead pre "${name}"?`
-                    : systemLanguage === "hu"
-                      ? `Biztosan törölni szeretné a(z) "${name}" leadet?`
-                      : `Are you sure you want to delete the lead for "${name}"?`,
-            )
+            await confirmAction({
+                title: t(
+                    `Are you sure you want to delete the lead for "${name}"?`,
+                    `Naozaj chcete vymazať lead pre "${name}"?`,
+                    `Biztosan törölni szeretné a(z) "${name}" leadet?`,
+                ),
+                confirmLabel: t("Delete", "Odstrániť", "Törlés"),
+                cancelLabel: t("Cancel", "Zrušiť", "Mégse"),
+                danger: true,
+            })
         ) {
             setLeads((prev) => prev.filter((l) => l.id !== id));
             if (editingRowId === id) setEditingRowId(null);
@@ -4289,6 +4309,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
         return (
             <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
+                {confirmDialog}
                 {/* Header: back on the left, value + actions on the right.
                     Every control shares one height, radius and border weight. */}
                 <div className="space-y-3">
@@ -4383,9 +4404,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                             {canDelete && (
                                 <button
-                                    onClick={() => {
+                                    onClick={async () => {
                                         if (
-                                            handleDeleteLead(
+                                            await handleDeleteLead(
                                                 activeLead.id,
                                                 activeLead.name,
                                             )
@@ -7255,6 +7276,52 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                         @{" "}
                                                                         {pmName}
                                                                     </span>
+                                                                    {/* Imported mail is correctable too: sync.php
+                                                                        applies the edit, and a delete hides the
+                                                                        entry without touching the mailbox. */}
+                                                                    {editingEventId !==
+                                                                        event.id && (
+                                                                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={(
+                                                                                    e,
+                                                                                ) => {
+                                                                                    e.stopPropagation();
+                                                                                    handleStartEditEvent(
+                                                                                        event,
+                                                                                    );
+                                                                                }}
+                                                                                className="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors"
+                                                                                title={t(
+                                                                                    "Edit event",
+                                                                                    "Upraviť udalosť",
+                                                                                    "Esemény szerkesztése",
+                                                                                )}
+                                                                            >
+                                                                                <PencilLine className="h-3.5 w-3.5" />
+                                                                            </button>
+                                                                            <button
+                                                                                type="button"
+                                                                                onClick={(
+                                                                                    e,
+                                                                                ) => {
+                                                                                    e.stopPropagation();
+                                                                                    handleDeleteTimelineEvent(
+                                                                                        event.id,
+                                                                                    );
+                                                                                }}
+                                                                                className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                                                                                title={t(
+                                                                                    "Delete event",
+                                                                                    "Odstrániť udalosť",
+                                                                                    "Esemény törlése",
+                                                                                )}
+                                                                            >
+                                                                                <Trash2 className="h-3.5 w-3.5" />
+                                                                            </button>
+                                                                        </div>
+                                                                    )}
                                                                 </div>
                                                             ) : (
                                                                 <div className="flex flex-wrap items-center justify-end gap-1.5 ml-auto">
@@ -7912,6 +7979,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     return (
         <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
+            {confirmDialog}
             {/* 0. Title header */}
             <div className="flex flex-col border-b border-slate-100 pb-4">
                 <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">

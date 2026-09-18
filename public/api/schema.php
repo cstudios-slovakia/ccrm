@@ -114,6 +114,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `author` VARCHAR(100) NULL COMMENT 'CRM user whose action produced this entry. NULL for entries nobody triggered here (incoming mail, public-form inquiries, imports)',
               `audio_file` VARCHAR(255) NULL COMMENT 'Voice note recorded onto the timeline: the path api/upload_audio.php stored the recording at',
               `transcription` TEXT NULL COMMENT 'Speech-to-text transcript of `audio_file`, produced by api/transcribe_meeting.php',
+              `hidden` TINYINT(1) NOT NULL DEFAULT 0 COMMENT 'mail entries only: removed from the lead timeline by the user; kept so the mailbox importer does not file it again',
               PRIMARY KEY (`id`),
               FOREIGN KEY (`lead_id`) REFERENCES `leads` (`id`) ON DELETE CASCADE,
               INDEX idx_event_timestamp (`timestamp`),
@@ -997,6 +998,12 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         if (!ccrm_column_exists($pdo, 'timeline_events', 'transcription')) {
             $pdo->exec("ALTER TABLE `timeline_events` ADD COLUMN `transcription` TEXT NULL AFTER `audio_file`");
+        }
+        // A mail entry cannot simply be deleted from a lead's timeline: the next
+        // mailbox read would file the message again. Deleting it flags the row
+        // instead, and both sync.php and the importer honour the flag.
+        if (!ccrm_column_exists($pdo, 'timeline_events', 'hidden')) {
+            $pdo->exec("ALTER TABLE `timeline_events` ADD COLUMN `hidden` TINYINT(1) NOT NULL DEFAULT 0 AFTER `transcription`");
         }
         // `tasks`.`status` was originally a fixed ENUM, but task states are
         // user-customizable free text (see Settings > task states / taskStates

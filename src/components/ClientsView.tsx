@@ -44,6 +44,7 @@ import { chartTheme, useAppearance } from "../utils/theme";
 import { mergeFinancialRecord, derivePaidDate, FINANCIAL_STATUS_OPTIONS } from "../utils/financialRecordMerge";
 import { splitRecordAmounts } from "../utils/financialOverviewTable";
 import { categoryBreadcrumbs } from "../utils/financialCategoryTree";
+import { isOutgoingMail } from "../utils/mailTimeline";
 
 interface ClientsViewProps {
   leads: Lead[];
@@ -1133,7 +1134,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         const combinedEmails: TimelineEvent[] = [];
         
         const processMail = (mail: any) => {
-          const isOutgoing = mail.from?.address?.toLowerCase() === currentUser?.email?.toLowerCase();
+          const isOutgoing = isOutgoingMail(mail, currentUser?.email);
           const folderPrefix = isOutgoing ? "sent" : "inbox";
           return {
             // Server-issued id, so the merge below recognises the row it already

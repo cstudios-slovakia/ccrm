@@ -674,6 +674,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $timelineByLead = [];
     $teBulk = $pdo->query("SELECT * FROM `timeline_events` ORDER BY `timestamp` ASC");
     while ($te = $teBulk->fetch()) {
+        // A mail entry the user removed from the timeline. Kept only as a
+        // tombstone so the mailbox importer does not file it again.
+        if (!empty($te['hidden'])) {
+            continue;
+        }
         $event = [
             'id' => $te['id'],
             'type' => $te['type'],
@@ -2958,6 +2963,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // are the user's to change. Everything else belongs to the
                     // message and is rewritten from IMAP on the next read.
                     $updMailTe = $pdo->prepare("UPDATE `timeline_events` SET `timestamp` = ?, `title` = ?, `content` = ? WHERE `id` = ? AND `lead_id` = ?");
+                    // ...and removing one. Omitting it from the payload cannot mean
+                    // "delete": the client may simply never have loaded it. So the
+                    // client sends it flagged `hidden`, and the row stays behind as
+                    // a tombstone — deleting it would let the next mailbox read
+                    // file the message again.
                     $allowedEventTypes = ['phone', 'email', 'note', 'offer', 'appointment', 'order', 'proforma_invoice', 'advance_receipt', 'invoice', 'delivery_note', 'status_change'];
                     foreach ($l['timeline'] as $te) {
                         $teId = $te['id'] ?? ('ev-' . uniqid());
@@ -2969,6 +2979,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             // exist used to be dropped without a word — the date you
                             // corrected simply reappeared wrong. Apply it.
                             try {
+                                if (!empty($te['hidden'])) {
+                                    $hideMailTe = $pdo->prepare("UPDATE `timeline_events` SET `hidden` = 1 WHERE `id` = ? AND `lead_id` = ?");
+                                    $hideMailTe->execute([$teId, $leadId]);
+                                    continue;
+                                }
                                 $updMailTe->execute([
                                     isset($te['timestamp']) ? date('Y-m-d H:i:s', strtotime($te['timestamp'])) : date('Y-m-d H:i:s'),
                                     mb_substr((string) ccrm_sanitize_db_text($te['title'] ?? '', 1020), 0, 255, 'UTF-8'),

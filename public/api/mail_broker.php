@@ -477,6 +477,41 @@ function ccrm_append_to_sent($settings, $rawMessage) {
  * Stays inside `timeline_events`.`id` VARCHAR(50), and still starts with
  * "email-" so sync.php keeps recognising importer-owned rows.
  */
+/**
+ * The addresses this mailbox sends as, lower-cased.
+ *
+ * A message is ours when its From: is one of these. It used to be compared with
+ * the CRM login ($GLOBALS['userEmail']), which is a different address whenever
+ * someone signs in to the CRM as alex@crm.com but reads peter@company.sk here —
+ * then every mail they sent was badged as incoming. SMTP sends as smtpUser (see
+ * send_smtp_email), so that and the IMAP login are the mailbox's own identity.
+ * Usernames that are not addresses (an Exchange domain login) are skipped.
+ */
+function ccrm_mailbox_addresses($settings) {
+    list($imapUser) = get_imap_credentials($settings);
+    list($smtpUser) = get_smtp_credentials($settings);
+    $addresses = [];
+    foreach ([$smtpUser, $imapUser] as $candidate) {
+        $candidate = strtolower(trim((string)$candidate));
+        if ($candidate !== '' && strpos($candidate, '@') !== false) {
+            $addresses[$candidate] = true;
+        }
+    }
+    return array_keys($addresses);
+}
+
+/**
+ * Whether a message was sent by this mailbox. The sender address is
+ * authoritative; the folder only decides when the mailbox has no address to
+ * compare against.
+ */
+function ccrm_mail_is_outgoing($mailboxAddresses, $fromAddress, $folder) {
+    if (!empty($mailboxAddresses)) {
+        return in_array(strtolower(trim((string)$fromAddress)), $mailboxAddresses, true) ? 1 : 0;
+    }
+    return strcasecmp((string)$folder, 'Sent') === 0 ? 1 : 0;
+}
+
 function ccrm_mail_event_id($accountUser, $folder, $uid) {
     $scope = substr(sha1(strtolower(trim((string)$accountUser)) . '|' . strtolower(trim((string)$folder))), 0, 12);
     $tag = strtolower(preg_replace('/[^a-z0-9]/i', '', (string)$folder));
@@ -546,6 +581,7 @@ function fetch_imap_folders($settings) {
 function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEmail = null) {
     $mailbox = get_imap_mailbox_string($settings, $folder);
     list($imapUser, $imapPass) = get_imap_credentials($settings);
+    $mailboxAddresses = ccrm_mailbox_addresses($settings);
     $imapStream = @imap_open($mailbox, $imapUser, $imapPass, 0, 1, ['DISABLE_AUTHENTICATOR' => 'GSSAPI']);
     if (!$imapStream) {
         throw new Exception('IMAP Connection failed: ' . imap_last_error());
@@ -641,6 +677,7 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                 // mail rendered twice.
                 $mailEventId = ccrm_mail_event_id($imapUser, $folder, $o->uid);
                 $listPreview = fetch_list_preview($imapStream, $o->uid);
+                $isOutgoing = ccrm_mail_is_outgoing($mailboxAddresses, $fromAddress, $folder);
 
                 $emailsMap[$o->uid] = [
                     'uid' => $o->uid,
@@ -655,6 +692,9 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                         'address' => safe_utf8($toAddress)
                     ],
                     'date' => isset($o->date) ? date('Y-m-d H:i:s', strtotime($o->date)) : '',
+                    // Decided here, where the mailbox's own address is known; the
+                    // client only has the CRM login, which may be another address.
+                    'is_outgoing' => (bool)$isOutgoing,
                     'seen' => isset($o->seen) ? (bool)$o->seen : false,
                     'size' => isset($o->size) ? intval($o->size) : 0,
                     'message_id' => isset($o->message_id) ? trim($o->message_id) : '',
@@ -692,18 +732,15 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                         $title = isset($o->subject) ? safe_utf8(imap_utf8($o->subject)) : '(No Subject)';
                         $content = "From: " . $fromName . " <" . $fromAddress . ">\nTo: " . $toName . " <" . $toAddress . ">\nSubject: " . $title;
                         // The timeline badge (and the folder its body is later
-                        // fetched from) depends on who sent the message. The
-                        // sender address is authoritative; the folder only
-                        // decides when we have no account address to compare to.
-                        $accountEmail = isset($GLOBALS['userEmail']) ? strtolower(trim($GLOBALS['userEmail'])) : '';
-                        $isOutgoing = $accountEmail !== ''
-                            ? (strtolower(trim($fromAddress)) === $accountEmail ? 1 : 0)
-                            : (strcasecmp($folder, 'Sent') === 0 ? 1 : 0);
+                        // fetched from) depends on who sent the message:
+                        // $isOutgoing, computed above against the mailbox's own
+                        // address.
 
                         // Only a message we sent has an author inside the CRM:
-                        // resolve the account address to the user behind it so the
-                        // timeline names who wrote it. An incoming mail was nobody's
-                        // action here and stays unattributed.
+                        // the mailbox belongs to the logged-in user, so resolve
+                        // their login to the user behind it. An incoming mail was
+                        // nobody's action here and stays unattributed.
+                        $accountEmail = isset($GLOBALS['userEmail']) ? strtolower(trim($GLOBALS['userEmail'])) : '';
                         $eventAuthor = null;
                         if ($isOutgoing && $accountEmail !== '') {
                             $authorStmt = $pdo->prepare("SELECT `name` FROM `users` WHERE LOWER(`email`) = ? LIMIT 1");
@@ -714,9 +751,10 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                             }
                         }
 
-                        $checkStmt = $pdo->prepare("SELECT 1 FROM `timeline_events` WHERE `id` = ?");
+                        $checkStmt = $pdo->prepare("SELECT * FROM `timeline_events` WHERE `id` = ?");
                         $checkStmt->execute([$eventId]);
-                        if (!$checkStmt->fetchColumn()) {
+                        $existingRow = $checkStmt->fetch(PDO::FETCH_ASSOC);
+                        if (!$existingRow) {
                             $insStmt = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `is_outgoing`, `author`) VALUES (?, ?, 'email', ?, ?, ?, ?, ?)");
                             $insStmt->execute([$eventId, $matchedLeadId, $timestamp, $title, $content, $isOutgoing, $eventAuthor]);
                         } else {
@@ -726,8 +764,19 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                             // colliding ids, was regularly the wrong customer. It
                             // also kept a message pinned to the old lead after a
                             // customer's address moved to another record.
-                            $upStmt = $pdo->prepare("UPDATE `timeline_events` SET `lead_id` = ?, `timestamp` = ?, `title` = ?, `is_outgoing` = ?, `author` = ? WHERE `id` = ?");
-                            $upStmt->execute([$matchedLeadId, $timestamp, $title, $isOutgoing, $eventAuthor, $eventId]);
+                            //
+                            // `timestamp` and `title` are NOT rewritten: they are
+                            // the user's to correct from the lead timeline (sync.php
+                            // applies that edit), and re-reading the mailbox used to
+                            // put the old values straight back.
+                            $upStmt = $pdo->prepare("UPDATE `timeline_events` SET `lead_id` = ?, `is_outgoing` = ?, `author` = ? WHERE `id` = ?");
+                            $upStmt->execute([$matchedLeadId, $isOutgoing, $eventAuthor, $eventId]);
+                            // Removed from the lead timeline by the user. The row is
+                            // kept as a tombstone so this read does not re-file the
+                            // message; tell the client to leave its live copy out.
+                            if (!empty($existingRow['hidden'])) {
+                                $emailsMap[$o->uid]['timeline_hidden'] = true;
+                            }
                         }
                     }
                 }
