@@ -717,7 +717,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       });
       return out;
     });
-    setLeads?.((prev) => prev.map((l) => (l.status === oldName ? { ...l, status: next } : l)));
+    // The SLA limit and the "track follow-up" flag are keyed by the lowercased
+    // state name too — without this, both silently orphan under the old key: the
+    // SLA badge disappears for the whole phase and the follow-up checkbox stops
+    // showing up on every lead in it.
+    setLeadStateSla((prev) => migrateMapKey(prev, oldName, next));
+    setLeadStateFollowUp((prev) => migrateMapKey(prev, oldName, next));
+    setLeads?.((prev) =>
+      prev.map((l) => {
+        const renamed = l.status === oldName ? { ...l, status: next } : l;
+        // Each lead's own follow-up ticks are keyed the same way, so a rename
+        // must move them too or every completed follow-up in the phase unticks.
+        if (renamed.followUps && oldName in renamed.followUps) {
+          const followUps = { ...renamed.followUps };
+          followUps[next] = followUps[oldName];
+          delete followUps[oldName];
+          return { ...renamed, followUps };
+        }
+        return renamed;
+      })
+    );
   };
 
   // Rename an interested category: list + color map + cascade onto each lead's categories array.

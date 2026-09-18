@@ -9,6 +9,7 @@ import type { Language } from "../utils/translations";
 import { resolveCurrencySymbol, resolveCurrencyPosition, formatMoney } from "../utils/currency";
 import { formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
 import { liftAccent, readableOn } from "../utils/accentColor";
+import { isClosedLeadState } from "../utils/leadSla";
 
 interface DashboardProps {
   systemName: string;
@@ -344,19 +345,17 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Real ROI calculation: Sum values of won leads coming from the campaign source
   const metaWonValue = useMemo(() => filteredLeads
     .filter(l => {
-      const statusLower = l.status.toLowerCase();
-      const isWon = statusLower === "accepted" || leadStateParents[statusLower] === "accepted";
+      const isWon = isClosedLeadState(l.status, leadStageGroups, leadStateParents);
       return (l.source === "facebook" || l.source === "instagram") && isWon;
     })
-    .reduce((acc: number, l: Lead) => acc + l.value, 0), [filteredLeads, leadStateParents]);
+    .reduce((acc: number, l: Lead) => acc + l.value, 0), [filteredLeads, leadStageGroups, leadStateParents]);
 
   const googleWonValue = useMemo(() => filteredLeads
     .filter(l => {
-      const statusLower = l.status.toLowerCase();
-      const isWon = statusLower === "accepted" || leadStateParents[statusLower] === "accepted";
+      const isWon = isClosedLeadState(l.status, leadStageGroups, leadStateParents);
       return l.source === "website" && isWon;
     })
-    .reduce((acc: number, l: Lead) => acc + l.value, 0), [filteredLeads, leadStateParents]);
+    .reduce((acc: number, l: Lead) => acc + l.value, 0), [filteredLeads, leadStageGroups, leadStateParents]);
 
   const totalWonValue = metaWonValue + googleWonValue;
 
@@ -365,10 +364,9 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const totalRoi = totalSpent > 0 ? ((totalWonValue - totalSpent) / totalSpent) * 150 : 0; // colorful multiplier
 
   // --- Company CRM Performance Aggregators ---
-  const wonLeads = useMemo(() => filteredLeads.filter(l => {
-    const statusLower = l.status.toLowerCase();
-    return statusLower === "accepted" || leadStateParents[statusLower] === "accepted";
-  }), [filteredLeads, leadStateParents]);
+  const wonLeads = useMemo(() => filteredLeads.filter(l =>
+    isClosedLeadState(l.status, leadStageGroups, leadStateParents)
+  ), [filteredLeads, leadStageGroups, leadStateParents]);
   
   const activePipelineLeads = useMemo(() => filteredLeads.filter(l => {
     const statusLower = l.status.toLowerCase();
@@ -397,14 +395,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
     let sum = 0;
     const points: number[] = [];
     sortedLeads.forEach(l => {
-      const statusLower = l.status.toLowerCase();
-      if (statusLower === "accepted" || leadStateParents[statusLower] === "accepted") {
+      if (isClosedLeadState(l.status, leadStageGroups, leadStateParents)) {
         sum += l.value;
       }
       points.push(sum);
     });
     return points.length > 1 ? points : [0, 0];
-  }, [sortedLeads, leadStateParents]);
+  }, [sortedLeads, leadStageGroups, leadStateParents]);
 
   const pipelinePoints = useMemo(() => {
     let sum = 0;
@@ -444,24 +441,20 @@ export const Dashboard: React.FC<DashboardProps> = ({
     const points: number[] = [];
     sortedLeads.forEach(l => {
       totalCount += 1;
-      const statusLower = l.status.toLowerCase();
-      if (statusLower === "accepted" || leadStateParents[statusLower] === "accepted") {
+      if (isClosedLeadState(l.status, leadStageGroups, leadStateParents)) {
         wonCount += 1;
       }
       points.push((wonCount / totalCount) * 100);
     });
     return points.length > 1 ? points : [0, 0];
-  }, [sortedLeads, leadStateParents]);
+  }, [sortedLeads, leadStageGroups, leadStateParents]);
 
   // Project Managers leaderboard
   const pmLeaderboard = useMemo(() => {
     const owners = Array.from(new Set(filteredLeads.map(l => l.owner).filter(Boolean)));
     return owners.map(name => {
       const pmLeads = filteredLeads.filter(l => l.owner === name);
-      const won = pmLeads.filter(l => {
-        const statusLower = l.status.toLowerCase();
-        return statusLower === "accepted" || leadStateParents[statusLower] === "accepted";
-      });
+      const won = pmLeads.filter(l => isClosedLeadState(l.status, leadStageGroups, leadStateParents));
       const rev = won.reduce((acc: number, l: Lead) => acc + l.value, 0);
       const conv = pmLeads.length > 0 ? (won.length / pmLeads.length) * 100 : 0;
       
@@ -485,7 +478,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         trendPoints: trendPoints.length > 1 ? trendPoints : [0, rev]
       };
     }).sort((a, b) => b.revenue - a.revenue);
-  }, [filteredLeads, leadStateParents]);
+  }, [filteredLeads, leadStageGroups, leadStateParents]);
 
   // PM chronological progression lines racing over the interval
   const pmRacingChartData = useMemo(() => {
@@ -513,8 +506,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         const xRatio = Math.max(0, Math.min(1, (leadTime - startMs) / rangeMs));
         
         totalProcessed += 1;
-        const statusLower = l.status.toLowerCase();
-        if (statusLower === "accepted" || leadStateParents[statusLower] === "accepted") {
+        if (isClosedLeadState(l.status, leadStageGroups, leadStateParents)) {
           cumulativeRevenue += l.value;
           cumulativeWon += 1;
         }
@@ -554,7 +546,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     });
 
     return { startMs, endMs, series };
-  }, [filteredLeads, pmLeaderboard, filterStartDate, filterEndDate, leadStateParents]);
+  }, [filteredLeads, pmLeaderboard, filterStartDate, filterEndDate, leadStageGroups, leadStateParents]);
 
   // Monthly revenue, lead counts, and client averages trends
   const monthlyTrends = useMemo(() => {
@@ -567,8 +559,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         monthsMap[monthKey] = { revenue: 0, clientCount: 0, leadCount: 0 };
       }
       monthsMap[monthKey].leadCount += 1;
-      const statusLower = l.status.toLowerCase();
-      if (statusLower === "accepted" || leadStateParents[statusLower] === "accepted") {
+      if (isClosedLeadState(l.status, leadStageGroups, leadStateParents)) {
         monthsMap[monthKey].revenue += l.value;
         monthsMap[monthKey].clientCount += 1;
       }
@@ -587,7 +578,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
         leadCount: data.leadCount
       };
     });
-  }, [filteredLeads, leadStateParents]);
+  }, [filteredLeads, leadStageGroups, leadStateParents]);
 
   // --- Client Demographics & Funnel Aggregators ---
   const clientTypes = useMemo(() => {
@@ -659,10 +650,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       valueSuffix = currencyValueSuffix;
       let sum = 0;
       details = sortedLeads
-        .filter(l => {
-          const statusLower = l.status.toLowerCase();
-          return statusLower === "accepted" || leadStateParents[statusLower] === "accepted";
-        })
+        .filter(l => isClosedLeadState(l.status, leadStageGroups, leadStateParents))
         .map(l => {
           sum += l.value;
           return {
@@ -679,12 +667,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       valueSuffix = currencyValueSuffix;
       let sum = 0;
       details = sortedLeads
-        .filter(l => {
-          const statusLower = l.status.toLowerCase();
-          const parent = leadStateParents[statusLower];
-          const isClosed = statusLower === "accepted" || statusLower === "rejected" || parent === "accepted" || parent === "rejected";
-          return !isClosed;
-        })
+        .filter(l => !isClosedLeadState(l.status, leadStageGroups, leadStateParents))
         .map(l => {
           sum += l.value;
           return {
@@ -716,8 +699,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       let totalCount = 0;
       details = sortedLeads.map(l => {
         totalCount += 1;
-        const statusLower = l.status.toLowerCase();
-        const isWon = statusLower === "accepted" || leadStateParents[statusLower] === "accepted";
+        const isWon = isClosedLeadState(l.status, leadStageGroups, leadStateParents);
         if (isWon) {
           wonCount += 1;
         }
@@ -735,11 +717,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       valueSuffix = currencyValueSuffix;
       let sum = 0;
       details = sortedLeads
-        .filter(l => {
-          const statusLower = l.status.toLowerCase();
-          const isWon = statusLower === "accepted" || leadStateParents[statusLower] === "accepted";
-          return l.owner === pmName && isWon;
-        })
+        .filter(l => l.owner === pmName && isClosedLeadState(l.status, leadStageGroups, leadStateParents))
         .map(l => {
           sum += l.value;
           return {

@@ -76,7 +76,7 @@ export const normalizeLeadStateSla = (raw: unknown): LeadStateSla => {
 };
 
 /** True when this phase is terminal — a closed deal cannot "move on" in time. */
-const isClosedState = (
+export const isClosedLeadState = (
   state: string,
   leadStageGroups: Record<string, string>,
   leadStateParents: Record<string, string>,
@@ -86,6 +86,8 @@ const isClosedState = (
   const parent = leadStateParents[key];
   return !!parent && leadStageGroups[parent.toLowerCase()] === "closed";
 };
+
+const isClosedState = isClosedLeadState;
 
 /** When the lead last moved into the phase it is in now. */
 export const leadPhaseEnteredAt = (lead: Lead): string => {

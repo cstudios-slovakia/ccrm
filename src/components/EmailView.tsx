@@ -11,7 +11,7 @@ import type { Lead, Task, UserProfile } from "../types";
 import type { ModuleAccess } from "../utils/permissions";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import { formatBytes } from "../utils/formatBytes";
-import { nowLocalStamp, localeCodeFor, formatTimestampLocalized } from "../utils/localTime";
+import { nowLocalStamp, localeCodeFor, formatTimestampLocalized, todayLocalPlusDays } from "../utils/localTime";
 import { getTranslation } from "../utils/translations";
 import { CustomSelect } from "./ui/CustomSelect";
 import { TimelineAuthorBadge } from "./TimelineAuthorBadge";
@@ -329,7 +329,7 @@ export const EmailView: React.FC<EmailViewProps> = ({
       status: taskStates[0] || "New",
       priority: "medium",
       startDate: new Date().toISOString().split("T")[0],
-      deadline: new Date(Date.now() + 86400000 * 3).toISOString().split("T")[0],
+      deadline: todayLocalPlusDays(3),
       deadlineTime: "23:59",
       owner: assignedUser,
       createdBy: currentUser?.name || "",
@@ -1349,14 +1349,14 @@ export const EmailView: React.FC<EmailViewProps> = ({
         </span>
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-2">
-            <span className={`flex items-center min-w-0 text-sm ${opts.unread ? "font-extrabold text-slate-900" : "font-semibold text-slate-700"}`}>
+            <span className={`flex items-center min-w-0 text-xs font-medium ${opts.unread ? "text-slate-700" : "text-slate-500"}`}>
               <GeometricIcon emailString={party.address} />
               {opts.email.isSent && <span className="text-slate-400 font-semibold mr-1 shrink-0">{t("To:", "Komu:", "Címzett:")}</span>}
               <span className="truncate">{party.name}</span>
             </span>
             <span className={`text-xs shrink-0 ${opts.unread ? "text-pink-600 font-bold" : "text-slate-500"}`}>{formatListDate(opts.email.date)}</span>
           </div>
-          <div className={`mt-0.5 text-sm truncate ${opts.unread ? "font-bold text-slate-900" : "text-slate-600"}`}>
+          <div className={`mt-0.5 text-base font-bold truncate ${opts.unread ? "text-slate-900" : "text-slate-700"}`}>
             {opts.subject || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)")}
           </div>
           {opts.email.preview && (

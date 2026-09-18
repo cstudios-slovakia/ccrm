@@ -22,6 +22,7 @@ import type { CompanyBackedRecord, CompanyLookupField, CompanySuggestion } from 
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { formatMoney, resolveCurrencySymbol } from "../utils/currency";
 import { todayLocal, nowLocalStamp, formatDateLocalized } from "../utils/localTime";
+import { nextDocumentNumber as nextDocumentNumberShared } from "../utils/documentNumbering";
 import { cn } from "../utils/cn";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import type { ModuleAccess } from "../utils/permissions";
@@ -218,15 +219,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
    */
   const nextDocumentNumber = (type: InvoiceOfferType) => {
     const prefix = type === "price_offer" ? "CP" : type === "proforma" ? "ZF" : "FA";
-    const year = new Date().getFullYear();
-    const head = `${prefix}-${year}-`;
-    const highest = invoicesOffers.reduce((max, io) => {
-      const docNo = io.documentNumber || "";
-      if (!docNo.startsWith(head)) return max;
-      const seq = parseInt(docNo.slice(head.length), 10);
-      return Number.isFinite(seq) && seq > max ? seq : max;
-    }, 0);
-    return `${head}${String(highest + 1).padStart(3, "0")}`;
+    return nextDocumentNumberShared(invoicesOffers.map(io => io.documentNumber), prefix, new Date().getFullYear(), 3);
   };
 
   /** Seeds the draft's texts from the client. Takes the record, not its id, so a
@@ -332,8 +325,11 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
   const metrics = useMemo(() => {
     const offers = invoicesOffers.filter(o => o.type === "price_offer");
     const totalOffersVal = offers.reduce((sum, o) => sum + num(o.totalPrice), 0);
+    // Money total counts invoices only — an offer marked "invoiced" and the
+    // invoice raised from it are one job, and nothing links them, so counting
+    // both here double-counts the same money (see audit F6).
     const totalInvoicedVal = invoicesOffers
-      .filter(o => o.type === "invoice" || o.status === "invoiced")
+      .filter(o => o.type === "invoice")
       .reduce((sum, o) => sum + num(o.totalPrice), 0);
     // Win rate is only meaningful over offers that reached a verdict — counting
     // drafts as losses pinned it near zero however well the business was doing.
@@ -894,7 +890,9 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
 
   const handleChangeStatus = (offerId: string, status: InvoiceOfferStatus) => {
     if (!canEdit) return;
-    setInvoicesOffers(prev => prev.map(o => (o.id === offerId ? { ...o, status } : o)));
+    setInvoicesOffers(prev =>
+      prev.map(o => (o.id === offerId ? { ...o, status, statusChangedAt: todayLocal() } : o))
+    );
   };
 
   const handleDelete = (offer: InvoiceOffer) => {
@@ -1478,6 +1476,25 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                       placeholder={defaultTitleFor(draftType)}
                       className={inputClass}
                     />
+                  </div>
+
+                  <div>
+                    <label className={labelClass}>
+                      {t("Issued on", "Dátum vystavenia", "Kiállítás dátuma")}
+                    </label>
+                    <input
+                      type="date"
+                      value={draftIssuedAt}
+                      onChange={e => setDraftIssuedAt(e.target.value || todayLocal())}
+                      className={inputClass}
+                    />
+                    <p className="text-[11px] text-slate-500 mt-1">
+                      {t(
+                        "Due date and valid-until are calculated from this date and can be edited before the document is issued.",
+                        "Splatnosť a platnosť ponuky sa počítajú z tohto dátumu a je možné ich pred vystavením upraviť.",
+                        "A fizetési határidő és az érvényesség ebből a dátumból számolódik, és a kiállítás előtt módosítható."
+                      )}
+                    </p>
                   </div>
                 </div>
               )}

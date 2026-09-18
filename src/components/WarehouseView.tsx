@@ -55,7 +55,10 @@ import { fetchCompanyDetailsByCompanyId } from "../utils/companyRegistryApi";
 import { registryCountryOf } from "../utils/companyRegistry";
 import type { CompanyDetails, CompanyLookupField, CompanySuggestion } from "../utils/companyRegistry";
 import { formatMoney } from "../utils/currency";
-import { formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
+import { formatDateLocalized, formatTimestampLocalized, todayLocal, nowLocalDateTime } from "../utils/localTime";
+import { isoDaysBetween } from "../utils/recurringExpenses";
+import { nextWeightedAveragePrice } from "../utils/warehousePricing";
+import { nextDocumentNumber } from "../utils/documentNumbering";
 import type { Language } from "../utils/translations";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 
@@ -63,11 +66,7 @@ const formatCurrency = (val: number, lang: Language, currency?: string | null) =
   formatMoney(val, currency, lang, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
 const getExpirationStatus = (expirationDate: string): { status: "expired" | "warning" | "ok"; daysRemaining: number } => {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const expDate = new Date(expirationDate);
-  const diffTime = expDate.getTime() - today.getTime();
-  const daysRemaining = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+  const daysRemaining = isoDaysBetween(todayLocal(), expirationDate.slice(0, 10));
 
   let status: "expired" | "warning" | "ok" = "ok";
   if (daysRemaining <= 0) {
@@ -412,7 +411,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
   // Dedicated Goods Issue (Výdajka) state & line items
   const [isGoodsIssueOpen, setIsGoodsIssueOpen] = useState<boolean>(false);
   const [issueDocumentNumber, setIssueDocumentNumber] = useState<string>("");
-  const [issueDate, setIssueDate] = useState<string>(new Date().toISOString().slice(0, 10));
+  const [issueDate, setIssueDate] = useState<string>(todayLocal());
   const [issueWarehouseId, setIssueWarehouseId] = useState<string>(warehouses[0]?.id || "wh-1");
   const [issueLeadId, setIssueLeadId] = useState<string>("");
   const [issueNote, setIssueNote] = useState<string>("");
@@ -516,8 +515,9 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     let monthlyOutward = 0;
     let monthlyProfit = 0;
 
+    const thisMonth = todayLocal().slice(0, 7);
     warehouseMovements.forEach(m => {
-      if (m.status === "confirmed") {
+      if (m.status === "confirmed" && String(m.issuedAt || "").slice(0, 7) === thisMonth) {
         if (m.type === "inward") {
           monthlyInward += m.totalCostValue || 0;
         } else if (m.type === "outward") {
@@ -908,7 +908,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       leadId = productPurchasePartnerId.replace("lead_", "");
     }
 
-    const docNum = `PRI-${new Date().getFullYear()}-${String(warehouseMovements.filter(m => m.type === "inward").length + 1).padStart(4, "0")}`;
+    const docNum = nextDocumentNumber(warehouseMovements.filter(m => m.type === "inward").map(m => m.documentNumber), "PRI", new Date().getFullYear());
     const movId = `mov-${Date.now()}`;
     const totalCost = Number(productPurchaseAmount) * Number(productPurchasePrice);
 
@@ -941,27 +941,23 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       note: productPurchaseNote.trim() || null,
       fileName: null,
       filePath: null,
-      issuedAt: new Date().toISOString().slice(0, 19).replace("T", " "),
-      createdAt: new Date().toISOString().slice(0, 19).replace("T", " "),
+      issuedAt: nowLocalDateTime(),
+      createdAt: nowLocalDateTime(),
       items: [movementItem]
     };
 
     setWarehouseMovements(prev => [newMovement, ...prev]);
 
-    const currentStock = warehouseStock.find(s => s.warehouseId === productPurchaseWarehouseId && s.itemId === currentItem.id);
-    const existingQty = currentStock?.quantity || 0;
+    const totalOnHand = warehouseStock.filter(s => s.itemId === currentItem.id).reduce((sum, s) => sum + s.quantity, 0);
     const oldAvgPrice = currentItem.avgPurchasePrice || 0;
-    const newTotalQty = existingQty + Number(productPurchaseAmount);
-    const newWapPrice = newTotalQty > 0 
-      ? ((existingQty * oldAvgPrice) + (Number(productPurchaseAmount) * Number(productPurchasePrice))) / newTotalQty 
-      : Number(productPurchasePrice);
+    const newWapPrice = nextWeightedAveragePrice(totalOnHand, oldAvgPrice, Number(productPurchaseAmount), Number(productPurchasePrice));
 
     setWarehouseItems(prev => prev.map(i => i.id === currentItem.id ? {
       ...i,
-      avgPurchasePrice: Number(newWapPrice.toFixed(2)),
+      avgPurchasePrice: newWapPrice,
       lastPurchasePrice: Number(productPurchasePrice)
     } : i));
-    setItemForm(prev => ({ ...prev, avgPurchasePrice: Number(newWapPrice.toFixed(2)) }));
+    setItemForm(prev => ({ ...prev, avgPurchasePrice: newWapPrice }));
 
     setWarehouseStock(prev => {
       const exists = prev.some(s => s.warehouseId === productPurchaseWarehouseId && s.itemId === currentItem.id);
@@ -1032,7 +1028,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       leadId = productSalePartnerId.replace("lead_", "");
     }
 
-    const docNum = `VYD-${new Date().getFullYear()}-${String(warehouseMovements.filter(m => m.type === "outward").length + 1).padStart(4, "0")}`;
+    const docNum = nextDocumentNumber(warehouseMovements.filter(m => m.type === "outward").map(m => m.documentNumber), "VYD", new Date().getFullYear());
     const movId = `mov-${Date.now()}`;
     const unitCost = currentItem.avgPurchasePrice || 0;
     const totalCost = Number(productSaleAmount) * unitCost;
@@ -1127,6 +1123,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
     if (editingItem) {
       // Update existing item
+      const hasStockOnHand = getStockInfoForItem(editingItem.id).onHand > 0;
       const updated: WarehouseItem = {
         ...editingItem,
         name: itemForm.name.trim(),
@@ -1141,7 +1138,10 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
         hasExpiration: itemForm.hasExpiration,
         imageUrl: itemForm.imageUrl.trim() || null,
         defaultSellPrice: Number(itemForm.defaultSellPrice) || 0,
-        avgPurchasePrice: Number(itemForm.avgPurchasePrice) || 0,
+        // A typed WAP would silently re-value every unit already on hand with
+        // no date, no movement and no trace — once stock exists it can only
+        // move through a dated purchase/receipt/revaluation.
+        avgPurchasePrice: hasStockOnHand ? editingItem.avgPurchasePrice : (Number(itemForm.avgPurchasePrice) || 0),
         description: itemForm.description.trim() || null
       };
 
@@ -1402,7 +1402,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       return;
     }
 
-    const docNum = `PRI-${new Date().getFullYear()}-${String(warehouseMovements.filter(m => m.type === "inward").length + 1).padStart(4, "0")}`;
+    const docNum = nextDocumentNumber(warehouseMovements.filter(m => m.type === "inward").map(m => m.documentNumber), "PRI", new Date().getFullYear());
     const movId = `mov-${Date.now()}`;
 
     let totalCost = 0;
@@ -1446,8 +1446,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       note: receiptNote.trim() || null,
       fileName: null,
       filePath: null,
-      issuedAt: new Date().toISOString().slice(0, 19).replace("T", " "),
-      createdAt: new Date().toISOString().slice(0, 19).replace("T", " "),
+      issuedAt: nowLocalDateTime(),
+      createdAt: nowLocalDateTime(),
       items: movementItems
     };
 
@@ -1459,19 +1459,16 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       const item = warehouseItems.find(i => i.id === v.itemId);
       if (!item) return;
 
-      const currentStockInfo = getStockInfoForItem(v.itemId, receiptWarehouseId);
-      const oldQty = currentStockInfo.onHand;
+      const totalOnHand = getStockInfoForItem(v.itemId).onHand;
       const oldAvg = item.avgPurchasePrice || 0;
       const newQty = Number(v.quantity);
       const newPrice = Number(v.unitPurchasePrice);
 
-      // WAP Formula: ((OldQty * OldAvg) + (NewQty * NewPrice)) / (OldQty + NewQty)
-      const combinedQty = oldQty + newQty;
-      const newWap = combinedQty > 0 ? ((oldQty * oldAvg) + (newQty * newPrice)) / combinedQty : newPrice;
+      const newWap = nextWeightedAveragePrice(totalOnHand, oldAvg, newQty, newPrice);
 
       setWarehouseItems(prev => prev.map(it => it.id === v.itemId ? {
         ...it,
-        avgPurchasePrice: Number(newWap.toFixed(4)),
+        avgPurchasePrice: newWap,
         lastPurchasePrice: newPrice
       } : it));
 
@@ -1546,9 +1543,8 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       setIssueItems([]);
     }
 
-    const nextSeq = warehouseMovements.filter(m => m.type === "outward").length + 1;
-    setIssueDocumentNumber(`VYD-${new Date().getFullYear()}-${String(nextSeq).padStart(4, "0")}`);
-    setIssueDate(new Date().toISOString().slice(0, 10));
+    setIssueDocumentNumber(nextDocumentNumber(warehouseMovements.filter(m => m.type === "outward").map(m => m.documentNumber), "VYD", new Date().getFullYear()));
+    setIssueDate(todayLocal());
     setIssueNote("");
     setProductSearchQuery("");
     setIsProductSearchDropdownOpen(false);
@@ -1684,8 +1680,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       }
     }
 
-    const nextSeq = warehouseMovements.filter(m => m.type === "outward").length + 1;
-    const docNum = issueDocumentNumber.trim() || `VYD-${new Date().getFullYear()}-${String(nextSeq).padStart(4, "0")}`;
+    const docNum = issueDocumentNumber.trim() || nextDocumentNumber(warehouseMovements.filter(m => m.type === "outward").map(m => m.documentNumber), "VYD", new Date().getFullYear());
     const movId = `mov-${Date.now()}`;
 
     let totalCost = 0;
@@ -1816,7 +1811,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       }
     }
 
-    const docNum = `PRE-${new Date().getFullYear()}-${String(warehouseMovements.filter(m => m.type === "transfer").length + 1).padStart(4, "0")}`;
+    const docNum = nextDocumentNumber(warehouseMovements.filter(m => m.type === "transfer").map(m => m.documentNumber), "PRE", new Date().getFullYear());
     const movId = `mov-${Date.now()}`;
 
     let totalVal = 0;

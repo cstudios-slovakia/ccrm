@@ -224,6 +224,20 @@ export function nextRecurringChargeAfter(rule: RecurringRule, dateIso: string): 
   return recurringOccurrences(rule, from, shiftIsoDate(from, 400))[0] ?? null;
 }
 
+/**
+ * The occurrence a settlement made "today" actually belongs to: the rule's
+ * last charge on or before `dateIso`, or `dateIso` itself when the rule has
+ * not charged yet (nothing to settle retroactively). Used to date an inline
+ * "mark paid at this amount" edit, which is a statement about the charge
+ * being settled — not a forward-looking price change like the edit form's
+ * "applies from" field (`nextRecurringChargeAfter`).
+ */
+export function lastRecurringOccurrenceOnOrBefore(rule: RecurringRule, dateIso: string): string {
+  if (!isIsoDate(dateIso)) return dateIso;
+  const occurrences = recurringOccurrences(rule, shiftIsoDate(dateIso, -400), dateIso);
+  return occurrences.length > 0 ? occurrences[occurrences.length - 1] : dateIso;
+}
+
 // ==========================================
 // Occurrence dates
 // ==========================================

@@ -5,6 +5,28 @@ export const isDoneTaskState = (status: string, taskStates: string[]): boolean =
   (status || "").toLowerCase() === "done" ||
   (taskStates.length > 0 && status === taskStates[taskStates.length - 1]);
 
+/**
+ * A task is overdue once its deadline (date + optional time, defaulting to
+ * 23:59) is in the past relative to `nowStamp` ("YYYY-MM-DD HH:MM", from
+ * `nowLocalStamp()`) — never for a task already in a done state.
+ */
+export const isTaskOverdue = (
+  task: Pick<Task, "status" | "deadline" | "deadlineTime">,
+  taskStates: string[],
+  nowStamp: string
+): boolean => {
+  if (isDoneTaskState(task.status, taskStates)) return false;
+  if (!task.deadline) return false;
+
+  const [currentDateStr, currentTimeStr] = nowStamp.split(" ");
+  if (task.deadline < currentDateStr) return true;
+  if (task.deadline === currentDateStr) {
+    const limitTime = task.deadlineTime || "23:59";
+    return (currentTimeStr || "00:00") > limitTime;
+  }
+  return false;
+};
+
 /** Local "YYYY-MM-DD" — deadlines are plain local dates, never UTC. */
 export const localDateStr = (d: Date): string =>
   `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;

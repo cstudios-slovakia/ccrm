@@ -28,25 +28,50 @@ const isLiveInvoice = (doc: InvoiceOffer) =>
 const isSettled = (rec: FinancialRecord) =>
   rec.status === "paid" || rec.status === "partially_paid" || (Number(rec.amountReal) || 0) > 0;
 
+/**
+ * Nothing is left owing: the invoice's amount and dates must not move
+ * underneath it (audit F7). A `partially_paid` movement is settled money too,
+ * but there's still a balance due, so the invoice may keep correcting the
+ * amount/dates until it's fully paid.
+ */
+const isFullyPaid = (rec: FinancialRecord) => rec.status === "paid";
+
 const normalizeNumber = (value: string | null | undefined) => (value || "").trim().toLowerCase();
 
 const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 
-/** The fields an invoice dictates on its linked movement. */
-const invoiceOwnedFields = (doc: InvoiceOffer) => {
+/**
+ * The fields an invoice dictates on its linked movement, split by whether they
+ * may still change once the movement is settled (paid/partially paid, or any
+ * money recorded against it).
+ *
+ * Once settled, the amount and dates are frozen: an invoice edit after that
+ * point is a correction to the *document* (title, number, client), never a
+ * silent re-price or re-date of money already booked (audit F7). Only
+ * identity fields still flow through.
+ */
+const invoiceOwnedIdentityFields = (doc: InvoiceOffer) => ({
+  title: [doc.documentNumber, doc.clientName].filter(Boolean).join(" — ") || doc.title,
+  description: doc.subject?.trim() || null,
+  clientId: doc.clientId || doc.leadId || null,
+  invoiceNumber: doc.documentNumber || null
+} satisfies Partial<FinancialRecord>);
+
+const invoiceOwnedSettlementFields = (doc: InvoiceOffer) => {
   const subtotal = num(doc.subtotal);
   return {
-    title: [doc.documentNumber, doc.clientName].filter(Boolean).join(" — ") || doc.title,
-    description: doc.subject?.trim() || null,
     amountPlanned: Math.round(num(doc.totalPrice) * 100) / 100,
     currency: doc.currency || "EUR",
     issueDate: doc.issuedAt,
     dueDate: doc.dueDate || null,
-    clientId: doc.clientId || doc.leadId || null,
-    invoiceNumber: doc.documentNumber || null,
     taxRate: subtotal > 0 ? Math.round((num(doc.vatAmount) / subtotal) * 100) : 20
   } satisfies Partial<FinancialRecord>;
 };
+
+const invoiceOwnedFields = (doc: InvoiceOffer) => ({
+  ...invoiceOwnedIdentityFields(doc),
+  ...invoiceOwnedSettlementFields(doc)
+});
 
 const newMovement = (doc: InvoiceOffer, now: string): FinancialRecord => ({
   id: invoiceMovementId(doc.id),
@@ -110,7 +135,7 @@ export function reconcileInvoiceMovements(
     const doc = upserts.get(rec.id);
     if (doc) {
       seen.add(rec.id);
-      const fields = invoiceOwnedFields(doc);
+      const fields = isFullyPaid(rec) ? invoiceOwnedIdentityFields(doc) : invoiceOwnedFields(doc);
       const differs = (Object.keys(fields) as (keyof typeof fields)[]).some(k => rec[k] !== fields[k]);
       if (differs) {
         changed = true;

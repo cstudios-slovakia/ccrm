@@ -33,6 +33,18 @@ function ccrm_sensitive_result_columns(): array {
     return ['password_hash', 'password', 'metadata_json', 'api_key', 'token', 'secret'];
 }
 
+/** Reads a JSON-encoded value from `system_settings`, or `$default` if unset. */
+function ccrm_dashboard_db_setting($pdo, $key, $default) {
+    $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = ?");
+    $stmt->execute([$key]);
+    $val = $stmt->fetchColumn();
+    if ($val === false) {
+        return $default;
+    }
+    $decoded = json_decode($val, true);
+    return $decoded !== null ? $decoded : $val;
+}
+
 /** Drop sensitive columns from ad-hoc query results, whatever SQL produced them. */
 function ccrm_redact_result_rows(array $rows): array {
     $sensitive = ccrm_sensitive_result_columns();
@@ -243,7 +255,32 @@ try {
             break;
 
         case 'pipeline_value':
-            $stmt = $pdo->query("SELECT SUM(`value`) FROM `leads`");
+            // Optional `statuses` filter, same shape as `leads_by_status`. When
+            // the widget sends none, fall back to every status whose configured
+            // stage group is not "closed" (LEAD_STAGE_GROUPS), so this agrees
+            // with the overview's "active pipeline" total instead of summing
+            // every lead regardless of stage or archive state.
+            $wanted = $data['params']['statuses'] ?? null;
+            $wanted = is_array($wanted)
+                ? array_values(array_filter(array_map(fn($s) => trim((string)$s), $wanted), fn($s) => $s !== ''))
+                : [];
+
+            if (empty($wanted)) {
+                $leadStates = ccrm_dashboard_db_setting($pdo, 'LEAD_STATES', []);
+                $stageGroups = ccrm_dashboard_db_setting($pdo, 'LEAD_STAGE_GROUPS', []);
+                $wanted = array_values(array_filter(
+                    is_array($leadStates) ? $leadStates : [],
+                    fn($s) => ($stageGroups[$s] ?? 'new') !== 'closed'
+                ));
+            }
+
+            if (empty($wanted)) {
+                $stmt = $pdo->query("SELECT SUM(`value`) FROM `leads` WHERE `archived` = 0");
+            } else {
+                $placeholders = implode(',', array_fill(0, count($wanted), '?'));
+                $stmt = $pdo->prepare("SELECT SUM(`value`) FROM `leads` WHERE `archived` = 0 AND LOWER(`status`) IN ({$placeholders})");
+                $stmt->execute(array_map(fn($s) => mb_strtolower($s), $wanted));
+            }
             $result = ['value' => (float)($stmt->fetchColumn() ?: 0)];
             break;
 

@@ -1,4 +1,5 @@
 import type { FinancialRecord, FinancialStatus } from "../types";
+import { todayLocal } from "./localTime.ts";
 
 /**
  * `ProjectDetailsView` and `ClientsView` each carry a small secondary finance
@@ -29,7 +30,7 @@ export function mergeFinancialRecord(
  * status moved away from `paid` afterwards.
  */
 export function derivePaidDate(existing: FinancialRecord | null, status: FinancialStatus): string | null {
-  if (status === "paid") return existing?.paidDate || new Date().toISOString().slice(0, 10);
+  if (status === "paid") return existing?.paidDate || todayLocal();
   return existing?.paidDate ?? null;
 }
 

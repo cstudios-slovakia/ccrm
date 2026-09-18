@@ -16,7 +16,8 @@ import React from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Building2, Plus, User } from "lucide-react";
 import { cn } from "../../utils/cn";
-import { formatDateLocalized, todayLocal } from "../../utils/localTime";
+import { formatDateLocalized, nowLocalStamp } from "../../utils/localTime";
+import { isTaskOverdue } from "../../utils/projectTasks";
 import type { Language } from "../../utils/translations";
 import {
   visibleColumnsOf,
@@ -437,7 +438,6 @@ export const TasksTableWidget: React.FC<PresetWidgetProps> = ({
   const fill = useFillRows(num(settings.rows) || 5, list.length, TABLE_ROW_HEIGHT);
   const shown = list.slice(0, fill.count);
   const total = num(list[0]?.total_count) || list.length;
-  const today = todayLocal();
 
   const cell = (key: string, row: any) => {
     const done = isDoneTaskState(row?.status, ctx.taskStates);
@@ -475,7 +475,13 @@ export const TasksTableWidget: React.FC<PresetWidgetProps> = ({
           </div>
         );
       case "deadline": {
-        const overdue = !done && !!row?.deadline && String(row.deadline).slice(0, 10) < today;
+        const overdue =
+          !done &&
+          isTaskOverdue(
+            { status: row?.status, deadline: row?.deadline, deadlineTime: row?.deadline_time },
+            ctx.taskStates,
+            nowLocalStamp()
+          );
         return (
           <div className="min-w-0">
             <span

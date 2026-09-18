@@ -31,6 +31,8 @@ import { DeadlineTimePicker, TaskEditDrawer, taskProjectOptions } from "./TaskEd
 import { projectDisplayName } from "../utils/projects";
 import { taskPriorityLabel, taskStateLabel } from "../utils/taskLabels";
 import { requestTaskDeletion } from "../utils/taskApi";
+import { isTaskOverdue as isTaskOverdueShared } from "../utils/projectTasks";
+import { nowLocalStamp } from "../utils/localTime";
 import {
     canArchiveTask as userCanArchiveTask,
     canDeleteTask as userCanDeleteTask,
@@ -1347,26 +1349,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     );
 
     // --- TASK BUCKETS ---
-    const isTaskOverdue = (task: Task) => {
-        if (isDoneState(task.status)) return false;
-
-        const now = new Date();
-        const currentDateStr = toLocalDateStr(now);
-
-        if (task.deadline < currentDateStr) {
-            return true;
-        }
-
-        if (task.deadline === currentDateStr) {
-            const currentHours = String(now.getHours()).padStart(2, "0");
-            const currentMinutes = String(now.getMinutes()).padStart(2, "0");
-            const currentTimeStr = `${currentHours}:${currentMinutes}`;
-            const limitTime = task.deadlineTime || "23:59";
-            return currentTimeStr > limitTime;
-        }
-
-        return false;
-    };
+    const isTaskOverdue = (task: Task) => isTaskOverdueShared(task, taskStates, nowLocalStamp());
 
     const tomorrowStr = toLocalDateStr(new Date(today.getTime() + 86400000));
     const overdueTasks = myTasks.filter((t) => isTaskOverdue(t)).sort(byDeadline);

@@ -832,6 +832,13 @@ export interface FinancialRecord {
   recurringStartDate?: string | null;
   recurringEndDate?: string | null;
   /**
+   * The end date the rule was actually meant to have, remembered while a
+   * pause is in effect (a pause stamps `recurringEndDate` with today's date
+   * to stop future charges — see `handleToggleRecurringActive` — which would
+   * otherwise overwrite a real planned end; resuming restores it here).
+   */
+  recurringPlannedEndDate?: string | null;
+  /**
    * Superseded amounts of a recurring rule, oldest first. `amountPlanned` /
    * `amountReal` above are always the figures in force now; this is what the
    * occurrences before the last change were charged. See
@@ -955,6 +962,7 @@ export interface InvoiceOffer {
   
   // Status & File
   status: InvoiceOfferStatus;
+  statusChangedAt?: string | null; // YYYY-MM-DD — when `status` last changed
   issuedAt: string; // YYYY-MM-DD
   validUntil?: string | null; // YYYY-MM-DD
   dueDate?: string | null; // YYYY-MM-DD

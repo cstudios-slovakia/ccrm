@@ -52,6 +52,7 @@ import {
 } from "../utils/financialTrend";
 import {
   isoDaysBetween,
+  lastRecurringOccurrenceOnOrBefore,
   nextRecurringChargeAfter,
   recurringAmountHistoryAfterChange,
   recurringChargeAmount,
@@ -1242,7 +1243,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   // `handleToggleRecurringActive`), so this is the one place "active vs
   // paused" is decided for display.
   const isRecurringPaused = (rec: Pick<FinancialRecord, "recurringEndDate">): boolean =>
-    !!rec.recurringEndDate && rec.recurringEndDate < forecastToday;
+    !!rec.recurringEndDate && rec.recurringEndDate <= forecastToday;
 
   const forecastRange = useMemo(
     () => futureWindow(forecastToday, futureHorizonMonths),
@@ -1594,24 +1595,30 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     setFinancialRecords((prev) =>
       prev.map((r) => {
         if (r.id === recId) {
-          const isActive = !r.recurringEndDate || r.recurringEndDate >= today;
+          // Same comparison `isRecurringPaused` uses, so a rule paused today
+          // reads as paused today instead of "active" until midnight (F9).
+          const isActive = !r.recurringEndDate || r.recurringEndDate > today;
+          if (isActive) {
+            // Pausing stops future charges by stamping today as the end date
+            // — but a rule can have a real planned end already, and that must
+            // come back on resume rather than being clobbered (F9).
+            return {
+              ...r,
+              recurringPlannedEndDate: r.recurringEndDate ?? null,
+              recurringEndDate: today,
+              updatedAt: new Date().toISOString()
+            };
+          }
           return {
             ...r,
-            recurringEndDate: isActive ? today : null,
+            recurringEndDate: r.recurringPlannedEndDate ?? null,
+            recurringPlannedEndDate: null,
             updatedAt: new Date().toISOString()
           };
         }
         return r;
       })
     );
-  };
-
-  // Helper to calculate monthly equivalent cost of a recurring expense
-  const getMonthlyEquivalent = (amount: number, freq?: FinancialRecurringFrequency | null): number => {
-    if (!freq || freq === "monthly") return amount;
-    if (freq === "weekly") return amount * (52 / 12);
-    if (freq === "yearly") return amount / 12;
-    return amount;
   };
 
   // Helper to compute human-readable recurrence description
@@ -2946,12 +2953,14 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     patchMovement(record.id, {
       status: nextStatus,
       amountReal,
-      // On a recurring rule this is a new price, not a correction of the ones
-      // already charged — pin the old figure to the charges behind us.
+      // This is a statement about the charge being *settled*, i.e. the last
+      // occurrence on or before today — not a forward-looking price change
+      // (see F1 of the derived-numbers audit). Pin the old figure to the
+      // charges strictly before the one just settled.
       recurringAmountHistory: recurringAmountHistoryAfterChange(
         record,
         { amountPlanned: record.amountPlanned || 0, amountReal },
-        todayLocal()
+        lastRecurringOccurrenceOnOrBefore(record, todayLocal())
       ),
       // A settlement without a date would drop out of every month bucket.
       paidDate: record.paidDate || todayLocal()
@@ -6272,7 +6281,20 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                       const rootCat = catBreadcrumbs[0];
                       const isPaused = isRecurringPaused(rec);
                       const amount = rec.amountReal > 0 ? rec.amountReal : rec.amountPlanned;
-                      const monthlyCost = getMonthlyEquivalent(amount, rec.recurringFrequency);
+                      // What this rule actually charges in the current calendar
+                      // month, calendar- and history-aware — the same rule the
+                      // KPI cards above use, so the two can never disagree for
+                      // the same month (see F2 of the derived-numbers audit).
+                      // A flat amount × 52/12 or /12 approximation used to be
+                      // shown here instead, right for no month of a weekly rule.
+                      const currentMonthStart = `${forecastToday.slice(0, 7)}-01`;
+                      const currentMonthDate = new Date(`${forecastToday}T00:00:00.000Z`);
+                      const currentMonthEnd = new Date(
+                        Date.UTC(currentMonthDate.getUTCFullYear(), currentMonthDate.getUTCMonth() + 1, 0)
+                      )
+                        .toISOString()
+                        .slice(0, 10);
+                      const monthlyCost = recurringTotalInRange(rec, currentMonthStart, currentMonthEnd);
                       const nextCharge = getNextRecurringDueDate(rec);
                       const cadenceText = getRecurrenceDescription(rec);
                       // Amounts the rule used to charge, so a price rise reads

@@ -8,7 +8,7 @@ import { BlockEditor } from "./BlockEditor";
 import type { EditorBlock } from "./BlockEditor";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 import { Markdown } from "../utils/markdown";
-import { todayLocal, formatDateLocalized, localeCodeFor } from "../utils/localTime";
+import { todayLocal, todayLocalPlusDays, formatDateLocalized, localeCodeFor } from "../utils/localTime";
 import { CustomSelect, DropdownSearchRow } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { useQuickAddClient } from "./ui/QuickAddClient";
@@ -513,7 +513,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
           description: `Extracted from meeting action items: ${title}`,
           assignedUser: "",
           startDate: todayLocal(),
-          dueDate: new Date(Date.now() + 86400000 * 3).toISOString().split("T")[0],
+          dueDate: todayLocalPlusDays(3),
           priority: "medium",
           status: "todo"
         }));
@@ -992,7 +992,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
         status: mapMeetingTaskStatusToCrmStatus(targetTask.status),
         priority: targetTask.priority || "medium",
         startDate: targetTask.startDate || todayLocal(),
-        deadline: targetTask.dueDate || new Date(Date.now() + 86400000).toISOString().split("T")[0],
+        deadline: targetTask.dueDate || todayLocalPlusDays(1),
         deadlineTime: "23:59",
         owner: username,
         createdBy: currentUser?.name || "",
@@ -1079,7 +1079,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
           description: `Extracted from meeting action items: ${title}`,
           assignedUser: "",
           startDate: todayLocal(),
-          dueDate: new Date(Date.now() + 86400000 * 3).toISOString().split("T")[0],
+          dueDate: todayLocalPlusDays(3),
           priority: "medium",
           status: "todo"
         }));
@@ -1177,7 +1177,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
         description: `Suggested action item: ${title}`,
         assignedUser: "",
         startDate: todayLocal(),
-        dueDate: new Date(Date.now() + 86400000 * 3).toISOString().split("T")[0],
+        dueDate: todayLocalPlusDays(3),
         priority: "medium",
         status: "todo"
       }));

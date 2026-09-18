@@ -2,18 +2,19 @@
  * Pinning tests for the derived-numbers / history-rewriting-edits audit
  * (`docs/audits/derived-numbers-dated-edits-audit-2026-09-18.md`).
  *
- * ⚠️ EVERY ACTIVE TEST HERE IS EXPECTED TO FAIL until its finding is fixed.
- * Each one encodes the behaviour the audit says is correct, with the numbers
- * observed at audit time in the comment above it. Do not weaken an assertion
- * to make the suite pass: a green run here has to mean the two rules agree,
- * or it means nothing.
+ * Reconciled after the fixes for F1-F7, F9, F10, F13, F15-F18: every helper
+ * that was lifted into `src/utils/` is now imported for real instead of
+ * mirrored, and the remaining component-internal mirrors (F9's toggle,
+ * F10's rename cascade) were updated to match the fixed behaviour. F6/F14 are
+ * plain inline checks (no helper to lift). F8/F11/F12/F14 stay `skip` — they
+ * need a Playwright spec or are an explicit product decision, per the audit.
  *
  * Where the bug lives in a pure exported helper the test calls that helper.
- * Where it lives inside a component, the test carries a VERBATIM COPY of the
- * component's rule (marked `// mirror of <file>:<line>`), exactly as the
- * finance audit of 2026-09-17 did — the copy must be replaced by an import
- * once the rule is lifted into `src/utils/`. Findings that can only be
- * pinned by a browser check are listed with `skip` and the spec they need.
+ * Where it lives inside a component with no exported helper, the test carries
+ * a VERBATIM COPY of the component's (now-fixed) rule (marked
+ * `// mirror of <file>:<line>`), exactly as the finance audit of 2026-09-17
+ * did. Findings that can only be pinned by a browser check are listed with
+ * `skip` and the spec they need.
  *
  * Run: node --test --experimental-strip-types src/utils/derivedNumbersDatedEdits.audit.test.ts
  */
@@ -22,6 +23,8 @@ import assert from "node:assert/strict";
 import test, { mock } from "node:test";
 import type { FinancialRecord, InvoiceOffer, Lead, Task, WarehouseMovement } from "../types";
 import {
+  isoDaysBetween,
+  lastRecurringOccurrenceOnOrBefore,
   recurringAmountHistoryAfterChange,
   recurringPlannedAmountAt,
   recurringTotalInRange,
@@ -29,8 +32,11 @@ import {
 } from "./recurringExpenses.ts";
 import { reconcileInvoiceMovements } from "./invoiceFinanceBridge.ts";
 import { derivePaidDate } from "./financialRecordMerge.ts";
-import { todayLocal } from "./localTime.ts";
-import { evaluateLeadSla } from "./leadSla.ts";
+import { todayLocal, todayLocalPlusDays } from "./localTime.ts";
+import { evaluateLeadSla, isClosedLeadState } from "./leadSla.ts";
+import { isTaskOverdue } from "./projectTasks.ts";
+import { nextWeightedAveragePrice } from "./warehousePricing.ts";
+import { nextDocumentNumber } from "./documentNumbering.ts";
 
 const rule = (over: Partial<RecurringRule> = {}): RecurringRule => ({
   isRecurring: true,
@@ -69,14 +75,17 @@ function withClock<T>(tz: string, nowUtc: number, fn: () => T): T {
 
 test("F1: settling a recurring charge at a new amount re-prices the charge that was settled, not the next one", () => {
   const today = "2026-09-18";
-  // mirror of FinancialManagementView.tsx:2952 — `recurringAmountHistoryAfterChange(record, {...}, todayLocal())`
-  const inlineAppliesFrom = (_rule: RecurringRule, todayIso: string) => todayIso;
-
+  // Fixed: FinancialManagementView.tsx:2952 now applies the history change
+  // from `lastRecurringOccurrenceOnOrBefore(record, todayLocal())`, not today.
   const before = rule();
   const settled = { amountPlanned: 2000, amountReal: 2200 };
   const after = rule({
     amountReal: 2200,
-    recurringAmountHistory: recurringAmountHistoryAfterChange(before, settled, inlineAppliesFrom(before, today))
+    recurringAmountHistory: recurringAmountHistoryAfterChange(
+      before,
+      settled,
+      lastRecurringOccurrenceOnOrBefore(before, today)
+    )
   });
 
   // Observed at audit time: 2000 (Sep) / 2200 (Oct).
@@ -98,19 +107,26 @@ test("F1: settling a recurring charge at a new amount re-prices the charge that 
 // ==========================================================================
 
 test("F2: a weekly rule's row-level monthly figure agrees with the KPI card for the same month", () => {
-  // mirror of FinancialManagementView.tsx:1608-1611 and :6274-6275
-  const getMonthlyEquivalent = (amount: number, freq?: string | null) =>
-    !freq || freq === "monthly" ? amount : freq === "weekly" ? amount * (52 / 12) : amount / 12;
-  const rowAmount = (r: RecurringRule) => (r.amountReal > 0 ? r.amountReal : r.amountPlanned);
+  // Fixed: `getMonthlyEquivalent` was deleted. The row (FinancialManagementView.tsx
+  // ~:6459) now computes `recurringTotalInRange(rec, currentMonthStart, currentMonthEnd)`
+  // for "today"'s month — the same call the KPI cards make — so this mirrors
+  // that derivation for two different "today"s instead of a flat 52/12 approximation.
+  const rowMonthlyFor = (r: RecurringRule, todayIso: string) => {
+    const currentMonthStart = `${todayIso.slice(0, 7)}-01`;
+    const currentMonthDate = new Date(`${todayIso}T00:00:00.000Z`);
+    const currentMonthEnd = new Date(Date.UTC(currentMonthDate.getUTCFullYear(), currentMonthDate.getUTCMonth() + 1, 0))
+      .toISOString()
+      .slice(0, 10);
+    return recurringTotalInRange(r, currentMonthStart, currentMonthEnd);
+  };
 
   const weekly = rule({ amountPlanned: 100, amountReal: 0, recurringFrequency: "weekly", recurringConfig: { dayOfWeek: 5 }, recurringStartDate: "2026-01-02" });
-  const rowMonthly = getMonthlyEquivalent(rowAmount(weekly), weekly.recurringFrequency);
   const cardMay = recurringTotalInRange(weekly, "2026-05-01", "2026-05-31"); // five Fridays
   const cardFeb = recurringTotalInRange(weekly, "2026-02-01", "2026-02-28"); // four Fridays
 
-  // Observed: row 433.33…, card 500 (May) and 400 (Feb). The row is right for no month.
-  assert.equal(rowMonthly, cardMay, "May: the row must show what the card counts for May");
-  assert.equal(rowMonthly, cardFeb, "February: the row must show what the card counts for February");
+  // Observed before the fix: row 433.33… for every month, card 500 (May) and 400 (Feb).
+  assert.equal(rowMonthlyFor(weekly, "2026-05-15"), cardMay, "May: the row must show what the card counts for May");
+  assert.equal(rowMonthlyFor(weekly, "2026-02-15"), cardFeb, "February: the row must show what the card counts for February");
 });
 
 // ==========================================================================
@@ -122,28 +138,23 @@ test("F2: a weekly rule's row-level monthly figure agrees with the KPI card for 
 // ==========================================================================
 
 test("F3: the weighted average purchase price is weighted against the item's whole stock, by one formula", () => {
-  // mirror of WarehouseView.tsx:953-961
-  const quickPurchaseWap = (existingQtyInWarehouse: number, oldAvg: number, qty: number, price: number) => {
-    const newTotalQty = existingQtyInWarehouse + qty;
-    const newWapPrice = newTotalQty > 0 ? (existingQtyInWarehouse * oldAvg + qty * price) / newTotalQty : price;
-    return Number(newWapPrice.toFixed(2));
-  };
-  // mirror of WarehouseView.tsx:1464-1474
-  const receiptWap = (onHandInWarehouse: number, oldAvg: number, newQty: number, newPrice: number) => {
-    const combinedQty = onHandInWarehouse + newQty;
-    const newWap = combinedQty > 0 ? (onHandInWarehouse * oldAvg + newQty * newPrice) / combinedQty : newPrice;
-    return Number(newWap.toFixed(4));
-  };
-
+  // Fixed: both WarehouseView.tsx call sites (quick purchase ~955-963, receipt
+  // ~1461-1473) now call the single shared `nextWeightedAveragePrice`, weighted
+  // against the item's total on-hand across every warehouse, not one warehouse's.
   // 100 pcs @ 10 in the main warehouse, 50 pcs @ 10 in the east one; 100 pcs @ 16 arrive in the east one.
+  const totalOnHand = 150; // 100 (main) + 50 (east), before the new lot
   const itemWide = (150 * 10 + 100 * 16) / 250; // 12.40
-  const viaQuick = quickPurchaseWap(50, 10, 100, 16); // observed 14.00
-  const viaReceipt = receiptWap(50, 10, 100, 16); // observed 14.00
+  const viaQuick = nextWeightedAveragePrice(totalOnHand, 10, 100, 16);
+  const viaReceipt = nextWeightedAveragePrice(totalOnHand, 10, 100, 16);
   assert.equal(viaQuick, itemWide, "quick purchase must weight against all 150 pcs, not the 50 in that warehouse");
   assert.equal(viaReceipt, itemWide, "receipt must weight against all 150 pcs, not the 50 in that warehouse");
 
   // Even for one warehouse the two paths disagree at the fourth decimal.
-  assert.equal(quickPurchaseWap(3, 10, 1, 10.005), receiptWap(3, 10, 1, 10.005), "two receipts of the same lot must give one WAP");
+  assert.equal(
+    nextWeightedAveragePrice(3, 10, 1, 10.005),
+    nextWeightedAveragePrice(3, 10, 1, 10.005),
+    "two receipts of the same lot must give one WAP"
+  );
 });
 
 // ==========================================================================
@@ -166,24 +177,22 @@ test("F4: the dashboard widget, the overview pipeline and the overview revenue c
   ] as Lead[];
   const leadStageGroups: Record<string, string> = { accepted: "closed", won: "closed", rejected: "closed" };
   const leadStateParents: Record<string, string> = {};
+  const isOpen = (l: Lead) => !isClosedLeadState(l.status, leadStageGroups, leadStateParents) && !l.archived;
 
-  // mirror of api/dashboard_query.php:246
-  const widgetPipeline = leads.reduce((s, l) => s + l.value, 0);
-  // mirror of Dashboard.tsx:373-384
-  const overviewPipeline = leads
-    .filter((l) => {
-      const statusLower = l.status.toLowerCase();
-      const parentStatus = leadStateParents[statusLower];
-      const targetStatus = parentStatus ? parentStatus.toLowerCase() : statusLower;
-      return (leadStageGroups[targetStatus] || "in_progress") !== "closed";
-    })
-    .reduce((s, l) => s + l.value, 0);
-  // mirror of Dashboard.tsx:346-348 / :383
+  // Fixed: api/dashboard_query.php's `pipeline_value` now takes the same
+  // `statuses` parameter `leads_by_status` does, and the frontend sends the
+  // open states plus `archived = 0` — mirrored here as "not closed, not archived".
+  const widgetPipeline = leads.filter(isOpen).reduce((s, l) => s + l.value, 0);
+  // Fixed: Dashboard.tsx:373-384 now uses the shared `isClosedLeadState`.
+  const overviewPipeline = leads.filter(isOpen).reduce((s, l) => s + l.value, 0);
+  // Fixed: Dashboard.tsx's "revenue"/"conversion" cards now use `isClosedLeadState`
+  // instead of a hardcoded literal `"accepted"` check.
   const overviewRevenue = leads
-    .filter((l) => l.status.toLowerCase() === "accepted" || leadStateParents[l.status.toLowerCase()] === "accepted")
+    .filter((l) => isClosedLeadState(l.status, leadStageGroups, leadStateParents))
     .reduce((s, l) => s + l.value, 0);
 
-  // Observed: widget 33 900, overview pipeline 24 400, revenue 2 500 (the "won" lead is in no total but the widget's).
+  // Observed before the fix: widget 33 900, overview pipeline 24 400, revenue 2 500
+  // (the "won" lead was in no total but the widget's).
   assert.equal(widgetPipeline, overviewPipeline, "the widget must not count closed or archived leads as pipeline");
   assert.equal(overviewRevenue, 9500, "revenue must follow the closed stage group, not a state literally named 'accepted'");
 });
@@ -196,13 +205,14 @@ test("F4: the dashboard widget, the overview pipeline and the overview revenue c
 
 test("F5: a task due today at 09:00 is overdue at 15:00 on every screen", () => {
   const task = { title: "Call", status: "open", deadline: "2026-09-18", deadlineTime: "09:00" } as Task;
-  const today = "2026-09-18";
-  const nowTime = "15:00";
+  const nowStamp = "2026-09-18 15:00";
+  const taskStates: string[] = ["open", "done"];
 
-  // mirror of TaskDashboardView.tsx:1356-1368
-  const boardOverdue = task.deadline < today || (task.deadline === today && nowTime > (task.deadlineTime || "23:59"));
-  // mirror of presetWidgets.tsx:478
-  const widgetOverdue = !!task.deadline && String(task.deadline).slice(0, 10) < today;
+  // Fixed: both TaskDashboardView.tsx and presetWidgets.tsx now call the
+  // shared, time-aware `isTaskOverdue` instead of presetWidgets.tsx's old
+  // date-only `deadline < today` check.
+  const boardOverdue = isTaskOverdue(task, taskStates, nowStamp);
+  const widgetOverdue = isTaskOverdue(task, taskStates, nowStamp);
 
   assert.equal(boardOverdue, true, "sanity: the board says overdue");
   assert.equal(widgetOverdue, boardOverdue, "the dashboard widget must agree with the board");
@@ -220,9 +230,10 @@ test("F6: an offer marked invoiced and the invoice raised from it are one job in
     { id: "cp", type: "price_offer", status: "invoiced", totalPrice: 1200 },
     { id: "fa", type: "invoice", status: "sent", totalPrice: 1200 }
   ] as InvoiceOffer[];
-  // mirror of InvoicingView.tsx:335-337
-  const totalInvoicedVal = docs.filter((o) => o.type === "invoice" || o.status === "invoiced").reduce((s, o) => s + o.totalPrice, 0);
-  // Observed: 2 400.
+  // Fixed: InvoicingView.tsx's money total now sums `type === "invoice"` only;
+  // an invoiced offer still counts toward the win-rate metric, not the money total.
+  const totalInvoicedVal = docs.filter((o) => o.type === "invoice").reduce((s, o) => s + o.totalPrice, 0);
+  // Observed before the fix: 2 400.
   assert.equal(totalInvoicedVal, 1200);
 });
 
@@ -274,17 +285,22 @@ test("F8: typing a new WAP on the item form does not silently re-value stock alr
 
 test("F9: pausing and resuming a rule that has a planned end date gives that end date back", () => {
   const today = "2026-09-18";
-  // mirror of FinancialManagementView.tsx:1592-1606
-  const toggle = (r: Pick<FinancialRecord, "recurringEndDate">) => {
-    const isActive = !r.recurringEndDate || r.recurringEndDate >= today;
-    return { ...r, recurringEndDate: isActive ? today : null };
+  // Fixed: mirror of FinancialManagementView.tsx's `handleToggleRecurringActive`
+  // (~1768-1794) — the planned end date is stashed in `recurringPlannedEndDate`
+  // on pause and restored on resume, instead of being clobbered by `today`/`null`.
+  const toggle = (r: Pick<FinancialRecord, "recurringEndDate" | "recurringPlannedEndDate">) => {
+    const isActive = !r.recurringEndDate || r.recurringEndDate > today;
+    if (isActive) {
+      return { ...r, recurringPlannedEndDate: r.recurringEndDate ?? null, recurringEndDate: today };
+    }
+    return { ...r, recurringEndDate: r.recurringPlannedEndDate ?? null, recurringPlannedEndDate: null };
   };
-  // mirror of FinancialManagementView.tsx:1244-1245
-  const isRecurringPaused = (r: Pick<FinancialRecord, "recurringEndDate">) => !!r.recurringEndDate && r.recurringEndDate < today;
+  // Fixed: mirror of FinancialManagementView.tsx's `isRecurringPaused` (~1260-1261) — now `<=`.
+  const isRecurringPaused = (r: Pick<FinancialRecord, "recurringEndDate">) => !!r.recurringEndDate && r.recurringEndDate <= today;
 
-  const lease = { recurringEndDate: "2026-12-31" };
+  const lease = { recurringEndDate: "2026-12-31", recurringPlannedEndDate: null as string | null };
   const paused = toggle(lease);
-  // Observed: paused.recurringEndDate === today, and isRecurringPaused(paused) === false on the day of the click.
+  // Observed before the fix: paused.recurringEndDate === today, and isRecurringPaused(paused) === false on the day of the click.
   assert.equal(isRecurringPaused(paused), true, "a rule paused today reads as paused today");
   const resumed = toggle(paused);
   assert.equal(resumed.recurringEndDate, "2026-12-31", "resume must restore the planned end, not make the rule endless");
@@ -299,7 +315,9 @@ test("F9: pausing and resuming a rule that has a planned end date gives that end
 // ==========================================================================
 
 test("F10: renaming a lead state keeps its SLA limit", () => {
-  // mirror of SettingsView.tsx:705-720 — what the cascade touches today
+  // Fixed: mirror of SettingsView.tsx:705-720's `handleRenameState` — the
+  // cascade now also migrates `leadStateSla` (and `leadStateFollowUp`, and
+  // each lead's own `followUps` map, not exercised by this test).
   const migrateMapKey = <T,>(m: Record<string, T>, from: string, to: string) => {
     if (!(from in m)) return m;
     const { [from]: v, ...rest } = m;
@@ -311,8 +329,8 @@ test("F10: renaming a lead state keeps its SLA limit", () => {
     leadStateColors: migrateMapKey(s.leadStateColors, oldName, next),
     leadStageGroups: migrateMapKey(s.leadStageGroups, oldName, next),
     leadStateParents: migrateMapKey(s.leadStateParents, oldName, next),
+    leadStateSla: migrateMapKey(s.leadStateSla, oldName, next),
     leads: s.leads.map((l) => (l.status === oldName ? { ...l, status: next } : l))
-    // leadStateSla: not migrated (SettingsView.tsx has no setLeadStateSla in handleRenameState)
   });
 
   const lead = { id: "L1", status: "offer sent", createdAt: "2026-09-01", timeline: [] } as unknown as Lead;
@@ -349,12 +367,16 @@ test("F13: the 'monthly' warehouse KPIs count only this month's movements", () =
     { type: "inward", status: "confirmed", issuedAt: "2025-03-04 08:00", totalCostValue: 9000, totalSellValue: 0, totalProfitValue: 0 },
     { type: "outward", status: "confirmed", issuedAt: "2026-09-12 13:00", totalCostValue: 0, totalSellValue: 234, totalProfitValue: 90 }
   ] as WarehouseMovement[];
-  // mirror of WarehouseView.tsx:518-527
+  // Fixed: mirror of WarehouseView.tsx:518-527 — now filters on `issuedAt`
+  // falling in the current calendar month before accumulating.
+  const thisMonth = "2026-09";
   let monthlyInward = 0;
   movements.forEach((m) => {
-    if (m.status === "confirmed" && m.type === "inward") monthlyInward += m.totalCostValue || 0;
+    if (m.status === "confirmed" && m.type === "inward" && String(m.issuedAt).slice(0, 7) === thisMonth) {
+      monthlyInward += m.totalCostValue || 0;
+    }
   });
-  // Observed: 9 000 — a receipt from eighteen months ago is "this month's".
+  // Observed before the fix: 9 000 — a receipt from eighteen months ago was "this month's".
   assert.equal(monthlyInward, 0, "a receipt from March 2025 is not a September 2026 figure");
 });
 
@@ -392,20 +414,28 @@ test("F15: a record marked paid at 00:30 local time is paid today, on every form
 // ==========================================================================
 
 test("F16: a batch whose expiration date is today is expired today, in any timezone", () => {
-  // mirror of WarehouseView.tsx:65-78
+  // Fixed: mirror of WarehouseView.tsx:65-78's `getExpirationStatus`, which now
+  // uses `isoDaysBetween(todayLocal(), expirationDate)` (both plain local
+  // calendar dates) instead of mixing a UTC-parsed expiration date with a
+  // locally-midnighted "now".
+  //
+  // The audit's original two-different-expiration-date scenario didn't hold up
+  // under a corrected formula (checked directly: "2026-09-17" was already
+  // yesterday relative to Los Angeles' actual local date at that clock, not
+  // "tomorrow" as the audit's comment claimed) — replaced with one coherent
+  // scenario: at 03:00 UTC on 2026-09-18, Bratislava (UTC+2) has already
+  // rolled over to the 18th while Los Angeles (UTC-7) is still on the 17th, so
+  // the SAME expiration date ("2026-09-18") is "today" in one zone and
+  // "tomorrow" in the other.
   const getExpirationStatus = (expirationDate: string) => {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const expDate = new Date(expirationDate);
-    const daysRemaining = Math.ceil((expDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+    const daysRemaining = isoDaysBetween(todayLocal(), expirationDate);
     return { status: daysRemaining <= 0 ? "expired" : daysRemaining <= 30 ? "warning" : "ok", daysRemaining };
   };
-  const noon = Date.UTC(2026, 8, 18, 12, 0);
-  const east = withClock("Europe/Bratislava", noon, () => getExpirationStatus("2026-09-18"));
-  const west = withClock("America/Los_Angeles", noon, () => getExpirationStatus("2026-09-17"));
-  // Observed: east { warning, 1 }; west { expired, 0 } for a batch that expires tomorrow local time.
-  assert.equal(east.status, "expired", "Bratislava: expires today → expired");
-  assert.equal(west.status, "warning", "Los Angeles: expires tomorrow → not yet expired");
+  const dayBoundary = Date.UTC(2026, 8, 18, 3, 0);
+  const east = withClock("Europe/Bratislava", dayBoundary, () => getExpirationStatus("2026-09-18"));
+  const west = withClock("America/Los_Angeles", dayBoundary, () => getExpirationStatus("2026-09-18"));
+  assert.equal(east.status, "expired", "Bratislava: local today is the 18th, expires today → expired");
+  assert.equal(west.status, "warning", "Los Angeles: local today is still the 17th, expires tomorrow → not yet expired");
 });
 
 // ==========================================================================
@@ -417,14 +447,11 @@ test("F16: a batch whose expiration date is today is expired today, in any timez
 // ==========================================================================
 
 test("F17: a task created at 00:30 local time with a '+3 days' deadline is due in three days, not two", () => {
-  const { utcDefault, expected } = withClock("Europe/Bratislava", Date.UTC(2026, 8, 17, 22, 30), () => {
-    // mirror of LeadsDatagrid.tsx:2130-2134
-    const d = new Date();
-    d.setDate(d.getDate() + 3);
-    return { utcDefault: d.toISOString().split("T")[0], expected: "2026-09-21" };
-  });
-  // Observed: "2026-09-20".
-  assert.equal(utcDefault, expected);
+  // Fixed: LeadsDatagrid.tsx/EmailView.tsx/MeetingRoomView.tsx/FilesView.tsx all
+  // now call the shared `todayLocalPlusDays(n)` instead of a UTC `Date.toISOString()` default.
+  const localDefault = withClock("Europe/Bratislava", Date.UTC(2026, 8, 17, 22, 30), () => todayLocalPlusDays(3));
+  // Observed before the fix: "2026-09-20".
+  assert.equal(localDefault, "2026-09-21");
 });
 
 // ==========================================================================
@@ -436,15 +463,21 @@ test("F17: a task created at 00:30 local time with a '+3 days' deadline is due i
 // ==========================================================================
 
 test("F18: the first goods issue of a new year is number 0001, and a gap in the list does not repeat a number", () => {
-  // mirror of WarehouseView.tsx:1035
+  // Fixed: all 5 WarehouseView.tsx counters and InvoicingView.tsx now share
+  // `nextDocumentNumber`, which scans for the highest existing sequence per
+  // prefix+year instead of using "count of that type + 1".
   const nextIssueNumber = (movements: Pick<WarehouseMovement, "type" | "documentNumber">[], year: number) =>
-    `VYD-${year}-${String(movements.filter((m) => m.type === "outward").length + 1).padStart(4, "0")}`;
+    nextDocumentNumber(
+      movements.filter((m) => m.type === "outward").map((m) => m.documentNumber),
+      "VYD",
+      year
+    );
 
   const lastYear = [{ type: "outward", documentNumber: "VYD-2026-0001" }, { type: "outward", documentNumber: "VYD-2026-0002" }] as WarehouseMovement[];
-  // Observed: "VYD-2027-0003".
+  // Observed before the fix: "VYD-2027-0003".
   assert.equal(nextIssueNumber(lastYear, 2027), "VYD-2027-0001");
 
   const withGap = [{ type: "outward", documentNumber: "VYD-2026-0001" }, { type: "outward", documentNumber: "VYD-2026-0003" }] as WarehouseMovement[];
-  // Observed: "VYD-2026-0003" — already taken.
+  // Observed before the fix: "VYD-2026-0003" — already taken.
   assert.notEqual(nextIssueNumber(withGap, 2026), "VYD-2026-0003");
 });

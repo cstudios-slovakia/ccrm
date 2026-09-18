@@ -212,6 +212,7 @@ import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import {
     todayLocal,
+    todayLocalPlusDays,
     formatDateLocalized,
     // formatTimestampLocalized — only used by the commented-out e-mail full view
 } from "../utils/localTime";
@@ -2127,11 +2128,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     // Inline locking task states
     const [inlineTaskTitle, setInlineTaskTitle] = useState("");
-    const [inlineTaskDeadline, setInlineTaskDeadline] = useState(() => {
-        const d = new Date();
-        d.setDate(d.getDate() + 3);
-        return d.toISOString().split("T")[0];
-    });
+    const [inlineTaskDeadline, setInlineTaskDeadline] = useState(() =>
+        todayLocalPlusDays(3)
+    );
     const [inlineTaskDeadlineTime, setInlineTaskDeadlineTime] =
         useState("16:00");
     const [inlineTaskIsLocking, setInlineTaskIsLocking] = useState(true);
@@ -3393,9 +3392,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
         setTasks((prev) => [newLockingTask, ...prev]);
         setInlineTaskTitle("");
-        const d = new Date();
-        d.setDate(d.getDate() + 3);
-        setInlineTaskDeadline(d.toISOString().split("T")[0]);
+        setInlineTaskDeadline(todayLocalPlusDays(3));
         setInlineTaskDeadlineTime("16:00");
         setInlineTaskIsLocking(true);
         setInlineTaskAssignee(assignee);
