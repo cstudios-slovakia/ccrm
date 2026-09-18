@@ -178,3 +178,18 @@ test("a movement dated outside every column is not counted anywhere", () => {
   );
   assert.equal(out.totalExpenseSummary.total, 0);
 });
+
+test("a recurring rule's own row is worth what the rule charged on its date, not its latest price", () => {
+  const rent = rec({
+    isRecurring: true,
+    status: "paid",
+    issueDate: "2026-09-18",
+    paidDate: "2026-09-18",
+    amountPlanned: 2000,
+    amountReal: 2400,
+    recurringAmountHistory: [{ until: "2026-11-30", amountPlanned: 2000, amountReal: 2200 }]
+  });
+  assert.deepEqual(splitRecordAmounts(rent), { real: 2200, estimated: 0 });
+  assert.deepEqual(splitRecordAmounts({ ...rent, paidDate: "2026-12-01" }), { real: 2400, estimated: 0 });
+  assert.deepEqual(splitRecordAmounts({ ...rent, recurringAmountHistory: null }), { real: 2400, estimated: 0 });
+});

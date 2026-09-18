@@ -52,13 +52,16 @@ import {
 } from "../utils/financialTrend";
 import {
   isoDaysBetween,
+  nextRecurringChargeAfter,
   recurringAmountHistoryAfterChange,
   recurringChargeAmount,
+  recurringEarliestRepriceDate,
   recurringCharges,
   recurringOccurrences,
   recurringPlannedAmountAt,
   recurringTotalInRange,
-  shiftIsoDate
+  shiftIsoDate,
+  type RecurringRule
 } from "../utils/recurringExpenses";
 import {
   UNCATEGORIZED_ROW_ID,
@@ -1039,6 +1042,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const [formYearlyMonth, setFormYearlyMonth] = useState<number>(1);
   const [formRecurringStartDate, setFormRecurringStartDate] = useState(todayLocal());
   const [formRecurringEndDate, setFormRecurringEndDate] = useState("");
+  // The day a changed recurring amount takes effect; "" = from the next charge.
+  const [formAmountAppliesFrom, setFormAmountAppliesFrom] = useState("");
 
 
 
@@ -1556,6 +1561,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     setFormYearlyMonth(1);
     setFormRecurringStartDate(todayLocal());
     setFormRecurringEndDate("");
+    setFormAmountAppliesFrom("");
     setIsModalOpen(true);
   };
 
@@ -2686,6 +2692,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     setFormYearlyMonth(1);
     setFormRecurringStartDate(todayLocal());
     setFormRecurringEndDate("");
+    setFormAmountAppliesFrom("");
     setIsModalOpen(true);
   };
 
@@ -2721,9 +2728,35 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     setFormYearlyMonth(cfg.month ?? 1);
     setFormRecurringStartDate(rec.recurringStartDate || rec.issueDate || todayLocal());
     setFormRecurringEndDate(rec.recurringEndDate || "");
+    setFormAmountAppliesFrom("");
 
     setIsModalOpen(true);
   };
+
+  /** The recurring rule exactly as the form currently describes it. */
+  const formRecurringRule = (): RecurringRule => ({
+    amountPlanned: Number(formAmountPlanned) || 0,
+    amountReal: Number(formAmountReal) || 0,
+    isRecurring: formIsRecurring,
+    recurringFrequency: formRecurringFreq,
+    recurringConfig: {
+      dayOfWeek: formRecurringFreq === "weekly" ? formWeeklyDay : formNthDayOfWeek,
+      monthlyType: formMonthlyType,
+      dayOfMonth: formDayOfMonth,
+      weekOfMonth: formWeekOfMonth,
+      month: formYearlyMonth
+    },
+    recurringStartDate: formRecurringStartDate,
+    recurringEndDate: formRecurringEndDate || null,
+    recurringAmountHistory: editingRecord?.recurringAmountHistory || null
+  });
+
+  /**
+   * The first day a changed recurring amount is in force: the date picked in
+   * the form, else the rule's next charge after today, else today.
+   */
+  const repriceFrom = (): string =>
+    formAmountAppliesFrom || nextRecurringChargeAfter(formRecurringRule(), todayLocal()) || todayLocal();
 
   // Save Transaction
   const handleSaveTransaction = (e: React.FormEvent) => {
@@ -2751,15 +2784,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       }
     }
 
-    const recConfig = formIsRecurring
-      ? {
-          dayOfWeek: formRecurringFreq === "weekly" ? formWeeklyDay : formNthDayOfWeek,
-          monthlyType: formMonthlyType,
-          dayOfMonth: formDayOfMonth,
-          weekOfMonth: formWeekOfMonth,
-          month: formYearlyMonth
-        }
-      : null;
+    const recConfig = formIsRecurring ? formRecurringRule().recurringConfig : null;
 
     const nextAmounts = {
       amountPlanned: Number(formAmountPlanned) || 0,
@@ -2767,11 +2792,12 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     };
 
     // Changing what a recurring rule costs must not re-price the charges it has
-    // already made: the old amount is pinned up to yesterday and the new one
-    // takes over from the next charge. A one-off record has nothing to pin.
+    // already made: the old amount is pinned up to the day before the new one
+    // takes effect — the next charge unless the form says otherwise. A one-off
+    // record has nothing to pin.
     const amountHistory =
       editingRecord && editingRecord.isRecurring && formIsRecurring
-        ? recurringAmountHistoryAfterChange(editingRecord, nextAmounts, todayLocal())
+        ? recurringAmountHistoryAfterChange(editingRecord, nextAmounts, repriceFrom())
         : formIsRecurring
           ? editingRecord?.recurringAmountHistory || null
           : null;
@@ -3356,32 +3382,60 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             amountPlanned: Number(editingRecord.amountPlanned) || 0,
             amountReal: Number(editingRecord.amountReal) || 0
           });
-          const nextAmount = recurringChargeAmount({
+          const nextPair = {
             amountPlanned: Number(formAmountPlanned) || 0,
             amountReal: Number(formAmountReal) || 0
-          });
+          };
+          const nextAmount = recurringChargeAmount(nextPair);
           const history = editingRecord.recurringAmountHistory || [];
-          const lastChargedIso = shiftIsoDate(todayLocal(), -1);
+          const appliesFromIso = repriceFrom();
+          const lastChargedIso = shiftIsoDate(appliesFromIso, -1);
 
           const amountMoved = Math.round(nextAmount * 100) !== Math.round(previousAmount * 100);
-          // A rule that has not charged yet is simply being corrected.
-          const changed = amountMoved && !(formRecurringStartDate && formRecurringStartDate > lastChargedIso);
-          if (!changed && history.length === 0) return null;
+          if (!amountMoved && history.length === 0) return null;
 
+          // The same call the save makes: it pins nothing when the rule has
+          // not charged before the chosen day — that is a correction, and the
+          // date only matters once there is a charge to keep at the old price.
+          const pinsOldAmount =
+            amountMoved &&
+            (recurringAmountHistoryAfterChange(editingRecord, nextPair, appliesFromIso)?.length ?? 0) >
+              history.length;
+
+          const appliesFrom = formatDateLocalized(appliesFromIso, userLanguage);
           const lastCharged = formatDateLocalized(lastChargedIso, userLanguage);
+          const earliest = recurringEarliestRepriceDate(editingRecord);
 
           return (
             <div className="sm:col-span-2 flex items-start gap-2 px-3 py-2 rounded-xl bg-purple-50  border border-purple-200  text-[11px] text-purple-800 ">
               <RefreshCw className="h-3.5 w-3.5 mt-0.5 shrink-0" />
-              <div className="space-y-0.5">
-                {changed && (
-                  <p className="font-semibold">
-                    {t(
-                      `The new amount applies from the next charge — charges up to ${lastCharged} keep ${money(previousAmount)}.`,
-                      `Nová suma platí od najbližšej platby — platby do ${lastCharged} zostávajú na ${money(previousAmount)}.`,
-                      `Az új összeg a következő terheléstől érvényes — a ${lastCharged} előtti tételek ${money(previousAmount)} maradnak.`
-                    )}
-                  </p>
+              <div className="space-y-1 flex-1 min-w-0">
+                {amountMoved && (
+                  <>
+                    <p className="font-semibold">
+                      {pinsOldAmount
+                        ? t(
+                            `The new amount applies from ${appliesFrom} — charges up to ${lastCharged} keep ${money(previousAmount)}.`,
+                            `Nová suma platí od ${appliesFrom} — platby do ${lastCharged} zostávajú na ${money(previousAmount)}.`,
+                            `Az új összeg ${appliesFrom} napjától érvényes — a ${lastCharged} előtti tételek ${money(previousAmount)} maradnak.`
+                          )
+                        : t(
+                            `Nothing has been charged before ${appliesFrom}, so the amount is simply corrected.`,
+                            `Pred ${appliesFrom} sa nič neúčtovalo, suma sa iba opraví.`,
+                            `${appliesFrom} előtt nem volt terhelés, az összeg egyszerűen javításra kerül.`
+                          )}
+                    </p>
+                    <label className="flex flex-wrap items-center gap-2">
+                      <span className="font-semibold">{t("New amount applies from", "Nová suma platí od", "Az új összeg érvényes ettől")}</span>
+                      <input
+                        type="date"
+                        value={appliesFromIso}
+                        min={earliest ?? undefined}
+                        onChange={(e) => setFormAmountAppliesFrom(e.target.value)}
+                        className="h-7 rounded-lg border border-purple-200 bg-white px-2 text-[11px] font-semibold text-purple-900 focus:outline-none focus:ring-2 focus:ring-purple-300"
+                      />
+                    </label>
+                  </>
                 )}
                 {history.length > 0 && (
                   <p className="text-purple-600 ">

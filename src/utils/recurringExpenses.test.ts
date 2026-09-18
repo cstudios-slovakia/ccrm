@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  nextRecurringChargeAfter,
   recurringAmountHistoryAfterChange,
+  recurringEarliestRepriceDate,
   recurringAmountsAt,
   recurringCharges,
   recurringOccurrences,
@@ -197,4 +199,30 @@ test("a period total mixes the old and the new price at the right dates", () => 
 test("shiftIsoDate crosses month and year boundaries", () => {
   assert.equal(shiftIsoDate("2026-01-01", -1), "2025-12-31");
   assert.equal(shiftIsoDate("2026-03-01", -1), "2026-02-28");
+});
+
+test("a price change dated later than today leaves every charge before it at the old amount", () => {
+  const rent = rule({ amountPlanned: 2000, amountReal: 2200, recurringStartDate: "2026-09-18" });
+  // Raised on 18.9, but the new price is to start with December's charge.
+  const history = recurringAmountHistoryAfterChange(rent, { amountPlanned: 2000, amountReal: 2400 }, "2026-12-01");
+  assert.deepEqual(history, [{ until: "2026-11-30", amountPlanned: 2000, amountReal: 2200 }]);
+
+  const raised = { ...rent, amountReal: 2400, recurringAmountHistory: history };
+  assert.equal(recurringPlannedAmountAt(raised, "2026-09-18"), 2200);
+  assert.deepEqual(recurringCharges(raised, "2026-10-01", "2026-12-31"), [
+    { date: "2026-10-01", amount: 2200 },
+    { date: "2026-11-01", amount: 2200 },
+    { date: "2026-12-01", amount: 2400 }
+  ]);
+  // The earliest a further change can be dated is the day after the pin.
+  assert.equal(recurringEarliestRepriceDate(raised), "2026-12-01");
+  assert.equal(recurringEarliestRepriceDate(rent), null);
+});
+
+test("nextRecurringChargeAfter is the default day a new price starts", () => {
+  const rent = rule({ recurringStartDate: "2026-09-18" });
+  assert.equal(nextRecurringChargeAfter(rent, "2026-09-18"), "2026-10-01");
+  assert.equal(nextRecurringChargeAfter(rent, "2026-10-01"), "2026-11-01");
+  assert.equal(nextRecurringChargeAfter(rule({ recurringEndDate: "2026-09-30" }), "2026-09-18"), null);
+  assert.equal(nextRecurringChargeAfter(rent, "not a date"), null);
 });

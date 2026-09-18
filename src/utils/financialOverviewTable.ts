@@ -1,6 +1,6 @@
 import type { FinancialCategory, FinancialRecord, FinancialType } from "../types";
 import { effectiveParentId } from "./financialCategoryTree.ts";
-import { recurringCharges } from "./recurringExpenses.ts";
+import { recurringAmountsAt, recurringCharges } from "./recurringExpenses.ts";
 
 // The finance "Overview Table" is a matrix of category rows × period columns.
 // Everything that decides which row a movement lands on, how much of it counts
@@ -75,10 +75,18 @@ export function overviewRowIdFor(
  *   real yet, the plan is the estimate.
  */
 export function splitRecordAmounts(
-  rec: Pick<FinancialRecord, "status" | "amountPlanned" | "amountReal">
+  rec: Pick<FinancialRecord, "status" | "amountPlanned" | "amountReal"> &
+    Partial<Pick<FinancialRecord, "isRecurring" | "recurringAmountHistory" | "issueDate" | "dueDate" | "paidDate">>
 ): { real: number; estimated: number } {
-  const planned = Number(rec.amountPlanned) || 0;
-  const real = Number(rec.amountReal) || 0;
+  // A recurring rule's own row is one of its charges, so it is worth what the
+  // rule charged on that day — a price change dated later must not re-price
+  // the row already settled at the old amount.
+  const amounts =
+    rec.isRecurring && rec.recurringAmountHistory?.length
+      ? recurringAmountsAt(rec, overviewRecordDate(rec))
+      : rec;
+  const planned = Number(amounts.amountPlanned) || 0;
+  const real = Number(amounts.amountReal) || 0;
   // A paused/cancelled movement is not money still expected, whether it is a
   // one-off or a recurring rule's own row.
   if (rec.status === "cancelled") return { real: 0, estimated: 0 };
@@ -98,7 +106,7 @@ export function splitRecordAmounts(
  * own month.
  */
 export const overviewRecordDate = (
-  rec: Pick<FinancialRecord, "issueDate" | "paidDate" | "dueDate">
+  rec: Partial<Pick<FinancialRecord, "issueDate" | "paidDate" | "dueDate">>
 ): string => {
   const raw = rec.paidDate || rec.dueDate || rec.issueDate || "";
   return raw ? raw.slice(0, 10) : "";

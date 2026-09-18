@@ -89,7 +89,10 @@ export function isoDaysBetween(from: string, to: string): number {
  * tightest `until` that still covers the date, which keeps the answer right
  * even if the stored list ever arrives out of order.
  */
-export function recurringAmountsAt(rule: RecurringRule, dateIso: string): RecurringAmounts {
+export function recurringAmountsAt(
+  rule: Pick<RecurringRule, "amountPlanned" | "amountReal" | "recurringAmountHistory">,
+  dateIso: string
+): RecurringAmounts {
   const current: RecurringAmounts = {
     amountPlanned: Number(rule.amountPlanned) || 0,
     amountReal: Number(rule.amountReal) || 0
@@ -163,24 +166,27 @@ function hasChargedBy(rule: RecurringRule, dateIso: string): boolean {
 }
 
 /**
- * The history a rule should carry once its amount is changed on `changedOn`.
+ * The history a rule should carry once its amount is changed, with the new
+ * price in force from `appliesFrom` onwards.
  *
- * The old amount is pinned up to the day before, so the next charge is the
- * first one at the new price and everything already charged keeps its figure.
- * Returns the history unchanged when there is nothing to record: a one-off
- * record, an untouched amount, a rule whose first charge is still ahead of us,
- * or a second edit on a day that is already pinned — the first edit of the day
- * is the one that describes what the past was charged.
+ * The old amount is pinned up to the day before, so the first charge on or
+ * after `appliesFrom` is the first one at the new price and everything before
+ * it keeps its figure — including the rule's own settled row, when the new
+ * price starts later than today. Returns the history unchanged when there is
+ * nothing to record: a one-off record, an untouched amount, a rule that has
+ * not charged before `appliesFrom`, or a date that is already inside a pinned
+ * period — the earlier edit is the one that describes what the past was
+ * charged.
  */
 export function recurringAmountHistoryAfterChange(
   rule: RecurringRule,
   next: RecurringAmounts,
-  changedOn: string
+  appliesFrom: string
 ): FinancialRecurringAmountPeriod[] | null {
   const history = cleanHistory(rule.recurringAmountHistory);
   const unchanged = () => (history.length > 0 ? history : null);
 
-  if (!rule.isRecurring || !isIsoDate(changedOn)) return unchanged();
+  if (!rule.isRecurring || !isIsoDate(appliesFrom)) return unchanged();
 
   const previous: RecurringAmounts = {
     amountPlanned: Number(rule.amountPlanned) || 0,
@@ -188,12 +194,34 @@ export function recurringAmountHistoryAfterChange(
   };
   if (sameAmounts(previous, next)) return unchanged();
 
-  const until = shiftIsoDate(changedOn, -1);
+  const until = shiftIsoDate(appliesFrom, -1);
   if (history.some((period) => period.until >= until)) return unchanged();
   // Nothing has been charged yet — the rule is being corrected, not re-priced.
   if (!hasChargedBy(rule, until)) return unchanged();
 
   return [...history, { until, ...previous }];
+}
+
+/**
+ * The first day a new price can sensibly start: the day after the newest
+ * pinned period, so an edit cannot be dated inside history that is already
+ * written. `null` when the rule has no history yet.
+ */
+export function recurringEarliestRepriceDate(rule: RecurringRule): string | null {
+  const history = cleanHistory(rule.recurringAmountHistory);
+  return history.length > 0 ? shiftIsoDate(history[history.length - 1].until, 1) : null;
+}
+
+/**
+ * The rule's first charge strictly after `dateIso`, or `null` when none falls
+ * within the next year (a rule that has ended, or one with a broken config).
+ * This is the default day a price change takes effect from: "from the next
+ * charge" is what everybody means by raising the rent.
+ */
+export function nextRecurringChargeAfter(rule: RecurringRule, dateIso: string): string | null {
+  if (!isIsoDate(dateIso)) return null;
+  const from = shiftIsoDate(dateIso, 1);
+  return recurringOccurrences(rule, from, shiftIsoDate(from, 400))[0] ?? null;
 }
 
 // ==========================================
