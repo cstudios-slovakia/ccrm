@@ -907,6 +907,16 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             </div>
           )}
 
+          {/* Browse Templates Button */}
+          <button
+            type="button"
+            onClick={() => setIsCatalogueOpen(true)}
+            className="px-3.5 py-2 rounded-2xl bg-white border border-purple-200 hover:border-purple-300 hover:bg-purple-50/60 text-purple-700 font-bold text-xs shadow-sm transition flex items-center gap-1.5 cursor-pointer"
+          >
+            <Compass className="w-4 h-4 text-purple-600" />
+            <span>{t('Browse Templates (105)', 'Katalóg šablón (105)', 'Sablonkatalógus (105)')}</span>
+          </button>
+
           {/* Save Draft Button */}
           <button
             type="button"
@@ -1056,47 +1066,6 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 </p>
               </div>
             </div>
-          </div>
-        </div>
-        
-        {/* Quick Presets & Full Catalogue Banner */}
-        <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-3">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-1.5">
-              <FileText className="w-3.5 h-3.5 text-purple-600" />
-              <span>{t('Quick Templates & Strategic Scenarios', 'Rýchle šablóny & Strategické scenáre', 'Gyors sablonok és stratégiai forgatókönyvek')}</span>
-            </label>
-            <div className="flex items-center gap-3">
-              <span className="text-[11px] text-slate-400 font-medium hidden sm:inline">
-                {t('Click a template to auto-fill fields', 'Kliknutím na šablónu vyplníte polia', 'Kattintson egy sablonra a mezők kitöltéséhez')}
-              </span>
-              <button
-                type="button"
-                onClick={() => setIsCatalogueOpen(true)}
-                className="px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 hover:from-purple-700 hover:to-emerald-600 text-white font-bold text-xs shadow-sm flex items-center gap-1.5 transition cursor-pointer"
-              >
-                <Compass className="w-3.5 h-3.5" />
-                <span>{t('Browse Template Catalogue (105)', 'Otvoriť katalóg šablón (105)', 'Sablonkatalógus megnyitása (105)')}</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {PRESET_TEMPLATES.map((tmpl, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => handleApplyPreset(tmpl)}
-                className="p-3.5 rounded-2xl border border-slate-200 hover:border-purple-400 hover:bg-purple-50/40 text-left transition group shadow-sm bg-slate-50/50 cursor-pointer"
-              >
-                <div className="text-xs font-bold text-slate-900 group-hover:text-purple-700 truncate">
-                  {systemLanguage === 'hu' ? (tmpl.nameHu || tmpl.name) : isSk ? tmpl.name : tmpl.nameEn}
-                </div>
-                <div className="text-[11px] text-slate-500 line-clamp-2 mt-1 font-normal">
-                  {systemLanguage === 'hu' ? (tmpl.hypothesisHu || tmpl.hypothesis) : isSk ? tmpl.hypothesis : tmpl.hypothesisEn}
-                </div>
-              </button>
-            ))}
           </div>
         </div>
 
