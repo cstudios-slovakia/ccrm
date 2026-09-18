@@ -1359,7 +1359,18 @@ export const EmailView: React.FC<EmailViewProps> = ({
           <div className={`mt-0.5 text-sm truncate ${opts.unread ? "font-bold text-slate-900" : "text-slate-600"}`}>
             {opts.subject || t("(No Subject)", "(Bez predmetu)", "(Nincs tárgy)")}
           </div>
+          {opts.email.preview && (
+            <p className="mt-0.5 text-sm text-slate-500 line-clamp-2 break-words">{opts.email.preview}</p>
+          )}
           <div className="mt-2 flex items-center gap-1.5 min-h-[24px]">
+            {opts.email.attachment_count > 0 && (
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-700 border border-amber-100"
+                title={plural(opts.email.attachment_count, ["attachment", "attachments"], ["príloha", "prílohy", "príloh"], "melléklet")}
+              >
+                <Paperclip size={12} /> {opts.email.attachment_count}
+              </span>
+            )}
             {opts.email.isSent ? (
               <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-bold bg-slate-50 text-slate-500 border border-slate-200">
                 <ArrowUpRight size={12} /> {t("Sent", "Odoslané", "Elküldve")}

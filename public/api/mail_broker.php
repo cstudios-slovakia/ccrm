@@ -640,6 +640,7 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                 // list with the stored timeline never matched and every imported
                 // mail rendered twice.
                 $mailEventId = ccrm_mail_event_id($imapUser, $folder, $o->uid);
+                $listPreview = fetch_list_preview($imapStream, $o->uid);
 
                 $emailsMap[$o->uid] = [
                     'uid' => $o->uid,
@@ -659,7 +660,9 @@ function fetch_imap_emails($settings, $folder, $page, $limit, $filter, $searchEm
                     'message_id' => isset($o->message_id) ? trim($o->message_id) : '',
                     'in_reply_to' => isset($o->in_reply_to) ? trim($o->in_reply_to) : '',
                     'references' => isset($o->references) ? trim($o->references) : '',
-                    'summary' => $summary
+                    'summary' => $summary,
+                    'preview' => $listPreview['preview'],
+                    'attachment_count' => $listPreview['attachment_count']
                 ];
 
                 // Auto-upsert timeline email entries to database with email date and time
@@ -1426,6 +1429,77 @@ function fetch_email_body_text($imapStream, $msgNo) {
         return trim(strip_tags($html));
     }
     return '';
+}
+
+// What the inbox list shows under the subject: a short plain-text preview and
+// the attachment count. Unlike fetch_email_body_text() this downloads only the
+// one text part it needs — never an attachment's bytes — since it runs for
+// every row of every list page.
+function fetch_list_preview($imapStream, $uid) {
+    $result = ['preview' => '', 'attachment_count' => 0];
+    $msgNo = @imap_msgno($imapStream, (int)$uid);
+    if (!$msgNo) {
+        return $result;
+    }
+    $structure = @imap_fetchstructure($imapStream, $msgNo);
+    if (!$structure) {
+        return $result;
+    }
+    $result['attachment_count'] = count(get_attachments_from_structure($structure));
+
+    // Find the first plain-text part, falling back to the first HTML one.
+    $plain = null;
+    $html = null;
+    $walk = function ($part, $partNum) use (&$walk, &$plain, &$html) {
+        if (isset($part->parts) && count($part->parts)) {
+            foreach ($part->parts as $i => $child) {
+                $walk($child, $partNum === '' ? (string)($i + 1) : $partNum . '.' . ($i + 1));
+            }
+            return;
+        }
+        if ((int)$part->type !== 0 || get_part_attachment($part, $partNum ?: '1')) {
+            return;
+        }
+        $subtype = isset($part->subtype) ? strtoupper($part->subtype) : 'PLAIN';
+        if ($subtype === 'PLAIN' && $plain === null) {
+            $plain = [$part, $partNum];
+        } elseif ($subtype === 'HTML' && $html === null) {
+            $html = [$part, $partNum];
+        }
+    };
+    $walk($structure, '');
+    $pick = $plain ?: $html;
+    if (!$pick) {
+        return $result;
+    }
+    list($part, $partNum) = $pick;
+    $raw = $partNum === ''
+        ? @imap_body($imapStream, $msgNo, FT_PEEK)
+        : @imap_fetchbody($imapStream, $msgNo, $partNum, FT_PEEK);
+    $text = decode_imap_body($raw, $part->encoding, get_part_charset($part));
+    if ($pick === $html) {
+        $text = preg_replace('#<(style|script|head)\b[^>]*>.*?</\1>#is', ' ', $text);
+        $text = html_entity_decode(strip_tags($text), ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    }
+    // Drop quoted history ("> ...") and the "On <date>, X wrote:" line above it,
+    // so a reply previews what was actually written.
+    $lines = [];
+    foreach (preg_split('/\R/u', (string)$text) as $line) {
+        if (preg_match('/^\s*>/', $line)) {
+            continue;
+        }
+        $lines[] = $line;
+    }
+    $text = preg_replace('/\s+/u', ' ', implode(' ', $lines));
+    $text = preg_replace('/\s*(On|Dňa|Dna)\s.{0,120}?(wrote|napísal\(a\)|napísal|napísala|írta):\s*$/iu', '', $text);
+    $text = trim(safe_utf8($text));
+    if (function_exists('mb_substr')) {
+        $text = mb_substr($text, 0, 240, 'UTF-8');
+    } else {
+        $text = substr($text, 0, 240);
+    }
+    $result['preview'] = $text;
+    return $result;
 }
 
 function save_imap_attachment_to_uploads($settings, $folder, $uid, $partNum, $name, $eventId) {
