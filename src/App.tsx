@@ -3341,8 +3341,7 @@ ${log.payload || ''}
                 </Suspense>
               </ErrorBoundary>
             </div>
-            <footer className="mt-12 pt-4 border-t border-slate-200/50 flex justify-between items-center text-[10px] text-slate-400 select-none font-semibold uppercase tracking-wider">
-              <span>{systemName} CRM &bull; Active Node</span>
+            <footer className="mt-12 pt-4 border-t border-slate-200/50 flex justify-end items-center text-[10px] text-slate-400 select-none font-semibold uppercase tracking-wider">
               <span>v{VERSION}</span>
             </footer>
           </main>
