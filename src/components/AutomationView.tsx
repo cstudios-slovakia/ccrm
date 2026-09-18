@@ -2663,6 +2663,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                 </div>
                                 <CustomSelect
                                   size="sm"
+                                  className="min-w-0 flex-1"
                                   value={triggerConfig.fromStatus || "any"}
                                   onChange={(v) => setTriggerConfig({ ...triggerConfig, fromStatus: v })}
                                   options={[
@@ -2680,6 +2681,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                 </div>
                                 <CustomSelect
                                   size="sm"
+                                  className="min-w-0 flex-1"
                                   value={triggerConfig.toStatus || "any"}
                                   onChange={(v) => setTriggerConfig({ ...triggerConfig, toStatus: v })}
                                   options={[
@@ -3023,6 +3025,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                     </div>
                                     <CustomSelect
                                       size="sm"
+                                      className="min-w-0 flex-1"
                                       value={node.data.priority || "medium"}
                                       onChange={(v) => updateActionField("priority", v)}
                                       options={[
