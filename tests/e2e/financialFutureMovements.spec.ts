@@ -11,8 +11,10 @@ import { gotoView, startSession } from './helpers/appDriver';
  *    payable in nine. The ledger files it under the day it was issued; the
  *    forecast moves it to the day the money is expected, and must not leave a
  *    copy behind, or the same invoice would be counted in both months.
- *  - `fr-4` — the monthly wages rule, 6 400 € on the 15th, with no end date.
- *    It charges forever, which is why the overlay is bounded to one month and
+ *  - `fr-4` — the monthly wages rule, 6 400 € on the 15th, started 200 days
+ *    ago, with no end date. The charges it has already made are drawn in the
+ *    ledger as settled rows; the ones still to come are the overlay's. It
+ *    charges forever, which is why the overlay is bounded to one month and
  *    offers the next one instead of rendering an infinite ledger.
  *
  * The QA dataset runs the app in Slovak, so every label is matched in both.
@@ -44,7 +46,28 @@ const rowsFor = (page: Page, text: string): Locator => rows(page).filter({ hasTe
  */
 const forecastRows = (page: Page): Locator => page.locator('table tbody tr[data-forecast]');
 
+/** Charges a recurring rule has already made — settled, but not stored records of their own. */
+const pastChargeRows = (page: Page): Locator => page.locator('table tbody tr[data-recurring-charge]');
+
 const futureToggle = (page: Page): Locator => page.getByRole('button', { name: FUTURE_TOGGLE });
+
+const DAY = 24 * 60 * 60 * 1000;
+
+/** A local `Date` at midnight, `offsetDays` from now — the same day arithmetic the fixture's dates use. */
+function localDay(offsetDays: number): Date {
+  const d = new Date(Date.now() + offsetDays * DAY);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate());
+}
+
+/** How many times the wages rule (the 15th, from 200 days ago) has charged up to and including today. */
+function wagesChargesToDate(): number {
+  const today = localDay(0);
+  let count = 0;
+  for (const d = localDay(-200); d <= today; d.setDate(d.getDate() + 1)) {
+    if (d.getDate() === 15) count++;
+  }
+  return count;
+}
 
 test.describe('Finance — future movements', () => {
   test('the ledger shows nothing expected until the overlay is switched on', async ({ page }) => {
@@ -54,8 +77,30 @@ test.describe('Finance — future movements', () => {
     await expect(futureToggle(page)).toHaveAttribute('aria-pressed', 'false');
     await expect(forecastRows(page)).toHaveCount(0);
 
-    // The recurring wages rule is one row — its future charges are not drawn.
-    await expect(rowsFor(page, WAGES)).toHaveCount(1);
+    // The wages rule draws every charge it has made up to today — and none of
+    // the ones still to come, which only the overlay draws.
+    await expect(pastChargeRows(page).filter({ hasText: WAGES })).toHaveCount(wagesChargesToDate(), SETTLE);
+    // Beside them, at most the rule's own row: it is hidden when it falls on a
+    // charge day, because that day is one payment and is drawn once.
+    const ownRows = rowsFor(page, WAGES).and(page.locator(':not([data-recurring-charge])'));
+    expect(await ownRows.count()).toBeLessThanOrEqual(1);
+  });
+
+  test('a charge the rule already made can only be followed back to the rule', async ({ page }) => {
+    await startSession(page);
+    await openMovements(page);
+
+    const charge = pastChargeRows(page).filter({ hasText: WAGES }).first();
+    await expect(charge).toBeVisible(SETTLE);
+
+    // No status picker and no delete: one action, the way back to the rule.
+    const actions = charge.locator('td').last().getByRole('button');
+    await expect(actions).toHaveCount(1);
+    await actions.click();
+
+    // It opens the rule itself for editing, never a form for a new movement.
+    await expect(page.locator('#transaction-edit-form')).toBeVisible(SETTLE);
+    await expect(page.locator('#transaction-edit-form input[type="text"]').first()).toHaveValue(/Mzdy — mesačné/);
   });
 
   test('switching it on draws the expected movements once, and they cannot be edited in place', async ({ page }) => {

@@ -368,7 +368,9 @@ Compounding it: `claimedRecordIds` deliberately does **not** claim recurring rul
 
 **Proposed fix.** Decide once what a rule *is* in the ledger. Recommended: the rule row is a **definition, not a transaction** — draw it so it can be edited and searched, but exclude it from the month totals and from `movementsSummary`, and let the expansion rows carry all the money. Either way it must not be both a settled amount and a set of expected amounts.
 
-**Pinned by.** Not yet — needs a Playwright spec comparing the ledger total against `aggregateOverviewTable` for the same range.
+**Pinned by.** `src/utils/pastRecurringCharges.test.ts` — "every month's ledger totals equal the overview table's column for the same records"; browser side in `tests/e2e/financialFutureMovements.spec.ts`.
+
+**Fixed (1.9.81).** `projectPastRecurringCharges` (`src/utils/pastRecurringCharges.ts`) draws one settled row per charge a rule has made up to and including today, priced by `recurringCharges`; the forecast overlay keeps everything from tomorrow on. The rule's own row follows the table's `recurringOwnRowCharge`: before the schedule it is the first payment and counts; on a charge day the charge row stands in for it (drawn once); after a charge, on a day the schedule does not charge, it stays visible as the rule but adds nothing. Every elapsed month in the ledger now equals the table's column. The current month still differs by design on one point: the table's current column counts the rest of the month's charges as real, while the ledger draws them in the overlay.
 
 ---
 

@@ -80,6 +80,11 @@ import {
   type FutureMovement,
   type FutureMovementSource
 } from "../utils/futureMovements";
+import {
+  ledgerRecordSplit,
+  projectPastRecurringCharges,
+  type PastRecurringCharge
+} from "../utils/pastRecurringCharges";
 
 // Trend graph forecast horizons. `futureWeeks` is the number of whole weeks the
 // projection runs past the current one — 13 weeks is the usual "3 months".
@@ -134,6 +139,15 @@ const MOVEMENT_STATUS_DOT: Record<FinancialStatus, string> = {
 const FORECAST_ROW_CLASS =
   "bg-violet-50/70 hover:bg-violet-100/70 border-l-[3px] border-dashed border-l-violet-400 transition-colors group";
 
+/**
+ * A charge a recurring rule has already made. It is settled money, so it reads
+ * like any other movement; the solid purple rail (the recurring icon's colour)
+ * marks it as drawn from the rule's schedule rather than stored on its own,
+ * the settled counterpart of the forecast's dashed violet one.
+ */
+const RECURRING_CHARGE_ROW_CLASS =
+  "hover:bg-slate-50/80 border-l-[3px] border-l-purple-300 transition-colors group";
+
 /** What each forecast row is derived from, for its badge. */
 const FORECAST_SOURCE_ICON: Record<FutureMovementSource, typeof RefreshCw> = {
   recurring: RefreshCw,
@@ -142,12 +156,14 @@ const FORECAST_SOURCE_ICON: Record<FutureMovementSource, typeof RefreshCw> = {
 };
 
 /**
- * One line of the movements ledger: a movement that happened, or one that is
- * only expected to. Both are filed under a `date` so the two can be merged into
- * a single chronology and grouped by month together.
+ * One line of the movements ledger: a stored movement, a charge a recurring
+ * rule has already made, or a movement that is only expected. All three are
+ * filed under a `date` so they can be merged into a single chronology and
+ * grouped by month together.
  */
 type MovementLedgerRow =
   | { kind: "record"; key: string; date: string; record: FinancialRecord }
+  | { kind: "charge"; key: string; date: string; charge: PastRecurringCharge }
   | { kind: "forecast"; key: string; date: string; forecast: FutureMovement };
 
 /**
@@ -1281,6 +1297,26 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
    */
   const forecastClaimedIds = useMemo(() => claimedRecordIds(filteredFutureMovements), [filteredFutureMovements]);
 
+  // ==========================================
+  // 3c. PAST RECURRING CHARGES — what the rules have already charged
+  // ==========================================
+
+  // One row per charge a recurring rule has made up to and including today,
+  // counted as settled — the same charges the overview table and the trend
+  // count, so a month here adds up to the same figure there. Cut off at
+  // `forecastToday`, the day before the overlay starts, so no charge is drawn
+  // on both sides or on neither. See utils/pastRecurringCharges.ts, also for
+  // how a rule's own row is drawn among its charges.
+  const pastRecurring = useMemo(
+    () => projectPastRecurringCharges(financialRecords, forecastToday),
+    [financialRecords, forecastToday]
+  );
+
+  const filteredPastCharges = useMemo(
+    () => pastRecurring.charges.filter((c) => movementMatchesFilters(c.record, c.date, c.amount)),
+    [pastRecurring, movementMatchesFilters]
+  );
+
   /** What a forecast row is derived from, in words, for its badge. */
   const forecastSourceLabel = (source: FutureMovementSource): string =>
     source === "recurring"
@@ -1310,6 +1346,126 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     return t(`in ${days} days`, `o ${days} ${days < 5 ? "dni" : "dní"}`, `${days} nap múlva`);
   };
 
+  /**
+   * Title, category and scope cells of a settled ledger line. A stored movement
+   * and a charge its recurring rule made read them off the same record, so
+   * both kinds of line draw them here.
+   */
+  const renderLedgerSourceCells = (rec: FinancialRecord) => {
+    const project = projects.find((p) => p.id === rec.projectId);
+    const client = leads.find((l) => l.id === rec.clientId || l.id === project?.clientId || l.id === project?.leadId);
+    const catBreadcrumbs = getCategoryBreadcrumbs(rec.categoryId);
+    const rootCat = catBreadcrumbs[0];
+    const isExpense = rec.type === "expense";
+
+    return (
+      <>
+        {/* 2. Title & Reference & Recurring Badge */}
+        <td className="py-3 px-4">
+          <div className="font-bold text-slate-900  flex items-center gap-1.5">
+            <span className="truncate max-w-[280px]" title={rec.title}>
+              {rec.title}
+            </span>
+          </div>
+          <div className="flex items-center gap-2 mt-0.5">
+            {rec.invoiceNumber && (
+              <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-100  text-slate-600  font-semibold">
+                {rec.invoiceNumber}
+              </span>
+            )}
+            {rec.description && (
+              <span className="text-[11px] text-slate-400 truncate max-w-[220px]" title={rec.description}>
+                {rec.description}
+              </span>
+            )}
+          </div>
+        </td>
+
+        {/* 3. 3-Level Category Breadcrumbs */}
+        <td className="py-3 px-4">
+          {catBreadcrumbs.length > 0 ? (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span
+                className="h-2 w-2 rounded-full shrink-0 shadow-2xs"
+                style={{ backgroundColor: rootCat?.color || (isExpense ? "#f43f5e" : "#10b981") }}
+              />
+              {catBreadcrumbs.map((c, idx) => (
+                <React.Fragment key={c.id}>
+                  {idx > 0 && <span className="text-[10px] text-slate-400">›</span>}
+                  <span
+                    className={`text-[11px] ${
+                      idx === catBreadcrumbs.length - 1
+                        ? "font-bold text-slate-800 "
+                        : "font-normal text-slate-500 "
+                    }`}
+                  >
+                    {c.name}
+                  </span>
+                </React.Fragment>
+              ))}
+            </div>
+          ) : (
+            <span className="text-slate-400 italic text-[11px]">
+              {t("Uncategorized", "Bez kategórie", "Kategória nélkül")}
+            </span>
+          )}
+        </td>
+
+        {/* 4. Link / Scope (Project or Client or Global) */}
+        <td className="py-3 px-4">
+          {rec.projectId ? (
+            (() => {
+              const projectLead = project ? leads.find((l) => l.id === project.leadId || l.id === project.clientId) : null;
+              const pName = projectLead ? `${projectLead.name}` : `Projekt ${rec.projectId.slice(0, 8)}`;
+              return (
+                <button
+                  type="button"
+                  onClick={() => onOpenProject?.(rec.projectId!)}
+                  className="inline-flex items-center gap-1.5 px-2 py-1 bg-indigo-50  hover:bg-indigo-100 text-indigo-700  rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  <Briefcase className="h-3.5 w-3.5 shrink-0" />
+                  <span className="truncate max-w-[140px]" title={pName}>
+                    {pName}
+                  </span>
+                </button>
+              );
+            })()
+          ) : rec.clientId ? (
+            <button
+              type="button"
+              onClick={() => onOpenClient?.(rec.clientId!)}
+              className="inline-flex items-center gap-1.5 px-2 py-1 bg-emerald-50  hover:bg-emerald-100 text-emerald-700  rounded-lg text-xs font-semibold transition-colors cursor-pointer"
+            >
+              <User className="h-3.5 w-3.5 shrink-0" />
+              <span className="truncate max-w-[140px]" title={client?.name || rec.clientId}>
+                {client?.name || rec.clientId.slice(0, 8)}
+              </span>
+            </button>
+          ) : (
+            <span className="inline-flex items-center gap-1 text-[11px] text-slate-500 font-medium">
+              <Globe className="h-3 w-3 text-slate-400 shrink-0" />
+              <span>{t("Global Company", "Globálne firemné", "Globális vállalati")}</span>
+            </span>
+          )}
+        </td>
+      </>
+    );
+  };
+
+  /** The recurring icon next to a ledger value: on a rule's own row and on every charge it made. */
+  const renderRecurringValueIcon = (rec: FinancialRecord) => (
+    <span
+      className="p-1 rounded-md bg-purple-50  text-purple-600  border border-purple-200 "
+      title={t(
+        `Recurring movement (${rec.recurringFrequency || "monthly"})`,
+        `Pravidelný pohyb (${rec.recurringFrequency || "mesačne"})`,
+        `Rendszeres tétel (${rec.recurringFrequency || "havi"})`
+      )}
+    >
+      <RefreshCw className="h-3 w-3" />
+    </span>
+  );
+
   // Group filtered movements by Month with summary subtotals
   const groupedMovementsByMonth = useMemo(() => {
     type Group = {
@@ -1335,7 +1491,13 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     const rows: MovementLedgerRow[] = [];
     filteredMovements.forEach((rec) => {
       if (forecastClaimedIds.has(rec.id)) return;
+      // A rule row that falls on one of its charge days is that charge: the
+      // charge row below draws it, once.
+      if (pastRecurring.claimedIds.has(rec.id)) return;
       rows.push({ kind: "record", key: rec.id, date: movementLedgerDate(rec) || "1970-01-01", record: rec });
+    });
+    filteredPastCharges.forEach((charge) => {
+      rows.push({ kind: "charge", key: charge.id, date: charge.date, charge });
     });
     filteredFutureMovements.forEach((forecast) => {
       rows.push({ kind: "forecast", key: forecast.id, date: forecast.date, forecast });
@@ -1386,10 +1548,13 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         groups.push(group);
       }
 
-      if (row.kind === "record") {
-        const rec = row.record;
-        const { real, estimated } = splitRecordAmounts(rec);
-        if (rec.type === "income") {
+      if (row.kind === "record" || row.kind === "charge") {
+        // A past charge has happened, so all of it is settled. A rule row a
+        // charge before it already covers is drawn, but adds nothing.
+        const type = row.kind === "record" ? row.record.type : row.charge.type;
+        const { real, estimated } =
+          row.kind === "record" ? ledgerRecordSplit(row.record, pastRecurring) : { real: row.charge.amount, estimated: 0 };
+        if (type === "income") {
           group.incomeReal += real;
           group.incomeEstimated += estimated;
           group.totalIncome += real + estimated;
@@ -1410,7 +1575,15 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     });
 
     return groups;
-  }, [filteredMovements, filteredFutureMovements, forecastClaimedIds, movementsSortOrder, userLanguage]);
+  }, [
+    filteredMovements,
+    filteredPastCharges,
+    filteredFutureMovements,
+    forecastClaimedIds,
+    pastRecurring,
+    movementsSortOrder,
+    userLanguage
+  ]);
 
   // Total summary of everything currently on the ledger, settled and expected
   // kept apart — a forecast must never be added into a figure that reads as
@@ -5751,16 +5924,88 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                 );
                               }
 
+                              // A charge a recurring rule has already made. It
+                              // happened, so it is drawn and counted as settled,
+                              // but nothing of it is stored: no status to set,
+                              // nothing to delete, and editing it means editing
+                              // the rule it was charged by.
+                              if (row.kind === "charge") {
+                                const charge = row.charge;
+                                const chargeIsExpense = charge.type === "expense";
+                                const RecurringIcon = FORECAST_SOURCE_ICON.recurring;
+
+                                return (
+                                  <tr key={row.key} data-recurring-charge="true" className={RECURRING_CHARGE_ROW_CLASS}>
+                                    {/* 1. The day the rule charged */}
+                                    <td className="py-3 px-4 whitespace-nowrap">
+                                      <div className="font-bold text-slate-800 ">
+                                        {formatDateLocalized(charge.date, userLanguage)}
+                                      </div>
+                                    </td>
+
+                                    {renderLedgerSourceCells(charge.record)}
+
+                                    {/* 5. Where it came from, in place of a payment status it cannot have */}
+                                    <td className="py-3 px-4">
+                                      <span
+                                        className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border border-purple-200  bg-purple-50  text-purple-700 "
+                                        title={t(
+                                          "Charged by a recurring rule — drawn from its schedule, not a separately stored movement",
+                                          "Platba pravidelného pohybu — vychádza z jeho plánu, nie je to samostatne uložený pohyb",
+                                          "Ismétlődő tétel terhelése — az ütemezéséből számolva, nem külön mentett tétel"
+                                        )}
+                                      >
+                                        <RecurringIcon className="h-3 w-3 shrink-0" />
+                                        {forecastSourceLabel("recurring")}
+                                      </span>
+                                    </td>
+
+                                    {/* 6. Value — settled, at the price in force on the day */}
+                                    <td className="py-3 px-4 text-right">
+                                      <div className="flex items-center justify-end gap-1.5">
+                                        <span
+                                          className={`font-black text-sm ${
+                                            chargeIsExpense ? "text-rose-600 " : "text-emerald-600 "
+                                          }`}
+                                        >
+                                          {chargeIsExpense ? "-" : "+"}
+                                          {money(charge.amount)}
+                                        </span>
+                                        {renderRecurringValueIcon(charge.record)}
+                                      </div>
+                                    </td>
+
+                                    {/* 7. The only action there is: open the rule it was charged by */}
+                                    <td className="py-3 px-4 text-right">
+                                      <div className="flex items-center justify-end gap-1 opacity-80 group-hover:opacity-100 transition-opacity">
+                                        <button
+                                          type="button"
+                                          onClick={() => handleOpenEditModal(charge.record)}
+                                          className="p-1.5 hover:bg-slate-100  rounded-lg text-slate-500 hover:text-slate-900  transition-colors cursor-pointer"
+                                          title={t(
+                                            "Open the recurring rule this charge comes from",
+                                            "Otvoriť pravidelný pohyb, z ktorého platba vychádza",
+                                            "Az ismétlődő tétel megnyitása, amelyből a terhelés származik"
+                                          )}
+                                        >
+                                          <Pencil className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
+                                    </td>
+                                  </tr>
+                                );
+                              }
+
                               const rec = row.record;
-                              const project = projects.find((p) => p.id === rec.projectId);
-                              const client = leads.find((l) => l.id === rec.clientId || l.id === project?.clientId || l.id === project?.leadId);
-                              const catBreadcrumbs = getCategoryBreadcrumbs(rec.categoryId);
-                              const rootCat = catBreadcrumbs[0];
                               const isExpense = rec.type === "expense";
                               // Whole value real + estimated (see F4); the settled/expected
                               // split is shown separately below as the "est:" subtitle.
                               const { real: amountReal, estimated: amountEstimated } = splitRecordAmounts(rec);
                               const amount = amountReal + amountEstimated;
+                              // A recurring rule's own row that a charge before it
+                              // already paid for: still the rule, still drawn, but
+                              // not counted in the month (see pastRecurringCharges.ts).
+                              const isUncountedRuleRow = pastRecurring.uncountedIds.has(rec.id);
 
                               return (
                                 <tr
@@ -5779,94 +6024,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                     )}
                                   </td>
 
-                                  {/* 2. Title & Reference & Recurring Badge */}
-                                  <td className="py-3 px-4">
-                                    <div className="font-bold text-slate-900  flex items-center gap-1.5">
-                                      <span className="truncate max-w-[280px]" title={rec.title}>
-                                        {rec.title}
-                                      </span>
-                                    </div>
-                                    <div className="flex items-center gap-2 mt-0.5">
-                                      {rec.invoiceNumber && (
-                                        <span className="font-mono text-[10px] px-1.5 py-0.5 rounded bg-slate-100  text-slate-600  font-semibold">
-                                          {rec.invoiceNumber}
-                                        </span>
-                                      )}
-                                      {rec.description && (
-                                        <span className="text-[11px] text-slate-400 truncate max-w-[220px]" title={rec.description}>
-                                          {rec.description}
-                                        </span>
-                                      )}
-                                    </div>
-                                  </td>
-
-                                  {/* 3. 3-Level Category Breadcrumbs */}
-                                  <td className="py-3 px-4">
-                                    {catBreadcrumbs.length > 0 ? (
-                                      <div className="flex items-center gap-1.5 flex-wrap">
-                                        <span
-                                          className="h-2 w-2 rounded-full shrink-0 shadow-2xs"
-                                          style={{ backgroundColor: rootCat?.color || (isExpense ? "#f43f5e" : "#10b981") }}
-                                        />
-                                        {catBreadcrumbs.map((c, idx) => (
-                                          <React.Fragment key={c.id}>
-                                            {idx > 0 && <span className="text-[10px] text-slate-400">›</span>}
-                                            <span
-                                              className={`text-[11px] ${
-                                                idx === catBreadcrumbs.length - 1
-                                                  ? "font-bold text-slate-800 "
-                                                  : "font-normal text-slate-500 "
-                                              }`}
-                                            >
-                                              {c.name}
-                                            </span>
-                                          </React.Fragment>
-                                        ))}
-                                      </div>
-                                    ) : (
-                                      <span className="text-slate-400 italic text-[11px]">
-                                        {t("Uncategorized", "Bez kategórie", "Kategória nélkül")}
-                                      </span>
-                                    )}
-                                  </td>
-
-                                  {/* 4. Link / Scope (Project or Client or Global) */}
-                                  <td className="py-3 px-4">
-                                    {rec.projectId ? (
-                                      (() => {
-                                        const projectLead = project ? leads.find((l) => l.id === project.leadId || l.id === project.clientId) : null;
-                                        const pName = projectLead ? `${projectLead.name}` : `Projekt ${rec.projectId.slice(0, 8)}`;
-                                        return (
-                                          <button
-                                            type="button"
-                                            onClick={() => onOpenProject?.(rec.projectId!)}
-                                            className="inline-flex items-center gap-1.5 px-2 py-1 bg-indigo-50  hover:bg-indigo-100 text-indigo-700  rounded-lg text-xs font-semibold transition-colors cursor-pointer"
-                                          >
-                                            <Briefcase className="h-3.5 w-3.5 shrink-0" />
-                                            <span className="truncate max-w-[140px]" title={pName}>
-                                              {pName}
-                                            </span>
-                                          </button>
-                                        );
-                                      })()
-                                    ) : rec.clientId ? (
-                                      <button
-                                        type="button"
-                                        onClick={() => onOpenClient?.(rec.clientId!)}
-                                        className="inline-flex items-center gap-1.5 px-2 py-1 bg-emerald-50  hover:bg-emerald-100 text-emerald-700  rounded-lg text-xs font-semibold transition-colors cursor-pointer"
-                                      >
-                                        <User className="h-3.5 w-3.5 shrink-0" />
-                                        <span className="truncate max-w-[140px]" title={client?.name || rec.clientId}>
-                                          {client?.name || rec.clientId.slice(0, 8)}
-                                        </span>
-                                      </button>
-                                    ) : (
-                                      <span className="inline-flex items-center gap-1 text-[11px] text-slate-500 font-medium">
-                                        <Globe className="h-3 w-3 text-slate-400 shrink-0" />
-                                        <span>{t("Global Company", "Globálne firemné", "Globális vállalati")}</span>
-                                      </span>
-                                    )}
-                                  </td>
+                                  {renderLedgerSourceCells(rec)}
 
                                   {/* 5. Payment status — editable straight from the row */}
                                   <td className="py-3 px-4">
@@ -5894,7 +6052,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                     <div className="flex items-center justify-end gap-1.5">
                                       <span
                                         className={`font-black text-sm ${
-                                          isExpense
+                                          isUncountedRuleRow
+                                            ? "text-slate-400 "
+                                            : isExpense
                                             ? "text-rose-600 "
                                             : "text-emerald-600 "
                                         }`}
@@ -5904,25 +6064,27 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                       </span>
 
                                       {/* Recurring Expense/Income icon next to value */}
-                                      {rec.isRecurring && (
-                                        <span
-                                          className="p-1 rounded-md bg-purple-50  text-purple-600  border border-purple-200 "
-                                          title={t(
-                                            `Recurring movement (${rec.recurringFrequency || "monthly"})`,
-                                            `Pravidelný pohyb (${rec.recurringFrequency || "mesačne"})`,
-                                            `Rendszeres tétel (${rec.recurringFrequency || "havi"})`
-                                          )}
-                                        >
-                                          <RefreshCw className="h-3 w-3" />
-                                        </span>
-                                      )}
+                                      {rec.isRecurring && renderRecurringValueIcon(rec)}
                                     </div>
 
-                                    {/* Estimated amount subtitle — the still-outstanding part, same rule as splitRecordAmounts */}
-                                    {amountEstimated !== 0 && (
-                                      <div className="text-[10px] text-slate-400 mt-0.5">
-                                        est: {money(amountEstimated)}
+                                    {isUncountedRuleRow ? (
+                                      <div
+                                        className="text-[10px] text-slate-400 mt-0.5"
+                                        title={t(
+                                          "This row is the recurring rule itself. A charge before it already paid for this period, so it is not added to the month's totals. The rule's charges are the rows marked Recurring.",
+                                          "Tento riadok je samotný pravidelný pohyb. Obdobie už pokryla platba pred ním, preto sa do súčtu mesiaca nepripočítava. Platby pohybu sú riadky označené Pravidelné.",
+                                          "Ez a sor maga az ismétlődő tétel. Az időszakot már egy korábbi terhelés fedezte, ezért nem adódik a havi összeghez. A terhelései az Ismétlődő jelölésű sorok."
+                                        )}
+                                      >
+                                        {t("rule · not counted", "pravidlo · nezapočítané", "szabály · nem számolva")}
                                       </div>
+                                    ) : (
+                                      /* Estimated amount subtitle — the still-outstanding part, same rule as splitRecordAmounts */
+                                      amountEstimated !== 0 && (
+                                        <div className="text-[10px] text-slate-400 mt-0.5">
+                                          est: {money(amountEstimated)}
+                                        </div>
+                                      )
                                     )}
                                   </td>
 
