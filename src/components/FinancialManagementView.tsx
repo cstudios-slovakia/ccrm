@@ -51,6 +51,7 @@ import {
 import {
   isoDaysBetween,
   recurringAmountHistoryAfterChange,
+  recurringChargeAmount,
   recurringCharges,
   recurringOccurrences,
   shiftIsoDate
@@ -3240,14 +3241,20 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         {(() => {
           if (!editingRecord?.isRecurring || !formIsRecurring) return null;
 
-          const previousAmount =
-            editingRecord.amountPlanned > 0 ? editingRecord.amountPlanned : editingRecord.amountReal || 0;
+          // What a charge is worth before and after this edit — the same figure
+          // the forecasts price with, so the hint only speaks up when they move.
+          const previousAmount = recurringChargeAmount({
+            amountPlanned: Number(editingRecord.amountPlanned) || 0,
+            amountReal: Number(editingRecord.amountReal) || 0
+          });
+          const nextAmount = recurringChargeAmount({
+            amountPlanned: Number(formAmountPlanned) || 0,
+            amountReal: Number(formAmountReal) || 0
+          });
           const history = editingRecord.recurringAmountHistory || [];
           const lastChargedIso = shiftIsoDate(todayLocal(), -1);
 
-          const amountMoved =
-            Math.round((Number(formAmountPlanned) || 0) * 100) !== Math.round((editingRecord.amountPlanned || 0) * 100) ||
-            Math.round((Number(formAmountReal) || 0) * 100) !== Math.round((editingRecord.amountReal || 0) * 100);
+          const amountMoved = Math.round(nextAmount * 100) !== Math.round(previousAmount * 100);
           // A rule that has not charged yet is simply being corrected.
           const changed = amountMoved && !(formRecurringStartDate && formRecurringStartDate > lastChargedIso);
           if (!changed && history.length === 0) return null;
@@ -3273,7 +3280,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                     {history
                       .map(
                         (period) =>
-                          `${money(period.amountPlanned > 0 ? period.amountPlanned : period.amountReal)} ${t("until", "do", "eddig")} ${formatDateLocalized(period.until, userLanguage)}`
+                          `${money(recurringChargeAmount(period))} ${t("until", "do", "eddig")} ${formatDateLocalized(period.until, userLanguage)}`
                       )
                       .join(" · ")}
                   </p>
@@ -6168,7 +6175,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                 title={pinnedAmounts
                                   .map(
                                     (period) =>
-                                      `${money(period.amountPlanned > 0 ? period.amountPlanned : period.amountReal)} ${t("until", "do", "eddig")} ${formatDateLocalized(period.until, userLanguage)}`
+                                      `${money(recurringChargeAmount(period))} ${t("until", "do", "eddig")} ${formatDateLocalized(period.until, userLanguage)}`
                                   )
                                   .join("\n")}
                               >

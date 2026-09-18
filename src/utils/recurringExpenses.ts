@@ -110,13 +110,23 @@ export function recurringAmountsAt(rule: RecurringRule, dateIso: string): Recurr
 }
 
 /**
- * The single figure the cash-flow and budget reports work in: what was (or will
- * be) budgeted for that charge, falling back to what was settled when no plan
- * was entered. Mirrors what those views did with a flat `amountPlanned`.
+ * The one figure a charge is worth: what the rule actually settles for, falling
+ * back to the budget while nothing has been paid yet.
+ */
+export const recurringChargeAmount = ({ amountPlanned, amountReal }: RecurringAmounts): number =>
+  amountReal > 0 ? amountReal : amountPlanned;
+
+/**
+ * The single figure the cash-flow and budget reports work in for a charge on
+ * `dateIso`: the amount that was in force that day, priced by
+ * `recurringChargeAmount`.
+ *
+ * Paid-first, because that is what the rule's own ledger row and the recurring
+ * tab already show — the plan is the budget, the paid amount is what the rent
+ * actually costs, and the forecast should not quietly disagree with both.
  */
 export function recurringPlannedAmountAt(rule: RecurringRule, dateIso: string): number {
-  const { amountPlanned, amountReal } = recurringAmountsAt(rule, dateIso);
-  return amountPlanned > 0 ? amountPlanned : amountReal;
+  return recurringChargeAmount(recurringAmountsAt(rule, dateIso));
 }
 
 const sameAmounts = (a: RecurringAmounts, b: RecurringAmounts): boolean =>

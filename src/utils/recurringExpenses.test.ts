@@ -121,6 +121,22 @@ test("the settled amount is versioned alongside the planned one", () => {
   assert.equal(recurringPlannedAmountAt(edited, "2026-10-01"), 520);
 });
 
+test("a paid amount outranks the plan — the rule's row, the recurring tab and the forecast agree", () => {
+  // Budgeted at 2 000, actually paying 2 200: every charge is worth 2 200.
+  const rent = rule({ amountPlanned: 2000, amountReal: 2200 });
+  assert.equal(recurringPlannedAmountAt(rent, "2026-10-01"), 2200);
+  assert.deepEqual(recurringCharges(rent, "2026-10-01", "2026-11-30"), [
+    { date: "2026-10-01", amount: 2200 },
+    { date: "2026-11-01", amount: 2200 }
+  ]);
+
+  // Raising only the paid amount re-prices the next charge, not the past ones.
+  const history = recurringAmountHistoryAfterChange(rent, { amountPlanned: 2000, amountReal: 2350 }, "2026-09-18");
+  const raised = { ...rent, amountReal: 2350, recurringAmountHistory: history };
+  assert.equal(recurringPlannedAmountAt(raised, "2026-09-01"), 2200);
+  assert.equal(recurringPlannedAmountAt(raised, "2026-10-01"), 2350);
+});
+
 test("monthly occurrences follow the configured day and clamp to short months", () => {
   const endOfMonth = rule({ recurringConfig: { monthlyType: "day_of_month", dayOfMonth: 31 } });
   assert.deepEqual(recurringOccurrences(endOfMonth, "2026-01-01", "2026-04-30"), [
