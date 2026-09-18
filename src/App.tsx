@@ -375,6 +375,7 @@ function App() {
   const getTabFromHash = () => {
     const rawHash = window.location.hash.replace("#", "");
     const baseHash = rawHash.split(/[/?]/)[0];
+    const hashLower = baseHash.toLowerCase();
     if (hashLower.startsWith("client-") || hashLower.startsWith("lead-") || hashLower.startsWith("user-") || hashLower.startsWith("ue_") || hashLower.startsWith("dash_") || hashLower.startsWith("settings") || hashLower.startsWith("warehouse") || hashLower.startsWith("financial") || hashLower.startsWith("invoices") || hashLower.startsWith("sai") || hashLower.startsWith("automation")) {
       return rawHash; // Keep case sensitivity and allow sub-tabs for settings, warehouse, financial, invoices, sai, and automation
     }
