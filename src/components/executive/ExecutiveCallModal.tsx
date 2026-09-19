@@ -252,7 +252,34 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
       dc.addEventListener("open", () => {
         setCallState("connected");
 
-        // Proactively trigger the AI to speak first upon connection!
+        // 1. Explicitly configure session settings (voice, instructions, VAD, transcription)
+        const updateSessionEvent = {
+          type: "session.update",
+          session: {
+            modalities: ["audio", "text"],
+            instructions: `You are ${executive.name} (${translatedPosition}), an executive in CCRM.\nYou are in a live voice call with ${userName}.\nRespond concisely and conversationally in ${
+              systemLanguage === "sk" ? "Slovak" : systemLanguage === "hu" ? "Hungarian" : "English"
+            }.`,
+            voice: executive.voice || "alloy",
+            input_audio_transcription: {
+              model: "whisper-1"
+            },
+            turn_detection: {
+              type: "server_vad",
+              threshold: 0.5,
+              prefix_padding_ms: 300,
+              silence_duration_ms: 500
+            }
+          }
+        };
+
+        try {
+          dc.send(JSON.stringify(updateSessionEvent));
+        } catch (err) {
+          console.warn("session.update failed", err);
+        }
+
+        // 2. Proactively trigger the AI to speak first upon pickup!
         const initialGreetingDirective = {
           type: "response.create",
           response: {

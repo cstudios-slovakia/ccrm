@@ -212,11 +212,11 @@ $voiceSystemPrompt = $skillInstructions . "\n\n"
     . "{$sanitized_context}\n\n"
     . "Answer and discuss exclusively in the user's language ({$langName}). Speak clearly, decisively, and concisely.";
 
-// 6. Request Ephemeral Session from OpenAI Realtime API
-$sessionPayload = [
+// 6. Request Ephemeral Client Secret from OpenAI Realtime API (GA endpoint)
+$sessionConfig = [
+    'type' => 'webrtc',
     'model' => 'gpt-4o-realtime-preview-2024-12-17',
     'voice' => $assignedVoice,
-    'modalities' => ['audio', 'text'],
     'instructions' => $voiceSystemPrompt,
     'input_audio_transcription' => [
         'model' => 'whisper-1'
@@ -229,7 +229,15 @@ $sessionPayload = [
     ]
 ];
 
-$ch = curl_init('https://api.openai.com/v1/realtime/sessions');
+$sessionPayload = [
+    'expires_after' => [
+        'anchor' => 'created_at',
+        'seconds' => 600
+    ],
+    'session' => $sessionConfig
+];
+
+$ch = curl_init('https://api.openai.com/v1/realtime/client_secrets');
 curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 curl_setopt($ch, CURLOPT_POST, true);
 curl_setopt($ch, CURLOPT_TIMEOUT, 15);
@@ -246,6 +254,31 @@ $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
 $curlErr = curl_error($ch);
 curl_close($ch);
 
+// If wrapped payload wasn't accepted, try minimal client_secrets payload
+if ($httpCode !== 200 && $httpCode !== 201) {
+    $chRetry = curl_init('https://api.openai.com/v1/realtime/client_secrets');
+    curl_setopt($chRetry, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($chRetry, CURLOPT_POST, true);
+    curl_setopt($chRetry, CURLOPT_TIMEOUT, 15);
+    curl_setopt($chRetry, CURLOPT_SSL_VERIFYPEER, true);
+    curl_setopt($chRetry, CURLOPT_SSL_VERIFYHOST, 2);
+    curl_setopt($chRetry, CURLOPT_HTTPHEADER, [
+        'Content-Type: application/json',
+        'Authorization: Bearer ' . $openAiKey
+    ]);
+    curl_setopt($chRetry, CURLOPT_POSTFIELDS, json_encode([
+        'expires_after' => ['anchor' => 'created_at', 'seconds' => 600]
+    ]));
+    $retryRes = curl_exec($chRetry);
+    $retryCode = curl_getinfo($chRetry, CURLINFO_HTTP_CODE);
+    curl_close($chRetry);
+
+    if ($retryCode === 200 || $retryCode === 201) {
+        $response = $retryRes;
+        $httpCode = $retryCode;
+    }
+}
+
 if ($httpCode !== 200 && $httpCode !== 201) {
     $errData = json_decode($response, true);
     $errMsg = $errData['error']['message'] ?? (!empty($curlErr) ? $curlErr : 'OpenAI Realtime API error');
@@ -258,7 +291,7 @@ if ($httpCode !== 200 && $httpCode !== 201) {
 }
 
 $sessionData = json_decode($response, true);
-$clientSecret = $sessionData['client_secret']['value'] ?? '';
+$clientSecret = $sessionData['value'] ?? $sessionData['client_secret']['value'] ?? $sessionData['client_secret'] ?? $sessionData['id'] ?? '';
 
 if (empty($clientSecret)) {
     echo json_encode([
