@@ -304,12 +304,11 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
         }
       });
 
-      // Step E: Create WebRTC Offer & Exchange with OpenAI
+      // Step E: Create WebRTC Offer & Exchange with OpenAI (GA calls endpoint)
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
-      const model = "gpt-4o-realtime-preview-2024-12-17";
-      const sdpRes = await fetch(`https://api.openai.com/v1/realtime?model=${model}`, {
+      const sdpRes = await fetch("https://api.openai.com/v1/realtime/calls", {
         method: "POST",
         body: offer.sdp,
         headers: {
