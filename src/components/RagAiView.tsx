@@ -25,7 +25,10 @@ import {
   Megaphone,
   Box,
   Compass,
-  Bookmark
+  Bookmark,
+  Phone,
+  PhoneCall,
+  Volume2
 } from "lucide-react";
 import type { Language } from "../utils/translations";
 import { Markdown } from "../utils/markdown";
@@ -36,8 +39,10 @@ import type { Lead } from "../types";
 import {
   DEFAULT_EXECUTIVE_ROSTER,
   EXECUTIVE_COLOR_MAP,
+  OPENAI_REALTIME_VOICES,
   type ExecutiveRole
 } from "../utils/executive/defaultExecutives";
+import { ExecutiveCallModal } from "./executive/ExecutiveCallModal";
 
 export interface Message {
   id: string;
@@ -52,6 +57,7 @@ export interface CustomAgent {
   name: string;
   position: string;
   color: string;
+  voice?: string;
   skill_content: string;
   is_autonomous: boolean;
 }
@@ -94,6 +100,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
       ...base,
       name: customDefaultAgent.name || `Executive Leader (${VERSION_CODENAME})`,
       position: customDefaultAgent.position || base.position,
+      voice: customDefaultAgent.voice || base.voice,
       skillContent: customDefaultAgent.skill_content || base.skillContent
     };
   }, [customDefaultAgent]);
@@ -105,6 +112,10 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
   // Selected agent state (can be executive role or custom agent)
   const [selectedAgentId, setSelectedAgentId] = useState<string>("orchestrator");
   const [isCouncilMode, setIsCouncilMode] = useState<boolean>(false);
+
+  // Call Modal State
+  const [isCallModalOpen, setIsCallModalOpen] = useState<boolean>(false);
+  const [callingRole, setCallingRole] = useState<ExecutiveRole | null>(null);
 
   // Active selected role / agent resolution
   const selectedRole = useMemo(() => {
@@ -125,6 +136,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
         positionHu: foundCustom.position,
         roleCategory: "custom",
         color: (foundCustom.color as any) || "purple",
+        voice: (foundCustom.voice as any) || "alloy",
         badge: "Custom Agent",
         isOrchestrator: false,
         isAutonomous: foundCustom.is_autonomous,
@@ -172,6 +184,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
   const [agentName, setAgentName] = useState("");
   const [agentPosition, setAgentPosition] = useState("");
   const [agentColor, setAgentColor] = useState("purple");
+  const [agentVoice, setAgentVoice] = useState("alloy");
   const [agentSkillContent, setAgentSkillContent] = useState("");
   const [agentIsAutonomous, setAgentIsAutonomous] = useState(false);
 
@@ -181,8 +194,30 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
   const [editName, setEditName] = useState("");
   const [editPosition, setEditPosition] = useState("");
   const [editColor, setEditColor] = useState("purple");
+  const [editVoice, setEditVoice] = useState("alloy");
   const [editSkillContent, setEditSkillContent] = useState("");
   const [editIsAutonomous, setEditIsAutonomous] = useState(false);
+
+  const startCall = (role: ExecutiveRole) => {
+    setCallingRole(role);
+    setIsCallModalOpen(true);
+  };
+
+  const handleCallTranscriptLogged = (transcriptItems: { role: "user" | "agent"; text: string; timestamp: Date }[]) => {
+    if (!transcriptItems || transcriptItems.length === 0) return;
+    const targetKey = (callingRole || selectedRole).id;
+    const formatted: Message[] = transcriptItems.map((item, idx) => ({
+      id: `call_${Date.now()}_${idx}`,
+      sender: item.role,
+      text: item.text,
+      timestamp: item.timestamp
+    }));
+    setMessages((prev) => [...prev, ...formatted]);
+    setChatHistories((prev) => ({
+      ...prev,
+      [targetKey]: [...(prev[targetKey] || []), ...formatted]
+    }));
+  };
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -204,6 +239,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
             name: a.name,
             position: a.position,
             color: a.color || "purple",
+            voice: a.voice || "alloy",
             skill_content: a.skill_content || "",
             is_autonomous: a.is_autonomous === 1 || a.is_autonomous === "1" || a.is_autonomous === true
           }));
@@ -551,6 +587,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
     setEditName(role.name);
     setEditPosition((role as any).position || "");
     setEditColor((role as any).color || "purple");
+    setEditVoice((role as any).voice || "alloy");
     setEditSkillContent((role as any).skillContent || (role as any).skill_content || "");
     setEditIsAutonomous(Boolean((role as any).isAutonomous || (role as any).is_autonomous));
     setIsEditModalOpen(true);
@@ -575,6 +612,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
         name: editName,
         position: editPosition,
         color: editColor,
+        voice: editVoice,
         skill_content: editSkillContent,
         is_autonomous: editIsAutonomous
       };
@@ -599,6 +637,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
           name: editName,
           position: editPosition,
           color: editColor,
+          voice: editVoice,
           skill_content: editSkillContent,
           is_autonomous: editIsAutonomous
         })
@@ -636,6 +675,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
           name: agentName,
           position: agentPosition,
           color: agentColor,
+          voice: agentVoice,
           skill_content: agentSkillContent,
           is_autonomous: agentIsAutonomous
         })
@@ -648,6 +688,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
           setAgentName("");
           setAgentPosition("");
           setAgentColor("purple");
+          setAgentVoice("alloy");
           setAgentSkillContent("");
           setAgentIsAutonomous(false);
           await fetchAgents();
@@ -834,6 +875,17 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
               <div className="absolute right-2 top-2 hidden group-hover:flex items-center gap-1 bg-white/95 p-1 rounded-xl shadow border border-slate-100">
                 <button
                   type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    startCall(flagshipOrchestrator);
+                  }}
+                  className="p-1 rounded-lg text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+                  title={t("Start Voice Call (GPT-Live)", "Hlasový hovor (GPT-Live)", "Hanghívás indítása (GPT-Live)")}
+                >
+                  <Phone className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
                   onClick={(e) => openEditModal(e, flagshipOrchestrator)}
                   className="p-1 rounded-lg text-slate-500 hover:text-purple-600 hover:bg-purple-50"
                   title={t("Edit Orchestrator Prompt", "Upraviť inštrukcie", "Prompt szerkesztése")}
@@ -919,6 +971,17 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                   <div className="absolute right-2 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-1 bg-white/95 p-1 rounded-xl shadow-sm border border-slate-100">
                     <button
                       type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        startCall(role);
+                      }}
+                      className="p-1 rounded-lg text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+                      title={t("Start Voice Call", "Hlasový hovor", "Hanghívás")}
+                    >
+                      <Phone className="h-3 w-3" />
+                    </button>
+                    <button
+                      type="button"
                       onClick={(e) => openEditModal(e, role)}
                       className="p-1 rounded-lg text-slate-500 hover:text-purple-600 hover:bg-purple-50"
                       title={t("View & Edit Skill", "Zobraziť zručnosť", "Képesség szerkesztése")}
@@ -967,6 +1030,42 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                   </div>
 
                   <div className="absolute right-2 top-1/2 -translate-y-1/2 hidden group-hover:flex items-center gap-1 bg-white/95 p-1 rounded-xl shadow-sm border border-slate-100">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        const mappedRole: ExecutiveRole = {
+                          id: custom.id,
+                          key: custom.id,
+                          name: custom.name,
+                          position: custom.position,
+                          positionSk: custom.position,
+                          positionHu: custom.position,
+                          roleCategory: "custom",
+                          color: (custom.color as any) || "purple",
+                          voice: (custom.voice as any) || "alloy",
+                          badge: "Custom Agent",
+                          isOrchestrator: false,
+                          isAutonomous: custom.is_autonomous,
+                          skillContent: custom.skill_content,
+                          suggestedPrompts: {
+                            en: ["Strategic update"],
+                            sk: ["Strategický prehľad"],
+                            hu: ["Stratégiai áttekintés"]
+                          },
+                          description: {
+                            en: "Custom Agent",
+                            sk: "Vlastný agent",
+                            hu: "Egyéni ügynök"
+                          }
+                        };
+                        startCall(mappedRole);
+                      }}
+                      className="p-1 rounded-lg text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 transition-colors"
+                      title={t("Start Voice Call", "Hlasový hovor", "Hanghívás")}
+                    >
+                      <Phone className="h-3 w-3" />
+                    </button>
                     <button
                       type="button"
                       onClick={(e) => openEditModal(e, custom as any)}
@@ -1033,6 +1132,17 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
 
             {/* Top Action Buttons */}
             <div className="flex items-center gap-2">
+              {/* Live Voice Call Button */}
+              <button
+                type="button"
+                onClick={() => startCall(isCouncilMode ? flagshipOrchestrator : selectedRole)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-[10px] font-black text-emerald-700 transition-all cursor-pointer shadow-xs active:scale-95"
+                title={t("Start Live Voice Call (OpenAI Realtime WebRTC)", "Začať živý hlasový hovor (WebRTC)", "Élő hanghívás indítása (WebRTC)")}
+              >
+                <PhoneCall className="h-3.5 w-3.5 text-emerald-600" />
+                <span>{t("Voice Call", "Hovor", "Hanghívás")}</span>
+              </button>
+
               {selectedRole.isAutonomous && !isCouncilMode && (
                 <button
                   type="button"
@@ -1421,7 +1531,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
             </div>
 
             <form onSubmit={handleEditSubmit} className="flex-1 overflow-y-auto space-y-3.5 pr-1 scrollbar-thin">
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Agent Name", "Meno", "Név")} *</label>
                   <input
@@ -1442,6 +1552,24 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                     onChange={(e) => setEditPosition(e.target.value)}
                     className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-500"
                   />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block flex items-center gap-1">
+                    <Volume2 className="h-3 w-3 text-purple-600" />
+                    {t("Realtime Voice", "Hlas hovoru", "Hívás hangja")}
+                  </label>
+                  <select
+                    value={editVoice}
+                    onChange={(e) => setEditVoice(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-500 bg-white"
+                  >
+                    {OPENAI_REALTIME_VOICES.map((v) => (
+                      <option key={v.id} value={v.id}>
+                        {v.name} ({v.desc})
+                      </option>
+                    ))}
+                  </select>
                 </div>
               </div>
 
@@ -1500,28 +1628,48 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
             </div>
 
             <form onSubmit={handleCreateAgent} className="space-y-3.5">
-              <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Agent Name", "Meno agenta", "Ügynök neve")} *</label>
-                <input
-                  type="text"
-                  required
-                  value={agentName}
-                  onChange={(e) => setAgentName(e.target.value)}
-                  placeholder={t("e.g. Lead Qualification Expert", "napr. Expert na kvalifikáciu leadov", "pl. Lead minősítési szakértő")}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-500"
-                />
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Agent Name", "Meno agenta", "Ügynök neve")} *</label>
+                  <input
+                    type="text"
+                    required
+                    value={agentName}
+                    onChange={(e) => setAgentName(e.target.value)}
+                    placeholder={t("e.g. Lead Qualifier", "napr. Kvalifikátor", "pl. Minősítő")}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-500"
+                  />
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Position / Role", "Pozícia", "Pozíció")} *</label>
+                  <input
+                    type="text"
+                    required
+                    value={agentPosition}
+                    onChange={(e) => setAgentPosition(e.target.value)}
+                    placeholder={t("e.g. Inbound Qualifier", "napr. Pipeline Qualifier", "pl. Qualifier")}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-500"
+                  />
+                </div>
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Position / Role", "Pozícia / Rola", "Pozíció / Szerepkör")} *</label>
-                <input
-                  type="text"
-                  required
-                  value={agentPosition}
-                  onChange={(e) => setAgentPosition(e.target.value)}
-                  placeholder={t("e.g. Inbound Pipeline Qualifier", "napr. Hodnotiteľ prichádzajúcich leadov", "pl. Bejövő leadek minősítője")}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-500"
-                />
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block flex items-center gap-1">
+                  <Volume2 className="h-3 w-3 text-purple-600" />
+                  {t("Realtime Voice (OpenAI)", "Hlas hovoru (OpenAI)", "Hanghívás hangja")}
+                </label>
+                <select
+                  value={agentVoice}
+                  onChange={(e) => setAgentVoice(e.target.value)}
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-500 bg-white"
+                >
+                  {OPENAI_REALTIME_VOICES.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.name} ({v.desc})
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="space-y-1">
@@ -1555,6 +1703,16 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
           </div>
         </div>
       )}
+
+      {/* EXECUTIVE REALTIME VOICE CALL MODAL */}
+      <ExecutiveCallModal
+        isOpen={isCallModalOpen}
+        onClose={() => setIsCallModalOpen(false)}
+        executive={callingRole || selectedRole}
+        currentUser={currentUser}
+        systemLanguage={systemLanguage}
+        onCallTranscriptLogged={handleCallTranscriptLogged}
+      />
     </div>
   );
 };

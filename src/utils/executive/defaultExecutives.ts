@@ -26,6 +26,7 @@ export interface ExecutiveRole {
   roleCategory: "orchestrator" | "strategy" | "finance" | "people" | "legal" | "operations" | "marketing" | "product" | "governance" | "custom";
   color: "purple" | "emerald" | "amber" | "rose" | "slate" | "cyan" | "orange" | "indigo" | "blue";
   badge: string;
+  voice: "alloy" | "ash" | "ballad" | "coral" | "echo" | "sage" | "shimmer" | "verse";
   isOrchestrator: boolean;
   isAutonomous: boolean;
   skillContent: string;
@@ -41,6 +42,17 @@ export interface ExecutiveRole {
   };
 }
 
+export const OPENAI_REALTIME_VOICES = [
+  { id: "alloy", name: "Alloy", desc: "Balanced, authoritative & clear (CEO/Orchestrator)" },
+  { id: "ash", name: "Ash", desc: "Analytical, thoughtful & strategic (CSO)" },
+  { id: "sage", name: "Sage", desc: "Prudent, deliberate & quantitative (CFO)" },
+  { id: "coral", name: "Coral", desc: "Warm, empathetic & cultural (CHRO)" },
+  { id: "echo", name: "Echo", desc: "Authoritative, deep baritone & legal (GC)" },
+  { id: "verse", name: "Verse", desc: "Crisp, structured & high-velocity (COO/CPO)" },
+  { id: "shimmer", name: "Shimmer", desc: "Dynamic, vibrant & engaging (CMO)" },
+  { id: "ballad", name: "Ballad", desc: "Poised, sophisticated & narrative (Board Comms)" },
+] as const;
+
 export const DEFAULT_EXECUTIVE_ROSTER: ExecutiveRole[] = [
   {
     id: "orchestrator",
@@ -52,6 +64,7 @@ export const DEFAULT_EXECUTIVE_ROSTER: ExecutiveRole[] = [
     roleCategory: "orchestrator",
     color: "purple",
     badge: "Flagship AI Leader",
+    voice: "alloy",
     isOrchestrator: true,
     isAutonomous: false,
     skillContent: EXECUTIVE_ORCHESTRATOR_PROMPT,
@@ -88,6 +101,7 @@ export const DEFAULT_EXECUTIVE_ROSTER: ExecutiveRole[] = [
     roleCategory: "strategy",
     color: "emerald",
     badge: "Strategy & Moats",
+    voice: "ash",
     isOrchestrator: false,
     isAutonomous: false,
     skillContent: CSO_PROMPT,
@@ -124,6 +138,7 @@ export const DEFAULT_EXECUTIVE_ROSTER: ExecutiveRole[] = [
     roleCategory: "finance",
     color: "amber",
     badge: "Unit Economics & Cash",
+    voice: "sage",
     isOrchestrator: false,
     isAutonomous: false,
     skillContent: CFO_PROMPT,
@@ -160,6 +175,7 @@ export const DEFAULT_EXECUTIVE_ROSTER: ExecutiveRole[] = [
     roleCategory: "people",
     color: "rose",
     badge: "People & Culture",
+    voice: "coral",
     isOrchestrator: false,
     isAutonomous: false,
     skillContent: CHRO_PROMPT,
@@ -196,6 +212,7 @@ export const DEFAULT_EXECUTIVE_ROSTER: ExecutiveRole[] = [
     roleCategory: "legal",
     color: "slate",
     badge: "Legal & Compliance",
+    voice: "echo",
     isOrchestrator: false,
     isAutonomous: false,
     skillContent: GC_PROMPT,
@@ -232,6 +249,7 @@ export const DEFAULT_EXECUTIVE_ROSTER: ExecutiveRole[] = [
     roleCategory: "operations",
     color: "cyan",
     badge: "Execution & Scaling",
+    voice: "verse",
     isOrchestrator: false,
     isAutonomous: false,
     skillContent: COO_PROMPT,
@@ -268,6 +286,7 @@ export const DEFAULT_EXECUTIVE_ROSTER: ExecutiveRole[] = [
     roleCategory: "marketing",
     color: "orange",
     badge: "GTM & Demand",
+    voice: "shimmer",
     isOrchestrator: false,
     isAutonomous: false,
     skillContent: CMO_PROMPT,
@@ -304,6 +323,7 @@ export const DEFAULT_EXECUTIVE_ROSTER: ExecutiveRole[] = [
     roleCategory: "product",
     color: "indigo",
     badge: "Product & Roadmap",
+    voice: "verse",
     isOrchestrator: false,
     isAutonomous: false,
     skillContent: CPO_PROMPT,
@@ -340,6 +360,7 @@ export const DEFAULT_EXECUTIVE_ROSTER: ExecutiveRole[] = [
     roleCategory: "governance",
     color: "blue",
     badge: "Board & Governance",
+    voice: "ballad",
     isOrchestrator: false,
     isAutonomous: false,
     skillContent: BOARD_COMMS_PROMPT,

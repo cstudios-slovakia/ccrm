@@ -43,7 +43,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $agents = [];
         if ($chatDb) {
             try {
-                $aStmt = $chatDb->query("SELECT `id`, `name`, `position`, `color`, `skill_content`, `is_autonomous` FROM `rag_agents` ORDER BY `id` ASC");
+                $aStmt = $chatDb->query("SELECT `id`, `name`, `position`, `color`, `voice`, `skill_content`, `is_autonomous` FROM `rag_agents` ORDER BY `id` ASC");
                 $agents = $aStmt->fetchAll(PDO::FETCH_ASSOC);
             } catch (\Exception $e) {
                 // Table might not exist or connection failed
@@ -137,6 +137,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $name = $payload['name'] ?? '';
         $position = $payload['position'] ?? '';
         $color = $payload['color'] ?? 'purple';
+        $voice = $payload['voice'] ?? 'alloy';
         $skillContent = $payload['skill_content'] ?? '';
         $isAutonomous = isset($payload['is_autonomous']) ? (int)$payload['is_autonomous'] : 0;
         
@@ -151,8 +152,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         try {
-            $insStmt = $chatDb->prepare("INSERT INTO `rag_agents` (`name`, `position`, `color`, `skill_content`, `is_autonomous`) VALUES (?, ?, ?, ?, ?)");
-            $insStmt->execute([$name, $position, $color, $skillContent, $isAutonomous]);
+            $insStmt = $chatDb->prepare("INSERT INTO `rag_agents` (`name`, `position`, `color`, `voice`, `skill_content`, `is_autonomous`) VALUES (?, ?, ?, ?, ?, ?)");
+            $insStmt->execute([$name, $position, $color, $voice, $skillContent, $isAutonomous]);
             echo json_encode(['success' => true, 'message' => 'Agent created successfully']);
         } catch (\Exception $e) {
             echo json_encode(['success' => false, 'message' => 'Failed to save the agent.']);
@@ -166,6 +167,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $name = $payload['name'] ?? '';
         $position = $payload['position'] ?? '';
         $color = $payload['color'] ?? 'purple';
+        $voice = $payload['voice'] ?? 'alloy';
         $skillContent = $payload['skill_content'] ?? '';
         $isAutonomous = isset($payload['is_autonomous']) ? (int)$payload['is_autonomous'] : 0;
         
@@ -180,8 +182,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         try {
-            $updStmt = $chatDb->prepare("UPDATE `rag_agents` SET `name` = ?, `position` = ?, `color` = ?, `skill_content` = ?, `is_autonomous` = ? WHERE `id` = ?");
-            $updStmt->execute([$name, $position, $color, $skillContent, $isAutonomous, $id]);
+            $updStmt = $chatDb->prepare("UPDATE `rag_agents` SET `name` = ?, `position` = ?, `color` = ?, `voice` = ?, `skill_content` = ?, `is_autonomous` = ? WHERE `id` = ?");
+            $updStmt->execute([$name, $position, $color, $voice, $skillContent, $isAutonomous, $id]);
             echo json_encode(['success' => true, 'message' => 'Agent updated successfully']);
         } catch (\Exception $e) {
             echo json_encode(['success' => false, 'message' => 'Failed to update the agent.']);

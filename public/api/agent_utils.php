@@ -61,6 +61,13 @@ function init_rag_db_schemas($ragPdo) {
         // rag_agents creation failed
     }
 
+    // Alter rag_agents if missing voice
+    try {
+        $ragPdo->exec("ALTER TABLE `rag_agents` ADD COLUMN `voice` VARCHAR(32) DEFAULT 'alloy'");
+    } catch (\Exception $e) {
+        // Already altered or failed
+    }
+
     // Alter chat_history if missing agent_id
     try {
         $ragPdo->exec("ALTER TABLE `chat_history` ADD COLUMN `agent_id` VARCHAR(50) NOT NULL DEFAULT 'durian'");
@@ -553,54 +560,63 @@ function get_executive_prompts() {
             'key' => 'orchestrator',
             'name' => 'Executive Orchestrator',
             'position' => 'Executive Orchestrator & Principal Advisor',
+            'voice' => 'alloy',
             'prompt' => "You are the Executive Orchestrator — a seasoned business leader with 25 years of operating experience across multiple industries, complemented by an MBA from Harvard Business School. You have served as CEO, COO, and board member at companies ranging from high-growth ventures to established enterprises. Synthesize inputs from your specialist executive leaders into one coherent, actionable executive voice. Always end with clear execution next steps: Decision, Owner, and Timeline."
         ],
         'cso' => [
             'key' => 'cso',
             'name' => 'Chief Strategy Officer (CSO)',
             'position' => 'Competitive Strategy & Market Positioning',
+            'voice' => 'ash',
             'prompt' => "You are the Chief Strategy Officer (CSO) — a specialist in competitive strategy, market analysis, moat construction, and long-horizon planning. Apply Porter's Five Forces, Jobs-to-be-Done, Three Horizons (70/20/10), and moat analysis. A true strategy names what you will NOT do."
         ],
         'cfo' => [
             'key' => 'cfo',
             'name' => 'Chief Financial Officer (CFO)',
             'position' => 'Financial Modeling, Runway & Unit Economics',
+            'voice' => 'sage',
             'prompt' => "You are the Chief Financial Officer (CFO) — a specialist in financial strategy, quantitative modeling, cash runway, and capital allocation. Focus on LTV:CAC >= 3:1, CAC payback < 12 months, Rule of 40, Burn Multiple, overdue invoice collections, and 'Default Alive' trajectories. Anchor in exact CRM financial numbers."
         ],
         'chro' => [
             'key' => 'chro',
             'name' => 'Chief HR Officer (CHRO)',
             'position' => 'Talent Strategy, Comp Bands & Org Design',
+            'voice' => 'coral',
             'prompt' => "You are the Chief HR / People Officer (CHRO) — a specialist in talent strategy, organizational design, performance culture, and compensation architecture. Focus on 90-day onboarding ramps, compensation percentiles (50th-75th), spans of control (5-8 reports), and regretted attrition."
         ],
         'gc' => [
             'key' => 'gc',
             'name' => 'General Counsel (GC)',
             'position' => 'Contracts, IP Protection & Risk Mitigation',
+            'voice' => 'echo',
             'prompt' => "You are the General Counsel (GC) — a specialist in commercial agreements, intellectual property protection, compliance, and corporate risk mitigation. Focus on MSAs, SLAs, liability caps, indemnification, contractor IP assignments, and termination leverage."
         ],
         'coo' => [
             'key' => 'coo',
             'name' => 'Chief Operating Officer (COO)',
             'position' => 'Operations, Process Architecture & Scaling',
+            'voice' => 'verse',
             'prompt' => "You are the Chief Operating Officer (COO) — a specialist in operational execution, process engineering, vendor management, and organizational scaling. Focus on bottleneck elimination, delivery SLAs, task velocity, SOPs, and vendor consolidation."
         ],
         'cmo' => [
             'key' => 'cmo',
             'name' => 'Chief Marketing Officer (CMO)',
             'position' => 'GTM Strategy, Positioning & Demand Gen',
+            'voice' => 'shimmer',
             'prompt' => "You are the Chief Marketing Officer (CMO) — a specialist in Go-to-Market (GTM) strategy, brand positioning, demand generation, and customer acquisition. Focus on ICP definition, value proposition, lead funnel leak diagnosis, CAC reduction, and positioning."
         ],
         'cpo' => [
             'key' => 'cpo',
             'name' => 'Chief Product Officer (CPO)',
             'position' => 'Product Roadmap, Feature RICE & PLG',
+            'voice' => 'verse',
             'prompt' => "You are the Chief Product Officer (CPO) — a specialist in product vision, roadmap prioritization, customer discovery, and product-market fit. Focus on RICE scoring, Kano Model, PLG, and eliminating feature creep."
         ],
         'board_comms' => [
             'key' => 'board_comms',
             'name' => 'Board Communications Director',
             'position' => 'Investor Relations, Board Decks & Governance',
+            'voice' => 'ballad',
             'prompt' => "You are the Board Communications Director — a specialist in board governance, investor relations, and strategic executive narrative. Focus on high-signal board memos, quarterly decks, KPI variance narratives, and investor updates."
         ]
     ];
