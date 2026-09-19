@@ -42,6 +42,51 @@ if (empty($openAiKey)) {
 $input = file_get_contents('php://input');
 $payload = json_decode($input, true) ?: [];
 
+$action = $payload['action'] ?? 'create_session';
+
+// 2.1. WebRTC SDP Exchange Proxy Action (bypasses browser CORS & preflight blocks)
+if ($action === 'exchange_sdp') {
+    $sdp = $payload['sdp'] ?? '';
+    $token = !empty($payload['client_secret']) ? $payload['client_secret'] : $openAiKey;
+
+    if (empty($sdp)) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'SDP offer is required.']);
+        exit;
+    }
+
+    $ch = curl_init('https://api.openai.com/v1/realtime/calls');
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_POST, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 20);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Content-Type: application/sdp',
+        'Authorization: Bearer ' . $token
+    ]);
+    curl_setopt($ch, CURLOPT_POSTFIELDS, $sdp);
+    $answerSdp = curl_exec($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    $curlErr = curl_error($ch);
+    curl_close($ch);
+
+    if ($httpCode !== 200 && $httpCode !== 201) {
+        http_response_code($httpCode >= 400 && $httpCode <= 599 ? $httpCode : 500);
+        echo json_encode([
+            'success' => false,
+            'message' => 'OpenAI WebRTC SDP exchange failed (HTTP ' . $httpCode . '): ' . (!empty($curlErr) ? $curlErr : $answerSdp)
+        ]);
+        exit;
+    }
+
+    echo json_encode([
+        'success' => true,
+        'sdp' => $answerSdp
+    ]);
+    exit;
+}
+
 $agentId = $payload['agent_id'] ?? 'orchestrator';
 $systemLanguage = $payload['language'] ?? 'sk';
 $userName = trim($payload['user_name'] ?? '');

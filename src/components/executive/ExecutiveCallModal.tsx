@@ -304,28 +304,35 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
         }
       });
 
-      // Step E: Create WebRTC Offer & Exchange with OpenAI (GA calls endpoint)
+      // Step E: Create WebRTC Offer & Exchange with Backend SDP Proxy (avoids browser CORS & network blocks)
       const offer = await pc.createOffer();
       await pc.setLocalDescription(offer);
 
-      const sdpRes = await fetch("https://api.openai.com/v1/realtime/calls", {
+      const sdpRes = await fetch("/api/realtime_session.php", {
         method: "POST",
-        body: offer.sdp,
         headers: {
-          Authorization: `Bearer ${clientSecret}`,
-          "Content-Type": "application/sdp"
-        }
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          action: "exchange_sdp",
+          sdp: offer.sdp,
+          client_secret: clientSecret
+        })
       });
 
       if (!sdpRes.ok) {
-        const sdpErr = await sdpRes.text();
-        throw new Error(`OpenAI WebRTC negotiation failed (${sdpRes.status}): ${sdpErr}`);
+        const sdpErrData = await sdpRes.json().catch(() => ({}));
+        throw new Error(sdpErrData.message || `OpenAI WebRTC negotiation failed (${sdpRes.status})`);
       }
 
-      const answerSdp = await sdpRes.text();
+      const sdpData = await sdpRes.json();
+      if (!sdpData.success || !sdpData.sdp) {
+        throw new Error(sdpData.message || "Failed to receive SDP answer from OpenAI.");
+      }
+
       const answer: RTCSessionDescriptionInit = {
         type: "answer",
-        sdp: answerSdp
+        sdp: sdpData.sdp
       };
       await pc.setRemoteDescription(answer);
     } catch (err: any) {
