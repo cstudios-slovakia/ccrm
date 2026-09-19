@@ -27,22 +27,23 @@ $integrationsConfig = is_array($integrationsConfig) ? ccrm_decrypt_config_secret
 $openAiKey = $integrationsConfig['openAiKey'] ?? '';
 $vectorDb = $integrationsConfig['vectorDb'] ?? 'none';
 
-// Initialize RAG DB connection and ensure schemas exist
+// Initialize DB connection and ensure schemas exist (uses vector DB if configured, falls back to main DB)
 $ragPdo = get_rag_db_connection($integrationsConfig);
-if ($ragPdo) {
-    init_rag_db_schemas($ragPdo);
+$chatDb = $ragPdo ?: $pdo;
+if ($chatDb) {
+    init_rag_db_schemas($chatDb);
 }
 
 // 2. Handle GET Request: Fetch chat history, agent list, or episodic decisions
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $action = $_GET['action'] ?? 'chat_history';
-    $userId = $_GET['user_id'] ?? 'default_user';
+    $userId = !empty($_GET['user_id']) ? $_GET['user_id'] : 'default_user';
 
     if ($action === 'get_agents') {
         $agents = [];
-        if ($ragPdo) {
+        if ($chatDb) {
             try {
-                $aStmt = $ragPdo->query("SELECT `id`, `name`, `position`, `color`, `skill_content`, `is_autonomous` FROM `rag_agents` ORDER BY `id` ASC");
+                $aStmt = $chatDb->query("SELECT `id`, `name`, `position`, `color`, `skill_content`, `is_autonomous` FROM `rag_agents` ORDER BY `id` ASC");
                 $agents = $aStmt->fetchAll(PDO::FETCH_ASSOC);
             } catch (\Exception $e) {
                 // Table might not exist or connection failed
@@ -57,7 +58,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
     if ($action === 'get_decisions') {
         $limit = isset($_GET['limit']) ? (int)$_GET['limit'] : 20;
-        $decisions = get_episodic_decisions($pdo, $ragPdo, $userId, $limit);
+        $decisions = get_episodic_decisions($pdo, $chatDb, $userId, $limit);
         echo json_encode([
             'success' => true,
             'decisions' => $decisions
@@ -66,12 +67,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     }
 
     // Default: chat history
-    $agentId = $_GET['agent_id'] ?? 'durian';
+    $agentId = $_GET['agent_id'] ?? 'orchestrator';
     $messages = [];
     
-    if ($ragPdo) {
+    if ($chatDb) {
         try {
-            $hStmt = $ragPdo->prepare("SELECT `sender`, `message_text` as `text`, `created_at` as `timestamp` FROM `chat_history` WHERE `user_id` = ? AND `agent_id` = ? ORDER BY `id` ASC");
+            $hStmt = $chatDb->prepare("SELECT `sender`, `message_text` as `text`, `created_at` as `timestamp` FROM `chat_history` WHERE (`user_id` = ? OR `user_id` = 'default_user') AND `agent_id` = ? ORDER BY `id` ASC");
             $hStmt->execute([$userId, $agentId]);
             $messages = $hStmt->fetchAll(PDO::FETCH_ASSOC);
         } catch (\Exception $e) {
@@ -92,35 +93,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $payload = json_decode($input, true);
     
     $action = $payload['action'] ?? 'chat';
-    $userId = $payload['user_id'] ?? 'default_user';
-    $agentId = $payload['agent_id'] ?? 'durian';
+    $userId = !empty($payload['user_id']) ? $payload['user_id'] : 'default_user';
+    $agentId = $payload['agent_id'] ?? 'orchestrator';
 
     // 3.0. Episodic Decisions Actions
     if ($action === 'get_decisions') {
         $limit = isset($payload['limit']) ? (int)$payload['limit'] : 20;
-        $decisions = get_episodic_decisions($pdo, $ragPdo, $userId, $limit);
+        $decisions = get_episodic_decisions($pdo, $chatDb, $userId, $limit);
         echo json_encode(['success' => true, 'decisions' => $decisions]);
         exit;
     }
 
     if ($action === 'save_decision') {
-        $saved = save_episodic_decision($pdo, $ragPdo, $userId, $payload['decision'] ?? $payload);
+        $saved = save_episodic_decision($pdo, $chatDb, $userId, $payload['decision'] ?? $payload);
         echo json_encode(['success' => $saved, 'message' => $saved ? 'Decision saved' : 'Failed to save decision']);
         exit;
     }
 
     if ($action === 'delete_decision') {
         $decisionId = $payload['decision_id'] ?? $payload['id'] ?? null;
-        $deleted = delete_episodic_decision($pdo, $ragPdo, $userId, $decisionId);
+        $deleted = delete_episodic_decision($pdo, $chatDb, $userId, $decisionId);
         echo json_encode(['success' => $deleted, 'message' => 'Decision deleted']);
         exit;
     }
     
     // 3.1. RESET Action
     if ($action === 'reset') {
-        if ($ragPdo) {
+        if ($chatDb) {
             try {
-                $delStmt = $ragPdo->prepare("DELETE FROM `chat_history` WHERE `user_id` = ? AND `agent_id` = ?");
+                $delStmt = $chatDb->prepare("DELETE FROM `chat_history` WHERE (`user_id` = ? OR `user_id` = 'default_user') AND `agent_id` = ?");
                 $delStmt->execute([$userId, $agentId]);
             } catch (\Exception $e) {
                 echo json_encode(['success' => false, 'message' => 'Failed to clear the chat history.']);
@@ -144,13 +145,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
         
-        if (!$ragPdo) {
-            echo json_encode(['success' => false, 'message' => 'Vector DB is not connected or configured.']);
+        if (!$chatDb) {
+            echo json_encode(['success' => false, 'message' => 'Database connection missing.']);
             exit;
         }
         
         try {
-            $insStmt = $ragPdo->prepare("INSERT INTO `rag_agents` (`name`, `position`, `color`, `skill_content`, `is_autonomous`) VALUES (?, ?, ?, ?, ?)");
+            $insStmt = $chatDb->prepare("INSERT INTO `rag_agents` (`name`, `position`, `color`, `skill_content`, `is_autonomous`) VALUES (?, ?, ?, ?, ?)");
             $insStmt->execute([$name, $position, $color, $skillContent, $isAutonomous]);
             echo json_encode(['success' => true, 'message' => 'Agent created successfully']);
         } catch (\Exception $e) {
@@ -173,13 +174,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
         
-        if (!$ragPdo) {
-            echo json_encode(['success' => false, 'message' => 'Vector DB is not connected or configured.']);
+        if (!$chatDb) {
+            echo json_encode(['success' => false, 'message' => 'Database connection missing.']);
             exit;
         }
         
         try {
-            $updStmt = $ragPdo->prepare("UPDATE `rag_agents` SET `name` = ?, `position` = ?, `color` = ?, `skill_content` = ?, `is_autonomous` = ? WHERE `id` = ?");
+            $updStmt = $chatDb->prepare("UPDATE `rag_agents` SET `name` = ?, `position` = ?, `color` = ?, `skill_content` = ?, `is_autonomous` = ? WHERE `id` = ?");
             $updStmt->execute([$name, $position, $color, $skillContent, $isAutonomous, $id]);
             echo json_encode(['success' => true, 'message' => 'Agent updated successfully']);
         } catch (\Exception $e) {
@@ -197,16 +198,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
         
-        if (!$ragPdo) {
-            echo json_encode(['success' => false, 'message' => 'Vector DB is not connected or configured.']);
+        if (!$chatDb) {
+            echo json_encode(['success' => false, 'message' => 'Database connection missing.']);
             exit;
         }
         
         try {
-            $delStmt = $ragPdo->prepare("DELETE FROM `rag_agents` WHERE `id` = ?");
+            $delStmt = $chatDb->prepare("DELETE FROM `rag_agents` WHERE `id` = ?");
             $delStmt->execute([$id]);
             // Also delete chat history for this agent
-            $delHistory = $ragPdo->prepare("DELETE FROM `chat_history` WHERE `agent_id` = ?");
+            $delHistory = $chatDb->prepare("DELETE FROM `chat_history` WHERE `agent_id` = ?");
             $delHistory->execute([$id]);
             
             echo json_encode(['success' => true, 'message' => 'Agent deleted successfully']);
@@ -218,12 +219,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     // 3.3. RUN AGENT Action (Manual autonomous execute)
     if ($action === 'run_agent') {
-        if (!$ragPdo) {
-            echo json_encode(['success' => false, 'message' => 'RAG DB connection missing']);
+        if (!$chatDb) {
+            echo json_encode(['success' => false, 'message' => 'Database connection missing']);
             exit;
         }
         
-        $aStmt = $ragPdo->prepare("SELECT `name`, `skill_content`, `position` FROM `rag_agents` WHERE `id` = ?");
+        $aStmt = $chatDb->prepare("SELECT `name`, `skill_content`, `position` FROM `rag_agents` WHERE `id` = ?");
         $aStmt->execute([$agentId]);
         $agent = $aStmt->fetch(PDO::FETCH_ASSOC);
         
@@ -233,11 +234,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         // Execute RAG + OpenAI run for this agent
-        $reply = execute_autonomous_run($pdo, $ragPdo, $agent, $openAiKey);
+        $reply = execute_autonomous_run($pdo, $chatDb, $agent, $openAiKey);
         
         // Save to chat history
         try {
-            $insStmt = $ragPdo->prepare("INSERT INTO `chat_history` (`user_id`, `sender`, `message_text`, `agent_id`) VALUES (?, 'agent', ?, ?)");
+            $insStmt = $chatDb->prepare("INSERT INTO `chat_history` (`user_id`, `sender`, `message_text`, `agent_id`) VALUES (?, 'agent', ?, ?)");
             $insStmt->execute([$userId, $reply, $agentId]);
         } catch (\Exception $e) {
             // Ignore
@@ -1164,10 +1165,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $reply = restore_text($aiReply, $to_real);
         }
 
-        // Save conversation log in the RAG DB under orchestrator / council
-        if ($ragPdo) {
+        // Save conversation log in the Chat DB under orchestrator / council
+        if ($chatDb) {
             try {
-                $insStmt = $ragPdo->prepare("INSERT INTO `chat_history` (`user_id`, `sender`, `message_text`, `agent_id`) VALUES (?, 'user', ?, 'orchestrator'), (?, 'agent', ?, 'orchestrator')");
+                $insStmt = $chatDb->prepare("INSERT INTO `chat_history` (`user_id`, `sender`, `message_text`, `agent_id`) VALUES (?, 'user', ?, 'orchestrator'), (?, 'agent', ?, 'orchestrator')");
                 $insStmt->execute([$userId, "[Executive Council Inquiry] " . $councilQuery, $userId, $reply]);
             } catch (\Exception $e) {}
         }
@@ -1207,9 +1208,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $exec = $execPrompts['orchestrator'];
         $agentName = "Executive Leader (" . $versionCodename . ")";
         $skillInstructions = $exec['prompt'] . "\n\nYou also have access to the context below from the CRM database.";
-    } elseif ($ragPdo) {
+    } elseif ($chatDb) {
         try {
-            $aStmt = $ragPdo->prepare("SELECT `name`, `skill_content`, `position` FROM `rag_agents` WHERE `id` = ?");
+            $aStmt = $chatDb->prepare("SELECT `name`, `skill_content`, `position` FROM `rag_agents` WHERE `id` = ?");
             $aStmt->execute([$agentId]);
             $customAgent = $aStmt->fetch(PDO::FETCH_ASSOC);
             if ($customAgent) {
@@ -1224,7 +1225,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     // Episodic Memory Context Injection
-    $episodicDecisions = get_episodic_decisions($pdo, $ragPdo, $userId, 8);
+    $episodicDecisions = get_episodic_decisions($pdo, $chatDb, $userId, 8);
     $pastDecisionsBlock = "";
     if (!empty($episodicDecisions)) {
         $pastDecisionsBlock = "\n\n<past_decisions>\n";
@@ -1296,10 +1297,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $reply = restore_text($aiReply, $to_real);
     }
     
-    // Save conversation log in the RAG DB if active
-    if ($ragPdo) {
+    // Save conversation log in the Chat DB if active
+    if ($chatDb) {
         try {
-            $insStmt = $ragPdo->prepare("INSERT INTO `chat_history` (`user_id`, `sender`, `message_text`, `agent_id`) VALUES (?, 'user', ?, ?), (?, 'agent', ?, ?)");
+            $insStmt = $chatDb->prepare("INSERT INTO `chat_history` (`user_id`, `sender`, `message_text`, `agent_id`) VALUES (?, 'user', ?, ?), (?, 'agent', ?, ?)");
             $insStmt->execute([$userId, $userQuery, $agentId, $userId, $reply, $agentId]);
         } catch (\Exception $e) {
             // Save log failed

@@ -147,10 +147,15 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
 
   // Chat messages & UI state
   const [messages, setMessages] = useState<Message[]>([]);
+  const [chatHistories, setChatHistories] = useState<Record<string, Message[]>>({});
   const [inputText, setInputText] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [sidebarFilter, setSidebarFilter] = useState<"all" | "csuite" | "custom">("all");
+
+  // Active key for current conversation thread
+  const activeChatKey = isCouncilMode ? "council" : selectedRole.id;
+  const activeTargetAgentId = isCouncilMode ? "orchestrator" : selectedRole.id;
 
   // Episodic Decisions State
   const [decisions, setDecisions] = useState<EpisodicDecision[]>([]);
@@ -187,14 +192,14 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
     scrollToBottom();
   }, [messages, isLoading]);
 
-  // Fetch agents list
+  // Fetch custom agents from RAG DB
   const fetchAgents = async () => {
     try {
       const res = await fetch("/api/chat_rag.php?action=get_agents");
       if (res.ok) {
         const data = await res.json();
-        if (data.success && data.agents) {
-          const parsedAgents = data.agents.map((a: any) => ({
+        if (data.success && Array.isArray(data.agents)) {
+          const parsedAgents: CustomAgent[] = data.agents.map((a: any) => ({
             id: a.id.toString(),
             name: a.name,
             position: a.position,
@@ -231,45 +236,6 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
     fetchDecisions();
   }, []);
 
-  // Fetch chat history for selected agent or council mode
-  useEffect(() => {
-    const fetchHistory = async () => {
-      const userId = currentUser?.email || "default_user";
-      const targetAgentId = isCouncilMode ? "orchestrator" : selectedRole.id;
-
-      try {
-        const res = await fetch(
-          `/api/chat_rag.php?user_id=${encodeURIComponent(userId)}&agent_id=${encodeURIComponent(targetAgentId)}`
-        );
-        if (res.ok) {
-          const data = await res.json();
-          if (data.success && data.messages && data.messages.length > 0) {
-            const formattedMessages: Message[] = data.messages.map((m: any, idx: number) => ({
-              id: idx.toString(),
-              sender: m.sender,
-              text: m.text,
-              timestamp: new Date(m.timestamp || Date.now()),
-              isCouncil: m.text.includes("Executive Council") || m.text.includes("🏛️")
-            }));
-            setMessages(formattedMessages);
-          } else {
-            setMessages([
-              {
-                id: "initial",
-                sender: "agent",
-                text: getGreetingMessage(selectedRole, isCouncilMode),
-                timestamp: new Date()
-              }
-            ]);
-          }
-        }
-      } catch (err) {
-        console.warn("Failed to fetch chat history from RAG DB", err);
-      }
-    };
-    fetchHistory();
-  }, [currentUser, selectedRole.id, isCouncilMode]);
-
   const getGreetingMessage = (role: ExecutiveRole, council: boolean) => {
     if (council) {
       return systemLanguage === "sk"
@@ -295,6 +261,59 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
         : `Hello! I am **${role.name}** — ${pos}. I am grounded in your CRM data and ready to provide specialized domain guidance. How can I assist you?`;
   };
 
+  // Fetch chat history for selected agent or council mode with client cache
+  useEffect(() => {
+    // If we already have cached history in memory, switch to it immediately
+    if (chatHistories[activeChatKey] && chatHistories[activeChatKey].length > 0) {
+      setMessages(chatHistories[activeChatKey]);
+    } else {
+      setMessages([
+        {
+          id: "initial",
+          sender: "agent",
+          text: getGreetingMessage(selectedRole, isCouncilMode),
+          timestamp: new Date()
+        }
+      ]);
+    }
+
+    let isSubscribed = true;
+    const fetchHistory = async () => {
+      const userId = currentUser?.email || "default_user";
+
+      try {
+        const res = await fetch(
+          `/api/chat_rag.php?user_id=${encodeURIComponent(userId)}&agent_id=${encodeURIComponent(activeTargetAgentId)}`
+        );
+        if (res.ok && isSubscribed) {
+          const data = await res.json();
+          if (data.success && data.messages && data.messages.length > 0) {
+            const formattedMessages: Message[] = data.messages.map((m: any, idx: number) => ({
+              id: idx.toString(),
+              sender: m.sender,
+              text: m.text,
+              timestamp: new Date(m.timestamp || Date.now()),
+              isCouncil: m.text.includes("Executive Council") || m.text.includes("🏛️")
+            }));
+            setMessages(formattedMessages);
+            setChatHistories((prev) => ({
+              ...prev,
+              [activeChatKey]: formattedMessages
+            }));
+          }
+        }
+      } catch (err) {
+        console.warn("Failed to fetch chat history from RAG DB", err);
+      }
+    };
+
+    fetchHistory();
+
+    return () => {
+      isSubscribed = false;
+    };
+  }, [currentUser, activeChatKey, activeTargetAgentId]);
+
   // Reset chat history
   const handleResetChat = async () => {
     const confirmationMsg = systemLanguage === "sk"
@@ -307,7 +326,6 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
 
     setIsLoading(true);
     const userId = currentUser?.email || "default_user";
-    const targetAgentId = isCouncilMode ? "orchestrator" : selectedRole.id;
 
     try {
       const res = await fetchWithTimeout("/api/chat_rag.php", {
@@ -316,18 +334,23 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
         body: JSON.stringify({
           action: "reset",
           user_id: userId,
-          agent_id: targetAgentId
+          agent_id: activeTargetAgentId
         })
       });
       if (res.ok) {
-        setMessages([
+        const greeting = [
           {
             id: "reset-msg",
-            sender: "agent",
+            sender: "agent" as const,
             text: getGreetingMessage(selectedRole, isCouncilMode),
             timestamp: new Date()
           }
-        ]);
+        ];
+        setMessages(greeting);
+        setChatHistories((prev) => ({
+          ...prev,
+          [activeChatKey]: greeting
+        }));
       }
     } catch (err) {
       console.warn("Failed to reset conversation history", err);
@@ -360,6 +383,10 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
           timestamp: new Date()
         };
         setMessages((prev) => [...prev, replyMsg]);
+        setChatHistories((prev) => ({
+          ...prev,
+          [activeChatKey]: [...(prev[activeChatKey] || []), replyMsg]
+        }));
       } else {
         throw new Error(data.message || "Failed to trigger autonomous run");
       }
@@ -371,6 +398,10 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
         timestamp: new Date()
       };
       setMessages((prev) => [...prev, errorMsg]);
+      setChatHistories((prev) => ({
+        ...prev,
+        [activeChatKey]: [...(prev[activeChatKey] || []), errorMsg]
+      }));
     } finally {
       setIsLoading(false);
     }
@@ -388,6 +419,10 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
     };
 
     setMessages((prev) => [...prev, userMsg]);
+    setChatHistories((prev) => ({
+      ...prev,
+      [activeChatKey]: [...(prev[activeChatKey] || []), userMsg]
+    }));
     setInputText("");
     setIsLoading(true);
 
@@ -414,6 +449,10 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
           isCouncil: isCouncilMode || data.is_council
         };
         setMessages((prev) => [...prev, replyMsg]);
+        setChatHistories((prev) => ({
+          ...prev,
+          [activeChatKey]: [...(prev[activeChatKey] || []), replyMsg]
+        }));
       } else {
         throw new Error(data.message || "Failed to process chat query.");
       }
@@ -425,6 +464,10 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
         timestamp: new Date()
       };
       setMessages((prev) => [...prev, errorMsg]);
+      setChatHistories((prev) => ({
+        ...prev,
+        [activeChatKey]: [...(prev[activeChatKey] || []), errorMsg]
+      }));
     } finally {
       setIsLoading(false);
     }

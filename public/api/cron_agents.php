@@ -38,17 +38,18 @@ $openAiKey = $integrationsConfig['openAiKey'] ?? '';
 $vectorDb = $integrationsConfig['vectorDb'] ?? 'none';
 
 $ragPdo = get_rag_db_connection($integrationsConfig);
-if (!$ragPdo) {
-    echo json_encode(['success' => false, 'message' => 'RAG DB connection is not configured or active.']);
+$agentDb = $ragPdo ?: $pdo;
+if (!$agentDb) {
+    echo json_encode(['success' => false, 'message' => 'Database connection is not configured or active.']);
     exit;
 }
 
 // Initialize tables in case they don't exist yet
-init_rag_db_schemas($ragPdo);
+init_rag_db_schemas($agentDb);
 
 // 2. Load all autonomous agents
 try {
-    $aStmt = $ragPdo->query("SELECT `id`, `name`, `position`, `skill_content` FROM `rag_agents` WHERE `is_autonomous` = 1");
+    $aStmt = $agentDb->query("SELECT `id`, `name`, `position`, `skill_content` FROM `rag_agents` WHERE `is_autonomous` = 1");
     $autonomousAgents = $aStmt->fetchAll(PDO::FETCH_ASSOC);
 } catch (\Exception $e) {
     echo json_encode(['success' => false, 'message' => 'Failed to load the agents.']);
@@ -67,11 +68,11 @@ foreach ($autonomousAgents as $agent) {
     $agentName = $agent['name'];
     
     // Execute background analysis
-    $reply = execute_autonomous_run($pdo, $ragPdo, $agent, $openAiKey);
+    $reply = execute_autonomous_run($pdo, $agentDb, $agent, $openAiKey);
     
     // Save to default_user's chat feed
     try {
-        $insStmt = $ragPdo->prepare("INSERT INTO `chat_history` (`user_id`, `sender`, `message_text`, `agent_id`) VALUES (?, 'agent', ?, ?)");
+        $insStmt = $agentDb->prepare("INSERT INTO `chat_history` (`user_id`, `sender`, `message_text`, `agent_id`) VALUES (?, 'agent', ?, ?)");
         $insStmt->execute(['default_user', $reply, $agentId]);
         $results[] = [
             'agent_id' => $agent['id'],
