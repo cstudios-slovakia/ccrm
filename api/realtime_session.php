@@ -55,7 +55,7 @@ if ($action === 'exchange_sdp') {
         exit;
     }
 
-    $model = !empty($payload['model']) ? $payload['model'] : 'gpt-4o-realtime-preview-2024-12-17';
+    $model = !empty($payload['model']) ? $payload['model'] : 'gpt-realtime-1.5';
     $ch = curl_init('https://api.openai.com/v1/realtime/calls?model=' . urlencode($model));
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_POST, true);
@@ -261,7 +261,7 @@ $voiceSystemPrompt = $skillInstructions . "\n\n"
 // 6. Request Ephemeral Client Secret from OpenAI Realtime API (GA endpoint)
 $sessionConfig = [
     'type' => 'webrtc',
-    'model' => 'gpt-4o-realtime-preview-2024-12-17',
+    'model' => 'gpt-realtime-1.5',
     'voice' => $assignedVoice,
     'instructions' => $voiceSystemPrompt,
     'input_audio_transcription' => [
