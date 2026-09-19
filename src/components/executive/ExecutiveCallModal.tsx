@@ -316,6 +316,7 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
         body: JSON.stringify({
           action: "exchange_sdp",
           sdp: offer.sdp,
+          model: "gpt-4o-realtime-preview-2024-12-17",
           client_secret: clientSecret
         })
       });

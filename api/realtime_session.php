@@ -55,7 +55,8 @@ if ($action === 'exchange_sdp') {
         exit;
     }
 
-    $ch = curl_init('https://api.openai.com/v1/realtime/calls');
+    $model = !empty($payload['model']) ? $payload['model'] : 'gpt-4o-realtime-preview-2024-12-17';
+    $ch = curl_init('https://api.openai.com/v1/realtime/calls?model=' . urlencode($model));
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_POST, true);
     curl_setopt($ch, CURLOPT_TIMEOUT, 20);
