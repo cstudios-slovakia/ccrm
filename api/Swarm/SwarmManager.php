@@ -70,13 +70,13 @@ class SwarmManager {
             : 'prepared';
 
         $checkpointData = [];
-        if (!empty($data['crm_data_sources']) && is_array($data['crm_data_sources'])) {
+        if (isset($data['crm_data_sources']) && is_array($data['crm_data_sources'])) {
             $checkpointData['crm_data_sources'] = $data['crm_data_sources'];
         }
-        if (!empty($data['context_documents']) && is_array($data['context_documents'])) {
+        if (isset($data['context_documents']) && is_array($data['context_documents'])) {
             $checkpointData['context_documents'] = $data['context_documents'];
         }
-        $checkpointJson = !empty($checkpointData) ? json_encode($checkpointData) : null;
+        $checkpointJson = (!empty($checkpointData) || isset($data['crm_data_sources']) || isset($data['context_documents'])) ? json_encode($checkpointData) : null;
 
         // 1. Create Sharded Dynamic Tables for this specific simulation
         $this->createShardedTables($prefix);

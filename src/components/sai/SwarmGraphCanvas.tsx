@@ -1,9 +1,10 @@
 import React, { useRef, useState } from 'react';
-import type { SwarmKnowledgeGraph, SwarmEntityNode } from '../../utils/swarm/types';
-import { ZoomIn, ZoomOut, RotateCcw, X, Bot, Sparkles, Loader2, Network } from 'lucide-react';
+import type { SwarmKnowledgeGraph, SwarmEntityNode, SwarmAgentProfile } from '../../utils/swarm/types';
+import { ZoomIn, ZoomOut, RotateCcw, X, Sparkles, Loader2, Network, Users } from 'lucide-react';
 
 interface SwarmGraphCanvasProps {
   graph: SwarmKnowledgeGraph;
+  agents?: SwarmAgentProfile[];
   activeEntityId?: string | null;
   className?: string;
   systemLanguage?: string;
@@ -132,6 +133,7 @@ const renderNodeIcon = (type: string) => {
 
 export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
   graph,
+  agents = [],
   activeEntityId,
   className = "w-full h-full min-h-[380px]",
   systemLanguage = 'sk',
@@ -260,12 +262,12 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
 
       {/* Ingestion & Synthesis Active Overlay when nodes are empty or preparing */}
       {isSynthesizing && (
-        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center p-6 bg-slate-900/10 backdrop-blur-[2px] animate-in fade-in duration-300">
-          <div className="max-w-md w-full p-6 rounded-3xl bg-white/95 border border-purple-200/90 shadow-2xl text-center space-y-4 backdrop-blur-md">
-            <div className="relative w-16 h-16 mx-auto">
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center p-4 sm:p-6 bg-slate-900/20 backdrop-blur-[3px] animate-in fade-in duration-300">
+          <div className="max-w-lg w-full p-6 rounded-3xl bg-white/95 border border-purple-200/90 shadow-2xl text-center space-y-4 backdrop-blur-md">
+            <div className="relative w-14 h-14 mx-auto">
               <div className="absolute inset-0 rounded-full bg-purple-500/20 animate-ping" />
-              <div className="relative w-16 h-16 rounded-2xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-emerald-500 flex items-center justify-center text-white shadow-lg">
-                <Network className="w-8 h-8 animate-pulse" />
+              <div className="relative w-14 h-14 rounded-2xl bg-gradient-to-tr from-purple-600 via-indigo-600 to-emerald-500 flex items-center justify-center text-white shadow-lg">
+                <Network className="w-7 h-7 animate-pulse" />
               </div>
             </div>
 
@@ -277,7 +279,7 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
               <h3 className="text-sm font-bold text-slate-900">
                 {t('Constructing Dynamic Market Knowledge Graph...', 'Vytváranie dynamického grafu trhu...', 'Dinamikus piaci tudásgráf felépítése...')}
               </h3>
-              <p className="text-xs text-slate-500 leading-relaxed max-w-sm mx-auto font-normal">
+              <p className="text-xs text-slate-500 leading-relaxed max-w-md mx-auto font-normal">
                 {prepStepMessage || t(
                   'Extracting stakeholder entities, competitor stances, and relationship edges from CRM context and scenario...',
                   'Extrakcia entít stakeholderov, postojov konkurencie a väzieb z CRM kontextu a zadania...',
@@ -286,9 +288,40 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
               </p>
             </div>
 
+            {/* Live Synthesized Personas Tag Cloud */}
+            {agents && agents.length > 0 && (
+              <div className="space-y-2 pt-3 border-t border-slate-100 text-left">
+                <div className="flex items-center justify-between text-[11px] font-bold text-slate-700 px-1">
+                  <span className="flex items-center gap-1.5 text-purple-900">
+                    <Users className="w-3.5 h-3.5 text-purple-600" />
+                    {t('Synthesized Autonomous Personas:', 'Vytvorené autonómne persóny:', 'Létrehozott autonóm perszónák:')}
+                  </span>
+                  <span className="text-[10px] text-purple-700 font-extrabold px-2 py-0.5 rounded-full bg-purple-50 border border-purple-200">
+                    {agents.length} {t('created', 'vytvorených', 'kész')}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5 max-h-32 overflow-y-auto pr-1">
+                  {agents.map((ag) => (
+                    <span 
+                      key={ag.id} 
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-50 hover:bg-purple-50/60 border border-slate-200/90 text-[10.5px] font-bold text-slate-800 animate-in fade-in zoom-in-95 duration-200 shadow-2xs"
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      <span>{ag.displayName}</span>
+                      <span className="text-slate-400 font-normal text-[9.5px]">({ag.profession})</span>
+                    </span>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="flex items-center justify-center gap-2 text-[11px] font-semibold text-purple-700 bg-purple-50/80 py-2 px-4 rounded-xl border border-purple-100">
               <Loader2 className="w-4 h-4 animate-spin text-purple-600" />
-              <span>{t('Synthesizing social entities & ontology via OpenAI...', 'Syntéza sociálnych entít a ontológie cez OpenAI...', 'Társas entitások és ontológia szintézise OpenAI-n keresztül...')}</span>
+              <span>
+                {agents.length > 0
+                  ? t(`Synthesizing swarm personas (${agents.length} generated)...`, `Generujú sa persóny roja (${agents.length} hotových)...`, `Raj perszónák szintézise (${agents.length} kész)...`)
+                  : t('Synthesizing social entities & ontology via OpenAI...', 'Syntéza sociálnych entít a ontológie cez OpenAI...', 'Társas entitások és ontológia szintézise OpenAI-n keresztül...')}
+              </span>
             </div>
           </div>
         </div>

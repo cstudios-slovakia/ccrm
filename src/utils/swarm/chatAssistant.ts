@@ -15,8 +15,10 @@ export async function askChiefAnalyst(params: {
   report: StrategicReport | null;
   posts: SwarmPost[];
   modelName?: string;
+  language?: string;
 }): Promise<string> {
-  const { userQuestion, chatHistory, report, posts, modelName } = params;
+  const { userQuestion, chatHistory, report, posts, modelName, language = 'sk' } = params;
+  const langLabel = language === 'hu' ? 'Hungarian (Magyar)' : language === 'en' ? 'English' : 'Slovak (Slovenčina)';
 
   const systemPrompt = `You are the Chief Intelligence Analyst who observed the full multi-agent market rehearsal.
 The user is an executive cross-examining you about what happened during the simulation.
@@ -32,7 +34,7 @@ ${posts.slice(0, 30).map(p => `- ${p.agentName} (@${p.agentUsername}, ${p.agentP
 Always base your answers on actual simulation events, agent quotes, and strategic logic. Be concise, direct, and actionable.
 
 CRITICAL LANGUAGE REQUIREMENT:
-You MUST respond strictly in natural, professional Slovak (Slovenčina). Do NOT respond in English.`;
+You MUST respond strictly in natural, professional ${langLabel}.`;
 
   const messages: LLMMessage[] = [
     { role: 'system', content: systemPrompt },
@@ -56,8 +58,10 @@ export async function interviewAgent(params: {
   agentPosts: SwarmPost[];
   hypothesis: string;
   modelName?: string;
+  language?: string;
 }): Promise<string> {
-  const { agent, userQuestion, chatHistory, agentPosts, hypothesis, modelName } = params;
+  const { agent, userQuestion, chatHistory, agentPosts, hypothesis, modelName, language = 'sk' } = params;
+  const langLabel = language === 'hu' ? 'Hungarian (Magyar)' : language === 'en' ? 'English' : 'Slovak (Slovenčina)';
 
   const systemPrompt = `You are roleplaying as ${agent.displayName} (@${agent.username}).
 Profession: ${agent.profession} | MBTI: ${agent.mbti}
@@ -72,7 +76,7 @@ The user (an executive) is now interviewing you directly.
 Stay strictly in character! Express your authentic reservations, budgets, priorities, or enthusiasm. Speak naturally in first person.
 
 CRITICAL LANGUAGE REQUIREMENT:
-You MUST answer strictly in natural Slovak (Slovenčina) in first person ("ja"). Do NOT answer in English.`;
+You MUST answer strictly in natural ${langLabel} in first person.`;
 
   const messages: LLMMessage[] = [
     { role: 'system', content: systemPrompt },

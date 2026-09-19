@@ -458,6 +458,8 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
       setActiveSeed(config.seedDocument);
       setTotalRounds(config.totalRounds);
       setCurrentRound(0);
+      setGraph({ nodes: [], edges: [] });
+      setAgents([]);
       setPosts([]);
       setMetricsHistory([]);
       setActiveReport(null);
@@ -499,7 +501,8 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
         crmContext.formatted_context,
         config.hypothesis,
         config.llmModel,
-        config.contextDocuments
+        config.contextDocuments,
+        systemLanguage
       );
       setGraph(generatedGraph);
 
@@ -515,7 +518,24 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
         generatedGraph.nodes,
         config.swarmScale,
         config.hypothesis,
-        config.llmModel
+        config.llmModel,
+        systemLanguage,
+        (batchAgents) => {
+          setAgents(prev => {
+            const existingIds = new Set(prev.map(a => a.id));
+            const newOnes = batchAgents.filter(a => !existingIds.has(a.id));
+            const combined = [...prev, ...newOnes];
+            const namesList = combined.map(a => `${a.displayName} (${a.profession})`).slice(-3).join(', ');
+            setPrepStepMessage(
+              t(
+                `Created ${combined.length}/${config.swarmScale} personas: ${namesList}...`,
+                `Vytvorených ${combined.length}/${config.swarmScale} persón: ${namesList}...`,
+                `${combined.length}/${config.swarmScale} perszóna létrehozva: ${namesList}...`
+              )
+            );
+            return combined;
+          });
+        }
       );
       setAgents(generatedAgents);
 
@@ -527,9 +547,12 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
         simulationId: simId,
         title: config.title,
         hypothesis: config.hypothesis,
+        seedDocument: config.seedDocument,
+        contextDocuments: config.contextDocuments,
         totalRounds: config.totalRounds,
         diurnalCycle: config.diurnalCycle,
         modelName: config.llmModel,
+        language: systemLanguage,
         initialGraph: generatedGraph,
         agents: generatedAgents
       });
@@ -561,7 +584,8 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
         agents: generatedAgents,
         posts: engineRef.current ? (engineRef.current as any).posts : [],
         modelName: config.llmModel,
-        contextDocuments: config.contextDocuments
+        contextDocuments: config.contextDocuments,
+        language: systemLanguage
       });
 
       setActiveReport(report);

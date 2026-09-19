@@ -86,6 +86,26 @@ function init_rag_db_schemas($ragPdo) {
     } catch (\Exception $e) {
         // rag_emails creation failed
     }
+
+    try {
+        $ragPdo->exec("CREATE TABLE IF NOT EXISTS `rag_decisions` (
+          `id` INT AUTO_INCREMENT PRIMARY KEY,
+          `user_id` VARCHAR(150) NOT NULL,
+          `domain` VARCHAR(50) NOT NULL DEFAULT 'general',
+          `title` VARCHAR(255) NOT NULL,
+          `summary` TEXT NOT NULL,
+          `rationale` TEXT NULL,
+          `action_items` TEXT NULL,
+          `owner` VARCHAR(100) NULL,
+          `deadline` VARCHAR(50) NULL,
+          `tags` VARCHAR(255) NULL,
+          `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_rag_decision_user (`user_id`),
+          INDEX idx_rag_decision_domain (`domain`)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+    } catch (\Exception $e) {
+        // rag_decisions creation failed
+    }
 }
 
 // Anonymization / Sanitization dictionaries
@@ -523,3 +543,179 @@ function execute_autonomous_run($pdo, $ragPdo, $agent, $openAiKey) {
         return "[Autonomous Run " . date('Y-m-d H:i') . "]\n\n" . $reply;
     }
 }
+
+/**
+ * OpenExecutive Domain Prompts & Specialist Knowledge
+ */
+function get_executive_prompts() {
+    return [
+        'orchestrator' => [
+            'key' => 'orchestrator',
+            'name' => 'Executive Orchestrator',
+            'position' => 'Executive Orchestrator & Principal Advisor',
+            'prompt' => "You are the Executive Orchestrator — a seasoned business leader with 25 years of operating experience across multiple industries, complemented by an MBA from Harvard Business School. You have served as CEO, COO, and board member at companies ranging from high-growth ventures to established enterprises. Synthesize inputs from your specialist executive leaders into one coherent, actionable executive voice. Always end with clear execution next steps: Decision, Owner, and Timeline."
+        ],
+        'cso' => [
+            'key' => 'cso',
+            'name' => 'Chief Strategy Officer (CSO)',
+            'position' => 'Competitive Strategy & Market Positioning',
+            'prompt' => "You are the Chief Strategy Officer (CSO) — a specialist in competitive strategy, market analysis, moat construction, and long-horizon planning. Apply Porter's Five Forces, Jobs-to-be-Done, Three Horizons (70/20/10), and moat analysis. A true strategy names what you will NOT do."
+        ],
+        'cfo' => [
+            'key' => 'cfo',
+            'name' => 'Chief Financial Officer (CFO)',
+            'position' => 'Financial Modeling, Runway & Unit Economics',
+            'prompt' => "You are the Chief Financial Officer (CFO) — a specialist in financial strategy, quantitative modeling, cash runway, and capital allocation. Focus on LTV:CAC >= 3:1, CAC payback < 12 months, Rule of 40, Burn Multiple, overdue invoice collections, and 'Default Alive' trajectories. Anchor in exact CRM financial numbers."
+        ],
+        'chro' => [
+            'key' => 'chro',
+            'name' => 'Chief HR Officer (CHRO)',
+            'position' => 'Talent Strategy, Comp Bands & Org Design',
+            'prompt' => "You are the Chief HR / People Officer (CHRO) — a specialist in talent strategy, organizational design, performance culture, and compensation architecture. Focus on 90-day onboarding ramps, compensation percentiles (50th-75th), spans of control (5-8 reports), and regretted attrition."
+        ],
+        'gc' => [
+            'key' => 'gc',
+            'name' => 'General Counsel (GC)',
+            'position' => 'Contracts, IP Protection & Risk Mitigation',
+            'prompt' => "You are the General Counsel (GC) — a specialist in commercial agreements, intellectual property protection, compliance, and corporate risk mitigation. Focus on MSAs, SLAs, liability caps, indemnification, contractor IP assignments, and termination leverage."
+        ],
+        'coo' => [
+            'key' => 'coo',
+            'name' => 'Chief Operating Officer (COO)',
+            'position' => 'Operations, Process Architecture & Scaling',
+            'prompt' => "You are the Chief Operating Officer (COO) — a specialist in operational execution, process engineering, vendor management, and organizational scaling. Focus on bottleneck elimination, delivery SLAs, task velocity, SOPs, and vendor consolidation."
+        ],
+        'cmo' => [
+            'key' => 'cmo',
+            'name' => 'Chief Marketing Officer (CMO)',
+            'position' => 'GTM Strategy, Positioning & Demand Gen',
+            'prompt' => "You are the Chief Marketing Officer (CMO) — a specialist in Go-to-Market (GTM) strategy, brand positioning, demand generation, and customer acquisition. Focus on ICP definition, value proposition, lead funnel leak diagnosis, CAC reduction, and positioning."
+        ],
+        'cpo' => [
+            'key' => 'cpo',
+            'name' => 'Chief Product Officer (CPO)',
+            'position' => 'Product Roadmap, Feature RICE & PLG',
+            'prompt' => "You are the Chief Product Officer (CPO) — a specialist in product vision, roadmap prioritization, customer discovery, and product-market fit. Focus on RICE scoring, Kano Model, PLG, and eliminating feature creep."
+        ],
+        'board_comms' => [
+            'key' => 'board_comms',
+            'name' => 'Board Communications Director',
+            'position' => 'Investor Relations, Board Decks & Governance',
+            'prompt' => "You are the Board Communications Director — a specialist in board governance, investor relations, and strategic executive narrative. Focus on high-signal board memos, quarterly decks, KPI variance narratives, and investor updates."
+        ]
+    ];
+}
+
+/**
+ * Episodic Memory Helper Functions
+ */
+function get_episodic_decisions($pdo, $ragPdo, $userId, $limit = 15) {
+    $decisions = [];
+    if ($ragPdo) {
+        try {
+            $stmt = $ragPdo->prepare("SELECT * FROM `rag_decisions` WHERE `user_id` = ? OR `user_id` = 'default_user' ORDER BY `created_at` DESC LIMIT ?");
+            $stmt->bindValue(1, $userId, PDO::PARAM_STR);
+            $stmt->bindValue(2, (int)$limit, PDO::PARAM_INT);
+            $stmt->execute();
+            $decisions = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        } catch (\Exception $e) {}
+    }
+    
+    // Fallback: check main database system_settings if ragPdo empty
+    if (empty($decisions) && $pdo) {
+        try {
+            $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'EPISODIC_DECISIONS'");
+            $stmt->execute();
+            $val = $stmt->fetchColumn();
+            if ($val) {
+                $all = json_decode($val, true);
+                if (is_array($all)) {
+                    $decisions = array_slice($all, 0, $limit);
+                }
+            }
+        } catch (\Exception $e) {}
+    }
+    return $decisions;
+}
+
+function save_episodic_decision($pdo, $ragPdo, $userId, $data) {
+    $title = trim($data['title'] ?? 'Strategic Decision');
+    $summary = trim($data['summary'] ?? '');
+    $domain = trim($data['domain'] ?? 'general');
+    $rationale = trim($data['rationale'] ?? '');
+    $actionItems = trim($data['action_items'] ?? '');
+    $owner = trim($data['owner'] ?? '');
+    $deadline = trim($data['deadline'] ?? '');
+    $tags = trim($data['tags'] ?? '');
+
+    if (empty($summary)) {
+        return false;
+    }
+
+    $saved = false;
+    if ($ragPdo) {
+        try {
+            $stmt = $ragPdo->prepare("INSERT INTO `rag_decisions` (`user_id`, `domain`, `title`, `summary`, `rationale`, `action_items`, `owner`, `deadline`, `tags`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $stmt->execute([$userId, $domain, $title, $summary, $rationale, $actionItems, $owner, $deadline, $tags]);
+            $saved = true;
+        } catch (\Exception $e) {}
+    }
+
+    if ($pdo) {
+        try {
+            $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'EPISODIC_DECISIONS'");
+            $stmt->execute();
+            $val = $stmt->fetchColumn();
+            $list = $val ? json_decode($val, true) : [];
+            if (!is_array($list)) $list = [];
+            
+            $newEntry = [
+                'id' => time() . '_' . substr(md5(uniqid()), 0, 6),
+                'user_id' => $userId,
+                'domain' => $domain,
+                'title' => $title,
+                'summary' => $summary,
+                'rationale' => $rationale,
+                'action_items' => $actionItems,
+                'owner' => $owner,
+                'deadline' => $deadline,
+                'tags' => $tags,
+                'created_at' => date('Y-m-d H:i:s')
+            ];
+            array_unshift($list, $newEntry);
+            if (count($list) > 100) $list = array_slice($list, 0, 100);
+
+            $upd = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('EPISODIC_DECISIONS', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
+            $upd->execute([json_encode($list, JSON_UNESCAPED_UNICODE)]);
+            $saved = true;
+        } catch (\Exception $e) {}
+    }
+    return $saved;
+}
+
+function delete_episodic_decision($pdo, $ragPdo, $userId, $decisionId) {
+    if ($ragPdo && is_numeric($decisionId)) {
+        try {
+            $stmt = $ragPdo->prepare("DELETE FROM `rag_decisions` WHERE `id` = ?");
+            $stmt->execute([$decisionId]);
+        } catch (\Exception $e) {}
+    }
+
+    if ($pdo) {
+        try {
+            $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'EPISODIC_DECISIONS'");
+            $stmt->execute();
+            $val = $stmt->fetchColumn();
+            $list = $val ? json_decode($val, true) : [];
+            if (is_array($list)) {
+                $filtered = array_values(array_filter($list, function($item) use ($decisionId) {
+                    return (string)($item['id'] ?? '') !== (string)$decisionId;
+                }));
+                $upd = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('EPISODIC_DECISIONS', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
+                $upd->execute([json_encode($filtered, JSON_UNESCAPED_UNICODE)]);
+            }
+        } catch (\Exception $e) {}
+    }
+    return true;
+}
+

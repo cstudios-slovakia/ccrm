@@ -19,8 +19,6 @@ import {
   Swords,
   MessageSquare,
   Mail,
-  CheckSquare,
-  Square,
   Info,
   FolderOpen,
   Coins,
@@ -285,93 +283,6 @@ interface CreateRehearsalViewProps {
   systemLanguage?: string;
 }
 
-const PRESET_TEMPLATES = [
-  {
-    name: 'Zvýšenie cien Enterprise',
-    nameEn: 'Enterprise Price Increase',
-    nameHu: 'Enterprise áremelés',
-    title: 'Simulácia 25% úpravy cien v Q4',
-    titleEn: 'Q4 Enterprise 25% Price Increase Simulation',
-    titleHu: 'Q4 Enterprise 25%-os áremelés szimuláció',
-    hypothesis: 'Čo ak zvýšime ceny balíka Enterprise CRM o 25%, no zároveň pridáme 99.9% SLA garanciu dostupnosti a dedikovaný Slack kanál podpory?',
-    hypothesisEn: 'What if we raise Enterprise CRM prices by 25% while adding guaranteed 99.9% SLA availability and a dedicated Slack support channel?',
-    hypothesisHu: 'Mi történik, ha 25%-kal növeljük az Enterprise CRM csomag árát, de 99.9%-os SLA garanciát és dedikált Slack támogatási csatornát adunk?',
-    seed: `Pripravujeme oznámenie 25% zvýšenia cien pre všetky balíky Enterprise od budúceho mesiaca.
-Aktuálna sadzba Enterprise: 199 €/mesiac. Navrhovaná sadzba: 249 €/mesiac.
-Výmenou za to klienti získajú:
-- Garantovaný reakčný čas SLA do 1 hodiny pri kritických incidentoch
-- Priamy dedikovaný komunikačný kanál cez Slack/WhatsApp s naším tímom inžinierov
-- Bezplatnú asistenciu pri migrácii starších databáz
-Existujúci zákazníci získajú ochrannú lehotu 6 mesiacov na pôvodných cenách pred uplatnením novej sadzby.
-Cieľová skupina: digitálne agentúry a výrobné SMB podniky s 20–200 zamestnancami.`,
-    seedEn: `We are announcing a 25% price increase across all Enterprise plans starting next month.
-Current Enterprise rate: €199/month. Proposed rate: €249/month.
-In exchange, clients receive:
-- Guaranteed 1-hour SLA response time for critical incidents
-- Direct dedicated Slack/WhatsApp bridge with our senior engineers
-- Complimentary migration assistance for legacy databases
-Existing clients receive a 6-month grandfathering price lock before the new rate applies.
-Target segment: digital agencies and manufacturing SMBs with 20–200 employees.`,
-    seedHu: `Bejelentjük az Enterprise csomagok 25%-os áremelését a következő hónaptól.
-Jelenlegi Enterprise díj: 199 €/hó. Javasolt új díj: 249 €/hó.
-Cserébe az ügyfelek az alábbiakat kapják:
-- Garantált 1 órás SLA válaszidő kritikus incidensek esetén
-- Közvetlen dedikált Slack/WhatsApp kapcsolat vezető mérnökcsapatunkkal
-- Díjmentes adatbázis-migrációs segítségnyújtás
-A meglévő ügyfelek 6 hónapos árbefagyasztási védelmet élveznek az új díjszabás előtt.
-Célcsoport: digitális ügynökségek és 20-200 fős gyártó kkv-k.`
-  },
-  {
-    name: 'Obrana voči reakcii konkurencie',
-    nameEn: 'Competitor Counter-Positioning',
-    nameHu: 'Versenytársi pozicionálás védelme',
-    title: 'Protiútok voči tradičnému poskytovateľovi CRM',
-    titleEn: 'Counter-Positioning Against Legacy CRM Competitor',
-    titleHu: 'Stratégiai ellenlépés a hagyományos CRM versenytárssal szemben',
-    hypothesis: 'Čo ak náš hlavný etablovaný konkurent spustí agresívnu kampaň útočiacu na chýbajúcu funkciu integrovaného telefónneho dialera?',
-    hypothesisEn: 'What if our main established competitor launches an aggressive campaign attacking our lack of an integrated phone dialer?',
-    hypothesisHu: 'Mi történik, ha a fő versenytársunk agresszív kampányt indít a beépített telefonos tárcsázó hiányát támadva?',
-    seed: `Podľa indícií konkurent X pripravuje cielenú kampaň poukazujúcu na absenciu vstavanej VoIP telefónie v našom riešení.
-Naša strategická proti-pozícia:
-- Zameriavame sa na hĺbkovú automatizáciu pracovných postupov, okamžitú viackanálovú integráciu s WhatsAppom a modernú rýchlosť UI namiesto starých call-centier.
-- Väčšina moderných obchodných tímov komunikuje asynchrónne cez správy, videohovory a email namiesto studených hovorov.
-- Ponúkame bezproblémovú integráciu s PBX ústredňami a Twilio cez Webhooky.`,
-    seedEn: `Intelligence indicates Competitor X is launching a targeted campaign focusing on the lack of built-in VoIP telephony in our platform.
-Our strategic counter-position:
-- We double down on deep workflow automation, instant multi-channel WhatsApp messaging, and modern sub-100ms UI speed over antiquated call center stacks.
-- Modern enterprise sales forces communicate asynchronously via messaging, video calls, and email rather than blind cold calling.
-- We offer seamless webhooks and PBX integrations with Twilio and modern VoIP gateways.`,
-    seedHu: `Információk szerint az X versenytárs célzott kampányt készít elő a beépített VoIP tárcsázó hiányára hivatkozva.
-Stratégiai ellenpozíciónk:
-- A mély munkafolyamat-automatizálásra, azonnali többcsatornás WhatsApp integrációra és a gyors UI-ra összpontosítunk az elavult call-center rendszerekkel szemben.
-- A modern értékesítési csapatok aszinkron módon kommunikálnak chat-en, videóhívásokban és emailben a hideghívások helyett.
-- Zökkenőmentes webhook és PBX alközponti integrációkat biztosítunk a Twilio-val.`
-  },
-  {
-    name: 'Uvedenie novej funkcie (Samoobslužné SAI)',
-    nameEn: 'Feature Launch (Self-Service SAI)',
-    nameHu: 'Új funkció bevezetése (Önkiszolgáló SAI)',
-    title: 'Simulácia spustenia verejnej bety Swarm AI',
-    titleEn: 'Swarm AI Public Beta Launch Simulation',
-    titleHu: 'Swarm AI nyilvános béta indítási szimuláció',
-    hypothesis: 'Čo ak uvedieme autonómnu prediktívnu simuláciu (SAI) ako prémiový doplnok za 49 €/mesiac?',
-    hypothesisEn: 'What if we introduce autonomous predictive simulation (SAI) as a premium add-on at €49/month?',
-    hypothesisHu: 'Mi történik, ha bevezetjük az autonóm prediktív szimulációt (SAI) prémium kiegészítőként 49 €/hó áron?',
-    seed: `Spúšťame funkciu Swarm Artificial Intelligence (SAI), ktorá firmám umožňuje simulovať trhové reakcie na nové produkty, PR oznámenia a obchodné stratégie ešte pred ich zverejnením.
-Funkcia využíva sociálne roje autonómnych agentov podložené skutočnou históriou leadov a obchodných námietok z firemného CRM.
-Cena: 49 €/mesiac za 10 simulácií mesačne, alebo priebežné platby za spotrebované proxy volania.
-Chceme zistiť, či obchodní riaditelia považujú tento nástroj za presvedčivý, alebo či sú skeptickí voči validite AI simulácie.`,
-    seedEn: `We are launching Swarm Artificial Intelligence (SAI), enabling businesses to simulate market reactions to new product lines, PR announcements, and commercial packaging prior to launch.
-The capability leverages autonomous multi-agent social swarms grounded in live CRM lead history and objections.
-Pricing: €49/month for 10 rehearsals per month, or pay-as-you-go proxy tokens.
-Goal: determine if commercial directors perceive high ROI and trust agent validity, or remain skeptical of synthetic simulation.`,
-    seedHu: `Elindítjuk a Swarm Artificial Intelligence (SAI) funkciót, amellyel a cégek tesztelhetik a piaci reakciókat az új termékekre, PR bejelentésekre és értékesítési stratégiákra még a közzététel előtt.
-A funkció autonóm ágensekből álló szociális rajokat alkalmaz, valós CRM lead előzményekre és korábbi üzleti kifogásokra támaszkodva.
-Árazás: 49 €/hó 10 szimulációért, vagy használatalapú token elszámolás.
-Cél: felmérni, hogy az értékesítési vezetők meggyőzőnek találják-e az eszközt, vagy szkeptikusak az AI szimuláció megbízhatóságával kapcsolatban.`
-  }
-];
-
 export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
   initialData,
   onBack,
@@ -464,31 +375,11 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
     (initialData?.lookback_months as 6 | 12 | 24) || 12
   );
   const [selectedSources, setSelectedSources] = useState<string[]>(() => {
-    if (initialData?.crm_data_sources && Array.isArray(initialData.crm_data_sources)) {
+    if (initialData?.crm_data_sources !== undefined && Array.isArray(initialData.crm_data_sources)) {
       return initialData.crm_data_sources;
     }
-    const defaultIds = CRM_SOURCE_OPTIONS.map(s => s.id);
-    activeUnifiedRegistries.forEach((ue: any) => {
-      defaultIds.push(`ue_${ue.id}`);
-    });
-    return defaultIds;
+    return [];
   });
-
-  // When activeUnifiedRegistries load after initial render and there was no saved draft:
-  useEffect(() => {
-    if (activeUnifiedRegistries.length > 0 && !initialData?.crm_data_sources) {
-      setSelectedSources(prev => {
-        const next = [...prev];
-        activeUnifiedRegistries.forEach((ue: any) => {
-          const ueId = `ue_${ue.id}`;
-          if (!next.includes(ueId)) {
-            next.push(ueId);
-          }
-        });
-        return next;
-      });
-    }
-  }, [activeUnifiedRegistries, initialData]);
   const [swarmScale, setSwarmScale] = useState<number>(initialData?.swarm_scale || 30);
   const [totalRounds, setTotalRounds] = useState<number>(initialData?.total_rounds || 8);
   const [llmModel, setLlmModel] = useState<string>(initialData?.model_name || 'gpt-5.6-luna');
@@ -553,7 +444,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
       if (initialData.hypothesis) setHypothesis(initialData.hypothesis);
       if (initialData.seed_document) setSeedDocument(initialData.seed_document);
       if (initialData.lookback_months) setLookbackMonths(initialData.lookback_months as 6 | 12 | 24);
-      if (initialData.crm_data_sources && Array.isArray(initialData.crm_data_sources)) {
+      if (initialData.crm_data_sources !== undefined && Array.isArray(initialData.crm_data_sources)) {
         setSelectedSources(initialData.crm_data_sources);
       }
       if (initialData.swarm_scale) setSwarmScale(initialData.swarm_scale);
@@ -672,14 +563,6 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
   const handleRemoveDoc = (docId: string) => {
     setContextDocuments(prev => prev.filter(d => d.id !== docId));
     setIsDirty(true);
-  };
-
-  const handleApplyPreset = (preset: typeof PRESET_TEMPLATES[0]) => {
-    setTitle(systemLanguage === 'hu' ? (preset.titleHu || preset.title) : isSk ? preset.title : preset.titleEn);
-    setHypothesis(systemLanguage === 'hu' ? (preset.hypothesisHu || preset.hypothesis) : isSk ? preset.hypothesis : preset.hypothesisEn);
-    setSeedDocument(systemLanguage === 'hu' ? (preset.seedHu || preset.seed) : isSk ? preset.seed : preset.seedEn);
-    setIsDirty(true);
-    setValidationError(null);
   };
 
   const handleApplyCatalogueTemplate = (template: UseCaseTemplate) => {
@@ -1470,44 +1353,49 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                   {t('CRM Grounding Data Sources', 'CRM podkladové zdroje dát', 'CRM megalapozó adatforrások')}
                 </h3>
                 <span className={`px-2 py-0.5 rounded-full text-[10px] font-black tracking-wide border ${
-                  selectedSources.length === allSourceOptions.length
+                  selectedSources.length === 0
                     ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                    : selectedSources.length > 0
-                    ? 'bg-purple-50 text-purple-700 border-purple-200'
-                    : 'bg-amber-50 text-amber-700 border-amber-200'
+                    : 'bg-purple-50 text-purple-700 border-purple-200'
                 }`}>
-                  {selectedSources.length === allSourceOptions.length 
-                    ? t(`All ${allSourceOptions.length} sources active`, `Všetkých ${allSourceOptions.length} zdrojov aktívnych`, `Mind a(z) ${allSourceOptions.length} forrás aktív`) 
-                    : t(`${selectedSources.length} of ${allSourceOptions.length} active`, `${selectedSources.length} z ${allSourceOptions.length} aktívnych`, `${selectedSources.length} / ${allSourceOptions.length} aktív`)}
+                  {selectedSources.length === 0 
+                    ? t('Pure Scenario Mode (0 CRM records)', 'Čistý režim scenára (0 CRM záznamov)', 'Tiszta forgatókönyv mód (0 CRM rekord)') 
+                    : t(`Hybrid (${selectedSources.length} CRM sources active)`, `Hybrid (${selectedSources.length} CRM zdrojov aktívnych)`, `Hibrid (${selectedSources.length} CRM forrás aktív)`)}
                 </span>
               </div>
               <p className="text-[11px] text-slate-500 font-normal">
                 {t(
-                  'Select which historical CRM intelligence populates the knowledge graph and agent memory. Disable non-essential sources to focus the rehearsal.',
-                  'Vyberte, ktoré historické CRM dáta naplnia graf znalostí a pamäť agentov. Vypnite nepodstatné zdroje pre užšie zameranie simulácie.',
-                  'Válassza ki, mely múltbeli CRM adatok töltsék fel a tudásgráfot és az ágensek memóriáját. Kapcsolja ki a nem szükséges forrásokat a fókuszáltabb szimulációhoz.'
+                  'Choose whether to ground the simulation strictly on your uploaded files or pull real CRM customer records & past deal objections.',
+                  'Zvoľte, či má simulácia vychádzať výhradne z vašich nahratých súborov, alebo vyťažiť skutočné CRM kontakty a minulé námietky.',
+                  'Válassza ki, hogy a szimuláció kizárólag a feltöltött fájlokra támaszkodjon, vagy bevonja a valós CRM ügyfélrekordokat és múltbeli kifogásokat.'
                 )}
               </p>
             </div>
 
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={handleSelectAllSources}
-                disabled={selectedSources.length === allSourceOptions.length}
-                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-purple-50 hover:text-purple-700 text-slate-600 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
-              >
-                <CheckSquare className="w-3.5 h-3.5 text-purple-600" />
-                <span>{t('Select All', 'Vybrať všetko', 'Összes kijelölése')}</span>
-              </button>
+            {/* Quick Grounding Mode Switcher */}
+            <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200/80">
               <button
                 type="button"
                 onClick={handleClearAllSources}
-                disabled={selectedSources.length === 0}
-                className="px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-rose-50 hover:text-rose-700 text-slate-600 text-xs font-bold transition flex items-center gap-1.5 cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  selectedSources.length === 0
+                    ? 'bg-white text-purple-700 shadow-xs ring-1 ring-slate-200'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
               >
-                <Square className="w-3.5 h-3.5 text-slate-400" />
-                <span>{t('Deselect All', 'Zrušiť výber', 'Kijelölés törlése')}</span>
+                <FileText className="w-3.5 h-3.5 text-emerald-600" />
+                <span>{t('Pure Markdown / Briefing Only', 'Len Markdown / Scenár', 'Csak Markdown / Forgatókönyv')}</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleSelectAllSources}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  selectedSources.length > 0
+                    ? 'bg-white text-purple-700 shadow-xs ring-1 ring-slate-200'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Database className="w-3.5 h-3.5 text-purple-600" />
+                <span>{t('Include Live CRM Data', 'Zahrnúť živé CRM dáta', 'Élő CRM adatok bevonása')}</span>
               </button>
             </div>
           </div>
@@ -1516,7 +1404,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {allSourceOptions.map((src) => {
               const isChecked = selectedSources.includes(src.id);
-              const IconComp = src.icon;
+              const IconComp = src.icon as React.ComponentType<{ className?: string }>;
 
               return (
                 <div

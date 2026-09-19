@@ -13,7 +13,20 @@ export interface CrmContextBundle {
 }
 
 export async function fetchCrmContext(lookbackMonths: number = 12, sources?: string[]): Promise<CrmContextBundle> {
-  const sourcesQuery = sources && sources.length > 0 ? `&sources=${encodeURIComponent(sources.join(','))}` : '';
+  // If sources array is explicitly provided and empty, all CRM sources are disabled
+  if (sources !== undefined && sources.length === 0) {
+    return {
+      lookback_months: lookbackMonths,
+      cutoff_date: new Date().toISOString(),
+      total_clients_sampled: 0,
+      total_objections_sampled: 0,
+      character_count: 0,
+      formatted_context: ''
+    };
+  }
+
+  const sourcesParam = sources && sources.length > 0 ? encodeURIComponent(sources.join(',')) : (sources !== undefined && sources.length === 0 ? 'none' : '');
+  const sourcesQuery = sourcesParam ? `&sources=${sourcesParam}` : '';
   const response = await fetch(`api/swarm.php?action=fetch_crm_context&lookback_months=${lookbackMonths}${sourcesQuery}`, {
     method: 'GET',
     headers: {

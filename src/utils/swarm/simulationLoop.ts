@@ -12,7 +12,8 @@ import type {
   SwarmPost, 
   SwarmKnowledgeGraph, 
   SwarmRoundMetrics, 
-  SimulationCheckpoint 
+  SimulationCheckpoint,
+  SwarmContextDocument
 } from './types';
 
 export interface RoundProgressCallback {
@@ -29,9 +30,12 @@ export class SwarmSimulationEngine {
   private simulationId: string;
   private title: string;
   private hypothesis: string;
+  private seedDocument: string;
+  private contextDocuments: SwarmContextDocument[];
   private totalRounds: number;
   private diurnalCycle: boolean;
   private modelName: string;
+  private language: string;
 
   private currentRound: number = 0;
   private agents: SwarmAgentProfile[] = [];
@@ -48,9 +52,12 @@ export class SwarmSimulationEngine {
     simulationId: string;
     title: string;
     hypothesis: string;
+    seedDocument?: string;
+    contextDocuments?: SwarmContextDocument[];
     totalRounds: number;
     diurnalCycle?: boolean;
     modelName?: string;
+    language?: string;
     initialGraph: SwarmKnowledgeGraph;
     agents: SwarmAgentProfile[];
     initialPosts?: SwarmPost[];
@@ -60,9 +67,12 @@ export class SwarmSimulationEngine {
     this.simulationId = params.simulationId;
     this.title = params.title;
     this.hypothesis = params.hypothesis;
+    this.seedDocument = params.seedDocument || '';
+    this.contextDocuments = params.contextDocuments || [];
     this.totalRounds = params.totalRounds;
     this.diurnalCycle = params.diurnalCycle ?? true;
     this.modelName = params.modelName || 'gpt-5.6-luna';
+    this.language = params.language || 'sk';
     this.graph = params.initialGraph;
     this.agents = params.agents;
     this.posts = params.initialPosts || [];
@@ -92,6 +102,9 @@ export class SwarmSimulationEngine {
         this.currentRound += 1;
         const roundPosts = await this.executeRound(this.currentRound);
         
+        // Dynamic graph update based on round interactions
+        this.updateGraphDynamics(this.currentRound);
+
         // Calculate round metrics
         const metrics = this.computeRoundMetrics(this.currentRound, roundPosts);
         this.metricsHistory.push(metrics);
@@ -112,7 +125,7 @@ export class SwarmSimulationEngine {
 
         await saveRoundCheckpoint(this.simulationId, this.currentRound, snapshot, roundPosts);
 
-        // Notify UI
+        // Notify UI with dynamic graph update
         onProgress({
           currentRound: this.currentRound,
           totalRounds: this.totalRounds,
@@ -166,6 +179,45 @@ export class SwarmSimulationEngine {
     return newRoundPosts;
   }
 
+  private updateGraphDynamics(roundNum: number): void {
+    if (!this.graph || !this.graph.nodes || this.graph.nodes.length === 0) return;
+
+    // Aggregate stance changes and sentiment by entity
+    const entityStanceMap = new Map<string, { supportive: number; opposing: number; neutral: number }>();
+
+    for (const a of this.agents) {
+      const entityId = a.sourceEntityId || 'node_1';
+      if (!entityStanceMap.has(entityId)) {
+        entityStanceMap.set(entityId, { supportive: 0, opposing: 0, neutral: 0 });
+      }
+      const data = entityStanceMap.get(entityId)!;
+      if (a.stance === 'supportive') data.supportive++;
+      else if (a.stance === 'opposing') data.opposing++;
+      else data.neutral++;
+    }
+
+    // Update existing edges based on debate sentiment
+    for (const edge of this.graph.edges) {
+      const srcData = entityStanceMap.get(edge.source);
+      if (srcData) {
+        const total = srcData.supportive + srcData.opposing + srcData.neutral;
+        if (total > 0) {
+          const supportRatio = srcData.supportive / total;
+          const opposeRatio = srcData.opposing / total;
+
+          if (supportRatio >= 0.6) {
+            edge.relation = this.language === 'hu' ? 'TÁMOGATJA' : this.language === 'en' ? 'SUPPORTS' : 'PODPORUJE';
+          } else if (opposeRatio >= 0.5) {
+            edge.relation = this.language === 'hu' ? 'ELLENZI' : this.language === 'en' ? 'OPPOSES' : 'ODMIETA';
+          } else if (srcData.opposing > 0 && srcData.supportive > 0) {
+            edge.relation = this.language === 'hu' ? 'VITATJA' : this.language === 'en' ? 'DEBATES' : 'POLEMIZUJE';
+          }
+          edge.validFromRound = roundNum;
+        }
+      }
+    }
+  }
+
   private async executeAgentTurn(
     agent: SwarmAgentProfile,
     roundNum: number
@@ -173,42 +225,59 @@ export class SwarmSimulationEngine {
     // 1. Generate agent feed using RecSys
     const feed = rankFeedForAgent(agent, this.posts, roundNum, 5);
 
-    const systemPrompt = `You are ${agent.displayName} (@${agent.username}).
+    const langLabel = this.language === 'hu' ? 'Hungarian (Magyar)' : this.language === 'en' ? 'English' : 'Slovak (Slovenčina)';
+    const samplePost = this.language === 'hu'
+      ? 'Érdemi szakmai érvelés, konkrét észrevétel vagy éles kritika magyar nyelven (1-3 mondat)'
+      : this.language === 'en'
+      ? 'Substantive professional argument, specific feedback, or rigorous critique in English (1-3 sentences)'
+      : 'Vecný odborný argument, konkrétna pripomienka alebo kritika v slovenčine (1-3 vety)';
+
+    let contextSnippet = '';
+    if (this.seedDocument && this.seedDocument.trim().length > 0) {
+      contextSnippet += `\n\nProduct & Business Context:\n${this.seedDocument.slice(0, 3000)}`;
+    }
+    if (this.contextDocuments && this.contextDocuments.length > 0) {
+      contextSnippet += '\n\nAttached Specifications & Documents:\n' +
+        this.contextDocuments.map(d => `- [${d.name}]: ${d.content.slice(0, 1500)}`).join('\n');
+    }
+
+    const systemPrompt = `You are roleplaying as ${agent.displayName} (@${agent.username}) in an autonomous market simulation.
 Profession: ${agent.profession} | MBTI: ${agent.mbti}
-Your Persona & Biases: "${agent.userChar}"
+Your Persona, Core Biases & Domain Expertise: "${agent.userChar}"
 Current Stance on the scenario: "${agent.stance}"
 
-You are reading your social media timeline in a market rehearsal.
-Decide on ONE action:
-- "POST": Share your own fresh thought or reaction.
-- "QUOTE": Quote an existing post and critique, praise, or analyze it.
-- "COMMENT": Reply directly to a post.
-- "LIKE": Endorse a post.
-- "DO_NOTHING": Stay silent this round.
+CRITICAL ROLEPLAY & BEHAVIORAL RULES:
+1. STRICT SEED ISOLATION: Speak and react strictly regarding the specific Product & Business Context and Attached Specifications provided below. NEVER mention, import, or leak unrelated industries (e.g. stonemasonry, fireplaces, construction) or past runs.
+2. Speak strictly from the perspective of your profession (${agent.profession}) and cognitive bias.
+3. Ground your comments in concrete scenario facts: cite pricing numbers, technical specs, vendor lock-in risks, SLA terms, GDPR compliance, implementation hurdles, or ROI benefits from the seed context.
+4. If opposing/skeptical: Be demanding, raise hard budget constraints, identify critical failure modes, or propose competitor alternatives.
+5. If supportive: Highlight tangible productivity gains, unique competitive advantages, or cost-benefit wins.
+6. If competitor: Spread strategic counter-narratives or point out unaddressed drawbacks.
+7. NEVER write empty filler or generic platitudes like "I am watching this" or "Interesting topic". Deliver punchy, realistic, debate-provoking commentary (1-3 sentences).
 
 CRITICAL LANGUAGE REQUIREMENT:
-You MUST write the "content" text in natural, authentic Slovak (Slovenčina). Do NOT write in English.
+You MUST write your commentary/reaction strictly in natural, authentic ${langLabel}.
 
 Output JSON strictly matching:
 {
   "action": "POST" | "QUOTE" | "COMMENT" | "LIKE" | "DO_NOTHING",
   "target_post_id": number | null,
-  "content": "Krátky príspevok alebo reakcia v slovenčine (1-3 vety) v rámci vašej role",
+  "content": "${samplePost}",
   "updated_stance": "supportive" | "opposing" | "neutral",
   "sentiment_score": number between -1.0 and 1.0
 }`;
 
     const feedText = feed.length > 0 
-      ? feed.map(p => `[Post ID #${p.id} by ${p.agentName} (@${p.agentUsername})]: "${p.content}" (Likes: ${p.likesCount}, Quotes: ${p.quotesCount})`).join('\n\n')
-      : '(Timeline is quiet. No posts yet.)';
+      ? feed.map(p => `[Post ID #${p.id} by ${p.agentName} (@${p.agentUsername}, ${p.agentProfession})]: "${p.content}" (Likes: ${p.likesCount}, Quotes: ${p.quotesCount})`).join('\n\n')
+      : '(Timeline is quiet. No posts yet in this cycle.)';
 
-    const userPrompt = `Simulation Scenario:
-${this.hypothesis}
+    const userPrompt = `Simulation Target Hypothesis / Variable:
+${this.hypothesis}${contextSnippet}
 
-Recent Timeline Feed:
+Recent Social Timeline Feed:
 ${feedText}
 
-What action do you take this round? (Write in Slovak / slovenčina)`;
+What action do you take this round? (Write in ${langLabel})`;
 
     try {
       const decision = await callLlmJson<{
@@ -233,6 +302,12 @@ What action do you take this round? (Write in Slovak / slovenčina)`;
         agent.stance = decision.updated_stance;
       }
 
+      const defaultFallbackContent = this.language === 'hu'
+        ? `Értékelem a helyzetet és a feltételeket a(z) ${this.title} kapcsán.`
+        : this.language === 'en'
+        ? `Evaluating terms and impact regarding ${this.title}.`
+        : `Vyhodnocujem podmienky a dopady k téme: ${this.title}.`;
+
       const newPost: SwarmPost = {
         id: this.postIdCounter++,
         roundNum,
@@ -243,7 +318,7 @@ What action do you take this round? (Write in Slovak / slovenčina)`;
         platform: Math.random() > 0.4 ? 'chitchat' : 'forum',
         actionType: decision.action || 'POST',
         targetPostId: decision.target_post_id || undefined,
-        content: decision.content || `Sledujem vývoj ohľadom: ${this.title}.`,
+        content: decision.content || defaultFallbackContent,
         likesCount: 0,
         quotesCount: 0,
         commentsCount: 0,

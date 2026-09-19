@@ -186,6 +186,7 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
         <div className="lg:col-span-7 xl:col-span-8 flex flex-col h-full min-h-0">
           <SwarmGraphCanvas 
             graph={graph} 
+            agents={agents}
             activeEntityId={activeEntityId} 
             systemLanguage={systemLanguage}
             isPreparing={isPreparing}

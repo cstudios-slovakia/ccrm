@@ -28,7 +28,19 @@ class CrmContextExtractor {
         $lookbackMonths = max(1, min(60, $lookbackMonths));
         $cutoffDate = date('Y-m-d H:i:s', strtotime("-{$lookbackMonths} months"));
 
-        $allSources = empty($sources);
+        // If no sources specified or explicitly 'none', return empty context (Pure Scenario Grounding)
+        if (empty($sources) || in_array('none', $sources)) {
+            return [
+                'lookback_months' => $lookbackMonths,
+                'cutoff_date' => $cutoffDate,
+                'total_clients_sampled' => 0,
+                'total_objections_sampled' => 0,
+                'character_count' => 0,
+                'formatted_context' => ''
+            ];
+        }
+
+        $allSources = in_array('*', $sources) || in_array('all', $sources);
         $sections = [];
         $sections[] = "=== RECENT CRM STAKEHOLDER PROFILES (LOOKBACK: PAST {$lookbackMonths} MONTHS) ===";
 

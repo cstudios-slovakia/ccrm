@@ -86,7 +86,8 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
             userQuestion: userText,
             chatHistory: analystMessages,
             report,
-            posts
+            posts,
+            language: systemLanguage
           });
           setAnalystMessages([...newHistory, { sender: 'assistant', text: response }]);
         }
@@ -112,7 +113,8 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
             userQuestion: userText,
             chatHistory: agentMessages,
             agentPosts,
-            hypothesis
+            hypothesis,
+            language: systemLanguage
           });
           setAgentMessages([...newHistory, { sender: 'assistant', text: response }]);
         }

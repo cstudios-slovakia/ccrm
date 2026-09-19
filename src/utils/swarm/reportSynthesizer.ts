@@ -16,8 +16,9 @@ export async function generateStrategicReport(params: {
   posts: SwarmPost[];
   modelName?: string;
   contextDocuments?: SwarmContextDocument[];
+  language?: string;
 }): Promise<StrategicReport> {
-  const { title, hypothesis, seedDocument, graph: _graph, agents, posts, modelName, contextDocuments } = params;
+  const { title, hypothesis, seedDocument, graph: _graph, agents, posts, modelName, contextDocuments, language = 'sk' } = params;
 
   // Filter top quoted or impactful posts
   const impactfulPosts = [...posts]
@@ -28,51 +29,57 @@ export async function generateStrategicReport(params: {
   const opposingAgents = agents.filter(a => a.stance === 'opposing').length;
   const neutralAgents = agents.filter(a => a.stance === 'neutral').length;
 
+  const langLabel = language === 'hu' ? 'Hungarian (Magyar)' : language === 'en' ? 'English' : 'Slovak (Slovenčina)';
+  const ch1Title = language === 'hu' ? '1. Vezetői konszenzus és piaci polarizáció' : language === 'en' ? '1. Executive Consensus & Market Polarization' : '1. Výkonný konsenzus a polarizácia trhu';
+  const ch2Title = language === 'hu' ? '2. Kritikus sebezhetőségek és főbb kifogások' : language === 'en' ? '2. Critical Vulnerabilities & Core Objections' : '2. Kritické zraniteľnosti a hlavné námietky';
+  const ch3Title = language === 'hu' ? '3. Versenytársi ellenstratégia elemzése' : language === 'en' ? '3. Competitor Counter-Strategy Analysis' : '3. Analýza protistratégie konkurencie';
+  const ch4Title = language === 'hu' ? '4. 🎯 MILYEN STRATÉGIÁT ALKALMAZZUNK A CÉL ELÉRÉSÉHEZ?' : language === 'en' ? '4. 🎯 WHAT STRATEGY TO DEPLOY TO WIN THE MARKET?' : '4. 🎯 AKÚ STRATÉGIU POUŽIŤ NA DOSIAHNUTIE CIEĽA?';
+
   const systemPrompt = `You are the Chief Intelligence Analyst for an enterprise market rehearsal simulation.
 Your job is to analyze the complete transcript of the multi-agent simulation and produce an authoritative, highly strategic executive briefing.
 
 MANDATORY REQUIREMENTS:
-1. Grounding: All analysis must quote actual agent posts and identify real failure points from the simulation data.
+1. STRICT SEED ISOLATION & GROUNDING: All analysis must be derived strictly and exclusively from the current simulation's seed context, attached documents, and actual agent posts logged in this transcript. Never reference previous simulations, unrelated industries, or hallucinations.
 2. Structure: You must provide 3 primary analytical chapters AND a mandatory 4th strategic playbook:
-   - Chapter 1: 1. Výkonný konsenzus a polarizácia trhu
-   - Chapter 2: 2. Kritické zraniteľnosti a hlavné námietky (quote exact skeptical agents)
-   - Chapter 3: 3. Analýza protistratégie konkurencie
-   - Chapter 4: 4. 🎯 AKÚ STRATÉGIU POUŽIŤ NA DOSIAHNUTIE CIEĽA?
+   - Chapter 1: ${ch1Title}
+   - Chapter 2: ${ch2Title} (quote exact skeptical agents)
+   - Chapter 3: ${ch3Title}
+   - Chapter 4: ${ch4Title}
 3. Strategic Playbook: Provide direct actionable counter-measures, specific sales objection rebuttals, and a clear sequence of moves to win the market.
-4. CRITICAL LANGUAGE REQUIREMENT: The entire report, including title, summary, section titles, markdown content, vulnerabilities, counter-measures, objection scripts, and GTM sequence MUST be written in natural, executive-level Slovak (Slovenčina). Do not write in English.
+4. CRITICAL LANGUAGE REQUIREMENT: The entire report, including title, summary, section titles, markdown content, vulnerabilities, counter-measures, objection scripts, and GTM sequence MUST be written in natural, executive-level ${langLabel}.
 
 Output JSON strictly matching this schema:
 {
-  "title": "Strategický briefing trhovej simulácie: ...",
-  "summary": "Zhrnutie výsledku simulácie v 2 výstižných vetách v slovenčine.",
+  "title": "${language === 'hu' ? 'Stratégiai eligazítás: ...' : language === 'en' ? 'Strategic Briefing: ...' : 'Strategický briefing trhovej simulácie: ...'}",
+  "summary": "${language === 'hu' ? 'A szimuláció eredményének 2 mondatos lényegretörő összefoglalója magyarul.' : language === 'en' ? 'Concise 2-sentence executive summary of simulation findings in English.' : 'Zhrnutie výsledku simulácie v 2 výstižných vetách v slovenčine.'}",
   "sections": [
     {
-      "title": "1. Výkonný konsenzus a polarizácia trhu",
-      "content": "Podrobný markdown obsah so štatistikami a rozborom reakcií v slovenčine..."
+      "title": "${ch1Title}",
+      "content": "..."
     },
     {
-      "title": "2. Kritické zraniteľnosti a hlavné námietky",
-      "content": "Podrobný markdown obsah s presnými citáciami skeptických agentov..."
+      "title": "${ch2Title}",
+      "content": "..."
     },
     {
-      "title": "3. Analýza protistratégie konkurencie",
-      "content": "Podrobný markdown obsah analyzujúci protiťahy konkurencie..."
+      "title": "${ch3Title}",
+      "content": "..."
     },
     {
-      "title": "4. 🎯 AKÚ STRATÉGIU POUŽIŤ NA DOSIAHNUTIE CIEĽA?",
-      "content": "Podrobný akčný plán vysvetľujúci presné nastavenie pozicioningu a úprav..."
+      "title": "${ch4Title}",
+      "content": "..."
     }
   ],
   "strategicPlaybook": {
-    "keyVulnerabilities": ["Zraniteľnosť 1", "Zraniteľnosť 2"],
-    "actionableCounterMeasures": ["Protiopatrenie 1", "Protiopatrenie 2"],
+    "keyVulnerabilities": ["..."],
+    "actionableCounterMeasures": ["..."],
     "salesObjectionPlaybook": [
       {
-        "objection": "Častá námietka zákazníka odhalená v simulácii",
-        "rebuttal": "Konkrétna argumentačná odpoveď pre obchodníka na jej prekonanie"
+        "objection": "${language === 'hu' ? 'Gyakori vevői kifogás' : language === 'en' ? 'Frequent buyer objection' : 'Častá námietka zákazníka'}",
+        "rebuttal": "${language === 'hu' ? 'Konkrét értékesítési válasz' : language === 'en' ? 'Concrete sales rebuttal' : 'Konkrétna argumentačná odpoveď pre obchodníka'}"
       }
     ],
-    "recommendedGtmSequence": ["1. krok: ...", "2. krok: ...", "3. krok: ..."]
+    "recommendedGtmSequence": ["..."]
   }
 }`;
 
@@ -96,7 +103,7 @@ ${impactfulPosts.map(p => `- [Round ${p.roundNum}] ${p.agentName} (@${p.agentUse
 Original Product Brief Seed:
 ${seedDocument.slice(0, 4000)}${docsPrompt}
 
-Synthesize the final authoritative strategic report in professional Slovak (Slovenčina).`;
+Synthesize the final authoritative strategic report in professional ${langLabel}.`;
 
   try {
     const report = await callLlmJson<StrategicReport>([
