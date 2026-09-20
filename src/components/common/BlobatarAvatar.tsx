@@ -123,10 +123,11 @@ export interface BlobatarAvatarProps {
   animate?: "hover" | "always" | false;
   expression?: Expression | ExpressionName;
   title?: string;
-  rounded?: "md" | "lg" | "xl" | "2xl" | "full";
+  rounded?: "md" | "lg" | "xl" | "2xl" | "full" | "none";
   badge?: React.ReactNode;
   roleColor?: string;
   background?: boolean | "square" | "circle" | "squircle";
+  frameless?: boolean;
 }
 
 export const BlobatarAvatar: React.FC<BlobatarAvatarProps> = ({
@@ -139,10 +140,12 @@ export const BlobatarAvatar: React.FC<BlobatarAvatarProps> = ({
   rounded = "xl",
   badge,
   roleColor,
-  background
+  background,
+  frameless = false
 }) => {
-  const roundedClass =
-    rounded === "full"
+  const roundedClass = frameless
+    ? ""
+    : rounded === "full"
       ? "rounded-full"
       : rounded === "2xl"
         ? "rounded-2xl"
@@ -150,7 +153,9 @@ export const BlobatarAvatar: React.FC<BlobatarAvatarProps> = ({
           ? "rounded-lg"
           : rounded === "md"
             ? "rounded-md"
-            : "rounded-xl";
+            : rounded === "none"
+              ? ""
+              : "rounded-xl";
 
   const seed = (name || "CRM").trim();
 
@@ -170,25 +175,27 @@ export const BlobatarAvatar: React.FC<BlobatarAvatarProps> = ({
         ? (animate === "hover" ? "hover" : "always")
         : (animate === "always" ? "always" : "hover");
 
-  const theme = roleColor ? (ROLE_CONTAINER_THEMES[roleColor] || ROLE_CONTAINER_THEMES.purple) : null;
-  const containerBgClass = theme
-    ? `${theme.bg} ${theme.border} ${theme.shadow} border`
-    : "shadow-xs border border-slate-900/10";
+  const theme = !frameless && roleColor ? (ROLE_CONTAINER_THEMES[roleColor] || ROLE_CONTAINER_THEMES.purple) : null;
+  const containerBgClass = frameless
+    ? "bg-transparent border-0 shadow-none"
+    : theme
+      ? `${theme.bg} ${theme.border} ${theme.shadow} border`
+      : "shadow-xs border border-slate-900/10";
 
   return (
     <div
-      className={`relative inline-flex items-center justify-center shrink-0 select-none ${roundedClass} overflow-hidden ${containerBgClass} transition-all duration-200 ${className}`}
+      className={`relative inline-flex items-center justify-center shrink-0 select-none ${roundedClass} ${frameless ? "overflow-visible" : "overflow-hidden"} ${containerBgClass} transition-all duration-200 ${className}`}
       style={{ width: size, height: size }}
       title={title || seed}
     >
       <Blobatar
         name={seed}
         size={size}
-        background={background ?? (theme ? false : undefined)}
+        background={frameless ? false : (background ?? (theme ? false : undefined))}
         animate={effectiveAnimate}
         expression={resolvedExpression}
         title={title || seed}
-        className="w-full h-full object-contain p-0.5 block transition-all duration-300"
+        className="w-full h-full object-contain p-0 block transition-all duration-300"
       />
       {badge && (
         <div className="absolute -bottom-0.5 -right-0.5 z-10">
