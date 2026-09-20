@@ -1078,8 +1078,8 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
       </div>
 
       {/* 4. SEARCH & FILTERS */}
-      <div className="bg-white p-4 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col lg:flex-row gap-3 lg:items-center lg:justify-between">
-        <div className="relative w-full lg:w-80">
+      <div className="bg-white p-3 sm:p-4 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col xl:flex-row gap-2.5 sm:gap-3 xl:items-center xl:justify-between">
+        <div className="relative w-full xl:w-80">
           <Search className="h-4 w-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           <input
             type="text"
@@ -1090,12 +1090,12 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
           />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full xl:w-auto">
           <CustomSelect
             size="sm"
             value={typeFilter}
             onChange={setTypeFilter}
-            className="min-w-[170px]"
+            className="w-full"
             options={[
               { value: "all", label: t("All document types", "Všetky typy dokladov", "Minden bizonylattípus") },
               { value: "price_offer", label: typeLabel("price_offer") },
@@ -1107,7 +1107,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
             size="sm"
             value={modeFilter}
             onChange={setModeFilter}
-            className="min-w-[160px]"
+            className="w-full"
             options={[
               { value: "all", label: t("All formats", "Všetky formáty", "Minden formátum") },
               { value: "default", label: t("Standard template", "Štandardná šablóna", "Alap sablon") },
@@ -1119,7 +1119,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
             size="sm"
             value={statusFilter}
             onChange={setStatusFilter}
-            className="min-w-[150px]"
+            className="w-full"
             options={[
               { value: "all", label: t("All statuses", "Všetky stavy", "Minden állapot") },
               ...statusOptions
@@ -1131,7 +1131,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
       {/* 5. DOCUMENTS TABLE */}
       <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse">
+          <table className="w-full text-left text-xs border-collapse min-w-[780px]">
             <thead>
               <tr className="bg-slate-50 text-slate-500 font-black uppercase tracking-wider text-[10px] border-b border-slate-200">
                 <th className="p-4">{t("Document no.", "Číslo dokladu", "Bizonylatszám")}</th>

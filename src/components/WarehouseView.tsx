@@ -2389,7 +2389,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
               </div>
 
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-xs text-slate-600">
+                <table className="w-full text-left text-xs text-slate-600 min-w-[840px]">
                   <thead className="bg-slate-100/60 border-b border-slate-200/80 text-[11px] font-bold uppercase tracking-wider text-slate-500">
                     <tr>
                       <th className="py-3 px-3 w-10 text-center">#</th>
@@ -3724,7 +3724,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     </div>
 
                     <div className="overflow-x-auto">
-                      <table className="w-full text-left text-xs">
+                      <table className="w-full text-left text-xs min-w-[680px]">
                         <thead className="bg-slate-50 text-slate-500 font-bold uppercase tracking-wider text-[10px] border-b border-slate-100">
                           <tr>
                             <th className="py-3.5 px-5">{t("Warehouse", "Sklad", "Raktár")}</th>
@@ -4021,7 +4021,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
                     </div>
                   ) : (
                     <div className="overflow-x-auto rounded-2xl border border-slate-100">
-                      <table className="w-full text-left text-xs">
+                      <table className="w-full text-left text-xs min-w-[680px]">
                         <thead className="bg-slate-50 text-slate-400 font-bold uppercase tracking-wider text-[10px]">
                           <tr>
                             <th className="py-3 px-3.5">{t("Date & Time", "Dátum a čas", "Dátum")}</th>
@@ -5005,7 +5005,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
           {/* Items Data Grid */}
           <div className="bg-white rounded-2xl border border-slate-200/80 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs text-slate-600">
+              <table className="w-full text-left text-xs text-slate-600 min-w-[840px]">
                 <thead className="bg-slate-50/80 border-b border-slate-200/80 text-[11px] font-bold uppercase tracking-wider text-slate-500">
                   <tr>
                     <th className="py-3 px-4">{t("Product & SKU", "Tovar & SKU", "Termék & Cikkszám")}</th>

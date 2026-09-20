@@ -15,12 +15,16 @@ interface FloatingCopilotOrbProps {
   onCornerChange: (corner: CopilotCorner) => void;
 }
 
-const CORNER_COORDINATES = (w: number, h: number, orbSize = 64, pad = 24) => ({
-  "top-left": { x: pad, y: pad + 10 },
-  "top-right": { x: w - orbSize - pad, y: pad + 10 },
-  "bottom-left": { x: pad, y: h - orbSize - pad - 20 },
-  "bottom-right": { x: w - orbSize - pad, y: h - orbSize - pad - 20 }
-});
+const CORNER_COORDINATES = (w: number, h: number, orbSize = 64, pad = 24) => {
+  const isMobile = w < 1024;
+  const bottomPad = isMobile ? pad + 64 : pad + 20;
+  return {
+    "top-left": { x: pad, y: pad + 10 },
+    "top-right": { x: Math.max(pad, w - orbSize - pad), y: pad + 10 },
+    "bottom-left": { x: pad, y: Math.max(pad, h - orbSize - bottomPad) },
+    "bottom-right": { x: Math.max(pad, w - orbSize - pad), y: Math.max(pad, h - orbSize - bottomPad) }
+  };
+};
 
 export const FloatingCopilotOrb: React.FC<FloatingCopilotOrbProps> = ({
   isOpen,
@@ -91,9 +95,11 @@ export const FloatingCopilotOrb: React.FC<FloatingCopilotOrbProps> = ({
     const h = window.innerHeight;
     const orbSize = 64;
     const pad = 12;
+    const isMobile = w < 1024;
+    const bottomPad = isMobile ? 76 : 12;
 
     const nextX = Math.max(pad, Math.min(w - orbSize - pad, dragStartRef.current.initX + dx));
-    const nextY = Math.max(pad, Math.min(h - orbSize - pad, dragStartRef.current.initY + dy));
+    const nextY = Math.max(pad, Math.min(h - orbSize - bottomPad, dragStartRef.current.initY + dy));
 
     setPos({ x: nextX, y: nextY });
   };

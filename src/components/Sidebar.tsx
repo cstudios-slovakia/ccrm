@@ -930,7 +930,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           "lg:hidden fixed left-0 right-0 bg-white/95 backdrop-blur-md transition-all duration-500 ease-in-out z-[20000] border-t border-slate-200/80 shadow-[0_-15px_42px_rgba(0,0,0,0.18),0_-5px_15px_rgba(0,0,0,0.08)] select-none shrink-0",
           isMobileMenuOpen 
             ? "top-0 bottom-0 h-screen w-full p-6 flex flex-col justify-between" 
-            : "bottom-0 h-16 w-full px-4 py-2 flex flex-col justify-center"
+            : "bottom-0 h-16 w-full px-2 sm:px-4 py-2 flex flex-col justify-center"
         )}
       >
         {/* Swipe Handle Indicator / Close click target */}
@@ -970,13 +970,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Reorganizing flex container */}
         <div className={cn(
           "flex transition-all duration-500 ease-in-out w-full",
-          isMobileMenuOpen ? "flex-col flex-1 justify-between items-start" : "flex-row items-center justify-between"
+          isMobileMenuOpen ? "flex-col flex-1 justify-between items-start" : "flex-row items-center justify-between gap-1"
         )}>
           
           {/* Main Navigation Links */}
           <div className={cn(
             "flex transition-all duration-300",
-            isMobileMenuOpen ? "flex-col w-full space-y-3" : "flex-row items-center gap-2 flex-1 pr-2"
+            isMobileMenuOpen ? "flex-col w-full space-y-3" : "flex-row items-center gap-1 sm:gap-2 flex-1 pr-1 sm:pr-2 overflow-x-auto scrollbar-none"
           )}>
             {menuItems.map((item: any) => {
               const Icon = item.icon;
@@ -997,7 +997,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     "transition-all duration-300 flex items-center shrink-0 border select-none",
                     isMobileMenuOpen 
                       ? "w-full px-5 py-3.5 rounded-2xl gap-3 text-left font-black" 
-                      : "h-11 w-11 rounded-xl justify-center",
+                      : "h-10 w-10 sm:h-11 sm:w-11 rounded-xl justify-center",
                     item.isPurpleToGreen
                       ? (isActive
                           ? "bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 border-purple-700 text-white shadow-md shadow-purple-500/20"
@@ -1068,11 +1068,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* Settings & Logout Controls at the bottom */}
           <div className={cn(
             "flex transition-all duration-300",
-            isMobileMenuOpen ? "flex-col w-full space-y-3.5 mt-auto border-t border-slate-100/80 pt-5" : "flex-row items-center gap-2"
+            isMobileMenuOpen ? "flex-col w-full space-y-3.5 mt-auto border-t border-slate-100/80 pt-5" : "flex-row items-center gap-1 sm:gap-2 shrink-0"
           )}>
             {/* Divider indicated only in horizontal bottom bar */}
             {!isMobileMenuOpen && showSettings && (
-              <div className="h-6 w-[2px] bg-slate-200 shrink-0 mx-1" />
+              <div className="h-6 w-[2px] bg-slate-200 shrink-0 mx-0.5 sm:mx-1" />
             )}
 
 
@@ -1089,7 +1089,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   "transition-all duration-300 flex items-center shrink-0 border select-none",
                   isMobileMenuOpen 
                     ? "w-full px-5 py-3.5 rounded-2xl gap-3 text-left font-black" 
-                    : "h-11 w-11 rounded-xl justify-center",
+                    : "h-10 w-10 sm:h-11 sm:w-11 rounded-xl justify-center",
                   (activeTab.startsWith("settings") || activeTab.startsWith("user-"))
                     ? "bg-indigo-600 border-indigo-700 text-white"
                     : (isMobileMenuOpen 
@@ -1121,7 +1121,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 "transition-all duration-300 flex items-center shrink-0 border select-none",
                 isMobileMenuOpen 
                   ? "w-full px-5 py-3.5 rounded-2xl gap-3 text-left font-black" 
-                  : "h-11 w-11 rounded-xl justify-center",
+                  : "h-10 w-10 sm:h-11 sm:w-11 rounded-xl justify-center",
                 isMobileMenuOpen 
                   ? "bg-transparent border-transparent text-slate-500 hover:text-slate-800 hover:bg-rose-50" 
                   : "bg-slate-50/50 border-slate-200 text-slate-500 hover:bg-rose-50 hover:border-rose-200 hover:text-rose-600"

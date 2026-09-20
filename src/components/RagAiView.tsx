@@ -741,7 +741,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
       <div className="glass-panel p-0 rounded-3xl border border-white/60 bg-white/95 shadow-glass overflow-hidden flex flex-col md:flex-row h-[calc(100vh-16rem)] min-h-[580px] animate-slide-up">
         
         {/* LEFT SIDEBAR: Executive Roster */}
-        <div className="w-full md:w-84 border-r border-slate-200/80 bg-slate-50/40 flex flex-col shrink-0">
+        <div className="w-full md:w-72 lg:w-84 border-r border-slate-200/80 bg-slate-50/40 flex flex-col shrink-0">
           
           {/* 1. HIGHLIGHTED FLAGSHIP: Executive Orchestrator */}
           <div className="p-3.5 border-b border-purple-100/80 bg-gradient-to-b from-purple-50/80 via-indigo-50/40 to-white/40">
