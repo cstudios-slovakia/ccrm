@@ -339,10 +339,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                        . "| [Action 3] | [Owner] | [Timeline] |\n\n"
                        . "Answer in the same language the user asked (Slovak, Hungarian, or English). Deliver crisp, actionable, high-signal executive advice.";
 
+        $councilHistoryMessages = [];
+        if ($chatDb) {
+            try {
+                $chStmt = $chatDb->prepare("
+                    SELECT `sender`, `message_text`
+                    FROM `chat_history`
+                    WHERE `user_id` = ? AND `agent_id` = 'orchestrator' AND `message_text` LIKE '[Executive Council%'
+                    ORDER BY `id` DESC
+                    LIMIT 4
+                ");
+                $chStmt->execute([$userId]);
+                $recentCouncilHistory = array_reverse($chStmt->fetchAll(PDO::FETCH_ASSOC));
+                foreach ($recentCouncilHistory as $h) {
+                    $role = ($h['sender'] === 'agent') ? 'assistant' : 'user';
+                    $sanitizedHText = sanitize_text($h['message_text'], $to_placeholder);
+                    $councilHistoryMessages[] = ['role' => $role, 'content' => $sanitizedHText];
+                }
+            } catch (\Exception $e) {}
+        }
+
         $councilPayloadMessages = [
-            ['role' => 'system', 'content' => $councilPrompt],
-            ['role' => 'user', 'content' => $sanitized_council_query]
+            ['role' => 'system', 'content' => $councilPrompt]
         ];
+        foreach ($councilHistoryMessages as $chm) {
+            $councilPayloadMessages[] = $chm;
+        }
+        $councilPayloadMessages[] = ['role' => 'user', 'content' => $sanitized_council_query];
 
         $ch = curl_init('https://api.openai.com/v1/chat/completions');
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -470,10 +493,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                   . "\n==================================\n\n"
                   . "Answer the user question query professionally in the same language they asked. Accurately report financial metrics, invoices, certificates, folders, clients, due dates, and validity status.";
 
+    $historyMessages = [];
+    if ($chatDb) {
+        try {
+            $hStmt = $chatDb->prepare("
+                SELECT `sender`, `message_text`
+                FROM `chat_history`
+                WHERE `user_id` = ? AND `agent_id` = ?
+                ORDER BY `id` DESC
+                LIMIT 8
+            ");
+            $hStmt->execute([$userId, $agentId]);
+            $recentHistory = array_reverse($hStmt->fetchAll(PDO::FETCH_ASSOC));
+            foreach ($recentHistory as $h) {
+                $role = ($h['sender'] === 'agent') ? 'assistant' : 'user';
+                $sanitizedHText = sanitize_text($h['message_text'], $to_placeholder);
+                $historyMessages[] = ['role' => $role, 'content' => $sanitizedHText];
+            }
+        } catch (\Exception $e) {}
+    }
+
     $payloadMessages = [
-        ['role' => 'system', 'content' => $systemPrompt],
-        ['role' => 'user', 'content' => $sanitized_query]
+        ['role' => 'system', 'content' => $systemPrompt]
     ];
+    foreach ($historyMessages as $hm) {
+        $payloadMessages[] = $hm;
+    }
+    $payloadMessages[] = ['role' => 'user', 'content' => $sanitized_query];
 
     // Call OpenAI
     $ch = curl_init('https://api.openai.com/v1/chat/completions');
