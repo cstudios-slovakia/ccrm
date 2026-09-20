@@ -532,7 +532,7 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
 
           {/* Center Avatar Box */}
           <div
-            className={`relative flex h-28 w-28 sm:h-32 sm:w-32 items-center justify-center rounded-3xl border-2 shadow-2xl transition-all duration-300 z-10 overflow-hidden bg-slate-900 ${
+            className={`relative flex h-28 w-28 sm:h-32 sm:w-32 items-center justify-center rounded-3xl border-2 shadow-2xl transition-all duration-300 z-10 overflow-hidden ${
               isAiSpeaking
                 ? "scale-105 ring-4 ring-purple-400/50 shadow-purple-500/30"
                 : isUserSpeaking
@@ -544,6 +544,7 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
           >
             <BlobatarAvatar
               name={executive.name}
+              roleColor={executive.color}
               size={128}
               rounded="2xl"
               animate="always"

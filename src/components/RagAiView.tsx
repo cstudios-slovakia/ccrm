@@ -768,14 +768,16 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                 <div className="relative shrink-0">
                   <BlobatarAvatar
                     name={flagshipOrchestrator.name}
+                    roleColor="purple"
                     size={42}
                     rounded="2xl"
                     animate="hover"
-                    className="border border-purple-300 shadow-sm"
+                    badge={
+                      <span className="h-4 w-4 rounded-full bg-purple-600 text-white flex items-center justify-center text-[9px] shadow-xs ring-2 ring-white">
+                        <Sparkles className="h-2.5 w-2.5" />
+                      </span>
+                    }
                   />
-                  <span className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full bg-purple-600 text-white flex items-center justify-center text-[9px] shadow-xs ring-2 ring-white">
-                    <Sparkles className="h-2.5 w-2.5" />
-                  </span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <h4 className="font-heading font-extrabold text-xs text-slate-900 truncate">
@@ -876,10 +878,10 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                 >
                   <BlobatarAvatar
                     name={role.name}
+                    roleColor={role.color}
                     size={36}
                     rounded="xl"
                     animate="hover"
-                    className={`border ${theme.border} shrink-0`}
                   />
 
                   <div className="flex-1 min-w-0">
@@ -936,10 +938,10 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                 >
                   <BlobatarAvatar
                     name={custom.name}
+                    roleColor={custom.color || "purple"}
                     size={36}
                     rounded="xl"
                     animate="hover"
-                    className={`border ${theme.border} shrink-0`}
                   />
 
                   <div className="flex-1 min-w-0">
@@ -1040,17 +1042,19 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
               <div className="relative shrink-0">
                 <BlobatarAvatar
                   name={isCouncilMode ? "Executive Council Boardroom" : selectedRole.name}
+                  roleColor={isCouncilMode ? "council" : selectedRole.color}
                   size={42}
                   rounded="xl"
                   animate="always"
                   expression={isLoading ? "thinking" : inputText.trim().length > 0 ? "surprised" : "idle"}
-                  className={isCouncilMode ? "border-amber-300 shadow-sm" : `border ${activeTheme.border} shadow-sm`}
+                  badge={
+                    isCouncilMode ? (
+                      <span className="h-4 w-4 rounded-full bg-amber-500 text-white flex items-center justify-center text-[9px] shadow-xs ring-2 ring-white">
+                        <Shield className="h-2.5 w-2.5" />
+                      </span>
+                    ) : undefined
+                  }
                 />
-                {isCouncilMode && (
-                  <span className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full bg-amber-500 text-white flex items-center justify-center text-[9px] shadow-xs ring-2 ring-white">
-                    <Shield className="h-2.5 w-2.5" />
-                  </span>
-                )}
               </div>
               <div>
                 <div className="flex items-center gap-2">
@@ -1123,20 +1127,20 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                     {isAgent ? (
                       <BlobatarAvatar
                         name={msg.isCouncil ? "Executive Council Boardroom" : selectedRole.name}
+                        roleColor={msg.isCouncil ? "council" : selectedRole.color}
                         size={32}
                         rounded="xl"
                         animate="hover"
                         expression={msg.isCouncil ? "thinking" : "happy"}
-                        className={msg.isCouncil ? "border-amber-300 shadow-xs" : `border ${activeTheme.border} shadow-xs`}
                       />
                     ) : (
                       <BlobatarAvatar
                         name={currentUser?.name || currentUser?.email || "Erik"}
+                        roleColor="indigo"
                         size={32}
                         rounded="xl"
                         animate="hover"
                         expression="happy"
-                        className="border-slate-300 shadow-xs"
                       />
                     )}
                   </div>
@@ -1193,11 +1197,12 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                 <div className="shrink-0 mt-0.5 relative">
                   <BlobatarAvatar
                     name={isCouncilMode ? "Executive Council Boardroom" : selectedRole.name}
+                    roleColor={isCouncilMode ? "council" : selectedRole.color}
                     size={36}
                     rounded="xl"
                     animate="always"
                     expression="thinking"
-                    className={isCouncilMode ? "border-amber-400 ring-2 ring-amber-400/40 shadow-sm" : `border ${activeTheme.border} ring-2 ring-purple-400/40 shadow-sm`}
+                    className={isCouncilMode ? "ring-2 ring-amber-400/40" : "ring-2 ring-purple-400/40"}
                   />
                   <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75" />

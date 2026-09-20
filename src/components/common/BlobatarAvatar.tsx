@@ -51,6 +51,71 @@ const EXPRESSION_MAP: Record<ExpressionName, Expression> = {
   thinking
 };
 
+export const ROLE_CONTAINER_THEMES: Record<
+  string,
+  {
+    bg: string;
+    border: string;
+    shadow: string;
+  }
+> = {
+  purple: {
+    bg: "bg-gradient-to-br from-purple-600 via-indigo-600 to-purple-800 text-white",
+    border: "border-purple-400/40",
+    shadow: "shadow-sm shadow-purple-600/25"
+  },
+  emerald: {
+    bg: "bg-gradient-to-br from-emerald-500 via-emerald-600 to-teal-800 text-white",
+    border: "border-emerald-400/40",
+    shadow: "shadow-sm shadow-emerald-600/25"
+  },
+  amber: {
+    bg: "bg-gradient-to-br from-amber-500 via-amber-600 to-orange-700 text-white",
+    border: "border-amber-400/40",
+    shadow: "shadow-sm shadow-amber-600/25"
+  },
+  rose: {
+    bg: "bg-gradient-to-br from-rose-500 via-pink-600 to-rose-800 text-white",
+    border: "border-rose-400/40",
+    shadow: "shadow-sm shadow-rose-600/25"
+  },
+  slate: {
+    bg: "bg-gradient-to-br from-slate-600 via-slate-700 to-slate-900 text-white",
+    border: "border-slate-500/40",
+    shadow: "shadow-sm shadow-slate-700/25"
+  },
+  cyan: {
+    bg: "bg-gradient-to-br from-cyan-500 via-teal-600 to-blue-700 text-white",
+    border: "border-cyan-400/40",
+    shadow: "shadow-sm shadow-cyan-600/25"
+  },
+  orange: {
+    bg: "bg-gradient-to-br from-orange-500 via-amber-600 to-red-700 text-white",
+    border: "border-orange-400/40",
+    shadow: "shadow-sm shadow-orange-600/25"
+  },
+  indigo: {
+    bg: "bg-gradient-to-br from-indigo-500 via-purple-600 to-indigo-800 text-white",
+    border: "border-indigo-400/40",
+    shadow: "shadow-sm shadow-indigo-600/25"
+  },
+  blue: {
+    bg: "bg-gradient-to-br from-blue-500 via-indigo-600 to-blue-800 text-white",
+    border: "border-blue-400/40",
+    shadow: "shadow-sm shadow-blue-600/25"
+  },
+  council: {
+    bg: "bg-gradient-to-br from-amber-500 via-orange-600 to-purple-800 text-white",
+    border: "border-amber-400/50",
+    shadow: "shadow-sm shadow-amber-600/30"
+  },
+  gold: {
+    bg: "bg-gradient-to-br from-amber-400 via-yellow-500 to-amber-700 text-white",
+    border: "border-amber-300/50",
+    shadow: "shadow-sm shadow-amber-600/30"
+  }
+};
+
 export interface BlobatarAvatarProps {
   name: string;
   size?: number;
@@ -60,6 +125,8 @@ export interface BlobatarAvatarProps {
   title?: string;
   rounded?: "md" | "lg" | "xl" | "2xl" | "full";
   badge?: React.ReactNode;
+  roleColor?: string;
+  background?: boolean | "square" | "circle" | "squircle";
 }
 
 export const BlobatarAvatar: React.FC<BlobatarAvatarProps> = ({
@@ -70,7 +137,9 @@ export const BlobatarAvatar: React.FC<BlobatarAvatarProps> = ({
   expression,
   title,
   rounded = "xl",
-  badge
+  badge,
+  roleColor,
+  background
 }) => {
   const roundedClass =
     rounded === "full"
@@ -101,19 +170,25 @@ export const BlobatarAvatar: React.FC<BlobatarAvatarProps> = ({
         ? (animate === "hover" ? "hover" : "always")
         : (animate === "always" ? "always" : "hover");
 
+  const theme = roleColor ? (ROLE_CONTAINER_THEMES[roleColor] || ROLE_CONTAINER_THEMES.purple) : null;
+  const containerBgClass = theme
+    ? `${theme.bg} ${theme.border} ${theme.shadow} border`
+    : "shadow-xs border border-slate-900/10";
+
   return (
     <div
-      className={`relative inline-flex items-center justify-center shrink-0 select-none ${roundedClass} overflow-hidden shadow-xs border border-slate-900/10 transition-all duration-200 ${className}`}
+      className={`relative inline-flex items-center justify-center shrink-0 select-none ${roundedClass} overflow-hidden ${containerBgClass} transition-all duration-200 ${className}`}
       style={{ width: size, height: size }}
       title={title || seed}
     >
       <Blobatar
         name={seed}
         size={size}
+        background={background ?? (theme ? false : undefined)}
         animate={effectiveAnimate}
         expression={resolvedExpression}
         title={title || seed}
-        className="w-full h-full object-cover block transition-all duration-300"
+        className="w-full h-full object-contain p-0.5 block transition-all duration-300"
       />
       {badge && (
         <div className="absolute -bottom-0.5 -right-0.5 z-10">
