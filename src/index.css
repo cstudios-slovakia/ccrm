@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "blobatar/motion.css";
 
 /* Tailwind v4 resolves `dark:` against prefers-color-scheme by default, and
    tailwind.config.js (darkMode: "class") is never loaded because there is no

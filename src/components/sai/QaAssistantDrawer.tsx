@@ -7,7 +7,8 @@ import type {
 import { askChiefAnalyst, interviewAgent } from '../../utils/swarm/chatAssistant';
 import { getDemoAnalystAnswer, getDemoAgentAnswer } from '../../utils/swarm/demoData';
 import { Markdown } from '../../utils/markdown';
-import { X, Send, Bot, User, Sparkles, RotateCcw } from 'lucide-react';
+import { X, Send, Sparkles, RotateCcw } from 'lucide-react';
+import { BlobatarAvatar } from '../common/BlobatarAvatar';
 
 interface QaAssistantDrawerProps {
   isOpen?: boolean;
@@ -153,9 +154,13 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
       {/* Header */}
       <div className="p-4 bg-gradient-to-r from-purple-50 via-indigo-50 to-emerald-50 border-b border-slate-200 flex items-center justify-between">
         <div className="flex items-center gap-2.5 min-w-0">
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-purple-600 to-emerald-500 text-white flex items-center justify-center shadow-sm shrink-0">
-            <Bot className="w-4 h-4" />
-          </div>
+          <BlobatarAvatar
+            name="Simulation Interrogation Hub"
+            size={32}
+            rounded="xl"
+            animate="hover"
+            className="border-purple-300 shadow-sm shrink-0"
+          />
           <div className="min-w-0">
             <h3 className="text-sm font-bold text-slate-900 truncate">
               {t('Simulation Interrogation Hub', 'Interrogačný hub simulácie', 'Szimulációs kikérdező központ')}
@@ -241,13 +246,23 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
             key={idx} 
             className={`flex items-start gap-2.5 ${m.sender === 'user' ? 'flex-row-reverse' : 'flex-row'}`}
           >
-            <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${
-              m.sender === 'user' 
-                ? 'bg-indigo-600 text-white' 
-                : (activeTab === 'analyst' ? 'bg-purple-600 text-white' : 'bg-emerald-600 text-white')
-            }`}>
-              {m.sender === 'user' ? <User className="w-3.5 h-3.5" /> : <Bot className="w-3.5 h-3.5" />}
-            </div>
+            <BlobatarAvatar
+              name={
+                m.sender === 'user'
+                  ? 'User'
+                  : (activeTab === 'analyst'
+                      ? 'Chief Intelligence Analyst'
+                      : (selectedAgent?.displayName || selectedAgent?.username || 'Market Specialist'))
+              }
+              size={28}
+              rounded="full"
+              animate="hover"
+              className={
+                m.sender === 'user'
+                  ? 'border-indigo-300 shadow-xs'
+                  : (activeTab === 'analyst' ? 'border-purple-300 shadow-xs' : 'border-emerald-300 shadow-xs')
+              }
+            />
             <div className={`p-3 rounded-2xl text-xs leading-relaxed max-w-[85%] ${
               m.sender === 'user' 
                 ? 'bg-indigo-600 text-white rounded-tr-none whitespace-pre-wrap' 

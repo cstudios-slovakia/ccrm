@@ -29,10 +29,12 @@
     "shots": "playwright test --config playwright.demo.config.ts"
   },
   "dependencies": {
+    "@blobatar/react": "^2.7.0",
     "@fancyapps/ui": "^6.1.14",
     "@react-three/drei": "^10.7.7",
     "@react-three/fiber": "^9.6.1",
     "agentation": "^3.0.2",
+    "blobatar": "^2.7.0",
     "clsx": "^2.1.1",
     "framer-motion": "^12.41.0",
     "lucide-react": "^1.17.0",

@@ -3,8 +3,6 @@ import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import {
   Brain,
   Send,
-  Bot,
-  User,
   Sparkles,
   Database,
   Check,
@@ -15,15 +13,7 @@ import {
   Clock,
   Trash2,
   Edit,
-  Users,
   Shield,
-  Briefcase,
-  DollarSign,
-  Layers,
-  Scale,
-  Megaphone,
-  Box,
-  Compass,
   Bookmark,
   Phone,
   PhoneCall,
@@ -42,6 +32,7 @@ import {
   type ExecutiveRole
 } from "../utils/executive/defaultExecutives";
 import { ExecutiveCallModal } from "./executive/ExecutiveCallModal";
+import { BlobatarAvatar } from "./common/BlobatarAvatar";
 
 export interface Message {
   id: string;
@@ -676,41 +667,6 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
     }
   };
 
-  // Render Icon based on role category
-  const renderRoleIcon = (roleCat: string, isFlagship = false) => {
-    if (isFlagship) {
-      return (
-        <div className={`h-11 w-11 rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-700 text-white flex items-center justify-center shadow-lg shadow-purple-500/30 ring-2 ring-purple-400/40 relative`}>
-          <Brain className="h-6 w-6" />
-          <span className="absolute -top-1 -right-1 flex h-3 w-3">
-            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-            <span className="relative inline-flex rounded-full h-3 w-3 bg-amber-500 border border-white"></span>
-          </span>
-        </div>
-      );
-    }
-
-    switch (roleCat) {
-      case "strategy":
-        return <Compass className="h-5 w-5" />;
-      case "finance":
-        return <DollarSign className="h-5 w-5" />;
-      case "people":
-        return <Users className="h-5 w-5" />;
-      case "legal":
-        return <Scale className="h-5 w-5" />;
-      case "operations":
-        return <Layers className="h-5 w-5" />;
-      case "marketing":
-        return <Megaphone className="h-5 w-5" />;
-      case "product":
-        return <Box className="h-5 w-5" />;
-      case "governance":
-        return <Briefcase className="h-5 w-5" />;
-      default:
-        return <Bot className="h-5 w-5" />;
-    }
-  };
 
   const activeTheme = EXECUTIVE_COLOR_MAP[selectedRole.color] || EXECUTIVE_COLOR_MAP.purple;
 
@@ -809,7 +765,18 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
               }`}
             >
               <div className="flex items-start gap-3">
-                {renderRoleIcon("orchestrator", true)}
+                <div className="relative shrink-0">
+                  <BlobatarAvatar
+                    name={flagshipOrchestrator.name}
+                    size={42}
+                    rounded="2xl"
+                    animate="hover"
+                    className="border border-purple-300 shadow-sm"
+                  />
+                  <span className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full bg-purple-600 text-white flex items-center justify-center text-[9px] shadow-xs ring-2 ring-white">
+                    <Sparkles className="h-2.5 w-2.5" />
+                  </span>
+                </div>
                 <div className="flex-1 min-w-0">
                   <h4 className="font-heading font-extrabold text-xs text-slate-900 truncate">
                     {flagshipOrchestrator.name}
@@ -907,9 +874,13 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                       : "bg-white/70 border-slate-100 hover:border-slate-200 hover:bg-white"
                   }`}
                 >
-                  <div className={`h-9 w-9 rounded-xl ${theme.fill} flex items-center justify-center text-white shadow-sm shrink-0`}>
-                    {renderRoleIcon(role.roleCategory)}
-                  </div>
+                  <BlobatarAvatar
+                    name={role.name}
+                    size={36}
+                    rounded="xl"
+                    animate="hover"
+                    className={`border ${theme.border} shrink-0`}
+                  />
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
@@ -963,9 +934,13 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                       : "bg-white/70 border-slate-100 hover:border-slate-200 hover:bg-white"
                   }`}
                 >
-                  <div className={`h-9 w-9 rounded-xl ${theme.fill} flex items-center justify-center text-white shadow-sm shrink-0`}>
-                    <Bot className="h-4.5 w-4.5" />
-                  </div>
+                  <BlobatarAvatar
+                    name={custom.name}
+                    size={36}
+                    rounded="xl"
+                    animate="hover"
+                    className={`border ${theme.border} shrink-0`}
+                  />
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
@@ -1062,8 +1037,19 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
           {/* Header Bar */}
           <div className="p-4 border-b border-slate-200/80 flex items-center justify-between shrink-0 bg-slate-50/30">
             <div className="flex items-center gap-3">
-              <div className={`h-10 w-10 rounded-xl ${isCouncilMode ? "bg-amber-500" : activeTheme.fill} text-white flex items-center justify-center font-bold shadow-sm`}>
-                {isCouncilMode ? <Shield className="h-5.5 w-5.5" /> : renderRoleIcon(selectedRole.roleCategory)}
+              <div className="relative shrink-0">
+                <BlobatarAvatar
+                  name={isCouncilMode ? "Executive Council Boardroom" : selectedRole.name}
+                  size={42}
+                  rounded="xl"
+                  animate="hover"
+                  className={isCouncilMode ? "border-amber-300 shadow-sm" : `border ${activeTheme.border} shadow-sm`}
+                />
+                {isCouncilMode && (
+                  <span className="absolute -bottom-1 -right-1 h-4 w-4 rounded-full bg-amber-500 text-white flex items-center justify-center text-[9px] shadow-xs ring-2 ring-white">
+                    <Shield className="h-2.5 w-2.5" />
+                  </span>
+                )}
               </div>
               <div>
                 <div className="flex items-center gap-2">
@@ -1132,19 +1118,23 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                   className={`flex gap-3 max-w-[88%] ${isAgent ? "mr-auto" : "ml-auto flex-row-reverse"}`}
                 >
                   {/* Avatar */}
-                  <div
-                    className={`h-8 w-8 rounded-xl flex items-center justify-center shrink-0 shadow-sm ${
-                      isAgent
-                        ? msg.isCouncil
-                          ? "bg-amber-500 text-white"
-                          : `${activeTheme.fill} text-white`
-                        : "bg-slate-200 text-slate-700"
-                    }`}
-                  >
+                  <div className="shrink-0 mt-0.5">
                     {isAgent ? (
-                      msg.isCouncil ? <Shield className="h-4 w-4" /> : <Bot className="h-4.5 w-4.5" />
+                      <BlobatarAvatar
+                        name={msg.isCouncil ? "Executive Council Boardroom" : selectedRole.name}
+                        size={32}
+                        rounded="xl"
+                        animate="hover"
+                        className={msg.isCouncil ? "border-amber-300 shadow-xs" : `border ${activeTheme.border} shadow-xs`}
+                      />
                     ) : (
-                      <User className="h-4.5 w-4.5" />
+                      <BlobatarAvatar
+                        name={currentUser?.name || currentUser?.email || "Erik"}
+                        size={32}
+                        rounded="xl"
+                        animate="hover"
+                        className="border-slate-300 shadow-xs"
+                      />
                     )}
                   </div>
 
@@ -1197,8 +1187,14 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
 
             {isLoading && (
               <div className="flex gap-3 max-w-[85%] mr-auto">
-                <div className={`h-8 w-8 rounded-xl flex items-center justify-center shrink-0 ${isCouncilMode ? "bg-amber-500" : activeTheme.fill} text-white shadow-sm`}>
-                  {isCouncilMode ? <Shield className="h-4 w-4 animate-pulse" /> : <Bot className="h-4.5 w-4.5" />}
+                <div className="shrink-0 mt-0.5">
+                  <BlobatarAvatar
+                    name={isCouncilMode ? "Executive Council Boardroom" : selectedRole.name}
+                    size={32}
+                    rounded="xl"
+                    animate="always"
+                    className={isCouncilMode ? "border-amber-300 shadow-xs" : `border ${activeTheme.border} shadow-xs`}
+                  />
                 </div>
                 <div className="p-4 rounded-2xl bg-white border border-slate-100 text-slate-700 rounded-tl-none shadow-sm flex items-center gap-2">
                   <span className="text-xs font-semibold text-slate-500">

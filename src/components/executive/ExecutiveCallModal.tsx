@@ -8,13 +8,13 @@ import {
   Activity,
   FileText,
   Clock,
-  Radio,
   ChevronDown,
   ChevronUp,
   AlertCircle
 } from "lucide-react";
 import { type ExecutiveRole, EXECUTIVE_COLOR_MAP } from "../../utils/executive/defaultExecutives";
 import type { Language } from "../../utils/translations";
+import { BlobatarAvatar } from "../common/BlobatarAvatar";
 
 interface ExecutiveCallModalProps {
   isOpen: boolean;
@@ -504,11 +504,17 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
 
           {/* Center Avatar Box */}
           <div
-            className={`relative flex h-28 w-28 sm:h-32 sm:w-32 items-center justify-center rounded-3xl border-2 shadow-2xl transition-transform duration-300 z-10 ${
-              isAiSpeaking ? "scale-105" : "scale-100"
-            } ${colorTheme.border} ${colorTheme.fill}`}
+            className={`relative flex h-28 w-28 sm:h-32 sm:w-32 items-center justify-center rounded-3xl border-2 shadow-2xl transition-transform duration-300 z-10 overflow-hidden bg-slate-900 ${
+              isAiSpeaking ? "scale-105 ring-4 ring-purple-400/40" : "scale-100"
+            } ${colorTheme.border}`}
           >
-            <Radio className="h-12 w-12 sm:h-14 sm:w-14 text-white animate-pulse" />
+            <BlobatarAvatar
+              name={executive.name}
+              size={128}
+              rounded="2xl"
+              animate={isAiSpeaking ? "always" : "hover"}
+              className="w-full h-full border-0 shadow-none"
+            />
           </div>
         </div>
 
@@ -616,16 +622,25 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
                 transcripts.map((item) => (
                   <div
                     key={item.id}
-                    className={`p-2 rounded-xl ${
+                    className={`p-2.5 rounded-xl flex items-start gap-2.5 ${
                       item.sender === "user"
                         ? "bg-slate-800/80 text-slate-200 border-l-2 border-emerald-400"
                         : "bg-purple-950/40 text-purple-200 border-l-2 border-purple-400"
                     }`}
                   >
-                    <span className="font-bold text-[10px] block opacity-70 mb-0.5">
-                      {item.sender === "user" ? userName : executive.name}
-                    </span>
-                    <p className="leading-relaxed whitespace-pre-wrap">{item.text}</p>
+                    <BlobatarAvatar
+                      name={item.sender === "user" ? userName : executive.name}
+                      size={24}
+                      rounded="lg"
+                      animate="hover"
+                      className="shrink-0 mt-0.5 border-slate-700"
+                    />
+                    <div className="flex-1 min-w-0">
+                      <span className="font-bold text-[10px] block opacity-70 mb-0.5">
+                        {item.sender === "user" ? userName : executive.name}
+                      </span>
+                      <p className="leading-relaxed whitespace-pre-wrap">{item.text}</p>
+                    </div>
                   </div>
                 ))
               )}
