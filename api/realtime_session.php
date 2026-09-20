@@ -216,8 +216,16 @@ $voiceSystemPrompt = $skillInstructions . "\n\n"
     . "3. GROUNDING IN CRM DATA:\n"
     . "   - Current system date is {$todayFormatted} ({$todayDate}).\n"
     . "   - You have live grounding in CRM operations and financial records:\n"
-    . "{$crmContext}\n\n"
-    . "Answer and converse exclusively in the user's language ({$langName}). Speak clearly, decisively, and concisely.";
+    . "{$crmContext}\n\n";
+
+$screenContext = trim($payload['current_screen_context'] ?? '');
+if (!empty($screenContext)) {
+    $voiceSystemPrompt .= "4. USER'S ACTIVE SCREEN CONTEXT:\n"
+                        . "{$screenContext}\n"
+                        . "You know what the user is currently viewing. If the user asks to see, open, or navigate to a specific client, lead, project, invoice, or tab, call the 'navigate_to_entry' function to redirect their screen immediately.\n\n";
+}
+
+$voiceSystemPrompt .= "Answer and converse exclusively in the user's language ({$langName}). Speak clearly, decisively, and concisely.";
 
 // 6. Request Ephemeral Client Secret from OpenAI Realtime API (GA endpoint)
 $sessionConfig = [
@@ -238,6 +246,26 @@ $sessionConfig = [
                     ]
                 ],
                 'required' => ['query']
+            ]
+        ],
+        [
+            'type' => 'function',
+            'name' => 'navigate_to_entry',
+            'description' => 'Navigates or redirects the user\'s screen to a specific CRM entry, client profile, lead, project, invoice, task board, meetings, or tab.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'entity_type' => [
+                        'type' => 'string',
+                        'enum' => ['client', 'lead', 'project', 'finances', 'tasks', 'meetings', 'dashboard', 'automation', 'tab'],
+                        'description' => 'The type of CRM entity or tab to navigate to.'
+                    ],
+                    'target' => [
+                        'type' => 'string',
+                        'description' => 'The name or ID or route of the target (e.g. "Silvia", "12", "FA-2026-1045", "projects", "finances").'
+                    ]
+                ],
+                'required' => ['entity_type', 'target']
             ]
         ]
     ],

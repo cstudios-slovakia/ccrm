@@ -23,6 +23,9 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AiKeyBanner } from "./components/ui/AiKeyBanner";
 import { QuickAddClientProvider } from "./components/ui/QuickAddClient";
 import FilePreviewPane from "./components/FilePreviewPane";
+import { FloatingCopilotOrb, type CopilotCorner } from "./components/executive/FloatingCopilotOrb";
+import { CopilotSidebar } from "./components/executive/CopilotSidebar";
+import { useCurrentScreenContext } from "./hooks/useCurrentScreenContext";
 import { RefreshCw, AlertOctagon, Trash2, Copy } from "lucide-react";
 import { ShaderGradient } from "shadergradient";
 import { Canvas, type EventManager } from "@react-three/fiber";
@@ -385,6 +388,19 @@ function App() {
 
   const [activeTab, setActiveTab] = useState(getTabFromHash);
   const [isInitialSyncResolved, setIsInitialSyncResolved] = useState(false);
+
+  // Executive Copilot State
+  const [isCopilotOpen, setIsCopilotOpen] = useState(false);
+  const [copilotCorner, setCopilotCorner] = useState<CopilotCorner>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("ccrm_copilot_corner") as CopilotCorner;
+      if (saved && ["bottom-right", "bottom-left", "top-right", "top-left"].includes(saved)) {
+        return saved;
+      }
+    }
+    return "bottom-right";
+  });
+  const currentScreenContext = useCurrentScreenContext(activeTab, userLanguage);
   type ToastPayload = {
     // Identity, not the message text: two saves in a row raise the same wording,
     // and matching on the text let the first toast's timer close the second one early.
@@ -3361,7 +3377,35 @@ ${log.payload || ''}
             </footer>
           </main>
         </div>
+
+        {/* Global Executive Copilot Sidebar (contracts workspace side-by-side on desktop) */}
+        {currentUser && isCopilotOpen && (
+          <CopilotSidebar
+            isOpen={isCopilotOpen}
+            onClose={() => setIsCopilotOpen(false)}
+            systemLanguage={userLanguage}
+            screenContext={currentScreenContext}
+            currentUser={currentUser}
+          />
+        )}
       </div>
+
+      {/* Global Floating Copilot Orb (Draggable to any of the 4 corners) */}
+      {currentUser && (
+        <FloatingCopilotOrb
+          isOpen={isCopilotOpen}
+          onOpen={() => setIsCopilotOpen(true)}
+          systemLanguage={userLanguage}
+          screenTitle={currentScreenContext.title}
+          corner={copilotCorner}
+          onCornerChange={(newCorner) => {
+            setCopilotCorner(newCorner);
+            if (typeof window !== "undefined") {
+              localStorage.setItem("ccrm_copilot_corner", newCorner);
+            }
+          }}
+        />
+      )}
       
 
 

@@ -497,6 +497,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         $pastDecisionsBlock .= "</past_decisions>\nMaintain continuity with these past executive decisions where relevant.\n";
+    // User's active screen context
+    $screenContext = trim($payload['current_screen_context'] ?? '');
+    $screenContextBlock = "";
+    if (!empty($screenContext)) {
+        $screenContextBlock = "\n\n=== USER'S ACTIVE SCREEN CONTEXT ===\n" . $screenContext . "\n====================================\n"
+                            . "The user is currently viewing the active screen described above. Provide answers aware of what they are looking at right now.\n"
+                            . "Whenever you recommend or mention a CRM record, client, project, invoice, lead, or tab, format it as a markdown hash link so the user can click it directly in chat to open that entry (e.g. [Client: ClientName](#client-ClientName), [Project: Name](#projects), [Invoice: FA-2026-1045](#finances), [Task: Title](#tasks), [Lead: ID](#lead-ID)).\n";
     }
 
     $systemPrompt = $skillInstructions . "\n\n"
@@ -511,7 +518,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                   . "   - If an item is expired (date in the past), clearly specify which item is expired and when.\n\n"
                   . "IMPORTANT - PRIVACY INSTRUCTION: Personal names, phone numbers, and emails have been pseudonymized and masked with placeholders like [CLIENT_NAME_1] or [EMAIL_REF_1].\n"
                   . "Keep references exactly as they are. Answer the user question based on the context provided."
-                  . $pastDecisionsBlock . "\n\n"
+                  . $pastDecisionsBlock
+                  . $screenContextBlock . "\n\n"
                   . "=== RAG KNOWLEDGE BASE CONTEXT ===\n"
                   . $sanitized_context
                   . "\n==================================\n\n"

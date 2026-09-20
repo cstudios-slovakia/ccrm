@@ -1,5 +1,60 @@
 import React from "react";
-import { FileText } from "lucide-react";
+import { FileText, User, Folder, CheckSquare, Receipt, Calendar, Sparkles, ExternalLink, ArrowRight } from "lucide-react";
+
+export const EntityPill: React.FC<{ label: string; url: string }> = ({ label, url }) => {
+  const handleEntityClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (typeof window !== "undefined") {
+      window.location.hash = url;
+      window.dispatchEvent(new CustomEvent("ccrm:navigate", { detail: { url } }));
+    }
+  };
+
+  const rawHash = url.startsWith("#") ? url.slice(1).toLowerCase() : url.toLowerCase();
+  
+  let Icon = ArrowRight;
+  let colorStyles = "bg-purple-50 hover:bg-purple-100 border-purple-200 text-purple-700 hover:text-purple-900";
+  let iconColor = "text-purple-600";
+
+  if (rawHash.startsWith("client-") || rawHash === "clients") {
+    Icon = User;
+    colorStyles = "bg-emerald-50 hover:bg-emerald-100 border-emerald-200 text-emerald-800 hover:text-emerald-950";
+    iconColor = "text-emerald-600";
+  } else if (rawHash.startsWith("lead-") || rawHash === "leads") {
+    Icon = Sparkles;
+    colorStyles = "bg-indigo-50 hover:bg-indigo-100 border-indigo-200 text-indigo-800 hover:text-indigo-950";
+    iconColor = "text-indigo-600";
+  } else if (rawHash.startsWith("project") || rawHash === "projects") {
+    Icon = Folder;
+    colorStyles = "bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-800 hover:text-blue-950";
+    iconColor = "text-blue-600";
+  } else if (rawHash.startsWith("finance") || rawHash === "finances") {
+    Icon = Receipt;
+    colorStyles = "bg-amber-50 hover:bg-amber-100 border-amber-200 text-amber-800 hover:text-amber-950";
+    iconColor = "text-amber-600";
+  } else if (rawHash === "tasks") {
+    Icon = CheckSquare;
+    colorStyles = "bg-rose-50 hover:bg-rose-100 border-rose-200 text-rose-800 hover:text-rose-950";
+    iconColor = "text-rose-600";
+  } else if (rawHash === "meetings") {
+    Icon = Calendar;
+    colorStyles = "bg-cyan-50 hover:bg-cyan-100 border-cyan-200 text-cyan-800 hover:text-cyan-950";
+    iconColor = "text-cyan-600";
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleEntityClick}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[11px] font-bold transition-all cursor-pointer hover:scale-[1.03] active:scale-95 mx-1 my-0.5 select-none shadow-2xs group ${colorStyles}`}
+      title={`Open ${label} in CRM`}
+    >
+      <Icon className={`h-3 w-3 shrink-0 ${iconColor} group-hover:scale-110 transition-transform`} />
+      <span className="truncate max-w-[200px]">{label}</span>
+      <ArrowRight className="h-2.5 w-2.5 opacity-40 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
+    </button>
+  );
+};
 
 export const FilePill: React.FC<{ fileName: string }> = ({ fileName }) => {
   const handlePillClick = () => {
@@ -377,7 +432,7 @@ const parseInlineStyles = (text: string): React.ReactNode => {
   let index = 0;
 
   // Regex matches: **bold** / __bold__, *italic* / _italic_, `code`, [link](url)
-  const inlineRegex = /(\*\*|__)(.*?)\1|(\*|_)(.*?)\3|(`)(.*?)\5|\[(.*?)\]\(((?:https?:\/\/|\/)[^\s\)]+)\)/g;
+  const inlineRegex = /(\*\*|__)(.*?)\1|(\*|_)(.*?)\3|(`)(.*?)\5|\[(.*?)\]\(((?:https?:\/\/|\/|#)[^\s\)]+)\)/g;
   let match;
 
   const parseInnerStyles = (inner: string): React.ReactNode => {
@@ -403,18 +458,29 @@ const parseInlineStyles = (text: string): React.ReactNode => {
       // Inline Code
       parts.push(<code key={match.index} className="bg-slate-100/80 px-1 py-0.5 rounded text-[10.5px] font-mono text-purple-700 border border-slate-200/50">{match[6]}</code>);
     } else if (match[7] && match[8]) {
-      // Link [label](url)
-      parts.push(
-        <a 
-          key={match.index} 
-          href={match[8]} 
-          target="_blank" 
-          rel="noopener noreferrer" 
-          className="text-indigo-600 hover:text-indigo-800 underline font-semibold transition"
-        >
-          {match[7]}
-        </a>
-      );
+      const linkLabel = match[7];
+      const linkUrl = match[8];
+
+      // If URL is an internal hash route (e.g. #client-Silvia, #projects, #lead-12), render an interactive EntityPill
+      if (linkUrl.startsWith("#")) {
+        parts.push(
+          <EntityPill key={match.index} label={linkLabel} url={linkUrl} />
+        );
+      } else {
+        // External link [label](url)
+        parts.push(
+          <a 
+            key={match.index} 
+            href={linkUrl} 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="text-indigo-600 hover:text-indigo-800 underline font-semibold transition inline-flex items-center gap-0.5"
+          >
+            <span>{linkLabel}</span>
+            <ExternalLink className="h-2.5 w-2.5 inline" />
+          </a>
+        );
+      }
     }
 
     index = inlineRegex.lastIndex;
