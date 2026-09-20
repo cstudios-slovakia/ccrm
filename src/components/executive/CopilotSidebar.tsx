@@ -120,42 +120,62 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, isLoading]);
 
+  // Format User's display name
+  const userName = useMemo(() => {
+    if (currentUser?.name && currentUser.name.trim()) return currentUser.name.trim();
+    if (currentUser?.email) {
+      const prefix = currentUser.email.split("@")[0];
+      return prefix.charAt(0).toUpperCase() + prefix.slice(1);
+    }
+    return "Erik";
+  }, [currentUser]);
+
+  // Welcome message localized
+  const welcomeText = useMemo(() => {
+    return t(
+      `👋 Hi **${userName}**! I am your **Executive Copilot (${VERSION_CODENAME})**. I have live CRM data access and I am actively grounded in **${screenContext.title}**. How can I help you?`,
+      `👋 Ahoj **${userName}**! Som tvoj **Výkonný AI Copilot (${VERSION_CODENAME})**. Mám živý prístup k CRM dátam a sledujem s tebou obrazovku **${screenContext.title}**. Ako ti môžem pomôcť?`,
+      `👋 Szia **${userName}**! Én vagyok a **Vezetői AI Copilot (${VERSION_CODENAME})**. Valós időben látom a CRM adatokat és a megnyitott **${screenContext.title}** felületet. Miben segíthetek ma?`
+    );
+  }, [userName, screenContext.title, systemLanguage]);
+
   // Fetch initial chat history on mount
   useEffect(() => {
     const userId = currentUser?.id || currentUser?.email || "default_user";
     fetch(`/api/chat_rag.php?action=chat_history&user_id=${encodeURIComponent(userId)}&agent_id=orchestrator`)
       .then((res) => res.json())
       .then((data) => {
-        if (data.success && Array.isArray(data.messages)) {
+        if (data.success && Array.isArray(data.messages) && data.messages.length > 0) {
           const loaded: ChatMessage[] = data.messages.map((m: any, idx: number) => ({
             id: `msg-${idx}-${Date.now()}`,
             sender: m.sender === "agent" ? "agent" : "user",
             text: m.text,
             timestamp: m.timestamp ? new Date(m.timestamp) : new Date()
           }));
-          if (loaded.length > 0) {
-            setMessages(loaded);
-          } else {
-            // Default Welcome message
-            setMessages([
-              {
-                id: "welcome-1",
-                sender: "agent",
-                text: t(
-                  `👋 Hello! I am your **Executive Orchestrator (${VERSION_CODENAME})**. I am actively monitoring your CRM and grounded in your currently open view (**${screenContext.title}**). How can I assist you with strategic decisions or navigating entries?`,
-                  `👋 Ahoj! Som tvoj **Hlavný AI líder (${VERSION_CODENAME})**. Mám živý prehľad o celom CRM a viem, že práve pozeráš na **${screenContext.title}**. Ako ti môžem pomôcť so strategickým rozhodnutím alebo otvorením záznamu?`,
-                  `👋 Szia! Én vagyok a **Vezetői AI Irányító (${VERSION_CODENAME})**. Valós időben látom a CRM adatait és a jelenleg megnyitott képernyőt (**${screenContext.title}**). Miben segíthetek a stratégiai döntésekben vagy a tételek megnyitásában?`
-                ),
-                timestamp: new Date()
-              }
-            ]);
-          }
+          setMessages(loaded);
+        } else {
+          // Default Welcome message
+          setMessages([
+            {
+              id: `welcome-${Date.now()}`,
+              sender: "agent",
+              text: welcomeText,
+              timestamp: new Date()
+            }
+          ]);
         }
       })
       .catch(() => {
-        // Ignore error
+        setMessages([
+          {
+            id: `welcome-${Date.now()}`,
+            sender: "agent",
+            text: welcomeText,
+            timestamp: new Date()
+          }
+        ]);
       });
-  }, [currentUser?.id, currentUser?.email]);
+  }, [currentUser?.id, currentUser?.email, welcomeText]);
 
   // Send Text Message
   const handleSendText = async (customText?: string) => {
@@ -942,15 +962,15 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Bottom Chat Input Form */}
+          {/* Bottom Chat Input Form - Highly Visible & Elevated */}
           <form
             onSubmit={(e) => {
               e.preventDefault();
               handleSendText();
             }}
-            className="p-3 border-t border-slate-200/90 bg-white"
+            className="p-3.5 bg-white border-t border-slate-200/90 shadow-[0_-8px_25px_rgba(0,0,0,0.06)] shrink-0 z-20"
           >
-            <div className="flex items-center gap-2">
+            <div className="relative flex items-center bg-slate-50 hover:bg-slate-100/70 focus-within:bg-white rounded-2xl border-2 border-purple-300 focus-within:border-purple-600 focus-within:ring-4 focus-within:ring-purple-500/15 p-1.5 transition-all shadow-xs">
               <input
                 type="text"
                 value={inputText}
@@ -961,17 +981,31 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
                   `Kérdezzen a(z) ${screenContext.title} témában...`
                 )}
                 disabled={isLoading}
-                className="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:bg-white transition-all disabled:opacity-50"
+                className="flex-1 bg-transparent px-3 py-2 text-xs md:text-sm text-slate-900 font-medium placeholder:text-slate-400 placeholder:font-normal focus:outline-none disabled:opacity-50 min-w-0"
               />
 
-              <button
-                type="submit"
-                disabled={!inputText.trim() || isLoading}
-                className="p-2 rounded-xl bg-purple-600 hover:bg-purple-700 disabled:bg-slate-200 text-white cursor-pointer disabled:cursor-not-allowed transition-all active:scale-95 shadow-xs"
-                title="Send Message"
-              >
-                <Send className="h-4 w-4" />
-              </button>
+              <div className="flex items-center gap-1.5 shrink-0 pr-1">
+                {/* Voice Call Quick Launch Button */}
+                <button
+                  type="button"
+                  onClick={startVoiceCall}
+                  className="h-8 w-8 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 hover:text-purple-900 flex items-center justify-center transition-all cursor-pointer active:scale-95 border border-purple-200/60"
+                  title={t("Start Voice Call", "Spustiť hlasový hovor", "Hanghívás indítása")}
+                >
+                  <Mic className="h-4 w-4" />
+                </button>
+
+                {/* Prominent Send Button */}
+                <button
+                  type="submit"
+                  disabled={!inputText.trim() || isLoading}
+                  className="h-8 px-3 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 disabled:opacity-30 disabled:cursor-not-allowed text-white flex items-center justify-center gap-1.5 text-xs font-bold shadow-md shadow-purple-600/30 transition-all active:scale-95 cursor-pointer"
+                  title={t("Send Message", "Odoslať správu", "Üzenet küldése")}
+                >
+                  <span>{t("Send", "Odoslať", "Küldés")}</span>
+                  <Send className="h-3.5 w-3.5" />
+                </button>
+              </div>
             </div>
           </form>
         </div>
