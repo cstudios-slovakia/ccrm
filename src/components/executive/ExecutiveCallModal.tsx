@@ -365,6 +365,12 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
         setIsUserSpeaking(true);
         setIsAiSpeaking(false);
         setIsAiThinking(false);
+        // Barge-in: cancel active AI response if AI was speaking so user can speak freely
+        if (dataChannelRef.current && dataChannelRef.current.readyState === "open") {
+          try {
+            dataChannelRef.current.send(JSON.stringify({ type: "response.cancel" }));
+          } catch (e) {}
+        }
         break;
 
       case "input_audio_buffer.speech_stopped":
