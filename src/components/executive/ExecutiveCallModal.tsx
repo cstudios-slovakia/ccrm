@@ -540,10 +540,10 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-[100050] flex flex-col items-center justify-between p-6 sm:p-10 pointer-events-auto select-none backdrop-blur-3xl animate-in fade-in duration-300 overflow-hidden"
+      className="fixed inset-0 z-[100050] flex flex-col items-center justify-between p-6 sm:p-10 pointer-events-auto select-none animate-in fade-in duration-300 overflow-hidden"
       style={{
         background:
-          "radial-gradient(circle 900px at center, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 38%, rgba(246, 249, 255, 0.68) 70%, rgba(235, 242, 255, 0.50) 100%)"
+          "radial-gradient(circle 1000px at 50% 45%, #ffffff 0%, #fafbfc 45%, #f0f4f9 80%, #e8edf4 100%)"
       }}
     >
       <style>{`
@@ -588,28 +588,9 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
         }
       `}</style>
 
-      {/* Soft Ambient Role Bloom directly behind center Blob */}
-      <div
-        className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full blur-3xl opacity-25 pointer-events-none transition-colors duration-700 -z-10 ${
-          executive.color === "emerald"
-            ? "bg-emerald-400"
-            : executive.color === "amber"
-              ? "bg-amber-400"
-              : executive.color === "rose"
-                ? "bg-rose-400"
-                : executive.color === "cyan"
-                  ? "bg-cyan-400"
-                  : executive.color === "orange"
-                    ? "bg-orange-400"
-                    : executive.color === "blue"
-                      ? "bg-blue-400"
-                      : "bg-purple-400"
-        }`}
-      />
-
       {/* TOP BAR: Floating Minimal Info */}
       <div className="w-full max-w-4xl flex items-center justify-between z-10">
-        <div className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-white/80 backdrop-blur-md border border-slate-200/60 shadow-xs text-xs font-bold text-slate-700">
+        <div className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-white border border-slate-200/80 shadow-xs text-xs font-bold text-slate-700">
           <Sparkles className="h-3.5 w-3.5 text-purple-600" />
           <span>Voice: {executive.voice ? executive.voice.toUpperCase() : "ALLOY"}</span>
         </div>
@@ -619,7 +600,7 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
           <button
             type="button"
             onClick={() => setShowTranscript(!showTranscript)}
-            className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/80 hover:bg-white backdrop-blur-md border border-slate-200/60 shadow-xs text-xs font-bold text-slate-700 hover:text-slate-900 transition-all cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2 rounded-full bg-white hover:bg-slate-50 border border-slate-200/80 shadow-xs text-xs font-bold text-slate-700 hover:text-slate-900 transition-all cursor-pointer"
           >
             <FileText className="h-3.5 w-3.5 text-purple-600" />
             <span>{t("Transcript", "Prepis", "Átirat")}</span>
@@ -631,7 +612,7 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
           </button>
 
           {/* Active Call Timer Pill */}
-          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/80 backdrop-blur-md border border-slate-200/60 shadow-xs text-xs font-bold text-slate-800 font-mono">
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white border border-slate-200/80 shadow-xs text-xs font-bold text-slate-800 font-mono">
             <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
             <Clock className="h-3.5 w-3.5 text-slate-400" />
             <span>{formatTimer(callDuration)}</span>
@@ -639,34 +620,12 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
         </div>
       </div>
 
-      {/* CENTER STAGE: Frameless Talking Blobatar & Floating Titles (No Cards/Frames) */}
+      {/* CENTER STAGE: Frameless Talking Blobatar & Floating Titles (No Cards/Frames/Circles) */}
       <div className="my-auto flex flex-col items-center justify-center text-center z-10 w-full max-w-2xl py-4">
         
-        {/* Frameless Avatar Stage with Animated Speech Waves */}
-        <div className="relative my-4 flex items-center justify-center">
+        {/* Frameless Avatar Stage with Animated Speech Motion */}
+        <div className="relative my-6 flex items-center justify-center">
           
-          {/* Radial Soundwave ripples when AI is speaking */}
-          {isAiSpeaking && (
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none -z-10">
-              <div className="absolute w-[240px] h-[240px] rounded-full bg-purple-400/25 animate-ping duration-1000 scale-135" />
-              <div className="absolute w-[280px] h-[280px] rounded-full bg-indigo-300/30 animate-pulse duration-700" />
-              <div className="absolute w-[330px] h-[330px] rounded-full border border-purple-300/40 animate-spin duration-3000" />
-            </div>
-          )}
-
-          {/* User speech reaction ring */}
-          {isUserSpeaking && !isAiSpeaking && (
-            <div
-              className="absolute -inset-8 rounded-full border-2 border-emerald-400/60 transition-all duration-75 pointer-events-none"
-              style={{ transform: `scale(${1 + userAudioLevel / 130})` }}
-            />
-          )}
-
-          {/* Thinking glow ring */}
-          {isAiThinking && !isAiSpeaking && (
-            <div className="absolute -inset-8 rounded-full border-2 border-amber-400/60 animate-pulse pointer-events-none" />
-          )}
-
           {/* Frameless Animated Talking Blobatar */}
           <div
             className={`relative flex items-center justify-center transition-transform duration-200 z-10 ${
@@ -679,19 +638,13 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
                     : "animate-[blobIdle_4s_ease-in-out_infinite]"
             }`}
             style={{
-              filter: isAiSpeaking
-                ? "drop-shadow(0 25px 40px rgba(147, 51, 234, 0.25))"
-                : isUserSpeaking
-                  ? "drop-shadow(0 25px 40px rgba(16, 185, 129, 0.22))"
-                  : isAiThinking
-                    ? "drop-shadow(0 25px 40px rgba(245, 158, 11, 0.22))"
-                    : "drop-shadow(0 20px 35px rgba(15, 23, 42, 0.10))"
+              filter: "drop-shadow(0 20px 35px rgba(15, 23, 42, 0.08))"
             }}
           >
             <BlobatarAvatar
               name={executive.name}
               roleColor={executive.color}
-              size={210}
+              size={220}
               animate="always"
               expression={avatarExpression}
               frameless={true}
@@ -700,16 +653,16 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
           </div>
         </div>
 
-        {/* Floating Titles & Metadata (Directly in scene, no card container) */}
-        <div className="space-y-1.5 mt-4 mb-3">
-          <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wide bg-white/80 border border-slate-200/80 text-purple-700 shadow-xs backdrop-blur-md">
+        {/* Floating Titles & Metadata */}
+        <div className="space-y-1.5 mt-2 mb-3">
+          <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wide bg-white border border-slate-200/80 text-purple-700 shadow-xs">
             <Sparkles className="h-3 w-3 text-purple-500" />
             {executive.badge}
           </div>
-          <h2 className="text-3xl sm:text-4xl font-black font-heading tracking-tight text-slate-900 drop-shadow-xs">
+          <h2 className="text-3xl sm:text-4xl font-black font-heading tracking-tight text-slate-900">
             {executive.name}
           </h2>
-          <p className="text-sm sm:text-base font-semibold text-slate-600 max-w-md mx-auto">
+          <p className="text-sm sm:text-base font-semibold text-slate-500 max-w-md mx-auto">
             {translatedPosition}
           </p>
         </div>
