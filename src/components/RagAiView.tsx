@@ -771,7 +771,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                     roleColor="purple"
                     size={42}
                     rounded="2xl"
-                    animate="hover"
+                    animate="always"
                     badge={
                       <span className="h-4 w-4 rounded-full bg-purple-600 text-white flex items-center justify-center text-[9px] shadow-xs ring-2 ring-white">
                         <Sparkles className="h-2.5 w-2.5" />
@@ -881,7 +881,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                     roleColor={role.color}
                     size={36}
                     rounded="xl"
-                    animate="hover"
+                    animate="always"
                   />
 
                   <div className="flex-1 min-w-0">
@@ -941,7 +941,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                     roleColor={custom.color || "purple"}
                     size={36}
                     rounded="xl"
-                    animate="hover"
+                    animate="always"
                   />
 
                   <div className="flex-1 min-w-0">
@@ -1130,7 +1130,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                         roleColor={msg.isCouncil ? "council" : selectedRole.color}
                         size={32}
                         rounded="xl"
-                        animate="hover"
+                        animate="always"
                         expression={msg.isCouncil ? "thinking" : "happy"}
                       />
                     ) : (
@@ -1139,7 +1139,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                         roleColor="indigo"
                         size={32}
                         rounded="xl"
-                        animate="hover"
+                        animate="always"
                         expression="happy"
                       />
                     )}

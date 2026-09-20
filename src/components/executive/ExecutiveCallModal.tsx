@@ -673,9 +673,10 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
                   >
                     <BlobatarAvatar
                       name={item.sender === "user" ? userName : executive.name}
+                      roleColor={item.sender === "user" ? "indigo" : executive.color}
                       size={24}
                       rounded="lg"
-                      animate="hover"
+                      animate="always"
                       className="shrink-0 mt-0.5 border-slate-700"
                     />
                     <div className="flex-1 min-w-0">

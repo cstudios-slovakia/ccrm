@@ -156,10 +156,11 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
         <div className="flex items-center gap-2.5 min-w-0">
           <BlobatarAvatar
             name="Simulation Interrogation Hub"
+            roleColor="purple"
             size={32}
             rounded="xl"
-            animate="hover"
-            className="border-purple-300 shadow-sm shrink-0"
+            animate="always"
+            className="shadow-sm shrink-0"
           />
           <div className="min-w-0">
             <h3 className="text-sm font-bold text-slate-900 truncate">
@@ -254,18 +255,18 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
                       ? 'Chief Intelligence Analyst'
                       : (selectedAgent?.displayName || selectedAgent?.username || 'Market Specialist'))
               }
+              roleColor={
+                m.sender === 'user'
+                  ? 'indigo'
+                  : (activeTab === 'analyst' ? 'purple' : 'emerald')
+              }
               size={28}
               rounded="full"
-              animate="hover"
+              animate="always"
               expression={
                 m.sender === 'user'
                   ? 'happy'
                   : (activeTab === 'analyst' ? 'smug' : 'unsure')
-              }
-              className={
-                m.sender === 'user'
-                  ? 'border-indigo-300 shadow-xs'
-                  : (activeTab === 'analyst' ? 'border-purple-300 shadow-xs' : 'border-emerald-300 shadow-xs')
               }
             />
             <div className={`p-3 rounded-2xl text-xs leading-relaxed max-w-[85%] ${
