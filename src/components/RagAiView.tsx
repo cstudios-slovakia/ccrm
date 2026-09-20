@@ -1298,31 +1298,47 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
 
           {/* Input Form */}
           <form onSubmit={handleSend} className="p-3.5 border-t border-slate-200/80 bg-slate-50/40">
-            <div className="relative flex items-center">
-              <input
-                type="text"
-                value={inputText}
-                onChange={(e) => setInputText(e.target.value)}
-                placeholder={
-                  isCouncilMode
-                    ? t("Pose a strategic dilemma to the Executive Council...", "Položte strategickú otázku Výkonnej rade...", "Tegyen fel stratégiai kérdést a Tanácsnak...")
-                    : systemLanguage === "sk"
-                      ? `Položte otázku pre ${selectedRole.name}...`
-                      : systemLanguage === "hu"
-                        ? `Kérdezzen a(z) ${selectedRole.name} pozíciótól...`
-                        : `Ask ${selectedRole.name}...`
-                }
-                className="w-full pl-4 pr-12 py-3 rounded-2xl border border-slate-200 bg-white focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 text-xs transition-all shadow-xs"
-              />
+            <div className="flex items-center gap-2">
+              {/* Red-highlighted Voice Call Button on the left */}
               <button
-                type="submit"
-                disabled={!inputText.trim() || isLoading}
-                className={`absolute right-2 p-2 rounded-xl text-white transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
-                  isCouncilMode ? "bg-amber-600 hover:bg-amber-700 shadow-amber-500/20 shadow-md" : "bg-purple-600 hover:bg-purple-700 shadow-purple-500/20 shadow-md"
-                }`}
+                type="button"
+                onClick={() => startCall(isCouncilMode ? flagshipOrchestrator : selectedRole)}
+                className="flex items-center justify-center h-10 w-10 shrink-0 rounded-2xl bg-gradient-to-br from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 active:scale-95 text-white shadow-md shadow-rose-500/30 border border-rose-400/40 transition-all cursor-pointer group"
+                title={t(
+                  `Start Voice Call with ${isCouncilMode ? flagshipOrchestrator.name : selectedRole.name}`,
+                  `Začať hlasový hovor (${isCouncilMode ? flagshipOrchestrator.name : selectedRole.name})`,
+                  `Hanghívás indítása (${isCouncilMode ? flagshipOrchestrator.name : selectedRole.name})`
+                )}
               >
-                <Send className="h-4 w-4" />
+                <PhoneCall className="h-4.5 w-4.5 group-hover:scale-110 transition-transform" />
               </button>
+
+              <div className="relative flex-1 flex items-center">
+                <input
+                  type="text"
+                  value={inputText}
+                  onChange={(e) => setInputText(e.target.value)}
+                  placeholder={
+                    isCouncilMode
+                      ? t("Pose a strategic dilemma to the Executive Council...", "Položte strategickú otázku Výkonnej rade...", "Tegyen fel stratégiai kérdést a Tanácsnak...")
+                      : systemLanguage === "sk"
+                        ? `Položte otázku pre ${selectedRole.name}...`
+                        : systemLanguage === "hu"
+                          ? `Kérdezzen a(z) ${selectedRole.name} pozíciótól...`
+                          : `Ask ${selectedRole.name}...`
+                  }
+                  className="w-full pl-4 pr-12 py-3 rounded-2xl border border-slate-200 bg-white focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 text-xs transition-all shadow-xs"
+                />
+                <button
+                  type="submit"
+                  disabled={!inputText.trim() || isLoading}
+                  className={`absolute right-2 p-2 rounded-xl text-white transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                    isCouncilMode ? "bg-amber-600 hover:bg-amber-700 shadow-amber-500/20 shadow-md" : "bg-purple-600 hover:bg-purple-700 shadow-purple-500/20 shadow-md"
+                  }`}
+                >
+                  <Send className="h-4 w-4" />
+                </button>
+              </div>
             </div>
           </form>
         </div>
