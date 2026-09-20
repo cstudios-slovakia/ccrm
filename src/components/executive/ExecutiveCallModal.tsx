@@ -258,10 +258,12 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
           type: "session.update",
           session: {
             modalities: ["audio", "text"],
-            instructions: `You are ${executive.name} (${translatedPosition}), an executive in CCRM.\nYou are in a live voice call with ${userName}.\nRespond concisely and conversationally in ${
-              systemLanguage === "sk" ? "Slovak" : systemLanguage === "hu" ? "Hungarian" : "English"
-            }.`,
-            voice: executive.voice || "alloy",
+            instructions:
+              sessionInit.instructions ||
+              `You are ${executive.name} (${translatedPosition}), an executive in CCRM.\nYou are in a live voice call with ${userName}.\nRespond concisely and conversationally in ${
+                systemLanguage === "sk" ? "Slovak" : systemLanguage === "hu" ? "Hungarian" : "English"
+              }.`,
+            voice: sessionInit.voice || executive.voice || "alloy",
             input_audio_transcription: {
               model: "whisper-1"
             },

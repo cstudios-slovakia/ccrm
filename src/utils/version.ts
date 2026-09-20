@@ -1,4 +1,4 @@
-export const VERSION = "1.10.39-Kiwi";
+export const VERSION = "1.10.40-Kiwi";
 // Release codename ("Kiwi"), used to name the RAG assistant. Kept as its own
 // export because RagAiView reads it at module scope — dropping it silently named
 // the assistant `undefined`.

@@ -162,10 +162,10 @@ if (empty($skillInstructions)) {
 
 // 4. Gather live CRM context across all 16 domains via comprehensive RAG engine
 try {
-    $ragData = build_comprehensive_crm_rag_context($pdo, $chatDb, '', $systemLanguage, $agentId, ['limit' => 20]);
-    $sanitized_context = $ragData['sanitized_context'];
+    $ragData = build_comprehensive_crm_rag_context($pdo, $chatDb, '', $systemLanguage, $agentId, ['limit' => 32]);
+    $crmContext = !empty($ragData['raw_context']) ? $ragData['raw_context'] : $ragData['sanitized_context'];
 } catch (\Exception $e) {
-    $sanitized_context = "";
+    $crmContext = "";
 }
 
 $todayFormatted = date('l, j. F Y');
@@ -187,7 +187,7 @@ $voiceSystemPrompt = $skillInstructions . "\n\n"
     . "3. GROUNDING IN CRM DATA:\n"
     . "   - Current system date is {$todayFormatted} ({$todayDate}).\n"
     . "   - You have live grounding in CRM operations and financial records:\n"
-    . "{$sanitized_context}\n\n"
+    . "{$crmContext}\n\n"
     . "Answer and discuss exclusively in the user's language ({$langName}). Speak clearly, decisively, and concisely.";
 
 // 6. Request Ephemeral Client Secret from OpenAI Realtime API (GA endpoint)
@@ -287,5 +287,6 @@ echo json_encode([
     'agent_name' => $agentName,
     'agent_position' => $agentPosition,
     'user_name' => $userName,
-    'language' => $systemLanguage
+    'language' => $systemLanguage,
+    'instructions' => $voiceSystemPrompt
 ]);
