@@ -171,6 +171,12 @@ function sanitize_text($text, $to_placeholder) {
 function restore_text($text, $to_real) {
     if (empty($text) || empty($to_real)) return $text;
 
+    // 1. Handle placeholders that were directly followed by link destination '(#',
+    // e.g. [CLIENT_NAME_1](#client-...) -> [Real Name](#client-...
+    foreach ($to_real as $placeholder => $real) {
+        $text = str_replace($placeholder . '(#', '[' . $real . '](#', $text);
+    }
+
     $all_replacements = [];
     foreach ($to_real as $placeholder => $real) {
         $all_replacements[$placeholder] = $real;

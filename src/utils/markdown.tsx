@@ -28,18 +28,25 @@ export const EntityPill: React.FC<{ label: string; url: string }> = ({ label, ur
     Icon = Folder;
     colorStyles = "bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-800 hover:text-blue-950";
     iconColor = "text-blue-600";
-  } else if (rawHash.startsWith("finance") || rawHash === "finances") {
+  } else if (rawHash.startsWith("finance") || rawHash === "finances" || rawHash.startsWith("invoice")) {
     Icon = Receipt;
     colorStyles = "bg-amber-50 hover:bg-amber-100 border-amber-200 text-amber-800 hover:text-amber-950";
     iconColor = "text-amber-600";
-  } else if (rawHash === "tasks") {
+  } else if (rawHash.startsWith("task")) {
     Icon = CheckSquare;
     colorStyles = "bg-rose-50 hover:bg-rose-100 border-rose-200 text-rose-800 hover:text-rose-950";
     iconColor = "text-rose-600";
-  } else if (rawHash === "meetings") {
+  } else if (rawHash.startsWith("meeting")) {
     Icon = Calendar;
     colorStyles = "bg-cyan-50 hover:bg-cyan-100 border-cyan-200 text-cyan-800 hover:text-cyan-950";
     iconColor = "text-cyan-600";
+  }
+
+  // Clean up display label: remove formatting characters and extra brackets
+  let displayLabel = (label || "").replace(/[\*_`]/g, "").trim();
+  displayLabel = displayLabel.replace(/^\[+|\]+$/g, "").trim();
+  if (!displayLabel && url.startsWith("#")) {
+    displayLabel = url.slice(1).replace(/^(?:client-|lead-)/, "");
   }
 
   return (
@@ -47,10 +54,10 @@ export const EntityPill: React.FC<{ label: string; url: string }> = ({ label, ur
       type="button"
       onClick={handleEntityClick}
       className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[11px] font-bold transition-all cursor-pointer hover:scale-[1.03] active:scale-95 mx-1 my-0.5 select-none shadow-2xs group ${colorStyles}`}
-      title={`Open ${label} in CRM`}
+      title={`Open ${displayLabel} in CRM`}
     >
       <Icon className={`h-3 w-3 shrink-0 ${iconColor} group-hover:scale-110 transition-transform`} />
-      <span className="truncate max-w-[200px]">{label}</span>
+      <span className="truncate max-w-[240px]">{displayLabel}</span>
       <ArrowRight className="h-2.5 w-2.5 opacity-40 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
     </button>
   );
@@ -136,9 +143,50 @@ export const renderTextWithFilePills = (text: string): React.ReactNode => {
   return parts.length > 0 ? parts : text;
 };
 
+// Helper to normalize bare entity links like Name(#client-Name) or (#client-Name) into standard markdown links [Name](#client-Name)
+export const normalizeEntityLinks = (text: string): string => {
+  if (!text) return text;
+  
+  // 1. Convert Name(#client-Name) or Name(#lead-Name) where the text before (# ends with the hash target
+  let result = text.replace(/([^\n\[\]\(\)]+)\(#((?:client-|lead-|project|finance|invoice|task|meeting)[^\)]+)\)/gi, (_match, prefix, hash) => {
+    const entityName = hash.replace(/^(?:client-|lead-)/, "").trim();
+    const trimmedPrefix = prefix.trim();
+    if (entityName && trimmedPrefix.endsWith(entityName)) {
+      const before = prefix.slice(0, prefix.lastIndexOf(entityName));
+      return `${before}[${entityName}](#${hash})`;
+    }
+    return `[${trimmedPrefix}](#${hash})`;
+  });
+
+  // 2. Any bare (#client-Name) without square brackets
+  result = result.replace(/(?<!!)(?<!\])\(#((?:client-|lead-|project|finance|invoice|task|meeting)[^\)]+)\)/gi, (_match, hash) => {
+    const cleanHash = hash.trim();
+    let derivedLabel = cleanHash;
+    if (cleanHash.startsWith("client-")) {
+      derivedLabel = cleanHash.replace(/^client-/, "");
+    } else if (cleanHash.startsWith("lead-")) {
+      derivedLabel = `Lead #${cleanHash.replace(/^lead-/, "")}`;
+    } else if (cleanHash.startsWith("project")) {
+      derivedLabel = "Project";
+    } else if (cleanHash.startsWith("finance")) {
+      derivedLabel = "Finances";
+    } else if (cleanHash.startsWith("invoice")) {
+      derivedLabel = "Invoices";
+    } else if (cleanHash.startsWith("task")) {
+      derivedLabel = "Tasks";
+    } else if (cleanHash.startsWith("meeting")) {
+      derivedLabel = "Meetings";
+    }
+    return `[${derivedLabel}](#${cleanHash})`;
+  });
+
+  return result;
+};
+
 // Safe, lightweight utility to convert basic markdown string into React elements
 export const parseMarkdown = (text: string): React.ReactNode[] => {
-  const lines = text.split("\n");
+  const normalizedText = normalizeEntityLinks(text || "");
+  const lines = normalizedText.split("\n");
   const elements: React.ReactNode[] = [];
   
   let currentListItems: React.ReactNode[] = [];
@@ -432,7 +480,8 @@ const parseInlineStyles = (text: string): React.ReactNode => {
   let index = 0;
 
   // Regex matches: **bold** / __bold__, *italic* / _italic_, `code`, [link](url)
-  const inlineRegex = /(\*\*|__)(.*?)\1|(\*|_)(.*?)\3|(`)(.*?)\5|\[(.*?)\]\(((?:https?:\/\/|\/|#)[^\s\)]+)\)/g;
+  // Notice [^\)]+ allows spaces inside URLs (e.g. #client-Apex Development - Bytový Dom)
+  const inlineRegex = /(\*\*|__)(.*?)\1|(\*|_)(.*?)\3|(`)(.*?)\5|\[(.*?)\]\(((?:https?:\/\/|\/|#)[^\)]+)\)/g;
   let match;
 
   const parseInnerStyles = (inner: string): React.ReactNode => {
@@ -457,9 +506,9 @@ const parseInlineStyles = (text: string): React.ReactNode => {
     } else if (match[5]) {
       // Inline Code
       parts.push(<code key={match.index} className="bg-slate-100/80 px-1 py-0.5 rounded text-[10.5px] font-mono text-purple-700 border border-slate-200/50">{match[6]}</code>);
-    } else if (match[7] && match[8]) {
+    } else if (match[7] !== undefined && match[8] !== undefined) {
       const linkLabel = match[7];
-      const linkUrl = match[8];
+      const linkUrl = match[8].trim();
 
       // If URL is an internal hash route (e.g. #client-Silvia, #projects, #lead-12), render an interactive EntityPill
       if (linkUrl.startsWith("#")) {
