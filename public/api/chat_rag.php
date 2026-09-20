@@ -504,20 +504,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $screenContextBlock = "";
     if (!empty($screenContext)) {
         $screenContextBlock = "\n\n=== USER'S ACTIVE SCREEN CONTEXT ===\n" . $screenContext . "\n====================================\n"
-                            . "The user is currently viewing the active screen described above. Provide answers aware of what they are looking at right now.\n"
+                            . "The user is currently viewing the active screen described above. When the user asks about what they are viewing, what is on this screen, or how to use it, explain the exact screen elements, features, and active data clearly.\n"
                             . "Whenever you recommend or mention a CRM record, client, project, invoice, lead, or tab, format it as a markdown hash link so the user can click it directly in chat to open that entry (e.g. [Client: ClientName](#client-ClientName), [Project: Name](#projects), [Invoice: FA-2026-1045](#finances), [Task: Title](#tasks), [Lead: ID](#lead-ID)).\n";
     }
 
     $systemPrompt = $skillInstructions . "\n\n"
                   . "CURRENT SYSTEM DATE: " . $todayFormatted . "\n\n"
-                  . "CRITICAL INSTRUCTIONS ON CRM DATA DOMAINS:\n"
-                  . "1. FINANCIAL MANAGEMENT (FINANCIE / CASHFLOW / FAKTÚRY):\n"
-                  . "   - You have full access to Financial Management records (incomes, expenses, invoices, vendor bills, overdue receivables, cash flow, and profit margins).\n"
-                  . "   - When asked about company finances, revenue, expenses, cash flow, profit, unpaid invoices, or specific costs, refer to the FINANCIAL MANAGEMENT OVERVIEW and individual financial records accurately with exact euro amounts.\n\n"
-                  . "2. DATES, DUE DATES & EXPIRATIONS (SPLATNOSŤ / PLATNOSŤ / LEHOTY):\n"
-                  . "   - Use CURRENT SYSTEM DATE (" . $todayDate . ") to evaluate whether an entry, certificate (certifikát), invoice, deadline, task, or document is valid (platný / aktívny) or expired / overdue (po splatnosti / vypršaná platnosť).\n"
-                  . "   - If asked whether any certificate or invoice is expired (po splatnosti), check all items in the context. If all dates are in the future, explicitly confirm that none are overdue and state their expiration dates and days remaining.\n"
-                  . "   - If an item is expired (date in the past), clearly specify which item is expired and when.\n\n"
+                  . "CORE DIRECTIVES:\n"
+                  . "1. DIRECT RELEVANCE: Always answer the user's specific question or request directly. Do not pivot to unrelated financial figures, overdue invoices, or generic summaries unless the user specifically inquired about them.\n"
+                  . "2. SCREEN AWARENESS & ACCURACY: If the user asks what is on the screen, what they are looking at, or asks for guidance on the current view, refer directly to the USER'S ACTIVE SCREEN CONTEXT above and explain the specific module, visible sections, cards, and available actions in detail.\n"
+                  . "3. DATA CITATION: When asked about finances, clients, projects, tasks, or certificates, cite the exact figures, dates, and names from the CRM knowledge base accurately.\n"
+                  . "4. NATURAL EXECUTIVE TONE: Answer in the same language the user asked (" . ($systemLanguage === 'hu' ? 'Hungarian / Magyar' : ($systemLanguage === 'sk' ? 'Slovak / Slovenčina' : 'English')) . "). Do not append boilerplate or repetitive headers unless a structured action plan was specifically requested.\n"
                   . "IMPORTANT - PRIVACY INSTRUCTION: Personal names, phone numbers, and emails have been pseudonymized and masked with placeholders like [CLIENT_NAME_1] or [EMAIL_REF_1].\n"
                   . "Keep references exactly as they are. Answer the user question based on the context provided."
                   . $pastDecisionsBlock
@@ -525,7 +522,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                   . "=== RAG KNOWLEDGE BASE CONTEXT ===\n"
                   . $sanitized_context
                   . "\n==================================\n\n"
-                  . "Answer the user question query professionally in the same language they asked. Accurately report financial metrics, invoices, certificates, folders, clients, due dates, and validity status.";
+                  . "Answer the user question query professionally in the same language they asked.";
 
     $historyMessages = [];
     if ($chatDb) {
