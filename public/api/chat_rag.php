@@ -118,7 +118,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
     
     // 3.1. RESET Action
-    if ($action === 'reset') {
+    if ($action === 'reset' || $action === 'reset_history') {
         if ($chatDb) {
             try {
                 $delStmt = $chatDb->prepare("DELETE FROM `chat_history` WHERE (`user_id` = ? OR `user_id` = 'default_user') AND `agent_id` = ?");
@@ -497,6 +497,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
         $pastDecisionsBlock .= "</past_decisions>\nMaintain continuity with these past executive decisions where relevant.\n";
+    }
+
     // User's active screen context
     $screenContext = trim($payload['current_screen_context'] ?? '');
     $screenContextBlock = "";

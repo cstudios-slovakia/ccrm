@@ -187,7 +187,9 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
       }
     ]);
 
-    fetch(`/api/chat_rag.php?action=chat_history&user_id=${encodeURIComponent(userId)}&agent_id=orchestrator`)
+    fetch(`/api/chat_rag.php?action=chat_history&user_id=${encodeURIComponent(userId)}&agent_id=orchestrator`, {
+      credentials: "same-origin"
+    })
       .then((res) => res.json())
       .then((data) => {
         if (data.success && Array.isArray(data.messages) && data.messages.length > 0) {
@@ -242,6 +244,7 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
       const userId = currentUser?.id || currentUser?.email || "default_user";
       const res = await fetch("/api/chat_rag.php", {
         method: "POST",
+        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "chat",
@@ -252,7 +255,14 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
         })
       });
 
-      const data = await res.json();
+      const textResp = await res.text();
+      let data: any = {};
+      try {
+        data = JSON.parse(textResp);
+      } catch {
+        throw new Error(res.ok ? "Invalid server response" : `Server returned ${res.status}: ${textResp.slice(0, 100)}`);
+      }
+
       if (data.success && data.reply) {
         const agentMsg: ChatMessage = {
           id: `a-${Date.now()}`,
@@ -292,6 +302,7 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
     try {
       await fetch("/api/chat_rag.php", {
         method: "POST",
+        credentials: "same-origin",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action: "reset_history",
