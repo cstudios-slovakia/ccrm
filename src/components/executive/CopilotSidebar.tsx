@@ -370,38 +370,75 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
   // Navigate tool handler for Voice & Chat
   const handleNavigate = (entityType: string, target: string) => {
     if (typeof window === "undefined") return;
-    const cleanTarget = target.trim();
+    const cleanTarget = (target || "").trim();
+    const typeLower = (entityType || "").toLowerCase();
+    const targetLower = cleanTarget.toLowerCase();
     let targetHash = "";
 
-    switch (entityType.toLowerCase()) {
-      case "client":
-        targetHash = `#client-${encodeURIComponent(cleanTarget)}`;
-        break;
-      case "lead":
-        targetHash = `#lead-${encodeURIComponent(cleanTarget)}`;
-        break;
-      case "project":
+    if (typeLower === "client" || targetLower.startsWith("client-")) {
+      const name = cleanTarget.replace(/^#?client-/, "");
+      targetHash = `#client-${encodeURIComponent(name)}`;
+    } else if (typeLower === "lead" || targetLower.startsWith("lead-")) {
+      const leadId = cleanTarget.replace(/^#?lead-/, "");
+      targetHash = `#lead-${encodeURIComponent(leadId)}`;
+    } else if (typeLower === "project" || typeLower === "projects" || targetLower.startsWith("project")) {
+      if (cleanTarget && cleanTarget !== "project" && cleanTarget !== "projects") {
         targetHash = cleanTarget.startsWith("#") ? cleanTarget : `#projects?id=${encodeURIComponent(cleanTarget)}`;
-        break;
-      case "finances":
-      case "invoice":
-        targetHash = `#finances${cleanTarget ? `?invoice=${encodeURIComponent(cleanTarget)}` : ""}`;
-        break;
-      case "tasks":
-        targetHash = "#tasks";
-        break;
-      case "meetings":
-        targetHash = "#meetings";
-        break;
-      case "dashboard":
-        targetHash = "#dashboard";
-        break;
-      case "automation":
-        targetHash = "#automation";
-        break;
-      default:
-        targetHash = cleanTarget.startsWith("#") ? cleanTarget : `#${cleanTarget}`;
-        break;
+      } else {
+        targetHash = "#projects";
+      }
+    } else if (
+      typeLower === "financial" || 
+      typeLower === "finances" || 
+      typeLower === "cashflow" ||
+      targetLower === "financial" ||
+      targetLower === "finances" ||
+      targetLower === "cashflow" ||
+      targetLower === "penzugy" ||
+      targetLower === "pénzügy" ||
+      targetLower === "penzugyek" ||
+      targetLower === "pénzügyek"
+    ) {
+      targetHash = "#financial";
+    } else if (
+      typeLower === "invoices" || 
+      typeLower === "invoice" || 
+      typeLower === "offers" ||
+      targetLower === "invoices" ||
+      targetLower === "invoice" ||
+      targetLower === "szamlak" ||
+      targetLower === "számlák" ||
+      targetLower === "faktury"
+    ) {
+      targetHash = cleanTarget && cleanTarget !== "invoices" && cleanTarget !== "invoice" && cleanTarget !== "offers" 
+        ? `#invoices?invoice=${encodeURIComponent(cleanTarget)}` 
+        : "#invoices";
+    } else if (typeLower === "tasks" || typeLower === "task" || targetLower === "tasks" || targetLower === "kanban" || targetLower === "feladatok") {
+      targetHash = "#tasks";
+    } else if (typeLower === "warehouse" || targetLower === "warehouse" || targetLower === "raktar" || targetLower === "raktár" || targetLower === "sklad") {
+      targetHash = "#warehouse";
+    } else if (typeLower === "meetings" || typeLower === "meeting" || targetLower === "meetings" || targetLower === "targyalo" || targetLower === "tárgyaló") {
+      targetHash = "#meetings";
+    } else if (typeLower === "dashboard" || typeLower === "overview" || targetLower === "dashboard" || targetLower === "iranyitopult" || targetLower === "irányítópult") {
+      targetHash = "#dashboard";
+    } else if (typeLower === "automation" || targetLower === "automation" || targetLower === "automatizalas") {
+      targetHash = "#automation";
+    } else if (typeLower === "sai" || targetLower === "sai" || targetLower === "simulation" || targetLower === "piaci szimuláció") {
+      targetHash = "#sai";
+    } else if (typeLower === "clients" || targetLower === "clients" || targetLower === "ugyfelek" || targetLower === "ügyfelek") {
+      targetHash = "#clients";
+    } else if (typeLower === "leads" || targetLower === "leads" || targetLower === "erdeklodok" || targetLower === "érdeklődők") {
+      targetHash = "#leads";
+    } else if (typeLower === "files" || targetLower === "files" || targetLower === "documents" || targetLower === "dokumentumtar") {
+      targetHash = "#files";
+    } else if (typeLower === "social_media" || targetLower === "social") {
+      targetHash = "#social_media";
+    } else if (typeLower === "settings" || targetLower === "settings" || targetLower === "beallitasok") {
+      targetHash = "#settings";
+    } else if (typeLower === "updates" || targetLower === "updates" || targetLower === "ujdonsagok") {
+      targetHash = "#updates";
+    } else {
+      targetHash = cleanTarget.startsWith("#") ? cleanTarget : `#${cleanTarget}`;
     }
 
     window.location.hash = targetHash;
@@ -414,39 +451,33 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
     }
-    if (audioContextRef.current) {
-      audioContextRef.current.close().catch(() => {});
-      audioContextRef.current = null;
-    }
     if (localStreamRef.current) {
       localStreamRef.current.getTracks().forEach((track) => track.stop());
       localStreamRef.current = null;
     }
-    if (dataChannelRef.current) {
-      dataChannelRef.current.close();
-      dataChannelRef.current = null;
+    if (audioContextRef.current) {
+      audioContextRef.current.close().catch(() => {});
+      audioContextRef.current = null;
     }
     if (pcRef.current) {
       pcRef.current.close();
       pcRef.current = null;
     }
-    if (remoteAudioRef.current) {
-      remoteAudioRef.current.srcObject = null;
-    }
+    dataChannelRef.current = null;
+    setCallState("idle");
     setIsAiSpeaking(false);
     setIsUserSpeaking(false);
     setUserAudioLevel(0);
-    setCallState("idle");
   };
 
-  // Start Embedded Voice Call
+  // Start Realtime WebRTC Voice Call
   const startVoiceCall = async () => {
-    setIsVoiceMode(true);
-    setCallState("connecting");
-    setVoiceErrorMessage("");
-    setLiveTranscript({ user: "", agent: "" });
-
     try {
+      setCallState("connecting");
+      setVoiceErrorMessage("");
+      setLiveTranscript({ user: "", agent: "" });
+      setIsVoiceMode(true);
+
       const userName = currentUser?.name || currentUser?.email?.split("@")[0] || "Erik";
       const res = await fetch("/api/realtime_session.php", {
         method: "POST",
@@ -533,6 +564,22 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
 
       dc.addEventListener("open", () => {
         setCallState("connected");
+        // Send session.update over data channel to register all tools & instructions
+        if (sessionInit.instructions || sessionInit.tools) {
+          dc.send(
+            JSON.stringify({
+              type: "session.update",
+              session: {
+                instructions: sessionInit.instructions,
+                voice: sessionInit.voice || "alloy",
+                tools: sessionInit.tools || [],
+                input_audio_transcription: {
+                  model: "whisper-1"
+                }
+              }
+            })
+          );
+        }
       });
 
       dc.addEventListener("message", async (event) => {
@@ -578,7 +625,7 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
             }));
           }
 
-          // Function Calling: query_crm_live_data or navigate_to_entry
+          // Function Calling
           if (msg.type === "response.function_call_arguments.done") {
             const callId = msg.call_id;
             const functionName = msg.name;
@@ -598,7 +645,7 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
                       call_id: callId,
                       output: JSON.stringify({
                         success: true,
-                        message: `Successfully navigated user screen to ${args.entity_type}: ${args.target}`
+                        message: `Navigated user screen to ${args.entity_type}: ${args.target}`
                       })
                     }
                   })
@@ -626,6 +673,97 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
                       output: JSON.stringify({
                         result: ragJson.result || "No data found."
                       })
+                    }
+                  })
+                );
+                dc.send(JSON.stringify({ type: "response.create" }));
+              }
+            } else if (functionName === "create_task") {
+              const taskRes = await fetch("/api/realtime_session.php", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "create_task",
+                  title: args.title,
+                  description: args.description || "",
+                  priority: args.priority || "medium",
+                  due_date: args.due_date || "",
+                  assigned_to: args.assigned_to || ""
+                })
+              });
+              const taskJson = await taskRes.json();
+              if (taskJson.success) {
+                if (typeof (window as any).showToast === "function") {
+                  (window as any).showToast(t(`Task created: "${args.title}"`, `Úloha vytvorená: "${args.title}"`, `Feladat létrehozva: "${args.title}"`));
+                }
+                window.dispatchEvent(new CustomEvent("ccrm:reload-data"));
+              }
+              if (dc.readyState === "open") {
+                dc.send(
+                  JSON.stringify({
+                    type: "conversation.item.create",
+                    item: {
+                      type: "function_call_output",
+                      call_id: callId,
+                      output: JSON.stringify(taskJson)
+                    }
+                  })
+                );
+                dc.send(JSON.stringify({ type: "response.create" }));
+              }
+            } else if (functionName === "create_lead") {
+              const leadRes = await fetch("/api/realtime_session.php", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "create_lead",
+                  ...args
+                })
+              });
+              const leadJson = await leadRes.json();
+              if (leadJson.success) {
+                if (typeof (window as any).showToast === "function") {
+                  (window as any).showToast(t(`Lead registered: "${args.name}"`, `Záujemca vytvorený: "${args.name}"`, `Új érdeklődő rögzítve: "${args.name}"`));
+                }
+                window.dispatchEvent(new CustomEvent("ccrm:reload-data"));
+              }
+              if (dc.readyState === "open") {
+                dc.send(
+                  JSON.stringify({
+                    type: "conversation.item.create",
+                    item: {
+                      type: "function_call_output",
+                      call_id: callId,
+                      output: JSON.stringify(leadJson)
+                    }
+                  })
+                );
+                dc.send(JSON.stringify({ type: "response.create" }));
+              }
+            } else if (functionName === "add_client_note") {
+              const noteRes = await fetch("/api/realtime_session.php", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "add_client_note",
+                  ...args
+                })
+              });
+              const noteJson = await noteRes.json();
+              if (noteJson.success) {
+                if (typeof (window as any).showToast === "function") {
+                  (window as any).showToast(t(`Note logged for "${args.client_name}"`, `Poznámka pridaná ku klientovi "${args.client_name}"`, `Jegyzet hozzáadva a(z) "${args.client_name}" ügyfélhez`));
+                }
+                window.dispatchEvent(new CustomEvent("ccrm:reload-data"));
+              }
+              if (dc.readyState === "open") {
+                dc.send(
+                  JSON.stringify({
+                    type: "conversation.item.create",
+                    item: {
+                      type: "function_call_output",
+                      call_id: callId,
+                      output: JSON.stringify(noteJson)
                     }
                   })
                 );

@@ -117,6 +117,115 @@ if ($action === 'query_rag') {
     exit;
 }
 
+// 2.3. Voice Entry Creation Actions
+if ($action === 'create_task') {
+    $title = trim($payload['title'] ?? '');
+    if (empty($title)) {
+        echo json_encode(['success' => false, 'message' => 'Task title is required.']);
+        exit;
+    }
+    $sessionUser = $_SESSION['user'] ?? [];
+    $creator = $sessionUser['name'] ?? explode('@', $sessionUser['email'] ?? 'Erik')[0] ?? 'Erik';
+    $taskId = 'task_' . time() . '_' . substr(md5(uniqid()), 0, 6);
+    $description = trim($payload['description'] ?? '');
+    $priority = in_array($payload['priority'] ?? '', ['low', 'medium', 'high']) ? $payload['priority'] : 'medium';
+    $deadline = !empty($payload['due_date']) ? $payload['due_date'] : date('Y-m-d', strtotime('+3 days'));
+    $deadlineTime = !empty($payload['deadline_time']) ? $payload['deadline_time'] : '17:00';
+    $owner = trim($payload['assigned_to'] ?? $creator);
+
+    try {
+        $ins = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `created_at`) VALUES (?, ?, ?, ?, ?, ?, 'todo', ?, ?, NOW())");
+        $ins->execute([$taskId, $title, $description, $priority, $deadline, $deadlineTime, $owner, $creator]);
+
+        if (!empty($owner)) {
+            $insAss = $pdo->prepare("INSERT INTO `task_assignees` (`task_id`, `user_name`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `user_name` = VALUES(`user_name`)");
+            $insAss->execute([$taskId, $owner]);
+        }
+
+        echo json_encode([
+            'success' => true,
+            'message' => "Task '{$title}' successfully created with deadline {$deadline}.",
+            'task_id' => $taskId
+        ]);
+    } catch (\Exception $e) {
+        echo json_encode(['success' => false, 'message' => 'Failed to create task: ' . $e->getMessage()]);
+    }
+    exit;
+}
+
+if ($action === 'create_lead') {
+    $name = trim($payload['name'] ?? '');
+    if (empty($name)) {
+        echo json_encode(['success' => false, 'message' => 'Lead/Client name is required.']);
+        exit;
+    }
+    $sessionUser = $_SESSION['user'] ?? [];
+    $creator = $sessionUser['name'] ?? explode('@', $sessionUser['email'] ?? 'Erik')[0] ?? 'Erik';
+    $leadId = 'lead_' . time() . '_' . substr(md5(uniqid()), 0, 6);
+    $city = trim($payload['city'] ?? '');
+    $clientType = ($payload['client_type'] ?? 'business') === 'person' ? 'person' : 'business';
+    $source = trim($payload['source'] ?? 'Voice Copilot');
+    $owner = trim($payload['owner'] ?? $creator);
+    $value = isset($payload['value']) ? (float)$payload['value'] : 0.0;
+    $phone = trim($payload['phone'] ?? '');
+    $email = trim($payload['email'] ?? '');
+    $contactPerson = trim($payload['contact_person'] ?? '');
+    $interestNote = trim($payload['interest_note'] ?? '');
+
+    try {
+        $ins = $pdo->prepare("INSERT INTO `leads` (`id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `value`, `phone`, `email`, `contact_person`, `interest_note`, `created_at`) VALUES (?, ?, ?, ?, 'new', ?, ?, ?, ?, ?, ?, ?, NOW())");
+        $ins->execute([$leadId, $name, $city, $clientType, $source, $owner, $value, $phone, $email, $contactPerson, $interestNote]);
+
+        echo json_encode([
+            'success' => true,
+            'message' => "Lead '{$name}' successfully registered.",
+            'lead_id' => $leadId
+        ]);
+    } catch (\Exception $e) {
+        echo json_encode(['success' => false, 'message' => 'Failed to register lead: ' . $e->getMessage()]);
+    }
+    exit;
+}
+
+if ($action === 'add_client_note') {
+    $clientName = trim($payload['client_name'] ?? '');
+    $content = trim($payload['content'] ?? '');
+    if (empty($clientName) || empty($content)) {
+        echo json_encode(['success' => false, 'message' => 'Client name and note content are required.']);
+        exit;
+    }
+    $sessionUser = $_SESSION['user'] ?? [];
+    $creator = $sessionUser['name'] ?? explode('@', $sessionUser['email'] ?? 'Erik')[0] ?? 'Erik';
+
+    $stmt = $pdo->prepare("SELECT `id`, `name` FROM `leads` WHERE `name` LIKE ? LIMIT 1");
+    $stmt->execute(['%' . $clientName . '%']);
+    $lead = $stmt->fetch(PDO::FETCH_ASSOC);
+
+    if (!$lead) {
+        echo json_encode(['success' => false, 'message' => "Client '{$clientName}' not found in CRM."]);
+        exit;
+    }
+
+    $eventId = 'ev_' . time() . '_' . substr(md5(uniqid()), 0, 6);
+    $title = !empty($payload['title']) ? trim($payload['title']) : 'Voice Note';
+    $type = in_array($payload['type'] ?? '', ['phone', 'email', 'note', 'offer', 'appointment']) ? $payload['type'] : 'note';
+
+    try {
+        $ins = $pdo->prepare("INSERT INTO `timeline_events` (`id`, `lead_id`, `type`, `timestamp`, `title`, `content`, `author`) VALUES (?, ?, ?, NOW(), ?, ?, ?)");
+        $ins->execute([$eventId, $lead['id'], $type, $title, $content, $creator]);
+
+        echo json_encode([
+            'success' => true,
+            'message' => "Note logged for client '{$lead['name']}'.",
+            'event_id' => $eventId,
+            'lead_id' => $lead['id']
+        ]);
+    } catch (\Exception $e) {
+        echo json_encode(['success' => false, 'message' => 'Failed to log client note: ' . $e->getMessage()]);
+    }
+    exit;
+}
+
 $agentId = $payload['agent_id'] ?? 'orchestrator';
 $systemLanguage = $payload['language'] ?? 'sk';
 $userName = trim($payload['user_name'] ?? '');
@@ -209,66 +318,193 @@ $voiceSystemPrompt = $skillInstructions . "\n\n"
     . "   - Always listen attentively to what {$userName} says and answer their questions directly, concisely, and conversationally (1-3 sentences per turn).\n"
     . "   - NEVER repeat greetings (e.g. 'Hello', 'Hi', 'Dobrý deň') or re-introduce your name, position, or credentials during ongoing conversation. Jump straight into the answer or discussion.\n"
     . "   - Speak naturally and fluidly. Do NOT use markdown asterisks, headers, or bullet points in spoken responses.\n\n"
-    . "2. LIVE DATABASE ACCESS & ANTI-REFUSAL DIRECTIVE:\n"
+    . "2. LIVE SCREEN NAVIGATION CAPABILITIES:\n"
+    . "   - You can redirect and navigate the user's active CRM screen in real time!\n"
+    . "   - When the user asks to see or open a module or screen, immediately call 'navigate_to_entry':\n"
+    . "     * Cashflow, finances, revenues ('mutasd a cashflowt', 'menjünk a pénzügyekre', 'financie', 'penzugyek'): call navigate_to_entry with entity_type: 'financial', target: 'financial'.\n"
+    . "     * Projects ('nyisd meg a projekteket', 'projekty'): call navigate_to_entry with entity_type: 'project', target: 'projects'.\n"
+    . "     * Invoices and offers ('számlák', 'árajánlatok', 'faktury'): call navigate_to_entry with entity_type: 'invoices', target: 'invoices'.\n"
+    . "     * Tasks and Kanban ('feladatok', 'teendők', 'ulohy'): call navigate_to_entry with entity_type: 'tasks', target: 'tasks'.\n"
+    . "     * Warehouse and inventory ('raktár', 'készlet', 'sklad'): call navigate_to_entry with entity_type: 'warehouse', target: 'warehouse'.\n"
+    . "     * Leads & sales funnel ('érdeklődők', 'tölcsér', 'pipeline'): call navigate_to_entry with entity_type: 'leads', target: 'leads'.\n"
+    . "     * Client directory ('ügyfelek', 'klienti'): call navigate_to_entry with entity_type: 'clients', target: 'clients'.\n"
+    . "     * Specific Client profile ('nyisd meg Hans Zimmert'): call navigate_to_entry with entity_type: 'client', target: 'Hans Zimmer'.\n"
+    . "     * Meeting room ('tárgyaló'): call navigate_to_entry with entity_type: 'meetings', target: 'meetings'.\n"
+    . "     * SAI Swarm simulation ('piaci szimuláció', 'sai'): call navigate_to_entry with entity_type: 'sai', target: 'sai'.\n"
+    . "     * Dashboard ('irányítópult', 'dashboard'): call navigate_to_entry with entity_type: 'dashboard', target: 'dashboard'.\n\n"
+    . "3. LIVE ENTRY CREATION CAPABILITIES:\n"
+    . "   - You can create new CRM records directly from voice conversation!\n"
+    . "   - When the user asks to create a task ('hozz létre egy feladatot...', 'írd fel hogy...'), call 'create_task'.\n"
+    . "   - When the user asks to add a new lead/client ('vegyél fel egy új érdeklődőt...', 'új ügyfél...'), call 'create_lead'.\n"
+    . "   - When the user asks to log a note/call for a client ('írj fel egy hívás jegyzetet a Kovácshoz...'), call 'add_client_note'.\n"
+    . "   - After creating the entry, confirm briefly and naturally in speech.\n\n"
+    . "4. LIVE DATABASE ACCESS & ANTI-REFUSAL DIRECTIVE:\n"
     . "   - You have 100% DIRECT, LIVE, REAL-TIME access to the CCRM database.\n"
     . "   - NEVER refuse a request or state that you lack real-time access or cannot check the database. All records in your prompt and available via the 'query_crm_live_data' tool are live, current CRM records.\n"
     . "   - When asked about any client (e.g. Cstudios, s.r.o., Peter Kováč), company, invoice, cashflow, task, or project, answer immediately with exact figures, dates, managers, and details from your CRM knowledge base or call the 'query_crm_live_data' tool.\n\n"
-    . "3. GROUNDING IN CRM DATA:\n"
+    . "5. GROUNDING IN CRM DATA:\n"
     . "   - Current system date is {$todayFormatted} ({$todayDate}).\n"
     . "   - You have live grounding in CRM operations and financial records:\n"
     . "{$crmContext}\n\n";
 
 $screenContext = trim($payload['current_screen_context'] ?? '');
 if (!empty($screenContext)) {
-    $voiceSystemPrompt .= "4. USER'S ACTIVE SCREEN CONTEXT:\n"
+    $voiceSystemPrompt .= "6. USER'S ACTIVE SCREEN CONTEXT:\n"
                         . "{$screenContext}\n"
-                        . "You know what the user is currently viewing. If the user asks to see, open, or navigate to a specific client, lead, project, invoice, or tab, call the 'navigate_to_entry' function to redirect their screen immediately.\n\n";
+                        . "You know what the user is currently viewing.\n\n";
 }
 
 $voiceSystemPrompt .= "Answer and converse exclusively in the user's language ({$langName}). Speak clearly, decisively, and concisely.";
 
-// 6. Request Ephemeral Client Secret from OpenAI Realtime API (GA endpoint)
+// 6. Define Realtime Tools
+$realtimeTools = [
+    [
+        'type' => 'function',
+        'name' => 'query_crm_live_data',
+        'description' => 'Searches the live CCRM database across all 16 domains for deep records, client details, financial analysis, unpaid invoices, active projects, tasks, or inventory.',
+        'parameters' => [
+            'type' => 'object',
+            'properties' => [
+                'query' => [
+                    'type' => 'string',
+                    'description' => 'The search query or entity name, e.g. "Cstudios", "unpaid invoices", "Peter Kovac", "project budget"'
+                ]
+            ],
+            'required' => ['query']
+        ]
+    ],
+    [
+        'type' => 'function',
+        'name' => 'navigate_to_entry',
+        'description' => 'Navigates or redirects the user\'s screen to a specific CRM entry, client profile, lead, project, financial cashflow view, invoices, task board, warehouse, meetings, or tab.',
+        'parameters' => [
+            'type' => 'object',
+            'properties' => [
+                'entity_type' => [
+                    'type' => 'string',
+                    'enum' => ['client', 'lead', 'project', 'financial', 'finances', 'cashflow', 'invoices', 'tasks', 'warehouse', 'meetings', 'dashboard', 'automation', 'sai', 'social_media', 'files', 'tab'],
+                    'description' => 'The type of CRM entity or tab to navigate to.'
+                ],
+                'target' => [
+                    'type' => 'string',
+                    'description' => 'The name, ID, or route of the target (e.g. "financial" for cashflow, "Silvia" for client, "12" for lead, "projects", "tasks", "warehouse", "invoices").'
+                ]
+            ],
+            'required' => ['entity_type', 'target']
+        ]
+    ],
+    [
+        'type' => 'function',
+        'name' => 'create_task',
+        'description' => 'Creates a new task or action item in CRM tasks & Kanban board for the user or a team member.',
+        'parameters' => [
+            'type' => 'object',
+            'properties' => [
+                'title' => [
+                    'type' => 'string',
+                    'description' => 'Clear title of the task to be done.'
+                ],
+                'description' => [
+                    'type' => 'string',
+                    'description' => 'Detailed task description or notes.'
+                ],
+                'priority' => [
+                    'type' => 'string',
+                    'enum' => ['low', 'medium', 'high'],
+                    'description' => 'Priority level (low, medium, high). Default is medium.'
+                ],
+                'due_date' => [
+                    'type' => 'string',
+                    'description' => 'Deadline date in YYYY-MM-DD format.'
+                ],
+                'assigned_to' => [
+                    'type' => 'string',
+                    'description' => 'Name of the person assigned to this task.'
+                ]
+            ],
+            'required' => ['title']
+        ]
+    ],
+    [
+        'type' => 'function',
+        'name' => 'create_lead',
+        'description' => 'Creates and registers a new lead / client account in the CRM sales pipeline.',
+        'parameters' => [
+            'type' => 'object',
+            'properties' => [
+                'name' => [
+                    'type' => 'string',
+                    'description' => 'Company or client name.'
+                ],
+                'city' => [
+                    'type' => 'string',
+                    'description' => 'City or location.'
+                ],
+                'value' => [
+                    'type' => 'number',
+                    'description' => 'Estimated deal or opportunity value in EUR.'
+                ],
+                'client_type' => [
+                    'type' => 'string',
+                    'enum' => ['business', 'person'],
+                    'description' => 'Type of client: business (company) or person.'
+                ],
+                'contact_person' => [
+                    'type' => 'string',
+                    'description' => 'Contact person name.'
+                ],
+                'phone' => [
+                    'type' => 'string',
+                    'description' => 'Phone number.'
+                ],
+                'email' => [
+                    'type' => 'string',
+                    'description' => 'Email address.'
+                ],
+                'interest_note' => [
+                    'type' => 'string',
+                    'description' => 'Notes regarding client interest, needs, or products.'
+                ]
+            ],
+            'required' => ['name']
+        ]
+    ],
+    [
+        'type' => 'function',
+        'name' => 'add_client_note',
+        'description' => 'Logs an interaction, phone call note, meeting memo, or timeline entry to an existing client profile.',
+        'parameters' => [
+            'type' => 'object',
+            'properties' => [
+                'client_name' => [
+                    'type' => 'string',
+                    'description' => 'Name of the client in CRM.'
+                ],
+                'title' => [
+                    'type' => 'string',
+                    'description' => 'Title or summary of the event.'
+                ],
+                'content' => [
+                    'type' => 'string',
+                    'description' => 'Content or details of the note/call.'
+                ],
+                'type' => [
+                    'type' => 'string',
+                    'enum' => ['note', 'phone', 'appointment', 'offer'],
+                    'description' => 'Type of interaction (note, phone, appointment, offer).'
+                ]
+            ],
+            'required' => ['client_name', 'content']
+        ]
+    ]
+];
+
+// Request Ephemeral Client Secret from OpenAI Realtime API (GA endpoint)
 $sessionConfig = [
     'type' => 'realtime',
     'model' => 'gpt-realtime-1.5',
     'instructions' => $voiceSystemPrompt,
-    'tools' => [
-        [
-            'type' => 'function',
-            'name' => 'query_crm_live_data',
-            'description' => 'Searches the live CCRM database across all 16 domains for deep records, client details, financial analysis, unpaid invoices, active projects, tasks, or inventory.',
-            'parameters' => [
-                'type' => 'object',
-                'properties' => [
-                    'query' => [
-                        'type' => 'string',
-                        'description' => 'The search query or entity name, e.g. "Cstudios", "unpaid invoices", "Peter Kovac", "project budget"'
-                    ]
-                ],
-                'required' => ['query']
-            ]
-        ],
-        [
-            'type' => 'function',
-            'name' => 'navigate_to_entry',
-            'description' => 'Navigates or redirects the user\'s screen to a specific CRM entry, client profile, lead, project, invoice, task board, meetings, or tab.',
-            'parameters' => [
-                'type' => 'object',
-                'properties' => [
-                    'entity_type' => [
-                        'type' => 'string',
-                        'enum' => ['client', 'lead', 'project', 'finances', 'tasks', 'meetings', 'dashboard', 'automation', 'tab'],
-                        'description' => 'The type of CRM entity or tab to navigate to.'
-                    ],
-                    'target' => [
-                        'type' => 'string',
-                        'description' => 'The name or ID or route of the target (e.g. "Silvia", "12", "FA-2026-1045", "projects", "finances").'
-                    ]
-                ],
-                'required' => ['entity_type', 'target']
-            ]
-        ]
-    ],
+    'tools' => $realtimeTools,
     'audio' => [
         'output' => [
             'voice' => $assignedVoice
@@ -357,5 +593,6 @@ echo json_encode([
     'agent_position' => $agentPosition,
     'user_name' => $userName,
     'language' => $systemLanguage,
-    'instructions' => $voiceSystemPrompt
+    'instructions' => $voiceSystemPrompt,
+    'tools' => $realtimeTools
 ]);
