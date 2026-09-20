@@ -1,25 +1,16 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import {
-  X,
   RotateCcw,
   Sparkles,
   Send,
   Mic,
   MicOff,
-  Phone,
   PhoneOff,
-  Bot,
-  Activity,
-  ArrowRight,
-  GripVertical,
-  ExternalLink,
-  Layers,
   ChevronRight
 } from "lucide-react";
 import { BlobatarAvatar } from "../common/BlobatarAvatar";
 import { Markdown } from "../../utils/markdown";
 import { VERSION_CODENAME } from "../../utils/version";
-import { DEFAULT_EXECUTIVE_ROSTER } from "../../utils/executive/defaultExecutives";
 import type { Language } from "../../utils/translations";
 import type { ScreenContextInfo } from "../../hooks/useCurrentScreenContext";
 
@@ -755,20 +746,28 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
 
             {/* Speaking Status Subtitle */}
             <div className="mt-6">
-              <h4 className="font-heading font-extrabold text-sm text-slate-800">
-                {isAiSpeaking
-                  ? t("Executive Orchestrator speaking...", "AI líder hovorí...", "A vezetői AI beszél...")
-                  : isUserSpeaking
-                    ? t("Listening to you...", "Počúvam vás...", "Hallgatom Önt...")
-                    : t("Ready for your question", "Pripravený na otázku", "Készen áll a kérdésre")}
-              </h4>
-              <p className="text-[10.5px] text-slate-500 mt-1 max-w-[280px]">
-                {t(
-                  "Ask anything or request to navigate entries (e.g., 'Show me client Silvia')",
-                  "Môžete sa opýtať čokoľvek alebo požiadať o otvorenie záznamu (napr. 'Otvor klienta Silvia')",
-                  "Bármit kérdezhet vagy navigációt kérhet (pl. 'Mutasd Silvia ügyfelet')"
-                )}
-              </p>
+              {callState === "error" ? (
+                <div className="bg-rose-50 text-rose-700 text-xs p-3 rounded-xl border border-rose-200 font-medium">
+                  {voiceErrorMessage || t("Voice connection error", "Chyba hlasového spojenia", "Hanghívási hiba")}
+                </div>
+              ) : (
+                <>
+                  <h4 className="font-heading font-extrabold text-sm text-slate-800">
+                    {isAiSpeaking
+                      ? t("Executive Orchestrator speaking...", "AI líder hovorí...", "A vezetői AI beszél...")
+                      : isUserSpeaking
+                        ? t("Listening to you...", "Počúvam vás...", "Hallgatom Önt...")
+                        : t("Ready for your question", "Pripravený na otázku", "Készen áll a kérdésre")}
+                  </h4>
+                  <p className="text-[10.5px] text-slate-500 mt-1 max-w-[280px]">
+                    {t(
+                      "Ask anything or request to navigate entries (e.g., 'Show me client Silvia')",
+                      "Môžete sa opýtať čokoľvek alebo požiadať o otvorenie záznamu (napr. 'Otvor klienta Silvia')",
+                      "Bármit kérdezhet vagy navigációt kérhet (pl. 'Mutasd Silvia ügyfelet')"
+                    )}
+                  </p>
+                </>
+              )}
             </div>
 
             {/* Audio Wave Visualizer Bars */}

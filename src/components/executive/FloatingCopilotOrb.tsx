@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Sparkles, MessageSquare, Bot } from "lucide-react";
+import { Sparkles, Bot } from "lucide-react";
 import { BlobatarAvatar } from "../common/BlobatarAvatar";
 import { VERSION_CODENAME } from "../../utils/version";
 import type { Language } from "../../utils/translations";
@@ -203,6 +203,7 @@ export const FloatingCopilotOrb: React.FC<FloatingCopilotOrbProps> = ({
             <div>
               <p className="font-bold text-[11px] leading-tight">
                 {t("Executive Copilot", "Výkonný AI Copilot", "Vezetői AI Copilot")}
+                {screenTitle && <span className="ml-1 text-slate-300 font-normal">({screenTitle})</span>}
                 <span className="ml-1.5 text-[9px] px-1.5 py-0.2 rounded-full bg-purple-500/30 text-purple-300 font-extrabold uppercase">
                   {VERSION_CODENAME}
                 </span>

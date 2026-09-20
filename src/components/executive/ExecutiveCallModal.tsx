@@ -8,11 +8,9 @@ import {
   Activity,
   FileText,
   Clock,
-  ChevronDown,
-  ChevronUp,
   AlertCircle
 } from "lucide-react";
-import { type ExecutiveRole, EXECUTIVE_COLOR_MAP } from "../../utils/executive/defaultExecutives";
+import { type ExecutiveRole } from "../../utils/executive/defaultExecutives";
 import type { Language } from "../../utils/translations";
 import { BlobatarAvatar, type ExpressionName } from "../common/BlobatarAvatar";
 
@@ -65,9 +63,6 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
   const analyserRef = useRef<AnalyserNode | null>(null);
   const animationFrameRef = useRef<number | null>(null);
   const [userAudioLevel, setUserAudioLevel] = useState(0);
-
-  // Colors & styling
-  const colorTheme = EXECUTIVE_COLOR_MAP[executive.color] || EXECUTIVE_COLOR_MAP.purple;
 
   // User display name
   const userName = useMemo(() => {

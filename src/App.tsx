@@ -400,7 +400,6 @@ function App() {
     }
     return "bottom-right";
   });
-  const currentScreenContext = useCurrentScreenContext(activeTab, userLanguage);
   type ToastPayload = {
     // Identity, not the message text: two saves in a row raise the same wording,
     // and matching on the text let the first toast's timer close the second one early.
@@ -495,6 +494,7 @@ function App() {
     const stored = typeof window !== 'undefined' ? localStorage.getItem("crm_language") : null;
     return (stored === "en" || stored === "sk" || stored === "hu") ? stored : "sk";
   });
+  const currentScreenContext = useCurrentScreenContext(activeTab, userLanguage);
   // Appearance (light/dark/system/auto) and the light palette are independent:
   // switching to dark and back has to give the user their herb theme again.
   const [userTheme, setUserTheme] = useState<string>(getStoredTheme);
