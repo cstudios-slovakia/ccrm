@@ -226,9 +226,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             exit;
         }
         
-        $aStmt = $chatDb->prepare("SELECT `name`, `skill_content`, `position` FROM `rag_agents` WHERE `id` = ?");
-        $aStmt->execute([$agentId]);
-        $agent = $aStmt->fetch(PDO::FETCH_ASSOC);
+        $agent = null;
+        $execPrompts = get_executive_prompts();
+        if (isset($execPrompts[$agentId])) {
+            $exec = $execPrompts[$agentId];
+            $agent = [
+                'id' => $agentId,
+                'name' => $exec['name'],
+                'position' => $exec['position'],
+                'skill_content' => $exec['prompt'],
+                'roleCategory' => $agentId
+            ];
+        } elseif ($agentId === 'durian' || $agentId === 'orchestrator') {
+            $exec = $execPrompts['orchestrator'];
+            $agent = [
+                'id' => 'orchestrator',
+                'name' => $exec['name'],
+                'position' => $exec['position'],
+                'skill_content' => $exec['prompt'],
+                'roleCategory' => 'orchestrator'
+            ];
+        } else {
+            try {
+                $aStmt = $chatDb->prepare("SELECT `id`, `name`, `skill_content`, `position` FROM `rag_agents` WHERE `id` = ?");
+                $aStmt->execute([$agentId]);
+                $agent = $aStmt->fetch(PDO::FETCH_ASSOC);
+            } catch (\Exception $e) {}
+        }
         
         if (!$agent) {
             echo json_encode(['success' => false, 'message' => 'Agent not found']);

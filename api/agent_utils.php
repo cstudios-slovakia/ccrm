@@ -1240,21 +1240,24 @@ function get_crm_rag_context_text($pdo, $chatDb, $userQuery = '', $systemLanguag
 // Core autonomous RAG run execution
 function execute_autonomous_run($pdo, $ragPdo, $agent, $openAiKey) {
     $searchQuery = ($agent['position'] ?? '') . " " . ($agent['name'] ?? '');
-    $ragData = build_comprehensive_crm_rag_context($pdo, $ragPdo, $searchQuery, 'sk', $agent['roleCategory'] ?? 'orchestrator', ['limit' => 15]);
+    $ragData = build_comprehensive_crm_rag_context($pdo, $ragPdo, $searchQuery, 'sk', $agent['roleCategory'] ?? 'orchestrator', ['limit' => 20]);
     
     $sanitized_context = $ragData['sanitized_context'];
     $to_real = $ragData['to_real'];
+    $todayDate = date('Y-m-d');
+    $todayFormatted = date('Y-m-d (l, F j, Y)');
 
-    $systemPrompt = "You are " . $agent['name'] . ", an autonomous AI assistant with position/role: " . $agent['position'] . ".\n"
-                  . "Your skill details are:\n" . $agent['skill_content'] . "\n\n"
+    $systemPrompt = "You are " . $agent['name'] . ", an executive AI advisor with position/role: " . $agent['position'] . ".\n"
+                  . "CURRENT SYSTEM DATE: " . $todayFormatted . " (" . $todayDate . ")\n\n"
+                  . "Your skill details and domain instructions are:\n" . $agent['skill_content'] . "\n\n"
                   . "IMPORTANT - PRIVACY INSTRUCTION: Personal names, phone numbers, and emails have been pseudonymized and masked with placeholders like [CLIENT_NAME_1] or [EMAIL_REF_1].\n"
                   . "Keep references exactly as they are.\n\n"
-                  . "=== COMPREHENSIVE CRM RAG KNOWLEDGE BASE CONTEXT ===\n"
+                  . "=== COMPREHENSIVE CRM RAG KNOWLEDGE BASE CONTEXT (ALL 16 DOMAINS) ===\n"
                   . $sanitized_context
-                  . "\n====================================================\n\n"
-                  . "You are executing an autonomous background run. Perform your custom analysis or actions based on your skills and the CRM database context. Present your findings, status, recommendations, or alerts professionally.";
+                  . "\n====================================================================\n\n"
+                  . "You are executing a specialized executive check and analysis. Perform your custom analysis or actions based on your skills and the live CRM database context. Present your findings, status, key metrics, recommendations, or alerts with executive precision.";
 
-    $userPrompt = "Run an autonomous background check and generate your report or recommendations now.";
+    $userPrompt = "Run an autonomous executive check and generate your domain assessment, alert triggers, or recommendations now based on current CRM data.";
 
     if (empty($openAiKey)) {
         return "[SYSTEM] OpenAI API Key is not configured. Autonomous run skipped.";
@@ -1268,7 +1271,7 @@ function execute_autonomous_run($pdo, $ragPdo, $agent, $openAiKey) {
     $ch = curl_init('https://api.openai.com/v1/chat/completions');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_TIMEOUT, 15);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 20);
     curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
     curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
     curl_setopt($ch, CURLOPT_HTTPHEADER, [
