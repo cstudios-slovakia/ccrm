@@ -88,6 +88,35 @@ if ($action === 'exchange_sdp') {
     exit;
 }
 
+// 2.2. Live RAG Query Action for Voice Tools & Function Calls
+if ($action === 'query_rag') {
+    $query = trim($payload['query'] ?? '');
+    $agentId = $payload['agent_id'] ?? 'orchestrator';
+    $systemLanguage = $payload['language'] ?? 'sk';
+
+    $ragPdo = get_rag_db_connection($integrationsConfig);
+    $chatDb = $ragPdo ?: $pdo;
+    if ($chatDb) {
+        init_rag_db_schemas($chatDb);
+    }
+
+    try {
+        $ragData = build_comprehensive_crm_rag_context($pdo, $chatDb, $query, $systemLanguage, $agentId, ['limit' => 20]);
+        $resultText = !empty($ragData['raw_context']) ? $ragData['raw_context'] : $ragData['sanitized_context'];
+        if (empty(trim($resultText))) {
+            $resultText = "No specific CRM records found matching query: " . $query;
+        }
+    } catch (\Exception $e) {
+        $resultText = "Error querying CRM data: " . $e->getMessage();
+    }
+
+    echo json_encode([
+        'success' => true,
+        'result' => $resultText
+    ]);
+    exit;
+}
+
 $agentId = $payload['agent_id'] ?? 'orchestrator';
 $systemLanguage = $payload['language'] ?? 'sk';
 $userName = trim($payload['user_name'] ?? '');
@@ -172,7 +201,7 @@ $todayFormatted = date('l, j. F Y');
 $todayDate = date('Y-m-d');
 $langName = $systemLanguage === 'sk' ? 'Slovak (Slovenčina)' : ($systemLanguage === 'hu' ? 'Hungarian (Magyar)' : 'English');
 
-// 5. Build Spoken Prompt with Proactive Greeting
+// 5. Build Spoken Prompt with Proactive Greeting and Anti-Refusal Directives
 $voiceSystemPrompt = $skillInstructions . "\n\n"
     . "=== VOICE CALL OPERATIONAL DIRECTIVES ===\n"
     . "1. FORMAT & TONE: You are speaking in a high-bandwidth, live real-time audio phone call with {$userName}.\n"
@@ -184,7 +213,11 @@ $voiceSystemPrompt = $skillInstructions . "\n\n"
     . "   - Greet {$userName} warmly by name in {$langName} (e.g. 'Dobrý deň {$userName}' in Slovak, 'Üdvözlöm {$userName}' in Hungarian, or 'Hello {$userName}' in English).\n"
     . "   - Introduce yourself as {$agentName} ({$agentPosition}).\n"
     . "   - Ask what strategic priority, financial review, or business decision they would like to discuss right now.\n\n"
-    . "3. GROUNDING IN CRM DATA:\n"
+    . "3. LIVE DATABASE ACCESS & ANTI-REFUSAL DIRECTIVE:\n"
+    . "   - You have 100% DIRECT, LIVE, REAL-TIME access to the CCRM database.\n"
+    . "   - NEVER refuse a request or state that you lack real-time access or cannot check the database. All records in your prompt and available via the 'query_crm_live_data' tool are live, current CRM records.\n"
+    . "   - When asked about any client (e.g. Cstudios, s.r.o., Peter Kováč), company, invoice, cashflow, task, or project, answer immediately with exact figures, dates, managers, and details from your CRM knowledge base or call the 'query_crm_live_data' tool.\n\n"
+    . "4. GROUNDING IN CRM DATA:\n"
     . "   - Current system date is {$todayFormatted} ({$todayDate}).\n"
     . "   - You have live grounding in CRM operations and financial records:\n"
     . "{$crmContext}\n\n"
@@ -196,6 +229,23 @@ $sessionConfig = [
     'model' => 'gpt-realtime-1.5',
     'voice' => $assignedVoice,
     'instructions' => $voiceSystemPrompt,
+    'tools' => [
+        [
+            'type' => 'function',
+            'name' => 'query_crm_live_data',
+            'description' => 'Searches the live CCRM database across all 16 domains for deep records, client details, financial analysis, unpaid invoices, active projects, tasks, or inventory.',
+            'parameters' => [
+                'type' => 'object',
+                'properties' => [
+                    'query' => [
+                        'type' => 'string',
+                        'description' => 'The search query or entity name, e.g. "Cstudios", "unpaid invoices", "Peter Kovac", "project budget"'
+                    ]
+                ],
+                'required' => ['query']
+            ]
+        ]
+    ],
     'input_audio_transcription' => [
         'model' => 'whisper-1'
     ],

@@ -253,7 +253,7 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
       dc.addEventListener("open", () => {
         setCallState("connected");
 
-        // 1. Explicitly configure session settings (voice, instructions, VAD, transcription)
+        // 1. Explicitly configure session settings (voice, instructions, VAD, transcription, tools)
         const updateSessionEvent = {
           type: "session.update",
           session: {
@@ -264,6 +264,25 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
                 systemLanguage === "sk" ? "Slovak" : systemLanguage === "hu" ? "Hungarian" : "English"
               }.`,
             voice: sessionInit.voice || executive.voice || "alloy",
+            tools: [
+              {
+                type: "function",
+                name: "query_crm_live_data",
+                description:
+                  "Searches the live CCRM database across all 16 domains for deep records, client details, financial analysis, unpaid invoices, active projects, tasks, or inventory.",
+                parameters: {
+                  type: "object",
+                  properties: {
+                    query: {
+                      type: "string",
+                      description:
+                        "The search query, client name, invoice number, or project name to lookup in CRM records."
+                    }
+                  },
+                  required: ["query"]
+                }
+              }
+            ],
             input_audio_transcription: {
               model: "whisper-1"
             },
@@ -372,6 +391,63 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
       case "output_audio_buffer.stopped":
         setIsAiSpeaking(false);
         setIsAiThinking(false);
+        break;
+
+      case "response.function_call_arguments.done":
+        if (event.name === "query_crm_live_data" && event.call_id) {
+          setIsAiThinking(true);
+          let parsedQuery = "";
+          try {
+            const parsedArgs = JSON.parse(event.arguments || "{}");
+            parsedQuery = parsedArgs.query || "";
+          } catch (e) {
+            parsedQuery = event.arguments || "";
+          }
+
+          fetch("/api/realtime_session.php", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              action: "query_rag",
+              query: parsedQuery,
+              agent_id: executive.id,
+              language: systemLanguage
+            })
+          })
+            .then((r) => r.json())
+            .then((data) => {
+              const outputText = data.result || "No records found matching query.";
+              if (dataChannelRef.current && dataChannelRef.current.readyState === "open") {
+                dataChannelRef.current.send(
+                  JSON.stringify({
+                    type: "conversation.item.create",
+                    item: {
+                      type: "function_call_output",
+                      call_id: event.call_id,
+                      output: outputText
+                    }
+                  })
+                );
+                dataChannelRef.current.send(JSON.stringify({ type: "response.create" }));
+              }
+            })
+            .catch((err) => {
+              console.warn("Realtime function call execution failed", err);
+              if (dataChannelRef.current && dataChannelRef.current.readyState === "open") {
+                dataChannelRef.current.send(
+                  JSON.stringify({
+                    type: "conversation.item.create",
+                    item: {
+                      type: "function_call_output",
+                      call_id: event.call_id,
+                      output: "Error querying CRM database."
+                    }
+                  })
+                );
+                dataChannelRef.current.send(JSON.stringify({ type: "response.create" }));
+              }
+            });
+        }
         break;
 
       case "response.audio_transcript.delta":

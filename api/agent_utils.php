@@ -380,6 +380,21 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
                 $stList[] = "{$stName}: {$stCount}";
             }
             $pipeSummary .= implode(" | ", $stList) . "\n";
+            $pipeSummary .= "- MASTER CLIENT & ACCOUNT DIRECTORY ROSTER:\n";
+            foreach ($leads_all as $l) {
+                $pipeSummary .= "  * " . $l['name'];
+                $meta = [];
+                if (!empty($l['status'])) $meta[] = "Status: " . $l['status'];
+                if (!empty($l['client_type'])) $meta[] = "Type: " . $l['client_type'];
+                if (!empty($l['city'])) $meta[] = "City: " . $l['city'];
+                if (!empty($l['company_id'])) $meta[] = "IČO: " . $l['company_id'];
+                if (!empty($l['owner'])) $meta[] = "Owner: " . $l['owner'];
+                if (!empty($l['value']) && (float)$l['value'] > 0) $meta[] = "Value: €" . number_format((float)$l['value'], 2);
+                if (!empty($meta)) {
+                    $pipeSummary .= " (" . implode(", ", $meta) . ")";
+                }
+                $pipeSummary .= "\n";
+            }
 
             $context_blocks[] = [
                 'text' => $pipeSummary,
@@ -391,13 +406,24 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
                 $lead_id = $l['id'];
                 $score = 0;
 
+                // When user query is empty, prioritize accounts with rich analysis, won/accepted status, or key value
+                if (empty($normalized_query_clean)) {
+                    if (!empty($l['financial_summary'])) $score += 90;
+                    if (!empty($l['ai_summary'])) $score += 65;
+                    $leadSt = $l['status'] ?? '';
+                    if ($leadSt === 'accepted' || $leadSt === 'won' || $leadSt === 'negotiating' || $leadSt === 'objednané') $score += 80;
+                    if ((float)($l['value'] ?? 0) > 10000) $score += 50;
+                }
+
                 $nameClean = $remove_accents(mb_strtolower($l['name'] ?? ''));
                 $cityClean = $remove_accents(mb_strtolower($l['city'] ?? ''));
                 $ownerClean = $remove_accents(mb_strtolower($l['owner'] ?? ''));
+                $icoClean = trim($l['company_id'] ?? '');
 
                 if (!empty($l['name']) && mb_strpos($normalized_query_clean, $nameClean) !== false) $score += 100;
                 if (!empty($l['city']) && mb_strpos($normalized_query_clean, $cityClean) !== false) $score += 50;
                 if (!empty($l['owner']) && mb_strpos($normalized_query_clean, $ownerClean) !== false) $score += 50;
+                if (!empty($icoClean) && mb_strpos($normalized_query_clean, $icoClean) !== false) $score += 100;
 
                 $score += $calc_token_score($l['name'] ?? '', $meaningful_tokens_clean);
                 $score += $calc_token_score($l['city'] ?? '', $meaningful_tokens_clean);
@@ -496,6 +522,14 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
                 $projSummary .= "- Active / In-Progress Projects: {$activeCount}\n";
                 $projSummary .= "- Overdue Projects Past Deadline: {$overdueProjCount}\n";
                 $projSummary .= "- Total Allocated Project Budget: €" . number_format($totalBudget, 2) . " EUR\n";
+                $projSummary .= "- KEY TRACKED PROJECTS ROSTER:\n";
+                foreach (array_slice($projectsAll, 0, 25) as $pr) {
+                    $projSummary .= "  * " . ($pr['name'] ?: 'Untitled Project') . " [" . strtoupper($pr['status'] ?? 'ACTIVE') . "]";
+                    if (!empty($pr['client_name'])) $projSummary .= " (Client: " . $pr['client_name'] . ")";
+                    if (!empty($pr['budget'])) $projSummary .= " (Budget: €" . number_format((float)$pr['budget'], 2) . ")";
+                    if (!empty($pr['deadline'])) $projSummary .= " (Deadline: " . substr($pr['deadline'], 0, 10) . ")";
+                    $projSummary .= "\n";
+                }
 
                 $context_blocks[] = [
                     'text' => $projSummary,
@@ -505,6 +539,10 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
 
                 foreach ($projectsAll as $pr) {
                     $score = $isProjectQuery ? 120 : 0;
+                    if (empty($normalized_query_clean)) {
+                        $pSt = $pr['status'] ?? 'active';
+                        if ($pSt === 'active' || $pSt === 'in_progress') $score += 75;
+                    }
                     $pNameClean = $remove_accents(mb_strtolower($pr['name'] ?? ''));
                     $pClientClean = $remove_accents(mb_strtolower($pr['client_name'] ?? ''));
                     $pTypeClean = $remove_accents(mb_strtolower($pr['type_name'] ?? ''));
@@ -588,6 +626,17 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
 
             $taskSummary = "=== TASK EXECUTION & ACTION ITEMS OVERVIEW ===\n";
             $taskSummary .= "- Total Active Tasks: {$totalTasks} | Open/Pending: {$openTasks} | Overdue: {$overdueTasks}\n";
+            $taskSummary .= "- OPEN ACTION ITEMS ROSTER:\n";
+            foreach (array_slice($tasks_all, 0, 20) as $tsk) {
+                $st = $tsk['status'] ?? 'todo';
+                if ($st !== 'done' && $st !== 'completed') {
+                    $taskSummary .= "  * " . $tsk['title'] . " [" . strtoupper($st) . "]";
+                    if (!empty($tsk['assigned_to'])) $taskSummary .= " (Assignee: " . $tsk['assigned_to'] . ")";
+                    if (!empty($tsk['due_date'])) $taskSummary .= " (Due: " . substr($tsk['due_date'], 0, 10) . ")";
+                    if (!empty($tsk['lead_name'])) $taskSummary .= " (Client: " . $tsk['lead_name'] . ")";
+                    $taskSummary .= "\n";
+                }
+            }
 
             $context_blocks[] = [
                 'text' => $taskSummary,
@@ -597,6 +646,10 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
 
             foreach ($tasks_all as $tsk) {
                 $score = $isTaskQuery ? 100 : 0;
+                if (empty($normalized_query_clean)) {
+                    $st = $tsk['status'] ?? 'todo';
+                    if ($st !== 'done' && $st !== 'completed') $score += 70;
+                }
                 $tTitleClean = $remove_accents(mb_strtolower($tsk['title'] ?? ''));
                 $tLeadClean = $remove_accents(mb_strtolower($tsk['lead_name'] ?? ''));
                 $tProjClean = $remove_accents(mb_strtolower($tsk['project_name'] ?? ''));
@@ -671,6 +724,12 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
                 $invSummary = "=== INVOICES & PRICE OFFERS OVERVIEW ===\n";
                 $invSummary .= "- Issued Invoices Count: {$totalInvoices} (Total: €" . number_format($totalInvoicedAmount, 2) . " EUR)\n";
                 $invSummary .= "- Price Offers Count: {$totalOffers} (Pipeline Offer Value: €" . number_format($totalOfferAmount, 2) . " EUR)\n";
+                $invSummary .= "- RECENT INVOICES & OFFERS ROSTER:\n";
+                foreach (array_slice($invoicesAll, 0, 15) as $inv) {
+                    $invSummary .= "  * " . ($inv['document_number'] ?: 'Doc') . " [" . strtoupper($inv['type']) . " - " . strtoupper($inv['status']) . "]: €" . number_format((float)($inv['total_price'] ?? 0), 2);
+                    if (!empty($inv['client_name'])) $invSummary .= " (Client: " . $inv['client_name'] . ")";
+                    $invSummary .= "\n";
+                }
 
                 $context_blocks[] = [
                     'text' => $invSummary,
@@ -680,6 +739,9 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
 
                 foreach ($invoicesAll as $inv) {
                     $score = $isInvoiceQuery ? 130 : 0;
+                    if (empty($normalized_query_clean)) {
+                        if (($inv['status'] ?? '') === 'unpaid' || ($inv['status'] ?? '') === 'overdue' || ($inv['status'] ?? '') === 'pending') $score += 75;
+                    }
                     $docClean = $remove_accents(mb_strtolower($inv['document_number'] ?? ''));
                     $clNameClean = $remove_accents(mb_strtolower($inv['client_name'] ?? ''));
                     $titleClean = $remove_accents(mb_strtolower($inv['title'] ?? ''));
