@@ -1034,11 +1034,11 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
         </div>
 
         {/* RIGHT SIDE: Main Workspace & Chat Pane */}
-        <div className="flex-1 flex flex-col bg-white">
+        <div className="flex-1 min-w-0 flex flex-col bg-white overflow-hidden">
           
           {/* Header Bar */}
           <div className="p-4 border-b border-slate-200/80 flex items-center justify-between shrink-0 bg-slate-50/30">
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 min-w-0">
               <div className="relative shrink-0">
                 <BlobatarAvatar
                   name={isCouncilMode ? "Executive Council Boardroom" : selectedRole.name}
@@ -1056,12 +1056,12 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                   }
                 />
               </div>
-              <div>
+              <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <h4 className="font-heading font-extrabold text-sm text-slate-900">
+                  <h4 className="font-heading font-extrabold text-sm text-slate-900 truncate">
                     {isCouncilMode ? t("Executive Council Boardroom", "Výkonná rada vedenia", "Igazgatótanácsi Tárgyaló") : selectedRole.name}
                   </h4>
-                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border ${isCouncilMode ? "bg-amber-100 text-amber-800 border-amber-200" : activeTheme.badgeBg}`}>
+                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${isCouncilMode ? "bg-amber-100 text-amber-800 border-amber-200" : activeTheme.badgeBg}`}>
                     {isCouncilMode ? t("Multi-Agent Deliberation", "Deliberácia rady", "Többügynökös Tanácskozás") : selectedRole.badge}
                   </span>
                 </div>
@@ -1074,7 +1074,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
             </div>
 
             {/* Top Action Buttons - subtle reset */}
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
                 onClick={handleResetChat}
@@ -1089,7 +1089,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
           </div>
 
           {/* Quick Prompts Bar */}
-          <div className="px-4 py-2 bg-slate-50/50 border-b border-slate-100 flex items-center gap-2 overflow-x-auto scrollbar-none">
+          <div className="px-4 py-2 bg-slate-50/50 border-b border-slate-100 flex items-center gap-2 overflow-x-auto scrollbar-none min-w-0 max-w-full">
             <span className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider shrink-0 flex items-center gap-1">
               <Sparkles className="h-3 w-3 text-amber-500" />
               {t("Strategic Prompts:", "Strategické témy:", "Stratégiai kérdések:")}
@@ -1114,13 +1114,13 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
           </div>
 
           {/* Messages Area */}
-          <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4 scrollbar-thin bg-slate-50/20">
+          <div className="flex-1 min-w-0 overflow-y-auto p-4 md:p-6 space-y-4 scrollbar-thin bg-slate-50/20">
             {messages.map((msg) => {
               const isAgent = msg.sender === "agent";
               return (
                 <div
                   key={msg.id}
-                  className={`flex gap-3 max-w-[88%] ${isAgent ? "mr-auto" : "ml-auto flex-row-reverse"}`}
+                  className={`flex gap-3 max-w-[92%] min-w-0 ${isAgent ? "mr-auto" : "ml-auto flex-row-reverse"}`}
                 >
                   {/* Avatar */}
                   <div className="shrink-0 mt-0.5">
@@ -1147,14 +1147,14 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
 
                   {/* Bubble */}
                   <div
-                    className={`p-4 rounded-2xl text-xs leading-relaxed shadow-sm relative group ${
+                    className={`p-4 rounded-2xl text-xs leading-relaxed shadow-sm relative group min-w-0 max-w-full ${
                       isAgent
                         ? "bg-white border border-slate-100 text-slate-800 rounded-tl-none"
                         : `${activeTheme.fill} text-white rounded-tr-none font-medium`
                     }`}
                   >
                     {isAgent ? (
-                      <div>
+                      <div className="min-w-0 max-w-full">
                         <Markdown content={msg.text} />
                         
                         {/* Quick Save as Strategic Decision Button */}
