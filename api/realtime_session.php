@@ -160,80 +160,12 @@ if (empty($skillInstructions)) {
     $skillInstructions = "You are " . $versionCodename . ", the executive advisor. You advise with executive precision based on CRM data.";
 }
 
-// 4. Gather live CRM context
-list($to_placeholder, $to_real) = get_sanitization_maps($pdo);
-$sanitized_context = "";
-
+// 4. Gather live CRM context across all 16 domains via comprehensive RAG engine
 try {
-    $context_blocks = [];
-    
-    // Overview metrics
-    $total_leads = $pdo->query("SELECT COUNT(*) FROM `leads`")->fetchColumn();
-    $total_projects = $pdo->query("SELECT COUNT(*) FROM `projects`")->fetchColumn();
-    $total_clients = $pdo->query("SELECT COUNT(*) FROM `clients`")->fetchColumn();
-    
-    $overview_block = "CRM EXECUTIVE OVERVIEW METRICS:\n";
-    $overview_block .= "- Total Leads in Pipeline: {$total_leads}\n";
-    $overview_block .= "- Total Active Projects: {$total_projects}\n";
-    $overview_block .= "- Total Registered Clients: {$total_clients}\n";
-    $context_blocks[] = ['text' => $overview_block, 'is_match' => true];
-
-    // Financial Overview
-    try {
-        $fin_count = $pdo->query("SELECT COUNT(*) FROM `financial_records`")->fetchColumn();
-        if ($fin_count > 0) {
-            $incStmt = $pdo->query("SELECT SUM(`amount`) FROM `financial_records` WHERE `type` = 'income' AND `status` = 'paid'");
-            $total_income = (float)($incStmt->fetchColumn() ?: 0);
-
-            $expStmt = $pdo->query("SELECT SUM(`amount`) FROM `financial_records` WHERE `type` = 'expense' AND `status` = 'paid'");
-            $total_expenses = (float)($expStmt->fetchColumn() ?: 0);
-
-            $recStmt = $pdo->query("SELECT SUM(`amount`) FROM `financial_records` WHERE `type` = 'income' AND `status` = 'unpaid'");
-            $unpaid_income = (float)($recStmt->fetchColumn() ?: 0);
-
-            $payStmt = $pdo->query("SELECT SUM(`amount`) FROM `financial_records` WHERE `type` = 'expense' AND `status` = 'unpaid'");
-            $unpaid_expenses = (float)($payStmt->fetchColumn() ?: 0);
-
-            $fin_block = "FINANCIAL MANAGEMENT OVERVIEW:\n";
-            $fin_block .= "- Total Paid Income: €" . number_format($total_income, 2, '.', ' ') . "\n";
-            $fin_block .= "- Total Paid Expenses: €" . number_format($total_expenses, 2, '.', ' ') . "\n";
-            $fin_block .= "- Net Operating Balance: €" . number_format($total_income - $total_expenses, 2, '.', ' ') . "\n";
-            $fin_block .= "- Outstanding Receivables (Unpaid Invoices): €" . number_format($unpaid_income, 2, '.', ' ') . "\n";
-            $fin_block .= "- Pending Payables (Unpaid Vendor Bills): €" . number_format($unpaid_expenses, 2, '.', ' ') . "\n";
-            $context_blocks[] = ['text' => $fin_block, 'is_match' => true];
-        }
-    } catch (\Exception $e) {}
-
-    // Top recent projects
-    try {
-        $projStmt = $pdo->query("SELECT `id`, `name`, `status`, `price`, `deadline` FROM `projects` ORDER BY `id` DESC LIMIT 10");
-        $projs = $projStmt->fetchAll(PDO::FETCH_ASSOC);
-        if (!empty($projs)) {
-            $pb = "KEY ACTIVE PROJECTS:\n";
-            foreach ($projs as $p) {
-                $pb .= "- Project: " . $p['name'] . " | Status: " . $p['status'] . " | Price: €" . ($p['price'] ?: '0') . " | Deadline: " . ($p['deadline'] ?: 'TBD') . "\n";
-            }
-            $context_blocks[] = ['text' => $pb, 'is_match' => true];
-        }
-    } catch (\Exception $e) {}
-
-    // Episodic decisions
-    $episodicDecisions = get_episodic_decisions($pdo, $chatDb, $userName, 8);
-    if (!empty($episodicDecisions)) {
-        $db = "PAST EXECUTIVE DECISIONS & COMMITMENTS:\n";
-        foreach ($episodicDecisions as $d) {
-            $db .= "- [" . strtoupper($d['domain'] ?? 'STRATEGY') . "] " . ($d['title'] ?? 'Decision') . ": " . ($d['summary'] ?? '') . "\n";
-        }
-        $context_blocks[] = ['text' => $db, 'is_match' => true];
-    }
-
-    $raw_context = "";
-    foreach ($context_blocks as $b) {
-        $raw_context .= $b['text'] . "\n";
-    }
-    $sanitized_context = sanitize_text($raw_context, $to_placeholder);
+    $ragData = build_comprehensive_crm_rag_context($pdo, $chatDb, '', $systemLanguage, $agentId, ['limit' => 20]);
+    $sanitized_context = $ragData['sanitized_context'];
 } catch (\Exception $e) {
-    // Context fallback
+    $sanitized_context = "";
 }
 
 $todayFormatted = date('l, j. F Y');

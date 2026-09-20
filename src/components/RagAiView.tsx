@@ -12,7 +12,6 @@ import {
   Plus,
   X,
   FileText,
-  Play,
   Clock,
   Trash2,
   Edit,
@@ -395,53 +394,6 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
     }
   };
 
-  // Run autonomous check
-  const handleRunAgent = async () => {
-    setIsLoading(true);
-    const userId = currentUser?.email || "default_user";
-    try {
-      const res = await fetchWithTimeout("/api/chat_rag.php", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "run_agent",
-          user_id: userId,
-          agent_id: selectedRole.id
-        })
-      });
-      if (!res.ok) throw new Error("HTTP error: " + res.status);
-      const data = await res.json();
-      if (data.success) {
-        const replyMsg: Message = {
-          id: Date.now().toString(),
-          sender: "agent",
-          text: data.reply,
-          timestamp: new Date()
-        };
-        setMessages((prev) => [...prev, replyMsg]);
-        setChatHistories((prev) => ({
-          ...prev,
-          [activeChatKey]: [...(prev[activeChatKey] || []), replyMsg]
-        }));
-      } else {
-        throw new Error(data.message || "Failed to trigger autonomous run");
-      }
-    } catch (err: any) {
-      const errorMsg: Message = {
-        id: Date.now().toString(),
-        sender: "agent",
-        text: `Run Error: ${err.message}.`,
-        timestamp: new Date()
-      };
-      setMessages((prev) => [...prev, errorMsg]);
-      setChatHistories((prev) => ({
-        ...prev,
-        [activeChatKey]: [...(prev[activeChatKey] || []), errorMsg]
-      }));
-    } finally {
-      setIsLoading(false);
-    }
-  };
 
   // Send query (Standard chat or Council deliberation)
   const handleSendText = async (textToSend: string) => {
@@ -1130,50 +1082,17 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
               </div>
             </div>
 
-            {/* Top Action Buttons */}
+            {/* Top Action Buttons - subtle reset */}
             <div className="flex items-center gap-2">
-              {/* Live Voice Call Button */}
-              <button
-                type="button"
-                onClick={() => startCall(isCouncilMode ? flagshipOrchestrator : selectedRole)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-200 bg-emerald-50 hover:bg-emerald-100 text-[10px] font-black text-emerald-700 transition-all cursor-pointer shadow-xs active:scale-95"
-                title={t("Start Live Voice Call (OpenAI Realtime WebRTC)", "Začať živý hlasový hovor (WebRTC)", "Élő hanghívás indítása (WebRTC)")}
-              >
-                <PhoneCall className="h-3.5 w-3.5 text-emerald-600" />
-                <span>{t("Voice Call", "Hovor", "Hanghívás")}</span>
-              </button>
-
-              {selectedRole.isAutonomous && !isCouncilMode && (
-                <button
-                  type="button"
-                  onClick={handleRunAgent}
-                  disabled={isLoading}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-indigo-200 bg-indigo-50 hover:bg-indigo-100 text-[10px] font-black text-indigo-700 transition-all cursor-pointer disabled:opacity-50"
-                  title={t("Trigger autonomous check now", "Spustiť autonómnu kontrolu", "Autonóm futtatás")}
-                >
-                  <Play className="h-3.5 w-3.5 fill-indigo-700" />
-                  {t("Run Check", "Spustiť kontrolu", "Futtatás")}
-                </button>
-              )}
-
-              <button
-                type="button"
-                onClick={() => openEditModal({ stopPropagation: () => {} } as any, selectedRole)}
-                className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-[10px] font-bold text-slate-600 transition-all cursor-pointer"
-                title={t("Inspect MBA Skill Prompt", "Zobraziť MBA inštrukcie", "MBA Prompt megtekintése")}
-              >
-                <FileText className="h-3.5 w-3.5 text-purple-600" />
-                <span>{t("Skill.md", "Zručnosti", "Képességek")}</span>
-              </button>
-
               <button
                 type="button"
                 onClick={handleResetChat}
                 disabled={isLoading}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-[10px] font-bold text-slate-500 hover:text-slate-800 transition-all cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-[10px] font-bold text-slate-500 hover:text-slate-800 transition-all cursor-pointer disabled:opacity-50"
+                title={t("Reset Chat History", "Vyčistiť históriu chatu", "Chat előzmények törlése")}
               >
                 <RotateCcw className="h-3.5 w-3.5" />
-                {t("Reset Chat", "Vyčistiť chat", "Chat törlése")}
+                <span>{t("Reset Chat", "Vyčistiť chat", "Chat törlése")}</span>
               </button>
             </div>
           </div>
@@ -1299,18 +1218,28 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
           {/* Input Form */}
           <form onSubmit={handleSend} className="p-3.5 border-t border-slate-200/80 bg-slate-50/40">
             <div className="flex items-center gap-2">
-              {/* Red-highlighted Voice Call Button on the left */}
+              {/* Red-highlighted Voice Call Button on the left with Call [Name] */}
               <button
                 type="button"
                 onClick={() => startCall(isCouncilMode ? flagshipOrchestrator : selectedRole)}
-                className="flex items-center justify-center h-10 w-10 shrink-0 rounded-2xl bg-gradient-to-br from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 active:scale-95 text-white shadow-md shadow-rose-500/30 border border-rose-400/40 transition-all cursor-pointer group"
+                className="flex items-center gap-2 px-3.5 h-10 shrink-0 rounded-2xl bg-gradient-to-br from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 active:scale-95 text-white text-xs font-black shadow-md shadow-rose-500/25 border border-rose-400/40 transition-all cursor-pointer group whitespace-nowrap"
                 title={t(
                   `Start Voice Call with ${isCouncilMode ? flagshipOrchestrator.name : selectedRole.name}`,
                   `Začať hlasový hovor (${isCouncilMode ? flagshipOrchestrator.name : selectedRole.name})`,
                   `Hanghívás indítása (${isCouncilMode ? flagshipOrchestrator.name : selectedRole.name})`
                 )}
               >
-                <PhoneCall className="h-4.5 w-4.5 group-hover:scale-110 transition-transform" />
+                <PhoneCall className="h-4 w-4 group-hover:scale-110 transition-transform" />
+                <span className="hidden sm:inline">
+                  {systemLanguage === "sk"
+                    ? `Zavolať ${isCouncilMode ? flagshipOrchestrator.name : selectedRole.name}`
+                    : systemLanguage === "hu"
+                      ? `Hívás: ${isCouncilMode ? flagshipOrchestrator.name : selectedRole.name}`
+                      : `Call ${isCouncilMode ? flagshipOrchestrator.name : selectedRole.name}`}
+                </span>
+                <span className="inline sm:hidden">
+                  {systemLanguage === "sk" ? "Hovor" : systemLanguage === "hu" ? "Hívás" : "Call"}
+                </span>
               </button>
 
               <div className="relative flex-1 flex items-center">
