@@ -381,8 +381,21 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
     } else if (typeLower === "lead" || targetLower.startsWith("lead-")) {
       const leadId = cleanTarget.replace(/^#?lead-/, "");
       targetHash = `#lead-${encodeURIComponent(leadId)}`;
-    } else if (typeLower === "project" || typeLower === "projects" || targetLower.startsWith("project")) {
-      if (cleanTarget && cleanTarget !== "project" && cleanTarget !== "projects") {
+    } else if (
+      typeLower === "project" || 
+      typeLower === "projects" || 
+      targetLower === "projects" ||
+      targetLower === "projektek" ||
+      targetLower === "projekty" ||
+      targetLower.startsWith("project")
+    ) {
+      if (
+        cleanTarget && 
+        cleanTarget !== "project" && 
+        cleanTarget !== "projects" &&
+        cleanTarget !== "projektek" &&
+        cleanTarget !== "projekty"
+      ) {
         targetHash = cleanTarget.startsWith("#") ? cleanTarget : `#projects?id=${encodeURIComponent(cleanTarget)}`;
       } else {
         targetHash = "#projects";
@@ -764,6 +777,180 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
                       type: "function_call_output",
                       call_id: callId,
                       output: JSON.stringify(noteJson)
+                    }
+                  })
+                );
+                dc.send(JSON.stringify({ type: "response.create" }));
+              }
+            } else if (functionName === "create_project") {
+              const projRes = await fetch("/api/realtime_session.php", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "create_project",
+                  ...args
+                })
+              });
+              const projJson = await projRes.json();
+              if (projJson.success) {
+                if (typeof (window as any).showToast === "function") {
+                  (window as any).showToast(t(`Project created: "${projJson.project_name || args.name}"`, `Projekt vytvorený: "${projJson.project_name || args.name}"`, `Projekt létrehozva: "${projJson.project_name || args.name}"`));
+                }
+                window.dispatchEvent(new CustomEvent("ccrm:reload-data"));
+              }
+              if (dc.readyState === "open") {
+                dc.send(
+                  JSON.stringify({
+                    type: "conversation.item.create",
+                    item: {
+                      type: "function_call_output",
+                      call_id: callId,
+                      output: JSON.stringify(projJson)
+                    }
+                  })
+                );
+                dc.send(JSON.stringify({ type: "response.create" }));
+              }
+            } else if (functionName === "update_project") {
+              const updRes = await fetch("/api/realtime_session.php", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "update_project",
+                  ...args
+                })
+              });
+              const updJson = await updRes.json();
+              if (updJson.success) {
+                if (typeof (window as any).showToast === "function") {
+                  (window as any).showToast(t(`Project updated: "${updJson.project_name || args.project_identifier}"`, `Projekt upravený: "${updJson.project_name || args.project_identifier}"`, `Projekt módosítva: "${updJson.project_name || args.project_identifier}"`));
+                }
+                window.dispatchEvent(new CustomEvent("ccrm:reload-data"));
+              }
+              if (dc.readyState === "open") {
+                dc.send(
+                  JSON.stringify({
+                    type: "conversation.item.create",
+                    item: {
+                      type: "function_call_output",
+                      call_id: callId,
+                      output: JSON.stringify(updJson)
+                    }
+                  })
+                );
+                dc.send(JSON.stringify({ type: "response.create" }));
+              }
+            } else if (functionName === "add_project_task") {
+              const pTaskRes = await fetch("/api/realtime_session.php", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "add_project_task",
+                  ...args
+                })
+              });
+              const pTaskJson = await pTaskRes.json();
+              if (pTaskJson.success) {
+                if (typeof (window as any).showToast === "function") {
+                  (window as any).showToast(t(`Task added to project: "${args.title}"`, `Úloha pridaná k projektu: "${args.title}"`, `Feladat hozzáadva a projekthez: "${args.title}"`));
+                }
+                window.dispatchEvent(new CustomEvent("ccrm:reload-data"));
+              }
+              if (dc.readyState === "open") {
+                dc.send(
+                  JSON.stringify({
+                    type: "conversation.item.create",
+                    item: {
+                      type: "function_call_output",
+                      call_id: callId,
+                      output: JSON.stringify(pTaskJson)
+                    }
+                  })
+                );
+                dc.send(JSON.stringify({ type: "response.create" }));
+              }
+            } else if (functionName === "add_project_financial") {
+              const finRes = await fetch("/api/realtime_session.php", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "add_project_financial",
+                  ...args
+                })
+              });
+              const finJson = await finRes.json();
+              if (finJson.success) {
+                if (typeof (window as any).showToast === "function") {
+                  (window as any).showToast(t(`Financial record added: "${args.title}"`, `Finančný záznam zaevidovaný: "${args.title}"`, `Pénzügyi tétel rögzítve: "${args.title}"`));
+                }
+                window.dispatchEvent(new CustomEvent("ccrm:reload-data"));
+              }
+              if (dc.readyState === "open") {
+                dc.send(
+                  JSON.stringify({
+                    type: "conversation.item.create",
+                    item: {
+                      type: "function_call_output",
+                      call_id: callId,
+                      output: JSON.stringify(finJson)
+                    }
+                  })
+                );
+                dc.send(JSON.stringify({ type: "response.create" }));
+              }
+            } else if (functionName === "add_project_milestone") {
+              const msRes = await fetch("/api/realtime_session.php", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "add_project_milestone",
+                  ...args
+                })
+              });
+              const msJson = await msRes.json();
+              if (msJson.success) {
+                if (typeof (window as any).showToast === "function") {
+                  (window as any).showToast(t(`Milestone added: "${args.title}"`, `Míľnik pridaný: "${args.title}"`, `Mérföldkő hozzáadva: "${args.title}"`));
+                }
+                window.dispatchEvent(new CustomEvent("ccrm:reload-data"));
+              }
+              if (dc.readyState === "open") {
+                dc.send(
+                  JSON.stringify({
+                    type: "conversation.item.create",
+                    item: {
+                      type: "function_call_output",
+                      call_id: callId,
+                      output: JSON.stringify(msJson)
+                    }
+                  })
+                );
+                dc.send(JSON.stringify({ type: "response.create" }));
+              }
+            } else if (functionName === "delete_project") {
+              const delRes = await fetch("/api/realtime_session.php", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  action: "delete_project",
+                  ...args
+                })
+              });
+              const delJson = await delRes.json();
+              if (delJson.success) {
+                if (typeof (window as any).showToast === "function") {
+                  (window as any).showToast(t(`Project deleted: "${delJson.project_name || args.project_identifier}"`, `Projekt vymazaný: "${delJson.project_name || args.project_identifier}"`, `Projekt törölve: "${delJson.project_name || args.project_identifier}"`));
+                }
+                window.dispatchEvent(new CustomEvent("ccrm:reload-data"));
+              }
+              if (dc.readyState === "open") {
+                dc.send(
+                  JSON.stringify({
+                    type: "conversation.item.create",
+                    item: {
+                      type: "function_call_output",
+                      call_id: callId,
+                      output: JSON.stringify(delJson)
                     }
                   })
                 );

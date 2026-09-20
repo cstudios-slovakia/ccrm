@@ -299,10 +299,15 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     const openFromHash = () => {
       const { route, params } = parseAppHash(window.location.hash);
       if (route !== "projects") return;
-      const id = params.get("edit");
+      const id = params.get("edit") || params.get("id") || params.get("project");
       if (!id) return;
 
-      const project = projects.find(p => p.id === id);
+      const normalizedTarget = id.toLowerCase().trim();
+      const project = projects.find(p => 
+        p.id === id || 
+        (p.name && p.name.toLowerCase() === normalizedTarget) ||
+        (p.name && p.name.toLowerCase().includes(normalizedTarget))
+      );
       const type = project ? projectTypes.find(pt => pt.id === project.projectTypeId) : undefined;
       // A project that has not arrived yet (or whose type was deleted) leaves
       // the parameter in place, so the next render can still honour it.
