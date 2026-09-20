@@ -169,9 +169,23 @@ function sanitize_text($text, $to_placeholder) {
 }
 
 function restore_text($text, $to_real) {
-    if (empty($text)) return $text;
+    if (empty($text) || empty($to_real)) return $text;
+
+    $all_replacements = [];
     foreach ($to_real as $placeholder => $real) {
-        $text = str_replace($placeholder, $real, $text);
+        $all_replacements[$placeholder] = $real;
+        $bare = trim($placeholder, '[]');
+        if (!empty($bare) && $bare !== $placeholder) {
+            $all_replacements[$bare] = $real;
+        }
+    }
+
+    uksort($all_replacements, function($a, $b) {
+        return strlen($b) - strlen($a);
+    });
+
+    foreach ($all_replacements as $ph => $real) {
+        $text = str_replace($ph, $real, $text);
     }
     return $text;
 }
