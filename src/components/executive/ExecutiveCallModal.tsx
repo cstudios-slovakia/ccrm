@@ -539,7 +539,13 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-[100050] p-3 sm:p-[30px] flex items-stretch justify-end pointer-events-auto select-none backdrop-blur-2xl bg-slate-900/10 animate-in fade-in duration-300">
+    <div
+      className="fixed inset-0 z-[100050] flex flex-col items-center justify-between p-6 sm:p-10 pointer-events-auto select-none backdrop-blur-3xl animate-in fade-in duration-300 overflow-hidden"
+      style={{
+        background:
+          "radial-gradient(circle 900px at center, rgba(255, 255, 255, 0.95) 0%, rgba(255, 255, 255, 0.85) 38%, rgba(246, 249, 255, 0.68) 70%, rgba(235, 242, 255, 0.50) 100%)"
+      }}
+    >
       <style>{`
         @keyframes blobTalk {
           0% {
@@ -582,363 +588,255 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
         }
       `}</style>
 
-      {/* Fullscreen Blurred Glass Backdrop with White Gradient Radiating from Blob Position */}
+      {/* Soft Ambient Role Bloom directly behind center Blob */}
       <div
-        className="relative w-full h-full rounded-[24px] sm:rounded-[36px] border border-white/90 shadow-[0_30px_90px_rgba(15,23,42,0.14)] overflow-hidden flex flex-col lg:flex-row items-stretch justify-between backdrop-blur-3xl transition-all duration-500"
-        style={{
-          background:
-            "radial-gradient(circle 850px at calc(100% - 240px) 38%, rgba(255, 255, 255, 0.99) 0%, rgba(255, 255, 255, 0.92) 38%, rgba(246, 249, 255, 0.82) 70%, rgba(238, 244, 255, 0.72) 100%)"
-        }}
-      >
-        {/* Soft Ambient Role Bloom */}
-        <div
-          className={`absolute -top-32 right-32 w-[480px] h-[480px] rounded-full blur-3xl opacity-20 pointer-events-none transition-colors duration-700 ${
-            executive.color === "emerald"
-              ? "bg-emerald-400"
-              : executive.color === "amber"
-                ? "bg-amber-400"
-                : executive.color === "rose"
-                  ? "bg-rose-400"
-                  : executive.color === "cyan"
-                    ? "bg-cyan-400"
-                    : executive.color === "orange"
-                      ? "bg-orange-400"
-                      : executive.color === "blue"
-                        ? "bg-blue-400"
-                        : "bg-purple-400"
-          }`}
-        />
+        className={`absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full blur-3xl opacity-25 pointer-events-none transition-colors duration-700 -z-10 ${
+          executive.color === "emerald"
+            ? "bg-emerald-400"
+            : executive.color === "amber"
+              ? "bg-amber-400"
+              : executive.color === "rose"
+                ? "bg-rose-400"
+                : executive.color === "cyan"
+                  ? "bg-cyan-400"
+                  : executive.color === "orange"
+                    ? "bg-orange-400"
+                    : executive.color === "blue"
+                      ? "bg-blue-400"
+                      : "bg-purple-400"
+        }`}
+      />
 
-        {/* LEFT COLUMN: Spacious Ambient Workspace & Live Transcript Feed (Desktop) */}
-        <div className="hidden lg:flex flex-col justify-between flex-1 p-8 xl:p-12 border-r border-slate-200/60 z-10 bg-white/30 backdrop-blur-md">
-          {/* Header Metadata */}
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white border border-slate-200/80 shadow-xs text-purple-600">
-                <Sparkles className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="text-sm font-extrabold text-slate-900 tracking-tight">
-                  CCRM Strategic Advisory
-                </h3>
-                <p className="text-xs font-semibold text-slate-500">
-                  {t("Real-time live voice session", "Živý hlasový hovor v reálnom čase", "Valós idejű élő hanghívás")}
-                </p>
-              </div>
-            </div>
+      {/* TOP BAR: Floating Minimal Info */}
+      <div className="w-full max-w-4xl flex items-center justify-between z-10">
+        <div className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-white/80 backdrop-blur-md border border-slate-200/60 shadow-xs text-xs font-bold text-slate-700">
+          <Sparkles className="h-3.5 w-3.5 text-purple-600" />
+          <span>Voice: {executive.voice ? executive.voice.toUpperCase() : "ALLOY"}</span>
+        </div>
 
-            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/90 border border-slate-200/80 shadow-xs text-xs font-bold text-slate-700">
-              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>{t("Active Call", "Aktívny hovor", "Aktív hívás")}</span>
-            </div>
-          </div>
-
-          {/* Center Transcript Monitor */}
-          <div className="my-6 flex-1 flex flex-col justify-end max-h-[500px]">
-            <div className="flex items-center justify-between mb-3 px-1">
-              <span className="text-xs font-extrabold uppercase tracking-wider text-slate-500 flex items-center gap-2">
-                <FileText className="h-3.5 w-3.5 text-purple-500" />
-                {t("Live Transcript Stream", "Živý prepis rozhovoru", "Élő átirat")} ({transcripts.length})
+        <div className="flex items-center gap-3">
+          {/* Optional Transcript Toggle Pill */}
+          <button
+            type="button"
+            onClick={() => setShowTranscript(!showTranscript)}
+            className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/80 hover:bg-white backdrop-blur-md border border-slate-200/60 shadow-xs text-xs font-bold text-slate-700 hover:text-slate-900 transition-all cursor-pointer"
+          >
+            <FileText className="h-3.5 w-3.5 text-purple-600" />
+            <span>{t("Transcript", "Prepis", "Átirat")}</span>
+            {transcripts.length > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 text-[10px] font-extrabold">
+                {transcripts.length}
               </span>
-              <span className="text-[11px] font-mono font-bold text-slate-400">
-                {formatTimer(callDuration)}
-              </span>
-            </div>
+            )}
+          </button>
 
-            <div className="p-4 rounded-3xl bg-white/70 border border-slate-200/80 shadow-xs max-h-[420px] overflow-y-auto space-y-3">
-              {transcripts.length === 0 ? (
-                <div className="text-center py-12 px-4">
-                  <div className="inline-flex p-3 rounded-2xl bg-purple-50 text-purple-600 mb-3 border border-purple-100">
-                    <Volume2 className="h-6 w-6" />
-                  </div>
-                  <p className="text-xs font-medium text-slate-500 max-w-xs mx-auto">
-                    {t(
-                      "Speak naturally. The executive will respond and real-time transcripts will stream here.",
-                      "Hovorte prirodzene. Poradca vám odpovie a prepis sa zobrazí tu.",
-                      "Beszéljen természetesen. A vezető válaszol és az átirat itt jelenik meg."
-                    )}
-                  </p>
-                </div>
-              ) : (
-                transcripts.map((item) => (
-                  <div
-                    key={item.id}
-                    className={`p-3.5 rounded-2xl flex items-start gap-3 transition-all ${
-                      item.sender === "user"
-                        ? "bg-slate-50/90 text-slate-800 border border-slate-200/70 ml-6"
-                        : "bg-purple-50/90 text-purple-950 border border-purple-200/70 mr-6 shadow-xs"
-                    }`}
-                  >
-                    <BlobatarAvatar
-                      name={item.sender === "user" ? userName : executive.name}
-                      roleColor={item.sender === "user" ? "indigo" : executive.color}
-                      size={28}
-                      rounded="lg"
-                      animate="always"
-                      frameless={item.sender === "user" ? false : false}
-                      className="shrink-0 mt-0.5"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="font-bold text-[11px] text-slate-900">
-                          {item.sender === "user" ? userName : executive.name}
-                        </span>
-                        <span className="text-[10px] text-slate-400 font-mono">
-                          {new Date(item.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                        </span>
-                      </div>
-                      <p className="text-xs leading-relaxed whitespace-pre-wrap text-slate-700">
-                        {item.text}
-                      </p>
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
+          {/* Active Call Timer Pill */}
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white/80 backdrop-blur-md border border-slate-200/60 shadow-xs text-xs font-bold text-slate-800 font-mono">
+            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+            <Clock className="h-3.5 w-3.5 text-slate-400" />
+            <span>{formatTimer(callDuration)}</span>
           </div>
+        </div>
+      </div>
 
-          {/* Bottom Live Grounding Badge */}
-          <div className="flex items-center gap-2 text-xs font-semibold text-slate-600">
-            <span className="h-2 w-2 rounded-full bg-emerald-500" />
-            <span>{t("Grounded in live CRM records, clients & finances", "Prepojené s aktuálnymi CRM dátami, klientmi a financiami", "Összekapcsolva az élő CRM adatokkal, ügyfelekkel")}</span>
+      {/* CENTER STAGE: Frameless Talking Blobatar & Floating Titles (No Cards/Frames) */}
+      <div className="my-auto flex flex-col items-center justify-center text-center z-10 w-full max-w-2xl py-4">
+        
+        {/* Frameless Avatar Stage with Animated Speech Waves */}
+        <div className="relative my-4 flex items-center justify-center">
+          
+          {/* Radial Soundwave ripples when AI is speaking */}
+          {isAiSpeaking && (
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none -z-10">
+              <div className="absolute w-[240px] h-[240px] rounded-full bg-purple-400/25 animate-ping duration-1000 scale-135" />
+              <div className="absolute w-[280px] h-[280px] rounded-full bg-indigo-300/30 animate-pulse duration-700" />
+              <div className="absolute w-[330px] h-[330px] rounded-full border border-purple-300/40 animate-spin duration-3000" />
+            </div>
+          )}
+
+          {/* User speech reaction ring */}
+          {isUserSpeaking && !isAiSpeaking && (
+            <div
+              className="absolute -inset-8 rounded-full border-2 border-emerald-400/60 transition-all duration-75 pointer-events-none"
+              style={{ transform: `scale(${1 + userAudioLevel / 130})` }}
+            />
+          )}
+
+          {/* Thinking glow ring */}
+          {isAiThinking && !isAiSpeaking && (
+            <div className="absolute -inset-8 rounded-full border-2 border-amber-400/60 animate-pulse pointer-events-none" />
+          )}
+
+          {/* Frameless Animated Talking Blobatar */}
+          <div
+            className={`relative flex items-center justify-center transition-transform duration-200 z-10 ${
+              isAiSpeaking
+                ? "animate-[blobTalk_1.05s_ease-in-out_infinite]"
+                : isAiThinking
+                  ? "animate-[blobThink_2.4s_ease-in-out_infinite]"
+                  : isUserSpeaking
+                    ? "scale-105"
+                    : "animate-[blobIdle_4s_ease-in-out_infinite]"
+            }`}
+            style={{
+              filter: isAiSpeaking
+                ? "drop-shadow(0 25px 40px rgba(147, 51, 234, 0.25))"
+                : isUserSpeaking
+                  ? "drop-shadow(0 25px 40px rgba(16, 185, 129, 0.22))"
+                  : isAiThinking
+                    ? "drop-shadow(0 25px 40px rgba(245, 158, 11, 0.22))"
+                    : "drop-shadow(0 20px 35px rgba(15, 23, 42, 0.10))"
+            }}
+          >
+            <BlobatarAvatar
+              name={executive.name}
+              roleColor={executive.color}
+              size={210}
+              animate="always"
+              expression={avatarExpression}
+              frameless={true}
+              className="w-full h-full"
+            />
           </div>
         </div>
 
-        {/* RIGHT COLUMN: Main Frameless Calling Stage */}
-        <div className="w-full lg:w-[480px] xl:w-[540px] h-full flex flex-col justify-between p-6 sm:p-8 xl:p-10 z-10 overflow-y-auto">
-          
-          {/* Top Bar: Voice & Timer */}
-          <div className="w-full flex items-center justify-between pb-4 border-b border-slate-200/60 mb-2">
-            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/90 border border-slate-200/80 shadow-xs text-xs font-bold text-slate-700">
+        {/* Floating Titles & Metadata (Directly in scene, no card container) */}
+        <div className="space-y-1.5 mt-4 mb-3">
+          <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wide bg-white/80 border border-slate-200/80 text-purple-700 shadow-xs backdrop-blur-md">
+            <Sparkles className="h-3 w-3 text-purple-500" />
+            {executive.badge}
+          </div>
+          <h2 className="text-3xl sm:text-4xl font-black font-heading tracking-tight text-slate-900 drop-shadow-xs">
+            {executive.name}
+          </h2>
+          <p className="text-sm sm:text-base font-semibold text-slate-600 max-w-md mx-auto">
+            {translatedPosition}
+          </p>
+        </div>
+
+        {/* Live Status Pill */}
+        <div className="my-3">
+          {callState === "connecting" && (
+            <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/90 border border-amber-200 text-amber-800 text-xs font-bold animate-pulse shadow-xs backdrop-blur-md">
+              <Activity className="h-3.5 w-3.5 animate-spin text-amber-600" />
+              {t("Connecting to Executive...", "Pripájanie k poradcovi...", "Kapcsolódás a vezetőhöz...")}
+            </div>
+          )}
+
+          {callState === "connected" && isAiThinking && !isAiSpeaking && (
+            <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/90 border border-amber-200 text-amber-800 text-xs font-bold animate-pulse shadow-xs backdrop-blur-md">
+              <Sparkles className="h-3.5 w-3.5 text-amber-600 animate-spin" />
+              {t(`${executive.name} is analyzing...`, `${executive.name} analyzuje...`, `${executive.name} elemez...`)}
+            </div>
+          )}
+
+          {callState === "connected" && isAiSpeaking && (
+            <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/90 border border-purple-200 text-purple-800 text-xs font-bold animate-pulse shadow-xs backdrop-blur-md">
               <Volume2 className="h-3.5 w-3.5 text-purple-600" />
-              <span>Voice: {executive.voice ? executive.voice.toUpperCase() : "ALLOY"}</span>
+              {t(`${executive.name} is speaking...`, `${executive.name} hovorí...`, `${executive.name} beszél...`)}
             </div>
+          )}
 
-            <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-white/90 border border-slate-200/80 shadow-xs text-xs font-bold text-slate-800 font-mono">
-              <Clock className="h-3.5 w-3.5 text-slate-400" />
-              <span>{formatTimer(callDuration)}</span>
+          {callState === "connected" && !isAiSpeaking && !isAiThinking && isUserSpeaking && (
+            <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/90 border border-emerald-200 text-emerald-800 text-xs font-bold shadow-xs backdrop-blur-md">
+              <Mic className="h-3.5 w-3.5 text-emerald-600" />
+              {t("Listening to you...", "Počúvam vás...", "Hallgatom Önt...")}
             </div>
-          </div>
+          )}
 
-          {/* Center Stage: Frameless Floating Talking Blobatar */}
-          <div className="my-auto py-8 flex flex-col items-center justify-center text-center">
-            
-            {/* Frameless Avatar Stage with Speech Motion & Glowing Halos */}
-            <div className="relative my-4 flex items-center justify-center">
-              
-              {/* Radial Soundwave animation when AI is speaking */}
-              {isAiSpeaking && (
-                <>
-                  <div className="absolute inset-0 rounded-full bg-purple-400/25 animate-ping duration-1000 scale-135 pointer-events-none" />
-                  <div className="absolute -inset-6 rounded-full bg-indigo-300/30 animate-pulse duration-700 pointer-events-none" />
-                  <div className="absolute -inset-12 rounded-full border border-purple-300/40 animate-spin duration-3000 pointer-events-none" />
-                </>
-              )}
+          {callState === "connected" && !isAiSpeaking && !isAiThinking && !isUserSpeaking && (
+            <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/90 border border-slate-200/80 text-slate-700 text-xs font-bold shadow-xs backdrop-blur-md">
+              <span className="h-2 w-2 rounded-full bg-emerald-500" />
+              {t("Ready & connected to CRM data", "Pripravený s prístupom k CRM dátam", "Készen áll a CRM adatokkal")}
+            </div>
+          )}
 
-              {/* User speech reaction ring */}
-              {isUserSpeaking && !isAiSpeaking && (
-                <div
-                  className="absolute -inset-6 rounded-full border-2 border-emerald-400/60 transition-all duration-75 pointer-events-none"
-                  style={{ transform: `scale(${1 + userAudioLevel / 140})` }}
-                />
-              )}
+          {callState === "error" && (
+            <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/90 border border-rose-200 text-rose-700 text-xs font-bold max-w-sm text-center shadow-xs backdrop-blur-md">
+              <AlertCircle className="h-4 w-4 shrink-0 text-rose-500" />
+              <span>{errorMessage || t("Connection error", "Chyba spojenia", "Kapcsolati hiba")}</span>
+            </div>
+          )}
+        </div>
 
-              {/* Thinking glow ring */}
-              {isAiThinking && !isAiSpeaking && (
-                <div className="absolute -inset-6 rounded-full border-2 border-amber-400/60 animate-pulse pointer-events-none" />
-              )}
-
-              {/* Frameless Animated Talking Blobatar */}
-              <div
-                className={`relative flex items-center justify-center transition-transform duration-200 z-10 ${
+        {/* Audio Visualizer Waves */}
+        <div className="w-full max-w-[240px] h-6 flex items-center justify-center gap-1.5 mt-2">
+          {[...Array(16)].map((_, i) => {
+            const height = isAiSpeaking
+              ? Math.max(4, Math.sin(i + callDuration * 4) * 22 + 8)
+              : isUserSpeaking
+                ? Math.max(4, (userAudioLevel / 100) * 24 * Math.random() + 4)
+                : 4;
+            return (
+              <span
+                key={i}
+                className={`w-1 rounded-full transition-all duration-75 ${
                   isAiSpeaking
-                    ? "animate-[blobTalk_1.05s_ease-in-out_infinite]"
-                    : isAiThinking
-                      ? "animate-[blobThink_2.4s_ease-in-out_infinite]"
-                      : isUserSpeaking
-                        ? "scale-105"
-                        : "animate-[blobIdle_4s_ease-in-out_infinite]"
-                }`}
-                style={{
-                  filter: isAiSpeaking
-                    ? "drop-shadow(0 20px 35px rgba(147, 51, 234, 0.22))"
+                    ? "bg-purple-500"
                     : isUserSpeaking
-                      ? "drop-shadow(0 20px 35px rgba(16, 185, 129, 0.2))"
-                      : isAiThinking
-                        ? "drop-shadow(0 20px 35px rgba(245, 158, 11, 0.2))"
-                        : "drop-shadow(0 15px 30px rgba(15, 23, 42, 0.08))"
-                }}
-              >
-                <BlobatarAvatar
-                  name={executive.name}
-                  roleColor={executive.color}
-                  size={190}
-                  animate="always"
-                  expression={avatarExpression}
-                  frameless={true}
-                  className="w-full h-full"
-                />
-              </div>
-            </div>
+                      ? "bg-emerald-500"
+                      : "bg-slate-300/80"
+                }`}
+                style={{ height: `${height}px` }}
+              />
+            );
+          })}
+        </div>
 
-            {/* Executive Titles & Metadata */}
-            <div className="space-y-1.5 mt-4 mb-3">
-              <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-[11px] font-extrabold uppercase tracking-wide bg-purple-50 border border-purple-200/80 text-purple-700 shadow-xs">
-                <Sparkles className="h-3 w-3 text-purple-500" />
-                {executive.badge}
-              </div>
-              <h2 className="text-2xl sm:text-3xl font-black font-heading tracking-tight text-slate-900">
-                {executive.name}
-              </h2>
-              <p className="text-xs sm:text-sm font-semibold text-slate-500 max-w-sm mx-auto">
-                {translatedPosition}
+        {/* Floating Subtitle / Transcript Drawer */}
+        {showTranscript && (
+          <div className="w-full max-w-lg mt-6 p-4 max-h-48 overflow-y-auto rounded-3xl bg-white/80 backdrop-blur-xl border border-slate-200/80 shadow-lg space-y-2.5 text-xs text-left animate-in fade-in slide-in-from-bottom-2 duration-200">
+            {transcripts.length === 0 ? (
+              <p className="text-slate-400 text-center py-4 italic">
+                {t("Transcripts will stream here in real time...", "Prepisy sa zobrazia počas hovoru...", "Az átirat itt jelenik meg...")}
               </p>
-            </div>
-
-            {/* Live Status Pill */}
-            <div className="my-3">
-              {callState === "connecting" && (
-                <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold animate-pulse shadow-xs">
-                  <Activity className="h-3.5 w-3.5 animate-spin text-amber-600" />
-                  {t("Connecting to Executive...", "Pripájanie k poradcovi...", "Kapcsolódás a vezetőhöz...")}
+            ) : (
+              transcripts.map((item) => (
+                <div
+                  key={item.id}
+                  className={`p-3 rounded-2xl ${
+                    item.sender === "user"
+                      ? "bg-slate-100/90 text-slate-800 ml-4"
+                      : "bg-purple-50/90 text-purple-950 font-medium mr-4"
+                  }`}
+                >
+                  <span className="font-bold text-[10px] block opacity-70 mb-0.5">
+                    {item.sender === "user" ? userName : executive.name}
+                  </span>
+                  <p className="leading-relaxed">{item.text}</p>
                 </div>
-              )}
-
-              {callState === "connected" && isAiThinking && !isAiSpeaking && (
-                <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold animate-pulse shadow-xs">
-                  <Sparkles className="h-3.5 w-3.5 text-amber-600 animate-spin" />
-                  {t(`${executive.name} is analyzing...`, `${executive.name} analyzuje...`, `${executive.name} elemez...`)}
-                </div>
-              )}
-
-              {callState === "connected" && isAiSpeaking && (
-                <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-purple-50 border border-purple-200 text-purple-800 text-xs font-bold animate-pulse shadow-xs">
-                  <Volume2 className="h-3.5 w-3.5 text-purple-600" />
-                  {t(`${executive.name} is speaking...`, `${executive.name} hovorí...`, `${executive.name} beszél...`)}
-                </div>
-              )}
-
-              {callState === "connected" && !isAiSpeaking && !isAiThinking && isUserSpeaking && (
-                <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-xs font-bold shadow-xs">
-                  <Mic className="h-3.5 w-3.5 text-emerald-600" />
-                  {t("Listening to you...", "Počúvam vás...", "Hallgatom Önt...")}
-                </div>
-              )}
-
-              {callState === "connected" && !isAiSpeaking && !isAiThinking && !isUserSpeaking && (
-                <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-white border border-slate-200 text-slate-700 text-xs font-bold shadow-xs">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                  {t("Ready & connected to CRM data", "Pripravený s prístupom k CRM dátam", "Készen áll a CRM adatokkal")}
-                </div>
-              )}
-
-              {callState === "error" && (
-                <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-rose-50 border border-rose-200 text-rose-700 text-xs font-bold max-w-sm text-center shadow-xs">
-                  <AlertCircle className="h-4 w-4 shrink-0 text-rose-500" />
-                  <span>{errorMessage || t("Connection error", "Chyba spojenia", "Kapcsolati hiba")}</span>
-                </div>
-              )}
-            </div>
-
-            {/* Audio Visualizer Waves */}
-            <div className="w-full max-w-[220px] h-6 flex items-center justify-center gap-1.5 mt-2">
-              {[...Array(16)].map((_, i) => {
-                const height = isAiSpeaking
-                  ? Math.max(4, Math.sin(i + callDuration * 4) * 22 + 8)
-                  : isUserSpeaking
-                    ? Math.max(4, (userAudioLevel / 100) * 24 * Math.random() + 4)
-                    : 4;
-                return (
-                  <span
-                    key={i}
-                    className={`w-1 rounded-full transition-all duration-75 ${
-                      isAiSpeaking
-                        ? "bg-purple-500"
-                        : isUserSpeaking
-                          ? "bg-emerald-500"
-                          : "bg-slate-300"
-                    }`}
-                    style={{ height: `${height}px` }}
-                  />
-                );
-              })}
-            </div>
-          </div>
-
-          {/* Mobile Collapsible Transcript Drawer (Visible only when left panel is hidden) */}
-          <div className="lg:hidden w-full mb-4">
-            <button
-              type="button"
-              onClick={() => setShowTranscript(!showTranscript)}
-              className="w-full flex items-center justify-between px-4 py-2.5 rounded-2xl bg-white border border-slate-200/80 text-xs font-bold text-slate-700 shadow-xs"
-            >
-              <span className="flex items-center gap-2">
-                <FileText className="h-3.5 w-3.5 text-purple-600" />
-                {t("Live Transcript", "Živý prepis", "Élő átirat")} ({transcripts.length})
-              </span>
-              {showTranscript ? (
-                <ChevronUp className="h-4 w-4 text-slate-400" />
-              ) : (
-                <ChevronDown className="h-4 w-4 text-slate-400" />
-              )}
-            </button>
-
-            {showTranscript && (
-              <div className="mt-2 p-3 max-h-40 overflow-y-auto rounded-2xl bg-white/90 border border-slate-200 space-y-2 text-xs">
-                {transcripts.length === 0 ? (
-                  <p className="text-slate-400 text-center py-3 italic">
-                    {t("Transcripts will appear here as you speak...", "Prepisy sa zobrazia počas rozhovoru...", "Az átirat itt jelenik meg...")}
-                  </p>
-                ) : (
-                  transcripts.map((item) => (
-                    <div
-                      key={item.id}
-                      className={`p-2.5 rounded-xl ${
-                        item.sender === "user"
-                          ? "bg-slate-100 text-slate-800"
-                          : "bg-purple-50 text-purple-900 font-medium"
-                      }`}
-                    >
-                      <span className="font-bold text-[10px] block opacity-70 mb-0.5">
-                        {item.sender === "user" ? userName : executive.name}
-                      </span>
-                      <p>{item.text}</p>
-                    </div>
-                  ))
-                )}
-              </div>
+              ))
             )}
           </div>
+        )}
+      </div>
 
-          {/* Bottom Action Controls Bar */}
-          <div className="w-full flex items-center justify-center gap-4 pt-4 border-t border-slate-200/60">
-            {/* Mute Button */}
-            <button
-              type="button"
-              onClick={toggleMute}
-              disabled={callState !== "connected"}
-              className={`p-4 rounded-2xl border transition-all active:scale-90 cursor-pointer shadow-sm ${
-                isMuted
-                  ? "bg-amber-50 border-amber-300 text-amber-700"
-                  : "bg-white hover:bg-slate-50 border-slate-200 text-slate-700 hover:text-slate-900"
-              } ${callState !== "connected" ? "opacity-50 cursor-not-allowed" : ""}`}
-              title={isMuted ? t("Unmute Microphone", "Zapnúť mikrofón", "Mikrofon bekapcsolása") : t("Mute Microphone", "Stlmiť mikrofón", "Mikrofon némítása")}
-            >
-              {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-            </button>
+      {/* BOTTOM BAR: Floating Controls Centered */}
+      <div className="w-full max-w-md flex items-center justify-center gap-4 z-10 pb-2">
+        {/* Mute Button */}
+        <button
+          type="button"
+          onClick={toggleMute}
+          disabled={callState !== "connected"}
+          className={`p-4 rounded-full border transition-all active:scale-90 cursor-pointer shadow-md backdrop-blur-md ${
+            isMuted
+              ? "bg-amber-50/90 border-amber-300 text-amber-700 shadow-amber-500/15"
+              : "bg-white/90 hover:bg-white border-slate-200/80 text-slate-700 hover:text-slate-900 shadow-slate-900/5"
+          } ${callState !== "connected" ? "opacity-50 cursor-not-allowed" : ""}`}
+          title={isMuted ? t("Unmute Microphone", "Zapnúť mikrofón", "Mikrofon bekapcsolása") : t("Mute Microphone", "Stlmiť mikrofón", "Mikrofon némítása")}
+        >
+          {isMuted ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+        </button>
 
-            {/* End Call Button */}
-            <button
-              type="button"
-              onClick={handleEndCall}
-              className="flex items-center gap-2.5 px-8 py-4 rounded-2xl bg-rose-500 hover:bg-rose-600 text-white text-xs font-black uppercase tracking-wider shadow-lg shadow-rose-500/30 hover:shadow-rose-500/45 active:scale-95 transition-all cursor-pointer"
-            >
-              <PhoneOff className="h-5 w-5" />
-              <span>{t("End Call", "Ukončiť hovor", "Hívás befejezése")}</span>
-            </button>
-          </div>
-
-        </div>
+        {/* End Call Button */}
+        <button
+          type="button"
+          onClick={handleEndCall}
+          className="flex items-center gap-2.5 px-8 py-4 rounded-full bg-rose-500 hover:bg-rose-600 text-white text-xs font-black uppercase tracking-wider shadow-xl shadow-rose-500/35 hover:shadow-rose-500/50 active:scale-95 transition-all cursor-pointer"
+        >
+          <PhoneOff className="h-5 w-5" />
+          <span>{t("End Call", "Ukončiť hovor", "Hívás befejezése")}</span>
+        </button>
       </div>
     </div>
   );
