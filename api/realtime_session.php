@@ -225,9 +225,8 @@ $voiceSystemPrompt = $skillInstructions . "\n\n"
 
 // 6. Request Ephemeral Client Secret from OpenAI Realtime API (GA endpoint)
 $sessionConfig = [
-    'type' => 'webrtc',
+    'type' => 'realtime',
     'model' => 'gpt-realtime-1.5',
-    'voice' => $assignedVoice,
     'instructions' => $voiceSystemPrompt,
     'tools' => [
         [
@@ -246,14 +245,10 @@ $sessionConfig = [
             ]
         ]
     ],
-    'input_audio_transcription' => [
-        'model' => 'whisper-1'
-    ],
-    'turn_detection' => [
-        'type' => 'server_vad',
-        'threshold' => 0.5,
-        'prefix_padding_ms' => 300,
-        'silence_duration_ms' => 500
+    'audio' => [
+        'output' => [
+            'voice' => $assignedVoice
+        ]
     ]
 ];
 

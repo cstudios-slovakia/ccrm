@@ -253,36 +253,10 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
       dc.addEventListener("open", () => {
         setCallState("connected");
 
-        // 1. Explicitly configure session settings (voice, instructions, VAD, transcription, tools)
+        // 1. Explicitly configure session settings (VAD & transcription)
         const updateSessionEvent = {
           type: "session.update",
           session: {
-            modalities: ["audio", "text"],
-            instructions:
-              sessionInit.instructions ||
-              `You are ${executive.name} (${translatedPosition}), an executive in CCRM.\nYou are in a live voice call with ${userName}.\nRespond concisely and conversationally in ${
-                systemLanguage === "sk" ? "Slovak" : systemLanguage === "hu" ? "Hungarian" : "English"
-              }.`,
-            voice: sessionInit.voice || executive.voice || "alloy",
-            tools: [
-              {
-                type: "function",
-                name: "query_crm_live_data",
-                description:
-                  "Searches the live CCRM database across all 16 domains for deep records, client details, financial analysis, unpaid invoices, active projects, tasks, or inventory.",
-                parameters: {
-                  type: "object",
-                  properties: {
-                    query: {
-                      type: "string",
-                      description:
-                        "The search query, client name, invoice number, or project name to lookup in CRM records."
-                    }
-                  },
-                  required: ["query"]
-                }
-              }
-            ],
             input_audio_transcription: {
               model: "whisper-1"
             },
@@ -307,7 +281,7 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
           response: {
             instructions: `Speak now. Proactively greet ${userName} warmly by name in ${
               systemLanguage === "sk" ? "Slovak" : systemLanguage === "hu" ? "Hungarian" : "English"
-            }. Introduce yourself as ${executive.name} (${translatedPosition}) and ask what strategic priority or decision you can advise them on today.`
+            }. Introduce yourself as ${executive.name} (${translatedPosition}). State that you have live access to CCRM database records (including client accounts such as Cstudios, s.r.o., active projects, financials, and tasks) and ask what strategic priority or decision you can advise them on today.`
           }
         };
         try {
