@@ -201,6 +201,17 @@ $todayFormatted = date('l, j. F Y');
 $todayDate = date('Y-m-d');
 $langName = $systemLanguage === 'sk' ? 'Slovak (Slovenčina)' : ($systemLanguage === 'hu' ? 'Hungarian (Magyar)' : 'English');
 
+$isFirstInteraction = isset($payload['is_first_interaction']) ? (bool)$payload['is_first_interaction'] : false;
+
+$greetingPrompt = $isFirstInteraction
+    ? "   - When this call connects, you MUST proactively speak first immediately!\n"
+    . "   - Greet {$userName} warmly by name in {$langName} (e.g. 'Dobrý deň {$userName}' in Slovak, 'Üdvözlöm {$userName}' in Hungarian, or 'Hello {$userName}' in English).\n"
+    . "   - Introduce yourself as {$agentName} ({$agentPosition}).\n"
+    . "   - State that you have live access to CCRM database records (including client accounts such as Cstudios, s.r.o., active projects, financials, and tasks) and ask what strategic priority or decision you can advise them on today.\n\n"
+    : "   - When this call connects, you MUST proactively speak first immediately!\n"
+    . "   - Greet {$userName} warmly and casually/informally by name in {$langName} (e.g. 'Ahoj {$userName}, ako ti môžem dnes pomôcť?' in Slovak, 'Szia {$userName}, miben segíthetek ma?' in Hungarian, or 'Hi {$userName}, how can I help you today?' in English).\n"
+    . "   - Do NOT recite your full name, position, or introductory resume again — jump straight into being helpful and asking how you can help them today.\n\n";
+
 // 5. Build Spoken Prompt with Proactive Greeting and Anti-Refusal Directives
 $voiceSystemPrompt = $skillInstructions . "\n\n"
     . "=== VOICE CALL OPERATIONAL DIRECTIVES ===\n"
@@ -209,10 +220,7 @@ $voiceSystemPrompt = $skillInstructions . "\n\n"
     . "   - Do NOT use markdown symbols, bullet points, headers, or asterisks in spoken responses — speak in complete, fluid conversational sentences.\n"
     . "   - Keep turns crisp (1-3 sentences per turn) so the user can easily interact and converse.\n\n"
     . "2. MANDATORY FIRST ACTION (PICKUP GREETING):\n"
-    . "   - When this call connects, you MUST proactively speak first immediately!\n"
-    . "   - Greet {$userName} warmly by name in {$langName} (e.g. 'Dobrý deň {$userName}' in Slovak, 'Üdvözlöm {$userName}' in Hungarian, or 'Hello {$userName}' in English).\n"
-    . "   - Introduce yourself as {$agentName} ({$agentPosition}).\n"
-    . "   - Ask what strategic priority, financial review, or business decision they would like to discuss right now.\n\n"
+    . $greetingPrompt
     . "3. LIVE DATABASE ACCESS & ANTI-REFUSAL DIRECTIVE:\n"
     . "   - You have 100% DIRECT, LIVE, REAL-TIME access to the CCRM database.\n"
     . "   - NEVER refuse a request or state that you lack real-time access or cannot check the database. All records in your prompt and available via the 'query_crm_live_data' tool are live, current CRM records.\n"

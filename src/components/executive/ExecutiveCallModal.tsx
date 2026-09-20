@@ -157,6 +157,10 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
     setTranscripts([]);
 
     try {
+      // Check if user has already met/called this specific agent before
+      const introStorageKey = `ccrm_agent_intro_${currentUser?.id || currentUser?.email || "default"}_${executive.id}`;
+      const isFirstInteraction = !localStorage.getItem(introStorageKey);
+
       // Step A: Request ephemeral session token from backend
       const res = await fetch("/api/realtime_session.php", {
         method: "POST",
@@ -164,7 +168,8 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
         body: JSON.stringify({
           agent_id: executive.id,
           language: systemLanguage,
-          user_name: userName
+          user_name: userName,
+          is_first_interaction: isFirstInteraction
         })
       });
 
@@ -276,16 +281,30 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
         }
 
         // 2. Proactively trigger the AI to speak first upon pickup!
+        // First-time call: formal introduction with position & CRM access.
+        // Returning call: informal, warm, brief greeting (e.g. "Hi <user>, how can I help you today?").
         const initialGreetingDirective = {
           type: "response.create",
           response: {
-            instructions: `Speak now. Proactively greet ${userName} warmly by name in ${
-              systemLanguage === "sk" ? "Slovak" : systemLanguage === "hu" ? "Hungarian" : "English"
-            }. Introduce yourself as ${executive.name} (${translatedPosition}). State that you have live access to CCRM database records (including client accounts such as Cstudios, s.r.o., active projects, financials, and tasks) and ask what strategic priority or decision you can advise them on today.`
+            instructions: isFirstInteraction
+              ? `Speak now. Proactively greet ${userName} warmly by name in ${
+                  systemLanguage === "sk" ? "Slovak" : systemLanguage === "hu" ? "Hungarian" : "English"
+                }. Introduce yourself as ${executive.name} (${translatedPosition}). State that you have live access to CCRM database records (including client accounts such as Cstudios, s.r.o., active projects, financials, and tasks) and ask what strategic priority or decision you can advise them on today.`
+              : `Speak now. Proactively greet ${userName} warmly and casually/informally by name in ${
+                  systemLanguage === "sk"
+                    ? `Slovak (say exactly or similar to: 'Ahoj ${userName}, ako ti môžem dnes pomôcť?')`
+                    : systemLanguage === "hu"
+                      ? `Hungarian (say exactly or similar to: 'Szia ${userName}, miben segíthetek ma?')`
+                      : `English (say exactly or similar to: 'Hi ${userName}, how can I help you today?')`
+                }. Do NOT recite your full name or title or introduction again. Jump straight into being helpful and asking how you can help them today.`
           }
         };
         try {
           dc.send(JSON.stringify(initialGreetingDirective));
+          // Record that the introduction has occurred for this agent
+          try {
+            localStorage.setItem(introStorageKey, new Date().toISOString());
+          } catch (e) {}
         } catch (err) {
           console.warn("Initial greeting trigger failed", err);
         }
