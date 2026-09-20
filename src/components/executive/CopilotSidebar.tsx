@@ -130,18 +130,63 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
     return "Erik";
   }, [currentUser]);
 
-  // Welcome message localized
-  const welcomeText = useMemo(() => {
-    return t(
-      `👋 Hi **${userName}**! I am your **Executive Copilot (${VERSION_CODENAME})**. I have live CRM data access and I am actively grounded in **${screenContext.title}**. How can I help you?`,
-      `👋 Ahoj **${userName}**! Som tvoj **Výkonný AI Copilot (${VERSION_CODENAME})**. Mám živý prístup k CRM dátam a sledujem s tebou obrazovku **${screenContext.title}**. Ako ti môžem pomôcť?`,
-      `👋 Szia **${userName}**! Én vagyok a **Vezetői AI Copilot (${VERSION_CODENAME})**. Valós időben látom a CRM adatokat és a megnyitott **${screenContext.title}** felületet. Miben segíthetek ma?`
-    );
-  }, [userName, screenContext.title, systemLanguage]);
+  // Track if user has received first-time comprehensive introduction
+  const [hasIntroduced, setHasIntroduced] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("ccrm_copilot_introduced") === "true";
+    }
+    return false;
+  });
 
-  // Fetch initial chat history on mount
+  // Welcome message localized (first time vs returning)
+  const welcomeText = useMemo(() => {
+    if (!hasIntroduced) {
+      return t(
+        `👋 Hi **${userName}**! I am your **Executive Copilot (${VERSION_CODENAME})**. I have live CRM data access and I am actively grounded in **${screenContext.title}**. How can I help you today?`,
+        `👋 Ahoj **${userName}**! Som tvoj **Výkonný AI Copilot (${VERSION_CODENAME})**. Mám živý prístup k CRM dátam a sledujem s tebou obrazovku **${screenContext.title}**. Ako ti môžem dnes pomôcť?`,
+        `👋 Szia **${userName}**! Én vagyok a **Vezetői AI Copilot (${VERSION_CODENAME})**. Valós időben látom a CRM adatokat és a megnyitott **${screenContext.title}** felületet. Miben segíthetek ma?`
+      );
+    }
+    return t(
+      `👋 Hi **${userName}**, how can I help you today? I'm currently looking at **${screenContext.title}** with you.`,
+      `👋 Ahoj **${userName}**, ako ti môžem dnes pomôcť? Momentálne sledujem s tebou obrazovku **${screenContext.title}**.`,
+      `👋 Szia **${userName}**, miben segíthetek ma? Jelenleg a(z) **${screenContext.title}** felületet nézem veled.`
+    );
+  }, [hasIntroduced, userName, screenContext.title, systemLanguage]);
+
+  // Mark introduced on open
+  useEffect(() => {
+    if (!hasIntroduced && typeof window !== "undefined") {
+      localStorage.setItem("ccrm_copilot_introduced", "true");
+      setHasIntroduced(true);
+    }
+  }, [hasIntroduced]);
+
+  // Auto-focus input bar when opening chat
+  const inputRef = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (isOpen && !isVoiceMode) {
+      const timer = setTimeout(() => {
+        inputRef.current?.focus();
+      }, 150);
+      return () => clearTimeout(timer);
+    }
+  }, [isOpen, isVoiceMode]);
+
+  // Fetch initial chat history on mount and ensure welcome message is present
   useEffect(() => {
     const userId = currentUser?.id || currentUser?.email || "default_user";
+
+    // Start immediately with welcome message
+    setMessages([
+      {
+        id: `welcome-${Date.now()}`,
+        sender: "agent",
+        text: welcomeText,
+        timestamp: new Date()
+      }
+    ]);
+
     fetch(`/api/chat_rag.php?action=chat_history&user_id=${encodeURIComponent(userId)}&agent_id=orchestrator`)
       .then((res) => res.json())
       .then((data) => {
@@ -152,30 +197,31 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
             text: m.text,
             timestamp: m.timestamp ? new Date(m.timestamp) : new Date()
           }));
-          setMessages(loaded);
-        } else {
-          // Default Welcome message
-          setMessages([
-            {
-              id: `welcome-${Date.now()}`,
-              sender: "agent",
-              text: welcomeText,
-              timestamp: new Date()
-            }
-          ]);
+
+          // Check if last message is already a recent greeting for this session
+          const lastMsg = loaded[loaded.length - 1];
+          const hasRecentGreeting = lastMsg && lastMsg.sender === "agent" && (lastMsg.text.includes(userName) || lastMsg.text.includes(screenContext.title));
+
+          if (hasRecentGreeting) {
+            setMessages(loaded);
+          } else {
+            // Append welcoming greeting for the current session & screen
+            setMessages([
+              ...loaded,
+              {
+                id: `welcome-session-${Date.now()}`,
+                sender: "agent",
+                text: welcomeText,
+                timestamp: new Date()
+              }
+            ]);
+          }
         }
       })
       .catch(() => {
-        setMessages([
-          {
-            id: `welcome-${Date.now()}`,
-            sender: "agent",
-            text: welcomeText,
-            timestamp: new Date()
-          }
-        ]);
+        // Keep initial welcome message
       });
-  }, [currentUser?.id, currentUser?.email, welcomeText]);
+  }, [currentUser?.id, currentUser?.email, welcomeText, userName, screenContext.title]);
 
   // Send Text Message
   const handleSendText = async (customText?: string) => {
@@ -962,16 +1008,18 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Bottom Chat Input Form - Highly Visible & Elevated */}
+          {/* Bottom Chat Input Form - Ultra Visible, Glowing & Elevated */}
           <form
             onSubmit={(e) => {
               e.preventDefault();
               handleSendText();
             }}
-            className="p-3.5 bg-white border-t border-slate-200/90 shadow-[0_-8px_25px_rgba(0,0,0,0.06)] shrink-0 z-20"
+            className="p-3.5 sm:p-4 bg-white/95 backdrop-blur-md border-t-2 border-purple-200/90 shadow-[0_-12px_32px_rgba(124,58,237,0.12)] shrink-0 z-20"
           >
-            <div className="relative flex items-center bg-slate-50 hover:bg-slate-100/70 focus-within:bg-white rounded-2xl border-2 border-purple-300 focus-within:border-purple-600 focus-within:ring-4 focus-within:ring-purple-500/15 p-1.5 transition-all shadow-xs">
+            <div className="relative flex items-center bg-slate-50/90 hover:bg-slate-50 focus-within:bg-white rounded-2xl border-2 border-purple-400/90 hover:border-purple-500 focus-within:border-purple-600 focus-within:ring-4 focus-within:ring-purple-500/20 p-2 transition-all shadow-sm">
+              <Sparkles className="h-4 w-4 text-purple-600 ml-1.5 shrink-0 animate-pulse" />
               <input
+                ref={inputRef}
                 type="text"
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
@@ -981,31 +1029,45 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
                   `Kérdezzen a(z) ${screenContext.title} témában...`
                 )}
                 disabled={isLoading}
-                className="flex-1 bg-transparent px-3 py-2 text-xs md:text-sm text-slate-900 font-medium placeholder:text-slate-400 placeholder:font-normal focus:outline-none disabled:opacity-50 min-w-0"
+                className="flex-1 bg-transparent px-3 py-1.5 text-xs sm:text-sm text-slate-900 font-semibold placeholder:text-slate-400 placeholder:font-normal focus:outline-none disabled:opacity-50 min-w-0"
               />
 
-              <div className="flex items-center gap-1.5 shrink-0 pr-1">
+              <div className="flex items-center gap-2 shrink-0 pr-1">
                 {/* Voice Call Quick Launch Button */}
                 <button
                   type="button"
                   onClick={startVoiceCall}
-                  className="h-8 w-8 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-700 hover:text-purple-900 flex items-center justify-center transition-all cursor-pointer active:scale-95 border border-purple-200/60"
+                  className="h-9 px-3 rounded-xl bg-purple-100 hover:bg-purple-200/90 text-purple-800 hover:text-purple-950 font-bold border border-purple-300 flex items-center gap-1.5 text-xs transition-all shadow-2xs active:scale-95 cursor-pointer"
                   title={t("Start Voice Call", "Spustiť hlasový hovor", "Hanghívás indítása")}
                 >
-                  <Mic className="h-4 w-4" />
+                  <Mic className="h-4 w-4 text-purple-700" />
+                  <span className="hidden sm:inline font-bold text-[11.5px]">{t("Talk", "Hovor", "Beszéd")}</span>
                 </button>
 
                 {/* Prominent Send Button */}
                 <button
                   type="submit"
                   disabled={!inputText.trim() || isLoading}
-                  className="h-8 px-3 rounded-xl bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 disabled:opacity-30 disabled:cursor-not-allowed text-white flex items-center justify-center gap-1.5 text-xs font-bold shadow-md shadow-purple-600/30 transition-all active:scale-95 cursor-pointer"
+                  className="h-9 px-4 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-700 hover:to-indigo-800 disabled:opacity-30 disabled:cursor-not-allowed text-white flex items-center justify-center gap-1.5 text-xs font-black shadow-md shadow-purple-600/35 transition-all active:scale-95 cursor-pointer"
                   title={t("Send Message", "Odoslať správu", "Üzenet küldése")}
                 >
                   <span>{t("Send", "Odoslať", "Küldés")}</span>
                   <Send className="h-3.5 w-3.5" />
                 </button>
               </div>
+            </div>
+
+            {/* Grounding & Help Subtext */}
+            <div className="flex items-center justify-between px-1.5 pt-2 text-[10px] text-slate-400 font-medium">
+              <span className="flex items-center gap-1.5 truncate max-w-[70%]">
+                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                <span className="truncate">
+                  {t("Grounded in:", "Kontext:", "Kontextus:")} <strong className="text-slate-700 font-semibold">{screenContext.title}</strong>
+                </span>
+              </span>
+              <span className="text-[9.5px] text-slate-400 shrink-0">
+                ↵ {t("Enter to send", "Enter pre odoslanie", "Enter a küldéshez")}
+              </span>
             </div>
           </form>
         </div>
