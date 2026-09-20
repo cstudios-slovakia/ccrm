@@ -50,6 +50,7 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
   // Audio / Speech State
   const [isMuted, setIsMuted] = useState(false);
   const [isAiSpeaking, setIsAiSpeaking] = useState(false);
+  const [isAiThinking, setIsAiThinking] = useState(false);
   const [isUserSpeaking, setIsUserSpeaking] = useState(false);
   const [callDuration, setCallDuration] = useState(0);
   const [showTranscript, setShowTranscript] = useState(false);
@@ -346,12 +347,29 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
   // 5. Handle Realtime Data Channel Events
   const handleRealtimeEvent = (event: any) => {
     switch (event.type) {
+      case "input_audio_buffer.speech_started":
+        setIsUserSpeaking(true);
+        setIsAiSpeaking(false);
+        setIsAiThinking(false);
+        break;
+
+      case "input_audio_buffer.speech_stopped":
+        setIsUserSpeaking(false);
+        setIsAiThinking(true);
+        break;
+
+      case "response.created":
+        setIsAiThinking(true);
+        break;
+
       case "output_audio_buffer.started":
         setIsAiSpeaking(true);
+        setIsAiThinking(false);
         break;
 
       case "output_audio_buffer.stopped":
         setIsAiSpeaking(false);
+        setIsAiThinking(false);
         break;
 
       case "response.audio_transcript.delta":
@@ -438,6 +456,16 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
     }, 400);
   };
 
+  // Dynamic blobatar expression reflecting call interaction states
+  const avatarExpression = useMemo(() => {
+    if (callState === "connecting") return "thinking";
+    if (callState === "error") return "sad";
+    if (isAiThinking) return "thinking";
+    if (isAiSpeaking) return "smug";
+    if (isUserSpeaking) return "surprised"; // alert reaction to user voice input!
+    return "idle";
+  }, [callState, isAiThinking, isAiSpeaking, isUserSpeaking]);
+
   if (!isOpen) return null;
 
   return (
@@ -463,19 +491,14 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
           }`}
         />
 
-        {/* Top Header info */}
-        <div className="w-full flex items-center justify-between border-b border-slate-800/80 pb-4 mb-6 z-10">
-          <div className="flex items-center gap-2">
-            <span className="flex h-2.5 w-2.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-              GPT-Live Realtime Audio
-            </span>
-            <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-slate-800 text-slate-300 border border-slate-700">
-              Voice: {executive.voice.toUpperCase()}
-            </span>
+        {/* Top Header: Voice Indicator & Call Timer */}
+        <div className="w-full flex items-center justify-between border-b border-slate-800/80 pb-4 mb-4 z-10">
+          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700/80 text-[11px] font-bold text-slate-300">
+            <Volume2 className="h-3.5 w-3.5 text-purple-400" />
+            <span>Voice: {executive.voice ? executive.voice.toUpperCase() : "ALLOY"}</span>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700/80 text-[11px] font-bold text-slate-300">
             <Clock className="h-3.5 w-3.5 text-slate-400" />
             <span className="text-xs font-mono font-bold text-slate-300">
               {formatTimer(callDuration)}
@@ -502,17 +525,29 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
             />
           )}
 
+          {/* Thinking glow ring */}
+          {isAiThinking && !isAiSpeaking && (
+            <div className="absolute -inset-4 rounded-full border-2 border-amber-400/60 animate-pulse pointer-events-none" />
+          )}
+
           {/* Center Avatar Box */}
           <div
-            className={`relative flex h-28 w-28 sm:h-32 sm:w-32 items-center justify-center rounded-3xl border-2 shadow-2xl transition-transform duration-300 z-10 overflow-hidden bg-slate-900 ${
-              isAiSpeaking ? "scale-105 ring-4 ring-purple-400/40" : "scale-100"
+            className={`relative flex h-28 w-28 sm:h-32 sm:w-32 items-center justify-center rounded-3xl border-2 shadow-2xl transition-all duration-300 z-10 overflow-hidden bg-slate-900 ${
+              isAiSpeaking
+                ? "scale-105 ring-4 ring-purple-400/50 shadow-purple-500/30"
+                : isUserSpeaking
+                  ? "scale-105 ring-4 ring-emerald-400/50 shadow-emerald-500/30"
+                  : isAiThinking
+                    ? "scale-100 ring-4 ring-amber-400/50 shadow-amber-500/20"
+                    : "scale-100"
             } ${colorTheme.border}`}
           >
             <BlobatarAvatar
               name={executive.name}
               size={128}
               rounded="2xl"
-              animate={isAiSpeaking ? "always" : "hover"}
+              animate="always"
+              expression={avatarExpression}
               className="w-full h-full border-0 shadow-none"
             />
           </div>
@@ -541,6 +576,13 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
             </div>
           )}
 
+          {callState === "connected" && isAiThinking && !isAiSpeaking && (
+            <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 text-xs font-bold animate-pulse">
+              <Sparkles className="h-3.5 w-3.5 text-amber-400 animate-spin" />
+              {t(`${executive.name} is thinking & analyzing...`, `${executive.name} premýšľa a analyzuje...`, `${executive.name} gondolkodik és elemez...`)}
+            </div>
+          )}
+
           {callState === "connected" && isAiSpeaking && (
             <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-purple-500/20 border border-purple-500/40 text-purple-300 text-xs font-bold animate-pulse">
               <Volume2 className="h-3.5 w-3.5 text-purple-400" />
@@ -548,14 +590,14 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
             </div>
           )}
 
-          {callState === "connected" && !isAiSpeaking && isUserSpeaking && (
+          {callState === "connected" && !isAiSpeaking && !isAiThinking && isUserSpeaking && (
             <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-bold">
               <Mic className="h-3.5 w-3.5 text-emerald-400" />
               {t("Listening to you...", "Počúvam vás...", "Hallgatom Önt...")}
             </div>
           )}
 
-          {callState === "connected" && !isAiSpeaking && !isUserSpeaking && (
+          {callState === "connected" && !isAiSpeaking && !isAiThinking && !isUserSpeaking && (
             <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-slate-800/80 border border-slate-700 text-slate-300 text-xs font-bold">
               <span className="h-2 w-2 rounded-full bg-emerald-400" />
               {t("Ready & grounded in CRM data", "Pripravený s prístupom k CRM dátam", "Készen áll a CRM adatokkal")}

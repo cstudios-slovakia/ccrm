@@ -1042,7 +1042,8 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                   name={isCouncilMode ? "Executive Council Boardroom" : selectedRole.name}
                   size={42}
                   rounded="xl"
-                  animate="hover"
+                  animate="always"
+                  expression={isLoading ? "thinking" : inputText.trim().length > 0 ? "surprised" : "idle"}
                   className={isCouncilMode ? "border-amber-300 shadow-sm" : `border ${activeTheme.border} shadow-sm`}
                 />
                 {isCouncilMode && (
@@ -1125,6 +1126,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                         size={32}
                         rounded="xl"
                         animate="hover"
+                        expression={msg.isCouncil ? "thinking" : "happy"}
                         className={msg.isCouncil ? "border-amber-300 shadow-xs" : `border ${activeTheme.border} shadow-xs`}
                       />
                     ) : (
@@ -1133,6 +1135,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                         size={32}
                         rounded="xl"
                         animate="hover"
+                        expression="happy"
                         className="border-slate-300 shadow-xs"
                       />
                     )}
@@ -1187,14 +1190,19 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
 
             {isLoading && (
               <div className="flex gap-3 max-w-[85%] mr-auto">
-                <div className="shrink-0 mt-0.5">
+                <div className="shrink-0 mt-0.5 relative">
                   <BlobatarAvatar
                     name={isCouncilMode ? "Executive Council Boardroom" : selectedRole.name}
-                    size={32}
+                    size={36}
                     rounded="xl"
                     animate="always"
-                    className={isCouncilMode ? "border-amber-300 shadow-xs" : `border ${activeTheme.border} shadow-xs`}
+                    expression="thinking"
+                    className={isCouncilMode ? "border-amber-400 ring-2 ring-amber-400/40 shadow-sm" : `border ${activeTheme.border} ring-2 ring-purple-400/40 shadow-sm`}
                   />
+                  <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-purple-400 opacity-75" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-purple-500" />
+                  </span>
                 </div>
                 <div className="p-4 rounded-2xl bg-white border border-slate-100 text-slate-700 rounded-tl-none shadow-sm flex items-center gap-2">
                   <span className="text-xs font-semibold text-slate-500">

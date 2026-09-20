@@ -7,7 +7,7 @@ import type {
 import { askChiefAnalyst, interviewAgent } from '../../utils/swarm/chatAssistant';
 import { getDemoAnalystAnswer, getDemoAgentAnswer } from '../../utils/swarm/demoData';
 import { Markdown } from '../../utils/markdown';
-import { X, Send, Sparkles, RotateCcw } from 'lucide-react';
+import { X, Send, RotateCcw } from 'lucide-react';
 import { BlobatarAvatar } from '../common/BlobatarAvatar';
 
 interface QaAssistantDrawerProps {
@@ -257,6 +257,11 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
               size={28}
               rounded="full"
               animate="hover"
+              expression={
+                m.sender === 'user'
+                  ? 'happy'
+                  : (activeTab === 'analyst' ? 'smug' : 'unsure')
+              }
               className={
                 m.sender === 'user'
                   ? 'border-indigo-300 shadow-xs'
@@ -332,9 +337,16 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
         )}
 
         {isLoading && (
-          <div className="flex items-center gap-2 text-slate-400 text-xs italic pl-9">
-            <Sparkles className="w-3.5 h-3.5 animate-spin text-indigo-500" />
-            <span>{t('Thinking...', 'Premýšľam...', 'Gondolkodom...')}</span>
+          <div className="flex items-center gap-2.5 text-slate-500 text-xs pl-1">
+            <BlobatarAvatar
+              name={activeTab === 'analyst' ? 'Chief Intelligence Analyst' : (selectedAgent?.displayName || selectedAgent?.username || 'Market Specialist')}
+              size={24}
+              rounded="full"
+              animate="always"
+              expression="thinking"
+              className={activeTab === 'analyst' ? 'border-purple-400 ring-2 ring-purple-400/40' : 'border-emerald-400 ring-2 ring-emerald-400/40'}
+            />
+            <span className="italic">{t('Thinking & analyzing simulation data...', 'Premýšľam a analyzujem dáta simulácie...', 'Gondolkodom és elemzem az adatokat...')}</span>
           </div>
         )}
 
