@@ -29,6 +29,7 @@ export interface LoginPhaseConfig {
     dot: string;
   };
   icon: 'sunrise' | 'sun' | 'sunset' | 'moon';
+  isLight?: boolean;
 }
 
 export const LOGIN_PHASES: Record<TimePhaseId, LoginPhaseConfig> = {
@@ -76,14 +77,15 @@ export const LOGIN_PHASES: Record<TimePhaseId, LoginPhaseConfig> = {
       text: 'text-amber-200',
       dot: 'bg-amber-400'
     },
-    icon: 'sunrise'
+    icon: 'sunrise',
+    isLight: false
   },
   day: {
     id: 'day',
     badge: {
-      en: 'Radiant Day',
-      sk: 'Aktívny deň',
-      hu: 'Aktív nappal'
+      en: 'Blue Sky Day',
+      sk: 'Jasný modrý deň',
+      hu: 'Kék égbolt nappal'
     },
     greeting: {
       en: 'Good day',
@@ -100,29 +102,30 @@ export const LOGIN_PHASES: Record<TimePhaseId, LoginPhaseConfig> = {
       sk: 'Špičková presnosť poháňajúca každý dôležitý firemný míľnik.',
       hu: 'Csúcskategóriás precizitás minden vállalkozási mérföldkőhöz.'
     },
-    raysColor: '#7dd3fc',
-    raysSpeed: 1.0,
-    lightSpread: 1.4,
-    rayLength: 3.5,
+    raysColor: '#38bdf8',
+    raysSpeed: 0.9,
+    lightSpread: 1.6,
+    rayLength: 3.8,
     pulsating: false,
-    backgroundGradient: 'linear-gradient(135deg, #090e1f 0%, #0d1a38 50%, #0a142c 100%)',
-    bgClass: 'bg-[#090e1f]',
-    accentGradient: 'from-sky-400 via-blue-400 to-indigo-400',
-    badgeClass: 'border-sky-400/30 bg-sky-500/10 text-sky-300 shadow-sky-500/10',
-    cardBorderClass: 'border-sky-500/20',
-    cardGlowClass: 'shadow-sky-500/10',
+    backgroundGradient: 'linear-gradient(135deg, #E6F2FF 0%, #B3D9FF 45%, #80B3FF 80%, #6699E6 100%)',
+    bgClass: 'bg-[#E6F2FF]',
+    accentGradient: 'from-blue-700 via-indigo-700 to-sky-600',
+    badgeClass: 'border-blue-400/40 bg-white/70 text-blue-900 shadow-blue-500/10 backdrop-blur-md',
+    cardBorderClass: 'border-blue-300/40',
+    cardGlowClass: 'shadow-blue-500/10',
     blobColors: {
-      blob1: 'bg-sky-500/15',
-      blob2: 'bg-indigo-500/15',
-      blob3: 'bg-cyan-400/15'
+      blob1: 'bg-blue-300/30',
+      blob2: 'bg-sky-300/30',
+      blob3: 'bg-indigo-300/25'
     },
     chipStyle: {
-      bg: 'bg-sky-950/30',
-      border: 'border-sky-500/20',
-      text: 'text-sky-200',
-      dot: 'bg-sky-400'
+      bg: 'bg-white/70 backdrop-blur-md',
+      border: 'border-blue-200/80',
+      text: 'text-blue-950 font-bold',
+      dot: 'bg-blue-600'
     },
-    icon: 'sun'
+    icon: 'sun',
+    isLight: true
   },
   sunset: {
     id: 'sunset',

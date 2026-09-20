@@ -22,6 +22,7 @@ import type { UserProfile } from "../types";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import LightRays from "./LightRays";
+import { FeralSkyGradient } from "./FeralSkyGradient";
 import { hasCookieAccess, hasPersistentStorage } from "../utils/safeStorage";
 import {
   getCurrentLoginTheme,
@@ -256,39 +257,45 @@ export const LoginView: React.FC<LoginViewProps> = ({
         }}
       />
 
-      {/* Dynamic 3D Shader Background with Time-Adaptive Rays Color */}
+      {/* Dynamic Animated Background: FeralSkyGradient for Day, LightRays for Dawn/Sunset/Night */}
       {!isModal && (
-        <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
-          <LightRays
-            raysOrigin="left"
-            raysColor={activeTheme.raysColor}
-            raysSpeed={activeTheme.raysSpeed}
-            lightSpread={activeTheme.lightSpread}
-            rayLength={activeTheme.rayLength}
-            pulsating={activeTheme.pulsating ?? false}
-            fadeDistance={1.9}
-            saturation={1.1}
-            followMouse
-            mouseInfluence={0.08}
-            noiseAmount={0}
-            distortion={0}
-          />
-        </div>
-      )}
+        <>
+          {activeTheme.id === "day" ? (
+            <FeralSkyGradient />
+          ) : (
+            <>
+              <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
+                <LightRays
+                  raysOrigin="left"
+                  raysColor={activeTheme.raysColor}
+                  raysSpeed={activeTheme.raysSpeed}
+                  lightSpread={activeTheme.lightSpread}
+                  rayLength={activeTheme.rayLength}
+                  pulsating={activeTheme.pulsating ?? false}
+                  fadeDistance={1.9}
+                  saturation={1.1}
+                  followMouse
+                  mouseInfluence={0.08}
+                  noiseAmount={0}
+                  distortion={0}
+                />
+              </div>
 
-      {/* Atmospheric Aurora Glowing Blobs */}
-      {!isModal && (
-        <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden opacity-75">
-          <div
-            className={`absolute -top-32 -left-32 w-96 h-96 rounded-full blur-[100px] aurora-blob-1 transition-colors duration-1000 ${activeTheme.blobColors.blob1}`}
-          />
-          <div
-            className={`absolute top-1/2 -left-20 w-80 h-80 rounded-full blur-[100px] aurora-blob-2 transition-colors duration-1000 ${activeTheme.blobColors.blob2}`}
-          />
-          <div
-            className={`absolute -bottom-32 left-1/4 w-[30rem] h-[30rem] rounded-full blur-[120px] aurora-blob-3 transition-colors duration-1000 ${activeTheme.blobColors.blob3}`}
-          />
-        </div>
+              {/* Atmospheric Aurora Glowing Blobs */}
+              <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden opacity-75">
+                <div
+                  className={`absolute -top-32 -left-32 w-96 h-96 rounded-full blur-[100px] aurora-blob-1 transition-colors duration-1000 ${activeTheme.blobColors.blob1}`}
+                />
+                <div
+                  className={`absolute top-1/2 -left-20 w-80 h-80 rounded-full blur-[100px] aurora-blob-2 transition-colors duration-1000 ${activeTheme.blobColors.blob2}`}
+                />
+                <div
+                  className={`absolute -bottom-32 left-1/4 w-[30rem] h-[30rem] rounded-full blur-[120px] aurora-blob-3 transition-colors duration-1000 ${activeTheme.blobColors.blob3}`}
+                />
+              </div>
+            </>
+          )}
+        </>
       )}
 
       {/* LEFT AREA: Atmospheric Executive Time-of-Day Hero Panel */}
@@ -316,7 +323,11 @@ export const LoginView: React.FC<LoginViewProps> = ({
               <button
                 type="button"
                 onClick={() => setPreviewPhase(null)}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white/80 text-[10px] font-bold uppercase tracking-wider backdrop-blur-md border border-white/15 transition-all active:scale-95"
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider backdrop-blur-md border transition-all active:scale-95 ${
+                  activeTheme.isLight
+                    ? "bg-white/70 hover:bg-white/90 text-slate-800 border-blue-200 shadow-sm"
+                    : "bg-white/10 hover:bg-white/20 text-white/80 border-white/15"
+                }`}
                 title={tr("Reset to live time", "Vrátiť na reálny čas", "Visszaállítás a valós időre")}
               >
                 <RefreshCw className="h-3 w-3" />
@@ -329,61 +340,141 @@ export const LoginView: React.FC<LoginViewProps> = ({
           <div className="space-y-6 my-auto">
             {/* Live Digital Clock */}
             <div className="space-y-1">
-              <div className="flex items-baseline font-mono font-black tracking-tight text-white/95 drop-shadow-md">
+              <div
+                className={`flex items-baseline font-mono font-black tracking-tight ${
+                  activeTheme.isLight ? "text-slate-900 drop-shadow-sm" : "text-white/95 drop-shadow-md"
+                }`}
+              >
                 <span className="text-5xl xl:text-7xl">{clock.hoursStr}</span>
-                <span className="text-4xl xl:text-6xl text-white/40 mx-1 animate-pulse">:</span>
+                <span
+                  className={`text-4xl xl:text-6xl mx-1 animate-pulse ${
+                    activeTheme.isLight ? "text-blue-600/70" : "text-white/40"
+                  }`}
+                >
+                  :
+                </span>
                 <span className="text-5xl xl:text-7xl">{clock.minutesStr}</span>
-                <span className="text-2xl xl:text-3xl text-white/45 ml-2 font-semibold">.{clock.secondsStr}</span>
+                <span
+                  className={`text-2xl xl:text-3xl ml-2 font-semibold ${
+                    activeTheme.isLight ? "text-slate-600" : "text-white/45"
+                  }`}
+                >
+                  .{clock.secondsStr}
+                </span>
               </div>
-              <p className="text-xs xl:text-sm font-extrabold uppercase tracking-widest text-white/60 drop-shadow pl-1">
+              <p
+                className={`text-xs xl:text-sm font-extrabold uppercase tracking-widest pl-1 ${
+                  activeTheme.isLight ? "text-slate-700 drop-shadow-none" : "text-white/60 drop-shadow"
+                }`}
+              >
                 {dateStr}
               </p>
             </div>
 
             {/* Dynamic Greeting & Brand Slogan */}
             <div className="space-y-2.5 max-w-lg">
-              <h1 className="text-3xl xl:text-4xl font-heading font-black text-white tracking-tight leading-tight drop-shadow-md">
+              <h1
+                className={`text-3xl xl:text-4xl font-heading font-black tracking-tight leading-tight ${
+                  activeTheme.isLight ? "text-slate-900 drop-shadow-sm" : "text-white drop-shadow-md"
+                }`}
+              >
                 {phaseGreetingText}
               </h1>
               <p className={`text-base xl:text-lg font-bold bg-gradient-to-r ${activeTheme.accentGradient} bg-clip-text text-transparent leading-snug`}>
                 {phaseSubtitleText}
               </p>
-              <p className="text-xs xl:text-sm text-white/65 font-medium leading-relaxed">
+              <p
+                className={`text-xs xl:text-sm font-medium leading-relaxed ${
+                  activeTheme.isLight ? "text-slate-700" : "text-white/65"
+                }`}
+              >
                 {phaseQuoteText}
               </p>
             </div>
 
             {/* Enterprise Micro Telemetry Status Chips */}
             <div className="grid grid-cols-3 gap-3 pt-2">
-              <div className="p-3 rounded-2xl bg-white/[0.06] border border-white/10 backdrop-blur-md space-y-1 hover:bg-white/[0.09] transition-all">
-                <div className="flex items-center gap-1.5 text-emerald-400">
+              <div
+                className={`p-3 rounded-2xl border backdrop-blur-md space-y-1 transition-all ${
+                  activeTheme.isLight
+                    ? "bg-white/70 border-white/80 shadow-sm hover:bg-white/85"
+                    : "bg-white/[0.06] border-white/10 hover:bg-white/[0.09]"
+                }`}
+              >
+                <div
+                  className={`flex items-center gap-1.5 ${
+                    activeTheme.isLight ? "text-emerald-700" : "text-emerald-400"
+                  }`}
+                >
                   <ShieldCheck className="h-3.5 w-3.5" />
                   <span className="text-[9px] font-black uppercase tracking-wider">Gateway</span>
                 </div>
-                <div className="text-[11px] font-bold text-white/90 truncate">Online · 99.99%</div>
+                <div
+                  className={`text-[11px] font-bold truncate ${
+                    activeTheme.isLight ? "text-slate-900" : "text-white/90"
+                  }`}
+                >
+                  Online · 99.99%
+                </div>
               </div>
 
-              <div className="p-3 rounded-2xl bg-white/[0.06] border border-white/10 backdrop-blur-md space-y-1 hover:bg-white/[0.09] transition-all">
-                <div className="flex items-center gap-1.5 text-amber-400">
+              <div
+                className={`p-3 rounded-2xl border backdrop-blur-md space-y-1 transition-all ${
+                  activeTheme.isLight
+                    ? "bg-white/70 border-white/80 shadow-sm hover:bg-white/85"
+                    : "bg-white/[0.06] border-white/10 hover:bg-white/[0.09]"
+                }`}
+              >
+                <div
+                  className={`flex items-center gap-1.5 ${
+                    activeTheme.isLight ? "text-amber-700" : "text-amber-400"
+                  }`}
+                >
                   <Zap className="h-3.5 w-3.5" />
                   <span className="text-[9px] font-black uppercase tracking-wider">Engine</span>
                 </div>
-                <div className="text-[11px] font-bold text-white/90 truncate">&lt; 1ms Core Sync</div>
+                <div
+                  className={`text-[11px] font-bold truncate ${
+                    activeTheme.isLight ? "text-slate-900" : "text-white/90"
+                  }`}
+                >
+                  &lt; 1ms Core Sync
+                </div>
               </div>
 
-              <div className="p-3 rounded-2xl bg-white/[0.06] border border-white/10 backdrop-blur-md space-y-1 hover:bg-white/[0.09] transition-all">
-                <div className="flex items-center gap-1.5 text-sky-400">
+              <div
+                className={`p-3 rounded-2xl border backdrop-blur-md space-y-1 transition-all ${
+                  activeTheme.isLight
+                    ? "bg-white/70 border-white/80 shadow-sm hover:bg-white/85"
+                    : "bg-white/[0.06] border-white/10 hover:bg-white/[0.09]"
+                }`}
+              >
+                <div
+                  className={`flex items-center gap-1.5 ${
+                    activeTheme.isLight ? "text-sky-700" : "text-sky-400"
+                  }`}
+                >
                   <Activity className="h-3.5 w-3.5" />
                   <span className="text-[9px] font-black uppercase tracking-wider">Security</span>
                 </div>
-                <div className="text-[11px] font-bold text-white/90 truncate">TLS 1.3 · Vault</div>
+                <div
+                  className={`text-[11px] font-bold truncate ${
+                    activeTheme.isLight ? "text-slate-900" : "text-white/90"
+                  }`}
+                >
+                  TLS 1.3 · Vault
+                </div>
               </div>
             </div>
           </div>
 
           {/* Bottom Dock: Interactive Time Atmosphere Previewer */}
           <div className="pt-4 flex items-center gap-2 flex-wrap">
-            <span className="text-[9px] font-black uppercase tracking-widest text-white/40 mr-1">
+            <span
+              className={`text-[9px] font-black uppercase tracking-widest mr-1 ${
+                activeTheme.isLight ? "text-slate-600" : "text-white/40"
+              }`}
+            >
               {tr("Atmosphere:", "Atmosféra:", "Hangulat:")}
             </span>
             
@@ -397,8 +488,12 @@ export const LoginView: React.FC<LoginViewProps> = ({
                   onClick={() => setPreviewPhase(phaseId)}
                   className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-200 border ${
                     isSelected
-                      ? "bg-white/20 border-white/40 text-white shadow-md scale-105"
-                      : "bg-white/5 hover:bg-white/10 border-white/10 text-white/60 hover:text-white"
+                      ? activeTheme.isLight
+                        ? "bg-blue-600 border-blue-600 text-white shadow-md scale-105"
+                        : "bg-white/20 border-white/40 text-white shadow-md scale-105"
+                      : activeTheme.isLight
+                        ? "bg-white/60 hover:bg-white/85 border-blue-200/80 text-slate-700 hover:text-slate-950"
+                        : "bg-white/5 hover:bg-white/10 border-white/10 text-white/60 hover:text-white"
                   }`}
                 >
                   {renderPhaseIcon(phase.icon, "h-3 w-3")}
