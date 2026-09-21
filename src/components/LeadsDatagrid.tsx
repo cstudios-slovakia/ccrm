@@ -2104,6 +2104,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     // YYYY-MM-DD and HH:MM halves of the edited entry's timestamp
     const [editingEventDate, setEditingEventDate] = useState("");
     const [editingEventTime, setEditingEventTime] = useState("");
+    // Direction of the hand-logged e-mail being edited; null when the entry is
+    // not one (mailbox imports get theirs from the mailbox, not from a person).
+    const [editingEventOutgoing, setEditingEventOutgoing] = useState<
+        boolean | null
+    >(null);
 
     // Timeline events whose truncated content the user expanded via "Show more"
     const [expandedTimelineEventIds, setExpandedTimelineEventIds] = useState<
@@ -2129,6 +2134,26 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         const d = new Date();
         return d.toTimeString().substring(0, 5);
     });
+    // The two fields above are only a prefill, stamped when the form was last
+    // reset. Until the user edits one of them the entry is logged "now" — at the
+    // save — otherwise a form left open for half an hour files a follow-up
+    // before the status change that actually preceded it.
+    const [logWhenTouched, setLogWhenTouched] = useState(false);
+    const refreshLogWhen = () => {
+        setLogDate(todayLocal());
+        setLogTimeOfEvent(new Date().toTimeString().substring(0, 5));
+        setLogWhenTouched(false);
+    };
+    const selectLogType = (type: LeadEventType) => {
+        setLogType(type);
+        if (!logWhenTouched) refreshLogWhen();
+    };
+    // Direction of a hand-logged e-mail: one we sent, or the client's reply.
+    const [logEmailOutgoing, setLogEmailOutgoing] = useState(true);
+    const manualEmailTitle = (outgoing: boolean) =>
+        outgoing
+            ? t("Direct Email Sent", "Odoslaný priamy e-mail", "Közvetlen e-mail elküldve")
+            : t("Email Received", "Prijatý e-mail", "E-mail érkezett");
 
     // Inline locking task states
     const [inlineTaskTitle, setInlineTaskTitle] = useState("");
@@ -2799,7 +2824,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         let contentString = logContent.trim();
         let titleString = "";
 
-        const timestampStr = `${logDate} ${logTimeOfEvent}`;
+        const timestampStr = logWhenTouched
+            ? `${logDate} ${logTimeOfEvent}`
+            : `${todayLocal()} ${new Date().toTimeString().substring(0, 5)}`;
 
         if (logType === "phone") {
             titleString = t(
@@ -2814,17 +2841,19 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     "Befejezett telefonhívás az ügyféllel a frissítésekről.",
                 );
         } else if (logType === "email") {
-            titleString = t(
-                "Direct Email Sent",
-                "Odoslaný priamy e-mail",
-                "Közvetlen e-mail elküldve",
-            );
+            titleString = manualEmailTitle(logEmailOutgoing);
             if (!contentString)
-                contentString = t(
-                    "Outbound email correspondence successfully transmitted.",
-                    "Odchádzajúca e-mailová korešpondencia bola úspešne odoslaná.",
-                    "A kimenő e-mail levelezés sikeresen elküldve.",
-                );
+                contentString = logEmailOutgoing
+                    ? t(
+                          "Outbound email correspondence successfully transmitted.",
+                          "Odchádzajúca e-mailová korešpondencia bola úspešne odoslaná.",
+                          "A kimenő e-mail levelezés sikeresen elküldve.",
+                      )
+                    : t(
+                          "Email received from the client.",
+                          "Prijatý e-mail od klienta.",
+                          "E-mail érkezett az ügyféltől.",
+                      );
         } else if (logType === "note") {
             titleString = t(
                 "Internal Note Added",
@@ -3062,10 +3091,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             // Whoever is logging it right now, not the lead's owner: the two are
             // frequently different people and the timeline has to say which one acted.
             author: currentUser?.name || "",
-            // The only e-mail this form can log is one we sent ("Direct Email
-            // Sent"), but the flag was never set, so every hand-logged mail
-            // rendered with the Incoming badge under an outgoing title.
-            isOutgoing: logType === "email" ? true : undefined,
+            // Drives the Incoming/Outgoing badge. Left unset it read as Incoming,
+            // so every hand-logged sent mail used to show the wrong badge.
+            isOutgoing: logType === "email" ? logEmailOutgoing : undefined,
         };
 
         setLeads((prev) =>
@@ -3162,8 +3190,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             delete (window as any)._latestTranscription;
 
         // Reset date/time to now
-        setLogDate(todayLocal());
-        setLogTimeOfEvent(new Date().toTimeString().substring(0, 5));
+        refreshLogWhen();
+        setLogEmailOutgoing(true);
     };
 
     // Begin editing an already-logged event: prefill the draft with its text and
@@ -3187,6 +3215,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         setEditingEventDraft(text);
         setEditingEventDate((event.timestamp || "").substring(0, 10));
         setEditingEventTime((event.timestamp || "").substring(11, 16));
+        setEditingEventOutgoing(
+            event.type === "email" && !event.id.startsWith("email-")
+                ? !!event.isOutgoing
+                : null,
+        );
     };
 
     const handleCancelEditEvent = () => {
@@ -3194,6 +3227,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         setEditingEventDraft("");
         setEditingEventDate("");
         setEditingEventTime("");
+        setEditingEventOutgoing(null);
     };
 
     const handleSaveEditEvent = (eventId: string) => {
@@ -3219,6 +3253,18 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                               content: nextContent,
                               ...(nextTimestamp
                                   ? { timestamp: nextTimestamp }
+                                  : {}),
+                              // Flipping the direction re-titles the entry too:
+                              // "Sent" over a client's reply is the same lie as
+                              // the wrong badge.
+                              ...(editingEventOutgoing !== null &&
+                              editingEventOutgoing !== !!edited.isOutgoing
+                                  ? {
+                                        isOutgoing: editingEventOutgoing,
+                                        title: manualEmailTitle(
+                                            editingEventOutgoing,
+                                        ),
+                                    }
                                   : {}),
                           }),
                       }
@@ -3262,6 +3308,40 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     className="w-full px-2.5 py-1.5 rounded-xl bg-slate-50 border-2 border-indigo-200 focus:bg-white focus:outline-none focus:ring-1 focus:ring-indigo-400 text-[11px] text-slate-700 font-bold"
                 />
             </div>
+        </div>
+    );
+
+    // Sent / Received switch for a hand-logged e-mail, shared by the log form
+    // and the inline editor.
+    const renderEmailDirectionToggle = (
+        outgoing: boolean,
+        onChange: (outgoing: boolean) => void,
+    ) => (
+        <div className="grid grid-cols-2 gap-1 bg-slate-100 p-1 rounded-xl border-2 border-slate-200">
+            {([true, false] as const).map((value) => (
+                <button
+                    key={String(value)}
+                    type="button"
+                    aria-pressed={outgoing === value}
+                    onClick={() => onChange(value)}
+                    className={`py-1.5 rounded-lg font-black text-[9px] uppercase tracking-wider transition-all flex items-center justify-center gap-1.5 active:scale-[0.97] ${
+                        outgoing === value
+                            ? "bg-indigo-600 text-white shadow"
+                            : "text-slate-500 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
+                    }`}
+                >
+                    {value ? (
+                        <CornerDownLeft className="h-3 w-3 stroke-[2.5]" />
+                    ) : (
+                        <CornerLeftDown className="h-3 w-3 stroke-[2.5]" />
+                    )}
+                    <span>
+                        {value
+                            ? t("Sent", "Odoslaný", "Elküldött")
+                            : t("Received", "Prijatý", "Fogadott")}
+                    </span>
+                </button>
+            ))}
         </div>
     );
 
@@ -6075,7 +6155,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                             key={type}
                                                             type="button"
                                                             onClick={() =>
-                                                                setLogType(type)
+                                                                selectLogType(type)
                                                             }
                                                             className={`py-2 rounded-lg font-black text-[9px] uppercase tracking-wider transition-all text-center flex items-center justify-center gap-1 ${
                                                                 logType === type
@@ -6117,7 +6197,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                     key={type}
                                                                     type="button"
                                                                     onClick={() =>
-                                                                        setLogType(
+                                                                        selectLogType(
                                                                             type,
                                                                         )
                                                                     }
@@ -6163,11 +6243,14 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                         type="date"
                                                         required
                                                         value={logDate}
-                                                        onChange={(e) =>
+                                                        onChange={(e) => {
                                                             setLogDate(
                                                                 e.target.value,
-                                                            )
-                                                        }
+                                                            );
+                                                            setLogWhenTouched(
+                                                                true,
+                                                            );
+                                                        }}
                                                         className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:outline-none text-xs font-bold text-slate-700"
                                                     />
                                                 </div>
@@ -6182,15 +6265,34 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                         type="time"
                                                         required
                                                         value={logTimeOfEvent}
-                                                        onChange={(e) =>
+                                                        onChange={(e) => {
                                                             setLogTimeOfEvent(
                                                                 e.target.value,
-                                                            )
-                                                        }
+                                                            );
+                                                            setLogWhenTouched(
+                                                                true,
+                                                            );
+                                                        }}
                                                         className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:outline-none text-xs font-bold text-slate-700"
                                                     />
                                                 </div>
                                             </div>
+
+                                            {logType === "email" && (
+                                                <div className="space-y-1">
+                                                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">
+                                                        {t(
+                                                            "Direction",
+                                                            "Smer",
+                                                            "Irány",
+                                                        )}
+                                                    </label>
+                                                    {renderEmailDirectionToggle(
+                                                        logEmailOutgoing,
+                                                        setLogEmailOutgoing,
+                                                    )}
+                                                </div>
+                                            )}
 
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                                                 {logType === "offer" && (
@@ -6835,7 +6937,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                 </span>
                                                                 {editingEventId !==
                                                                     event.id && (
-                                                                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                    <div className="flex items-center gap-0.5 pointer-fine:opacity-40 pointer-fine:group-hover:opacity-100 pointer-fine:focus-within:opacity-100 transition-opacity">
                                                                         <button
                                                                             type="button"
                                                                             onClick={(
@@ -7284,7 +7386,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                         entry without touching the mailbox. */}
                                                                     {editingEventId !==
                                                                         event.id && (
-                                                                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
+                                                                        <div className="flex items-center gap-0.5 pointer-fine:opacity-40 pointer-fine:group-hover:opacity-100 pointer-fine:focus-within:opacity-100 transition-opacity">
                                                                             <button
                                                                                 type="button"
                                                                                 onClick={(
@@ -7339,7 +7441,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                     />
                                                                     {editingEventId !==
                                                                         event.id && (
-                                                                        <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                        <div className="flex items-center gap-0.5 pointer-fine:opacity-40 pointer-fine:group-hover:opacity-100 pointer-fine:focus-within:opacity-100 transition-opacity">
                                                                             <button
                                                                                 type="button"
                                                                                 onClick={(
@@ -7388,6 +7490,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                         event.id ? (
                                                             <div className="space-y-2 animate-in fade-in duration-150">
                                                                 {renderEventTimestampFields()}
+                                                                {editingEventOutgoing !== null &&
+                                                                    renderEmailDirectionToggle(
+                                                                        editingEventOutgoing,
+                                                                        setEditingEventOutgoing,
+                                                                    )}
                                                                 <textarea
                                                                     autoFocus
                                                                     rows={4}
