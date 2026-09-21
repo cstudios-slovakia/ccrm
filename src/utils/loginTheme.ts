@@ -1,7 +1,19 @@
 export type TimePhaseId = 'dawn' | 'day' | 'sunset' | 'night';
 
+export interface LoginShaderConfig {
+  bg: string;
+  u_high: [number, number, number];
+  u_main: [number, number, number];
+  u_mid: [number, number, number];
+  u_low: [number, number, number];
+  u_wind: number;
+  u_warp: number;
+  u_nscale: number;
+}
+
 export interface LoginPhaseConfig {
   id: TimePhaseId;
+  name: string;
   badge: { en: string; sk: string; hu: string };
   greeting: { en: string; sk: string; hu: string };
   subtitle: { en: string; sk: string; hu: string };
@@ -11,6 +23,7 @@ export interface LoginPhaseConfig {
   lightSpread: number;
   rayLength: number;
   pulsating?: boolean;
+  shaderConfig: LoginShaderConfig;
   backgroundGradient: string;
   bgClass: string;
   accentGradient: string;
@@ -35,8 +48,9 @@ export interface LoginPhaseConfig {
 export const LOGIN_PHASES: Record<TimePhaseId, LoginPhaseConfig> = {
   dawn: {
     id: 'dawn',
+    name: 'Madder dusk',
     badge: {
-      en: 'Dawn Glow',
+      en: 'Madder Dawn',
       sk: 'Ranný úsvit',
       hu: 'Hajnali ragyogás'
     },
@@ -60,28 +74,39 @@ export const LOGIN_PHASES: Record<TimePhaseId, LoginPhaseConfig> = {
     lightSpread: 1.5,
     rayLength: 3.2,
     pulsating: false,
-    backgroundGradient: 'linear-gradient(135deg, #120c1d 0%, #20132e 40%, #291836 75%, #150d22 100%)',
-    bgClass: 'bg-[#120c1d]',
-    accentGradient: 'from-amber-400 via-orange-400 to-rose-400',
-    badgeClass: 'border-amber-400/30 bg-amber-500/10 text-amber-300 shadow-amber-500/10',
-    cardBorderClass: 'border-amber-500/20',
-    cardGlowClass: 'shadow-amber-500/10',
+    shaderConfig: {
+      bg: '#FFE3C7',
+      u_high: [1.0, 0.8902, 0.7804],
+      u_main: [0.9490, 0.7216, 0.6275],
+      u_mid: [0.7804, 0.4941, 0.6196],
+      u_low: [0.4784, 0.3686, 0.6196],
+      u_wind: 0.144,
+      u_warp: 0.235,
+      u_nscale: 0.8675
+    },
+    backgroundGradient: 'linear-gradient(135deg, #FFE3C7 0%, #F2B8A0 45%, #C77E9E 80%, #7A5E9E 100%)',
+    bgClass: 'bg-[#FFE3C7]',
+    accentGradient: 'from-rose-600 via-pink-600 to-amber-600',
+    badgeClass: 'border-rose-300/40 bg-white/70 text-rose-950 shadow-rose-500/10 backdrop-blur-md',
+    cardBorderClass: 'border-rose-300/40',
+    cardGlowClass: 'shadow-rose-500/10',
     blobColors: {
-      blob1: 'bg-amber-500/15',
-      blob2: 'bg-rose-500/15',
-      blob3: 'bg-orange-400/15'
+      blob1: 'bg-rose-400/20',
+      blob2: 'bg-amber-400/20',
+      blob3: 'bg-fuchsia-400/15'
     },
     chipStyle: {
-      bg: 'bg-amber-950/30',
-      border: 'border-amber-500/20',
-      text: 'text-amber-200',
-      dot: 'bg-amber-400'
+      bg: 'bg-white/70 backdrop-blur-md',
+      border: 'border-rose-200/80',
+      text: 'text-rose-950 font-bold',
+      dot: 'bg-rose-600'
     },
     icon: 'sunrise',
-    isLight: false
+    isLight: true
   },
   day: {
     id: 'day',
+    name: 'Blue sky',
     badge: {
       en: 'Blue Sky Day',
       sk: 'Jasný modrý deň',
@@ -107,6 +132,16 @@ export const LOGIN_PHASES: Record<TimePhaseId, LoginPhaseConfig> = {
     lightSpread: 1.6,
     rayLength: 3.8,
     pulsating: false,
+    shaderConfig: {
+      bg: '#E6F2FF',
+      u_high: [0.902, 0.949, 1.0],
+      u_main: [0.702, 0.851, 1.0],
+      u_mid: [0.502, 0.702, 1.0],
+      u_low: [0.400, 0.600, 0.902],
+      u_wind: 0.144,
+      u_warp: 0.235,
+      u_nscale: 0.8675
+    },
     backgroundGradient: 'linear-gradient(135deg, #E6F2FF 0%, #B3D9FF 45%, #80B3FF 80%, #6699E6 100%)',
     bgClass: 'bg-[#E6F2FF]',
     accentGradient: 'from-blue-700 via-indigo-700 to-sky-600',
@@ -129,10 +164,11 @@ export const LOGIN_PHASES: Record<TimePhaseId, LoginPhaseConfig> = {
   },
   sunset: {
     id: 'sunset',
+    name: 'Night sky',
     badge: {
-      en: 'Golden Dusk',
-      sk: 'Západ slnka',
-      hu: 'Aranyalkonyat'
+      en: 'Twilight Dusk',
+      sk: 'Večerný súmrak',
+      hu: 'Esti szürkület'
     },
     greeting: {
       en: 'Good evening',
@@ -149,34 +185,46 @@ export const LOGIN_PHASES: Record<TimePhaseId, LoginPhaseConfig> = {
       sk: 'Uzatvorte dnešné dohody, zhodnoťte metriky a oslávte tímové víťazstvá.',
       hu: 'Zárja le a mai megállapodásokat és összegezze az elért sikereket.'
     },
-    raysColor: '#fb923c',
+    raysColor: '#818cf8',
     raysSpeed: 0.85,
     lightSpread: 1.6,
     rayLength: 3.0,
     pulsating: false,
-    backgroundGradient: 'linear-gradient(135deg, #18091f 0%, #290f2f 45%, #210a28 80%, #100615 100%)',
-    bgClass: 'bg-[#18091f]',
-    accentGradient: 'from-amber-400 via-rose-400 to-fuchsia-400',
-    badgeClass: 'border-rose-400/30 bg-rose-500/10 text-rose-300 shadow-rose-500/10',
-    cardBorderClass: 'border-rose-500/20',
-    cardGlowClass: 'shadow-rose-500/10',
+    shaderConfig: {
+      bg: '#1a2238',
+      u_high: [0.7255, 0.7843, 0.9490],
+      u_main: [0.4314, 0.4980, 0.7490],
+      u_mid: [0.2902, 0.3529, 0.6275],
+      u_low: [0.2000, 0.2510, 0.4314],
+      u_wind: 0.144,
+      u_warp: 0.235,
+      u_nscale: 0.8675
+    },
+    backgroundGradient: 'linear-gradient(135deg, #12182b 0%, #1e284a 45%, #2d3b6b 80%, #0d1222 100%)',
+    bgClass: 'bg-[#12182b]',
+    accentGradient: 'from-indigo-300 via-purple-300 to-blue-200',
+    badgeClass: 'border-indigo-400/30 bg-indigo-950/40 text-indigo-200 shadow-indigo-500/10 backdrop-blur-md',
+    cardBorderClass: 'border-indigo-500/20',
+    cardGlowClass: 'shadow-indigo-500/10',
     blobColors: {
-      blob1: 'bg-rose-500/15',
-      blob2: 'bg-orange-500/15',
-      blob3: 'bg-fuchsia-600/15'
+      blob1: 'bg-indigo-600/15',
+      blob2: 'bg-blue-600/15',
+      blob3: 'bg-purple-600/15'
     },
     chipStyle: {
-      bg: 'bg-rose-950/30',
-      border: 'border-rose-500/20',
-      text: 'text-rose-200',
-      dot: 'bg-rose-400'
+      bg: 'bg-indigo-950/40 backdrop-blur-md',
+      border: 'border-indigo-400/20',
+      text: 'text-indigo-100',
+      dot: 'bg-indigo-400'
     },
-    icon: 'sunset'
+    icon: 'sunset',
+    isLight: false
   },
   night: {
     id: 'night',
+    name: 'Storm light',
     badge: {
-      en: 'Midnight Guard',
+      en: 'Storm Midnight',
       sk: 'Nočný režim',
       hu: 'Éjszakai őrszem'
     },
@@ -195,29 +243,40 @@ export const LOGIN_PHASES: Record<TimePhaseId, LoginPhaseConfig> = {
       sk: 'Tichá, špičkovo zabezpečená infraštruktúra chrániaca vaše dáta 24/7.',
       hu: 'Csendes, maximálisan védett infrastruktúra a nap 24 órájában.'
     },
-    raysColor: '#818cf8',
+    raysColor: '#94a3b8',
     raysSpeed: 0.75,
     lightSpread: 1.3,
     rayLength: 2.8,
     pulsating: true,
-    backgroundGradient: 'linear-gradient(135deg, #05060f 0%, #0a0d1f 50%, #060814 100%)',
-    bgClass: 'bg-[#05060f]',
-    accentGradient: 'from-indigo-400 via-purple-400 to-violet-400',
-    badgeClass: 'border-indigo-400/30 bg-indigo-500/10 text-indigo-300 shadow-indigo-500/10',
-    cardBorderClass: 'border-indigo-500/20',
-    cardGlowClass: 'shadow-indigo-500/10',
+    shaderConfig: {
+      bg: '#10141d',
+      u_high: [0.9098, 0.9176, 0.9333],
+      u_main: [0.7176, 0.7412, 0.7882],
+      u_mid: [0.5490, 0.5765, 0.6431],
+      u_low: [0.3490, 0.3843, 0.4510],
+      u_wind: 0.144,
+      u_warp: 0.235,
+      u_nscale: 0.8675
+    },
+    backgroundGradient: 'linear-gradient(135deg, #0d1017 0%, #161c28 50%, #090c12 100%)',
+    bgClass: 'bg-[#0d1017]',
+    accentGradient: 'from-slate-200 via-sky-200 to-indigo-200',
+    badgeClass: 'border-slate-400/30 bg-slate-900/50 text-slate-200 shadow-slate-500/10 backdrop-blur-md',
+    cardBorderClass: 'border-slate-500/20',
+    cardGlowClass: 'shadow-slate-500/10',
     blobColors: {
-      blob1: 'bg-indigo-600/15',
-      blob2: 'bg-violet-600/15',
-      blob3: 'bg-purple-500/15'
+      blob1: 'bg-slate-600/15',
+      blob2: 'bg-indigo-600/15',
+      blob3: 'bg-sky-700/15'
     },
     chipStyle: {
-      bg: 'bg-indigo-950/30',
-      border: 'border-indigo-500/20',
-      text: 'text-indigo-200',
-      dot: 'bg-indigo-400'
+      bg: 'bg-slate-900/50 backdrop-blur-md',
+      border: 'border-slate-400/20',
+      text: 'text-slate-100',
+      dot: 'bg-slate-400'
     },
-    icon: 'moon'
+    icon: 'moon',
+    isLight: false
   }
 };
 

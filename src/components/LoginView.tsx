@@ -11,25 +11,18 @@ import {
   Sunrise,
   Sun,
   Sunset,
-  Moon,
-  ShieldCheck,
-  Zap,
-  Activity,
-  RefreshCw
+  Moon
 } from "lucide-react";
 import { PasswordInput } from "./PasswordInput";
 import type { UserProfile } from "../types";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
-import LightRays from "./LightRays";
-import { FeralSkyGradient } from "./FeralSkyGradient";
+import { FeralGradientBackground } from "./FeralGradientBackground";
 import { hasCookieAccess, hasPersistentStorage } from "../utils/safeStorage";
 import {
   getCurrentLoginTheme,
   formatLocalizedClock,
-  formatLocalizedDate,
-  type TimePhaseId,
-  LOGIN_PHASES
+  formatLocalizedDate
 } from "../utils/loginTheme";
 
 interface LoginViewProps {
@@ -58,7 +51,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
   // Time-of-day adaptive engine state
   const [currentTime, setCurrentTime] = useState<Date>(() => new Date());
-  const [previewPhase, setPreviewPhase] = useState<TimePhaseId | null>(null);
 
   // Update real-time clock every second
   useEffect(() => {
@@ -68,7 +60,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
     return () => clearInterval(timer);
   }, []);
 
-  const activeTheme = getCurrentLoginTheme(currentTime, previewPhase || undefined);
+  const activeTheme = getCurrentLoginTheme(currentTime);
   const clock = formatLocalizedClock(currentTime);
   const dateStr = formatLocalizedDate(currentTime, systemLanguage);
 
@@ -230,114 +222,14 @@ export const LoginView: React.FC<LoginViewProps> = ({
         background: isModal ? undefined : activeTheme.backgroundGradient
       }}
     >
-      {/* Custom Keyframe Animations for Floating Aurora Glow Blobs */}
-      <style
-        dangerouslySetInnerHTML={{
-          __html: `
-        @keyframes float-blob-1 {
-          0% { transform: translate(0px, 0px) scale(1); }
-          33% { transform: translate(60px, -60px) scale(1.08); }
-          66% { transform: translate(-40px, 50px) scale(0.95); }
-          100% { transform: translate(0px, 0px) scale(1); }
-        }
-        @keyframes float-blob-2 {
-          0% { transform: translate(0px, 0px) scale(1); }
-          50% { transform: translate(-70px, 40px) scale(0.9); }
-          100% { transform: translate(0px, 0px) scale(1); }
-        }
-        @keyframes float-blob-3 {
-          0% { transform: translate(0px, 0px) scale(1); }
-          40% { transform: translate(80px, -40px) scale(1.06); }
-          100% { transform: translate(0px, 0px) scale(1); }
-        }
-        .aurora-blob-1 { animation: float-blob-1 16s infinite ease-in-out; }
-        .aurora-blob-2 { animation: float-blob-2 19s infinite ease-in-out; }
-        .aurora-blob-3 { animation: float-blob-3 17s infinite ease-in-out; }
-      `
-        }}
-      />
-
-      {/* Dynamic Animated Background: FeralSkyGradient for Day, LightRays for Dawn/Sunset/Night */}
-      {!isModal && (
-        <>
-          {activeTheme.id === "day" ? (
-            <FeralSkyGradient />
-          ) : (
-            <>
-              <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
-                <LightRays
-                  raysOrigin="left"
-                  raysColor={activeTheme.raysColor}
-                  raysSpeed={activeTheme.raysSpeed}
-                  lightSpread={activeTheme.lightSpread}
-                  rayLength={activeTheme.rayLength}
-                  pulsating={activeTheme.pulsating ?? false}
-                  fadeDistance={1.9}
-                  saturation={1.1}
-                  followMouse
-                  mouseInfluence={0.08}
-                  noiseAmount={0}
-                  distortion={0}
-                />
-              </div>
-
-              {/* Atmospheric Aurora Glowing Blobs */}
-              <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden opacity-75">
-                <div
-                  className={`absolute -top-32 -left-32 w-96 h-96 rounded-full blur-[100px] aurora-blob-1 transition-colors duration-1000 ${activeTheme.blobColors.blob1}`}
-                />
-                <div
-                  className={`absolute top-1/2 -left-20 w-80 h-80 rounded-full blur-[100px] aurora-blob-2 transition-colors duration-1000 ${activeTheme.blobColors.blob2}`}
-                />
-                <div
-                  className={`absolute -bottom-32 left-1/4 w-[30rem] h-[30rem] rounded-full blur-[120px] aurora-blob-3 transition-colors duration-1000 ${activeTheme.blobColors.blob3}`}
-                />
-              </div>
-            </>
-          )}
-        </>
-      )}
+      {/* Dynamic Animated Background: Universal Feral WebGL Gradient Shader with smooth real-time color morphing */}
+      {!isModal && <FeralGradientBackground phaseId={activeTheme.id} />}
 
       {/* LEFT AREA: Atmospheric Executive Time-of-Day Hero Panel */}
       {!isModal && (
-        <div className="flex-1 hidden lg:flex flex-col justify-between items-start relative z-10 pr-12 xl:pr-20 py-8 min-h-[580px] max-w-2xl animate-in fade-in duration-700 select-none">
-          
-          {/* Top Header: Time Phase Indicator Badge */}
-          <div className="flex items-center gap-3">
-            <div
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full border backdrop-blur-md shadow-lg transition-all duration-500 ${activeTheme.badgeClass}`}
-            >
-              <div className="relative flex items-center justify-center">
-                {renderPhaseIcon(activeTheme.icon, "h-4 w-4 animate-pulse")}
-              </div>
-              <span className="text-[11px] font-black uppercase tracking-wider">
-                {phaseBadgeText}
-              </span>
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-current opacity-80" />
-              <span className="text-[10px] font-mono font-bold opacity-75">
-                {clock.hoursStr}:{clock.minutesStr}
-              </span>
-            </div>
-
-            {previewPhase && (
-              <button
-                type="button"
-                onClick={() => setPreviewPhase(null)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-[10px] font-bold uppercase tracking-wider backdrop-blur-md border transition-all active:scale-95 ${
-                  activeTheme.isLight
-                    ? "bg-white/70 hover:bg-white/90 text-slate-800 border-blue-200 shadow-sm"
-                    : "bg-white/10 hover:bg-white/20 text-white/80 border-white/15"
-                }`}
-                title={tr("Reset to live time", "Vrátiť na reálny čas", "Visszaállítás a valós időre")}
-              >
-                <RefreshCw className="h-3 w-3" />
-                <span>{tr("Live Mode", "Živý čas", "Valós idő")}</span>
-              </button>
-            )}
-          </div>
-
+        <div className="flex-1 hidden lg:flex flex-col justify-center items-start relative z-10 pr-12 xl:pr-20 py-8 min-h-[580px] max-w-2xl animate-in fade-in duration-700 select-none">
           {/* Middle Body: Digital Clock & Executive Localized Greeting */}
-          <div className="space-y-6 my-auto">
+          <div className="space-y-6">
             {/* Live Digital Clock */}
             <div className="space-y-1">
               <div
@@ -391,118 +283,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 {phaseQuoteText}
               </p>
             </div>
-
-            {/* Enterprise Micro Telemetry Status Chips */}
-            <div className="grid grid-cols-3 gap-3 pt-2">
-              <div
-                className={`p-3 rounded-2xl border backdrop-blur-md space-y-1 transition-all ${
-                  activeTheme.isLight
-                    ? "bg-white/70 border-white/80 shadow-sm hover:bg-white/85"
-                    : "bg-white/[0.06] border-white/10 hover:bg-white/[0.09]"
-                }`}
-              >
-                <div
-                  className={`flex items-center gap-1.5 ${
-                    activeTheme.isLight ? "text-emerald-700" : "text-emerald-400"
-                  }`}
-                >
-                  <ShieldCheck className="h-3.5 w-3.5" />
-                  <span className="text-[9px] font-black uppercase tracking-wider">Gateway</span>
-                </div>
-                <div
-                  className={`text-[11px] font-bold truncate ${
-                    activeTheme.isLight ? "text-slate-900" : "text-white/90"
-                  }`}
-                >
-                  Online · 99.99%
-                </div>
-              </div>
-
-              <div
-                className={`p-3 rounded-2xl border backdrop-blur-md space-y-1 transition-all ${
-                  activeTheme.isLight
-                    ? "bg-white/70 border-white/80 shadow-sm hover:bg-white/85"
-                    : "bg-white/[0.06] border-white/10 hover:bg-white/[0.09]"
-                }`}
-              >
-                <div
-                  className={`flex items-center gap-1.5 ${
-                    activeTheme.isLight ? "text-amber-700" : "text-amber-400"
-                  }`}
-                >
-                  <Zap className="h-3.5 w-3.5" />
-                  <span className="text-[9px] font-black uppercase tracking-wider">Engine</span>
-                </div>
-                <div
-                  className={`text-[11px] font-bold truncate ${
-                    activeTheme.isLight ? "text-slate-900" : "text-white/90"
-                  }`}
-                >
-                  &lt; 1ms Core Sync
-                </div>
-              </div>
-
-              <div
-                className={`p-3 rounded-2xl border backdrop-blur-md space-y-1 transition-all ${
-                  activeTheme.isLight
-                    ? "bg-white/70 border-white/80 shadow-sm hover:bg-white/85"
-                    : "bg-white/[0.06] border-white/10 hover:bg-white/[0.09]"
-                }`}
-              >
-                <div
-                  className={`flex items-center gap-1.5 ${
-                    activeTheme.isLight ? "text-sky-700" : "text-sky-400"
-                  }`}
-                >
-                  <Activity className="h-3.5 w-3.5" />
-                  <span className="text-[9px] font-black uppercase tracking-wider">Security</span>
-                </div>
-                <div
-                  className={`text-[11px] font-bold truncate ${
-                    activeTheme.isLight ? "text-slate-900" : "text-white/90"
-                  }`}
-                >
-                  TLS 1.3 · Vault
-                </div>
-              </div>
-            </div>
           </div>
-
-          {/* Bottom Dock: Interactive Time Atmosphere Previewer */}
-          <div className="pt-4 flex items-center gap-2 flex-wrap">
-            <span
-              className={`text-[9px] font-black uppercase tracking-widest mr-1 ${
-                activeTheme.isLight ? "text-slate-600" : "text-white/40"
-              }`}
-            >
-              {tr("Atmosphere:", "Atmosféra:", "Hangulat:")}
-            </span>
-            
-            {(["dawn", "day", "sunset", "night"] as TimePhaseId[]).map((phaseId) => {
-              const phase = LOGIN_PHASES[phaseId];
-              const isSelected = activeTheme.id === phaseId;
-              return (
-                <button
-                  key={phaseId}
-                  type="button"
-                  onClick={() => setPreviewPhase(phaseId)}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-200 border ${
-                    isSelected
-                      ? activeTheme.isLight
-                        ? "bg-blue-600 border-blue-600 text-white shadow-md scale-105"
-                        : "bg-white/20 border-white/40 text-white shadow-md scale-105"
-                      : activeTheme.isLight
-                        ? "bg-white/60 hover:bg-white/85 border-blue-200/80 text-slate-700 hover:text-slate-950"
-                        : "bg-white/5 hover:bg-white/10 border-white/10 text-white/60 hover:text-white"
-                  }`}
-                >
-                  {renderPhaseIcon(phase.icon, "h-3 w-3")}
-                  <span>{phase.badge[systemLanguage] || phase.badge.en}</span>
-                </button>
-              );
-            })}
-          </div>
-
         </div>
       )}
 

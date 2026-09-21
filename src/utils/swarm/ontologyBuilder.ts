@@ -81,7 +81,7 @@ ${hypothesis}
 Seed Document / Product Context:
 ${seedDocument.slice(0, 10000)}${docsSnippet}${crmSection}
 
-Extract between 8 and 18 key entities and their inter-relationships in natural ${langLabel}.`;
+Extract a comprehensive ecosystem graph of between 15 and 35 key entities (individuals, institutions, customer cohorts, competitors, regulators, media, and civic bodies) and their inter-relationships in natural ${langLabel}. Capture all distinct social actors mentioned or implied in the scenario.`;
 
   try {
     const result = await callLlmJson<{
