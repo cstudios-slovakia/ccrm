@@ -1798,6 +1798,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // SECURITY: writes require an authenticated session.
     $sessionUser = ccrm_require_auth();
+    // The `createdBy` fallback for stock movements, financial records and
+    // documents. It used to be read here without ever being set in this branch
+    // (only GET defines it), so those rows were stored with no author.
+    $sessionEmail = (string)($sessionUser['email'] ?? '');
     // Privileged writes (global settings, RBAC registry, integration secrets,
     // and management of OTHER users / roles) are admin-only. Non-admin sync
     // payloads still carry these sections (the client always sends a full
