@@ -1251,7 +1251,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             $managersByProject[$mgr['project_id']][] = $mgr['user_id'];
         }
 
-        $projStmt = $pdo->query("SELECT * FROM `projects` ORDER BY `created_at` DESC");
+        $projStmt = $pdo->query("SELECT * FROM `projects` ORDER BY `created_at` DESC, `id` DESC");
         while ($pRow = $projStmt->fetch(PDO::FETCH_ASSOC)) {
             $projId = $pRow['id'];
             $ptId = $pRow['project_type_id'];

@@ -3,6 +3,7 @@ import test from "node:test";
 import {
   DEFAULT_PROJECT_SORT,
   isAttributeSortKey,
+  newestFirst,
   nextProjectSort,
   normalizeProjectSort,
   sortProjects,
@@ -121,4 +122,29 @@ test("a project of a type without the attribute sorts as a blank, not a crash", 
     sortProjects(mixed, { key: "attr:a1", direction: "asc" }, mixedValues).map(r => r.id),
     ["p2", "p1"],
   );
+});
+
+test("newestFirst orders by creation date, whatever order the list arrives in", () => {
+  const projects = [
+    { id: "old", createdAt: "2026-01-01 10:00:00" },
+    { id: "new", createdAt: "2026-09-01 08:30:00" },
+    { id: "mid", createdAt: "2026-05-15 12:00:00" },
+  ];
+  assert.deepEqual(newestFirst(projects).map((p) => p.id), ["new", "mid", "old"]);
+});
+
+test("newestFirst puts a project not yet synced (no createdAt) on top and keeps ties in place", () => {
+  const projects = [
+    { id: "a", createdAt: "2026-03-01 10:00:00" },
+    { id: "fresh1" },
+    { id: "b", createdAt: "2026-03-01 10:00:00" },
+    { id: "fresh2", createdAt: null },
+  ];
+  assert.deepEqual(newestFirst(projects).map((p) => p.id), ["fresh1", "fresh2", "a", "b"]);
+});
+
+test("newestFirst sorts a copy", () => {
+  const projects = [{ id: "old", createdAt: "2026-01-01 00:00:00" }, { id: "new", createdAt: "2026-02-01 00:00:00" }];
+  newestFirst(projects);
+  assert.deepEqual(projects.map((p) => p.id), ["old", "new"]);
 });

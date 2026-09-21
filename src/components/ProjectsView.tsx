@@ -29,7 +29,7 @@ import {
 import type { ProjectDeadlineStatus } from "../utils/projects";
 import { todayLocal, formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
 import { useUserPref } from "../utils/userPrefs";
-import { isAttributeSortKey, nextProjectSort, normalizeProjectSort, sortProjects } from "../utils/projectSort";
+import { isAttributeSortKey, newestFirst, nextProjectSort, normalizeProjectSort, sortProjects } from "../utils/projectSort";
 import type { ProjectSort, ProjectSortKey } from "../utils/projectSort";
 import { matchesRatingFilter, ratingFilterOptions, ratingValue } from "../utils/rating";
 import {
@@ -505,14 +505,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     [activeColumns]
   );
 
-  /* The filtered list in the chosen order. A project with no value for the
+  /* The filtered list in the chosen order. Before a column is picked that is the
+     date of creation, newest first — never the date of the last edit — and it is
+     also what breaks ties between equal values. A project with no value for the
      sorted column (no deadline, no roadmap, a blank attribute) always goes last. */
   const sortedProjects = useMemo(() => {
     const statusOrder = projectStatusOrder() as string[];
     const contactName = (id: string) => leads.find(l => l.id === id)?.name || null;
     const moneyAmount = (raw: unknown) => parseMoneyValue(raw, defaultCurrency).amount;
 
-    return sortProjects(filteredProjects, effectiveSort, p => {
+    return sortProjects(newestFirst(filteredProjects), effectiveSort, p => {
       const pType = projectTypes.find(pt => pt.id === p.projectTypeId);
       const rank = statusOrder.indexOf(p.status);
       let attributes: Record<string, string | number | null> | undefined;
@@ -542,7 +544,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
      dropdown offers the attribute columns the table is currently showing —
      otherwise the cards view could not be ordered by one at all. */
   const sortOptions: { value: ProjectSortKey; label: string }[] = [
-    { value: "default", label: t("Default order", "Predvolené poradie", "Alapértelmezett sorrend") },
+    { value: "default", label: t("Newest first", "Najnovšie prvé", "Legújabb elöl") },
     { value: "name", label: t("Project name", "Názov projektu", "Projekt neve") },
     { value: "client", label: t("Client", "Klient", "Ügyfél") },
     { value: "type", label: t("Type", "Typ", "Típus") },

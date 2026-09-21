@@ -18,8 +18,34 @@ export interface ProjectSort {
   direction: ProjectSortDirection;
 }
 
-/** The order projects are stored in: newest first, as they are created. */
+/**
+ * The default order: by date of creation, newest first (see newestFirst).
+ * Editing a project never moves it — it is not "recently modified" order.
+ */
 export const DEFAULT_PROJECT_SORT: ProjectSort = { key: "default", direction: "asc" };
+
+/**
+ * Newest-created first — the order the list shows before anyone picks a column.
+ *
+ * `sortProjects` treats "default" as "keep the incoming order", so the incoming
+ * order has to be the creation order. The server sends it that way, but the
+ * list should not depend on that: it is also fed by projects added locally, and
+ * the order of a query with tied timestamps is up to the database. A project
+ * without a `createdAt` was just created in this session and has not been
+ * through a sync yet, so it is the newest of all; ties keep the incoming order.
+ * Sorts a copy.
+ */
+export function newestFirst<T extends { createdAt?: string | null }>(items: T[]): T[] {
+  return items
+    .map((item, index) => ({ item, index, at: item.createdAt ? String(item.createdAt) : "" }))
+    .sort((a, b) => {
+      if (a.at === b.at) return a.index - b.index;
+      if (!a.at) return -1;
+      if (!b.at) return 1;
+      return a.at < b.at ? 1 : -1;
+    })
+    .map((row) => row.item);
+}
 
 export const PROJECT_SORT_KEYS: readonly BuiltinProjectSortKey[] = [
   "default",
@@ -54,7 +80,7 @@ export function normalizeProjectSort(value: unknown): ProjectSort {
 /**
  * What a click on a column header does: a new column starts ascending, the
  * active one flips, and a third click on a descending column returns to the
- * stored order — so the default is always one header away.
+ * default order — so it is always one header away.
  */
 export function nextProjectSort(current: ProjectSort, key: ProjectSortKey): ProjectSort {
   if (key === "default" || current.key !== key) return { key, direction: "asc" };
