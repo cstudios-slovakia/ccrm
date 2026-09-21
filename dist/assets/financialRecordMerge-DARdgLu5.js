@@ -1,0 +1,1 @@
+import{Wt as e}from"./index-B8O3i4oJ.js";function t(e,t){return{...e||{},...t,updatedAt:new Date().toISOString()}}function n(t,n){return n===`paid`?t?.paidDate||e():t?.paidDate??null}var r=[`planned`,`pending`,`partially_paid`,`paid`,`overdue`,`cancelled`];export{n,t as r,r as t};
