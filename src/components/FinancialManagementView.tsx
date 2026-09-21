@@ -1801,7 +1801,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       updatedAt: new Date().toISOString()
     };
     setFinancialRecords((prev) => [copy, ...prev]);
-    (window as any).showToast?.(t("Recurring expense duplicated", "Pravidelný výdavok bol skopírovaný", "Ismétlődő tétel duplikálva"));
+    (window as any).showToast?.(t("Recurring movement duplicated", "Pravidelný pohyb bol skopírovaný", "Ismétlődő tétel duplikálva"));
   };
 
   // Helper to toggle active vs paused status.
@@ -4395,7 +4395,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           { id: "overview", label: t("📊 Global Overview & Trend", "📊 Globálny prehľad & Trend", "📊 Globális áttekintés & Trend") },
           { id: "table", label: t("📋 Overview Table", "📋 Prehľadová tabuľka", "📋 Áttekintő táblázat") },
           { id: "movements", label: t("💸 Movements", "💸 Pohyby", "💸 Mozgások") },
-          { id: "recurring", label: t("🔄 Recurring Expenses", "🔄 Pravidelné výdavky", "🔄 Rendszeres kiadások") },
+          { id: "recurring", label: t("🔄 Recurring Movements", "🔄 Pravidelné pohyby", "🔄 Rendszeres tételek") },
           { id: "categories", label: t("🏷️ Movement Categories", "🏷️ Kategórie pohybov", "🏷️ Mozgási kategóriák") }
         ].map((tab) => (
           <button
@@ -6688,7 +6688,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 <RefreshCw className="h-5 w-5 text-purple-600 " />
                 <div>
                   <h3 className="text-sm font-bold text-slate-900 ">
-                    {t("Recurring Expenses & Subscriptions", "Pravidelné výdavky a predplatné", "Rendszeres kiadások és előfizetések")}
+                    {t("Recurring Movements & Subscriptions", "Pravidelné pohyby a predplatné", "Rendszeres tételek és előfizetések")}
                   </h3>
                   <p className="text-xs text-slate-400">
                     {t("Configure weekly, monthly, and yearly overheads that automatically calculate in cash flow projections.", "Nastavenie pravidelných výdavkov a fixných nákladov premietaných do cash flow prognózy.", "Rendszeres költségek beállítása és kezelése a pénzáramlás előrejelzéséhez.")}
@@ -6799,7 +6799,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               <table className="w-full text-left text-xs border-collapse">
                 <thead className="bg-slate-50  text-slate-600  font-black uppercase text-[10px] tracking-wider border-b border-slate-200 ">
                   <tr>
-                    <th className="py-3.5 px-4 min-w-[220px]">{t("Recurring Expense & Description", "Pravidelný výdavok & Popis", "Rendszeres kiadás & Leírás")}</th>
+                    <th className="py-3.5 px-4 min-w-[220px]">{t("Recurring Movement & Description", "Pravidelný pohyb & Popis", "Rendszeres tétel & Leírás")}</th>
                     <th className="py-3.5 px-4 min-w-[220px]">{t("Cadence & Next Due", "Frekvencia & Ďalšia platba", "Gyakoriság & Esedékesség")}</th>
                     <th className="py-3.5 px-4 min-w-[200px]">{t("Category Path", "Hierarchia kategórie", "Kategória útvonal")}</th>
                     <th className="py-3.5 px-4 min-w-[150px]">{t("Linked Entity", "Prepojenie", "Kapcsolódó elem")}</th>
@@ -6816,7 +6816,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                         <RefreshCw className="h-10 w-10 text-slate-300  mx-auto animate-spin-slow" />
                         <div>
                           <p className="text-sm font-bold text-slate-700 ">
-                            {t("No recurring expenses found", "Nenašli sa žiadne pravidelné výdavky", "Nincsenek rendszeres kiadások")}
+                            {t("No recurring movements found", "Nenašli sa žiadne pravidelné pohyby", "Nincsenek rendszeres tételek")}
                           </p>
                           <p className="text-xs text-slate-400 mt-1">
                             {t("Add your regular rent, software subscriptions, contractor retainers, or utility costs.", "Pridajte nájomné, predplatné softvéru, mzdy alebo fixné prevádzkové náklady.", "Vegyen fel bérleti díjakat, szoftver-előfizetéseket vagy egyéb fix költségeket.")}
@@ -6891,11 +6891,6 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                               <span className="font-bold text-slate-900  text-sm">
                                 {rec.title}
                               </span>
-                              {rec.type === "income" && (
-                                <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-emerald-100  text-emerald-700 ">
-                                  {t("Income", "Príjem", "Bevétel")}
-                                </span>
-                              )}
                             </div>
                             <div className="flex items-center gap-2 mt-0.5">
                               {rec.invoiceNumber && (
@@ -7000,8 +6995,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
                           {/* 5. Amount & Monthly Breakdown */}
                           <td className="py-3.5 px-4 text-right">
-                            <div className="font-black text-sm text-rose-600 ">
-                              -{money(amount)}
+                            <div className={`font-black text-sm ${rec.type === "income" ? "text-emerald-600" : "text-rose-600"}`}>
+                              {rec.type === "income" ? "+" : "-"}{money(amount)}
                               {rec.recurringFrequency && rec.recurringFrequency !== "monthly" && (
                                 <span className="text-[10px] font-bold text-slate-400 ml-1">
                                   / {rec.recurringFrequency === "weekly" ? t("wk", "týž", "hét") : t("yr", "rok", "év")}
@@ -7009,7 +7004,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                               )}
                             </div>
                             <div className="text-[10px] text-slate-400 font-medium mt-0.5">
-                              ≈ -{money(monthlyCost)} / {t("month", "mesiac", "hónap")}
+                              ≈ {rec.type === "income" ? "+" : "-"}{money(monthlyCost)} / {t("month", "mesiac", "hónap")}
                             </div>
                             {priceSince && (
                               <div
