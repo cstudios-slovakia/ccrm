@@ -56,6 +56,9 @@ Output JSON strictly matching this schema:
       "profession": "${sampleProfession}",
       "mbti": "ESTJ",
       "stance": "opposing",
+      "initial_answer": "Opposes or favors a specific alternative based on profession and biases",
+      "confidence_score": 75,
+      "answer_reason": "Short 1-sentence motivation grounded in persona.",
       "userChar": "${sampleUserChar}",
       "publicBio": "${sampleBio}",
       "followerCount": 840,
@@ -92,6 +95,9 @@ Generate exactly ${batchSize} unique, richly described agent profiles (Batch ${b
           profession: string;
           mbti: string;
           stance: 'supportive' | 'opposing' | 'neutral' | 'observer';
+          initial_answer?: string;
+          confidence_score?: number;
+          answer_reason?: string;
           userChar: string;
           publicBio: string;
           followerCount?: number;
@@ -116,6 +122,9 @@ Generate exactly ${batchSize} unique, richly described agent profiles (Batch ${b
           profession: a.profession || (nodes[0]?.name || 'Stakeholder'),
           mbti: a.mbti || 'INTJ',
           stance: a.stance || 'neutral',
+          currentAnswer: a.initial_answer || (a.stance === 'supportive' ? 'Support' : a.stance === 'opposing' ? 'Oppose' : 'Undecided'),
+          confidenceScore: a.confidence_score || (a.stance === 'neutral' ? 50 : 75),
+          answerReason: a.answer_reason || a.userChar?.slice(0, 120),
           userChar: a.userChar || 'Autonomous market participant.',
           publicBio: a.publicBio || a.profession || 'Market participant',
           followerCount: a.followerCount || 500,
@@ -151,6 +160,9 @@ Generate exactly ${batchSize} unique, richly described agent profiles (Batch ${b
         profession: existing.profession || targetNode.name,
         mbti: existing.mbti || MBTIS[idx % MBTIS.length],
         stance: existing.stance || STANCES[idx % STANCES.length],
+        currentAnswer: existing.initial_answer || (existing.stance === 'supportive' ? 'Support' : existing.stance === 'opposing' ? 'Oppose' : 'Undecided'),
+        confidenceScore: existing.confidence_score || (existing.stance === 'neutral' ? 50 : 75),
+        answerReason: existing.answer_reason || existing.userChar?.slice(0, 120),
         userChar: existing.userChar || targetNode.summary || `Representative for ${targetNode.name}.`,
         publicBio: existing.publicBio || `${existing.profession || targetNode.name}`,
         followerCount: existing.followerCount || Math.floor(Math.random() * 800 + 100),
@@ -166,6 +178,9 @@ Generate exactly ${batchSize} unique, richly described agent profiles (Batch ${b
         profession: targetNode.name,
         mbti: MBTIS[idx % MBTIS.length],
         stance: stance,
+        currentAnswer: stance === 'supportive' ? 'Support' : stance === 'opposing' ? 'Oppose' : 'Undecided',
+        confidenceScore: stance === 'neutral' ? 50 : 70,
+        answerReason: `Representative stance based on ${targetNode.name}.`,
         userChar: targetNode.summary || `Representative for ${targetNode.name} with stance: ${stance}.`,
         publicBio: `${targetNode.name} | Active Participant`,
         followerCount: Math.floor(Math.random() * 500 + 100),

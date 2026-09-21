@@ -30,6 +30,7 @@ export class SwarmSimulationEngine {
   private simulationId: string;
   private title: string;
   private hypothesis: string;
+  private strategicQuestion: string;
   private seedDocument: string;
   private contextDocuments: SwarmContextDocument[];
   private totalRounds: number;
@@ -52,6 +53,7 @@ export class SwarmSimulationEngine {
     simulationId: string;
     title: string;
     hypothesis: string;
+    strategicQuestion?: string;
     seedDocument?: string;
     contextDocuments?: SwarmContextDocument[];
     totalRounds: number;
@@ -67,6 +69,7 @@ export class SwarmSimulationEngine {
     this.simulationId = params.simulationId;
     this.title = params.title;
     this.hypothesis = params.hypothesis;
+    this.strategicQuestion = params.strategicQuestion || params.hypothesis;
     this.seedDocument = params.seedDocument || '';
     this.contextDocuments = params.contextDocuments || [];
     this.totalRounds = params.totalRounds;
@@ -244,16 +247,16 @@ export class SwarmSimulationEngine {
     const systemPrompt = `You are roleplaying as ${agent.displayName} (@${agent.username}) in an autonomous market simulation.
 Profession: ${agent.profession} | MBTI: ${agent.mbti}
 Your Persona, Core Biases & Domain Expertise: "${agent.userChar}"
-Current Stance on the scenario: "${agent.stance}"
+Current Stance: "${agent.stance}"
+Current Supported Answer/Position: "${agent.currentAnswer || agent.stance}" (Confidence: ${agent.confidenceScore || 70}%)
 
 CRITICAL ROLEPLAY & BEHAVIORAL RULES:
-1. STRICT SEED ISOLATION: Speak and react strictly regarding the specific Product & Business Context and Attached Specifications provided below. NEVER mention, import, or leak unrelated industries (e.g. stonemasonry, fireplaces, construction) or past runs.
+1. STRICT SEED ISOLATION: Speak and react strictly regarding the specific Strategic Question, Product & Business Context, and Attached Specifications provided below. NEVER mention or import unrelated industries or prior runs.
 2. Speak strictly from the perspective of your profession (${agent.profession}) and cognitive bias.
-3. Ground your comments in concrete scenario facts: cite pricing numbers, technical specs, vendor lock-in risks, SLA terms, GDPR compliance, implementation hurdles, or ROI benefits from the seed context.
-4. If opposing/skeptical: Be demanding, raise hard budget constraints, identify critical failure modes, or propose competitor alternatives.
-5. If supportive: Highlight tangible productivity gains, unique competitive advantages, or cost-benefit wins.
-6. If competitor: Spread strategic counter-narratives or point out unaddressed drawbacks.
-7. NEVER write empty filler or generic platitudes like "I am watching this" or "Interesting topic". Deliver punchy, realistic, debate-provoking commentary (1-3 sentences).
+3. Ground your comments in concrete scenario facts: cite pricing numbers, technical specs, user habits, aesthetic wear-and-tear, or competitive alternatives from the context.
+4. ANSWER & DECISION ENGINE: You are not just posting generic chatter. You are evaluating the core Strategic Question. State your current position/answer clearly, defend it, or explain why you are skeptical.
+5. If another agent's argument in the feed convinces or alarms you, update your position ("current_answer") and provide your "answer_shift_reason".
+6. NEVER write empty filler like "I am watching this". Deliver punchy, realistic, debate-provoking commentary (1-3 sentences).
 
 CRITICAL LANGUAGE REQUIREMENT:
 You MUST write your commentary/reaction strictly in natural, authentic ${langLabel}.
@@ -263,6 +266,9 @@ Output JSON strictly matching:
   "action": "POST" | "QUOTE" | "COMMENT" | "LIKE" | "DO_NOTHING",
   "target_post_id": number | null,
   "content": "${samplePost}",
+  "current_answer": "Short phrase (e.g. Forest Green, Matte Black, Oppose 20% increase, Candidate B, etc.)",
+  "confidence_score": number between 0 and 100,
+  "answer_shift_reason": "Optional short sentence if you changed your mind based on feed arguments",
   "updated_stance": "supportive" | "opposing" | "neutral",
   "sentiment_score": number between -1.0 and 1.0
 }`;
@@ -271,19 +277,22 @@ Output JSON strictly matching:
       ? feed.map(p => `[Post ID #${p.id} by ${p.agentName} (@${p.agentUsername}, ${p.agentProfession})]: "${p.content}" (Likes: ${p.likesCount}, Quotes: ${p.quotesCount})`).join('\n\n')
       : '(Timeline is quiet. No posts yet in this cycle.)';
 
-    const userPrompt = `Simulation Target Hypothesis / Variable:
-${this.hypothesis}${contextSnippet}
+    const userPrompt = `Strategic Question to Answer:
+${this.strategicQuestion || this.hypothesis}${contextSnippet}
 
 Recent Social Timeline Feed:
 ${feedText}
 
-What action do you take this round? (Write in ${langLabel})`;
+What action and stance do you take this round? (Write in ${langLabel})`;
 
     try {
       const decision = await callLlmJson<{
         action: 'POST' | 'QUOTE' | 'COMMENT' | 'LIKE' | 'DO_NOTHING';
         target_post_id?: number | null;
         content?: string;
+        current_answer?: string;
+        confidence_score?: number;
+        answer_shift_reason?: string;
         updated_stance?: 'supportive' | 'opposing' | 'neutral';
         sentiment_score?: number;
       }>([
@@ -297,9 +306,28 @@ What action do you take this round? (Write in ${langLabel})`;
 
       if (decision.action === 'DO_NOTHING') return null;
 
-      // Update agent stance
+      // Track verdict shift if answer changed
+      let verdictShift: { from?: string; to?: string; reason?: string } | undefined = undefined;
+      if (decision.current_answer && agent.currentAnswer && decision.current_answer.toLowerCase().trim() !== agent.currentAnswer.toLowerCase().trim()) {
+        verdictShift = {
+          from: agent.currentAnswer,
+          to: decision.current_answer,
+          reason: decision.answer_shift_reason || undefined
+        };
+      }
+
+      // Update agent state
       if (decision.updated_stance) {
         agent.stance = decision.updated_stance;
+      }
+      if (decision.current_answer) {
+        agent.currentAnswer = decision.current_answer;
+      }
+      if (typeof decision.confidence_score === 'number') {
+        agent.confidenceScore = Math.max(0, Math.min(100, Math.round(decision.confidence_score)));
+      }
+      if (decision.answer_shift_reason) {
+        agent.answerReason = decision.answer_shift_reason;
       }
 
       const defaultFallbackContent = this.language === 'hu'
@@ -323,7 +351,9 @@ What action do you take this round? (Write in ${langLabel})`;
         quotesCount: 0,
         commentsCount: 0,
         sentimentScore: typeof decision.sentiment_score === 'number' ? decision.sentiment_score : 0,
-        createdAt: new Date().toISOString()
+        createdAt: new Date().toISOString(),
+        supportedAnswer: agent.currentAnswer,
+        verdictShift
       };
 
       return newPost;
@@ -359,11 +389,29 @@ What action do you take this round? (Write in ${langLabel})`;
     let opposing = 0;
     let neutral = 0;
 
+    const answerDistribution: Record<string, number> = {};
+
     for (const a of this.agents) {
       if (a.stance === 'supportive') supportive++;
       else if (a.stance === 'opposing') opposing++;
       else neutral++;
+
+      const ansKey = a.currentAnswer || (a.stance === 'supportive' ? 'Support' : a.stance === 'opposing' ? 'Oppose' : 'Undecided');
+      answerDistribution[ansKey] = (answerDistribution[ansKey] || 0) + 1;
     }
+
+    let leadingAnswer = '';
+    let maxVotes = 0;
+    for (const [ans, count] of Object.entries(answerDistribution)) {
+      if (count > maxVotes) {
+        maxVotes = count;
+        leadingAnswer = ans;
+      }
+    }
+
+    const consensusPercentage = this.agents.length > 0
+      ? Math.round((maxVotes / this.agents.length) * 100)
+      : 0;
 
     for (const p of roundPosts) {
       totalSent += p.sentimentScore;
@@ -380,7 +428,10 @@ What action do you take this round? (Write in ${langLabel})`;
       opposingCount: opposing,
       neutralCount: neutral,
       totalInteractions: interactions,
-      viralIndex: Math.min(100, Math.round(interactions * 4.5))
+      viralIndex: Math.min(100, Math.round(interactions * 4.5)),
+      answerDistribution,
+      leadingAnswer,
+      consensusPercentage
     };
   }
 

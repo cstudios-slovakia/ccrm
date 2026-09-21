@@ -39,6 +39,9 @@ export interface SwarmAgentProfile {
   karma?: number;
   sourceEntityId?: string;
   interestedTopics: string[];
+  currentAnswer?: string; // Current answer or position on the strategic question
+  confidenceScore?: number; // Confidence in this answer (0 to 100%)
+  answerReason?: string; // Short reasoning grounded in persona
 }
 
 export interface SwarmPost {
@@ -57,6 +60,8 @@ export interface SwarmPost {
   commentsCount: number;
   sentimentScore: number; // -1.0 (opposing/hostile) to +1.0 (enthusiastic/supportive)
   createdAt: string;
+  supportedAnswer?: string; // Stance/answer explicitly backed in this post
+  verdictShift?: { from?: string; to?: string; reason?: string }; // Logged when an agent changes opinion
 }
 
 export interface SwarmRoundMetrics {
@@ -68,6 +73,9 @@ export interface SwarmRoundMetrics {
   neutralCount: number;
   totalInteractions: number;
   viralIndex: number;
+  answerDistribution?: Record<string, number>; // Live vote/answer distribution across agents
+  leadingAnswer?: string; // Currently dominant answer
+  consensusPercentage?: number; // Swarm convergence percentage (0 to 100%)
 }
 
 export interface SwarmContextDocument {
@@ -84,7 +92,8 @@ export interface SwarmContextDocument {
 export interface SimulationParameters {
   id?: string;
   title: string;
-  hypothesis: string;
+  hypothesis: string; // Target hypothesis / what-if variable (legacy & fallback)
+  strategicQuestion?: string; // Natural language question to answer
   seedDocument: string;
   lookbackMonths: 6 | 12 | 24;
   crmDataSources?: string[];
@@ -97,10 +106,36 @@ export interface SimulationParameters {
   executionMode?: 'demo' | 'live';
 }
 
+export interface ExecutiveVerdict {
+  question: string;
+  directAnswer: string;
+  confidenceScore: number;
+  summary: string;
+  answerBreakdown?: {
+    answer: string;
+    sharePercentage: number;
+    count: number;
+    sentiment?: number;
+  }[];
+  keyDrivers: {
+    title: string;
+    explanation: string;
+    quotes?: string[];
+  }[];
+  tippingPoints?: {
+    round: number;
+    description: string;
+    impact: string;
+  }[];
+  whatWouldChangeOutcome?: string[];
+  actionableRecommendations?: string[];
+}
+
 export interface StrategicReport {
   title: string;
   summary: string;
   generatedAt: string;
+  executiveVerdict?: ExecutiveVerdict; // Primary Answer Mode executive verdict
   sections: {
     title: string;
     description?: string;
@@ -118,6 +153,7 @@ export interface SimulationCheckpoint {
   simulationId: string;
   title: string;
   hypothesis: string;
+  strategicQuestion?: string;
   currentRound: number;
   totalRounds: number;
   status: 'draft' | 'prepared' | 'running' | 'paused' | 'completed' | 'failed';
