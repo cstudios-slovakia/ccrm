@@ -368,9 +368,10 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   };
 
   /**
-   * Writes the project back. `close` is what the Save button does — the
-   * controls that save on the spot (status, budget, a file upload) pass false,
-   * because throwing the reader back to the list mid-edit loses their place.
+   * Writes the project back. The details view saves itself as it is edited and
+   * always passes `close: false`, because throwing the reader back to the list
+   * mid-edit loses their place; it shows its own "saved" state, so only a
+   * closing save announces itself with a toast.
    */
   const handleSaveProject = (updatedProject: Project, { close = true }: { close?: boolean } = {}) => {
     // The details view hides its own save controls in read-only mode; this is
@@ -388,12 +389,14 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     if (close) {
       setEditingProject(null);
       setEditingProjectType(null);
+      (window as any).showToast(t("Project saved successfully!", "Projekt bol úspešne uložený!", "Projekt sikeresen mentve!"));
     } else {
       // Staying open: hand the card what was just saved, or the next save
-      // builds on the version it was opened with and reverts this one.
-      setEditingProject(updatedProject);
+      // builds on the version it was opened with and reverts this one. Only
+      // while that project is still the open one — the view writes out its
+      // last edit as it closes, and that must not open it again.
+      setEditingProject(cur => (cur && cur.id === updatedProject.id ? updatedProject : cur));
     }
-    (window as any).showToast(t("Project saved successfully!", "Projekt bol úspešne uložený!", "Projekt sikeresen mentve!"));
   };
 
   const handleDeleteProject = (id: string, e: React.MouseEvent) => {

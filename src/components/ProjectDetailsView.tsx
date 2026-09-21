@@ -51,8 +51,8 @@ interface ProjectDetailsViewProps {
   setFinancialCategories?: React.Dispatch<React.SetStateAction<FinancialCategory[]>>;
   currencyCode?: string | null;
   onClose: () => void;
-  /** `close: false` saves in place and leaves the card open — used by the
-      controls that save without the Save button (status, budget, files). */
+  /** Called with `close: false` on every change — the view has no Save
+      button and saves itself in place, leaving the card open. */
   onSave: (updatedProject: Project, options?: { close?: boolean }) => void;
   /**
    * Removes the project and closes the card. Without it the header's delete
@@ -60,7 +60,7 @@ interface ProjectDetailsViewProps {
    * `canDelete`.
    */
   onDelete?: (projectId: string) => void;
-  /** A project that has never been saved: opens straight in edit mode, so it can be named. */
+  /** A project that has never been saved: opens with the header's name input ready, so it can be named. */
   isNew?: boolean;
   /**
    * Whether the user may change the project at all — the card, its attributes
@@ -293,7 +293,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const [finishedAt, setFinishedAt] = useState("");
   const [status, setStatus] = useState("active");
   /* Star priority, 1-5, 0 while nobody has rated it. Like the status below it,
-     a click saves on the spot rather than waiting for edit mode. */
+     a click saves on the spot. */
   const [rating, setRating] = useState(0);
   const [associatedLeadId, setAssociatedLeadId] = useState("");
   const [associatedClientId, setAssociatedClientId] = useState("");
@@ -301,11 +301,17 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   // The paired lead is shown as the same green client card the lead view has;
   // the picker only comes back while re-pairing.
   const [pickingClient, setPickingClient] = useState(false);
-  // The left card reads as a card, not as a form. A project is looked at far
-  // more often than it is changed, so the inputs only come out on Edit — and
-  // never for a read-only role, whatever the state says.
-  const [isEditingState, setIsEditing] = useState(false);
-  const isEditing = canEdit && isEditingState;
+  // The name is edited in the header itself: a pencil beside the title swaps
+  // it for an input, committed on Enter or blur, dropped on Escape.
+  const [isEditingNameState, setIsEditingName] = useState(false);
+  const isEditingName = canEdit && isEditingNameState;
+  const [nameDraft, setNameDraft] = useState("");
+  const nameCancelledRef = React.useRef(false);
+  // The custom attributes card keeps its own Edit mode — a long list of
+  // inputs reads worse than the values — but it is only that card's, and
+  // every change in it saves on its own like the rest of the view.
+  const [isEditingAttrsState, setIsEditingAttrs] = useState(false);
+  const isEditingAttrs = canEdit && isEditingAttrsState;
   const [dynamicData, setDynamicData] = useState<Record<string, any>>({});
   const [timeline, setTimeline] = useState<ProjectTimelineEvent[]>([]);
   const [gantt, setGantt] = useState<ProjectGanttRow[]>([]);
@@ -392,39 +398,166 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     }
   }, [projectType]);
 
-  useEffect(() => {
-    if (project) {
-      setProjectName(project.name || "");
-      setDeadline(project.deadline || "");
-      setDelayReason(project.delayReason || "");
-      setStartDate(projectStartDate(project) || todayLocal());
-      setFinishedAt(project.finishedAt || "");
-      setStatus(project.status || "active");
-      setRating(ratingValue(project.rating));
-      setAssociatedLeadId(project.leadId || "");
-      setAssociatedClientId(project.clientId || "");
-      setSelectedManagers(project.managers || []);
-      setPickingClient(false);
-      // A blank project has nothing to read yet — the name field and the rest
-      // of the card only exist in edit mode, so that is where it starts.
-      setIsEditing(isNew);
-      setDynamicData(project.data || {});
-      setCustomFileFields(Array.isArray(project.customFileFields) ? project.customFileFields : []);
-      setTimeline(project.timeline || []);
-      setGantt(project.gantt || []);
+  /* ── Autosave ─────────────────────────────────────────────────────────────
+     There is no Save button: every change in the view is written back on its
+     own. The editable fields are compared, in the shape the state holds them,
+     against the project as last saved; a difference is saved after a short
+     pause, so typing a sentence is one write rather than one per keystroke.
+     A change still waiting when the view closes is written out on the way. */
+  const editableSnapshot = (p: Project) => ({
+    name: p.name || "",
+    deadline: p.deadline || "",
+    delayReason: p.delayReason || "",
+    startDate: projectStartDate(p) || todayLocal(),
+    finishedAt: p.finishedAt || "",
+    status: p.status || "active",
+    rating: ratingValue(p.rating),
+    leadId: p.leadId || "",
+    clientId: p.clientId || "",
+    managers: p.managers || [],
+    data: p.data || {},
+    customFileFields: Array.isArray(p.customFileFields) ? p.customFileFields : [],
+    timeline: p.timeline || [],
+    gantt: p.gantt || [],
+  });
 
-      // Resolve right tab from URL or defaults
-      const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
-      const tabParam = params.get("tab");
-      if (isRightTab(tabParam)) {
-        setActiveRightTab(tabParam);
-      } else if (projectType) {
-        if (projectType.hasTimeline) setActiveRightTab("timeline");
-        else if (projectType.hasGantt) setActiveRightTab("gantt");
-        else setActiveRightTab("finances");
-      }
+  /** The project as the view currently holds it, plus any values handed in directly. */
+  const buildProject = (overrides: Partial<Project> = {}): Project | null => {
+    if (!project || !projectType) return null;
+    return {
+      ...project,
+      name: projectName.trim(),
+      // Only a type with deadlines on can hold one. Turning the switch off on
+      // the type would otherwise leave an invisible date behind that starts
+      // counting down again the moment someone turns it back on.
+      deadline: projectType.hasDeadline ? (deadline || null) : null,
+      // Only kept while it is still the answer to something: a project that is
+      // no longer late has no delay to explain, and leaving the old text behind
+      // would make it reappear the next time a date slips.
+      delayReason: projectType.hasDeadline ? (delayReason.trim() || null) : null,
+      startDate: startDate || null,
+      finishedAt: finishedAt || null,
+      status,
+      rating,
+      leadId: associatedLeadId || null,
+      clientId: associatedClientId || null,
+      managers: selectedManagers,
+      data: dynamicData,
+      customFileFields,
+      timeline,
+      gantt,
+      ...overrides,
+    };
+  };
+
+  // Which project the state was last loaded from. Until the load effect has
+  // run for a newly opened project the state still holds the previous one,
+  // and comparing that against the new project would save it over it.
+  const [loadedId, setLoadedId] = useState<string | null>(null);
+  const pendingSaveRef = React.useRef<Project | null>(null);
+  const onSaveRef = React.useRef(onSave);
+  onSaveRef.current = onSave;
+  const [saveState, setSaveState] = useState<"saved" | "pending">("saved");
+
+  /** Writes out a change that is still waiting for its pause, if there is one. */
+  const flushPendingSave = React.useCallback(() => {
+    const pending = pendingSaveRef.current;
+    if (!pending) return;
+    pendingSaveRef.current = null;
+    onSaveRef.current(pending, { close: false });
+    setSaveState("saved");
+  }, []);
+
+  // Leaving the view — back to the list, or to another module — must not
+  // drop the last edit made within the pause.
+  useEffect(() => () => flushPendingSave(), [flushPendingSave]);
+
+  // A different project opened in the same view: fresh UI modes and tab.
+  useEffect(() => {
+    if (!project) return;
+    setPickingClient(false);
+    setIsEditingAttrs(false);
+    // A blank project has nothing to call it yet, so it opens on the name.
+    setIsEditingName(isNew);
+    nameCancelledRef.current = false;
+    setNameDraft(project.name || "");
+
+    // Resolve right tab from URL or defaults
+    const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
+    const tabParam = params.get("tab");
+    if (isRightTab(tabParam)) {
+      setActiveRightTab(tabParam);
+    } else if (projectType) {
+      if (projectType.hasTimeline) setActiveRightTab("timeline");
+      else if (projectType.hasGantt) setActiveRightTab("gantt");
+      else setActiveRightTab("finances");
     }
+  }, [project?.id, projectType?.id]);
+
+  useEffect(() => {
+    if (!project) return;
+    if (project.id !== loadedId) {
+      // The previous project's last edit goes out before its state is replaced.
+      flushPendingSave();
+    } else if (pendingSaveRef.current) {
+      // Same project, and an edit of ours is still on its way — reloading now
+      // would throw it away.
+      return;
+    }
+    const s = editableSnapshot(project);
+    setProjectName(s.name);
+    setDeadline(s.deadline);
+    setDelayReason(s.delayReason);
+    setStartDate(s.startDate);
+    setFinishedAt(s.finishedAt);
+    setStatus(s.status);
+    setRating(s.rating);
+    setAssociatedLeadId(s.leadId);
+    setAssociatedClientId(s.clientId);
+    setSelectedManagers(s.managers);
+    setDynamicData(s.data);
+    setCustomFileFields(s.customFileFields);
+    setTimeline(s.timeline);
+    setGantt(s.gantt);
+    setLoadedId(project.id);
   }, [project, projectType]);
+
+  const savedSnapshotJson = useMemo(
+    () => (project ? JSON.stringify(editableSnapshot(project)) : ""),
+    [project],
+  );
+  const currentSnapshotJson = JSON.stringify({
+    name: projectName,
+    deadline,
+    delayReason,
+    startDate,
+    finishedAt,
+    status,
+    rating,
+    leadId: associatedLeadId,
+    clientId: associatedClientId,
+    managers: selectedManagers,
+    data: dynamicData,
+    customFileFields,
+    timeline,
+    gantt,
+  });
+  // A finish before the start is the one value that is never written — the
+  // card says so under the dates, and the save resumes once it is fixed.
+  const finishBeforeStart = !!(finishedAt && startDate && finishedAt < startDate);
+
+  useEffect(() => {
+    if (!project || !canEdit || loadedId !== project.id) return;
+    if (currentSnapshotJson === savedSnapshotJson || finishBeforeStart) {
+      pendingSaveRef.current = null;
+      setSaveState("saved");
+      return;
+    }
+    pendingSaveRef.current = buildProject();
+    setSaveState("pending");
+    const timer = window.setTimeout(flushPendingSave, 600);
+    return () => window.clearTimeout(timer);
+  }, [currentSnapshotJson, savedSnapshotJson, finishBeforeStart, loadedId, canEdit]);
 
   // Project Financials Calculation & Revenue Analysis
   const projectFinancials = useMemo(() => {
@@ -519,8 +652,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     const raw = budgetDraft.replace(/\s/g, "").replace(",", ".");
     const value = raw === "" ? 0 : Number(raw);
     if (!Number.isFinite(value) || value < 0) return;
-    // Saved straight away, like the status strip — no trip through edit mode.
-    handleSave({ budget: value > 0 ? Math.round(value * 100) / 100 : null }, { validate: false, close: false });
+    // Lives on the project, not in the view's state, so it is written directly.
+    handleSave({ budget: value > 0 ? Math.round(value * 100) / 100 : null });
     setBudgetDraft(null);
   };
 
@@ -812,15 +945,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const newCustomFileTaken = fileSlots.some(s => s.name.toLowerCase() === newCustomFileName.trim().toLowerCase());
   const canAddCustomFile = canEdit && newCustomFileName.trim() !== "" && !newCustomFileTaken;
 
-  /**
-   * Writes the file slots back. Outside edit mode each change is saved on the
-   * spot; in edit mode it waits for Save together with the rest of the card.
-   */
+  /** Writes the file slots back into the state; the autosave takes it from there. */
   const commitFiles = (nextData: Record<string, any>, nextCustom: ProjectCustomFileField[]) => {
     latestFilesRef.current = { data: nextData, custom: nextCustom };
     setDynamicData(nextData);
     setCustomFileFields(nextCustom);
-    if (!isEditing) handleSave({ data: nextData, customFileFields: nextCustom }, { validate: false, close: false });
   };
 
   /** Adds files to one slot — from its button, or dropped onto its card. */
@@ -966,122 +1095,33 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   };
 
   /**
-   * Writes the project back. `overrides` lets a single control save straight
-   * away without waiting for its own state to settle — the status dropdown
-   * stays live outside edit mode and saves the value it was just given.
-   * Returns false when a required attribute blocked the save.
+   * Writes the project back at once, with `overrides` for a value that lives
+   * outside the view's own state (the budget). Everything else saves itself —
+   * see the autosave above. A read-only role is refused here too.
    */
-  const handleSave = (
-    overrides: Partial<Project> = {},
-    { validate = true, close = true }: { validate?: boolean; close?: boolean } = {},
-  ): boolean => {
-    // Every write to the project funnels through here — the one place a
-    // read-only role is refused, whichever control got as far as calling it.
-    if (!canEdit) return false;
-    /* A project that missed its deadline owes an explanation — still open and
-       past it, or finished after it. Checked against the values being saved,
-       so pushing the deadline out (or finishing on time) settles the debt in
-       the same keystroke. Completing late does not. */
-    if (validate) {
-      const nextStatus = String(overrides.status ?? status);
-      const nextDeadline = overrides.deadline !== undefined ? (overrides.deadline || "") : deadline;
-      const nextFinished = overrides.finishedAt !== undefined ? (overrides.finishedAt || "") : finishedAt;
-      if (nextFinished && startDate && nextFinished < startDate) {
-        alert(t(
-          "The real finish date cannot be before the start date.",
-          "Skutočné dokončenie nemôže byť pred začiatkom projektu.",
-          "A tényleges befejezés nem lehet a kezdés előtt.",
-        ));
-        setIsEditing(true);
-        return false;
-      }
-      if (projectType.hasDeadline && projectType.deadlineRequired && !nextDeadline) {
-        alert(t(
-          "A deadline is required for this project type.",
-          "Termín dokončenia je pre tento typ projektu povinný.",
-          "Ennél a projekt típusnál a határidő megadása kötelező.",
-        ));
-        setIsEditing(true);
-        return false;
-      }
-      const dl = evaluateProjectDeadline({ deadline: nextDeadline, status: nextStatus, finishedAt: nextFinished }, projectType, todayLocal());
-      const nextReason = String(overrides.delayReason ?? delayReason).trim();
-      if (projectMissedDeadline(dl) && !nextReason) {
-        alert(t(
-          "This project is past its deadline — a reason for the delay is required.",
-          "Projekt je po termíne — zdôvodnenie meškania je povinné.",
-          "A projekt határidőn túl van — a késés indoklása kötelező.",
-        ));
-        setIsEditing(true);
-        return false;
-      }
-    }
-
-    // Basic validations for required dynamic attributes. File slots on the
-    // Files tab are never required — missing ones are only flagged there.
-    for (const attr of (validate ? (projectType.attributes || []) : [])) {
-      if (attr.required) {
-        const val = dynamicData[attr.id];
-        // A file list comes back from the server as a JSON string, so "[]" is empty too.
-        const missing = attr.type === "money"
-          ? isMoneyValueEmpty(val, defaultCurrency)
-          : attr.type === "files"
-            ? asList(val).length === 0
-            : (val === undefined || val === null || val === "" || (Array.isArray(val) && val.length === 0));
-        if (missing) {
-          alert(`"${attr.name}" ${t("is required.", "je povinné.", "megadása kötelező.")}`);
-          return false;
-        }
-      }
-    }
-
-    const updatedProject: Project = {
-      ...project,
-      name: projectName.trim(),
-      // Only a type with deadlines on can hold one. Turning the switch off on
-      // the type would otherwise leave an invisible date behind that starts
-      // counting down again the moment someone turns it back on.
-      deadline: projectType.hasDeadline ? (deadline || null) : null,
-      // Only kept while it is still the answer to something: a project that is
-      // no longer late has no delay to explain, and leaving the old text behind
-      // would make it reappear the next time a date slips.
-      delayReason: projectType.hasDeadline ? (delayReason.trim() || null) : null,
-      startDate: startDate || null,
-      finishedAt: finishedAt || null,
-      status,
-      rating,
-      leadId: associatedLeadId || null,
-      clientId: associatedClientId || null,
-      managers: selectedManagers,
-      data: dynamicData,
-      customFileFields,
-      timeline,
-      gantt,
-      ...overrides
-    };
-
-    onSave(updatedProject, { close });
-    return true;
+  const handleSave = (overrides: Partial<Project> = {}) => {
+    if (!canEdit) return;
+    const updated = buildProject(overrides);
+    if (!updated) return;
+    // Whatever was waiting is part of this write already.
+    pendingSaveRef.current = null;
+    onSave(updated, { close: false });
+    setSaveState("saved");
   };
 
-  /** Drops whatever edit mode changed and puts the card back in reading shape. */
-  const handleCancelEdit = () => {
-    if (project) {
-      setProjectName(project.name || "");
-      setDeadline(project.deadline || "");
-      setDelayReason(project.delayReason || "");
-      setStartDate(projectStartDate(project) || todayLocal());
-      setFinishedAt(project.finishedAt || "");
-      setStatus(project.status || "active");
-      setRating(ratingValue(project.rating));
-      setAssociatedLeadId(project.leadId || "");
-      setAssociatedClientId(project.clientId || "");
-      setSelectedManagers(project.managers || []);
-      setDynamicData(project.data || {});
-      setCustomFileFields(Array.isArray(project.customFileFields) ? project.customFileFields : []);
-    }
-    setPickingClient(false);
-    setIsEditing(false);
+  const commitName = () => {
+    // Escape unmounts the input, and a browser may still fire its blur.
+    if (nameCancelledRef.current) { nameCancelledRef.current = false; return; }
+    const next = nameDraft.trim();
+    setProjectName(next);
+    setNameDraft(next);
+    setIsEditingName(false);
+  };
+
+  const cancelNameEdit = () => {
+    nameCancelledRef.current = true;
+    setNameDraft(projectName);
+    setIsEditingName(false);
   };
 
   // Timeline Handlers
@@ -1272,6 +1312,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       "Naozaj chcete vymazať tento projekt?",
       "Biztosan törli ezt a projektet?",
     ))) return;
+    // An edit still waiting would otherwise write the project straight back.
+    pendingSaveRef.current = null;
     onDelete(project.id);
   };
 
@@ -1301,45 +1343,84 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   };
 
   return (
-    <div className="w-full bg-[#0f111a]/5 border border-slate-200/80 rounded-3xl flex flex-col h-[calc(100vh-11rem)] shadow-sm animate-fade-in overflow-hidden">
-      
-      {/* Header */}
-      <div className="h-16 shrink-0 bg-white border-b border-slate-200 px-6 flex items-center justify-between select-none">
-        <div className="flex items-center gap-3">
+    <div className="w-full flex flex-col h-[calc(100vh-11rem)] animate-fade-in text-left">
+
+      {/* Header — the same shape the projects list opens with: a large
+          heading with its icon, a caption under it, the actions on the right,
+          and a hairline below. No panel of its own. */}
+      <div className="shrink-0 flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-100 pb-4 select-none">
+        <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={onClose}
-            className="p-2 rounded-xl hover:bg-slate-100 text-slate-500 transition-colors mr-1 cursor-pointer"
+            className="shrink-0 p-2 rounded-xl hover:bg-slate-100 text-slate-500 hover:text-slate-900 transition-all active:scale-95 cursor-pointer"
             title={t("Back to list", "Späť na zoznam", "Vissza a listához")}
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
-          <div 
-            className="p-2 rounded-xl text-white shadow-sm"
-            style={{ backgroundColor: projectType.color }}
-          >
-            {renderIcon(projectType.icon, "h-5 w-5")}
-          </div>
-          <div className="flex flex-col text-left">
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">
-              {projectType.name}
-            </span>
-            <span className="font-heading font-bold text-sm text-slate-800 mt-1">
-              {projectDisplayName(
-                { name: projectName, leadId: associatedLeadId },
-                leads,
-                t("New Project", "Nový projekt", "Új projekt"),
+          <div className="flex flex-col min-w-0 flex-1">
+            <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2 min-w-0">
+              <span className="shrink-0" style={{ color: projectType.color }}>
+                {renderIcon(projectType.icon, "h-6 w-6")}
+              </span>
+              {/* Project name, edited in place. Projects used to have none and
+                  simply wore the paired lead's, which left a project paired with
+                  nobody with no name at all. Still optional: left empty, it
+                  reads as the lead. */}
+              {isEditingName ? (
+                <input
+                  value={nameDraft}
+                  onChange={e => setNameDraft(e.target.value)}
+                  onBlur={commitName}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") { e.preventDefault(); commitName(); }
+                    else if (e.key === "Escape") { e.preventDefault(); cancelNameEdit(); }
+                  }}
+                  autoFocus
+                  maxLength={200}
+                  placeholder={t("e.g. Roof replacement, Kosice", "napr. Výmena strechy, Košice", "pl. Tetőcsere, Kassa")}
+                  className="select-text min-w-0 flex-1 max-w-xl px-2 py-0.5 -my-1 rounded-xl border border-indigo-300 bg-white text-2xl font-heading font-extrabold text-slate-900 tracking-tight focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                />
+              ) : (
+                <>
+                  <span className="truncate">
+                    {projectDisplayName(
+                      { name: projectName, leadId: associatedLeadId },
+                      leads,
+                      t("New Project", "Nový projekt", "Új projekt"),
+                    )}
+                  </span>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => { nameCancelledRef.current = false; setNameDraft(projectName); setIsEditingName(true); }}
+                      className="shrink-0 p-1.5 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all active:scale-95 cursor-pointer"
+                      title={t("Rename project", "Premenovať projekt", "Projekt átnevezése")}
+                    >
+                      <Edit3 className="h-4 w-4" />
+                    </button>
+                  )}
+                </>
               )}
-            </span>
+            </h2>
+            <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1 truncate">
+              {isEditingName && !nameDraft.trim()
+                ? t(
+                    "Left empty, the project is listed under the paired lead's name",
+                    "Ak ostane prázdny, projekt sa zobrazí pod menom spárovaného leadu",
+                    "Üresen hagyva a projekt a párosított lead nevén szerepel",
+                  )
+                : projectType.name}
+            </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 self-start md:self-auto">
           {/* Deleting a project that has never been saved would delete nothing,
               so the button only appears once the project exists. */}
           {canDelete && !isNew && onDelete && (
             <button
               onClick={handleDeleteProject}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl border border-rose-200 bg-white hover:bg-rose-50 text-rose-600 font-black text-xs uppercase tracking-wider transition-all cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-rose-500 font-heading font-bold text-xs uppercase tracking-wider hover:bg-rose-50 hover:text-rose-700 transition-all active:scale-95 cursor-pointer"
               title={t("Delete Project", "Vymazať projekt", "Projekt törlése")}
             >
               <Trash2 className="h-4 w-4 shrink-0" />
@@ -1347,15 +1428,33 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             </button>
           )}
           {canEdit ? (
-            <button
-              onClick={() => handleSave()}
-              className="flex items-center gap-1.5 px-4.5 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs uppercase tracking-wider transition-all shadow-md cursor-pointer"
+            /* No Save button: every change saves itself. This only says whether
+               the last one has gone out yet — or why it cannot. */
+            <span
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider whitespace-nowrap transition-colors duration-200 ${
+                finishBeforeStart ? "text-rose-600" : saveState === "pending" ? "text-slate-400" : "text-emerald-600"
+              }`}
+              data-testid="project-save-state"
             >
-              <Icons.Save className="h-4.5 w-4.5" />
-              <span>{t("Save Changes", "Uložiť zmeny", "Mentés")}</span>
-            </button>
+              {finishBeforeStart ? (
+                <>
+                  <CircleAlert className="h-3.5 w-3.5 shrink-0" />
+                  <span>{t("Not saved — check the dates", "Neuložené — skontrolujte dátumy", "Nincs mentve — ellenőrizze a dátumokat")}</span>
+                </>
+              ) : saveState === "pending" ? (
+                <>
+                  <Icons.Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                  <span>{t("Saving…", "Ukladá sa…", "Mentés…")}</span>
+                </>
+              ) : (
+                <>
+                  <Icons.CloudCheck className="h-3.5 w-3.5 shrink-0" />
+                  <span>{t("All changes saved", "Všetko uložené", "Minden mentve")}</span>
+                </>
+              )}
+            </span>
           ) : (
-            /* Read-only: the same pill the list wears, where the save button would be. */
+            /* Read-only: the same pill the list wears, in place of the save state. */
             <span
               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-amber-200 bg-amber-50 text-[10px] font-black uppercase tracking-wider text-amber-700 whitespace-nowrap"
               title={t(
@@ -1372,222 +1471,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       </div>
 
       {/* Workspace Body */}
-      <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-12 gap-6 p-6 min-h-0 bg-slate-50/50">
+      <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-12 gap-6 pt-6 min-h-0">
         
-        {/* LEFT COLUMN: the paired client on its own card, then the project's
-            own card. Both read as cards — a project is looked at far more
-            often than it is changed, so the inputs only come out on Edit. */}
+        {/* LEFT COLUMN: the project's own card, its custom attributes, then
+            the paired client at the bottom. The project card is edited in
+            place and every change saves itself; the attributes card keeps an
+            Edit mode of its own. */}
         <div className="lg:col-span-4 flex flex-col h-full min-h-0 overflow-y-auto gap-4 pr-1 scrollbar-thin text-left">
 
-          {/* Lead / Client pairing — the project's half of the link. The
-              same pairing is edited from the lead's "Linked projects" card,
-              and both write the one field (`leadId`) that carries it. */}
-          {(() => {
-            const pairedLead = leads.find(l => l.id === associatedLeadId);
-            const pairWith = (id: string) => {
-              setAssociatedLeadId(id);
-              setAssociatedClientId(id);
-              setPickingClient(false);
-              // Pairing a lead names the project after it, but only while it
-              // has no name yet — re-pairing never overwrites what somebody
-              // deliberately typed.
-              if (!projectName.trim()) {
-                const paired = leads.find(l => l.id === id);
-                if (paired?.name) setProjectName(paired.name);
-              }
-            };
-
-            if (!pairedLead || pickingClient) {
-              // Outside edit mode there is nothing to pick — just the note
-              // that this project hangs on nobody, and a way in.
-              if (!isEditing) {
-                return (
-                  <div className="shrink-0 bg-white border border-dashed border-slate-300 rounded-3xl p-5 shadow-sm text-center">
-                    <Icons.Unlink className="h-5 w-5 text-slate-300 mx-auto mb-2" />
-                    <p className="text-[11px] font-bold text-slate-500 leading-snug">
-                      {t(
-                        "This project is not paired with any lead or client.",
-                        "Tento projekt nie je spárovaný so žiadnym leadom ani klientom.",
-                        "Ez a projekt nincs leaddel vagy ügyféllel párosítva.",
-                      )}
-                    </p>
-                    {canEdit && (
-                      <button
-                        type="button"
-                        onClick={() => { setIsEditing(true); setPickingClient(true); }}
-                        className="mt-2.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
-                      >
-                        {t("Pair now", "Spárovať", "Párosítať")}
-                      </button>
-                    )}
-                  </div>
-                );
-              }
-              return (
-                <div className="shrink-0 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
-                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Paired Lead / Client", "Spárovaný lead / klient", "Párosított lead / ügyfél")}</label>
-                  <ClientSelect
-                    leads={leads}
-                    value={associatedLeadId}
-                    onChange={pairWith}
-                    noneLabel={t("No associated client", "Žiadny klient", "Nincs ügyfél")}
-                    placeholder={t("Select Client...", "Vybrať klienta...", "Ügyfél választása...")}
-                  />
-                  {pairedLead && (
-                    <button
-                      type="button"
-                      onClick={() => setPickingClient(false)}
-                      className="mt-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-                    >
-                      {t("Keep current pairing", "Ponechať súčasné spárovanie", "Jelenlegi párosítás megtartása")}
-                    </button>
-                  )}
-                  <p className="mt-1 text-[9px] font-semibold text-slate-400 leading-snug">
-                    {t(
-                      "Not paired with anyone — pick a lead or client to link this project to.",
-                      "Nie je spárovaný s nikým — vyberte lead alebo klienta, s ktorým sa projekt prepojí.",
-                      "Nincs párosítva — válasszon leadet vagy ügyfelet a projekt összekapcsolásához.",
-                    )}
-                  </p>
-                </div>
-              );
-            }
-
-            // The same green card the lead view shows for its client, so a
-            // pairing reads the same from either end of the link.
-            const initials = pairedLead.name
-              .split(/\s+/)
-              .filter(Boolean)
-              .slice(0, 2)
-              .map(w => w[0]?.toUpperCase() || "")
-              .join("") || "?";
-            const clientTypeLabel =
-              pairedLead.clientType === "business"
-                ? `🏢 ${t("Company / Business", "Firma / Podnikanie", "Cég / Vállalkozás")}`
-                : pairedLead.clientType === "partner"
-                  ? `🤝 ${t("Dealer Partner", "Obchodný partner", "Kereskedő partner")}`
-                  : `👤 ${t("Private Person", "Súkromná osoba", "Magánszemély")}`;
-            const addr = pairedLead.address;
-            const city = addr?.city || pairedLead.city || "";
-            const addressText = [addr?.street, city].filter(Boolean).join(", ") + (addr?.postalCode ? ` (${addr.postalCode})` : "");
-            const noneAdded = <span className="text-slate-300 italic">{getTranslation(userLanguage, "profile.none_added")}</span>;
-
-            return (
-              <div className="shrink-0 rounded-3xl border-2 border-emerald-400 bg-emerald-50/70 shadow-md p-4 space-y-3 text-emerald-950">
-                <div className="border-b-2 border-emerald-200/50 pb-2 flex items-center justify-between gap-2 flex-wrap">
-                  <span className="text-[10px] font-black text-emerald-700 uppercase tracking-wider flex items-center gap-1.5 min-w-0">
-                    <Icons.Briefcase className="h-4 w-4 text-emerald-600 stroke-[2.5] shrink-0" />
-                    <span>{getTranslation(userLanguage, "common.client_relationship_card")}</span>
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 uppercase tracking-wider shrink-0">
-                    {getTranslation(userLanguage, "common.synced_profile")}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-2 border-emerald-700 flex items-center justify-center font-heading font-black text-sm shadow shrink-0">
-                    {initials}
-                  </div>
-                  <div className="min-w-0">
-                    <h4 className="text-sm font-black text-slate-800 line-clamp-1">{pairedLead.name}</h4>
-                    <span className="text-[9px] font-extrabold uppercase tracking-wide text-emerald-700">{clientTypeLabel}</span>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3 text-[11px] bg-white/70 p-3 rounded-xl border border-emerald-200/50">
-                  <div className="space-y-0.5 min-w-0">
-                    <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">
-                      {getTranslation(userLanguage, "profile.phone_number")}
-                    </span>
-                    <span className="font-extrabold text-slate-700 block truncate">
-                      {pairedLead.phone ? (
-                        <span className="flex items-center gap-1"><Phone className="h-3 w-3 text-emerald-600 shrink-0" />{pairedLead.phone}</span>
-                      ) : noneAdded}
-                    </span>
-                  </div>
-                  <div className="space-y-0.5 min-w-0">
-                    <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">
-                      {getTranslation(userLanguage, "profile.email_address")}
-                    </span>
-                    <span className="font-extrabold text-slate-700 block truncate">
-                      {pairedLead.email ? (
-                        <span className="flex items-center gap-1"><Mail className="h-3 w-3 text-emerald-600 shrink-0" /><span className="truncate">{pairedLead.email}</span></span>
-                      ) : noneAdded}
-                    </span>
-                  </div>
-                  <div className="space-y-0.5 col-span-2 border-t border-emerald-200/50 pt-2 mt-1">
-                    <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">
-                      {getTranslation(userLanguage, "profile.location_address")}
-                    </span>
-                    <span className="font-extrabold text-slate-700 block">
-                      {addressText ? (
-                        <span className="flex items-center gap-1"><Icons.MapPin className="h-3.5 w-3.5 text-emerald-600 shrink-0" /><span className="line-clamp-1">{addressText}</span></span>
-                      ) : noneAdded}
-                    </span>
-                  </div>
-                  {pairedLead.website && (
-                    <div className="space-y-0.5 col-span-2 border-t border-emerald-200/50 pt-2 mt-1">
-                      <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">
-                        {getTranslation(userLanguage, "profile.website_link")}
-                      </span>
-                      <a
-                        href={`https://${pairedLead.website.replace(/^https?:\/\//, "")}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="font-extrabold text-blue-600 hover:underline flex items-center gap-1"
-                      >
-                        <Icons.Globe className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
-                        <span className="truncate">{pairedLead.website}</span>
-                      </a>
-                    </div>
-                  )}
-                </div>
-
-                <div className="flex items-center justify-between gap-2 pt-1 flex-wrap">
-                  {isEditing && (
-                  <div className="flex items-center gap-1">
-                    <button
-                      type="button"
-                      onClick={() => setPickingClient(true)}
-                      className="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider text-emerald-700 hover:bg-emerald-100 transition-colors cursor-pointer flex items-center gap-1"
-                      title={t("Pair with a different lead or client", "Spárovať s iným leadom alebo klientom", "Másik leaddel vagy ügyféllel párosítás")}
-                    >
-                      <Icons.Repeat className="h-3 w-3" />
-                      {t("Change", "Zmeniť", "Módosítás")}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => { setAssociatedLeadId(""); setAssociatedClientId(""); setPickingClient(false); }}
-                      className="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer flex items-center gap-1"
-                      title={t("Unpair this project", "Zrušiť spárovanie projektu", "Párosítás megszüntetése")}
-                    >
-                      <Icons.Unlink className="h-3 w-3" />
-                      {t("Unpair", "Odpojiť", "Leválasztás")}
-                    </button>
-                  </div>
-                  )}
-                  <button
-                    type="button"
-                    onClick={() => { window.location.hash = `client-${encodeURIComponent(pairedLead.name)}`; }}
-                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-black uppercase tracking-wider shadow transition-all active:scale-95 flex items-center justify-center gap-1.5 border border-emerald-700 cursor-pointer"
-                  >
-                    {getTranslation(userLanguage, "common.view_full_profile")}
-                    <ArrowLeft className="h-3.5 w-3.5 rotate-180" />
-                  </button>
-                </div>
-
-                {isEditing && (
-                <p className="text-[9px] font-semibold text-emerald-800/60 leading-snug">
-                  {t(
-                    "This project shows up on the lead's card too. Saved with the project.",
-                    "Tento projekt sa zobrazí aj na karte leadu. Uloží sa spolu s projektom.",
-                    "Ez a projekt a lead kartonján is megjelenik. A projekttel együtt mentődik.",
-                  )}
-                </p>
-                )}
-              </div>
-            );
-          })()}
 
           {/* PROJECT CARD DETAILS */}
           <div className="shrink-0 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
@@ -1595,34 +1486,6 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-widest">
                 {t("Project Card Details", "Detaily karty projektu", "Projekt részletei")}
               </h4>
-              {!canEdit ? null : !isEditing ? (
-                <button
-                  type="button"
-                  onClick={() => setIsEditing(true)}
-                  className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-[10px] font-black uppercase tracking-wider text-slate-500 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50 transition-colors cursor-pointer"
-                >
-                  <Edit3 className="h-3.5 w-3.5" />
-                  {t("Edit", "Upraviť", "Szerkesztés")}
-                </button>
-              ) : (
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={handleCancelEdit}
-                    className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
-                  >
-                    {t("Cancel", "Zrušiť", "Mégse")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { if (handleSave({}, { close: false })) setIsEditing(false); }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black uppercase tracking-wider shadow-sm transition-all active:scale-95 cursor-pointer"
-                  >
-                    <Icons.Save className="h-3.5 w-3.5" />
-                    {t("Save", "Uložiť", "Mentés")}
-                  </button>
-                </div>
-              )}
             </div>
 
             {/* Pipeline strip — edge to edge under the header, in place of its
@@ -1631,36 +1494,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             <PipelineStrip segments={projectPipelineSegments(status, t)} className="-mx-5 mb-4" />
 
           <div className="space-y-4">
-            {/* Project name. Projects used to have none and simply wore the
-                paired lead's, which left a project paired with nobody with no
-                name at all. Still optional: left empty, it reads as the lead.
-                Only in edit mode — the header already carries the name. */}
-            {isEditing && (
-            <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Project Name", "Názov projektu", "Projekt neve")}</label>
-              <input
-                value={projectName}
-                onChange={e => setProjectName(e.target.value)}
-                autoFocus={isNew}
-                maxLength={200}
-                placeholder={t("e.g. Roof replacement, Kosice", "napr. Výmena strechy, Košice", "pl. Tetőcsere, Kassa")}
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-              />
-              {!projectName.trim() && (
-                <p className="mt-1 text-[9px] font-semibold text-slate-400 leading-snug">
-                  {t(
-                    "Left empty, this project is listed under the name of the lead it is paired with.",
-                    "Ak ostane prázdny, projekt sa v zozname zobrazí pod menom spárovaného leadu.",
-                    "Üresen hagyva a projekt a hozzá párosított lead nevén szerepel a listában.",
-                  )}
-                </p>
-              )}
-            </div>
-            )}
-
-            {/* Status. Stays live outside edit mode — moving a project along is
-                the one thing done from the card itself, so it saves on the spot.
-                Each status wears its own colour, badge and dropdown row alike. */}
+            {/* Status. Each status wears its own colour, badge and dropdown row alike. */}
             <div>
               <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Status", "Stav", "Állapot")}</label>
               <CustomSelect
@@ -1673,7 +1507,6 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   // it — see finishedAtForStatus. Only where the field is shown.
                   const nextFinished = projectType.hasDeadline ? finishedAtForStatus(v, finishedAt, todayLocal()) : finishedAt;
                   setFinishedAt(nextFinished);
-                  if (!isEditing) handleSave({ status: v, finishedAt: nextFinished || null }, { validate: false, close: false });
                 }}
                 className={`!font-black ${projectStatusBadgeClass(status)}`}
                 icon={<span className={`h-2 w-2 rounded-full shrink-0 inline-block ${projectStatusDotClass(status)}`} />}
@@ -1686,9 +1519,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             </div>
 
             {/* Star priority — the same 1-5 rating a lead carries, and the same
-                widget. Live outside edit mode like the status above it: rating
-                something is a judgement made in passing, not a form to fill in.
-                Clicking the star it already wears clears the rating again. */}
+                widget. Clicking the star it already wears clears the rating again. */}
             <div>
               <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
                 {getTranslation(userLanguage, "profile.priority_rating")}
@@ -1700,7 +1531,6 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   onChange={!canEdit ? undefined : (stars) => {
                     const next = rating === stars ? 0 : stars;
                     setRating(next);
-                    if (!isEditing) handleSave({ rating: next }, { validate: false, close: false });
                   }}
                 />
                 {rating === 0 && (
@@ -1724,9 +1554,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                   <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
-                    {t("Deadline", "Termín dokončenia", "Határidő")} {isEditing && projectType.deadlineRequired && <span className="text-red-500">*</span>}
+                    {t("Deadline", "Termín dokončenia", "Határidő")} {canEdit && projectType.deadlineRequired && <span className="text-red-500">*</span>}
                   </label>
-                  {!isEditing ? (
+                  {!canEdit ? (
                     <p className="text-xs font-bold text-slate-800">
                       {deadline
                         ? formatDateLocalized(deadline, userLanguage)
@@ -1752,11 +1582,16 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     )}
                   </div>
                   )}
+                  {canEdit && projectType.deadlineRequired && !deadline && (
+                    <p className="mt-1 text-[9px] font-bold text-rose-600 leading-snug">
+                      {t("A deadline is required for this project type.", "Termín je pre tento typ projektu povinný.", "Ennél a projekt típusnál a határidő kötelező.")}
+                    </p>
+                  )}
                   </div>
 
                   <div>
                   <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Real dates", "Skutočný termín", "Tényleges időpontok")}</label>
-                  {!isEditing ? (
+                  {!canEdit ? (
                     <p className="text-xs font-bold text-slate-800">
                       {startDate ? formatDateLocalized(startDate, userLanguage) : "—"}
                       {" – "}
@@ -1795,6 +1630,15 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         </button>
                       )}
                     </div>
+                    {finishBeforeStart && (
+                      <p className="text-[9px] font-bold text-rose-600 leading-snug">
+                        {t(
+                          "The finish cannot be before the start — changes are not saved until it is fixed.",
+                          "Koniec nemôže byť pred začiatkom — zmeny sa neuložia, kým to neopravíte.",
+                          "A befejezés nem lehet a kezdés előtt — a módosítások a javításig nem mentődnek.",
+                        )}
+                      </p>
+                    )}
                   </div>
                   )}
                   </div>
@@ -1828,9 +1672,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                   {/* The red flag. Once the project missed its date — still
                       open and past it, or finished after it — the reason for
-                      the delay is required: the card refuses to save without
-                      one, and until it is written down the project wears a
-                      flag everywhere it is listed. */}
+                      the delay is required: until it is written down the
+                      project wears a flag everywhere it is listed. */}
                   {missedDeadline && (
                     <div className="mt-3 p-3 rounded-2xl border border-rose-200 bg-rose-50">
                       <label className="flex items-center gap-1.5 text-[10px] font-black text-rose-700 uppercase tracking-wider mb-1.5">
@@ -1839,7 +1682,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         <span className="text-rose-500">*</span>
                       </label>
 
-                      {isEditing ? (
+                      {canEdit ? (
                         <>
                           <textarea
                             value={delayReason}
@@ -1858,9 +1701,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                           {!delayReason.trim() && (
                             <p className="mt-1 text-[9px] font-bold text-rose-600 leading-snug">
                               {t(
-                                "Required while the project is past its deadline — it cannot be saved without one.",
-                                "Povinné, kým je projekt po termíne — bez neho sa projekt nedá uložiť.",
-                                "Kötelező, amíg a projekt határidőn túl van — enélkül nem menthető.",
+                                "Required while the project is past its deadline — it stays flagged in the list until one is given.",
+                                "Povinné, kým je projekt po termíne — v zozname ostane označený, kým ho nedoplníte.",
+                                "Kötelező, amíg a projekt határidőn túl van — addig megjelölve marad a listában.",
                               )}
                             </p>
                           )}
@@ -1878,16 +1721,6 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                               "Még nincs indoklás — a projekt megjelölve marad a listában, amíg meg nem adja.",
                             )}
                           </p>
-                          {canEdit && (
-                            <button
-                              type="button"
-                              onClick={() => setIsEditing(true)}
-                              className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600 text-white text-[10px] font-black uppercase tracking-wider hover:bg-rose-700 transition-colors cursor-pointer"
-                            >
-                              <Icons.Flag className="h-3 w-3 shrink-0" />
-                              <span>{t("Explain the delay", "Zdôvodniť meškanie", "Késés indoklása")}</span>
-                            </button>
-                          )}
                         </>
                       )}
                     </div>
@@ -1897,9 +1730,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               );
             })()}
 
-            {/* Project Managers. A project can carry several, so the dropdown
-                adds one at a time and the chosen ones sit above it as the same
-                coloured chips the lead view wears for its manager. */}
+            {/* Project Managers, edited in place. A project can carry several,
+                so the dropdown adds one at a time and the chosen ones sit above
+                it as the same coloured chips the lead view wears for its manager;
+                each chip's cross takes that manager off again. */}
             <div>
               <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Project Managers", "Projektoví manažéri", "Projektmenedzserek")}</label>
               {selectedManagers.length > 0 && (
@@ -1909,12 +1743,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     return (
                       <span
                         key={name}
-                        className={`inline-flex items-center gap-1 pl-2.5 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider shadow-sm ${isEditing ? "pr-1" : "pr-2.5"}`}
+                        className={`inline-flex items-center gap-1 pl-2.5 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider shadow-sm ${canEdit ? "pr-1" : "pr-2.5"}`}
                         style={{ backgroundColor: `${color}15`, color, borderColor: `${color}30` }}
                       >
                         <Icons.User className="h-3 w-3 shrink-0" />
                         <span className="truncate max-w-[10rem]">{name}</span>
-                        {isEditing && (
+                        {canEdit && (
                         <button
                           type="button"
                           onClick={() => setSelectedManagers(prev => prev.filter(m => m !== name))}
@@ -1929,7 +1763,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   })}
                 </div>
               )}
-              {isEditing && (() => {
+              {canEdit && (() => {
                 const available = users.filter(u => !selectedManagers.includes(u.name));
                 return (
                   <CustomSelect
@@ -1953,7 +1787,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   />
                 );
               })()}
-              {selectedManagers.length === 0 && (
+              {!canEdit && selectedManagers.length === 0 && (
                 <p className="text-xs font-semibold text-slate-300 italic">
                   {t(
                     "Nobody is on this project yet.",
@@ -1964,23 +1798,64 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               )}
             </div>
 
-            <div className="border-t border-slate-200 my-4 shrink-0" />
+          </div>
+          </div>
 
-            {/* DYNAMIC CUSTOM ATTRIBUTES FIELDS */}
-            <div className="space-y-4">
+          {/* CUSTOM ATTRIBUTES — the type's own fields, on a card of their own,
+              two to a row. Its Edit mode is its own — the project card above is
+              edited in place — and every change in it saves itself; Done only
+              puts the values back in reading shape. A value that needs the full width
+              (long text, a file list, the money and contact pickers while
+              editing) takes the whole row. */}
+          {(projectType.attributes || []).length > 0 && (
+          <div className="shrink-0 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-2 pb-3 mb-4 border-b border-slate-200">
+              <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-widest">
+                {t("Custom Attributes", "Vlastné atribúty", "Egyedi attribútumok")}
+              </h4>
+              {canEdit && (isEditingAttrs ? (
+                <button
+                  type="button"
+                  onClick={() => setIsEditingAttrs(false)}
+                  className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black uppercase tracking-wider shadow-sm transition-all active:scale-95 cursor-pointer"
+                >
+                  <Check className="h-3.5 w-3.5" />
+                  {t("Done", "Hotovo", "Kész")}
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setIsEditingAttrs(true)}
+                  className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-[10px] font-black uppercase tracking-wider text-slate-500 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50 transition-all active:scale-95 cursor-pointer"
+                >
+                  <Edit3 className="h-3.5 w-3.5" />
+                  {t("Edit", "Upraviť", "Szerkesztés")}
+                </button>
+              ))}
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-4">
               {(projectType.attributes || []).map(attr => {
                 const val = dynamicData[attr.id] ?? "";
                 const updateVal = (newVal: any) => {
                   setDynamicData(prev => ({ ...prev, [attr.id]: newVal }));
                 };
+                const wide = attr.type === "textarea" || attr.type === "files"
+                  || (isEditingAttrs && (attr.type === "money" || attr.type === "contact"));
+                // Nothing blocks a save any more, so an empty required value is
+                // pointed out where it sits instead.
+                const missingRequired = !!attr.required && (attr.type === "money"
+                  ? isMoneyValueEmpty(dynamicData[attr.id], defaultCurrency)
+                  : attr.type === "files" || (attr.type === "checkbox" && attr.options)
+                    ? asList(dynamicData[attr.id]).length === 0
+                    : val === "" || val === null || (Array.isArray(val) && val.length === 0));
 
                 return (
-                  <div key={attr.id}>
+                  <div key={attr.id} className={`min-w-0 break-words ${wide ? "col-span-2" : ""}`}>
                     <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
-                      {attr.name} {isEditing && attr.required && <span className="text-red-500">*</span>}
+                      {attr.name} {canEdit && attr.required && <span className="text-red-500">*</span>}
                     </label>
 
-                    {!isEditing ? (
+                    {!isEditingAttrs ? (
                       <div className="text-xs font-bold text-slate-800">{renderAttrValue(attr, dynamicData[attr.id])}</div>
                     ) : (
                     <>
@@ -2160,12 +2035,227 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     </>
                     )}
 
+                    {canEdit && missingRequired && (
+                      <p className="mt-1 text-[9px] font-bold text-rose-600 leading-snug">
+                        {t("Required", "Povinné", "Kötelező")}
+                      </p>
+                    )}
                   </div>
                 );
               })}
             </div>
           </div>
-          </div>
+          )}
+
+          {/* Lead / Client pairing — the project's half of the link. The
+              same pairing is edited from the lead's "Linked projects" card,
+              and both write the one field (`leadId`) that carries it. */}
+          {(() => {
+            const pairedLead = leads.find(l => l.id === associatedLeadId);
+            const pairWith = (id: string) => {
+              setAssociatedLeadId(id);
+              setAssociatedClientId(id);
+              setPickingClient(false);
+              // Pairing a lead names the project after it, but only while it
+              // has no name yet — re-pairing never overwrites what somebody
+              // deliberately typed.
+              if (!projectName.trim()) {
+                const paired = leads.find(l => l.id === id);
+                if (paired?.name) setProjectName(paired.name);
+              }
+            };
+
+            if (!pairedLead || pickingClient) {
+              // Unpaired and not picking yet: the note that this project hangs on
+              // nobody, and a way in. A read-only role only gets the note.
+              if (!canEdit || !pickingClient) {
+                return (
+                  <div className="shrink-0 bg-white border border-dashed border-slate-300 rounded-3xl p-5 shadow-sm text-center">
+                    <Icons.Unlink className="h-5 w-5 text-slate-300 mx-auto mb-2" />
+                    <p className="text-[11px] font-bold text-slate-500 leading-snug">
+                      {t(
+                        "This project is not paired with any lead or client.",
+                        "Tento projekt nie je spárovaný so žiadnym leadom ani klientom.",
+                        "Ez a projekt nincs leaddel vagy ügyféllel párosítva.",
+                      )}
+                    </p>
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={() => setPickingClient(true)}
+                        className="mt-2.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+                      >
+                        {t("Pair now", "Spárovať", "Párosítať")}
+                      </button>
+                    )}
+                  </div>
+                );
+              }
+              return (
+                <div className="shrink-0 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Paired Lead / Client", "Spárovaný lead / klient", "Párosított lead / ügyfél")}</label>
+                  <ClientSelect
+                    leads={leads}
+                    value={associatedLeadId}
+                    onChange={pairWith}
+                    noneLabel={t("No associated client", "Žiadny klient", "Nincs ügyfél")}
+                    placeholder={t("Select Client...", "Vybrať klienta...", "Ügyfél választása...")}
+                  />
+                  {pairedLead && (
+                    <button
+                      type="button"
+                      onClick={() => setPickingClient(false)}
+                      className="mt-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                    >
+                      {t("Keep current pairing", "Ponechať súčasné spárovanie", "Jelenlegi párosítás megtartása")}
+                    </button>
+                  )}
+                  <p className="mt-1 text-[9px] font-semibold text-slate-400 leading-snug">
+                    {t(
+                      "Not paired with anyone — pick a lead or client to link this project to.",
+                      "Nie je spárovaný s nikým — vyberte lead alebo klienta, s ktorým sa projekt prepojí.",
+                      "Nincs párosítva — válasszon leadet vagy ügyfelet a projekt összekapcsolásához.",
+                    )}
+                  </p>
+                </div>
+              );
+            }
+
+            // The same green card the lead view shows for its client, so a
+            // pairing reads the same from either end of the link.
+            const initials = pairedLead.name
+              .split(/\s+/)
+              .filter(Boolean)
+              .slice(0, 2)
+              .map(w => w[0]?.toUpperCase() || "")
+              .join("") || "?";
+            const clientTypeLabel =
+              pairedLead.clientType === "business"
+                ? `🏢 ${t("Company / Business", "Firma / Podnikanie", "Cég / Vállalkozás")}`
+                : pairedLead.clientType === "partner"
+                  ? `🤝 ${t("Dealer Partner", "Obchodný partner", "Kereskedő partner")}`
+                  : `👤 ${t("Private Person", "Súkromná osoba", "Magánszemély")}`;
+            const addr = pairedLead.address;
+            const city = addr?.city || pairedLead.city || "";
+            const addressText = [addr?.street, city].filter(Boolean).join(", ") + (addr?.postalCode ? ` (${addr.postalCode})` : "");
+            const noneAdded = <span className="text-slate-300 italic">{getTranslation(userLanguage, "profile.none_added")}</span>;
+
+            return (
+              <div className="shrink-0 rounded-3xl border-2 border-emerald-400 bg-emerald-50/70 shadow-md p-4 space-y-3 text-emerald-950">
+                <div className="border-b-2 border-emerald-200/50 pb-2 flex items-center justify-between gap-2 flex-wrap">
+                  <span className="text-[10px] font-black text-emerald-700 uppercase tracking-wider flex items-center gap-1.5 min-w-0">
+                    <Icons.Briefcase className="h-4 w-4 text-emerald-600 stroke-[2.5] shrink-0" />
+                    <span>{getTranslation(userLanguage, "common.client_relationship_card")}</span>
+                  </span>
+                  <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 uppercase tracking-wider shrink-0">
+                    {getTranslation(userLanguage, "common.synced_profile")}
+                  </span>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-2 border-emerald-700 flex items-center justify-center font-heading font-black text-sm shadow shrink-0">
+                    {initials}
+                  </div>
+                  <div className="min-w-0">
+                    <h4 className="text-sm font-black text-slate-800 line-clamp-1">{pairedLead.name}</h4>
+                    <span className="text-[9px] font-extrabold uppercase tracking-wide text-emerald-700">{clientTypeLabel}</span>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 text-[11px] bg-white/70 p-3 rounded-xl border border-emerald-200/50">
+                  <div className="space-y-0.5 min-w-0">
+                    <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">
+                      {getTranslation(userLanguage, "profile.phone_number")}
+                    </span>
+                    <span className="font-extrabold text-slate-700 block truncate">
+                      {pairedLead.phone ? (
+                        <span className="flex items-center gap-1"><Phone className="h-3 w-3 text-emerald-600 shrink-0" />{pairedLead.phone}</span>
+                      ) : noneAdded}
+                    </span>
+                  </div>
+                  <div className="space-y-0.5 min-w-0">
+                    <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">
+                      {getTranslation(userLanguage, "profile.email_address")}
+                    </span>
+                    <span className="font-extrabold text-slate-700 block truncate">
+                      {pairedLead.email ? (
+                        <span className="flex items-center gap-1"><Mail className="h-3 w-3 text-emerald-600 shrink-0" /><span className="truncate">{pairedLead.email}</span></span>
+                      ) : noneAdded}
+                    </span>
+                  </div>
+                  <div className="space-y-0.5 col-span-2 border-t border-emerald-200/50 pt-2 mt-1">
+                    <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">
+                      {getTranslation(userLanguage, "profile.location_address")}
+                    </span>
+                    <span className="font-extrabold text-slate-700 block">
+                      {addressText ? (
+                        <span className="flex items-center gap-1"><Icons.MapPin className="h-3.5 w-3.5 text-emerald-600 shrink-0" /><span className="line-clamp-1">{addressText}</span></span>
+                      ) : noneAdded}
+                    </span>
+                  </div>
+                  {pairedLead.website && (
+                    <div className="space-y-0.5 col-span-2 border-t border-emerald-200/50 pt-2 mt-1">
+                      <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">
+                        {getTranslation(userLanguage, "profile.website_link")}
+                      </span>
+                      <a
+                        href={`https://${pairedLead.website.replace(/^https?:\/\//, "")}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="font-extrabold text-blue-600 hover:underline flex items-center gap-1"
+                      >
+                        <Icons.Globe className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
+                        <span className="truncate">{pairedLead.website}</span>
+                      </a>
+                    </div>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between gap-2 pt-1 flex-wrap">
+                  {canEdit && (
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => setPickingClient(true)}
+                      className="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider text-emerald-700 hover:bg-emerald-100 transition-colors cursor-pointer flex items-center gap-1"
+                      title={t("Pair with a different lead or client", "Spárovať s iným leadom alebo klientom", "Másik leaddel vagy ügyféllel párosítás")}
+                    >
+                      <Icons.Repeat className="h-3 w-3" />
+                      {t("Change", "Zmeniť", "Módosítás")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setAssociatedLeadId(""); setAssociatedClientId(""); setPickingClient(false); }}
+                      className="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer flex items-center gap-1"
+                      title={t("Unpair this project", "Zrušiť spárovanie projektu", "Párosítás megszüntetése")}
+                    >
+                      <Icons.Unlink className="h-3 w-3" />
+                      {t("Unpair", "Odpojiť", "Leválasztás")}
+                    </button>
+                  </div>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => { window.location.hash = `client-${encodeURIComponent(pairedLead.name)}`; }}
+                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-black uppercase tracking-wider shadow transition-all active:scale-95 flex items-center justify-center gap-1.5 border border-emerald-700 cursor-pointer"
+                  >
+                    {getTranslation(userLanguage, "common.view_full_profile")}
+                    <ArrowLeft className="h-3.5 w-3.5 rotate-180" />
+                  </button>
+                </div>
+
+                {canEdit && (
+                <p className="text-[9px] font-semibold text-emerald-800/60 leading-snug">
+                  {t(
+                    "This project shows up on the lead's card too.",
+                    "Tento projekt sa zobrazí aj na karte leadu.",
+                    "Ez a projekt a lead kartonján is megjelenik.",
+                  )}
+                </p>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         {/* RIGHT COLUMN: Timeline & Gantt Tabs */}
