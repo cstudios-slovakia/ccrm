@@ -6562,118 +6562,122 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       {activeTab === "recurring" && (
         <div className="space-y-4 animate-in fade-in duration-200">
           {/* TOP METRIC CARDS */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+          {/* Icon + label share a header row and the figure sits below, so a narrow
+              column never squeezes the label into a one-word-per-line stack. */}
+          <div className="grid grid-cols-2 md:grid-cols-3 2xl:grid-cols-6 gap-3 sm:gap-4">
             {/* Card 1: Monthly Recurring Commitment */}
-            <div className="p-4 rounded-3xl bg-white  border border-slate-200/80  shadow-sm flex items-center gap-3.5">
-              <div className="p-3 rounded-2xl bg-rose-50  text-rose-600 ">
-                <RefreshCw className="h-5 w-5" />
-              </div>
-              <div>
-                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+            <div className="p-4 rounded-3xl bg-white  border border-slate-200/80  shadow-sm flex flex-col gap-3 min-w-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-2 rounded-xl bg-rose-50  text-rose-600  shrink-0">
+                  <RefreshCw className="h-4 w-4" />
+                </div>
+                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider leading-snug line-clamp-2">
                   {t("Monthly Recurring Costs", "Mesačné pravidelné výdavky", "Havi rendszeres kiadás")}
                 </div>
-                <div className="text-lg font-black text-rose-600 ">
-                  -{money(recurringMetrics.totalMonthlyExpense)}
-                  <span className="text-xs font-semibold text-slate-400 ml-1">/ {t("mo", "mes", "hó")}</span>
-                </div>
+              </div>
+              <div className="text-lg font-black tabular-nums flex flex-wrap items-baseline gap-x-1 min-w-0 text-rose-600 ">
+                <span className="whitespace-nowrap">-{money(recurringMetrics.totalMonthlyExpense)}</span>
+                <span className="text-xs font-semibold text-slate-400">/ {t("mo", "mes", "hó")}</span>
               </div>
             </div>
 
             {/* Card 2: Annual Overhead Projection */}
-            <div className="p-4 rounded-3xl bg-white  border border-slate-200/80  shadow-sm flex items-center gap-3.5">
-              <div className="p-3 rounded-2xl bg-purple-50  text-purple-600 ">
-                <Calendar className="h-5 w-5" />
-              </div>
-              <div>
-                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+            <div className="p-4 rounded-3xl bg-white  border border-slate-200/80  shadow-sm flex flex-col gap-3 min-w-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-2 rounded-xl bg-purple-50  text-purple-600  shrink-0">
+                  <Calendar className="h-4 w-4" />
+                </div>
+                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider leading-snug line-clamp-2">
                   {t("Annual Overhead Projection", "Ročný projektovaný náklad", "Éves tervezett költség")}
                 </div>
-                <div className="text-lg font-black text-slate-900 ">
-                  -{money(recurringMetrics.totalAnnualExpense)}
-                  <span className="text-xs font-semibold text-slate-400 ml-1">/ {t("yr", "rok", "év")}</span>
-                </div>
+              </div>
+              <div className="text-lg font-black tabular-nums flex flex-wrap items-baseline gap-x-1 min-w-0 text-slate-900 ">
+                <span className="whitespace-nowrap">-{money(recurringMetrics.totalAnnualExpense)}</span>
+                <span className="text-xs font-semibold text-slate-400">/ {t("yr", "rok", "év")}</span>
               </div>
             </div>
 
             {/* Card 1b: Monthly Recurring Income */}
-            <div className="p-4 rounded-3xl bg-white  border border-slate-200/80  shadow-sm flex items-center gap-3.5">
-              <div className="p-3 rounded-2xl bg-emerald-50  text-emerald-600 ">
-                <TrendingUp className="h-5 w-5" />
-              </div>
-              <div>
-                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+            <div className="p-4 rounded-3xl bg-white  border border-slate-200/80  shadow-sm flex flex-col gap-3 min-w-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-2 rounded-xl bg-emerald-50  text-emerald-600  shrink-0">
+                  <TrendingUp className="h-4 w-4" />
+                </div>
+                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider leading-snug line-clamp-2">
                   {t("Monthly Recurring Income", "Mesačný pravidelný príjem", "Havi rendszeres bevétel")}
                 </div>
-                <div className="text-lg font-black text-emerald-600 ">
-                  +{money(recurringMetrics.totalMonthlyIncome)}
-                  <span className="text-xs font-semibold text-slate-400 ml-1">/ {t("mo", "mes", "hó")}</span>
-                </div>
+              </div>
+              <div className="text-lg font-black tabular-nums flex flex-wrap items-baseline gap-x-1 min-w-0 text-emerald-600 ">
+                <span className="whitespace-nowrap">+{money(recurringMetrics.totalMonthlyIncome)}</span>
+                <span className="text-xs font-semibold text-slate-400">/ {t("mo", "mes", "hó")}</span>
               </div>
             </div>
 
             {/* Card 2b: Annual Recurring Income Projection */}
-            <div className="p-4 rounded-3xl bg-white  border border-slate-200/80  shadow-sm flex items-center gap-3.5">
-              <div className="p-3 rounded-2xl bg-emerald-50  text-emerald-600 ">
-                <Calendar className="h-5 w-5" />
-              </div>
-              <div>
-                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+            <div className="p-4 rounded-3xl bg-white  border border-slate-200/80  shadow-sm flex flex-col gap-3 min-w-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-2 rounded-xl bg-emerald-50  text-emerald-600  shrink-0">
+                  <Calendar className="h-4 w-4" />
+                </div>
+                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider leading-snug line-clamp-2">
                   {t("Annual Recurring Income Projection", "Ročný projektovaný príjem", "Éves tervezett bevétel")}
                 </div>
-                <div className="text-lg font-black text-slate-900 ">
-                  +{money(recurringMetrics.totalAnnualIncome)}
-                  <span className="text-xs font-semibold text-slate-400 ml-1">/ {t("yr", "rok", "év")}</span>
-                </div>
+              </div>
+              <div className="text-lg font-black tabular-nums flex flex-wrap items-baseline gap-x-1 min-w-0 text-slate-900 ">
+                <span className="whitespace-nowrap">+{money(recurringMetrics.totalAnnualIncome)}</span>
+                <span className="text-xs font-semibold text-slate-400">/ {t("yr", "rok", "év")}</span>
               </div>
             </div>
 
             {/* Card 3: Active vs Paused Rules */}
-            <div className="p-4 rounded-3xl bg-white  border border-slate-200/80  shadow-sm flex items-center gap-3.5">
-              <div className="p-3 rounded-2xl bg-emerald-50  text-emerald-600 ">
-                <CheckCircle2 className="h-5 w-5" />
-              </div>
-              <div>
-                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+            <div className="p-4 rounded-3xl bg-white  border border-slate-200/80  shadow-sm flex flex-col gap-3 min-w-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-2 rounded-xl bg-emerald-50  text-emerald-600  shrink-0">
+                  <CheckCircle2 className="h-4 w-4" />
+                </div>
+                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider leading-snug line-clamp-2">
                   {t("Active Commitments", "Aktívne pravidlá", "Aktív szabályok")}
                 </div>
-                <div className="text-lg font-black text-slate-900  flex items-center gap-2">
-                  <span>{recurringMetrics.activeCount}</span>
-                  {recurringMetrics.pausedCount > 0 && (
-                    <span className="text-xs font-semibold text-slate-400">
-                      ({recurringMetrics.pausedCount} {t("paused", "pozastavených", "szünetel")})
-                    </span>
-                  )}
-                </div>
+              </div>
+              <div className="text-lg font-black tabular-nums flex flex-wrap items-baseline gap-x-1 min-w-0 text-slate-900 ">
+                <span>{recurringMetrics.activeCount}</span>
+                {recurringMetrics.pausedCount > 0 && (
+                  <span className="text-xs font-semibold text-slate-400">
+                    ({recurringMetrics.pausedCount} {t("paused", "pozastavených", "szünetel")})
+                  </span>
+                )}
               </div>
             </div>
 
             {/* Card 4: Next Upcoming Charge */}
-            <div className="p-4 rounded-3xl bg-white  border border-slate-200/80  shadow-sm flex items-center gap-3.5">
-              <div className="p-3 rounded-2xl bg-amber-50  text-amber-600 ">
-                <Clock className="h-5 w-5" />
-              </div>
-              <div className="truncate">
-                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
+            <div className="p-4 rounded-3xl bg-white  border border-slate-200/80  shadow-sm flex flex-col gap-3 min-w-0">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="p-2 rounded-xl bg-amber-50  text-amber-600  shrink-0">
+                  <Clock className="h-4 w-4" />
+                </div>
+                <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider leading-snug line-clamp-2">
                   {t("Next Upcoming Charge", "Najbližšia platba", "Következő esedékes")}
                 </div>
-                {(() => {
-                  const upcoming = recurringMetrics.nextUpcoming;
-                  if (!upcoming) {
-                    return <div className="text-xs text-slate-400">{t("None scheduled", "Žiadna", "Nincs")}</div>;
-                  }
-                  return (
-                    <div className="text-xs font-bold text-slate-900  truncate">
-                      <span className={`font-black ${upcoming.record.type === "income" ? "text-emerald-600 " : "text-rose-600 "}`}>
-                        {upcoming.record.type === "income" ? "+" : "-"}{money(upcoming.amount)}
-                      </span>{" "}
-                      – {upcoming.record.title}{" "}
-                      <span className="text-[10px] text-amber-600  font-semibold">
-                        ({upcoming.daysLeft === 0 ? t("Today", "Dnes", "Ma") : t(`in ${upcoming.daysLeft}d`, `o ${upcoming.daysLeft} dní`, `${upcoming.daysLeft} nap múlva`)})
-                      </span>
-                    </div>
-                  );
-                })()}
               </div>
+              {(() => {
+                const upcoming = recurringMetrics.nextUpcoming;
+                if (!upcoming) {
+                  return <div className="text-xs text-slate-400">{t("None scheduled", "Žiadna", "Nincs")}</div>;
+                }
+                return (
+                  <div className="min-w-0">
+                    <div className={`text-lg font-black tabular-nums whitespace-nowrap ${upcoming.record.type === "income" ? "text-emerald-600 " : "text-rose-600 "}`}>
+                      {upcoming.record.type === "income" ? "+" : "-"}{money(upcoming.amount)}
+                    </div>
+                    <div className="text-xs font-semibold text-slate-900  truncate" title={upcoming.record.title}>
+                      {upcoming.record.title}
+                    </div>
+                    <div className="text-[10px] text-amber-600  font-semibold">
+                      {upcoming.daysLeft === 0 ? t("Today", "Dnes", "Ma") : t(`in ${upcoming.daysLeft}d`, `o ${upcoming.daysLeft} dní`, `${upcoming.daysLeft} nap múlva`)}
+                    </div>
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
