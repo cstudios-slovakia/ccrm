@@ -19,6 +19,11 @@ define('DB_NAME', 'your_database_name');
 define('DB_USER', 'your_database_user');
 define('DB_PASS', 'your_database_password');
 
+// Optional: the address users open the CRM at, e.g. 'https://crm.example.sk/'.
+// Links in e-mails (password reset, task reminders) use it. Without it they use
+// the address of the most recent successful sign-in.
+// define('CCRM_APP_URL', 'https://crm.example.sk/');
+
 try {
     $dsn = "mysql:host=" . DB_HOST . ";port=" . DB_PORT . ";dbname=" . DB_NAME . ";charset=utf8mb4";
     $options = [
