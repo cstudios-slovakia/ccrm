@@ -3633,8 +3633,55 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   };
 
   // Shared Transaction Form Fields (used in both Slideout Drawer for Edit and Center Popup for Create)
-  const renderTransactionFormFields = () => (
+  const renderTransactionFormFields = () => {
+    // Editing a rule from the Recurring tab: only what holds for every payment
+    // it makes. Status and the paid amount belong to a single payment (edited
+    // through `renderOccurrenceFormFields`), so they are not offered here.
+    const isRuleEdit = !!editingRecord?.isRecurring;
+    const today = todayLocal();
+    // Same test as `isRecurringPaused`, read from the form instead of the record.
+    const ruleActive = formStatus !== "cancelled" && (!formRecurringEndDate || formRecurringEndDate > today);
+    const toggleRuleActive = () => {
+      if (ruleActive) {
+        // Pause = end today; a real planned end is tucked away (see `pauseRecurringRule`).
+        setFormRecurringPlannedEndDate(formRecurringEndDate || null);
+        setFormRecurringEndDate(today);
+        return;
+      }
+      // Resume restores the planned end when it is still ahead (see `resumeRecurringRule`).
+      const planned = formRecurringPlannedEndDate;
+      setFormRecurringEndDate(planned && planned > today ? planned : "");
+      setFormRecurringPlannedEndDate(null);
+      if (formStatus === "cancelled") setFormStatus("planned");
+    };
+
+    return (
     <>
+      {/* 0. Rule on/off — only when editing a rule */}
+      {isRuleEdit && (
+        <label
+          className={`flex items-center justify-between gap-3 px-4 py-3 rounded-2xl border cursor-pointer transition-colors duration-200 ${
+            ruleActive ? "bg-emerald-50/60 border-emerald-200" : "bg-slate-50 border-slate-200"
+          }`}
+        >
+          <span className="min-w-0">
+            <span className="flex items-center gap-2 text-xs font-bold text-slate-800">
+              <span className={`h-2 w-2 rounded-full ${ruleActive ? "bg-emerald-500" : "bg-slate-400"}`} />
+              {ruleActive ? t("Active", "Aktívne", "Aktív") : t("Inactive", "Neaktívne", "Inaktív")}
+            </span>
+            <span className="block text-[11px] text-slate-500 mt-0.5">
+              {ruleActive
+                ? t("The rule keeps generating payments.", "Pravidlo naďalej vytvára platby.", "A szabály továbbra is létrehozza a fizetéseket.")
+                : t("No further payments are generated.", "Ďalšie platby sa nevytvárajú.", "További fizetések nem jönnek létre.")}
+            </span>
+          </span>
+          <span className="relative inline-flex shrink-0 items-center">
+            <input type="checkbox" checked={ruleActive} onChange={toggleRuleActive} className="sr-only peer" />
+            <span className="w-9 h-5 bg-slate-300 rounded-full peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-500/40 peer-checked:bg-emerald-600 transition-colors duration-200 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-transform after:duration-200 peer-checked:after:translate-x-4 peer-checked:after:border-white"></span>
+          </span>
+        </label>
+      )}
+
       {/* 1. Type — income or expense */}
       <div className="grid grid-cols-2 gap-1 p-1 bg-slate-100 rounded-2xl">
         <button
@@ -3712,7 +3759,41 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         />
       </div>
 
-      {/* 4. Status & dates */}
+      {/* 4. Status & dates — a rule has a start and an end instead */}
+      {isRuleEdit ? (
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        <div>
+          <label className={FORM_LABEL}>
+            {t("Start date *", "Dátum začiatku *", "Kezdő dátum *")}
+          </label>
+          <input
+            type="date"
+            required
+            value={formRecurringStartDate}
+            onChange={(e) => setFormRecurringStartDate(e.target.value)}
+            className={FORM_INPUT}
+          />
+        </div>
+
+        <div>
+          <label className={`${FORM_LABEL} flex items-baseline justify-between gap-2`}>
+            <span>{t("End date", "Dátum ukončenia", "Befejező dátum")}</span>
+            <span className="text-[10px] font-medium text-slate-400">{t("Empty = no end", "Prázdne = bez konca", "Üres = nincs vége")}</span>
+          </label>
+          <input
+            type="date"
+            value={formRecurringEndDate}
+            min={formRecurringStartDate || undefined}
+            onChange={(e) => {
+              // A date typed by hand is the real end — nothing left to restore.
+              setFormRecurringEndDate(e.target.value);
+              setFormRecurringPlannedEndDate(null);
+            }}
+            className={FORM_INPUT}
+          />
+        </div>
+      </div>
+      ) : (
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         <div>
           <label className={FORM_LABEL}>
@@ -3774,9 +3855,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           />
         </div>
       </div>
+      )}
 
-      {/* 5. Amounts — planned vs actually paid */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-200">
+      {/* 5. Amounts — planned vs actually paid (a rule only has a plan) */}
+      <div className={`grid grid-cols-1 ${isRuleEdit ? "" : "sm:grid-cols-2"} gap-3 p-4 rounded-2xl bg-slate-50 border border-slate-200`}>
         <div>
           <label className={`${FORM_LABEL} flex items-baseline justify-between gap-2`}>
             <span>{t("Planned Amount *", "Plánovaná suma *", "Tervezett összeg *")}</span>
@@ -3788,7 +3870,14 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               step="0.01"
               required
               value={formAmountPlanned}
-              onChange={(e) => setFormAmountPlanned(e.target.value ? parseFloat(e.target.value) : "")}
+              onChange={(e) => {
+                const next = e.target.value ? parseFloat(e.target.value) : "";
+                setFormAmountPlanned(next);
+                // A rule's charge is priced paid-first (`recurringChargeAmount`);
+                // with the paid field hidden, a stored paid figure follows the
+                // plan so the new amount actually takes effect.
+                if (isRuleEdit && Number(formAmountReal) > 0) setFormAmountReal(next);
+              }}
               placeholder="0.00"
               className={`${FORM_INPUT} pr-9 !text-sm font-bold tabular-nums`}
             />
@@ -3796,6 +3885,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           </div>
         </div>
 
+        {!isRuleEdit && (
         <div>
           <label className={`${FORM_LABEL} flex items-baseline justify-between gap-2`}>
             <span>{t("Paid Amount", "Skutočná suma", "Fizetett összeg")}</span>
@@ -3813,6 +3903,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             <span className="pointer-events-none absolute right-3.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-slate-400">€</span>
           </div>
         </div>
+        )}
 
         {/* A price change on a recurring rule only ever moves forward — say so
             before the user saves, so nobody expects the past to follow. */}
@@ -3907,6 +3998,21 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           formIsRecurring ? "bg-indigo-50/60 border-indigo-200" : "bg-white border-slate-200 hover:border-slate-300"
         }`}
       >
+        {isRuleEdit ? (
+          <span className="flex items-center gap-3 min-w-0">
+            <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white">
+              <RefreshCw className="h-4 w-4" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-xs font-bold text-slate-800">
+                {t("Recurring payment", "Opakujúca sa platba", "Ismétlődő tétel")}
+              </span>
+              <span className="block text-[11px] text-slate-500">
+                {t("When each payment of this rule falls due", "Kedy pripadá každá platba tohto pravidla", "Mikor esedékes a szabály egyes fizetése")}
+              </span>
+            </span>
+          </span>
+        ) : (
         <label className="flex items-center justify-between gap-3 cursor-pointer">
           <span className="flex items-center gap-3 min-w-0">
             <span
@@ -3935,6 +4041,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             <span className="w-9 h-5 bg-slate-200 rounded-full peer-focus-visible:ring-2 peer-focus-visible:ring-indigo-500/40 peer-checked:bg-indigo-600 transition-colors duration-200 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-transform after:duration-200 peer-checked:after:translate-x-4 peer-checked:after:border-white"></span>
           </span>
         </label>
+        )}
 
         {formIsRecurring && (
           <div className="space-y-3 pt-2 border-t border-indigo-100  animate-in fade-in">
@@ -4186,7 +4293,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         />
       </div>
     </>
-  );
+    );
+  };
 
   /**
    * The form for one charge of a recurring rule (see `handleOpenOccurrenceModal`):
