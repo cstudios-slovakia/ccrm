@@ -1326,11 +1326,21 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                 )}
 
                 {/* Which boxes every project has to tick — counted as missing on the project card */}
-                {newAttrType === "checkbox" && (parseAttrOptions(newAttrType, newAttrOptions) || []).length > 0 && (
+                {newAttrType === "checkbox" && (
                   <div>
                     <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
                       {t("Required checkboxes", "Povinné zaškrtávacie polia", "Kötelező jelölőnégyzetek")}
                     </label>
+                    {/* Shown before any option exists, so the per-box setting is discoverable */}
+                    {(parseAttrOptions(newAttrType, newAttrOptions) || []).length === 0 && (
+                      <div className="px-3 py-2 rounded-xl border border-dashed border-slate-200 text-[11px] font-medium text-slate-400">
+                        {t(
+                          "Type the options above, then pick which of them are required.",
+                          "Najprv vyplňte možnosti vyššie, potom vyberte, ktoré sú povinné.",
+                          "Először adja meg fent az opciókat, majd válassza ki, melyik kötelező."
+                        )}
+                      </div>
+                    )}
                     <div className="flex flex-wrap gap-1.5">
                       {(parseAttrOptions(newAttrType, newAttrOptions) || []).map(opt => {
                         const on = newAttrRequiredOptions.includes(opt);
@@ -1353,7 +1363,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                         );
                       })}
                     </div>
-                    <p className="text-[10px] font-medium text-slate-400 mt-1">
+                    <p className={cn("text-[10px] font-medium text-slate-400 mt-1", (parseAttrOptions(newAttrType, newAttrOptions) || []).length === 0 && "hidden")}>
                       {t(
                         "Click an option to make it required. The project shows how many are still unchecked.",
                         "Kliknutím na možnosť ju označíte ako povinnú. Projekt zobrazí, koľko ich ešte nie je zaškrtnutých.",
