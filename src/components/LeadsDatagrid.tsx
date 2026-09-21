@@ -2775,7 +2775,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         value: valNum,
                         owner: leadOwner,
                         status: nextStatus,
-                        source: leadSource.toLowerCase(),
+                        // Verbatim, like the create path: sources are settings
+                        // names, and lower-casing one with capitals on every edit
+                        // rewrote the stored value so its colour/label lookups missed.
+                        source: leadSource,
                         rating: leadRating,
                         categories: leadSelectedCategories,
                         referralLeadId: leadReferralId || undefined,

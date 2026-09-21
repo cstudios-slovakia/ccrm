@@ -298,6 +298,12 @@ function App() {
   const activePushesRef = useRef(0);
   const visiblePushesRef = useRef(0);
   const lastPushTimeRef = useRef(0);
+  // Set when the server refused a record as a conflict (someone else wrote it
+  // after our last pull). Our copy of that record is stale, and re-sending it
+  // once baseSyncedAt has moved on would pass the server's guard and overwrite
+  // the newer row. The poller answers this with a full pull as soon as the
+  // post-push quiet window closes, instead of waiting for dataVersion to move.
+  const pullAfterConflictRef = useRef(false);
   // Set when a push is rejected with 401 (session expired) so the unsaved
   // change can be replayed after the user re-authenticates.
   const pendingPushRef = useRef(false);
@@ -1253,6 +1259,10 @@ ${log.payload || ''}
             Object.assign(ueSyncedRecordsRef.current, pendingUeBaselines);
           }
           const skippedWork = [...skipped].filter((tag) => {
+            // A settings key this role may not write and that differed from
+            // what is stored (the server only tags those). It is lost work:
+            // the next full pull puts the stored value back.
+            if (tag.startsWith("settings:")) return (payload as any).settings != null;
             const base = tag.replace(/:delete$/, "");
             const payloadKey = base === "leads:clients" ? "leads" : base;
             if (tag.endsWith(":delete")) {
@@ -1263,6 +1273,7 @@ ${log.payload || ''}
             return Array.isArray(body) ? body.length > 0 : body != null && typeof body === "object";
           });
           const conflictCount = Object.values(conflicted).reduce((n, ids) => n + ids.length, 0);
+          if (conflictCount > 0) pullAfterConflictRef.current = true;
           const blockedCount = [...deleteBlockedKeys].length;
           if ((skippedWork.length || conflictCount || blockedCount) && typeof (window as any).showToast === "function") {
             (window as any).showToast(
@@ -2288,6 +2299,7 @@ ${log.payload || ''}
       }
       if (data && data.installed === true) {
         applyServerData(data);
+        pullAfterConflictRef.current = false;
         if (typeof data.dataVersion !== "undefined") lastDataVersion = data.dataVersion;
       }
     };
@@ -2343,7 +2355,9 @@ ${log.payload || ''}
             return;
           }
           // Nothing changed since our last full pull — skip the heavy fetch.
-          if (lastDataVersion !== null && probe.dataVersion === lastDataVersion) {
+          // Except after a conflicted push: our copy of the refused record is
+          // stale even though the checksum has not moved since we last looked.
+          if (lastDataVersion !== null && probe.dataVersion === lastDataVersion && !pullAfterConflictRef.current) {
             return;
           }
         }

@@ -1267,6 +1267,14 @@ HTACCESS;
                 if ($hasReal) {
                     continue;
                 }
+                // An explicit empty string clears the secret — the same contract
+                // as ccrm_merge_secrets() for the AI/mail keys. Only the mask (or
+                // an absent key) means "keep what is stored"; treating '' as
+                // "keep" made a cleared connector key reappear after a reload.
+                if ($inbound === '') {
+                    unset($incoming[$provider][$k]);
+                    continue;
+                }
                 if (isset($existing[$provider][$k])) {
                     $incoming[$provider][$k] = $existing[$provider][$k];
                 } else {

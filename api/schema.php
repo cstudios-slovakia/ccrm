@@ -502,9 +502,9 @@ if (!function_exists('ccrm_schema_statements')) {
               `default_location` VARCHAR(100) NULL,
               `has_expiration` TINYINT(1) NOT NULL DEFAULT 0,
               `image_url` VARCHAR(500) NULL,
-              `default_sell_price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+              `default_sell_price` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
               `avg_purchase_price` DECIMAL(12,4) NOT NULL DEFAULT 0.0000,
-              `last_purchase_price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+              `last_purchase_price` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               INDEX `idx_item_sku` (`sku`),
               INDEX `idx_item_category` (`category`)
@@ -514,8 +514,8 @@ if (!function_exists('ccrm_schema_statements')) {
             "CREATE TABLE IF NOT EXISTS `warehouse_stock` (
               `warehouse_id` VARCHAR(50) NOT NULL,
               `item_id` VARCHAR(50) NOT NULL,
-              `quantity` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-              `reserved_quantity` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+              `quantity` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
+              `reserved_quantity` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
               `location` VARCHAR(100) NULL,
               PRIMARY KEY (`warehouse_id`, `item_id`),
               FOREIGN KEY (`warehouse_id`) REFERENCES `warehouses` (`id`) ON DELETE CASCADE,
@@ -529,8 +529,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `warehouse_id` VARCHAR(50) NOT NULL,
               `batch_number` VARCHAR(100) NOT NULL,
               `expiration_date` DATE NOT NULL,
-              `initial_quantity` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-              `current_quantity` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+              `initial_quantity` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
+              `current_quantity` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
               `purchase_price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               FOREIGN KEY (`item_id`) REFERENCES `warehouse_items` (`id`) ON DELETE CASCADE,
@@ -570,9 +570,9 @@ if (!function_exists('ccrm_schema_statements')) {
               `movement_id` VARCHAR(50) NOT NULL,
               `item_id` VARCHAR(50) NOT NULL,
               `batch_id` VARCHAR(50) NULL,
-              `quantity` DECIMAL(12,2) NOT NULL,
-              `unit_purchase_price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-              `unit_sell_price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+              `quantity` DECIMAL(15,4) NOT NULL,
+              `unit_purchase_price` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
+              `unit_sell_price` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
               `total_price` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
               `expiration_date` DATE NULL,
               `note` VARCHAR(255) NULL,
@@ -699,6 +699,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `custom_template_id` VARCHAR(50) NULL,
               `custom_template_style_json` TEXT NULL,
               `status` ENUM('draft', 'sent', 'approved', 'rejected', 'invoiced', 'cancelled') NOT NULL DEFAULT 'draft',
+              `status_changed_at` DATE NULL COMMENT 'Day the status last changed (client-stamped)',
               `issued_at` DATE NOT NULL,
               `valid_until` DATE NULL,
               `due_date` DATE NULL,
@@ -722,9 +723,9 @@ if (!function_exists('ccrm_schema_statements')) {
               `sku` VARCHAR(100) NULL,
               `name` VARCHAR(255) NOT NULL,
               `description` TEXT NULL,
-              `quantity` DECIMAL(12,2) NOT NULL DEFAULT 1.00,
+              `quantity` DECIMAL(15,4) NOT NULL DEFAULT 1.0000,
               `unit` VARCHAR(20) NOT NULL DEFAULT 'ks',
-              `unit_price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+              `unit_price` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
               `vat_rate` DECIMAL(5,2) NOT NULL DEFAULT 20.00,
               `discount_pct` DECIMAL(5,2) NOT NULL DEFAULT 0.00,
               `total_price` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
@@ -1075,6 +1076,8 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_updated_at_precision($pdo);
         ccrm_migrate_task_states($pdo);
         ccrm_migrate_list_ids($pdo);
+        ccrm_migrate_invoice_status_changed_at($pdo);
+        ccrm_migrate_quantity_precision($pdo);
         ccrm_backfill_task_completion_attribution($pdo);
         ccrm_seed_default_financial_categories($pdo);
         ccrm_migrate_user_role_varchar($pdo);
@@ -1175,6 +1178,59 @@ if (!function_exists('ccrm_schema_statements')) {
                 // precision; sync.php's guard still works, just with the wider
                 // same-second window. Never block the sync over this.
                 if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+            }
+        }
+    }
+
+    /**
+     * `invoices_offers`.`status_changed_at`: the client stamps the day a
+     * document's status changes; until 1.9.85 it had no column and was lost on
+     * the next reload. Idempotent.
+     */
+    function ccrm_migrate_invoice_status_changed_at(PDO $pdo): void {
+        try {
+            if (!ccrm_column_exists($pdo, 'invoices_offers', 'status_changed_at')) {
+                $pdo->exec("ALTER TABLE `invoices_offers` ADD COLUMN `status_changed_at` DATE NULL AFTER `status`");
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm] schema: status_changed_at migration skipped: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Quantities and unit prices are typed with any precision (`step="any"`
+     * inputs) but were stored as DECIMAL(12,2): a line of 2.345 m at 0.125 EUR
+     * came back as 2.35 × 0.13 after a reload while its total still said 0.29.
+     * Widen every such column to four decimals so what was typed is what is
+     * stored. Idempotent: a column already at scale 4 is left alone.
+     */
+    function ccrm_migrate_quantity_precision(PDO $pdo): void {
+        $columns = [
+            ['invoice_offer_items', 'quantity', 'NOT NULL DEFAULT 1.0000'],
+            ['invoice_offer_items', 'unit_price', 'NOT NULL DEFAULT 0.0000'],
+            ['warehouse_movement_items', 'quantity', 'NOT NULL'],
+            ['warehouse_movement_items', 'unit_purchase_price', 'NOT NULL DEFAULT 0.0000'],
+            ['warehouse_movement_items', 'unit_sell_price', 'NOT NULL DEFAULT 0.0000'],
+            ['warehouse_stock', 'quantity', 'NOT NULL DEFAULT 0.0000'],
+            ['warehouse_stock', 'reserved_quantity', 'NOT NULL DEFAULT 0.0000'],
+            ['warehouse_batches', 'initial_quantity', 'NOT NULL DEFAULT 0.0000'],
+            ['warehouse_batches', 'current_quantity', 'NOT NULL DEFAULT 0.0000'],
+            ['warehouse_items', 'default_sell_price', 'NOT NULL DEFAULT 0.0000'],
+            ['warehouse_items', 'last_purchase_price', 'NOT NULL DEFAULT 0.0000'],
+        ];
+        foreach ($columns as [$table, $column, $tail]) {
+            try {
+                $st = $pdo->prepare(
+                    "SELECT `NUMERIC_SCALE` FROM `information_schema`.`COLUMNS`
+                     WHERE `TABLE_SCHEMA` = DATABASE() AND `TABLE_NAME` = ? AND `COLUMN_NAME` = ?"
+                );
+                $st->execute([$table, $column]);
+                $scale = $st->fetchColumn();
+                if ($scale === false || $scale === null) continue; // table not provisioned yet
+                if ((int)$scale >= 4) continue;
+                $pdo->exec("ALTER TABLE `{$table}` MODIFY COLUMN `{$column}` DECIMAL(15,4) {$tail}");
+            } catch (\Throwable $e) {
+                error_log('[ccrm] schema: precision migration skipped for ' . $table . '.' . $column . ': ' . $e->getMessage());
             }
         }
     }

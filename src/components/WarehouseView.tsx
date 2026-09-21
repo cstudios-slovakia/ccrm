@@ -1765,7 +1765,11 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
       const timelineEvent = {
         id: `ev-${Date.now()}`,
-        type: "sale",
+        // "sale" is not a timeline event type: sync.php stores unknown types as
+        // "note", so the card showed as a sale until the first reload and as a
+        // note afterwards. Log it as the note it is stored as; the sale total
+        // travels in `amount`, which the server now reads back for notes too.
+        type: "note",
         timestamp: issueDate ? `${issueDate} ${new Date().toTimeString().slice(0, 5)}` : new Date().toISOString().slice(0, 16).replace("T", " "),
         title: `${t("Sale & Goods Issue", "Predaj a výdaj tovaru", "Értékesítés és kiadás")} (${docNum})`,
         content: `${t("Client", "Klient", "Ügyfél")}: ${client?.name || issueLeadId}\n${t("Issued from warehouse", "Vydané zo skladu", "Kiadva a raktárból")}: ${sourceWh?.name || issueWarehouseId}\n\n${itemsSummary}\n\n${t("Total Sale Amount", "Celková suma predaja", "Teljes összeg")}: ${formatCurrency(totalSell, systemLanguage, systemCurrency)}${issueNote ? `\n${t("Note", "Poznámka", "Megjegyzés")}: ${issueNote}` : ""}`,
