@@ -418,9 +418,11 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     const requiredOptions = newAttrType === "checkbox" && options
       ? Array.from(new Set(newAttrRequiredOptions.map(o => o.trim()))).filter(o => options.includes(o))
       : [];
+    // Checkbox attributes are required per option only; drop any attribute-level flag.
+    const required = newAttrType === "checkbox" ? false : newAttrRequired;
     if (editingAttrId) {
       setAttributes(prev => prev.map(a => a.id === editingAttrId
-        ? { ...a, name, type: newAttrType, required: newAttrRequired, options, requiredOptions }
+        ? { ...a, name, type: newAttrType, required, options, requiredOptions }
         : a));
       resetAttrForm();
       return;
@@ -429,7 +431,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
       id: "attr_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
       name,
       type: newAttrType,
-      required: newAttrRequired,
+      required,
       options,
       requiredOptions
     };
@@ -1461,15 +1463,18 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                 )}
 
                 <div className="flex items-center justify-between pt-1">
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={newAttrRequired}
-                      onChange={e => setNewAttrRequired(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-indigo-600"
-                    />
-                    <span className="text-xs font-semibold text-slate-600">{t("Required field", "Povinné pole", "Kötelező mező")}</span>
-                  </label>
+                  {/* A checkbox attribute is required per option, so it has no toggle of its own */}
+                  {newAttrType === "checkbox" ? <span /> : (
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={newAttrRequired}
+                        onChange={e => setNewAttrRequired(e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                      />
+                      <span className="text-xs font-semibold text-slate-600">{t("Required field", "Povinné pole", "Kötelező mező")}</span>
+                    </label>
+                  )}
 
                   <div className="flex items-center gap-1.5">
                     {editingAttrId && (
