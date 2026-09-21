@@ -2154,6 +2154,17 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         outgoing
             ? t("Direct Email Sent", "Odoslaný priamy e-mail", "Közvetlen e-mail elküldve")
             : t("Email Received", "Prijatý e-mail", "E-mail érkezett");
+    // Hand-logged mails from before the direction was stored carry no
+    // isOutgoing at all — only their title says they were sent. Reading the
+    // missing flag as "incoming" showed them with the wrong badge and made
+    // flipping them to "Received" look like no change, so the title stayed "Sent".
+    const emailIsOutgoing = (event: TimelineEvent) =>
+        event.isOutgoing ??
+        [
+            "Direct Email Sent",
+            "Odoslaný priamy e-mail",
+            "Közvetlen e-mail elküldve",
+        ].includes(event.title);
 
     // Inline locking task states
     const [inlineTaskTitle, setInlineTaskTitle] = useState("");
@@ -3217,7 +3228,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         setEditingEventTime((event.timestamp || "").substring(11, 16));
         setEditingEventOutgoing(
             event.type === "email" && !event.id.startsWith("email-")
-                ? !!event.isOutgoing
+                ? emailIsOutgoing(event)
                 : null,
         );
     };
@@ -3257,10 +3268,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                               // Flipping the direction re-titles the entry too:
                               // "Sent" over a client's reply is the same lie as
                               // the wrong badge.
+                              ...(editingEventOutgoing !== null
+                                  ? { isOutgoing: editingEventOutgoing }
+                                  : {}),
                               ...(editingEventOutgoing !== null &&
-                              editingEventOutgoing !== !!edited.isOutgoing
+                              editingEventOutgoing !== emailIsOutgoing(edited)
                                   ? {
-                                        isOutgoing: editingEventOutgoing,
                                         title: manualEmailTitle(
                                             editingEventOutgoing,
                                         ),
@@ -7276,7 +7289,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             const pmName =
                                                 event.author ||
                                                 (event.type === "email"
-                                                    ? event.isOutgoing
+                                                    ? emailIsOutgoing(event)
                                                         ? currentUser?.name ||
                                                           projectManagers[0] ||
                                                           ""
@@ -7345,7 +7358,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                     <span
                                                                         className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full border tracking-widest shadow-inner ${colors.badgeBg} flex items-center gap-1.5`}
                                                                     >
-                                                                        {event.isOutgoing ? (
+                                                                        {emailIsOutgoing(event) ? (
                                                                             <>
                                                                                 <CornerDownLeft className="h-3 w-3 stroke-[2.5]" />
                                                                                 <span>

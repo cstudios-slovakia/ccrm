@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { gotoView, startSession } from './helpers/appDriver';
+import { buildSyncPayload } from './helpers/fixture';
 
 /**
  * Hand-logging an e-mail on a lead's timeline.
@@ -108,5 +109,37 @@ test.describe('Lead timeline — logging an e-mail', () => {
 
     await expect.poll(() => pushed.get('ev-novak-1')?.isOutgoing).toBe(true);
     expect(pushed.get('ev-novak-1')?.title).toBe('Odoslaný priamy e-mail');
+  });
+
+  test('a sent e-mail logged before the direction was stored can be flipped to received', async ({ page }) => {
+    await startSession(page);
+    // Entries hand-logged before isOutgoing existed carry only the 'sent' title.
+    // The missing flag used to read as incoming, so choosing 'Prijatý' looked
+    // like no change and the entry kept its 'Odoslaný priamy e-mail' title.
+    await page.route('**/sync.php**', async (route) => {
+      if (route.request().method() !== 'GET') return route.fallback();
+      const body = buildSyncPayload();
+      const lead = body.leads.find((l) => l.id === 'lead-novak')!;
+      (lead.timeline as object[]).push({
+        id: 'ev-novak-legacy',
+        type: 'email',
+        timestamp: lead.timeline[0].timestamp,
+        title: 'Odoslaný priamy e-mail',
+        content: 'Odpovedal na môj mail',
+      });
+      await route.fulfill({ json: body });
+    });
+    const pushed = recordSyncedEvents(page);
+    await gotoView(page, '#lead-lead-novak');
+
+    const card = page.locator('div.group').filter({ hasText: 'Odpovedal na môj mail' }).last();
+    await expect(card.getByText('Odchádzajúce')).toBeVisible();
+    await card.getByTitle('Upraviť udalosť').click();
+    await card.getByRole('button', { name: 'Prijatý', exact: true }).click();
+    await card.getByRole('button', { name: /Uložiť/ }).click();
+
+    await expect.poll(() => pushed.get('ev-novak-legacy')?.isOutgoing).toBe(false);
+    expect(pushed.get('ev-novak-legacy')?.title).toBe('Prijatý e-mail');
+    await expect(card.getByRole('heading', { name: 'Prijatý e-mail' })).toBeVisible();
   });
 });
