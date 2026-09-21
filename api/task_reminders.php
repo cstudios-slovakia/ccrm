@@ -87,26 +87,6 @@ function ccrm_task_reminder_schedule(string $deadline, ?string $time, string $wh
     return ['at' => $at->format('Y-m-d H:i'), 'due' => $due->format('Y-m-d H:i'), 'hasTime' => (bool)$hasTime];
 }
 
-/** True when the system outbound profile has enough in it to attempt a send. */
-function ccrm_system_mail_configured(array $config): bool {
-    $provider = $config['emailProvider'] ?? ($config['provider'] ?? 'smtp');
-    if ($provider === 'exchange') {
-        return ($config['exchMailbox'] ?? '') !== '' && ($config['exchPassword'] ?? '') !== '';
-    }
-    return ($config['smtpHost'] ?? '') !== '' && intval($config['smtpPort'] ?? 0) > 0;
-}
-
-/** Base URL of the CRM for the "Open the CRM" link, from the current request. */
-function ccrm_task_reminder_app_url(): string {
-    $host = $_SERVER['HTTP_HOST'] ?? '';
-    if ($host === '') return '';
-    $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
-        || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
-    $path = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/'));
-    $path = preg_replace('#/(api|public)$#', '', rtrim($path, '/'));
-    return ($https ? 'https' : 'http') . '://' . $host . $path . '/';
-}
-
 /** Subject and HTML body of one reminder, in the recipient's language. */
 function ccrm_task_reminder_message(array $task, array $schedule, string $lang, ?string $leadName, string $appUrl, string $today): array {
     $t = function (string $en, string $sk, string $hu) use ($lang) {
@@ -224,7 +204,9 @@ function ccrm_process_task_reminders(PDO $pdo, ?string $now = null): array {
         ];
     }
 
-    $appUrl = ccrm_task_reminder_app_url();
+    // Run from cron there is no request to read a host from; ccrm_app_base_url()
+    // remembers the address users sign in through.
+    $appUrl = ccrm_app_base_url($pdo);
     $claim = $pdo->prepare("INSERT IGNORE INTO `task_reminder_log` (`task_id`, `user_name`, `scheduled_for`, `status`) VALUES (?, ?, ?, 'sending')");
     $finish = $pdo->prepare("UPDATE `task_reminder_log` SET `status` = ?, `error` = ? WHERE `task_id` = ? AND `user_name` = ? AND `scheduled_for` = ?");
 

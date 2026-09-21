@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from "react";
-import { LogIn, Key, Mail, Terminal, AlertCircle, AlertTriangle, CheckCircle, Loader2 } from "lucide-react";
+import { LogIn, Key, Mail, Terminal, AlertCircle, AlertTriangle, CheckCircle, Circle, Loader2 } from "lucide-react";
 import { PasswordInput } from "./PasswordInput";
 import type { UserProfile } from "../types";
 import { getTranslation, formatTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import LightRays from "./LightRays";
 import { hasCookieAccess, hasPersistentStorage } from "../utils/safeStorage";
+import { passwordRules, PASSWORD_MIN_LENGTH } from "../utils/passwordRules";
 
 interface LoginViewProps {
   users: UserProfile[];
@@ -42,6 +43,13 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
   const [confirmPassword, setConfirmPassword] = useState("");
   const [resetError, setResetError] = useState<string | null>(null);
   const [resetDone, setResetDone] = useState(false);
+  // Which account the link is for, or that it is dead — known before the user
+  // types a new password, not after.
+  const [resetTokenEmail, setResetTokenEmail] = useState<string | null>(null);
+  const [resetTokenInvalid, setResetTokenInvalid] = useState(false);
+  // A successful reset signs the browser in; this is the account it opened.
+  const [resetSignedInUser, setResetSignedInUser] = useState<UserProfile | null>(null);
+  const newPasswordRules = passwordRules(newPassword);
 
   const tr = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
 
@@ -58,6 +66,14 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
       if (token) {
         setResetToken(token);
         setShowResetInfo(true);
+        fetch("/api/password_reset.php?action=inspect&token=" + encodeURIComponent(token))
+          .then(r => r.json())
+          .then(d => {
+            if (cancelled) return;
+            if (d && d.valid && d.email) setResetTokenEmail(String(d.email));
+            else setResetTokenInvalid(true);
+          })
+          .catch(() => { /* the reset call reports a dead link itself */ });
       }
     } catch { /* ignore */ }
     return () => { cancelled = true; };
@@ -89,8 +105,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
 
   const submitNewPassword = async () => {
     setResetError(null);
-    if (newPassword.length < 8) {
-      setResetError(tr("Password must be at least 8 characters.", "Heslo musí mať aspoň 8 znakov.", "A jelszónak legalább 8 karakter hosszúnak kell lennie."));
+    if (!newPasswordRules.length || !newPasswordRules.mix) {
+      setResetError(tr("The password does not meet the rules above.", "Heslo nespĺňa pravidlá vyššie.", "A jelszó nem felel meg a fenti szabályoknak."));
       return;
     }
     if (newPassword !== confirmPassword) {
@@ -106,6 +122,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
       });
       const data = await res.json().catch(() => null);
       if (res.ok && data && data.success) {
+        setResetSignedInUser(data.user ? (data.user as UserProfile) : null);
         setResetDone(true);
         // Drop the token from the URL so a refresh returns to normal login.
         try { window.history.replaceState({}, "", window.location.pathname); } catch { /* ignore */ }
@@ -277,9 +294,27 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
         onLoginSuccess(data.user as UserProfile);
         return;
       }
+      if (res.status === 429 || (data && data.locked)) {
+        setError(tr(
+          "Too many failed attempts. Sign-in is blocked for 15 minutes — try again later.",
+          "Príliš veľa neúspešných pokusov. Prihlásenie je na 15 minút zablokované — skúste to neskôr.",
+          "Túl sok sikertelen próbálkozás. A bejelentkezés 15 percre le van tiltva — próbálja újra később."
+        ));
+        return;
+      }
+      const remaining = data && typeof data.attempts_remaining === "number" ? data.attempts_remaining : null;
+      // The allowance is generous, so only say how much is left once it runs low.
+      if (remaining !== null && remaining <= 5) {
+        setError(getTranslation(systemLanguage, "login.error_pass") + " " + tr(
+          `Attempts left: ${remaining}. After that, sign-in is blocked for 15 minutes.`,
+          `Zostávajúce pokusy: ${remaining}. Potom bude prihlásenie na 15 minút zablokované.`,
+          `Hátralévő próbálkozások: ${remaining}. Utána a bejelentkezés 15 percre le lesz tiltva.`
+        ));
+        return;
+      }
       setError(getTranslation(systemLanguage, "login.error_pass"));
     } catch (err) {
-      setError(getTranslation(systemLanguage, "login.error_pass"));
+      setError(tr("Could not reach the server. Check your connection and try again.", "Server neodpovedá. Skontrolujte pripojenie a skúste to znova.", "A kiszolgáló nem érhető el. Ellenőrizze a kapcsolatot, és próbálja újra."));
     } finally {
       setIsLoading(false);
     }
@@ -637,14 +672,45 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
                       <div className="space-y-3 text-center">
                         <CheckCircle className="h-7 w-7 text-emerald-500 mx-auto" />
                         <p className="text-[11px] font-semibold text-slate-600">
-                          {tr("Your password has been updated. You can now sign in.", "Vaše heslo bolo zmenené. Teraz sa môžete prihlásiť.", "A jelszava frissült. Most már bejelentkezhet.")}
+                          {resetSignedInUser
+                            ? tr("Your password has been changed and you are signed in.", "Vaše heslo bolo zmenené a ste prihlásení.", "A jelszava megváltozott, és be van jelentkezve.")
+                            : tr("Your password has been updated. You can now sign in.", "Vaše heslo bolo zmenené. Teraz sa môžete prihlásiť.", "A jelszava frissült. Most már bejelentkezhet.")}
+                        </p>
+                        {resetSignedInUser ? (
+                          <button
+                            type="button"
+                            onClick={() => onLoginSuccess(resetSignedInUser)}
+                            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all flex items-center justify-center gap-1.5"
+                          >
+                            <LogIn className="h-3.5 w-3.5" /> {tr("Continue to CCRM", "Pokračovať do CCRM", "Tovább a CCRM-be")}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => { setResetToken(""); setShowResetInfo(false); setResetDone(false); }}
+                            className="text-[10px] font-black uppercase tracking-wider text-indigo-600 hover:text-indigo-500"
+                          >
+                            {tr("Back to login", "Späť na prihlásenie", "Vissza a bejelentkezéshez")}
+                          </button>
+                        )}
+                      </div>
+                    ) : resetTokenInvalid ? (
+                      <div className="space-y-3 text-center">
+                        <AlertCircle className="h-7 w-7 text-rose-500 mx-auto" />
+                        <p className="text-[11px] font-semibold text-slate-600">
+                          {tr("This reset link is invalid or has expired. Request a new one.", "Tento odkaz na obnovenie je neplatný alebo vypršal. Vyžiadajte si nový.", "Ez a visszaállítási link érvénytelen vagy lejárt. Kérjen újat.")}
                         </p>
                         <button
                           type="button"
-                          onClick={() => { setResetToken(""); setShowResetInfo(false); setResetDone(false); }}
+                          onClick={() => {
+                            try { window.history.replaceState({}, "", window.location.pathname); } catch { /* ignore */ }
+                            setResetToken("");
+                            setResetTokenInvalid(false);
+                            setResetRequested(false);
+                          }}
                           className="text-[10px] font-black uppercase tracking-wider text-indigo-600 hover:text-indigo-500"
                         >
-                          {tr("Back to login", "Späť na prihlásenie", "Vissza a bejelentkezéshez")}
+                          {tr("Request a new link", "Vyžiadať nový odkaz", "Új link kérése")}
                         </button>
                       </div>
                     ) : (
@@ -652,6 +718,11 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
                         <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                           {tr("Set a new password", "Nastavte nové heslo", "Új jelszó beállítása")}
                         </p>
+                        {resetTokenEmail && (
+                          <p className="text-[11px] font-semibold text-slate-600 break-all">
+                            {tr("For the account", "Pre konto", "Fiók:")} <span className="text-slate-900">{resetTokenEmail}</span>
+                          </p>
+                        )}
                         <PasswordInput
                           required
                           value={newPassword}
@@ -666,6 +737,17 @@ export const LoginView: React.FC<LoginViewProps> = ({ users, onLoginSuccess, sys
                           placeholder={tr("Confirm new password", "Potvrďte nové heslo", "Új jelszó megerősítése")}
                           className="w-full pl-3 pr-10 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 focus:outline-none focus:border-indigo-500 font-semibold"
                         />
+                        <ul className="space-y-1" aria-label={tr("Password rules", "Pravidlá hesla", "Jelszószabályok")}>
+                          {([
+                            [newPasswordRules.length, tr(`At least ${PASSWORD_MIN_LENGTH} characters`, `Aspoň ${PASSWORD_MIN_LENGTH} znakov`, `Legalább ${PASSWORD_MIN_LENGTH} karakter`)],
+                            [newPasswordRules.mix, tr("Upper and lower case letters and a digit", "Veľké aj malé písmeno a číslica", "Kis- és nagybetű, valamint számjegy")],
+                          ] as const).map(([met, label]) => (
+                            <li key={label} data-met={met ? "true" : "false"} className={`flex items-center gap-1.5 text-[11px] font-semibold transition-colors ${met ? "text-emerald-600" : "text-slate-500"}`}>
+                              {met ? <CheckCircle className="h-3.5 w-3.5 shrink-0" /> : <Circle className="h-3.5 w-3.5 shrink-0" />}
+                              {label}
+                            </li>
+                          ))}
+                        </ul>
                         {resetError && (
                           <div className="flex items-start gap-1.5 text-[10px] font-semibold text-rose-600">
                             <AlertCircle className="h-3.5 w-3.5 shrink-0 mt-px" /> <span>{resetError}</span>

@@ -1397,6 +1397,63 @@ HTACCESS;
         return ccrm_decrypt_config_secrets($cfg, ccrm_integration_secret_keys());
     }
 
+    /**
+     * Base URL of the CRM as the current request reached it, e.g.
+     * "https://crm.example.sk/". Built from the Host header, which the client
+     * controls — never put it in an e-mail on its own; see ccrm_app_base_url().
+     */
+    function ccrm_request_base_url(): string {
+        $host = (string)($_SERVER['HTTP_HOST'] ?? '');
+        if ($host === '' || !preg_match('/^[A-Za-z0-9.\-]+(:\d{1,5})?$|^\[[0-9A-Fa-f:.]+\](:\d{1,5})?$/', $host)) {
+            return '';
+        }
+        $https = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+            || (($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '') === 'https');
+        $path = str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '/'));
+        $path = preg_replace('#/(api|public)$#', '', rtrim($path, '/'));
+        return ($https ? 'https' : 'http') . '://' . strtolower($host) . $path . '/';
+    }
+
+    /**
+     * Remember the base URL a user just signed in through. Only a request that
+     * carried a valid password gets here, so the stored value is one a real
+     * user actually reached the CRM at — unlike an anonymous request's Host.
+     */
+    function ccrm_remember_app_url(\PDO $pdo): void {
+        $url = ccrm_request_base_url();
+        if ($url === '') return;
+        try {
+            $cur = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'APP_BASE_URL'");
+            $cur->execute();
+            if ($cur->fetchColumn() === $url) return;
+            $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('APP_BASE_URL', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)")
+                ->execute([$url]);
+        } catch (\Throwable $e) { /* best effort — links fall back to the request */ }
+    }
+
+    /**
+     * Base URL for links in outgoing e-mail: `CCRM_APP_URL` from config.php when
+     * the operator set one, else the URL of the last successful sign-in, else
+     * the current request (a fresh install nobody has signed in to yet).
+     * Anonymous callers such as the password-reset request must not decide the
+     * host a mailed link points at — that is how a reset token gets delivered to
+     * an attacker's server.
+     */
+    function ccrm_app_base_url(\PDO $pdo): string {
+        if (defined('CCRM_APP_URL') && is_string(CCRM_APP_URL) && CCRM_APP_URL !== '') {
+            return rtrim(CCRM_APP_URL, '/') . '/';
+        }
+        try {
+            $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'APP_BASE_URL'");
+            $stmt->execute();
+            $stored = $stmt->fetchColumn();
+            if (is_string($stored) && preg_match('#^https?://#', $stored)) {
+                return $stored;
+            }
+        } catch (\Throwable $e) { /* fall through */ }
+        return ccrm_request_base_url();
+    }
+
     /** Replace every non-empty secret value with the mask (outbound). */
     function ccrm_mask_secrets(array $config, array $secretKeys): array {
         foreach ($secretKeys as $k) {

@@ -2,24 +2,31 @@
 /**
  * Self-service password reset over email.
  *
- * This flow is only available when the CRM has a working outbound mail server
- * configured — i.e. at least one user (preferably an admin) has validated SMTP
- * credentials stored in `users.metadata_json -> emailSettings`. That account is
- * used as the system sender. When no such mailbox exists the endpoint reports
- * `available: false` and the UI falls back to "contact your administrator".
+ * The link goes out through the SYSTEM outbound profile (Settings →
+ * Integrations, the one task reminders and workflow e-mails use). An install
+ * that never set that up but has a user with a working personal mailbox falls
+ * back to that mailbox, preferring a validated admin's — the only sender this
+ * flow knew before. With neither, the endpoint reports `available: false` and
+ * the UI falls back to "contact your administrator".
  *
  * Actions (action= query param or JSON field):
  *   - status  : { success, available }            — is email reset possible?
  *   - request : { email, lang? } -> generic ok    — emails a reset link (anti-enumeration)
- *   - reset   : { token, password } -> ok/fail    — sets a new password
+ *   - inspect : { token } -> { valid, email }      — which account a link is for
+ *   - reset   : { token, password } -> ok/fail    — sets a new password and
+ *                                                   signs the browser in
  *
  * Security:
- *   - Tokens are 256-bit random, single-use, and expire after 1 hour.
+ *   - Tokens are 256-bit random, single-use, and expire after 30 minutes.
  *   - `request` always returns a generic success so callers cannot enumerate
  *     which emails exist.
- *   - New passwords are stored as bcrypt hashes via ccrm_hash_password().
+ *   - The link's host comes from ccrm_app_base_url(), never from the anonymous
+ *     request's Host header, so a forged header cannot send the token elsewhere.
+ *   - New passwords need 12+ characters with upper and lower case and a digit,
+ *     and are stored as bcrypt hashes via ccrm_hash_password().
  */
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/mail_broker.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('GET, POST, OPTIONS');
@@ -117,6 +124,27 @@ function ccrm_pwreset_ensure_table(PDO $pdo): void {
     );
 }
 
+/**
+ * How the reset e-mail will be sent: ['system', $config] for the system
+ * outbound profile, ['mailbox', $emailSettings] for a user's mailbox, or null.
+ */
+function ccrm_pwreset_find_transport(PDO $pdo): ?array {
+    $config = ccrm_load_integrations_config($pdo);
+    if (ccrm_system_mail_configured($config)) {
+        return ['system', $config];
+    }
+    $mailbox = ccrm_pwreset_find_sender($pdo);
+    return $mailbox !== null ? ['mailbox', $mailbox] : null;
+}
+
+/** The rules the reset screen lists; enforced here so the UI is not the only gate. */
+function ccrm_pwreset_password_ok(string $password): bool {
+    return strlen($password) >= 12
+        && preg_match('/[a-z]/', $password)
+        && preg_match('/[A-Z]/', $password)
+        && preg_match('/[0-9]/', $password);
+}
+
 /** Minimal raw-SMTP sender (mirrors mail_broker.php::send_smtp_email). */
 function ccrm_pwreset_send_smtp_email(array $settings, string $to, string $subject, string $html): void {
     $host = $settings['smtpHost'] ?? '';
@@ -189,7 +217,7 @@ function ccrm_pwreset_send_smtp_email(array $settings, string $to, string $subje
 // ---------------------------------------------------------------------------
 
 if ($action === 'status') {
-    echo json_encode(['success' => true, 'available' => ccrm_pwreset_find_sender($pdo) !== null]);
+    echo json_encode(['success' => true, 'available' => ccrm_pwreset_find_transport($pdo) !== null]);
     exit;
 }
 
@@ -232,8 +260,8 @@ if ($action === 'request') {
         // fail open — never block legitimate resets because of a throttle-store error
     }
 
-    $sender = ccrm_pwreset_find_sender($pdo);
-    if ($sender === null) {
+    $transport = ccrm_pwreset_find_transport($pdo);
+    if ($transport === null) {
         // No outbound mailbox configured — caller should show the contact-admin note.
         echo json_encode(['success' => true, 'available' => false]);
         exit;
@@ -253,31 +281,33 @@ if ($action === 'request') {
                 $token = bin2hex(random_bytes(32));
                 $ins = $pdo->prepare(
                     "INSERT INTO `password_resets` (`token`, `user_id`, `expires_at`, `used`)
-                     VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 1 HOUR), 0)"
+                     VALUES (?, ?, DATE_ADD(NOW(), INTERVAL 30 MINUTE), 0)"
                 );
                 $ins->execute([$token, $user['id']]);
 
-                $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
-                $host = $_SERVER['HTTP_HOST'] ?? '';
-                $resetLink = $scheme . '://' . $host . '/?reset_token=' . $token;
+                $baseUrl = ccrm_app_base_url($pdo);
+                if ($baseUrl === '') {
+                    throw new Exception('No base URL for the reset link — set CCRM_APP_URL in config.php.');
+                }
+                $resetLink = $baseUrl . '?reset_token=' . $token;
 
                 $name = htmlspecialchars((string)($user['name'] ?? ''), ENT_QUOTES, 'UTF-8');
                 if ($lang === 'sk') {
                     $subject = 'Obnovenie hesla — CCRM';
                     $intro   = 'Dobrý deň' . ($name ? ' ' . $name : '') . ',';
-                    $body    = 'prijali sme žiadosť o obnovenie hesla k vášmu účtu CCRM. Pre nastavenie nového hesla kliknite na tlačidlo nižšie. Odkaz je platný 1 hodinu.';
+                    $body    = 'prijali sme žiadosť o obnovenie hesla k vášmu účtu CCRM. Pre nastavenie nového hesla kliknite na tlačidlo nižšie. Odkaz platí 30 minút a dá sa použiť raz.';
                     $btn     = 'Obnoviť heslo';
                     $ignore  = 'Ak ste o obnovenie hesla nežiadali, tento e-mail môžete ignorovať.';
                 } elseif ($lang === 'hu') {
                     $subject = 'Jelszó visszaállítása — CCRM';
                     $intro   = 'Kedves' . ($name ? ' ' . $name : '') . ',';
-                    $body    = 'kérelmet kaptunk a CCRM-fiókja jelszavának visszaállítására. Az új jelszó beállításához kattintson az alábbi gombra. A link 1 óráig érvényes.';
+                    $body    = 'kérelmet kaptunk a CCRM-fiókja jelszavának visszaállítására. Az új jelszó beállításához kattintson az alábbi gombra. A link 30 percig érvényes és egyszer használható.';
                     $btn     = 'Jelszó visszaállítása';
                     $ignore  = 'Ha nem Ön kérte a jelszó visszaállítását, hagyja figyelmen kívül ezt az e-mailt.';
                 } else {
                     $subject = 'Password reset — CCRM';
                     $intro   = 'Hello' . ($name ? ' ' . $name : '') . ',';
-                    $body    = 'we received a request to reset the password for your CCRM account. Click the button below to set a new password. This link is valid for 1 hour.';
+                    $body    = 'we received a request to reset the password for your CCRM account. Click the button below to set a new password. This link is valid for 30 minutes and can be used once.';
                     $btn     = 'Reset password';
                     $ignore  = 'If you did not request a password reset, you can safely ignore this email.';
                 }
@@ -292,7 +322,11 @@ if ($action === 'request') {
                     . '<p style="font-size:12px;color:#94a3b8;line-height:1.5;margin:16px 0 0">' . $ignore . '</p>'
                     . '</div>';
 
-                ccrm_pwreset_send_smtp_email($sender, (string)$user['email'], $subject, $html);
+                if ($transport[0] === 'system') {
+                    ccrm_send_system_mail($transport[1], (string)$user['email'], $subject, $html);
+                } else {
+                    ccrm_pwreset_send_smtp_email($transport[1], (string)$user['email'], $subject, $html);
+                }
             } catch (\Throwable $e) {
                 // Swallow: never reveal delivery state to the caller.
                 error_log('[ccrm password_reset] ' . $e->getMessage());
@@ -315,9 +349,9 @@ if ($action === 'reset') {
     $token    = trim((string)($input['token'] ?? ''));
     $password = (string)($input['password'] ?? '');
 
-    if ($token === '' || strlen($password) < 8) {
+    if ($token === '' || !ccrm_pwreset_password_ok($password)) {
         http_response_code(400);
-        echo json_encode(['success' => false, 'message' => 'A valid token and a password of at least 8 characters are required.']);
+        echo json_encode(['success' => false, 'message' => 'A valid token and a password of at least 12 characters with upper and lower case letters and a digit are required.']);
         exit;
     }
 
@@ -348,7 +382,59 @@ if ($action === 'reset') {
 
     ccrm_audit_log($pdo, ['id' => $row['user_id'], 'email' => null], 'password.reset', 'Password reset via email token');
 
+    // The browser that just proved it holds the link is signed in, the same way
+    // api/login.php does it. The session is issued after sessions_valid_from was
+    // stamped, so it survives the retirement that just hit every other session.
+    $userStmt = $pdo->prepare("SELECT * FROM `users` WHERE `id` = ? LIMIT 1");
+    $userStmt->execute([$row['user_id']]);
+    $user = $userStmt->fetch(PDO::FETCH_ASSOC);
+    if ($user) {
+        ccrm_start_session(false);
+        session_regenerate_id(true);
+        $_SESSION['ccrm_uid']   = $user['id'];
+        $_SESSION['ccrm_role']  = $user['role'];
+        $_SESSION['ccrm_email'] = $user['email'];
+        try {
+            $_SESSION['ccrm_issued_at'] = $pdo->query("SELECT NOW()")->fetchColumn() ?: null;
+        } catch (\Throwable $e) {
+            $_SESSION['ccrm_issued_at'] = null;
+        }
+        $_SESSION['ccrm_checked_at'] = time();
+        echo json_encode([
+            'success' => true,
+            'user' => [
+                'name'          => $user['name'],
+                'email'         => $user['email'],
+                'role'          => ccrm_role_label($user['role']),
+                'color'         => $user['color'] ?? '#3b82f6',
+                'avatar'        => $user['avatar'] ?? null,
+                'activityLog'   => [],
+                'metadata_json' => ccrm_mask_user_metadata($user['metadata_json']),
+            ],
+        ]);
+        exit;
+    }
+
     echo json_encode(['success' => true]);
+    exit;
+}
+
+if ($action === 'inspect') {
+    // Tells the "set a new password" screen which account the link is for.
+    // Only a live, unused token answers; anything else looks like an unknown one.
+    $token = trim((string)($input['token'] ?? $_GET['token'] ?? ''));
+    if ($token === '') {
+        echo json_encode(['success' => true, 'valid' => false]);
+        exit;
+    }
+    ccrm_pwreset_ensure_table($pdo);
+    $stmt = $pdo->prepare(
+        "SELECT u.`email` FROM `password_resets` r JOIN `users` u ON u.`id` = r.`user_id`
+         WHERE r.`token` = ? AND r.`used` = 0 AND r.`expires_at` > NOW() LIMIT 1"
+    );
+    $stmt->execute([$token]);
+    $email = $stmt->fetchColumn();
+    echo json_encode($email ? ['success' => true, 'valid' => true, 'email' => $email] : ['success' => true, 'valid' => false]);
     exit;
 }
 
