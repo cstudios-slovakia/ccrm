@@ -92,4 +92,40 @@ test.describe('Project type attributes', () => {
     const row = page.getByText(ATTR_NAME, { exact: true }).locator('xpath=ancestor::div[contains(@class,"rounded-2xl")][1]');
     await expect(row.getByText(TEXT_TYPE)).toBeVisible();
   });
+
+  test('checkbox options are added one by one, each can be required, and a typed draft is kept', async ({ page }) => {
+    await startSession(page);
+    await openRoofTypeAttributes(page);
+
+    await page.getByPlaceholder(/e\.g\. Dimensions|napr\. Rozmery|pl\. Méretek/).fill('Kontrola');
+    await page.getByRole('button', { name: TEXT_TYPE }).click();
+    const search = page.getByPlaceholder(/Search|Hľadať|Keresés/);
+    if (await search.isVisible().catch(() => false)) {
+      await search.fill('Check');
+    }
+    await page.getByRole('option', { name: /Checkbox|Zaškrtávacie pole|Jelölőnégyzet/ }).click();
+
+    const newOption = page.getByPlaceholder(/New option|Nová možnosť|Új opció/);
+    const addOption = page.getByRole('button', { name: /^(Add|Pridať|Hozzáadás)$/ });
+    await newOption.fill('Statika');
+    await addOption.click();
+    await newOption.fill('Revízia');
+    await newOption.press('Enter');
+    await expect(page.getByRole('textbox', { name: /Option 2|Možnosť 2|2\. opció/ })).toHaveValue('Revízia');
+
+    // A duplicate cannot be added.
+    await newOption.fill('Statika');
+    await expect(addOption).toBeDisabled();
+
+    // Only the first option is required; the typed draft is saved without clicking Add.
+    await page.getByRole('button', { name: /^(Required|Povinné|Kötelező)$/ }).first().click();
+    await newOption.fill('Fotodokumentácia');
+    await page.getByRole('button', { name: /Add Attribute|Pridať atribút|Attribútum hozzáadása/ }).click();
+
+    const row = page.getByText('Kontrola', { exact: true }).locator('xpath=ancestor::div[contains(@class,"rounded-2xl")][1]');
+    await expect(row.getByText(/1 (required boxes|povinných políčok|kötelező négyzet)/)).toBeVisible();
+
+    await row.getByRole('button', { name: EDIT_ATTR }).click();
+    await expect(page.getByRole('textbox', { name: /Option 3|Možnosť 3|3\. opció/ })).toHaveValue('Fotodokumentácia');
+  });
 });

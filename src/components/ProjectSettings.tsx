@@ -90,6 +90,143 @@ const Switch: React.FC<{ checked: boolean; onChange: (next: boolean) => void; di
   </button>
 );
 
+/** Trimmed, non-empty, unique — what an option attribute actually stores. */
+const cleanAttrOptions = (type: ProjectAttributeType, options: string[], draft = "") =>
+  isOptionAttrType(type)
+    ? Array.from(new Set([...options, draft].map(o => o.trim()).filter(Boolean)))
+    : undefined;
+
+/**
+ * The option list of a select / radio / checkbox attribute: one input per
+ * option plus an "Add" row for the next one. The unsubmitted draft is owned by
+ * the parent so saving the attribute keeps what was typed but not yet added.
+ * With `requiredOptions`, each option also gets its own "required" toggle.
+ */
+const AttrOptionsEditor: React.FC<{
+  options: string[];
+  onChange: (next: string[]) => void;
+  draft: string;
+  onDraftChange: (next: string) => void;
+  requiredOptions?: string[];
+  onRequiredChange?: (next: string[]) => void;
+  t: (en: string, sk: string, hu: string) => string;
+}> = ({ options, onChange, draft, onDraftChange, requiredOptions, onRequiredChange, t }) => {
+  const trimmedDraft = draft.trim();
+  const isDuplicate = !!trimmedDraft && options.some(o => o.trim() === trimmedDraft);
+
+  const add = () => {
+    if (!trimmedDraft || isDuplicate) return;
+    onChange([...options, trimmedDraft]);
+    onDraftChange("");
+  };
+
+  const rename = (index: number, value: string) => {
+    const old = options[index];
+    onChange(options.map((o, i) => (i === index ? value : o)));
+    // A required option stays required under its new name.
+    if (requiredOptions?.includes(old)) onRequiredChange?.(requiredOptions.map(o => (o === old ? value : o)));
+  };
+
+  const remove = (index: number) => {
+    const old = options[index];
+    onChange(options.filter((_, i) => i !== index));
+    if (requiredOptions?.includes(old)) onRequiredChange?.(requiredOptions.filter(o => o !== old));
+  };
+
+  const toggleRequired = (opt: string) => {
+    if (!requiredOptions) return;
+    onRequiredChange?.(requiredOptions.includes(opt) ? requiredOptions.filter(o => o !== opt) : [...requiredOptions, opt]);
+  };
+
+  return (
+    <div>
+      <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
+        {t("Options", "Možnosti", "Opciók")}
+      </label>
+      <div className="space-y-1.5">
+        {options.map((opt, index) => {
+          const required = !!requiredOptions?.includes(opt);
+          return (
+            <div key={index} className="flex items-center gap-1.5">
+              <input
+                value={opt}
+                onChange={e => rename(index, e.target.value)}
+                aria-label={t(`Option ${index + 1}`, `Možnosť ${index + 1}`, `${index + 1}. opció`)}
+                className="flex-1 min-w-0 px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white"
+              />
+              {requiredOptions && (
+                <button
+                  type="button"
+                  aria-pressed={required}
+                  onClick={() => toggleRequired(opt)}
+                  title={t("Every project has to tick this box", "Každý projekt musí toto políčko zaškrtnúť", "Minden projektnek be kell jelölnie")}
+                  className={cn(
+                    "shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-xl border text-[11px] font-bold transition-all duration-150 active:scale-95 cursor-pointer",
+                    required
+                      ? "bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100"
+                      : "bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700"
+                  )}
+                >
+                  {required ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+                  {t("Required", "Povinné", "Kötelező")}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => remove(index)}
+                aria-label={t("Remove option", "Odstrániť možnosť", "Opció törlése")}
+                className="shrink-0 p-1.5 hover:bg-rose-50 rounded-lg text-rose-600 transition-colors duration-150 active:scale-95 cursor-pointer"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          );
+        })}
+        <div className="flex items-center gap-1.5">
+          <input
+            value={draft}
+            onChange={e => onDraftChange(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                add();
+              }
+            }}
+            placeholder={t("New option", "Nová možnosť", "Új opció")}
+            className={cn(
+              "flex-1 min-w-0 px-3 py-2 rounded-xl border text-xs font-semibold bg-white",
+              isDuplicate ? "border-rose-300" : "border-slate-200"
+            )}
+          />
+          <button
+            type="button"
+            onClick={add}
+            disabled={!trimmedDraft || isDuplicate}
+            className="shrink-0 flex items-center gap-1 px-3 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 active:scale-95 cursor-pointer"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {t("Add", "Pridať", "Hozzáadás")}
+          </button>
+        </div>
+      </div>
+      {isDuplicate && (
+        <p className="text-[10px] font-medium text-rose-600 mt-1">
+          {t("This option already exists.", "Táto možnosť už existuje.", "Ez az opció már létezik.")}
+        </p>
+      )}
+      {requiredOptions && options.length > 0 && (
+        <p className="text-[10px] font-medium text-slate-400 mt-1">
+          {t(
+            "Mark the boxes every project has to tick. The project shows how many are still unchecked.",
+            "Označte políčka, ktoré musí každý projekt zaškrtnúť. Projekt zobrazí, koľko ich ešte nie je zaškrtnutých.",
+            "Jelölje meg, mely négyzeteket kell minden projektnek bejelölnie. A projekt mutatja, hány nincs még bejelölve."
+          )}
+        </p>
+      )}
+    </div>
+  );
+};
+
 export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
   projectTypes,
   setProjectTypes,
@@ -144,13 +281,15 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
   const [newTeAttrName, setNewTeAttrName] = useState("");
   const [newTeAttrType, setNewTeAttrType] = useState<ProjectAttributeType>("textfield");
   const [newTeAttrRequired, setNewTeAttrRequired] = useState(false);
-  const [newTeAttrOptions, setNewTeAttrOptions] = useState("");
+  const [newTeAttrOptions, setNewTeAttrOptions] = useState<string[]>([]);
+  const [newTeAttrOptionDraft, setNewTeAttrOptionDraft] = useState("");
 
   // Attribute builder states
   const [newAttrName, setNewAttrName] = useState("");
   const [newAttrType, setNewAttrType] = useState<ProjectAttributeType>("textfield");
   const [newAttrRequired, setNewAttrRequired] = useState(false);
-  const [newAttrOptions, setNewAttrOptions] = useState("");
+  const [newAttrOptions, setNewAttrOptions] = useState<string[]>([]);
+  const [newAttrOptionDraft, setNewAttrOptionDraft] = useState("");
   // A checkbox attribute's options every project has to tick.
   const [newAttrRequiredOptions, setNewAttrRequiredOptions] = useState<string[]>([]);
   const [editingAttrId, setEditingAttrId] = useState<string | null>(null);
@@ -227,14 +366,12 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     resetTeAttrForm();
   };
 
-  const parseAttrOptions = (type: ProjectAttributeType, raw: string) =>
-    isOptionAttrType(type) ? raw.split(",").map(o => o.trim()).filter(Boolean) : undefined;
-
   const resetAttrForm = () => {
     setNewAttrName("");
     setNewAttrType("textfield");
     setNewAttrRequired(false);
-    setNewAttrOptions("");
+    setNewAttrOptions([]);
+    setNewAttrOptionDraft("");
     setNewAttrRequiredOptions([]);
     setEditingAttrId(null);
   };
@@ -243,7 +380,8 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setNewTeAttrName("");
     setNewTeAttrType("textfield");
     setNewTeAttrRequired(false);
-    setNewTeAttrOptions("");
+    setNewTeAttrOptions([]);
+    setNewTeAttrOptionDraft("");
     setEditingTeAttrId(null);
   };
 
@@ -261,7 +399,8 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setNewAttrName(attr.name);
     setNewAttrType(attr.type);
     setNewAttrRequired(!!attr.required);
-    setNewAttrOptions((attr.options || []).join(", "));
+    setNewAttrOptions(attr.options || []);
+    setNewAttrOptionDraft("");
     setNewAttrRequiredOptions(attr.requiredOptions || []);
   };
 
@@ -274,10 +413,10 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
   const handleSaveAttribute = () => {
     if (!newAttrName.trim()) return;
     const name = newAttrName.trim();
-    const options = parseAttrOptions(newAttrType, newAttrOptions);
+    const options = cleanAttrOptions(newAttrType, newAttrOptions, newAttrOptionDraft);
     // Only boxes that still exist: a renamed or deleted option drops out.
     const requiredOptions = newAttrType === "checkbox" && options
-      ? newAttrRequiredOptions.filter(o => options.includes(o))
+      ? Array.from(new Set(newAttrRequiredOptions.map(o => o.trim()))).filter(o => options.includes(o))
       : [];
     if (editingAttrId) {
       setAttributes(prev => prev.map(a => a.id === editingAttrId
@@ -420,7 +559,8 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setNewTeAttrName(attr.name);
     setNewTeAttrType(attr.type);
     setNewTeAttrRequired(!!attr.required);
-    setNewTeAttrOptions((attr.options || []).join(", "));
+    setNewTeAttrOptions(attr.options || []);
+    setNewTeAttrOptionDraft("");
   };
 
   const handleTeAttrFormTypeChange = (next: ProjectAttributeType) => {
@@ -434,7 +574,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
   const handleSaveTimelineAttribute = () => {
     if (!selectedTeTypeId || !newTeAttrName.trim()) return;
     const name = newTeAttrName.trim();
-    const options = parseAttrOptions(newTeAttrType, newTeAttrOptions);
+    const options = cleanAttrOptions(newTeAttrType, newTeAttrOptions, newTeAttrOptionDraft);
     if (editingTeAttrId) {
       setTimelineEventTypes(prev => prev.map(t => {
         if (t.id !== selectedTeTypeId) return t;
@@ -1041,17 +1181,13 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                               </div>
 
                               {isOptionAttrType(newTeAttrType) && (
-                                <div>
-                                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
-                                    {t("Options (comma separated)", "Možnosti (oddelené čiarkou)", "Opciók (vesszővel elválasztva)")}
-                                  </label>
-                                  <input
-                                    value={newTeAttrOptions}
-                                    onChange={e => setNewTeAttrOptions(e.target.value)}
-                                    placeholder={t("Option 1, Option 2, Option 3", "Možnosť 1, Možnosť 2, Možnosť 3", "1. lehetőség, 2. lehetőség, 3. lehetőség")}
-                                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white"
-                                  />
-                                </div>
+                                <AttrOptionsEditor
+                                  options={newTeAttrOptions}
+                                  onChange={setNewTeAttrOptions}
+                                  draft={newTeAttrOptionDraft}
+                                  onDraftChange={setNewTeAttrOptionDraft}
+                                  t={t}
+                                />
                               )}
 
                               <div className="flex items-center justify-between pt-1">
@@ -1311,66 +1447,17 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                   </div>
                 </div>
 
+                {/* Checkbox options carry their own "required" toggle — counted as missing on the project card */}
                 {isOptionAttrType(newAttrType) && (
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
-                      {t("Options (comma separated)", "Možnosti (oddelené čiarkou)", "Opciók (vesszővel elválasztva)")}
-                    </label>
-                    <input
-                      value={newAttrOptions}
-                      onChange={e => setNewAttrOptions(e.target.value)}
-                      placeholder={t("Option 1, Option 2, Option 3", "Možnosť 1, Možnosť 2, Možnosť 3", "1. lehetőség, 2. lehetőség, 3. lehetőség")}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white"
-                    />
-                  </div>
-                )}
-
-                {/* Which boxes every project has to tick — counted as missing on the project card */}
-                {newAttrType === "checkbox" && (
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
-                      {t("Required checkboxes", "Povinné zaškrtávacie polia", "Kötelező jelölőnégyzetek")}
-                    </label>
-                    {/* Shown before any option exists, so the per-box setting is discoverable */}
-                    {(parseAttrOptions(newAttrType, newAttrOptions) || []).length === 0 && (
-                      <div className="px-3 py-2 rounded-xl border border-dashed border-slate-200 text-[11px] font-medium text-slate-400">
-                        {t(
-                          "Type the options above, then pick which of them are required.",
-                          "Najprv vyplňte možnosti vyššie, potom vyberte, ktoré sú povinné.",
-                          "Először adja meg fent az opciókat, majd válassza ki, melyik kötelező."
-                        )}
-                      </div>
-                    )}
-                    <div className="flex flex-wrap gap-1.5">
-                      {(parseAttrOptions(newAttrType, newAttrOptions) || []).map(opt => {
-                        const on = newAttrRequiredOptions.includes(opt);
-                        return (
-                          <button
-                            key={opt}
-                            type="button"
-                            aria-pressed={on}
-                            onClick={() => setNewAttrRequiredOptions(prev => on ? prev.filter(o => o !== opt) : [...prev, opt])}
-                            className={cn(
-                              "flex items-center gap-1 px-2.5 py-1 rounded-full border text-[11px] font-bold transition-all duration-150 active:scale-95 cursor-pointer",
-                              on
-                                ? "bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100"
-                                : "bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700"
-                            )}
-                          >
-                            {on ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
-                            {opt}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    <p className={cn("text-[10px] font-medium text-slate-400 mt-1", (parseAttrOptions(newAttrType, newAttrOptions) || []).length === 0 && "hidden")}>
-                      {t(
-                        "Click an option to make it required. The project shows how many are still unchecked.",
-                        "Kliknutím na možnosť ju označíte ako povinnú. Projekt zobrazí, koľko ich ešte nie je zaškrtnutých.",
-                        "Kattintson egy opcióra, hogy kötelezővé tegye. A projekt mutatja, hány nincs még bejelölve."
-                      )}
-                    </p>
-                  </div>
+                  <AttrOptionsEditor
+                    options={newAttrOptions}
+                    onChange={setNewAttrOptions}
+                    draft={newAttrOptionDraft}
+                    onDraftChange={setNewAttrOptionDraft}
+                    requiredOptions={newAttrType === "checkbox" ? newAttrRequiredOptions : undefined}
+                    onRequiredChange={setNewAttrRequiredOptions}
+                    t={t}
+                  />
                 )}
 
                 <div className="flex items-center justify-between pt-1">
