@@ -94,6 +94,41 @@ test.describe('Project type attributes', () => {
     await expect(row.getByText(TEXT_TYPE)).toBeVisible();
   });
 
+  test('an attribute added to an existing type is kept after going back, without Save Project Type', async ({ page }) => {
+    await startSession(page);
+    await openRoofTypeAttributes(page);
+
+    const nameInput = page.getByPlaceholder(/e\.g\. Dimensions|napr\. Rozmery|pl\. Méretek/);
+    await nameInput.fill('Kontrolný zoznam');
+    await page.getByRole('button', { name: TEXT_TYPE }).click();
+    const search = page.getByPlaceholder(/Search|Hľadať|Keresés/);
+    if (await search.isVisible().catch(() => false)) {
+      await search.fill('Check');
+    }
+    await page.getByRole('option', { name: /Checkbox|Zaškrtávacie pole|Jelölőnégyzet/ }).click();
+    const newOption = page.getByPlaceholder(/New option|Nová možnosť|Új opció/);
+    await newOption.fill('Statika');
+    await newOption.press('Enter');
+    await page.getByRole('button', { name: /Add Attribute|Pridať atribút|Attribútum hozzáadása/ }).click();
+    await expect(page.getByText('Kontrolný zoznam', { exact: true })).toBeVisible();
+
+    // Straight back out — the attribute's own button is the only "save" clicked.
+    // The mock serves a fixed dataset on every load, so the proof is the push itself.
+    const pushed = page.waitForRequest((req) =>
+      req.url().includes('/sync.php') && req.method() === 'POST'
+      && (req.postDataJSON()?.projectTypes ?? []).some((pt: { attributes?: { name: string; type: string }[] }) =>
+        (pt.attributes ?? []).some((a) => a.name === 'Kontrolný zoznam' && a.type === 'checkbox')),
+    { timeout: 5_000 });
+    await page.getByRole('button', { name: /Back to projects|Späť na projekty|Vissza a projektekhez/ }).click();
+    await pushed;
+
+    // And the app itself still has it, without a reload.
+    await page.getByTitle(/Project settings|Nastavenia projektov|Projekt beállítások/).click();
+    await page.getByText(TYPE_NAME).first().click();
+    await page.getByRole('tab', { name: /Attributes|Atribúty|Attribútumok/ }).click();
+    await expect(page.getByText('Kontrolný zoznam', { exact: true })).toBeVisible();
+  });
+
   test('checkbox options are added one by one, each can be required, and a typed draft is kept', async ({ page }) => {
     await startSession(page);
     await openRoofTypeAttributes(page);

@@ -84,10 +84,92 @@ and therefore cannot see this class at all.
 
 ---
 
+## The second prompt: "it looked saved, but it was never sent"
+
+The round-trip prompt above assumes the save reached the server. The
+1.9.92 project-type bug never did: the attribute form's own **Save changes**
+/ **Add Attribute** button only changed a local draft, the type was written by
+a *second* button further down, and every exit (✕, Cancel, "Back to projects",
+another module, browser back) discarded the draft without a word. The server
+was fine; `npm run test:persistence` could never have seen it. Run this one
+alongside the first — it needs only the dev server, though the proof step is
+strongest against the Docker backend.
+
+> Audit CCRM for **saves that never leave the browser**: any screen where a
+> user can press something that looks like saving, see the change on screen,
+> and still lose it by leaving the screen or reloading — because the change
+> lived only in component state or a draft that a later, separate action was
+> supposed to commit.
+>
+> **Scope.** Every editor in `src/components/` that holds a copy of persisted
+> data in local `useState` and writes it back through a `setX` prop that ends
+> in `update…AndSync` / `pushStateToServer` in `App.tsx`. Start with the
+> settings screens (`ProjectSettings.tsx`, `SettingsView.tsx` and its tabs,
+> pipeline/lead-state editors, unified-entry registry, warehouse and
+> financial category editors, dashboard/widget settings drawers, template
+> editors) and every drawer or modal with a form.
+>
+> **Method — do all four.**
+>
+> 1. **Map the draft layers.** For each editor list: the local state that
+>    shadows persisted data (`useState(type.x)`, `setAttributes(type.attributes)`),
+>    every handler that changes it, and every handler that actually calls the
+>    persisting prop. A handler that changes the draft but does not persist
+>    is fine only if a commit is guaranteed later. Pay special attention to
+>    **nested forms**: a sub-form whose button is labelled Save / Save
+>    changes / Add / Apply / Done but whose handler only updates the parent's
+>    draft. That label is a promise; if the click is not a write, it is a
+>    finding.
+>
+> 2. **Enumerate every exit** from each editor and what happens to a dirty
+>    draft on each: the ✕, Cancel/Close, the parent's back button (it
+>    unmounts the editor — look for a flush in an effect cleanup), switching
+>    module in the sidebar, the browser back button / hash change, a type or
+>    record switcher inside the editor, logout, and a hard reload. Every exit
+>    must either write the draft, or ask before discarding it. A silent
+>    discard is a finding. Also check the inverse: a form field typed but not
+>    "added" (an option draft, an attribute name, a new file slot name) when
+>    the outer Save is pressed — it must be kept or refused, never dropped.
+>
+> 3. **Check the autosave where one exists.** `ProjectDetailsView.tsx` and the
+>    project-type editor autosave with a debounce and a flush on unmount.
+>    Confirm for each: the baseline is taken from the loaded record (opening
+>    must not write), a change inside the debounce window is flushed on every
+>    exit from step 2, a pending write is dropped when the record is deleted
+>    (no resurrection), and switching to another record flushes the previous
+>    one first. A debounce with no unmount flush loses exactly the fast
+>    "edit, then leave" path users take.
+>
+> 4. **Prove each candidate in a real browser**, not by reading. Drive the
+>    UI with Playwright against the dev server proxied to the Docker backend
+>    (`CCRM_DEV_BACKEND_PORT=8086 npx vite --port <free port>`): make the
+>    change, press only the button the user would call "save", leave through
+>    each exit *immediately* (inside the debounce window), then read
+>    `/sync.php` and hard-reload. Record whether a POST carried the change at
+>    all — "no POST" is this class; "POST but wrong read-back" belongs to the
+>    first prompt. For every fix add a QA spec in `tests/e2e/` that asserts on
+>    the **outgoing POST body** (the QA mock re-serves a fixed dataset on
+>    every load, so a reload there proves nothing), and show that it fails
+>    on the old code before it passes on the new.
+>
+> **Report** as observed symptom → root cause → proposed fix, grouped by root
+> cause (one missing flush usually explains every exit of one editor), with
+> the file and line of the draft state, the button that promises a save, and
+> the exit that drops it. Fix small ones directly — prefer the pattern the
+> project already uses (autosave with debounce + flush on unmount for
+> existing records; a confirm before discarding a record that was never
+> created) over adding more Save buttons. Finish with `npx tsc --noEmit`,
+> `npm run test:unit` and the scoped QA run (`node scripts/qa/run-qa.mjs
+> --files …`), and list which editors you proved in the browser and which
+> you only read.
+
+---
+
 ## Known instances (so the next audit knows what "this class" has looked like)
 
 | Version | Symptom | Root cause |
 |---|---|---|
+| 1.9.92 | A new checkbox attribute on a project type, "saved" with the attribute's own button, was gone after going back or reloading (any attribute type, and any other edit in the type editor) | Never sent: the attribute button only changed the editor's draft, the type was written by a separate "Save Project Type", and ✕ / Cancel / Back to projects discarded the draft silently. An existing type now autosaves (600 ms debounce, flushed on close and unmount); leaving an unsaved new type asks first; a filled-in but un-added attribute is kept by Save. QA spec asserts on the outgoing POST. (Second prompt above.) |
 | 1.9.85 | Deleting an imported mail from a lead timeline "worked", the mail was back after a reload | `ccrm_leads_are_identical()` compared neither `hidden` nor `is_outgoing`, and counted hidden DB rows the GET never serves — the push that hid a mail as its only change was declared identical and skipped whole. Visible-row count + both flags now compared; probe check. |
 | 1.9.85 | Project timeline yes/no attribute showed "1" after reload; text "42" became a number; a project data multi-select came back as a JSON string | Write bound scalars raw (PDO turned `true` into `"1"`) and the timeline reader ran `json_decode()` on every stored text while the data reader decoded nothing. One encode/decode pair (`ccrm_encode_attr_value` / `ccrm_decode_attr_value`) on both tables. |
 | 1.9.85 | Paused recurring rule lost its planned end date; "edit one payment" fields not stored; offer `statusChangedAt` lost; user activity log always empty | Fields the UI wrote with no column and/or hardcoded on read (`'activityLog' => []`). Columns added (`recurring_planned_end_date`, `status_changed_at`); the log lives in `metadata_json`. |

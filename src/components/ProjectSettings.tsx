@@ -410,9 +410,11 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setNewAttrType(next);
   };
 
-  const handleSaveAttribute = () => {
-    if (!newAttrName.trim()) return;
+  /** The attribute list with the add/edit form applied — also used by Save Project
+      Type, so an attribute filled in but never added is not silently dropped. */
+  const applyAttrForm = (list: ProjectAttribute[]): ProjectAttribute[] => {
     const name = newAttrName.trim();
+    if (!name) return list;
     const options = cleanAttrOptions(newAttrType, newAttrOptions, newAttrOptionDraft);
     // Only boxes that still exist: a renamed or deleted option drops out.
     const requiredOptions = newAttrType === "checkbox" && options
@@ -421,21 +423,23 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     // Checkbox attributes are required per option only; drop any attribute-level flag.
     const required = newAttrType === "checkbox" ? false : newAttrRequired;
     if (editingAttrId) {
-      setAttributes(prev => prev.map(a => a.id === editingAttrId
+      return list.map(a => a.id === editingAttrId
         ? { ...a, name, type: newAttrType, required, options, requiredOptions }
-        : a));
-      resetAttrForm();
-      return;
+        : a);
     }
-    const newAttr: ProjectAttribute = {
+    return [...list, {
       id: "attr_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
       name,
       type: newAttrType,
       required,
       options,
       requiredOptions
-    };
-    setAttributes(prev => [...prev, newAttr]);
+    }];
+  };
+
+  const handleSaveAttribute = () => {
+    if (!newAttrName.trim()) return;
+    setAttributes(applyAttrForm(attributes));
     resetAttrForm();
   };
 
@@ -641,16 +645,9 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     }));
   };
 
-  const handleSaveType = () => {
-    if (!typeName.trim()) {
-      setEditSection("general");
-      alert(t("Name is required", "Názov je povinný", "Név megadása kötelező"));
-      return;
-    }
-
-    const typeId = editingType?.id || "pt_" + Date.now();
-    const newType: ProjectType = {
-      id: typeId,
+  /** The type as the editor currently holds it. */
+  const buildType = (id: string, attrs: ProjectAttribute[] = attributes): ProjectType => ({
+      id,
       name: typeName.trim(),
       description: typeDesc.trim(),
       icon: typeIcon,
@@ -666,20 +663,110 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
       // hasFiles stays true so the server keeps treating the slots as live.
       hasFiles: true,
       fileFields: fileFields.map(({ id, name }) => ({ id, name })),
-      attributes,
+      attributes: attrs,
       timelineEventTypes
-    };
+  });
 
+  /** Writes a type into the list: replaces the stored one, or appends a new one. */
+  const writeType = (next: ProjectType) => {
     setProjectTypes(prev => {
-      const exists = prev.some(t => t.id === typeId);
+      const exists = prev.some(t => t.id === next.id);
       if (exists) {
         // The list's column layout is edited from the projects table's View
         // menu, not here — carry whatever it holds now through the save.
-        return prev.map(t => t.id === typeId ? { ...newType, listColumns: t.listColumns } : t);
+        return prev.map(t => t.id === next.id ? { ...next, listColumns: t.listColumns } : t);
       } else {
-        return [...prev, newType];
+        return [...prev, next];
       }
     });
+  };
+
+  /* ── Autosave (existing types) ─────────────────────────────────────────────
+     An attribute's own "Add" / "Save changes" button used to change only this
+     editor's draft; the type was written by "Save Project Type" alone, and
+     closing the editor or going back threw the draft away without a word — so
+     an attribute that looked saved was gone after a reload. An existing type
+     now saves itself like the project view does: every change is written after
+     a short pause, and one still waiting when the editor closes goes out on the
+     way. A type being created has no record yet and keeps its Save button. */
+  const autosaveBaselineRef = React.useRef<string | null>(null);
+  const pendingTypeRef = React.useRef<ProjectType | null>(null);
+  const writeTypeRef = React.useRef(writeType);
+  writeTypeRef.current = writeType;
+
+  const flushPendingType = React.useCallback(() => {
+    const pending = pendingTypeRef.current;
+    if (!pending) return;
+    pendingTypeRef.current = null;
+    writeTypeRef.current(pending);
+  }, []);
+
+  // Leaving the settings screen altogether must not drop the last change.
+  useEffect(() => () => flushPendingType(), [flushPendingType]);
+
+  const editingTypeId = editingType?.id ?? null;
+  useEffect(() => {
+    autosaveBaselineRef.current = null;
+    pendingTypeRef.current = null;
+  }, [editingTypeId]);
+
+  useEffect(() => {
+    if (!editingTypeId || !typeName.trim()) return;
+    const next = buildType(editingTypeId);
+    const sig = JSON.stringify(next);
+    // The first render after opening is the stored type itself, not an edit.
+    if (autosaveBaselineRef.current === null) {
+      autosaveBaselineRef.current = sig;
+      return;
+    }
+    if (sig === autosaveBaselineRef.current) {
+      pendingTypeRef.current = null;
+      return;
+    }
+    pendingTypeRef.current = next;
+    const timer = window.setTimeout(() => {
+      autosaveBaselineRef.current = sig;
+      flushPendingType();
+    }, 600);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingTypeId, typeName, typeDesc, typeIcon, typeColor, hasTimeline, hasGantt, hasDeadline,
+      deadlineWarningDays, deadlineRequired, fileFields, attributes, timelineEventTypes]);
+
+  /** Something typed into the create form that Save would keep. */
+  const hasUnsavedNewType = () => isCreating && (
+    !!typeName.trim() || !!typeDesc.trim() || attributes.length > 0 || !!newAttrName.trim()
+    || timelineEventTypes.length > 0 || fileFields.length > 0
+  );
+
+  /** Close the editor. An existing type's last change is written first; a new
+      type that was never saved is only thrown away after asking. */
+  const handleCloseEditor = () => {
+    if (hasUnsavedNewType() && !window.confirm(t(
+      "This project type has not been saved yet. Discard it?",
+      "Tento typ projektu ešte nie je uložený. Zahodiť ho?",
+      "Ez a projekt típus még nincs mentve. Elveti?"
+    ))) return;
+    if (!isCreating && newAttrName.trim() && editingType) {
+      // An attribute filled in but not added yet is kept, like the Save button does.
+      writeType(buildType(editingType.id, applyAttrForm(attributes)));
+      pendingTypeRef.current = null;
+    } else {
+      flushPendingType();
+    }
+    setIsCreating(false);
+    setEditingType(null);
+  };
+
+  const handleSaveType = () => {
+    if (!typeName.trim()) {
+      setEditSection("general");
+      alert(t("Name is required", "Názov je povinný", "Név megadása kötelező"));
+      return;
+    }
+
+    pendingTypeRef.current = null;
+    writeType(buildType(editingType?.id || "pt_" + Date.now(), applyAttrForm(attributes)));
 
     setIsCreating(false);
     setEditingType(null);
@@ -711,6 +798,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     if (!window.confirm(confirmDeleteTypeMessage())) return;
 
     const typeId = editingType.id;
+    pendingTypeRef.current = null;
     setProjectTypes(prev => prev.filter(t => t.id !== typeId));
     setIsCreating(false);
     setEditingType(null);
@@ -735,10 +823,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
             {isCreating ? t("Create Project Type", "Vytvoriť typ projektu", "Projekt típus létrehozása") : t("Edit Project Type", "Upraviť typ projektu", "Projekt típus szerkesztése")}
           </h3>
           <button
-            onClick={() => {
-              setIsCreating(false);
-              setEditingType(null);
-            }}
+            onClick={handleCloseEditor}
             className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
           >
             <X className="h-5 w-5" />
@@ -1591,13 +1676,11 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
             )}
             <div className="flex items-center gap-3">
               <button
-                onClick={() => {
-                  setIsCreating(false);
-                  setEditingType(null);
-                }}
+                onClick={handleCloseEditor}
                 className="px-4 py-2.5 rounded-2xl border border-slate-200 text-xs font-black uppercase text-slate-500 hover:bg-slate-50 cursor-pointer"
               >
-                {t("Cancel", "Zrušiť", "Mégse")}
+                {/* An existing type saves itself, so there is nothing to cancel. */}
+                {isCreating ? t("Cancel", "Zrušiť", "Mégse") : t("Close", "Zavrieť", "Bezárás")}
               </button>
               <button
                 onClick={handleSaveType}
