@@ -308,11 +308,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const isEditingName = canEdit && isEditingNameState;
   const [nameDraft, setNameDraft] = useState("");
   const nameCancelledRef = React.useRef(false);
-  // The custom attributes card keeps its own Edit mode — a long list of
-  // inputs reads worse than the values — but it is only that card's, and
-  // every change in it saves on its own like the rest of the view.
-  const [isEditingAttrsState, setIsEditingAttrs] = useState(false);
-  const isEditingAttrs = canEdit && isEditingAttrsState;
+  // The custom attributes card is edited in place like the rest of the view —
+  // anyone who may edit sees the inputs, and every change saves on its own.
+  const isEditingAttrs = canEdit;
   const [dynamicData, setDynamicData] = useState<Record<string, any>>({});
   // The label being typed for a checkbox this project adds, per checkbox attribute.
   const [newChecklistLabels, setNewChecklistLabels] = useState<Record<string, string>>({});
@@ -479,7 +477,6 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   useEffect(() => {
     if (!project) return;
     setPickingClient(false);
-    setIsEditingAttrs(false);
     // A blank project has nothing to call it yet, so it opens on the name.
     setIsEditingName(isNew);
     nameCancelledRef.current = false;
@@ -1805,36 +1802,17 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           </div>
 
           {/* CUSTOM ATTRIBUTES — the type's own fields, on a card of their own,
-              two to a row. Its Edit mode is its own — the project card above is
-              edited in place — and every change in it saves itself; Done only
-              puts the values back in reading shape. A value that needs the full width
-              (long text, a file list, the money and contact pickers while
-              editing) takes the whole row. */}
+              two to a row, edited in place like the project card above; every
+              change saves itself. Viewers without edit rights get the values in
+              reading shape. A value that needs the full width (long text, a
+              file list, the money and contact pickers while editable) takes
+              the whole row. */}
           {(projectType.attributes || []).length > 0 && (
           <div className="shrink-0 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
             <div className="flex items-center justify-between gap-2 pb-3 mb-4 border-b border-slate-200">
               <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-widest">
                 {t("Custom Attributes", "Vlastné atribúty", "Egyedi attribútumok")}
               </h4>
-              {canEdit && (isEditingAttrs ? (
-                <button
-                  type="button"
-                  onClick={() => setIsEditingAttrs(false)}
-                  className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black uppercase tracking-wider shadow-sm transition-all active:scale-95 cursor-pointer"
-                >
-                  <Check className="h-3.5 w-3.5" />
-                  {t("Done", "Hotovo", "Kész")}
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  onClick={() => setIsEditingAttrs(true)}
-                  className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-[10px] font-black uppercase tracking-wider text-slate-500 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50 transition-all active:scale-95 cursor-pointer"
-                >
-                  <Edit3 className="h-3.5 w-3.5" />
-                  {t("Edit", "Upraviť", "Szerkesztés")}
-                </button>
-              ))}
             </div>
             <div className="grid grid-cols-2 gap-x-4 gap-y-4">
               {(projectType.attributes || []).map(attr => {

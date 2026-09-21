@@ -68,16 +68,13 @@ test.describe('Project autosave', () => {
       .poll(() => pushedProject(pushed)().managers, { timeout: 10_000 })
       .toEqual(['Erik', 'Mária']);
 
-    // The attributes card's own Edit leaves the project card alone.
-    await page.getByRole('button', { name: /^(Edit|Upraviť|Szerkesztés)$/ }).click();
-    await expect(page.getByRole('button', { name: /^(Done|Hotovo|Kész)$/ })).toBeVisible();
+    // Custom attributes are edited in place too — no Edit/Done mode.
+    await expect(page.getByRole('button', { name: /^(Edit|Upraviť|Szerkesztés|Done|Hotovo|Kész)$/ })).toHaveCount(0);
     const area = page.locator('input[type="number"]').first();
     await area.fill('200');
     await expect
       .poll(() => String((pushedProject(pushed)().data as Record<string, unknown> | undefined)?.['attr-area']), { timeout: 10_000 })
       .toBe('200');
-    await page.getByRole('button', { name: /^(Done|Hotovo|Kész)$/ }).click();
-    await expect(page.getByRole('button', { name: /^(Edit|Upraviť|Szerkesztés)$/ })).toBeVisible();
 
     await expect(page.getByTestId('project-save-state')).toHaveText(/All changes saved|Všetko uložené|Minden mentve/);
     await page.screenshot({ path: 'test-results/project-autosave.png', fullPage: false });
