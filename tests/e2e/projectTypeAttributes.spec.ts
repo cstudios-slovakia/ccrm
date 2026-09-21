@@ -15,6 +15,7 @@ const SAVE_CHANGES = /Save changes|Uložiť zmeny|Változtatások mentése/;
 const TYPE_WARNING = /data loss|strate údajov|adatvesztés/i;
 const NUMBER_TYPE = /Number|Číslo|Szám/;
 const TEXT_TYPE = /Text Field|Textové pole|Szövegmező/;
+const REQUIRED_FIELD = /^(Required field|Povinné pole|Kötelező mező)$/;
 
 async function openRoofTypeAttributes(page: Page) {
   await gotoView(page, '#projects');
@@ -97,13 +98,21 @@ test.describe('Project type attributes', () => {
     await startSession(page);
     await openRoofTypeAttributes(page);
 
-    await page.getByPlaceholder(/e\.g\. Dimensions|napr\. Rozmery|pl\. Méretek/).fill('Kontrola');
+    const nameInput = page.getByPlaceholder(/e\.g\. Dimensions|napr\. Rozmery|pl\. Méretek/);
+    await nameInput.fill('Kontrola');
+    // Scoped to the add-attribute form: the built-in Deadline card has its own toggle.
+    const form = nameInput.locator('xpath=ancestor::div[contains(@class,"rounded-2xl")][1]');
+    // Ordinary types carry an attribute-level Required toggle.
+    await expect(form.getByText(REQUIRED_FIELD)).toBeVisible();
     await page.getByRole('button', { name: TEXT_TYPE }).click();
     const search = page.getByPlaceholder(/Search|Hľadať|Keresés/);
     if (await search.isVisible().catch(() => false)) {
       await search.fill('Check');
     }
     await page.getByRole('option', { name: /Checkbox|Zaškrtávacie pole|Jelölőnégyzet/ }).click();
+
+    // A checkbox attribute is required per option, so the attribute-level toggle is gone.
+    await expect(form.getByText(REQUIRED_FIELD)).toHaveCount(0);
 
     const newOption = page.getByPlaceholder(/New option|Nová možnosť|Új opció/);
     const addOption = page.getByRole('button', { name: /^(Add|Pridať|Hozzáadás)$/ });
