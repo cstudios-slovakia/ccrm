@@ -5,6 +5,7 @@ import { cn } from "../utils/cn";
 import { LOCKED_PROJECT_COLUMN, moveProjectColumn } from "../utils/projectColumns";
 import type { ResolvedProjectColumn } from "../utils/projectColumns";
 import type { ProjectSort, ProjectSortKey } from "../utils/projectSort";
+import { useDragReorder } from "../hooks/useDragReorder";
 
 /* The sort select portals its option panel to <body>; a click in it must not
    read as a click outside this menu. */
@@ -65,53 +66,21 @@ export const ProjectListViewMenu: React.FC<ProjectListViewMenuProps> = ({
     };
   }, [open]);
 
-  /* Drag-and-drop over the column list — the held-key-plus-edge marker the
-     attribute list in project type settings uses too. */
-  const [draggedKey, setDraggedKey] = useState<string | null>(null);
-  const [dropTarget, setDropTarget] = useState<{ key: string; position: "before" | "after" } | null>(null);
-
-  const endDrag = () => {
-    setDraggedKey(null);
-    setDropTarget(null);
-  };
-
-  const handleDragStart = (e: React.DragEvent<HTMLElement>, key: string) => {
-    if (!canEditColumns || key === LOCKED_PROJECT_COLUMN) {
-      e.preventDefault();
-      return;
-    }
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", key);
-    setDraggedKey(key);
-  };
-
-  const handleDragOver = (e: React.DragEvent<HTMLElement>, targetKey: string) => {
-    if (!draggedKey || targetKey === LOCKED_PROJECT_COLUMN) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    const rect = e.currentTarget.getBoundingClientRect();
-    const position: "before" | "after" =
-      rect.height && e.clientY - rect.top > rect.height / 2 ? "after" : "before";
-    if (dropTarget?.key !== targetKey || dropTarget?.position !== position) {
-      setDropTarget({ key: targetKey, position });
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent<HTMLElement>) => {
-    e.preventDefault();
-    const dragKey = draggedKey;
-    const drop = dropTarget;
-    endDrag();
-    if (!canEditColumns || !dragKey || !drop) return;
-    onColumnsChange(moveProjectColumn(columns, dragKey, drop.key, drop.position));
-  };
+  /* Drag-and-drop over the column list — the same hook the attribute list in
+     project type settings and the projects list itself use. */
+  const columnDrag = useDragReorder({
+    enabled: canEditColumns,
+    onMove: (dragKey, targetKey, position) =>
+      onColumnsChange(moveProjectColumn(columns, dragKey, targetKey, position)),
+  });
 
   const toggleColumn = (key: string) => {
     if (!canEditColumns || key === LOCKED_PROJECT_COLUMN) return;
     onColumnsChange(columns.map(c => (c.key === key ? { ...c, visible: !c.visible } : c)));
   };
 
-  const sorted = sort.key !== "default";
+  // Neither the creation order nor a hand-set order has a direction to flip.
+  const sorted = sort.key !== "default" && sort.key !== "manual";
   const directions = [
     { dir: "asc" as const, Icon: ArrowDownNarrowWide, label: t("Ascending", "Vzostupne", "Növekvő") },
     { dir: "desc" as const, Icon: ArrowDownWideNarrow, label: t("Descending", "Zostupne", "Csökkenő") },
@@ -188,20 +157,16 @@ export const ProjectListViewMenu: React.FC<ProjectListViewMenuProps> = ({
               <div className="max-h-[50vh] overflow-y-auto scrollbar-thin -my-0.5">
                 {columns.map(col => {
                   const locked = col.key === LOCKED_PROJECT_COLUMN;
-                  const drop = draggedKey && dropTarget?.key === col.key ? dropTarget.position : null;
+                  const drop = columnDrag.dropAt(col.key);
                   const label = columnLabel(col);
                   const draggable = canEditColumns && !locked;
                   return (
                     <div
                       key={col.key}
-                      draggable={draggable}
-                      onDragStart={e => handleDragStart(e, col.key)}
-                      onDragEnd={endDrag}
-                      onDragOver={e => handleDragOver(e, col.key)}
-                      onDrop={handleDrop}
+                      {...columnDrag.rowProps(col.key, !locked, !locked)}
                       className={cn(
                         "group relative flex items-center gap-2 py-1 rounded-lg transition-opacity duration-150",
-                        draggedKey === col.key && "opacity-40"
+                        columnDrag.draggedId === col.key && "opacity-40"
                       )}
                     >
                       {drop === "before" && (

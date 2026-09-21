@@ -49,9 +49,11 @@ export interface UserPrefs {
   /**
    * Projects screen: which column the list is ordered by, or null for the
    * stored order. Loosely typed like themeMode; ProjectsView validates it with
-   * normalizeProjectSort() from utils/projectSort.ts.
+   * normalizeProjectSort() from utils/projectSort.ts. `order` is the hand-set
+   * order dragged into place (project ids), kept here so switching to it is
+   * the same write as saving it — see storedManualOrder().
    */
-  projectsSort: { key: string; direction: string } | null;
+  projectsSort: { key: string; direction: string; order?: string[] } | null;
   /**
    * Projects screen: the table's columns while it lists more than one project
    * type — built-ins only, since an attribute belongs to one type. A list of a

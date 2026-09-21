@@ -10,6 +10,8 @@ import { DEFAULT_DEADLINE_WARNING_DAYS, normalizeDeadlineWarningDays } from "../
 import type { Language } from "../utils/translations";
 import { useUserPref } from "../utils/userPrefs";
 import { registerPendingSave } from "../utils/pendingSaves";
+import { useDragReorder } from "../hooks/useDragReorder";
+import { moveRelative } from "../utils/reorder";
 
 /**
  * PROJECT-AUTO-CREATE-DISABLED (v1.9.29): automatic project creation from leads
@@ -483,57 +485,12 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setFileFields(prev => prev.filter(f => f.id !== fieldId));
   };
 
-  /* Drag-and-drop reordering of the custom attributes. The dragged row is held
-     by id, and the drop marker by the row it points at plus which edge of it,
-     so the blue line sits exactly where the attribute will land. */
-  const [draggedAttrId, setDraggedAttrId] = useState<string | null>(null);
-  const [attrDropTarget, setAttrDropTarget] = useState<{ id: string; position: "before" | "after" } | null>(null);
-
-  const endAttrDrag = () => {
-    setDraggedAttrId(null);
-    setAttrDropTarget(null);
-  };
-
-  const handleAttrDragStart = (e: React.DragEvent<HTMLElement>, id: string) => {
-    if (!canEdit) {
-      e.preventDefault();
-      return;
-    }
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", id);
-    setDraggedAttrId(id);
-  };
-
-  const handleAttrDragOver = (e: React.DragEvent<HTMLElement>, targetId: string) => {
-    if (!draggedAttrId) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    const rect = e.currentTarget.getBoundingClientRect();
-    const position: "before" | "after" =
-      rect.height && e.clientY - rect.top > rect.height / 2 ? "after" : "before";
-    if (attrDropTarget?.id !== targetId || attrDropTarget?.position !== position) {
-      setAttrDropTarget({ id: targetId, position });
-    }
-  };
-
-  const handleAttrDrop = (e: React.DragEvent<HTMLElement>) => {
-    e.preventDefault();
-    const dragId = draggedAttrId;
-    const drop = attrDropTarget;
-    endAttrDrag();
-    if (!canEdit || !dragId || !drop) return;
-    setAttributes(prev => {
-      const from = prev.findIndex(a => a.id === dragId);
-      const onto = prev.findIndex(a => a.id === drop.id);
-      if (from === -1 || onto === -1) return prev;
-      const next = [...prev];
-      const [moved] = next.splice(from, 1);
-      // The target index shifts by one once the dragged row is lifted out from above it.
-      const base = onto > from ? onto - 1 : onto;
-      next.splice(drop.position === "after" ? base + 1 : base, 0, moved);
-      return next;
-    });
-  };
+  /* Drag-and-drop reordering of the custom attributes — see useDragReorder. */
+  const attrDrag = useDragReorder({
+    enabled: canEdit,
+    onMove: (dragId, targetId, position) =>
+      setAttributes(prev => moveRelative(prev, a => a.id, dragId, targetId, position)),
+  });
 
   const handleMoveAttribute = (index: number, direction: "up" | "down") => {
     const nextIndex = direction === "up" ? index - 1 : index + 1;
@@ -1463,22 +1420,18 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                 </div>
               ) : (
                 attributes.map((attr, idx) => {
-                  const drop = draggedAttrId && attrDropTarget?.id === attr.id ? attrDropTarget.position : null;
+                  const drop = attrDrag.dropAt(attr.id);
                   const isEditing = editingAttrId === attr.id;
                   return (
                   <div
                     key={attr.id}
-                    draggable={canEdit && !isEditing}
-                    onDragStart={e => handleAttrDragStart(e, attr.id)}
-                    onDragEnd={endAttrDrag}
-                    onDragOver={e => handleAttrDragOver(e, attr.id)}
-                    onDrop={handleAttrDrop}
+                    {...attrDrag.rowProps(attr.id, !isEditing)}
                     title={canEdit && !isEditing ? t("Drag to reorder", "Potiahnutím zmeníte poradie", "Húzza az átrendezéshez") : undefined}
                     className={cn(
                       "group relative flex items-center justify-between p-3 bg-white border rounded-2xl shadow-sm text-xs font-semibold transition-[opacity,box-shadow,border-color] duration-150",
                       isEditing ? "border-indigo-300 ring-2 ring-indigo-100" : "border-slate-200",
                       canEdit && !isEditing && "cursor-grab active:cursor-grabbing",
-                      draggedAttrId === attr.id && "opacity-40"
+                      attrDrag.draggedId === attr.id && "opacity-40"
                     )}
                   >
                     {drop === "before" && (

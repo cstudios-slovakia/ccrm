@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import * as Icons from "lucide-react";
-import { Plus, Trash2, Settings, Search, Users, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, CalendarClock, Flag, ArrowUp, ArrowDown, ArrowUpDown, Lock, Star, Check, Minus, Paperclip } from "lucide-react";
+import { Plus, Trash2, Settings, Search, Users, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, CalendarClock, Flag, ArrowUp, ArrowDown, ArrowUpDown, Lock, Star, Check, Minus, Paperclip, GripVertical, GripHorizontal } from "lucide-react";
 import type { Project, ProjectAttribute, ProjectAutoCreateSettings, ProjectStatus, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory } from "../types";
 import { ProjectDetailsView } from "./ProjectDetailsView";
 import type { Task } from "../types";
@@ -29,7 +29,11 @@ import {
 import type { ProjectDeadlineStatus } from "../utils/projects";
 import { todayLocal, formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
 import { useUserPref } from "../utils/userPrefs";
-import { isAttributeSortKey, newestFirst, nextProjectSort, normalizeProjectSort, sortProjects } from "../utils/projectSort";
+import { moveRelative, type DropPosition } from "../utils/reorder";
+import { useDragReorder } from "../hooks/useDragReorder";
+import { useDragAutoScroll } from "../hooks/useDragAutoScroll";
+import { useGridFlip } from "../hooks/useGridFlip";
+import { applyManualOrder, isAttributeSortKey, newestFirst, nextProjectSort, normalizeProjectSort, sortProjects, storedManualOrder } from "../utils/projectSort";
 import type { ProjectSort, ProjectSortKey } from "../utils/projectSort";
 import { matchesRatingFilter, ratingFilterOptions, ratingValue } from "../utils/rating";
 import {
@@ -210,7 +214,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
      the choice follows the user to their next device. */
   const [storedSort, setStoredSort] = useUserPref("projectsSort");
   const sort = normalizeProjectSort(storedSort);
-  const setSort = (next: ProjectSort) => setStoredSort(next.key === "default" ? null : next);
+  /* The order dragged into place rides along in the same preference, so it
+     survives a detour through a column sort; only Reset forgets it. */
+  const manualOrder = useMemo(() => storedManualOrder(storedSort), [storedSort]);
+  const setSort = (next: ProjectSort, order: string[] = manualOrder) =>
+    setStoredSort(next.key === "default" && order.length === 0
+      ? null
+      : { key: next.key, direction: next.direction, ...(order.length > 0 ? { order } : {}) });
 
   /* Set when someone picks "New project type" from the create dropdown; handed
      to ProjectSettings, which opens its create form and hands it straight back. */
@@ -505,16 +515,20 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     [activeColumns]
   );
 
-  /* The filtered list in the chosen order. Before a column is picked that is the
+  /* Every project in the chosen order. Before a column is picked that is the
      date of creation, newest first — never the date of the last edit — and it is
      also what breaks ties between equal values. A project with no value for the
-     sorted column (no deadline, no roadmap, a blank attribute) always goes last. */
-  const sortedProjects = useMemo(() => {
+     sorted column (no deadline, no roadmap, a blank attribute) always goes last.
+     "Custom order" is the one dragged into place (see handleProjectMove).
+     The whole list, not just the filtered one, because a drag made while the
+     list is filtered still has to leave the hidden projects somewhere. */
+  const orderedProjects = useMemo(() => {
     const statusOrder = projectStatusOrder() as string[];
     const contactName = (id: string) => leads.find(l => l.id === id)?.name || null;
     const moneyAmount = (raw: unknown) => parseMoneyValue(raw, defaultCurrency).amount;
 
-    return sortProjects(newestFirst(filteredProjects), effectiveSort, p => {
+    const incoming = effectiveSort.key === "manual" ? applyManualOrder(newestFirst(projects), manualOrder) : newestFirst(projects);
+    return sortProjects(incoming, effectiveSort, p => {
       const pType = projectTypes.find(pt => pt.id === p.projectTypeId);
       const rank = statusOrder.indexOf(p.status);
       let attributes: Record<string, string | number | null> | undefined;
@@ -538,13 +552,43 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filteredProjects, effectiveSort.key, effectiveSort.direction, projectTypes, leads, today, sortableAttributes, defaultCurrency]);
+  }, [projects, manualOrder, effectiveSort.key, effectiveSort.direction, projectTypes, leads, today, sortableAttributes, defaultCurrency]);
+
+  /* The filtered list, in that order. */
+  const sortedProjects = useMemo(() => {
+    const visible = new Set(filteredProjects.map(p => p.id));
+    return orderedProjects.filter(p => visible.has(p.id));
+  }, [orderedProjects, filteredProjects]);
+
+  /* Drag a row or a card onto another to put it there. The order is the user's
+     own view preference, like the sort, so anyone who can see the list may
+     rearrange it. Dropping while a column sort is on adopts what is on screen
+     as the starting point and switches the list to "Custom order" — the drop
+     would otherwise be undone by the sort on the very next frame. */
+  const handleProjectMove = (dragId: string, targetId: string, position: DropPosition) => {
+    const ids = orderedProjects.map(p => p.id);
+    setSort({ key: "manual", direction: "asc" }, moveRelative(ids, id => id, dragId, targetId, position));
+  };
+  const projectDrag = useDragReorder({
+    enabled: true,
+    axis: viewMode === "grid" ? "horizontal" : "vertical",
+    onMove: handleProjectMove,
+  });
+
+  // A long list scrolls under the pointer while a row is dragged near an edge.
+  const resultsRef = useRef<HTMLDivElement | null>(null);
+  useDragAutoScroll(projectDrag.draggedId !== null, resultsRef);
+
+  // Cards glide to their new slots after a drop (or a re-sort) instead of jumping.
+  const gridRef = useRef<HTMLDivElement | null>(null);
+  useGridFlip(gridRef, sortedProjects.map(p => p.id).join("|"), viewMode === "grid");
 
   /* The dropdown and the table headers write the same preference, so the
      dropdown offers the attribute columns the table is currently showing —
      otherwise the cards view could not be ordered by one at all. */
   const sortOptions: { value: ProjectSortKey; label: string }[] = [
     { value: "default", label: t("Newest first", "Najnovšie prvé", "Legújabb elöl") },
+    { value: "manual", label: t("Custom order (drag & drop)", "Vlastné poradie (potiahnutím)", "Egyéni sorrend (húzással)") },
     { value: "name", label: t("Project name", "Názov projektu", "Projekt neve") },
     { value: "client", label: t("Client", "Klient", "Ügyfél") },
     { value: "type", label: t("Type", "Typ", "Típus") },
@@ -1175,7 +1219,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     : t(`Columns of the "${layoutType.name}" type. Only someone who can edit project types can change them.`, `Stĺpce typu „${layoutType.name}“. Zmeniť ich môže len ten, kto smie upravovať typy projektov.`, `A(z) „${layoutType.name}” típus oszlopai. Csak projekt típusokat szerkeszteni jogosult felhasználó módosíthatja őket.`))
                   : t("All types: built-in columns only. Filter the list by one type to show its own attributes as columns.", "Všetky typy: len vstavané stĺpce. Vyfiltrujte zoznam podľa typu a zobrazíte aj jeho atribúty.", "Minden típus: csak beépített oszlopok. Szűrjön egy típusra, hogy az attribútumai is oszlopként megjelenjenek.")}
                 onReset={() => {
-                  setSort({ key: "default", direction: "asc" });
+                  setSort({ key: "default", direction: "asc" }, []);
                   if (canEditColumns) saveColumns(null);
                 }}
               />
@@ -1237,7 +1281,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               )}
             </div>
           ) : viewMode === "list" ? (
-            <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass mt-6 overflow-hidden">
+            <div ref={resultsRef} className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass mt-6 overflow-hidden">
               <div className="overflow-x-auto scrollbar-thin">
                 <table className="w-full text-left border-collapse">
                   {/* The head is drawn from the layout the project type set —
@@ -1286,18 +1330,33 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                       const title = projectDisplayName(p, leads, t("Untitled project", "Projekt bez názvu", "Névtelen projekt"));
                       const progress = calculateProgress(p);
                       const dl = evaluateProjectDeadline(p, pType, today);
+                      const drop = projectDrag.dropAt(p.id);
 
                       return (
                         <tr
                           key={p.id}
+                          data-project-row={p.id}
+                          {...projectDrag.rowProps(p.id)}
                           onClick={() => {
                             setEditingProjectType(pType);
                             setEditingProject(p);
                           }}
-                          className="border-b border-slate-100 last:border-0 hover:bg-indigo-50/40 transition-colors cursor-pointer group"
+                          className={`border-b border-slate-100 last:border-0 hover:bg-indigo-50/40 transition-[background-color,opacity] duration-150 cursor-pointer group ${
+                            projectDrag.draggedId === p.id ? "opacity-40" : ""
+                          } ${
+                            // A table row cannot hold a positioned marker, so the drop line is an inset edge on its cells.
+                            drop === "before" ? "[&>td]:shadow-[inset_0_2px_0_0_var(--color-indigo-500)]"
+                              : drop === "after" ? "[&>td]:shadow-[inset_0_-2px_0_0_var(--color-indigo-500)]" : ""
+                          }`}
                         >
-                          {activeColumns.map(col => (
-                            <td key={col.key} className="px-4 py-3">
+                          {activeColumns.map((col, colIndex) => (
+                            <td key={col.key} className={`px-4 py-3 ${colIndex === 0 ? "relative" : ""}`}>
+                              {colIndex === 0 && (
+                                <GripVertical
+                                  aria-hidden
+                                  className="absolute left-0.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity duration-150 cursor-grab"
+                                />
+                              )}
                               {renderColumnCell(col, { project: p, pType, lead, title, progress, dl })}
                             </td>
                           ))}
@@ -1321,7 +1380,10 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               </div>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6">
+            <div
+              ref={(el) => { gridRef.current = el; resultsRef.current = el; }}
+              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6"
+            >
               {sortedProjects.map(p => {
                 const pType = projectTypes.find(t => t.id === p.projectTypeId);
                 if (!pType) return null;
@@ -1330,15 +1392,21 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 const title = projectDisplayName(p, leads, t("Untitled project", "Projekt bez názvu", "Névtelen projekt"));
                 const progress = calculateProgress(p);
                 const dl = evaluateProjectDeadline(p, pType, today);
+                const drop = projectDrag.dropAt(p.id);
 
                 return (
                   <div
                     key={p.id}
+                    data-flip={p.id}
+                    data-project-card={p.id}
+                    {...projectDrag.rowProps(p.id)}
                     onClick={() => {
                       setEditingProjectType(pType);
                       setEditingProject(p);
                     }}
-                    className="glass-panel p-5 rounded-3xl border border-white/60 bg-white/95 shadow-glass hover:shadow-lg transition-all duration-300 cursor-pointer flex flex-col text-left group relative"
+                    className={`glass-panel p-5 rounded-3xl border border-white/60 bg-white/95 shadow-glass hover:shadow-lg transition-all duration-300 cursor-pointer flex flex-col text-left group relative ${
+                      projectDrag.draggedId === p.id ? "opacity-40" : ""
+                    }`}
                   >
                     {/* Project Type Badge */}
                     <div className="flex items-center justify-between mb-4">
@@ -1431,6 +1499,22 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                       >
                         <Trash2 className="h-4.5 w-4.5" />
                       </button>
+                    )}
+
+                    {/* Drag affordance. Last in the card on purpose: useGridFlip
+                        counter-scales a card's first child while it glides. */}
+                    <GripHorizontal
+                      aria-hidden
+                      className="absolute left-1/2 top-1 -translate-x-1/2 h-4 w-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity duration-150 cursor-grab"
+                    />
+
+                    {/* Drop marker in the gap beside the card — cards flow along a row. */}
+                    {drop && (
+                      <span
+                        className={`pointer-events-none absolute inset-y-4 w-1 rounded-full bg-indigo-500 animate-in fade-in duration-150 ${
+                          drop === "before" ? "-left-3.5" : "-right-3.5"
+                        }`}
+                      />
                     )}
                   </div>
                 );

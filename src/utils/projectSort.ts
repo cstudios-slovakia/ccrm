@@ -2,7 +2,7 @@
 // especially "a project with no value sorts last, whichever way you sort" —
 // are the same in the table, the cards, and the tests.
 
-export type BuiltinProjectSortKey = "default" | "name" | "client" | "type" | "managers" | "rating" | "deadline" | "progress" | "status";
+export type BuiltinProjectSortKey = "default" | "manual" | "name" | "client" | "type" | "managers" | "rating" | "deadline" | "progress" | "status";
 
 /**
  * A column to order by: one of the built-in ones, or `attr:<attributeId>` for a
@@ -49,6 +49,7 @@ export function newestFirst<T extends { createdAt?: string | null }>(items: T[])
 
 export const PROJECT_SORT_KEYS: readonly BuiltinProjectSortKey[] = [
   "default",
+  "manual",
   "name",
   "client",
   "type",
@@ -75,6 +76,36 @@ export function normalizeProjectSort(value: unknown): ProjectSort {
       : "default";
   const direction = v?.direction === "desc" ? "desc" : "asc";
   return { key, direction };
+}
+
+/**
+ * The hand-set order — project ids, first to last — dragged into place in the
+ * list or the cards. It travels inside the stored sort preference rather than
+ * as a preference of its own, so a drop that also switches the list to
+ * "manual" is one write, and picking a column and coming back to "manual"
+ * finds the order where it was left. Anything that is not a list of strings
+ * reads as no order at all.
+ */
+export function storedManualOrder(value: unknown): string[] {
+  const order = (value as { order?: unknown } | null | undefined)?.order;
+  return Array.isArray(order) ? order.filter((id): id is string => typeof id === "string") : [];
+}
+
+/**
+ * Puts `items` in the hand-set order. Anything the order has never seen — a
+ * project created since the last drag, or one another user added — goes on
+ * top, keeping the incoming order among themselves, the same place a new
+ * project appears in the default newest-first list. Ids in the order that no
+ * longer match an item are skipped. Sorts a copy.
+ */
+export function applyManualOrder<T extends { id: string }>(items: readonly T[], order: readonly string[]): T[] {
+  const rank = new Map<string, number>();
+  order.forEach((id, i) => { if (!rank.has(id)) rank.set(id, i); });
+  const unranked = items.filter(item => !rank.has(item.id));
+  const ranked = items
+    .filter(item => rank.has(item.id))
+    .sort((a, b) => (rank.get(a.id) as number) - (rank.get(b.id) as number));
+  return [...unranked, ...ranked];
 }
 
 /**
@@ -119,7 +150,7 @@ export interface ProjectSortValues {
 function sortValueFor(values: ProjectSortValues, key: ProjectSortKey): string | number | null {
   if (isAttributeSortKey(key)) return values.attributes?.[key] ?? null;
   if (key === "status") return values.statusRank;
-  if (key === "default") return null;
+  if (key === "default" || key === "manual") return null;
   return values[key];
 }
 
@@ -128,11 +159,12 @@ const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: tr
 const isEmpty = (v: string | number | null) => v === null || v === "";
 
 /**
- * Sorts a copy of `items`. Ties, and the "default" key, keep the incoming order.
+ * Sorts a copy of `items`. Ties, and the "default" and "manual" keys, keep the
+ * incoming order — the caller applies the hand-set one (applyManualOrder).
  * Empty values always go last, in both directions.
  */
 export function sortProjects<T>(items: T[], sort: ProjectSort, valuesOf: (item: T) => ProjectSortValues): T[] {
-  if (sort.key === "default") return items.slice();
+  if (sort.key === "default" || sort.key === "manual") return items.slice();
   const sign = sort.direction === "desc" ? -1 : 1;
 
   return items

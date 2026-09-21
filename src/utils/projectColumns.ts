@@ -5,6 +5,7 @@
 // two hand-written copies of the column list they replaced already had.
 
 import type { ProjectAttribute, ProjectChecklistExtra, ProjectListColumn } from "../types";
+import { moveRelative, type DropPosition } from "./reorder.ts";
 
 /** A column that is always there, whatever the project type. */
 export type BuiltinProjectColumnKey =
@@ -173,18 +174,10 @@ export function moveProjectColumn<T extends { key: string }>(
   columns: readonly T[],
   dragKey: string,
   targetKey: string,
-  position: "before" | "after",
+  position: DropPosition,
 ): T[] {
-  const from = columns.findIndex(c => c.key === dragKey);
-  const onto = columns.findIndex(c => c.key === targetKey);
-  if (from === -1 || onto === -1 || dragKey === targetKey) return columns.slice();
   if (dragKey === LOCKED_PROJECT_COLUMN) return columns.slice();
-
-  const next = columns.slice();
-  const [moved] = next.splice(from, 1);
-  // The target index shifts by one once the dragged row is lifted out from above it.
-  const base = onto > from ? onto - 1 : onto;
-  next.splice(position === "after" ? base + 1 : base, 0, moved);
+  const next = moveRelative(columns, c => c.key, dragKey, targetKey, position);
 
   if (next[0]?.key !== LOCKED_PROJECT_COLUMN && columns[0]?.key === LOCKED_PROJECT_COLUMN) {
     return columns.slice();
