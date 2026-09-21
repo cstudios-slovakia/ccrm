@@ -7,6 +7,7 @@ import { cn } from "../utils/cn";
 import { SOCIAL_MEDIA_ENABLED } from "../utils/featureFlags";
 import type { UserProfile, RolePermission, UnifiedEntryRegistry, CustomDashboard } from "../types";
 import { StartMenu } from "./StartMenu";
+import { FlockIcon } from "./icons/FlockIcon";
 import { isHomeDashboard } from "../utils/dashboardWidgets";
 
 /**
@@ -257,6 +258,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       "overview", 
       "projects",
       "rag_ai", 
+      "sai",
       "leads", 
       "clients", 
       "invoices",
@@ -456,6 +458,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       { id: "overview", label: getTranslation(systemLanguage, "sidebar.analytics"), icon: BarChart3, color: "var(--color-cyan-600)" },
       { id: "projects", label: systemLanguage === "sk" ? "Projekty" : systemLanguage === "hu" ? "Projektek" : "Projects", icon: Icons.Briefcase || LayoutDashboard, color: "var(--color-purple-500)", isLavender: true },
       { id: "rag_ai", label: systemLanguage === "sk" ? "RAG AI Asistent" : systemLanguage === "hu" ? "RAG AI Asszisztens" : "RAG AI Assistant", icon: Brain, color: "var(--color-violet-500)", isPurple: true },
+      { id: "sai", label: "SAI", icon: FlockIcon, color: "#8b5cf6", isPurpleToGreen: true },
       { id: "leads", label: getTranslation(systemLanguage, "sidebar.leads"), icon: TableProperties, color: "var(--color-blue-600)" },
       { id: "clients", label: getTranslation(systemLanguage, "sidebar.clients"), icon: Users, color: "var(--color-emerald-600)" },
       { id: "invoices", label: systemLanguage === "sk" ? "Cenové ponuky & Faktúry" : systemLanguage === "hu" ? "Ajánlatok és számlák" : "Invoices & Offers", icon: Icons.FileText || Coins, color: "var(--color-indigo-500)", isIndigo: true },
@@ -593,6 +596,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       ? (isActive
                           ? "text-white font-bold"
                           : "text-slate-400 hover:text-slate-700 hover:bg-slate-100/50")
+                      : item.isPurpleToGreen
+                        ? (isActive
+                            ? "bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 text-white font-bold shadow-lg shadow-purple-600/30 border border-purple-500/20"
+                            : "text-purple-600 hover:text-emerald-600 hover:bg-gradient-to-r hover:from-purple-50/60 hover:to-emerald-50/60")
                       : item.isPurple
                         ? (isActive
                             ? "bg-purple-600 text-white font-bold shadow-lg shadow-purple-600/30 border border-purple-500/20"
@@ -660,6 +667,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       ? "text-slate-700 font-semibold"
                       : (item.isCustomUE || item.isCustomDash)
                         ? (isActive ? "text-white font-bold" : "text-slate-500 font-semibold group-hover:text-slate-700")
+                        : item.isPurpleToGreen
+                          ? (isActive ? "text-white font-bold" : "text-transparent bg-clip-text bg-gradient-to-r from-purple-700 to-emerald-600 font-bold")
                         : item.isPurple 
                           ? (isActive ? "text-white font-bold" : "text-purple-600 font-bold")
                           : item.isLavender
@@ -928,7 +937,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           "lg:hidden fixed left-0 right-0 bg-white/95 backdrop-blur-md transition-all duration-500 ease-in-out z-[20000] border-t border-slate-200/80 shadow-[0_-15px_42px_rgba(0,0,0,0.18),0_-5px_15px_rgba(0,0,0,0.08)] select-none shrink-0",
           isMobileMenuOpen 
             ? "top-0 bottom-0 h-screen w-full p-6 flex flex-col justify-between" 
-            : "bottom-0 h-16 w-full px-4 py-2 flex flex-col justify-center"
+            : "bottom-0 h-16 w-full px-2 sm:px-4 py-2 flex flex-col justify-center"
         )}
       >
         {/* Swipe Handle Indicator / Close click target */}
@@ -968,13 +977,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Reorganizing flex container */}
         <div className={cn(
           "flex transition-all duration-500 ease-in-out w-full",
-          isMobileMenuOpen ? "flex-col flex-1 justify-between items-start" : "flex-row items-center justify-between"
+          isMobileMenuOpen ? "flex-col flex-1 justify-between items-start" : "flex-row items-center justify-between gap-1"
         )}>
           
           {/* Main Navigation Links */}
           <div className={cn(
             "flex transition-all duration-300",
-            isMobileMenuOpen ? "flex-col w-full space-y-3" : "flex-row items-center gap-2 flex-1 pr-2"
+            isMobileMenuOpen ? "flex-col w-full space-y-3" : "flex-row items-center gap-1 sm:gap-2 flex-1 pr-1 sm:pr-2 overflow-x-auto scrollbar-none"
           )}>
             {menuItems.map((item: any) => {
               const Icon = item.icon;
@@ -995,8 +1004,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     "transition-all duration-300 flex items-center shrink-0 border select-none",
                     isMobileMenuOpen 
                       ? "w-full px-5 py-3.5 rounded-2xl gap-3 text-left font-black" 
-                      : "h-11 w-11 rounded-xl justify-center",
-                    item.isPurple
+                      : "h-10 w-10 sm:h-11 sm:w-11 rounded-xl justify-center",
+                    item.isPurpleToGreen
+                      ? (isActive
+                          ? "bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 border-purple-700 text-white shadow-md shadow-purple-500/20"
+                          : (isMobileMenuOpen
+                              ? "bg-purple-50/80 border-purple-200 text-purple-700"
+                              : "bg-purple-50/50 border-purple-100 text-purple-600 hover:bg-purple-100"))
+                    : item.isPurple
                       ? (isActive
                           ? "bg-purple-600 border-purple-700 text-white"
                           : (isMobileMenuOpen
@@ -1060,11 +1075,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           {/* Settings & Logout Controls at the bottom */}
           <div className={cn(
             "flex transition-all duration-300",
-            isMobileMenuOpen ? "flex-col w-full space-y-3.5 mt-auto border-t border-slate-100/80 pt-5" : "flex-row items-center gap-2"
+            isMobileMenuOpen ? "flex-col w-full space-y-3.5 mt-auto border-t border-slate-100/80 pt-5" : "flex-row items-center gap-1 sm:gap-2 shrink-0"
           )}>
             {/* Divider indicated only in horizontal bottom bar */}
             {!isMobileMenuOpen && showSettings && (
-              <div className="h-6 w-[2px] bg-slate-200 shrink-0 mx-1" />
+              <div className="h-6 w-[2px] bg-slate-200 shrink-0 mx-0.5 sm:mx-1" />
             )}
 
 
@@ -1081,7 +1096,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   "transition-all duration-300 flex items-center shrink-0 border select-none",
                   isMobileMenuOpen 
                     ? "w-full px-5 py-3.5 rounded-2xl gap-3 text-left font-black" 
-                    : "h-11 w-11 rounded-xl justify-center",
+                    : "h-10 w-10 sm:h-11 sm:w-11 rounded-xl justify-center",
                   (activeTab.startsWith("settings") || activeTab.startsWith("user-"))
                     ? "bg-indigo-600 border-indigo-700 text-white"
                     : (isMobileMenuOpen 
@@ -1113,7 +1128,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 "transition-all duration-300 flex items-center shrink-0 border select-none",
                 isMobileMenuOpen 
                   ? "w-full px-5 py-3.5 rounded-2xl gap-3 text-left font-black" 
-                  : "h-11 w-11 rounded-xl justify-center",
+                  : "h-10 w-10 sm:h-11 sm:w-11 rounded-xl justify-center",
                 isMobileMenuOpen 
                   ? "bg-transparent border-transparent text-slate-500 hover:text-slate-800 hover:bg-rose-50" 
                   : "bg-slate-50/50 border-slate-200 text-slate-500 hover:bg-rose-50 hover:border-rose-200 hover:text-rose-600"

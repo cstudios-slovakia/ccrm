@@ -1,5 +1,67 @@
 import React from "react";
-import { FileText } from "lucide-react";
+import { FileText, User, Folder, CheckSquare, Receipt, Calendar, Sparkles, ExternalLink, ArrowRight } from "lucide-react";
+
+export const EntityPill: React.FC<{ label: string; url: string }> = ({ label, url }) => {
+  const handleEntityClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    if (typeof window !== "undefined") {
+      window.location.hash = url;
+      window.dispatchEvent(new CustomEvent("ccrm:navigate", { detail: { url } }));
+    }
+  };
+
+  const rawHash = url.startsWith("#") ? url.slice(1).toLowerCase() : url.toLowerCase();
+  
+  let Icon = ArrowRight;
+  let colorStyles = "bg-purple-50 hover:bg-purple-100 border-purple-200 text-purple-700 hover:text-purple-900";
+  let iconColor = "text-purple-600";
+
+  if (rawHash.startsWith("client-") || rawHash === "clients") {
+    Icon = User;
+    colorStyles = "bg-emerald-50 hover:bg-emerald-100 border-emerald-200 text-emerald-800 hover:text-emerald-950";
+    iconColor = "text-emerald-600";
+  } else if (rawHash.startsWith("lead-") || rawHash === "leads") {
+    Icon = Sparkles;
+    colorStyles = "bg-indigo-50 hover:bg-indigo-100 border-indigo-200 text-indigo-800 hover:text-indigo-950";
+    iconColor = "text-indigo-600";
+  } else if (rawHash.startsWith("project") || rawHash === "projects") {
+    Icon = Folder;
+    colorStyles = "bg-blue-50 hover:bg-blue-100 border-blue-200 text-blue-800 hover:text-blue-950";
+    iconColor = "text-blue-600";
+  } else if (rawHash.startsWith("finance") || rawHash === "finances" || rawHash.startsWith("invoice")) {
+    Icon = Receipt;
+    colorStyles = "bg-amber-50 hover:bg-amber-100 border-amber-200 text-amber-800 hover:text-amber-950";
+    iconColor = "text-amber-600";
+  } else if (rawHash.startsWith("task")) {
+    Icon = CheckSquare;
+    colorStyles = "bg-rose-50 hover:bg-rose-100 border-rose-200 text-rose-800 hover:text-rose-950";
+    iconColor = "text-rose-600";
+  } else if (rawHash.startsWith("meeting")) {
+    Icon = Calendar;
+    colorStyles = "bg-cyan-50 hover:bg-cyan-100 border-cyan-200 text-cyan-800 hover:text-cyan-950";
+    iconColor = "text-cyan-600";
+  }
+
+  // Clean up display label: remove formatting characters and extra brackets
+  let displayLabel = (label || "").replace(/[\*_`]/g, "").trim();
+  displayLabel = displayLabel.replace(/^\[+|\]+$/g, "").trim();
+  if (!displayLabel && url.startsWith("#")) {
+    displayLabel = url.slice(1).replace(/^(?:client-|lead-)/, "");
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleEntityClick}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[11px] font-bold transition-all cursor-pointer hover:scale-[1.03] active:scale-95 mx-1 my-0.5 select-none shadow-2xs group ${colorStyles}`}
+      title={`Open ${displayLabel} in CRM`}
+    >
+      <Icon className={`h-3 w-3 shrink-0 ${iconColor} group-hover:scale-110 transition-transform`} />
+      <span className="truncate max-w-[240px]">{displayLabel}</span>
+      <ArrowRight className="h-2.5 w-2.5 opacity-40 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
+    </button>
+  );
+};
 
 export const FilePill: React.FC<{ fileName: string }> = ({ fileName }) => {
   const handlePillClick = () => {
@@ -81,17 +143,63 @@ export const renderTextWithFilePills = (text: string): React.ReactNode => {
   return parts.length > 0 ? parts : text;
 };
 
+// Helper to normalize bare entity links like Name(#client-Name) or (#client-Name) into standard markdown links [Name](#client-Name)
+export const normalizeEntityLinks = (text: string): string => {
+  if (!text) return text;
+  
+  // 1. Convert Name(#client-Name) or Name(#lead-Name) where the text before (# ends with the hash target
+  let result = text.replace(/([^\n\[\]\(\)]+)\(#((?:client-|lead-|project|finance|invoice|task|meeting)[^\)]+)\)/gi, (_match, prefix, hash) => {
+    const entityName = hash.replace(/^(?:client-|lead-)/, "").trim();
+    const trimmedPrefix = prefix.trim();
+    if (entityName && trimmedPrefix.endsWith(entityName)) {
+      const before = prefix.slice(0, prefix.lastIndexOf(entityName));
+      return `${before}[${entityName}](#${hash})`;
+    }
+    return `[${trimmedPrefix}](#${hash})`;
+  });
+
+  // 2. Any bare (#client-Name) without square brackets
+  result = result.replace(/(?<!!)(?<!\])\(#((?:client-|lead-|project|finance|invoice|task|meeting)[^\)]+)\)/gi, (_match, hash) => {
+    const cleanHash = hash.trim();
+    let derivedLabel = cleanHash;
+    if (cleanHash.startsWith("client-")) {
+      derivedLabel = cleanHash.replace(/^client-/, "");
+    } else if (cleanHash.startsWith("lead-")) {
+      derivedLabel = `Lead #${cleanHash.replace(/^lead-/, "")}`;
+    } else if (cleanHash.startsWith("project")) {
+      derivedLabel = "Project";
+    } else if (cleanHash.startsWith("finance")) {
+      derivedLabel = "Finances";
+    } else if (cleanHash.startsWith("invoice")) {
+      derivedLabel = "Invoices";
+    } else if (cleanHash.startsWith("task")) {
+      derivedLabel = "Tasks";
+    } else if (cleanHash.startsWith("meeting")) {
+      derivedLabel = "Meetings";
+    }
+    return `[${derivedLabel}](#${cleanHash})`;
+  });
+
+  return result;
+};
+
 // Safe, lightweight utility to convert basic markdown string into React elements
 export const parseMarkdown = (text: string): React.ReactNode[] => {
-  const lines = text.split("\n");
+  const normalizedText = normalizeEntityLinks(text || "");
+  const lines = normalizedText.split("\n");
   const elements: React.ReactNode[] = [];
   
   let currentListItems: React.ReactNode[] = [];
   let currentListType: "ul" | "ol" | null = null;
   let currentParagraphLines: string[] = [];
+  let currentBlockquoteLines: string[] = [];
 
   let currentTableHeader: string[] = [];
   let currentTableRows: string[][] | null = null;
+
+  let isCodeBlock = false;
+  let currentCodeBlockLang = "";
+  let currentCodeBlockLines: string[] = [];
 
   const isSeparatorLine = (line: string): boolean => {
     return /^\s*\|(?:\s*:?-+:?\s*\|)+\s*$/.test(line);
@@ -141,19 +249,32 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
     if (currentListItems.length > 0) {
       if (currentListType === "ul") {
         elements.push(
-          <ul key={`ul-${key}`} className="list-disc pl-5 my-2 space-y-1 text-left">
+          <ul key={`ul-${key}`} className="list-disc pl-5 my-2 space-y-1.5 text-left">
             {currentListItems}
           </ul>
         );
       } else if (currentListType === "ol") {
         elements.push(
-          <ol key={`ol-${key}`} className="list-decimal pl-5 my-2 space-y-1 text-left">
+          <ol key={`ol-${key}`} className="list-decimal pl-5 my-2 space-y-1.5 text-left">
             {currentListItems}
           </ol>
         );
       }
       currentListItems = [];
       currentListType = null;
+    }
+  };
+
+  const closeBlockquote = (key: string) => {
+    if (currentBlockquoteLines.length > 0) {
+      elements.push(
+        <blockquote key={`bq-${key}`} className="my-2.5 pl-3.5 border-l-4 border-indigo-400/80 bg-indigo-50/40 rounded-r-xl py-2 pr-3 text-xs italic text-slate-700 space-y-1">
+          {currentBlockquoteLines.map((line, idx) => (
+            <div key={idx}>{parseInlineStyles(line)}</div>
+          ))}
+        </blockquote>
+      );
+      currentBlockquoteLines = [];
     }
   };
 
@@ -177,6 +298,54 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
     const line = lines[i];
     const trimmed = line.trim();
 
+    // Fenced code block handling
+    if (trimmed.startsWith("```")) {
+      if (!isCodeBlock) {
+        closeTable(`code-${i}`);
+        closeList(`code-${i}`);
+        closeParagraph(`code-${i}`);
+        closeBlockquote(`code-${i}`);
+        isCodeBlock = true;
+        currentCodeBlockLang = trimmed.substring(3).trim();
+        currentCodeBlockLines = [];
+        continue;
+      } else {
+        elements.push(
+          <div key={`codeblock-${i}`} className="my-3 rounded-2xl overflow-hidden border border-slate-800 bg-slate-900 text-slate-100 shadow-sm text-left">
+            {currentCodeBlockLang && (
+              <div className="px-4 py-1.5 bg-slate-950/80 border-b border-slate-800 text-[10px] font-mono uppercase tracking-wider text-slate-400">
+                {currentCodeBlockLang}
+              </div>
+            )}
+            <pre className="p-4 text-xs font-mono overflow-x-auto leading-relaxed">
+              <code>{currentCodeBlockLines.join("\n")}</code>
+            </pre>
+          </div>
+        );
+        isCodeBlock = false;
+        currentCodeBlockLang = "";
+        currentCodeBlockLines = [];
+        continue;
+      }
+    }
+
+    if (isCodeBlock) {
+      currentCodeBlockLines.push(line);
+      continue;
+    }
+
+    // Blockquote
+    const bqMatch = line.match(/^(\s*)>\s?(.*)$/);
+    if (bqMatch) {
+      closeTable(`bq-${i}`);
+      closeList(`bq-${i}`);
+      closeParagraph(`bq-${i}`);
+      currentBlockquoteLines.push(bqMatch[2]);
+      continue;
+    } else if (currentBlockquoteLines.length > 0) {
+      closeBlockquote(`bq-end-${i}`);
+    }
+
     // Table parsing
     if (trimmed.startsWith("|")) {
       const isHeader = !currentTableRows && (i + 1 < lines.length && isSeparatorLine(lines[i + 1]));
@@ -184,6 +353,7 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
       if (isHeader) {
         closeList(`table-hdr-${i}`);
         closeParagraph(`table-hdr-${i}`);
+        closeBlockquote(`table-hdr-${i}`);
         
         currentTableHeader = parseTableRow(line);
         i++; // Skip the separator line
@@ -207,6 +377,7 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
       closeTable(`hr-${i}`);
       closeList(`hr-${i}`);
       closeParagraph(`hr-${i}`);
+      closeBlockquote(`hr-${i}`);
       elements.push(<hr key={`hr-${i}`} className="my-3 border-slate-200" />);
       continue;
     }
@@ -216,6 +387,7 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
       closeTable(`h-${i}`);
       closeList(`h-${i}`);
       closeParagraph(`h-${i}`);
+      closeBlockquote(`h-${i}`);
       
       const level = (trimmed.match(/^#+/) || [""])[0].length;
       const content = trimmed.substring(level).trim();
@@ -236,6 +408,7 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
     if (ulMatch) {
       closeTable(`ul-item-${i}`);
       closeParagraph(`ul-item-${i}`);
+      closeBlockquote(`ul-item-${i}`);
       if (currentListType !== "ul") {
         closeList(`ul-switch-${i}`);
         currentListType = "ul";
@@ -255,14 +428,21 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
     if (olMatch) {
       closeTable(`ol-item-${i}`);
       closeParagraph(`ol-item-${i}`);
+      closeBlockquote(`ol-item-${i}`);
       if (currentListType !== "ol") {
         closeList(`ol-switch-${i}`);
         currentListType = "ol";
       }
       const indent = olMatch[1].length;
+      const itemNum = parseInt(olMatch[2], 10);
       const content = olMatch[3];
       currentListItems.push(
-        <li key={`li-${i}`} style={{ marginLeft: `${indent * 6}px` }} className="text-xs font-medium text-slate-700">
+        <li 
+          key={`li-${i}`} 
+          value={isNaN(itemNum) ? undefined : itemNum}
+          style={{ marginLeft: `${indent * 6}px` }} 
+          className="text-xs font-medium text-slate-700"
+        >
           {parseInlineStyles(content)}
         </li>
       );
@@ -274,12 +454,14 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
       closeTable(`empty-${i}`);
       closeList(`empty-${i}`);
       closeParagraph(`empty-${i}`);
+      closeBlockquote(`empty-${i}`);
       continue;
     }
 
     // Regular line
     closeTable(`text-${i}`);
     closeList(`text-${i}`);
+    closeBlockquote(`text-${i}`);
     currentParagraphLines.push(line);
   }
 
@@ -287,18 +469,27 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
   closeTable("final-table");
   closeList("final-list");
   closeParagraph("final-paragraph");
+  closeBlockquote("final-bq");
 
   return elements;
 };
 
-// Parser for inline styles: bold (**text**), italic (*text*), and code (`code`)
+// Parser for inline styles: bold (**text**), italic (*text*), code (`code`), links ([text](url))
 const parseInlineStyles = (text: string): React.ReactNode => {
   const parts: React.ReactNode[] = [];
   let index = 0;
 
-  // Regex matches: **bold** / __bold__, *italic* / _italic_, `code`
-  const inlineRegex = /(\*\*|__)(.*?)\1|(\*|_)(.*?)\3|(`)(.*?)\5/g;
+  // Regex matches: **bold** / __bold__, *italic* / _italic_, `code`, [link](url)
+  // Notice [^\)]+ allows spaces inside URLs (e.g. #client-Apex Development - Bytový Dom)
+  const inlineRegex = /(\*\*|__)(.*?)\1|(\*|_)(.*?)\3|(`)(.*?)\5|\[(.*?)\]\(((?:https?:\/\/|\/|#)[^\)]+)\)/g;
   let match;
+
+  const parseInnerStyles = (inner: string): React.ReactNode => {
+    if (!/[*_`\[]/.test(inner)) {
+      return renderTextWithFilePills(inner);
+    }
+    return parseInlineStyles(inner);
+  };
 
   while ((match = inlineRegex.exec(text)) !== null) {
     // Add preceding plain text
@@ -308,13 +499,37 @@ const parseInlineStyles = (text: string): React.ReactNode => {
 
     if (match[1]) {
       // Bold
-      parts.push(<strong key={match.index} className="font-extrabold text-slate-900">{match[2]}</strong>);
+      parts.push(<strong key={match.index} className="font-extrabold text-slate-900">{parseInnerStyles(match[2])}</strong>);
     } else if (match[3]) {
       // Italic
-      parts.push(<em key={match.index} className="italic text-slate-800">{match[4]}</em>);
+      parts.push(<em key={match.index} className="italic text-slate-800">{parseInnerStyles(match[4])}</em>);
     } else if (match[5]) {
       // Inline Code
       parts.push(<code key={match.index} className="bg-slate-100/80 px-1 py-0.5 rounded text-[10.5px] font-mono text-purple-700 border border-slate-200/50">{match[6]}</code>);
+    } else if (match[7] !== undefined && match[8] !== undefined) {
+      const linkLabel = match[7];
+      const linkUrl = match[8].trim();
+
+      // If URL is an internal hash route (e.g. #client-Silvia, #projects, #lead-12), render an interactive EntityPill
+      if (linkUrl.startsWith("#")) {
+        parts.push(
+          <EntityPill key={match.index} label={linkLabel} url={linkUrl} />
+        );
+      } else {
+        // External link [label](url)
+        parts.push(
+          <a 
+            key={match.index} 
+            href={linkUrl} 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="text-indigo-600 hover:text-indigo-800 underline font-semibold transition inline-flex items-center gap-0.5"
+          >
+            <span>{linkLabel}</span>
+            <ExternalLink className="h-2.5 w-2.5 inline" />
+          </a>
+        );
+      }
     }
 
     index = inlineRegex.lastIndex;
@@ -330,8 +545,9 @@ const parseInlineStyles = (text: string): React.ReactNode => {
 
 interface MarkdownProps {
   content: string;
+  className?: string;
 }
 
-export const Markdown: React.FC<MarkdownProps> = ({ content }) => {
-  return <div className="space-y-1.5">{parseMarkdown(content)}</div>;
+export const Markdown: React.FC<MarkdownProps> = ({ content, className = "space-y-1.5" }) => {
+  return <div className={className}>{parseMarkdown(content || "")}</div>;
 };

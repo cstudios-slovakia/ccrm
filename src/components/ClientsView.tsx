@@ -1008,11 +1008,41 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     return Object.values(profilesMap);
   }, [leads, leadSources]);
 
-  // Find active client details based on URL deep routing
+  // Find active client details based on URL deep routing (resilient matching)
   const activeClient = useMemo(() => {
     if (!initialSelectedClient) return null;
-    const lookupName = initialSelectedClient.split("?")[0];
-    return clientProfiles.find(c => c.name.toLowerCase() === lookupName.toLowerCase()) || null;
+    const rawLookup = decodeURIComponent(initialSelectedClient.split("?")[0]).trim();
+    if (!rawLookup) return null;
+    const lookupLower = rawLookup.toLowerCase();
+
+    // 1. Exact match (case-insensitive)
+    const exact = clientProfiles.find(c => c.name.trim().toLowerCase() === lookupLower);
+    if (exact) return exact;
+
+    // 2. Normalized match (strip punctuation, dots, commas, underscores, dashes)
+    const cleanLookup = lookupLower.replace(/[,.\-_]/g, " ").replace(/\s+/g, " ").trim();
+    const cleanMatch = clientProfiles.find(c => {
+      const cClean = c.name.toLowerCase().replace(/[,.\-_]/g, " ").replace(/\s+/g, " ").trim();
+      return cClean === cleanLookup;
+    });
+    if (cleanMatch) return cleanMatch;
+
+    // 3. Prefix or inclusion match (e.g. "Cstudios" matches "Cstudios, s.r.o.")
+    const fuzzyMatch = clientProfiles.find(c => {
+      const cLower = c.name.toLowerCase();
+      return cLower.startsWith(lookupLower) || lookupLower.startsWith(cLower) || cLower.includes(lookupLower) || lookupLower.includes(cLower);
+    });
+    if (fuzzyMatch) return fuzzyMatch;
+
+    // 4. Match by companyId, taxId, or associated lead ID
+    const idMatch = clientProfiles.find(c => 
+      (c.companyId && c.companyId === rawLookup) || 
+      (c.taxId && c.taxId === rawLookup) ||
+      c.associatedLeads.some(l => l.id === rawLookup)
+    );
+    if (idMatch) return idMatch;
+
+    return null;
   }, [clientProfiles, initialSelectedClient]);
 
   // RegisterUZ dynamically loaded statement list states

@@ -313,10 +313,15 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     const openFromHash = () => {
       const { route, params } = parseAppHash(window.location.hash);
       if (route !== "projects") return;
-      const id = params.get("edit");
+      const id = params.get("edit") || params.get("id") || params.get("project");
       if (!id) return;
 
-      const project = projects.find(p => p.id === id);
+      const normalizedTarget = id.toLowerCase().trim();
+      const project = projects.find(p => 
+        p.id === id || 
+        (p.name && p.name.toLowerCase() === normalizedTarget) ||
+        (p.name && p.name.toLowerCase().includes(normalizedTarget))
+      );
       const type = project ? projectTypes.find(pt => pt.id === project.projectTypeId) : undefined;
       // A project that has not arrived yet (or whose type was deleted) leaves
       // the parameter in place, so the next render can still honour it.
@@ -1135,9 +1140,9 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               because CustomSelect's trigger is w-100%; each now sits in a fixed
               track of its own. The view switcher is parked on the right, away
               from the filters it is not one of. */}
-          <div className="glass-panel relative z-20 flex flex-wrap items-center gap-2.5 p-2.5 rounded-3xl border border-white/60 bg-white/95 shadow-glass">
+          <div className="glass-panel relative z-20 flex flex-wrap items-center gap-2 sm:gap-2.5 p-2 sm:p-2.5 rounded-3xl border border-white/60 bg-white/95 shadow-glass">
             {/* Search */}
-            <div className="relative flex-1 min-w-[11rem] sm:max-w-xs">
+            <div className="relative flex-1 min-w-[10rem] sm:max-w-xs">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <input
                 value={searchQuery}
@@ -1151,7 +1156,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 this is kept wired to the same state so it can be brought back
                 by flipping SHOW_STATUS_DROPDOWN. */}
             {SHOW_STATUS_DROPDOWN && (
-            <div className="w-full sm:w-40 shrink-0">
+            <div className="w-full sm:w-auto sm:min-w-[130px] flex-1 sm:flex-initial shrink-0">
               <CustomSelect
                 className="h-10"
                 value={selectedStatusFilter}
@@ -1165,7 +1170,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             )}
 
             {/* Type */}
-            <div className="w-full sm:w-40 shrink-0">
+            <div className="w-full sm:w-auto sm:min-w-[130px] flex-1 sm:flex-initial shrink-0">
               <CustomSelect
                 className="h-10"
                 value={selectedTypeFilter}
@@ -1179,7 +1184,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
             {/* Manager. "Who is on this?" was the one question the bar could not
                 answer — the column was there to read but not to filter by. */}
-            <div className="w-full sm:w-44 shrink-0">
+            <div className="w-full sm:w-auto sm:min-w-[145px] flex-1 sm:flex-initial shrink-0">
               <CustomSelect
                 className="h-10"
                 icon={<Users className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
@@ -1195,7 +1200,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
             {/* Star priority. The same dropdown, and the same meanings, as the
                 one over the leads list — both read utils/rating.ts. */}
-            <div className="w-full sm:w-40 shrink-0">
+            <div className="w-full sm:w-auto sm:min-w-[135px] flex-1 sm:flex-initial shrink-0">
               <CustomSelect
                 className="h-10"
                 icon={<Star className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
@@ -1207,7 +1212,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
             {/* Order and columns — the only way to sort the cards; the table
                 headers write the same sort preference. */}
-            <div className="sm:ml-auto">
+            <div className="sm:ml-auto shrink-0 flex items-center gap-2">
               <ProjectListViewMenu
                 t={t}
                 sort={effectiveSort}
@@ -1227,30 +1232,30 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                   if (canEditColumns) saveColumns(null);
                 }}
               />
-            </div>
 
-            {/* Cards or table. */}
-            <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200 select-none shrink-0">
-              {([
-                { mode: "list" as const, Icon: Rows3, label: t("List view", "Zobrazenie zoznamu", "Lista nézet") },
-                { mode: "grid" as const, Icon: LayoutGrid, label: t("Grid view", "Zobrazenie kariet", "Kártyás nézet") },
-              ]).map(({ mode, Icon, label }) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => setViewMode(mode)}
-                  title={label}
-                  aria-label={label}
-                  aria-pressed={viewMode === mode}
-                  className={`p-2 rounded-lg transition-all cursor-pointer ${
-                    viewMode === mode
-                      ? "bg-white text-indigo-600 shadow-sm"
-                      : "text-slate-400 hover:text-slate-600"
-                  }`}
-                >
-                  <Icon className="h-4.5 w-4.5" />
-                </button>
-              ))}
+              {/* Cards or table. */}
+              <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200 select-none shrink-0">
+                {([
+                  { mode: "list" as const, Icon: Rows3, label: t("List view", "Zobrazenie zoznamu", "Lista nézet") },
+                  { mode: "grid" as const, Icon: LayoutGrid, label: t("Grid view", "Zobrazenie kariet", "Kártyás nézet") },
+                ]).map(({ mode, Icon, label }) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setViewMode(mode)}
+                    title={label}
+                    aria-label={label}
+                    aria-pressed={viewMode === mode}
+                    className={`p-2 rounded-lg transition-all cursor-pointer ${
+                      viewMode === mode
+                        ? "bg-white text-indigo-600 shadow-sm"
+                        : "text-slate-400 hover:text-slate-600"
+                    }`}
+                  >
+                    <Icon className="h-4.5 w-4.5" />
+                  </button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -1287,7 +1292,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           ) : viewMode === "list" ? (
             <div ref={resultsRef} className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass mt-6 overflow-hidden">
               <div className="overflow-x-auto scrollbar-thin">
-                <table className="w-full text-left border-collapse">
+                <table className="w-full text-left border-collapse min-w-[840px]">
                   {/* The head is drawn from the layout the project type set —
                       built-in columns and its own attributes alike — so what a
                       column is, and whether it is here at all, is decided in one

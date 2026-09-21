@@ -648,7 +648,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
       {/* 3. Files Datagrid Table (Amber Light Brown styled) */}
       <div className="glass-panel rounded-[28px] border-2 border-amber-400 bg-white shadow-xl overflow-hidden">
         <div className="overflow-x-auto overflow-y-auto max-h-[75vh] scrollbar-thin">
-          <table className="w-full border-collapse text-left">
+          <table className="w-full border-collapse text-left min-w-[780px]">
             <thead>
               <tr className="bg-white text-amber-800 text-[10px] font-black uppercase tracking-wider">
                 <th className="sticky top-0 bg-white z-10 py-4 px-6 rounded-tl-[24px] border-b-2 border-slate-100">{getTranslation(systemLanguage, "files.th_filename")}</th>

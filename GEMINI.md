@@ -22,9 +22,9 @@ The order when finishing a change: **test -> bump version -> changelog -> build
 
 - **Commit After Every Significant Change**: Make atomic, clean git commits after completing each feature, fix, or significant modification.
 - **One Build = One Version Bump**: Every significant change, new build, or release milestone requires bumping the application version.
-- **Version File**: Update `export const VERSION = "1.8.X-Imbe";` in [`src/utils/version.ts`](file:///c:/Users/peter/Work/Vibe%20coding/ccrm/src/utils/version.ts).
-- **Changelog**: Add a structured entry in [`1.8-imbe-changelog.md`](file:///c:/Users/peter/Work/Vibe%20coding/ccrm/1.8-imbe-changelog.md) with date and clear breakdown.
-- **Commit Message Suffix**: Append the version tag to commit messages (e.g. `feat(...): description (v1.8.X-Imbe)` or `fix(...): description (v1.8.X-Imbe)`).
+- **Version File**: Update `export const VERSION = "1.10.X-Kiwi";` in [`src/utils/version.ts`](file:///Users/erik/Documents/vibe%20coding/crm/src/utils/version.ts).
+- **Changelog**: Add a structured entry in [`1.10-kiwi-changelog.md`](file:///Users/erik/Documents/vibe%20coding/crm/1.10-kiwi-changelog.md) with date and clear breakdown.
+- **Commit Message Suffix**: Append the version tag to commit messages (e.g. `feat(...): description (v1.10.X-Kiwi)` or `fix(...): description (v1.10.X-Kiwi)`).
 
 ### 2. Verification & Build Cleanliness
 

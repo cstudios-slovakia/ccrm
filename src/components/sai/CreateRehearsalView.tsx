@@ -1,0 +1,1939 @@
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { 
+  ArrowRight, 
+  Calendar, 
+  Users, 
+  Clock, 
+  Bot, 
+  FileText, 
+  Bookmark, 
+  Check, 
+  ChevronLeft, 
+  AlertCircle,
+  Zap,
+  Save,
+  Database,
+  Building2,
+  Briefcase,
+  AlertTriangle,
+  Swords,
+  MessageSquare,
+  Mail,
+  Info,
+  FolderOpen,
+  Coins,
+  UploadCloud,
+  FileCode,
+  Trash2,
+  Paperclip,
+  Eye,
+  Loader2,
+  X,
+  Sparkles,
+  Compass,
+  Package,
+  DollarSign,
+  Share2
+} from 'lucide-react';
+import type { SimulationParameters, SwarmContextDocument } from '../../utils/swarm/types';
+import { PreflightEstimatorModal } from './PreflightEstimatorModal';
+import { TemplateCatalogueModal } from './TemplateCatalogueModal';
+import type { UseCaseTemplate } from './useCasesCatalogue';
+import { initServerSimulation } from '../../utils/swarm/checkpointClient';
+import { formatBytes } from '../../utils/formatBytes';
+
+export interface DraftData {
+  id?: string;
+  title?: string;
+  hypothesis?: string;
+  seed_document?: string;
+  lookback_months?: number;
+  swarm_scale?: number;
+  total_rounds?: number;
+  model_name?: string;
+  diurnal_cycle?: boolean;
+  crm_data_sources?: string[];
+  context_documents?: SwarmContextDocument[];
+  status?: string;
+}
+
+export interface CrmSourceOption {
+  id: string;
+  title: string;
+  titleEn?: string;
+  titleHu?: string;
+  category: string;
+  categoryEn?: string;
+  categoryHu?: string;
+  description: string;
+  descriptionEn?: string;
+  descriptionHu?: string;
+  icon: React.ElementType;
+  badge: string;
+  badgeEn?: string;
+  badgeHu?: string;
+  badgeColor: string;
+}
+
+export const CRM_SOURCE_OPTIONS: CrmSourceOption[] = [
+  {
+    id: 'active_leads',
+    title: 'Aktívne leady v pipeline',
+    titleEn: 'Active Pipeline Leads',
+    titleHu: 'Aktív leadek a pipeline-ban',
+    category: 'Obchodný lievik',
+    categoryEn: 'Sales Pipeline',
+    categoryHu: 'Értékesítési tölcsér',
+    description: 'Rozpracované obchody, kvalifikované leady a aktívne účty vo fáze zisťovania potrieb.',
+    descriptionEn: 'Deals in progress, qualified leads, and accounts in the discovery phase.',
+    descriptionHu: 'Folyamatban lévő ügyletek, minősített érdeklődők és igényfelmérés fázisában lévő fiókok.',
+    icon: Users,
+    badge: 'Leady',
+    badgeEn: 'Leads',
+    badgeHu: 'Leadek',
+    badgeColor: 'bg-blue-50 text-blue-700 border-blue-200'
+  },
+  {
+    id: 'existing_clients',
+    title: 'Existujúci klienti & Zmluvy',
+    titleEn: 'Existing Clients & Accounts',
+    titleHu: 'Meglévő ügyfelek & Szerződések',
+    category: 'Klientska báza',
+    categoryEn: 'Client Base',
+    categoryHu: 'Ügyfélbázis',
+    description: 'Aktívne klientske účty, dlhodobí partneri a historicky uzatvorené zmluvy.',
+    descriptionEn: 'Active customer accounts, long-term partners, and executed agreements.',
+    descriptionHu: 'Aktív ügyfélfiókok, hosszú távú partnerek és korábban megkötött szerződések.',
+    icon: Building2,
+    badge: 'Klienti',
+    badgeEn: 'Clients',
+    badgeHu: 'Ügyfelek',
+    badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200'
+  },
+  {
+    id: 'projects',
+    title: 'Klientske projekty & Zákazky',
+    titleEn: 'Client Projects & Deliverables',
+    titleHu: 'Ügyfélprojektek & Megbízások',
+    category: 'Realizácia & Zákazky',
+    categoryEn: 'Delivery & Projects',
+    categoryHu: 'Megvalósítás & Projektek',
+    description: 'Aktívne a dokončené klientske projekty, rozsah zákaziek, harmonogramy a termíny dodania.',
+    descriptionEn: 'Active and completed client projects, scope of work, timelines, and milestones.',
+    descriptionHu: 'Aktív és befejezett ügyfélprojektek, feladatkörök, ütemtervek és szállítási határidők.',
+    icon: Briefcase,
+    badge: 'Projekty',
+    badgeEn: 'Projects',
+    badgeHu: 'Projektek',
+    badgeColor: 'bg-orange-50 text-orange-700 border-orange-200'
+  },
+  {
+    id: 'lost_deal_objections',
+    title: 'Stratené obchody & Námietky',
+    titleEn: 'Lost Deals & Objections',
+    titleHu: 'Elvesztett ügyletek & Kifogások',
+    category: 'Obchodné námietky',
+    categoryEn: 'Sales Objections',
+    categoryHu: 'Értékesítési kifogások',
+    description: 'Zaznamenaný odpor pri predaji, cenová senzitivita, dôvody odmietnutia a námietky.',
+    descriptionEn: 'Recorded sales resistance, price sensitivity, rejection reasons, and pushback.',
+    descriptionHu: 'Értékesítési ellenállás, árérzékenység, elutasítási indokok és rögzített kifogások.',
+    icon: AlertTriangle,
+    badge: 'Námietky',
+    badgeEn: 'Objections',
+    badgeHu: 'Kifogások',
+    badgeColor: 'bg-rose-50 text-rose-700 border-rose-200'
+  },
+  {
+    id: 'competitor_intel',
+    title: 'Zmienky o konkurencii',
+    titleEn: 'Competitor Intelligence',
+    titleHu: 'Versenytársi információk',
+    category: 'Prieskum trhu',
+    categoryEn: 'Market Research',
+    categoryHu: 'Piackutatás',
+    description: 'Poznámky v CRM odkazujúce na konkurenčné platformy, alternatívnych dodávateľov a porovnanie cien.',
+    descriptionEn: 'CRM notes referencing competing platforms, alternative vendors, and pricing comparisons.',
+    descriptionHu: 'Versenytárs platformokra, alternatív beszállítókra és árakra vonatkozó CRM megjegyzések.',
+    icon: Swords,
+    badge: 'Konkurencia',
+    badgeEn: 'Competitors',
+    badgeHu: 'Versenytársak',
+    badgeColor: 'bg-amber-50 text-amber-700 border-amber-200'
+  },
+  {
+    id: 'meeting_notes',
+    title: 'Zápisy zo stretnutí & Prepisy',
+    titleEn: 'Meeting Notes & Transcripts',
+    titleHu: 'Megbeszélések jegyzőkönyvei & Átiratok',
+    category: 'Stretnutia & Hovory',
+    categoryEn: 'Meetings & Calls',
+    categoryHu: 'Találkozók & Hívások',
+    description: 'Zápisy zo stretnutí, prepisy rozhovorov a priama verbálna spätná väzba od klientov.',
+    descriptionEn: 'Meeting logs, call summaries, transcripts, and direct verbal client feedback.',
+    descriptionHu: 'Találkozók feljegyzései, beszélgetések átiratai és közvetlen verbális visszajelzések.',
+    icon: MessageSquare,
+    badge: 'Stretnutia',
+    badgeEn: 'Meetings',
+    badgeHu: 'Találkozók',
+    badgeColor: 'bg-indigo-50 text-indigo-700 border-indigo-200'
+  },
+  {
+    id: 'client_emails',
+    title: 'Prichádzajúce emaily klientov',
+    titleEn: 'Client Email Correspondence',
+    titleHu: 'Bejövő ügyfél emailek',
+    category: 'Komunikácia',
+    categoryEn: 'Communications',
+    categoryHu: 'Kommunikáció',
+    description: 'Prichádzajúce emaily, dopyty klientov, požiadavky na rozsah a emailová korešpondencia.',
+    descriptionEn: 'Inbound email inquiries, scope requests, clarifications, and message threads.',
+    descriptionHu: 'Beérkező levelek, ügyféli megkeresések, terjedelem-kérések és email levelezések.',
+    icon: Mail,
+    badge: 'Emaily',
+    badgeEn: 'Emails',
+    badgeHu: 'Emailek',
+    badgeColor: 'bg-violet-50 text-violet-700 border-violet-200'
+  },
+  {
+    id: 'files',
+    title: 'Nahrané súbory & Dokumenty',
+    titleEn: 'CRM Attachments & Files',
+    titleHu: 'Feltöltött fájlok & Dokumentumok',
+    category: 'Dokumenty',
+    categoryEn: 'Documents',
+    categoryHu: 'Dokumentumok',
+    description: 'Obchodné zmluvy, ponuky, faktúry, cenové kalkulácie a textové prílohy z CRM leadov.',
+    descriptionEn: 'Contracts, proposals, invoices, rate calculations, and uploaded text attachments.',
+    descriptionHu: 'Kereskedelmi szerződések, ajánlatok, számlák, árkalkulációk és CRM csatolmányok.',
+    icon: FolderOpen,
+    badge: 'Súbory',
+    badgeEn: 'Files',
+    badgeHu: 'Fájlok',
+    badgeColor: 'bg-teal-50 text-teal-700 border-teal-200'
+  },
+  {
+    id: 'products',
+    title: 'Katalóg produktov & Sklad',
+    titleEn: 'Products & Inventory',
+    titleHu: 'Termékkatalógus & Raktárkészlet',
+    category: 'Sklad & Produkty',
+    categoryEn: 'Products & Inventory',
+    categoryHu: 'Raktár & Termékek',
+    description: 'Katalóg tovarov a služieb, cenníky, skladové zásoby, predajné marže a jednotkové nákupné ceny.',
+    descriptionEn: 'Product and service catalogue, price lists, stock quantities, sales margins, and unit purchase costs.',
+    descriptionHu: 'Termék- és szolgáltatáskatalógus, árlisták, raktárkészletek és egységárak.',
+    icon: Package,
+    badge: 'Produkty',
+    badgeEn: 'Products',
+    badgeHu: 'Termékek',
+    badgeColor: 'bg-cyan-50 text-cyan-700 border-cyan-200'
+  },
+  {
+    id: 'financials',
+    title: 'Faktúry & Finančné záznamy',
+    titleEn: 'Invoices & Financial Records',
+    titleHu: 'Számlák & Pénzügyi nyilvántartás',
+    category: 'Financie & Cashflow',
+    categoryEn: 'Finance & Cashflow',
+    categoryHu: 'Pénzügyek & Cashflow',
+    description: 'Vystavené a prijaté faktúry, hotovostné toky (cashflow), výnosy, náklady a ziskovosť zákaziek.',
+    descriptionEn: 'Issued and received invoices, cashflow trends, revenue streams, expenses, and project margins.',
+    descriptionHu: 'Kiállított és bejövő számlák, cashflow, bevételek, költségek és projektek jövedelmezősége.',
+    icon: DollarSign,
+    badge: 'Financie',
+    badgeEn: 'Financials',
+    badgeHu: 'Pénzügyek',
+    badgeColor: 'bg-emerald-50 text-emerald-700 border-emerald-200'
+  },
+  {
+    id: 'social_media_posts',
+    title: 'Príspevky na sociálnych sieťach',
+    titleEn: 'Social Media Posts & Campaigns',
+    titleHu: 'Közösségi média bejegyzések & Kampányok',
+    category: 'Marketing & Sociálne siete',
+    categoryEn: 'Marketing & Social Media',
+    categoryHu: 'Marketing & Közösségi média',
+    description: 'Publikované a plánované príspevky na Facebooku, LinkedIn, Instagrame, reakcie publika a metriky dosahu.',
+    descriptionEn: 'Published and scheduled posts across LinkedIn, Facebook, Instagram, audience reactions, and reach engagement metrics.',
+    descriptionHu: 'Közzétett és tervezett posztok (LinkedIn, FB, IG), közönségreakciók és elérések.',
+    icon: Share2,
+    badge: 'Sociálne siete',
+    badgeEn: 'Social Media',
+    badgeHu: 'Közösségi média',
+    badgeColor: 'bg-rose-50 text-rose-700 border-rose-200'
+  }
+];
+
+export const DEFAULT_CRM_SOURCES = CRM_SOURCE_OPTIONS.map(s => s.id);
+
+export const MODEL_PRICING: Record<string, { ratePerM: number; label: string }> = {
+  'gpt-5.6-luna': { ratePerM: 0.25, label: 'GPT-5.6 Luna' },
+  'gpt-5.6-terra': { ratePerM: 1.50, label: 'GPT-5.6 Terra' },
+};
+
+interface CreateRehearsalViewProps {
+  initialData?: DraftData | null;
+  onBack: () => void;
+  onLaunch: (params: SimulationParameters, existingDraftId?: string) => void;
+  onDraftSaved?: (savedDraft: any) => void;
+  isSubmitting?: boolean;
+  isDemoMode?: boolean;
+  unifiedEntries?: any[];
+  systemLanguage?: string;
+}
+
+export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
+  initialData,
+  onBack,
+  onLaunch,
+  onDraftSaved,
+  isSubmitting = false,
+  isDemoMode = false,
+  unifiedEntries = [],
+  systemLanguage = 'sk'
+}) => {
+  const t = (en: string, sk: string, hu: string) =>
+    systemLanguage === 'sk' ? sk : systemLanguage === 'hu' ? hu : en;
+  const isSk = systemLanguage === 'sk';
+  const [localUnifiedEntries, setLocalUnifiedEntries] = useState<any[]>([]);
+  const [isCatalogueOpen, setIsCatalogueOpen] = useState<boolean>(false);
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  useEffect(() => {
+    // If unifiedEntries not supplied via props, fetch from /sync.php as fallback
+    if (!unifiedEntries || unifiedEntries.length === 0) {
+      fetch('/sync.php')
+        .then(res => res.json())
+        .then(data => {
+          if (data?.unifiedEntries && Array.isArray(data.unifiedEntries)) {
+            setLocalUnifiedEntries(data.unifiedEntries);
+          }
+        })
+        .catch(() => {});
+    }
+  }, [unifiedEntries]);
+
+  const activeUnifiedRegistries = useMemo(() => {
+    const list = (unifiedEntries && unifiedEntries.length > 0) ? unifiedEntries : localUnifiedEntries;
+    return list.filter((ue: any) => !ue.archived);
+  }, [unifiedEntries, localUnifiedEntries]);
+
+  // Dynamically compute full list of CRM sources: static sources + unified entries (if made)
+  const allSourceOptions: CrmSourceOption[] = useMemo(() => {
+    const base: CrmSourceOption[] = [...CRM_SOURCE_OPTIONS];
+
+    if (activeUnifiedRegistries.length > 0) {
+      activeUnifiedRegistries.forEach((ue: any) => {
+        base.push({
+          id: `ue_${ue.id}`,
+          title: t(`Unified Registry: ${ue.name}`, `Zjednotený register: ${ue.name}`, `Egységes nyilvántartás: ${ue.name}`),
+          titleEn: `Unified Registry: ${ue.name}`,
+          titleHu: `Egységes nyilvántartás: ${ue.name}`,
+          category: t('Unified Registry', 'Zjednotený register', 'Egységes nyilvántartás'),
+          categoryEn: 'Unified Registry',
+          categoryHu: 'Egységes nyilvántartás',
+          description: t(
+            `Customer records and attachments from registry ${ue.name} (${ue.entryName || 'Records'}).`,
+            `Zákaznícke záznamy a súbory zo zložky z registra ${ue.name} (${ue.entryName || 'Záznamy'}).`,
+            `Ügyféladatok és csatolmányok a(z) ${ue.name} nyilvántartásból (${ue.entryName || 'Nyilvántartás'}).`
+          ),
+          descriptionEn: `Customer records and attachments from registry ${ue.name} (${ue.entryName || 'Records'}).`,
+          descriptionHu: `Ügyféladatok és csatolmányok a(z) ${ue.name} nyilvántartásból (${ue.entryName || 'Nyilvántartás'}).`,
+          icon: Database,
+          badge: ue.entryName || t('Registry', 'Register', 'Nyilvántartás'),
+          badgeEn: ue.entryName || 'Registry',
+          badgeHu: ue.entryName || 'Nyilvántartás',
+          badgeColor: 'bg-fuchsia-50 text-fuchsia-700 border-fuchsia-200'
+        });
+      });
+    }
+
+    return base;
+  }, [activeUnifiedRegistries, systemLanguage]);
+
+  // Form State
+  const [draftId, setDraftId] = useState<string | undefined>(initialData?.id);
+  const [title, setTitle] = useState<string>(
+    initialData?.title || t('Q4 Strategic Market Simulation', 'Strategická trhová simulácia Q4', 'Q4 Stratégiai piaci szimuláció')
+  );
+  const [hypothesis, setHypothesis] = useState<string>(
+    initialData?.hypothesis || t(
+      'What if we introduce annual billing with a 20% discount and eliminate monthly plans for new accounts?',
+      'Čo ak zavedieme ročnú fakturáciu s 20% zľavou a zrušíme mesačné plány pre nové účty?',
+      'Mi történik, ha 20%-os kedvezménnyel éves számlázást vezetünk be és megszüntetjük az új ügyfelek havi csomagjait?'
+    )
+  );
+  const [seedDocument, setSeedDocument] = useState<string>(
+    initialData?.seed_document || t(
+      `We are considering restructuring our billing model. For all new accounts, we will require an annual commitment, offering a 20% overall discount compared to standard monthly rates. Existing clients may remain on monthly billing. Our target customers are B2B agencies and consulting firms.`,
+      `Zvažujeme reštrukturalizáciu nášho fakturačného modelu. Pre všetky nové účty budeme vyžadovať ročný záväzok, pričom ponúkneme 20% celkovú zľavu oproti pôvodným mesačným sadzbám. Súčasní klienti môžu zostať na mesačnej fakturácii. Našimi cieľovými klientmi sú B2B agentúry a poradenské firmy.`,
+      `A számlázási modellünk átalakítását mérlegeljük. Minden új fiók esetén éves elköteleződést követelünk meg 20%-os összesített kedvezménnyel a havi díjakhoz képest. A meglévő ügyfelek maradhatnak havi számlázáson. Célközönségünk a B2B ügynökségek és tanácsadó cégek.`
+    )
+  );
+  const [lookbackMonths, setLookbackMonths] = useState<6 | 12 | 24>(
+    (initialData?.lookback_months as 6 | 12 | 24) || 12
+  );
+  const [selectedSources, setSelectedSources] = useState<string[]>(() => {
+    if (initialData?.crm_data_sources !== undefined && Array.isArray(initialData.crm_data_sources)) {
+      return initialData.crm_data_sources;
+    }
+    return [];
+  });
+  const [swarmScale, setSwarmScale] = useState<number>(initialData?.swarm_scale || 30);
+  const [totalRounds, setTotalRounds] = useState<number>(initialData?.total_rounds || 8);
+  const [llmModel, setLlmModel] = useState<string>(initialData?.model_name || 'gpt-5.6-luna');
+  const [diurnalCycle, setDiurnalCycle] = useState<boolean>(initialData?.diurnal_cycle ?? true);
+
+  // Execution Mode: 'demo' (fast synthetic, 0 €) vs 'live' (real LLM calls)
+  const [executionMode, setExecutionMode] = useState<'demo' | 'live'>(isDemoMode ? 'demo' : 'live');
+
+  useEffect(() => {
+    if (isDemoMode) {
+      setExecutionMode('demo');
+    }
+  }, [isDemoMode]);
+
+  // Context Documents (PDF / Markdown / Text)
+  const [contextDocuments, setContextDocuments] = useState<SwarmContextDocument[]>(initialData?.context_documents || []);
+  const [isUploadingDoc, setIsUploadingDoc] = useState<boolean>(false);
+  const [uploadDocProgress, setUploadDocProgress] = useState<string | null>(null);
+  const [isDraggingDoc, setIsDraggingDoc] = useState<boolean>(false);
+  const [previewDoc, setPreviewDoc] = useState<SwarmContextDocument | null>(null);
+  const [docUploadError, setDocUploadError] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Draft saving indicator & feedback
+  const [isSavingDraft, setIsSavingDraft] = useState<boolean>(false);
+  const [lastSavedTimestamp, setLastSavedTimestamp] = useState<string | null>(null);
+  const [isDirty, setIsDirty] = useState<boolean>(false);
+  const [validationError, setValidationError] = useState<string | null>(null);
+
+  // Estimator Modal
+  const [showEstimatorModal, setShowEstimatorModal] = useState<boolean>(false);
+
+  // Dynamic real-time resource & price estimation
+  const { estimatedTokens, estimatedCalls, estimatedCost } = useMemo(() => {
+    const ontologyTokens = 3000;
+    const profileTokens = swarmScale * 600;
+    const turnsPerSim = Math.round(swarmScale * totalRounds * (diurnalCycle ? 0.7 : 1.0));
+    const simulationTokens = turnsPerSim * 450;
+    const reportTokens = 8000;
+    // Attached document tokens: approx 1 token per 4 characters
+    const attachedDocTokens = contextDocuments.reduce((acc, doc) => {
+      const textLen = (doc.content || '').length;
+      return acc + Math.ceil(textLen / 4);
+    }, 0);
+    const totalTokens = ontologyTokens + profileTokens + simulationTokens + reportTokens + attachedDocTokens;
+    const totalCalls = turnsPerSim + swarmScale + 6;
+    const rate = MODEL_PRICING[llmModel]?.ratePerM ?? 0.25;
+    const cost = (totalTokens / 1_000_000) * rate;
+
+    return {
+      estimatedTokens: totalTokens,
+      estimatedCalls: totalCalls,
+      estimatedCost: cost,
+    };
+  }, [swarmScale, totalRounds, diurnalCycle, llmModel, contextDocuments]);
+
+  // Re-sync if initialData changes
+  useEffect(() => {
+    if (initialData) {
+      setDraftId(initialData.id);
+      if (initialData.title) setTitle(initialData.title);
+      if (initialData.hypothesis) setHypothesis(initialData.hypothesis);
+      if (initialData.seed_document) setSeedDocument(initialData.seed_document);
+      if (initialData.lookback_months) setLookbackMonths(initialData.lookback_months as 6 | 12 | 24);
+      if (initialData.crm_data_sources !== undefined && Array.isArray(initialData.crm_data_sources)) {
+        setSelectedSources(initialData.crm_data_sources);
+      }
+      if (initialData.swarm_scale) setSwarmScale(initialData.swarm_scale);
+      if (initialData.total_rounds) setTotalRounds(initialData.total_rounds);
+      if (initialData.model_name) setLlmModel(initialData.model_name);
+      if (initialData.diurnal_cycle !== undefined) setDiurnalCycle(initialData.diurnal_cycle);
+      if (initialData.context_documents && Array.isArray(initialData.context_documents)) {
+        setContextDocuments(initialData.context_documents);
+      }
+      setIsDirty(false);
+    }
+  }, [initialData]);
+
+  // Document Upload Handlers
+  const processUploadedFiles = async (files: FileList | File[]) => {
+    if (!files || files.length === 0) return;
+    setIsUploadingDoc(true);
+    setDocUploadError(null);
+
+    const validExtensions = ['pdf', 'md', 'markdown', 'txt'];
+    const addedDocs: SwarmContextDocument[] = [];
+
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const ext = file.name.split('.').pop()?.toLowerCase() || '';
+
+      if (!validExtensions.includes(ext)) {
+        setDocUploadError(
+          t(
+            `Unsupported file format "${file.name}". Supported: .pdf, .md, .markdown, .txt`,
+            `Nepodporovaný formát súboru "${file.name}". Podporované sú len .pdf, .md, .markdown a .txt.`,
+            `Nem támogatott fájlformátum: "${file.name}". Csak .pdf, .md, .markdown és .txt formátumok támogatottak.`
+          )
+        );
+        continue;
+      }
+
+      setUploadDocProgress(
+        t(
+          `Processing ${file.name} (${i + 1}/${files.length})...`,
+          `Spracovávam ${file.name} (${i + 1}/${files.length})...`,
+          `${file.name} feldolgozása (${i + 1}/${files.length})...`
+        )
+      );
+
+      try {
+        let clientExtractedText = '';
+        // If markdown or text, read client-side immediately as UTF-8
+        if (ext === 'md' || ext === 'markdown' || ext === 'txt') {
+          clientExtractedText = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve((e.target?.result as string) || '');
+            reader.onerror = () => resolve('');
+            reader.readAsText(file);
+          });
+        }
+
+        // Upload to /upload.php to persist and extract server-side text
+        const formData = new FormData();
+        const eventId = 'swarm_doc_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7);
+        formData.append('file', file);
+        formData.append('eventId', eventId);
+
+        const res = await fetch('/upload.php', {
+          method: 'POST',
+          body: formData
+        });
+
+        const data = await res.json();
+        if (data.success) {
+          const finalExtractedText = clientExtractedText || data.extractedText || '';
+          const docType: 'pdf' | 'markdown' | 'text' = 
+            ext === 'pdf' ? 'pdf' : (ext === 'md' || ext === 'markdown') ? 'markdown' : 'text';
+
+          const newDoc: SwarmContextDocument = {
+            id: 'doc_' + Date.now() + '_' + Math.random().toString(36).substring(2, 7),
+            name: data.fileName || file.name,
+            size: file.size,
+            type: docType,
+            filePath: data.filePath || '',
+            content: finalExtractedText,
+            extractedChars: finalExtractedText.length,
+            uploadedAt: new Date().toISOString()
+          };
+
+          addedDocs.push(newDoc);
+        } else {
+          setDocUploadError(
+            t(
+              `Error uploading ${file.name}: ${data.error || 'Unknown error'}`,
+              `Chyba pri nahrávaní súboru ${file.name}: ${data.error || 'Neznáma chyba'}`,
+              `Hiba a(z) ${file.name} feltöltésekor: ${data.error || 'Ismeretlen hiba'}`
+            )
+          );
+        }
+      } catch (err: any) {
+        console.error('Error uploading swarm doc:', err);
+        setDocUploadError(
+          t(
+            `Failed to upload ${file.name}: ${err?.message || 'Network error'}`,
+            `Nepodarilo sa nahrať súbor ${file.name}: ${err?.message || 'Sieťová chyba'}`,
+            `Nem sikerült feltölteni a(z) ${file.name} fájlt: ${err?.message || 'Hálózati hiba'}`
+          )
+        );
+      }
+    }
+
+    if (addedDocs.length > 0) {
+      setContextDocuments(prev => [...prev, ...addedDocs]);
+      setIsDirty(true);
+    }
+    setIsUploadingDoc(false);
+    setUploadDocProgress(null);
+  };
+
+  const handleRemoveDoc = (docId: string) => {
+    setContextDocuments(prev => prev.filter(d => d.id !== docId));
+    setIsDirty(true);
+  };
+
+  const handleApplyCatalogueTemplate = (template: UseCaseTemplate) => {
+    const chosenTitle = systemLanguage === 'hu'
+      ? (template.nameHu || template.name)
+      : isSk
+        ? (template.nameSk || template.name)
+        : template.name;
+    const chosenHypothesis = systemLanguage === 'hu'
+      ? (template.hypothesisHu || template.hypothesis)
+      : isSk
+        ? (template.hypothesisSk || template.hypothesis)
+        : template.hypothesis;
+    const chosenSeed = systemLanguage === 'hu'
+      ? (template.seedDocumentHu || template.seedDocumentSk || template.seedDocument)
+      : isSk
+        ? (template.seedDocumentSk || template.seedDocument)
+        : template.seedDocument;
+
+    setTitle(chosenTitle);
+    setHypothesis(chosenHypothesis);
+    setSeedDocument(chosenSeed);
+
+    if (template.recommendedSources && template.recommendedSources.length > 0) {
+      setSelectedSources(template.recommendedSources);
+    }
+    setIsDirty(true);
+    setValidationError(null);
+    setIsCatalogueOpen(false);
+
+    const msg = t(
+      `Template "${chosenTitle}" applied to simulation!`,
+      `Šablóna „${chosenTitle}“ bola načítaná do polí.`,
+      `A(z) „${chosenTitle}” sablon betöltve a szimulációba!`
+    );
+    setToastMessage(msg);
+    setTimeout(() => setToastMessage(null), 4000);
+  };
+
+  const handleToggleSource = (sourceId: string) => {
+    setSelectedSources(prev => {
+      const next = prev.includes(sourceId)
+        ? prev.filter(id => id !== sourceId)
+        : [...prev, sourceId];
+      setIsDirty(true);
+      return next;
+    });
+  };
+
+  const handleSelectAllSources = () => {
+    setSelectedSources(allSourceOptions.map(s => s.id));
+    setIsDirty(true);
+  };
+
+  const handleClearAllSources = () => {
+    setSelectedSources([]);
+    setIsDirty(true);
+  };
+
+  // Save as Draft
+  const handleSaveDraft = async () => {
+    setIsSavingDraft(true);
+    setValidationError(null);
+    try {
+      const draftPayload = {
+        id: draftId,
+        title: title.trim() || t('Untitled Simulation Draft', 'Koncept simulácie bez názvu', 'Névtelen szimulációs vázlat'),
+        hypothesis: hypothesis.trim() || t('Unspecified hypothesis', 'Nešpecifikovaná hypotéza', 'Meghatározatlan hipotézis'),
+        seed_document: seedDocument.trim(),
+        lookback_months: lookbackMonths,
+        crm_data_sources: selectedSources,
+        swarm_scale: swarmScale,
+        total_rounds: totalRounds,
+        model_name: llmModel,
+        diurnal_cycle: diurnalCycle,
+        context_documents: contextDocuments,
+        status: 'draft' as const
+      };
+
+      const res = await initServerSimulation(draftPayload);
+      if (res.success) {
+        setDraftId(res.id);
+        const now = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+        setLastSavedTimestamp(now);
+        setIsDirty(false);
+        if (onDraftSaved) {
+          onDraftSaved({
+            ...draftPayload,
+            id: res.id,
+            status: 'draft',
+            created_at: new Date().toISOString()
+          });
+        }
+      }
+    } catch (err: any) {
+      console.error('Failed to save draft:', err);
+      setValidationError(
+        t(
+          'Failed to save draft: ' + (err?.message || 'Network error'),
+          'Nepodarilo sa uložiť koncept: ' + (err?.message || 'Sieťová chyba'),
+          'Nem sikerült menteni a vázlatot: ' + (err?.message || 'Hálózati hiba')
+        )
+      );
+    } finally {
+      setIsSavingDraft(false);
+    }
+  };
+
+  // Open Estimator before Launch
+  const handleOpenEstimator = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!title.trim()) {
+      setValidationError(t('Please enter a simulation title.', 'Zadajte názov strategickej simulácie.', 'Kérjük, adja meg a stratégiai szimuláció címét.'));
+      return;
+    }
+    if (!hypothesis.trim()) {
+      setValidationError(t('Please enter a strategic hypothesis or what-if question.', 'Zadajte hlavnú hypotézu alebo what-if otázku.', 'Kérjük, adja meg a stratégiai hipotézist vagy a "mi lenne, ha" kérdést.'));
+      return;
+    }
+    if (!seedDocument.trim()) {
+      setValidationError(t('Please enter the input briefing, scenario, or announcement text.', 'Zadajte vstupné zadanie, scenár alebo text memoranda.', 'Kérjük, adja meg a bemeneti összefoglalót, a forgatókönyvet vagy a közlemény szövegét.'));
+      return;
+    }
+    setValidationError(null);
+    setShowEstimatorModal(true);
+  };
+
+  const handleConfirmedLaunch = (selectedMode?: 'demo' | 'live') => {
+    const finalMode = selectedMode || executionMode;
+    setShowEstimatorModal(false);
+    onLaunch({
+      title: title.trim(),
+      hypothesis: hypothesis.trim(),
+      seedDocument: seedDocument.trim(),
+      lookbackMonths,
+      crmDataSources: selectedSources,
+      swarmScale,
+      totalRounds,
+      platforms: 'dual',
+      diurnalCycle,
+      llmModel,
+      contextDocuments,
+      executionMode: finalMode
+    }, draftId);
+  };
+
+  return (
+    <div className="max-w-6xl mx-auto space-y-6 pb-20 animate-in fade-in duration-200">
+      
+      {/* Top Header & Actions Bar */}
+      <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-200/80">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={onBack}
+            className="p-2 rounded-2xl bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 transition shadow-sm flex items-center gap-1 text-xs font-bold cursor-pointer"
+          >
+            <ChevronLeft className="w-4 h-4" />
+            <span>{t('Simulations List', 'Prehľad simulácií', 'Szimulációk áttekintése')}</span>
+          </button>
+          
+          <div className="h-4 w-px bg-slate-200 hidden sm:block" />
+
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-slate-400">SAI</span>
+            <span className="text-xs text-slate-300">/</span>
+            <span className="text-xs font-bold text-slate-800">
+              {draftId 
+                ? t('Edit Simulation Draft', 'Úprava konceptu simulácie', 'Szimulációs vázlat szerkesztése')
+                : t('New Simulation Setup', 'Konfigurácia novej simulácie', 'Új szimuláció konfigurálása')}
+            </span>
+
+            {draftId && (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
+                <Bookmark className="w-3 h-3 text-amber-600" />
+                {t('Draft', 'Koncept', 'Vázlat')}
+              </span>
+            )}
+
+            {/* Execution Mode Interactive Breadcrumb Badge */}
+            <div className="flex items-center gap-1 p-0.5 bg-slate-100/90 rounded-full border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setExecutionMode('demo')}
+                className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider transition flex items-center gap-1 cursor-pointer ${
+                  executionMode === 'demo'
+                    ? 'bg-emerald-500 text-white shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title={t('Click to select synthetic Demo test', 'Kliknutím zvolíte syntetický Demo test', 'Kattintson a szintetikus Demo teszt kiválasztásához')}
+              >
+                <Zap className="w-3 h-3" />
+                {t('Demo test ($0.00)', 'Demo test (0 €)', 'Demo teszt (0 €)')}
+              </button>
+              <button
+                type="button"
+                onClick={() => setExecutionMode('live')}
+                className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider transition flex items-center gap-1 cursor-pointer ${
+                  executionMode === 'live'
+                    ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-xs'
+                    : 'text-slate-500 hover:text-slate-800'
+                }`}
+                title={t('Click to select real live simulation', 'Kliknutím zvolíte skutočnú živú simuláciu', 'Kattintson az éles élő szimuláció kiválasztásához')}
+              >
+                <Sparkles className="w-3 h-3" />
+                {t('Live test (Live API)', 'Živý test (Live)', 'Élő teszt (Live API)')}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Action Controls */}
+        <div className="flex items-center gap-2.5">
+          {/* Draft Save Status */}
+          {lastSavedTimestamp && !isDirty && (
+            <div className="text-xs text-emerald-600 font-bold flex items-center gap-1">
+              <Check className="w-3.5 h-3.5 text-emerald-600" />
+              <span>{t(`Draft saved at ${lastSavedTimestamp}`, `Koncept uložený o ${lastSavedTimestamp}`, `Vázlat mentve ekkor: ${lastSavedTimestamp}`)}</span>
+            </div>
+          )}
+          {isDirty && (
+            <div className="text-xs text-amber-600 font-medium flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              <span>{t('Unsaved changes', 'Neuložené zmeny', 'Nem mentett módosítások')}</span>
+            </div>
+          )}
+
+          {/* Browse Templates Button */}
+          <button
+            type="button"
+            onClick={() => setIsCatalogueOpen(true)}
+            className="px-3.5 py-2 rounded-2xl bg-white border border-purple-200 hover:border-purple-300 hover:bg-purple-50/60 text-purple-700 font-bold text-xs shadow-sm transition flex items-center gap-1.5 cursor-pointer"
+          >
+            <Compass className="w-4 h-4 text-purple-600" />
+            <span>{t('Browse Templates (105)', 'Katalóg šablón (105)', 'Sablonkatalógus (105)')}</span>
+          </button>
+
+          {/* Save Draft Button */}
+          <button
+            type="button"
+            onClick={handleSaveDraft}
+            disabled={isSavingDraft || isSubmitting}
+            className="px-4 py-2 rounded-2xl bg-white border border-slate-200 hover:border-purple-300 hover:bg-purple-50/50 text-slate-700 font-bold text-xs shadow-sm transition flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+          >
+            {isSavingDraft ? (
+              <span className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Save className="w-4 h-4 text-purple-600" />
+            )}
+            <span>{isSavingDraft ? t('Saving draft...', 'Ukladám koncept...', 'Vázlat mentése...') : t('Save Draft', 'Uložiť koncept', 'Vázlat mentése')}</span>
+          </button>
+
+          {/* Primary Estimate & Launch Button */}
+          <button
+            type="button"
+            onClick={handleOpenEstimator}
+            disabled={isSubmitting}
+            className="px-5 py-2 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 hover:from-purple-700 hover:to-emerald-600 text-white font-bold text-xs shadow-md hover:shadow-lg transition flex items-center gap-2 cursor-pointer disabled:opacity-60"
+          >
+            <span>{t('Review & Estimate Tokens', 'Skontrolovať & Odhadnúť tokeny', 'Áttekintés és tokenbecslés')}</span>
+            <ArrowRight className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      {/* Validation Banner */}
+      {validationError && (
+        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium flex items-center gap-2 animate-in fade-in">
+          <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+          <span>{validationError}</span>
+        </div>
+      )}
+
+      {/* Main Form Container */}
+      <form onSubmit={handleOpenEstimator} className="space-y-6">
+
+        {/* Prominent Execution Mode Selector Card (Demo vs Live) */}
+        <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <label className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-2">
+                <Zap className="w-4 h-4 text-purple-600" />
+                {t('Simulation Execution Mode', 'Režim vykonania simulácie', 'Szimuláció végrehajtási mód')}
+              </label>
+              <p className="text-[11px] text-slate-500 mt-0.5">
+                {t(
+                  'Choose between an instant free demonstration or a live production simulation via OpenAI.',
+                  'Vyberte si medzi okamžitou bezplatnou ukážkou a ostrou simuláciou cez OpenAI.',
+                  'Válasszon az azonnali ingyenes bemutató vagy az OpenAI-n keresztüli éles szimuláció között.'
+                )}
+              </p>
+            </div>
+            <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border flex items-center gap-1.5 ${
+              executionMode === 'live' 
+                ? 'bg-purple-50 text-purple-700 border-purple-200' 
+                : 'bg-emerald-50 text-emerald-700 border-emerald-200'
+            }`}>
+              <span className={`w-2 h-2 rounded-full ${executionMode === 'live' ? 'bg-purple-500 animate-pulse' : 'bg-emerald-500'}`} />
+              {executionMode === 'live' 
+                ? t('Selected: Live Test (Live API)', 'Zvolený: Živý test (Live API)', 'Kiválasztva: Élő teszt (Live API)') 
+                : t('Selected: Demo Test ($0.00)', 'Zvolený: Demo test (0 €)', 'Kiválasztva: Demo teszt (0 €)')}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+            {/* Demo Option Card */}
+            <div
+              onClick={() => setExecutionMode('demo')}
+              className={`p-4 rounded-2xl border-2 transition cursor-pointer flex items-start gap-3.5 ${
+                executionMode === 'demo'
+                  ? 'bg-emerald-50/60 border-emerald-500 shadow-sm ring-2 ring-emerald-500/20'
+                  : 'bg-slate-50/50 border-slate-200 hover:border-slate-300 hover:bg-slate-50 opacity-75'
+              }`}
+            >
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                executionMode === 'demo'
+                  ? 'bg-emerald-600 text-white shadow-xs'
+                  : 'bg-slate-200 text-slate-600'
+              }`}>
+                <Zap className="w-5 h-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    ⚡ Demo test
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200">
+                      {t('$0.00', '0.00 €', '0.00 €')}
+                    </span>
+                  </h4>
+                  {executionMode === 'demo' && (
+                    <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
+                      <Check className="w-4 h-4 text-emerald-600" />
+                      {t('Selected', 'Zvolené', 'Kiválasztva')}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                  {t(
+                    'Instant synthetic simulation on demonstration data. Zero OpenAI API costs, completes in seconds.',
+                    'Blesková syntetická simulácia na demonštračných dátach. Nulové náklady na OpenAI API, trvá iba pár sekúnd.',
+                    'Villámgyors szintetikus szimuláció bemutató adatokon. Nulla OpenAI API költség, másodpercek alatt lefut.'
+                  )}
+                </p>
+              </div>
+            </div>
+
+            {/* Live Option Card */}
+            <div
+              onClick={() => setExecutionMode('live')}
+              className={`p-4 rounded-2xl border-2 transition cursor-pointer flex items-start gap-3.5 ${
+                executionMode === 'live'
+                  ? 'bg-purple-50/60 border-purple-600 shadow-sm ring-2 ring-purple-600/20'
+                  : 'bg-slate-50/50 border-slate-200 hover:border-slate-300 hover:bg-slate-50 opacity-75'
+              }`}
+            >
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                executionMode === 'live'
+                  ? 'bg-gradient-to-br from-purple-600 to-indigo-600 text-white shadow-xs'
+                  : 'bg-slate-200 text-slate-600'
+              }`}>
+                <Sparkles className="w-5 h-5" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center justify-between gap-2">
+                  <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                    🚀 {t('Live Test (Live API)', 'Živý test (Live API)', 'Élő teszt (Live API)')}
+                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 border border-purple-200">
+                      ~{estimatedCost.toFixed(3)} €
+                    </span>
+                  </h4>
+                  {executionMode === 'live' && (
+                    <span className="text-xs font-bold text-purple-600 flex items-center gap-1">
+                      <Check className="w-4 h-4 text-purple-600" />
+                      {t('Selected', 'Zvolené', 'Kiválasztva')}
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                  {t(
+                    'Real AI simulation with live OpenAI calls, CRM context extraction, and complete agent ReAct cycles.',
+                    'Skutočná AI simulácia s reálnymi OpenAI volaniami, extrakciou kontextu z CRM a plnohodnotným ReAct cyklom agentov.',
+                    'Valódi MI szimuláció élő OpenAI hívásokkal, CRM kontextus-kinyeréssel és teljes körű ReAct ágens-ciklusokkal.'
+                  )}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Rehearsal Title, Hypothesis, Briefing & Supplementary Files Card */}
+        <div className="rounded-3xl bg-white border border-slate-200/90 shadow-sm overflow-hidden divide-y divide-slate-100">
+          
+          {/* 1. Simulation Title Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-5 divide-y lg:divide-y-0 lg:divide-x divide-slate-200/80 items-stretch">
+            <div className="lg:col-span-1 p-5 md:p-6 bg-slate-100/80 flex flex-col justify-start space-y-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 bg-purple-100/80 px-2 py-0.5 rounded-md inline-block border border-purple-200 w-fit">
+                {t('Simulation Title', 'Názov simulácie', 'Szimuláció címe')}
+              </span>
+              <h3 className="text-xs font-bold text-slate-900 leading-snug">
+                {t('What is the name of the simulation?', 'Ako sa volá táto simulácia?', 'Mi a szimuláció neve?')}
+              </h3>
+              <p className="text-[11px] text-slate-500 font-normal leading-relaxed">
+                {t('Give your simulation a clear executive identifier.', 'Zadajte jasný manažérsky identifikátor pre túto simuláciu.', 'Adjon egyértelmű vezetői azonosítót a szimulációnak.')}
+              </p>
+            </div>
+
+            <div className="lg:col-span-4 p-5 md:p-7 space-y-1.5 bg-white">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center justify-between">
+                <span>{t('Simulation Title', 'Názov simulácie', 'Szimuláció címe')} <span className="text-rose-500">*</span></span>
+                <span className="text-[11px] text-slate-400 font-normal">
+                  {t('Executive identifier for reports & checkpoints', 'Manažérsky identifikátor pre reporty & kontrolné body', 'Vezetői azonosító a jelentésekhez és ellenőrző pontokhoz')}
+                </span>
+              </label>
+              <input 
+                type="text"
+                value={title}
+                onChange={e => {
+                  setTitle(e.target.value);
+                  setIsDirty(true);
+                }}
+                placeholder={t('e.g. Q4 Enterprise Pricing Restructuring', 'napr. Reštrukturalizácia cien balíka Enterprise v Q4', 'pl. Q4 Enterprise díjcsomag átstrukturálása')}
+                required
+                className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-sm text-slate-900 font-semibold bg-white"
+              />
+              <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+                <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
+                <span>
+                  <strong className="text-slate-700 font-semibold">{t('Purpose:', 'Na čo slúži:', 'Célja:')}</strong>{' '}
+                  {t(
+                    'Primary executive title and identifier for this market simulation.',
+                    'Hlavný manažérsky názov a identifikátor pre túto trhovú simuláciu.',
+                    'A piaci szimuláció elsődleges vezetői címe és azonosítója.'
+                  )}{' '}
+                  <strong className="text-slate-700 font-semibold">{t('How it\'s used:', 'Ako sa používa:', 'Használata:')}</strong>{' '}
+                  {t(
+                    'Displayed across simulation lists, checkpoints, live War Room, and exported executive reports.',
+                    'Zobrazuje sa na prehľadoch simulácií, pri ukladaní kontrolných bodov, v reálnom čase vo War Roome a v exportovaných manažérskych reportoch.',
+                    'Megjelenik a szimulációs listákon, ellenőrző pontoknál, élőben a War Roomban és az exportált vezetői jelentésekben.'
+                  )}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* 2. Strategic Hypothesis Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-5 divide-y lg:divide-y-0 lg:divide-x divide-slate-200/80 items-stretch">
+            <div className="lg:col-span-1 p-5 md:p-6 bg-slate-100/80 flex flex-col justify-start space-y-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-100/80 px-2 py-0.5 rounded-md inline-block border border-indigo-200 w-fit">
+                {t('Core Variable', 'Kľúčová premenná', 'Fő változó')}
+              </span>
+              <h3 className="text-xs font-bold text-slate-900 leading-snug">
+                {t('What key question or change do you want to test?', 'Akú kľúčovú otázku alebo zmenu chcete otestovať?', 'Milyen kulcsfontosságú kérdést vagy változást szeretne tesztelni?')}
+              </h3>
+              <p className="text-[11px] text-slate-500 font-normal leading-relaxed">
+                {t('Core predictive hypothesis deliberated by the swarm.', 'Kľúčová prediktívna hypotéza, o ktorej bude roj diskutovať.', 'A raj által megvitatott legfontosabb prediktív hipotézis.')}
+              </p>
+            </div>
+
+            <div className="lg:col-span-4 p-5 md:p-7 space-y-1.5 bg-white">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center justify-between">
+                <span>{t('Strategic Hypothesis / What-If Variable', 'Strategická hypotéza / What-If premenná', 'Stratégiai hipotézis / "Mi lenne, ha" változó')} <span className="text-rose-500">*</span></span>
+                <span className="text-[11px] text-slate-400 font-normal">
+                  {t('Core predictive question deliberated by the swarm', 'Kľúčová prediktívna otázka, o ktorej bude roj diskutovať', 'A raj által megvitatott legfontosabb prediktív kérdés')}
+                </span>
+              </label>
+              <input 
+                type="text"
+                value={hypothesis}
+                onChange={e => {
+                  setHypothesis(e.target.value);
+                  setIsDirty(true);
+                }}
+                placeholder={t('e.g. What if we raise prices by 25% while offering 99.9% SLA availability?', 'napr. Čo ak zvýšime ceny o 25% a zároveň ponúkneme 99.9% SLA dostupnosť?', 'pl. Mi lenne, ha 25%-kal növelnénk az árakat, miközben 99.9%-os SLA rendelkezésre állást garantálunk?')}
+                required
+                className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-sm text-slate-900 font-medium bg-white"
+              />
+              <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+                <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
+                <span>
+                  <strong className="text-slate-700 font-semibold">{t('Purpose:', 'Na čo slúži:', 'Célja:')}</strong>{' '}
+                  {t(
+                    'Key strategic change, pricing shift, or directional move being stress-tested.',
+                    'Kľúčová strategická zmena, zmena cenotvorby alebo smerovania, ktorá sa má otestovať.',
+                    'Kulcsfontosságú stratégiai váltás, árváltoztatás vagy irányvonal, amely tesztelésre kerül.'
+                  )}{' '}
+                  <strong className="text-slate-700 font-semibold">{t('How it\'s used:', 'Ako sa používa:', 'Használata:')}</strong>{' '}
+                  {t(
+                    'Serves as the central mission prompt for agents, guiding autonomous opinion formulation, sentiment shifts, and objection tracking.',
+                    'Slúži ako ústredné zadanie pre agentov, riadi autonómnu tvorbu názorov, zmeny nálad a sledovanie námietok.',
+                    'Központi küldetésként szolgál az ágensek számára, irányítja az autonóm véleményalkotást, a hangulatváltozásokat és a kifogások követését.'
+                  )}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* 3. Input Briefing & Announcement Text Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-5 divide-y lg:divide-y-0 lg:divide-x divide-slate-200/80 items-stretch">
+            <div className="lg:col-span-1 p-5 md:p-6 bg-slate-100/80 flex flex-col justify-start space-y-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 bg-purple-100/80 px-2 py-0.5 rounded-md inline-block border border-purple-200 w-fit">
+                {t('Briefing Context', 'Kontext zadania', 'Forgatókönyv')}
+              </span>
+              <h3 className="text-xs font-bold text-slate-900 leading-snug">
+                {t('What do you want to simulate?', 'Čo chcete simulovať?', 'Mit szeretne szimulálni?')}
+              </h3>
+              <p className="text-[11px] text-slate-500 font-normal leading-relaxed">
+                {t('The announcement, pricing memo, or scenario text agents will read and quote.', 'Znenie tlačovej správy, cenník alebo memorandum, ktoré budú agenti citovať.', 'A közlemény, árlista vagy feljegyzés szövege, amit az ágensek olvasnak.')}
+              </p>
+            </div>
+
+            <div className="lg:col-span-4 p-5 md:p-7 space-y-1.5 bg-white">
+              <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center justify-between">
+                <span>{t('Input Briefing & Announcement Text', 'Vstupné zadanie & Text oznámenia', 'Bemeneti összefoglaló és közlemény')} <span className="text-rose-500">*</span></span>
+                <span className="text-[11px] text-slate-400 font-normal">
+                  {t('Press release, internal memo, or pricing document', 'Tlačová správa, interné memorandum alebo cenový dokument', 'Sajtóközlemény, belső feljegyzés vagy árazási dokumentum')}
+                </span>
+              </label>
+              <textarea 
+                rows={6}
+                value={seedDocument}
+                onChange={e => {
+                  setSeedDocument(e.target.value);
+                  setIsDirty(true);
+                }}
+                placeholder={t(
+                  'Enter the proposed announcement text, changes, new terms, or market move that agents will read and analyze...',
+                  'Vložte text oznámenia, návrh tlačovej správy alebo cenové memorandum, ktoré budú agenti čítať a analyzovať...',
+                  'Illessze be a közlemény szövegét, a sajtóközlemény tervezetét vagy az árazási feljegyzést, amelyet az ágensek olvasnak és elemeznek...'
+                )}
+                required
+                className="w-full px-4 py-3.5 rounded-2xl border border-slate-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-sm text-slate-800 font-normal resize-y leading-relaxed bg-white"
+              />
+              <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+                <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
+                <span>
+                  <strong className="text-slate-700 font-semibold">{t('Purpose:', 'Na čo slúži:', 'Célja:')}</strong>{' '}
+                  {t(
+                    'Full briefing text, draft announcement, internal memo, or proposed contractual terms.',
+                    'Kompletný text zadania, návrh oznámenia, interné memorandum alebo navrhované zmluvné podmienky.',
+                    'A feladat teljes szövege, közleménytervezet, belső feljegyzés vagy javasolt szerződéses feltételek.'
+                  )}{' '}
+                  <strong className="text-slate-700 font-semibold">{t('How it\'s used:', 'Ako sa používa:', 'Használata:')}</strong>{' '}
+                  {t(
+                    'Agents inspect this briefing verbatim in Round 1, quote exact clauses, assess terms against their persona interests, and formulate counterarguments.',
+                    'Agenti čítajú tento text doslovne v 1. kole, citujú konkrétne podmienky, vyhodnocujú doložky podľa svojich záujmov a formulujú protiargumenty.',
+                    'Az ágensek az 1. fordulóban szó szerint elolvassák ezt a szöveget, konkrét záradékokat idéznek, értékelik a feltételeket a személyiségük érdekei szerint és ellenérveket fogalmaznak meg.'
+                  )}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* 4. Context Documents Upload (PDF & Markdown) Row */}
+          <div className="grid grid-cols-1 lg:grid-cols-5 divide-y lg:divide-y-0 lg:divide-x divide-slate-200/80 items-stretch">
+            <div className="lg:col-span-1 p-5 md:p-6 bg-slate-100/80 flex flex-col justify-start space-y-2">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md inline-block border border-emerald-200 w-fit">
+                {t('Attachments', 'Prílohy', 'Csatolmányok')}
+              </span>
+              <h3 className="text-xs font-bold text-slate-900 leading-snug">
+                {t('Any additional files you want to consider?', 'Máte doplňujúce podklady alebo súbory na zváženie?', 'Vannak további figyelembe veendő fájlok?')}
+              </h3>
+              <p className="text-[11px] text-slate-500 font-normal leading-relaxed">
+                {t('Attach supporting contracts, pricing policies, specs, or objection battlecards.', 'Priložte zmluvy, cenové smernice, technické špecifikácie alebo odpovede na námietky.', 'Csatoljon szerződéseket, árpolitikát, specifikációkat vagy kifogáskezelési kártyákat.')}
+              </p>
+            </div>
+
+            <div className="lg:col-span-4 p-5 md:p-7 space-y-3 bg-white">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+                  <Paperclip className="w-3.5 h-3.5 text-purple-600" />
+                  <span>{t('Supplementary Knowledge Base (PDF & Markdown)', 'Doplnková dokumentácia pre roj (PDF & Markdown)', 'Kiegészítő dokumentáció a raj számára (PDF és Markdown)')}</span>
+                  {contextDocuments.length > 0 && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-50 text-purple-700 border border-purple-200">
+                      {contextDocuments.length} {systemLanguage === 'hu' ? 'fájl' : isSk ? (contextDocuments.length === 1 ? 'súbor' : contextDocuments.length < 5 ? 'súbory' : 'súborov') : (contextDocuments.length === 1 ? 'file' : 'files')}
+                    </span>
+                  )}
+                </label>
+                <span className="text-[11px] text-slate-400 font-normal">
+                  {t('Supported formats: ', 'Podporované formáty: ', 'Támogatott formátumok: ')}
+                  <strong className="text-slate-600 font-semibold">.pdf</strong>, <strong className="text-slate-600 font-semibold">.md</strong>, <strong className="text-slate-600 font-semibold">.txt</strong>
+                </span>
+              </div>
+
+              {/* Drag & Drop Upload Zone */}
+              <div
+                onDragOver={(e) => {
+                  e.preventDefault();
+                  setIsDraggingDoc(true);
+                }}
+                onDragLeave={(e) => {
+                  e.preventDefault();
+                  setIsDraggingDoc(false);
+                }}
+                onDrop={(e) => {
+                  e.preventDefault();
+                  setIsDraggingDoc(false);
+                  if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                    processUploadedFiles(e.dataTransfer.files);
+                  }
+                }}
+                onClick={() => fileInputRef.current?.click()}
+                className={`border-2 border-dashed rounded-2xl p-4 sm:p-5 transition-all text-center cursor-pointer flex flex-col items-center justify-center gap-2 ${
+                  isDraggingDoc
+                    ? 'border-purple-500 bg-purple-50/80 ring-4 ring-purple-100'
+                    : 'border-slate-200 hover:border-purple-300 hover:bg-slate-50/60 bg-slate-50/30'
+                }`}
+              >
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  multiple
+                  accept=".pdf,.md,.markdown,.txt,application/pdf,text/markdown,text/plain"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files && e.target.files.length > 0) {
+                      processUploadedFiles(e.target.files);
+                      e.target.value = '';
+                    }
+                  }}
+                />
+
+                <div className="w-10 h-10 rounded-2xl bg-purple-100/80 text-purple-600 flex items-center justify-center shadow-xs">
+                  {isUploadingDoc ? (
+                    <Loader2 className="w-5 h-5 animate-spin text-purple-600" />
+                  ) : (
+                    <UploadCloud className="w-5 h-5" />
+                  )}
+                </div>
+
+                <div>
+                  <p className="text-xs font-bold text-slate-800">
+                    {isUploadingDoc
+                      ? uploadDocProgress || t('Uploading and parsing files...', 'Nahrávam a analyzujem súbory...', 'Fájlok feltöltése és elemzése...')
+                      : t('Click to upload documents or drag & drop files here', 'Kliknite pre nahratie dokumentov alebo ich presuňte sem', 'Kattintson a dokumentumok feltöltéséhez vagy húzza ide a fájlokat')}
+                  </p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">
+                    {t(
+                      'Contracts, pricing policies, specs, objection battlecards, or product notes',
+                      'Zmluvy, cenové smernice, technické špecifikácie, odpovede na námietky alebo poznámky k produktu',
+                      'Szerződések, árpolitika, specifikációk, kifogáskezelési kártyák vagy termékjegyzetek'
+                    )}
+                  </p>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-center gap-1.5 pt-1">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                    <FileText className="w-3 h-3" /> PDF ({t('text extraction', 'extrakcia textu', 'szövegkivonás')})
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                    <FileCode className="w-3 h-3" /> MARKDOWN (.md)
+                  </span>
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                    TEXT (.txt)
+                  </span>
+                </div>
+              </div>
+
+              {/* Error banner if upload failed */}
+              {docUploadError && (
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                    <span>{docUploadError}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setDocUploadError(null)}
+                    className="p-1 hover:bg-rose-100 rounded-lg text-rose-500 transition cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
+
+              {/* Uploaded Documents List */}
+              {contextDocuments.length > 0 && (
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center justify-between text-[11px] text-slate-500 font-semibold px-1">
+                    <span>{t(`Attached context documents ready for simulation (${contextDocuments.length}):`, `Priložené dokumenty pripravené na simuláciu (${contextDocuments.length}):`, `Csatolt dokumentumok a szimulációhoz készen (${contextDocuments.length}):`)}</span>
+                    <span>
+                      {t(
+                        `Total ~${contextDocuments.reduce((acc, d) => acc + Math.ceil((d.content?.length || 0) / 4), 0).toLocaleString()} context tokens`,
+                        `Spolu ~${contextDocuments.reduce((acc, d) => acc + Math.ceil((d.content?.length || 0) / 4), 0).toLocaleString()} tokenov kontextu`,
+                        `Összesen ~${contextDocuments.reduce((acc, d) => acc + Math.ceil((d.content?.length || 0) / 4), 0).toLocaleString()} kontextus token`
+                      )}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                    {contextDocuments.map((doc) => {
+                      const isPdf = doc.type === 'pdf';
+                      const isMd = doc.type === 'markdown';
+                      const approxTokens = Math.ceil((doc.content?.length || 0) / 4);
+
+                      return (
+                        <div
+                          key={doc.id}
+                          className="p-3 rounded-2xl bg-white border border-slate-200/90 hover:border-purple-200 transition shadow-xs flex items-start justify-between gap-3 group"
+                        >
+                          <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                            <div
+                              className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 mt-0.5 ${
+                                isPdf
+                                  ? 'bg-rose-50 text-rose-600 border border-rose-200'
+                                  : isMd
+                                  ? 'bg-purple-50 text-purple-600 border border-purple-200'
+                                  : 'bg-slate-100 text-slate-600 border border-slate-200'
+                              }`}
+                            >
+                              {isPdf ? (
+                                <FileText className="w-4 h-4" />
+                              ) : isMd ? (
+                                <FileCode className="w-4 h-4" />
+                              ) : (
+                                <Paperclip className="w-4 h-4" />
+                              )}
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <p className="text-xs font-bold text-slate-800 truncate" title={doc.name}>
+                                {doc.name}
+                              </p>
+                              <div className="flex flex-wrap items-center gap-2 mt-0.5 text-[10px] text-slate-500">
+                                <span>{formatBytes(doc.size)}</span>
+                                <span>•</span>
+                                {doc.extractedChars && doc.extractedChars > 0 ? (
+                                  <span className="text-emerald-700 font-medium">
+                                    {doc.extractedChars.toLocaleString()} {t('chars', 'znakov', 'karakter')} (~{approxTokens} tkn)
+                                  </span>
+                                ) : (
+                                  <span className="text-amber-600 font-medium">
+                                    {t('No text extracted', 'Nenašiel sa text', 'Nem található szöveg')}
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1 shrink-0">
+                            {doc.content && doc.content.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setPreviewDoc(doc)}
+                                title={t('View extracted text', 'Zobraziť extrahovaný text', 'Kivont szöveg megtekintése')}
+                                className="p-1.5 rounded-lg hover:bg-purple-50 text-slate-400 hover:text-purple-600 transition cursor-pointer"
+                              >
+                                <Eye className="w-3.5 h-3.5" />
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveDoc(doc.id)}
+                              title={t('Remove document', 'Odstrániť dokument', 'Dokumentum törlése')}
+                              className="p-1.5 rounded-lg hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition cursor-pointer"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+                <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
+                <span>
+                  <strong className="text-slate-700 font-semibold">{t('How it works:', 'Ako to funguje:', 'Hogyan működik:')}</strong>{' '}
+                  {t(
+                    'Clean text is automatically extracted from attached PDF and Markdown files. This content is integrated into the world ontology graph so swarm agents can reference specific clauses, compare terms, and formulate tailored reactions.',
+                    'Z priložených PDF a Markdown súborov sa automaticky vyextrahuje čistý text. Tento text je zahrnutý do tvorby ontologického grafu simulačného sveta a agenti v roji môžu citovať presné klauzuly, porovnávať parametre a formulovať cielené reakcie.',
+                    'A csatolt PDF és Markdown fájlokból a tiszta szöveg automatikusan kinyerésre kerül. Ez a tartalom beépül a szimulációs világ ontológiai gráfjába, így a raj ágensei konkrét záradékokra hivatkozhatnak, paramétereket hasonlíthatnak össze és célzott reakciókat adhatnak.'
+                  )}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* CRM Grounding Data Sources */}
+        <div className="p-6 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-slate-100">
+            <div className="space-y-0.5">
+              <div className="flex items-center gap-2">
+                <Database className="w-4 h-4 text-purple-600" />
+                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                  {t('CRM Grounding Data Sources', 'CRM podkladové zdroje dát', 'CRM megalapozó adatforrások')}
+                </h3>
+                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black tracking-wide border ${
+                  selectedSources.length === 0
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                    : 'bg-purple-50 text-purple-700 border-purple-200'
+                }`}>
+                  {selectedSources.length === 0 
+                    ? t('Pure Scenario Mode (0 CRM records)', 'Čistý režim scenára (0 CRM záznamov)', 'Tiszta forgatókönyv mód (0 CRM rekord)') 
+                    : t(`Hybrid (${selectedSources.length} CRM sources active)`, `Hybrid (${selectedSources.length} CRM zdrojov aktívnych)`, `Hibrid (${selectedSources.length} CRM forrás aktív)`)}
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-500 font-normal">
+                {t(
+                  'Choose whether to ground the simulation strictly on your uploaded files or pull real CRM customer records & past deal objections.',
+                  'Zvoľte, či má simulácia vychádzať výhradne z vašich nahratých súborov, alebo vyťažiť skutočné CRM kontakty a minulé námietky.',
+                  'Válassza ki, hogy a szimuláció kizárólag a feltöltött fájlokra támaszkodjon, vagy bevonja a valós CRM ügyfélrekordokat és múltbeli kifogásokat.'
+                )}
+              </p>
+            </div>
+
+            {/* Quick Grounding Mode Switcher */}
+            <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200/80">
+              <button
+                type="button"
+                onClick={handleClearAllSources}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  selectedSources.length === 0
+                    ? 'bg-white text-purple-700 shadow-xs ring-1 ring-slate-200'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5 text-emerald-600" />
+                <span>{t('Pure Markdown / Briefing Only', 'Len Markdown / Scenár', 'Csak Markdown / Forgatókönyv')}</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleSelectAllSources}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                  selectedSources.length > 0
+                    ? 'bg-white text-purple-700 shadow-xs ring-1 ring-slate-200'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Database className="w-3.5 h-3.5 text-purple-600" />
+                <span>{t('Include Live CRM Data', 'Zahrnúť živé CRM dáta', 'Élő CRM adatok bevonása')}</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Sources Checkbox Grid */}
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+            {allSourceOptions.map((src) => {
+              const isChecked = selectedSources.includes(src.id);
+              const IconComp = src.icon as React.ComponentType<{ className?: string }>;
+
+              return (
+                <div
+                  key={src.id}
+                  onClick={() => handleToggleSource(src.id)}
+                  className={`p-4 rounded-2xl border transition-all cursor-pointer select-none flex flex-col justify-between group ${
+                    isChecked
+                      ? 'bg-purple-50/30 border-purple-300 ring-1 ring-purple-400/40 shadow-xs hover:border-purple-400'
+                      : 'bg-slate-50/50 border-slate-200/80 text-slate-400 hover:border-slate-300 hover:bg-slate-50 opacity-75 hover:opacity-100'
+                  }`}
+                >
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <div className={`w-7 h-7 rounded-xl flex items-center justify-center transition ${
+                          isChecked ? 'bg-purple-100 text-purple-700' : 'bg-slate-200/60 text-slate-400'
+                        }`}>
+                          <IconComp className="w-3.5 h-3.5" />
+                        </div>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${src.badgeColor}`}>
+                          {systemLanguage === 'hu' ? (src.badgeHu || src.badgeEn || src.badge) : isSk ? src.badge : (src.badgeEn || src.badge)}
+                        </span>
+                      </div>
+
+                      {/* Checkbox Icon */}
+                      <div className={`w-5 h-5 rounded-lg flex items-center justify-center border transition ${
+                        isChecked 
+                          ? 'bg-purple-600 border-purple-600 text-white' 
+                          : 'border-slate-300 bg-white group-hover:border-slate-400'
+                      }`}>
+                        {isChecked ? (
+                          <Check className="w-3.5 h-3.5 stroke-[3]" />
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div>
+                      <h4 className={`text-xs font-bold transition ${
+                        isChecked ? 'text-slate-900 group-hover:text-purple-700' : 'text-slate-600'
+                      }`}>
+                        {systemLanguage === 'hu' ? (src.titleHu || src.titleEn || src.title) : isSk ? src.title : (src.titleEn || src.title)}
+                      </h4>
+                      <p className="text-[11px] text-slate-500 font-normal leading-relaxed mt-1">
+                        {systemLanguage === 'hu' ? (src.descriptionHu || src.descriptionEn || src.description) : isSk ? src.description : (src.descriptionEn || src.description)}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="pt-2.5 mt-2.5 border-t border-slate-100/80 flex items-center justify-between text-[10px]">
+                    <span className="text-slate-400 font-medium">
+                      {systemLanguage === 'hu' ? (src.categoryHu || src.categoryEn || src.category) : isSk ? src.category : (src.categoryEn || src.category)}
+                    </span>
+                    <span className={`font-bold ${isChecked ? 'text-purple-600' : 'text-slate-400'}`}>
+                      {isChecked ? t('Included in simulation', 'Zahrnuté v simulácii', 'Szimulációban szerepel') : t('Disabled', 'Vypnuté', 'Kikapcsolva')}
+                    </span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Zero Selected Safeguard Warning */}
+          {selectedSources.length === 0 && (
+            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium flex items-center gap-2.5 animate-in fade-in">
+              <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+              <span>
+                {t(
+                  'All CRM sources are currently disabled. The simulation will rely strictly on the text provided above without importing past client history or deal objections.',
+                  'Všetky CRM zdroje sú momentálne vypnuté. Simulácia bude vychádzať výhradne z vyššie zadaného textu bez importu histórie klientov alebo obchodných námietok.',
+                  'Minden CRM forrás ki van kapcsolva. A szimuláció kizárólag a fenti szövegre fog támaszkodni a korábbi ügyfélelőzmények vagy üzleti kifogások importálása nélkül.'
+                )}
+              </span>
+            </div>
+          )}
+
+          <div className="flex items-start gap-2 p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-[11px] text-slate-500 leading-relaxed">
+            <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
+            <span>
+              <strong className="text-slate-700 font-semibold">{t('Purpose:', 'Na čo slúži:', 'Célja:')}</strong>{' '}
+              {t(
+                'Real CRM records selected to ground the simulated market in your company\'s actual commercial history.',
+                'Reálne dáta z CRM vybrané na ukotvenie simulovaného trhu v skutočnej obchodnej histórii vašej spoločnosti.',
+                'Valós CRM adatok a szimulált piac megalapozására a vállalat tényleges kereskedelmi múltjában.'
+              )}{' '}
+              <strong className="text-slate-700 font-semibold">{t('How it\'s used:', 'Ako sa používa:', 'Használata:')}</strong>{' '}
+              {t(
+                'The context engine extracts past deal objections, customer feedback, and competitor mentions to calibrate agent biases and build the knowledge ontology.',
+                'Kontextový modul vyťaží minulé námietky z obchodov, spätnú väzbu zákazníkov a zmienky o konkurencii na dynamickú kalibráciu postojov agentov a zostavenie znalostného grafu.',
+                'A kontextusmotor kinyeri a korábbi üzletkötési kifogásokat, ügyféli visszajelzéseket és versenytársi említéseket az ágensek attitűdjeinek kalibrálásához és a tudásontológia felépítéséhez.'
+              )}
+            </span>
+          </div>
+        </div>
+
+        {/* Simulation Parameters Grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          
+          {/* CRM Lookback Horizon */}
+          <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <Calendar className="w-4 h-4 text-indigo-600" />
+                {t('CRM Data Lookback Horizon', 'Časový horizont CRM dát', 'CRM adatok időhorizontja')}
+              </label>
+              <span className="text-[11px] text-slate-400">{t('Data Period', 'Obdobie dát', 'Időszak')}</span>
+            </div>
+            <p className="text-xs text-slate-500 font-normal">
+              {t(
+                'Extracts leads, active accounts, and sales objections from historical CRM data:',
+                'Extrahuje leady, aktívne účty a obchodné námietky z minulej histórie CRM:',
+                'Érdeklődők, aktív fiókok és értékesítési kifogások kinyerése a múltbeli CRM adatokból:'
+              )}
+            </p>
+            <div className="grid grid-cols-3 gap-2.5 pt-1">
+              {[6, 12, 24].map((months) => (
+                <button
+                  key={months}
+                  type="button"
+                  onClick={() => {
+                    setLookbackMonths(months as 6 | 12 | 24);
+                    setIsDirty(true);
+                  }}
+                  className={`py-2.5 rounded-2xl text-xs font-bold transition cursor-pointer ${
+                    lookbackMonths === months
+                      ? 'bg-indigo-600 text-white shadow-md'
+                      : 'bg-slate-50 text-slate-700 border border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  {months} {t('mo.', 'mes.', 'hó')} {months === 12 && '⭐'}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+              <Info className="w-3.5 h-3.5 text-indigo-500/80 shrink-0 mt-0.5" />
+              <span>
+                <strong className="text-slate-700 font-semibold">{t('Purpose:', 'Na čo slúži:', 'Célja:')}</strong>{' '}
+                {t(
+                  'Time window for scanning and analyzing CRM leads and customer interactions.',
+                  'Časové obdobie pre vyhľadávanie a analýzu vašich CRM leadov a interakcií s klientmi.',
+                  'Időkeret a CRM érdeklődők és ügyfélinterakciók vizsgálatára és elemzésére.'
+                )}{' '}
+                <strong className="text-slate-700 font-semibold">{t('How it\'s used:', 'Ako sa používa:', 'Használata:')}</strong>{' '}
+                {t(
+                  'Shorter horizons (6 mo.) reflect immediate market conditions; longer horizons (12–24 mo.) capture deeper objection patterns and customer loyalty.',
+                  'Kratšie horizonty (6 mes.) odrážajú aktuálne trhové podmienky; dlhšie horizonty (12–24 mes.) zachytávajú hlbšie vzorce zákazníckych námietok a lojalitu.',
+                  'A rövidebb horizontok (6 hó) a közvetlen piaci viszonyokat tükrözik; a hosszabb horizontok (12–24 hó) mélyebb kifogásmintákat és ügyféllojalitást tárnak fel.'
+                )}
+              </span>
+            </div>
+          </div>
+
+          {/* Swarm Scale (Agents) */}
+          <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <Users className="w-4 h-4 text-purple-600" />
+                {t('Swarm Scale (Agents)', 'Veľkosť roju (Agenti)', 'Raj mérete (Ágensek)')}
+              </label>
+              <span className="text-[11px] text-slate-400">{t('Persona Count', 'Počet persón', 'Személyiségek száma')}</span>
+            </div>
+            <p className="text-xs text-slate-500 font-normal">
+              {t(
+                'Number of synthesized autonomous buyers, client accounts, and competitor profiles:',
+                'Počet syntetizovaných autonómnych nákupcov, klientov a profilov konkurencie:',
+                'Szintetizált autonóm vevők, ügyfélszámlák és versenytársprofilok száma:'
+              )}
+            </p>
+            <div className="grid grid-cols-3 gap-2.5 pt-1">
+              {[
+                { count: 15, label: t('15 (Fast)', '15 (Rýchly)', '15 (Gyors)') },
+                { count: 30, label: t('30 (Standard) ⭐', '30 (Štandard) ⭐', '30 (Standard) ⭐') },
+                { count: 60, label: t('60 (Deep)', '60 (Hĺbkový)', '60 (Mély)') }
+              ].map(opt => (
+                <button
+                  key={opt.count}
+                  type="button"
+                  onClick={() => {
+                    setSwarmScale(opt.count);
+                    setIsDirty(true);
+                  }}
+                  className={`py-2.5 rounded-2xl text-xs font-bold transition cursor-pointer ${
+                    swarmScale === opt.count
+                      ? 'bg-purple-600 text-white shadow-md'
+                      : 'bg-slate-50 text-slate-700 border border-slate-200 hover:bg-slate-100'
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+              <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
+              <span>
+                <strong className="text-slate-700 font-semibold">{t('Purpose:', 'Na čo slúži:', 'Célja:')}</strong>{' '}
+                {t(
+                  'Total count of autonomous personas (buyers, internal champions, competitors, regulators).',
+                  'Celkový počet autonómnych persón (nákupcovia, interní ambasádori, konkurenti, regulátori).',
+                  'Autonóm személyiségek összlétszáma (vevők, belső támogatók, versenytársak, szabályozók).'
+                )}{' '}
+                <strong className="text-slate-700 font-semibold">{t('How it\'s used:', 'Ako sa používa:', 'Használata:')}</strong>{' '}
+                {t(
+                  'Determines communication network density and statistical breadth; higher counts reveal niche objections and multi-hop community cascades.',
+                  'Určuje hustotu komunikačnej siete a štatistickú šírku; vyššie hodnoty odhaľujú špecifické námietky a reťazové reakcie v subkomunitách.',
+                  'Meghatározza a kommunikációs hálózat sűrűségét és statisztikai szélességét; a nagyobb számok réspiaci kifogásokat és több lépcsős közösségi láncreakciókat tárnak fel.'
+                )}
+              </span>
+            </div>
+          </div>
+
+          {/* Simulation Rounds */}
+          <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <Clock className="w-4 h-4 text-emerald-600" />
+                {t(`Simulation Rounds (${totalRounds} rounds)`, `Simulačné kolá (${totalRounds} kôl)`, `Szimulációs fordulók (${totalRounds} kör)`)}
+              </label>
+              <span className="text-[11px] text-emerald-600 font-bold">
+                {t(`~${Math.round(totalRounds * 3)} hrs deliberation`, `~${Math.round(totalRounds * 3)} hod. diskusie`, `~${Math.round(totalRounds * 3)} óra egyeztetés`)}
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 font-normal">
+              {t(
+                'Controls temporal depth and consensus convergence:',
+                'Riadi hĺbku časového vývoja a konvergenciu diskusie:',
+                'Szabályozza az időbeli mélységet és a konszenzus konvergenciáját:'
+              )}
+            </p>
+            <div className="pt-2">
+              <input 
+                type="range"
+                min={5}
+                max={20}
+                step={1}
+                value={totalRounds}
+                onChange={e => {
+                  setTotalRounds(parseInt(e.target.value));
+                  setIsDirty(true);
+                }}
+                className="w-full accent-emerald-600 cursor-pointer h-2 bg-slate-100 rounded-lg"
+              />
+              <div className="flex justify-between text-[10px] text-slate-400 font-bold mt-2">
+                <span>{t('5 (Rapid probe)', '5 (Rýchla sonda)', '5 (Gyors szonda)')}</span>
+                <span>{t('8 (Balanced) ⭐', '8 (Vyvážené) ⭐', '8 (Kiegyensúlyozott) ⭐')}</span>
+                <span>{t('20 (Full narrative)', '20 (Kompletný naratív)', '20 (Teljes narratíva)')}</span>
+              </div>
+            </div>
+            <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+              <Info className="w-3.5 h-3.5 text-emerald-500/80 shrink-0 mt-0.5" />
+              <span>
+                <strong className="text-slate-700 font-semibold">{t('Purpose:', 'Na čo slúži:', 'Célja:')}</strong>{' '}
+                {t(
+                  'Number of iterative deliberation rounds and discussion waves executed.',
+                  'Počet iteračných kôl debaty a komunikačných vĺn, ktoré sa vykonajú.',
+                  'A végrehajtott iteratív vita- és kommunikációs hullámok száma.'
+                )}{' '}
+                <strong className="text-slate-700 font-semibold">{t('How it\'s used:', 'Ako sa používa:', 'Használata:')}</strong>{' '}
+                {t(
+                  'Each round simulates a wave of posts and reactions where agents debate, forge coalitions, and determine whether initial resistance dissolves or solidifies into churn.',
+                  'Každé kolo simuluje vlnu príspevkov a reakcií, kde agenti reagujú na ostatných, vytvárajú spojenectvá a ukazujú, či počiatočná nevôľa ustúpi alebo prerastie do odchodu zákazníkov.',
+                  'Minden kör bejegyzések és reakciók hullámát szimulálja, ahol az ágensek vitatkoznak, koalíciókat alkotnak, és kiderül, hogy a kezdeti ellenállás feloldódik-e vagy ügyfélelvesztéssé (churn) szilárdul.'
+                )}
+              </span>
+            </div>
+          </div>
+
+          {/* Intelligence Model & Diurnal Cycle */}
+          <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-3">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                <Bot className="w-4 h-4 text-slate-700" />
+                {t('Reasoning Model', 'Kognitívny model', 'Kognitív modell')}
+              </label>
+              <span className="text-[11px] text-purple-600 font-bold">{t('Neural Engine', 'Neurónový motor', 'Neurális motor')}</span>
+            </div>
+            
+            <select 
+              value={llmModel}
+              onChange={e => {
+                setLlmModel(e.target.value);
+                setIsDirty(true);
+              }}
+              className="w-full px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-900 outline-none focus:border-purple-500 focus:bg-white"
+            >
+              <option value="gpt-5.6-luna">
+                {t('GPT-5.6 Luna (Cost-optimized & High Speed) ⭐', 'GPT-5.6 Luna (Cenovo optimalizovaný & Vysoká rýchlosť) ⭐', 'GPT-5.6 Luna (Költségoptimalizált és nagy sebességű) ⭐')}
+              </option>
+              <option value="gpt-5.6-terra">
+                {t('GPT-5.6 Terra (Deep Cognitive Analysis & Complex Swarm)', 'GPT-5.6 Terra (Hĺbková kognitívna analýza & Komplexný roj)', 'GPT-5.6 Terra (Mély kognitív elemzés és összetett raj)')}
+              </option>
+            </select>
+            <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+              <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
+              <span>
+                <strong className="text-slate-700 font-semibold">{t('Purpose:', 'Na čo slúži:', 'Célja:')}</strong>{' '}
+                {t(
+                  'Selection of neural model powering each autonomous persona.',
+                  'Výber OpenAI neurónového modelu, ktorý poháňa každú autonómnu persónu.',
+                  'Az autonóm személyiségeket működtető neurális modell kiválasztása.'
+                )}{' '}
+                <strong className="text-slate-700 font-semibold">{t('How it\'s used:', 'Ako sa používa:', 'Használata:')}</strong>{' '}
+                {t(
+                  'We exclusively use supported OpenAI models. GPT-5.6 Luna delivers fast, budget-conscious deliberation; GPT-5.6 Terra generates deep strategic nuances, countermoves, and complex market behavior.',
+                  'Využívame výhradne podporované OpenAI modely. GPT-5.6 Luna nahradil starší 4o a poskytuje bleskovú, cenovo optimalizovanú debatu; GPT-5.6 Terra generuje hlboké strategické nuansy, protiťahy a komplexné uvažovanie účastníkov trhu.',
+                  'Kizárólag támogatott OpenAI modelleket használunk. A GPT-5.6 Luna gyors, költséghatékony vitát tesz lehetővé; a GPT-5.6 Terra mély stratégiai árnyalatokat, ellenlépéseket és komplex piaci viselkedést generál.'
+                )}
+              </span>
+            </div>
+
+            <div className="flex items-center justify-between pt-3 border-t border-slate-100">
+              <div>
+                <span className="text-xs text-slate-700 font-bold block">{t('Circadian Sleep Cycle', 'Cirkadiánny cyklus spánku', 'Cirkadián alvásciklus')}</span>
+                <span className="text-[11px] text-slate-400 font-normal">{t('Agents pause during simulated night hours', 'Agenti oddychujú počas simulovanej noci', 'Az ágensek pihennek a szimulált éjszakai órákban')}</span>
+              </div>
+              <input 
+                type="checkbox"
+                checked={diurnalCycle}
+                onChange={e => {
+                  setDiurnalCycle(e.target.checked);
+                  setIsDirty(true);
+                }}
+                className="w-4 h-4 rounded text-purple-600 accent-purple-600 cursor-pointer"
+              />
+            </div>
+            <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+              <Info className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+              <span>
+                <strong className="text-slate-700 font-semibold">{t('Purpose:', 'Na čo slúži:', 'Célja:')}</strong>{' '}
+                {t(
+                  'Simulates natural day/night resting intervals between active rounds.',
+                  'Simuluje prirodzenú nočnú a dennú pauzu medzi aktívnymi kolami.',
+                  'Természetes nappali és éjszakai pihenőidőket szimulál az aktív körök között.'
+                )}{' '}
+                <strong className="text-slate-700 font-semibold">{t('How it\'s used:', 'Ako sa používa:', 'Használata:')}</strong>{' '}
+                {t(
+                  'Overnight breaks dissipate impulsive emotional reactions, revealing consolidated, durable long-term sentiment on the following day.',
+                  'Cez noc dochádza k upokojeniu unáhlených emócií a reakcií, vďaka čomu sa na druhý deň prejavia uváženejšie dlhodobé postoje.',
+                  'Az éjszaka során lecsillapodnak az elhamarkodott érzelmek és reakciók, így másnap megfontoltabb, tartósabb hosszú távú álláspontok alakulnak ki.'
+                )}
+              </span>
+            </div>
+          </div>
+
+        </div>
+
+        {/* Bottom Action Bar */}
+        <div className="p-6 rounded-3xl bg-white border border-slate-200/90 shadow-sm flex flex-wrap items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={onBack}
+              className="px-5 py-2.5 rounded-2xl border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold text-xs transition cursor-pointer"
+            >
+              {t('Cancel', 'Zrušiť', 'Mégse')}
+            </button>
+            <button
+              type="button"
+              onClick={handleSaveDraft}
+              disabled={isSavingDraft || isSubmitting}
+              className="px-5 py-2.5 rounded-2xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold text-xs transition flex items-center gap-1.5 cursor-pointer"
+            >
+              <Bookmark className="w-3.5 h-3.5 text-purple-600" />
+              <span>{isSavingDraft ? t('Saving draft...', 'Ukladám koncept...', 'Vázlat mentése...') : t('Save as Draft', 'Uložiť ako koncept', 'Mentés vázlatként')}</span>
+            </button>
+          </div>
+
+          <div className="flex flex-wrap sm:flex-nowrap items-center gap-3.5">
+            {/* Live Price & Resource Estimator */}
+            <div
+              onClick={() => setShowEstimatorModal(true)}
+              className="group flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-slate-50/95 hover:bg-purple-50/60 border border-slate-200/90 hover:border-purple-300 transition-all duration-200 shadow-xs cursor-pointer select-none"
+              title={t(
+                `Click to view token breakdown (~${estimatedTokens.toLocaleString()} tokens, ~${estimatedCalls} API calls across ${swarmScale} agents and ${totalRounds} rounds with ${MODEL_PRICING[llmModel]?.label || llmModel})`,
+                `Kliknite pre zobrazenie rozpisu tokenov (~${estimatedTokens.toLocaleString()} tokenov, ~${estimatedCalls} API volaní cez ${swarmScale} agentov a ${totalRounds} kôl s modelom ${MODEL_PRICING[llmModel]?.label || llmModel})`,
+                `Kattintson a tokenek részletezésének megtekintéséhez (~${estimatedTokens.toLocaleString()} token, ~${estimatedCalls} API hívás ${swarmScale} ágens és ${totalRounds} kör során ${MODEL_PRICING[llmModel]?.label || llmModel} modellel)`
+              )}
+              role="button"
+              tabIndex={0}
+            >
+              <div className="w-9 h-9 rounded-xl bg-purple-100/90 group-hover:bg-purple-200/80 border border-purple-200/70 flex items-center justify-center text-purple-700 transition-transform duration-200 group-hover:scale-105 shrink-0 shadow-xs">
+                <Coins className="w-4 h-4 text-purple-600" />
+              </div>
+              <div className="flex flex-col text-left">
+                <div className="flex items-center gap-1.5 leading-none">
+                  <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">
+                    {t('Cost Estimate', 'Odhad ceny', 'Becsült költség')}
+                  </span>
+                  {executionMode === 'demo' ? (
+                    <span className="px-1.5 py-0.5 text-[9px] font-black bg-emerald-100 text-emerald-800 rounded uppercase tracking-wider">
+                      {t('Demo test ($0.00)', 'Demo test (0 €)', 'Demo teszt (0 €)')}
+                    </span>
+                  ) : (
+                    <span className="text-[10px] font-bold text-purple-600">
+                      {MODEL_PRICING[llmModel]?.label || 'Model'}
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-baseline gap-1.5 mt-1">
+                  <span className="text-sm sm:text-base font-black text-slate-900 tracking-tight leading-none group-hover:text-purple-700 transition-colors">
+                    {executionMode === 'demo' ? t('$0.000', '0.000 €', '0.000 €') : `~${estimatedCost.toFixed(3)} €`}
+                  </span>
+                  <span className="text-[11px] text-slate-400 font-semibold leading-none">
+                    {executionMode === 'demo' ? t('Zero token usage', 'Bez spotreby tokenov', 'Tokenfelhasználás nélkül') : `~${(estimatedTokens / 1000).toFixed(0)}k tkn`}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            <button
+              type="submit"
+              disabled={isSubmitting}
+              className={`px-7 py-3 rounded-2xl text-white font-extrabold text-xs shadow-md hover:shadow-lg transition flex items-center gap-2 cursor-pointer disabled:opacity-60 shrink-0 ${
+                executionMode === 'demo'
+                  ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700'
+                  : 'bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 hover:from-purple-700 hover:to-emerald-600'
+              }`}
+            >
+              <span>
+                {executionMode === 'demo'
+                  ? t('Launch Demo Test ($0.00)', 'Spustiť Demo test (0 €)', 'Demo teszt indítása (0 €)')
+                  : t('Review Token Estimate & Launch Live', 'Prejsť na odhad tokenov & Spustiť naživo (Live)', 'Tokenbecslés megtekintése és élő indítás')}
+              </span>
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
+        </div>
+
+      </form>
+
+      {/* Mandatory Pre-Flight Resource Estimator Modal */}
+      <PreflightEstimatorModal
+        isOpen={showEstimatorModal}
+        onClose={() => setShowEstimatorModal(false)}
+        onConfirm={handleConfirmedLaunch}
+        title={title}
+        swarmScale={swarmScale}
+        totalRounds={totalRounds}
+        modelName={llmModel}
+        isDemoMode={isDemoMode}
+        initialMode={executionMode}
+        onModeChange={setExecutionMode}
+        contextDocuments={contextDocuments}
+        systemLanguage={systemLanguage}
+      />
+
+      {/* Interactive Template Catalogue Modal (105 Use Cases from Mirofish) */}
+      <TemplateCatalogueModal
+        isOpen={isCatalogueOpen}
+        onClose={() => setIsCatalogueOpen(false)}
+        onSelectTemplate={handleApplyCatalogueTemplate}
+        systemLanguage={systemLanguage}
+      />
+
+      {/* Floating Toast Notification */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 p-4 rounded-2xl bg-slate-900 text-white shadow-2xl border border-purple-500/30 flex items-center gap-3 animate-in slide-in-from-bottom-5 duration-200">
+          <Sparkles className="w-5 h-5 text-emerald-400 shrink-0" />
+          <span className="text-xs font-bold">{toastMessage}</span>
+          <button 
+            type="button"
+            onClick={() => setToastMessage(null)} 
+            className="text-slate-400 hover:text-white ml-2 cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Extracted Document Text Preview Modal */}
+      {previewDoc && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
+          <div className="bg-white rounded-3xl max-w-2xl w-full max-h-[85vh] flex flex-col shadow-2xl border border-slate-200 overflow-hidden animate-in zoom-in-95 duration-150">
+            {/* Modal Header */}
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-3">
+                <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+                  previewDoc.type === 'pdf'
+                    ? 'bg-rose-50 text-rose-600 border border-rose-200'
+                    : previewDoc.type === 'markdown'
+                    ? 'bg-purple-50 text-purple-600 border border-purple-200'
+                    : 'bg-slate-100 text-slate-600 border border-slate-200'
+                }`}>
+                  {previewDoc.type === 'pdf' ? (
+                    <FileText className="w-4 h-4" />
+                  ) : previewDoc.type === 'markdown' ? (
+                    <FileCode className="w-4 h-4" />
+                  ) : (
+                    <Paperclip className="w-4 h-4" />
+                  )}
+                </div>
+                <div className="min-w-0">
+                  <h3 className="text-sm font-bold text-slate-900 truncate max-w-md">
+                    {previewDoc.name}
+                  </h3>
+                  <p className="text-[11px] text-slate-500">
+                    {t('Extracted text', 'Extrahovaný text', 'Kivont szöveg')} • {previewDoc.extractedChars?.toLocaleString() || 0} {t('chars', 'znakov', 'karakter')} (~{Math.ceil((previewDoc.content?.length || 0) / 4)} {t('tokens', 'tokenov', 'token')})
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPreviewDoc(null)}
+                className="p-2 rounded-xl text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Modal Content */}
+            <div className="p-6 overflow-y-auto flex-1 font-mono text-xs text-slate-700 whitespace-pre-wrap leading-relaxed bg-slate-50/40 select-text">
+              {previewDoc.content || t('No text could be extracted from this file.', 'Žiadny text sa z tohto súboru nepodarilo vyextrahovať.', 'Ebből a fájlból nem sikerült szöveget kinyerni.')}
+            </div>
+
+            {/* Modal Footer */}
+            <div className="px-6 py-3 border-t border-slate-100 bg-white flex items-center justify-between text-xs text-slate-500">
+              <span>{t('This text will be embedded into the agent briefing and knowledge graph.', 'Tento text bude vložený do zadania pre agentov a ontologického grafu.', 'Ez a szöveg beépül az ágensek feladatleírásába és a tudásgráfba.')}</span>
+              <button
+                type="button"
+                onClick={() => setPreviewDoc(null)}
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition text-xs cursor-pointer"
+              >
+                {t('Close', 'Zavrieť', 'Bezárás')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+};
+
+export default CreateRehearsalView;

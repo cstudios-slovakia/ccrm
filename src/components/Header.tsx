@@ -68,6 +68,7 @@ export const Header: React.FC<HeaderProps> = ({
     const [isProfileOpen, setIsProfileOpen] = React.useState(false);
     const [isClosing, setIsClosing] = React.useState(false);
     const [isMeetingsOpen, setIsMeetingsOpen] = React.useState(false);
+    const [isMobileSearchOpen, setIsMobileSearchOpen] = React.useState(false);
     const dropdownRef = React.useRef<HTMLDivElement>(null);
     const meetingsDropdownRef = React.useRef<HTMLDivElement>(null);
 
@@ -491,7 +492,7 @@ export const Header: React.FC<HeaderProps> = ({
     };
 
     return (
-        <header className="h-20 border-b border-white/40 bg-white/25 backdrop-blur-md px-4 md:px-6 flex items-center justify-between sticky top-0 z-50 select-none">
+        <header className="h-20 border-b border-white/40 bg-white/25 backdrop-blur-md px-2.5 sm:px-4 md:px-6 flex items-center justify-between sticky top-0 z-50 select-none">
             <style>{`
         @keyframes slideInRight {
           from { transform: translateX(100%); }
@@ -501,406 +502,116 @@ export const Header: React.FC<HeaderProps> = ({
           animation: slideInRight 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
         }
       `}</style>
-
-            {/* Brand Title */}
-            <div className="flex flex-col">
-                <h1 className="text-xl font-heading font-extrabold text-slate-900 tracking-tight leading-none uppercase">
-                    {systemName}
-                </h1>
-            </div>
-
-            {/* Universal Search bar in the center */}
-            <div
-                ref={searchContainerRef}
-                className="relative w-72 md:w-96 mx-4"
-            >
-                <div className="relative">
-                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                        {isSearching ? (
-                            <Loader2 className="h-4 w-4 animate-spin text-indigo-500" />
-                        ) : (
-                            <Search className="h-4 w-4 text-slate-400" />
-                        )}
-                    </div>
-                    <input
-                        ref={searchInputRef}
-                        type="text"
-                        value={searchQuery}
-                        onChange={handleSearchChange}
-                        onKeyDown={handleSearchKeyDown}
-                        onFocus={() => {
-                            if (searchQuery.trim().length >= 2) {
-                                setShowSearchDropdown(true);
-                            }
-                        }}
-                        placeholder={
-                            systemLanguage === "sk"
-                                ? "Hľadať všade... (Cmd + K)"
-                                : systemLanguage === "hu"
-                                  ? "Keresés mindenhol... (Cmd + K)"
-                                  : "Search everywhere... (Cmd + K)"
-                        }
-                        className="w-full pl-9 pr-10 py-2 text-xs font-semibold rounded-xl bg-white/70 border border-slate-200 focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-slate-800"
-                    />
-                    {searchQuery && (
-                        <button
-                            onClick={() => {
-                                setSearchQuery("");
-                                setSearchResults([]);
-                                setShowSearchDropdown(false);
-                            }}
-                            className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
-                        >
-                            <X className="h-3.5 w-3.5" />
-                        </button>
-                    )}
-                </div>
-
-                {/* Dropdown Suggestions */}
-                {showSearchDropdown && (
-                    <div className="absolute left-0 right-0 top-full mt-1 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl max-h-[380px] overflow-y-auto z-[999] p-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
-                        {searchResults.length === 0 ? (
-                            <div className="py-6 text-center text-xs text-slate-400 font-semibold">
-                                {systemLanguage === "sk"
-                                    ? 'Žiadne výsledky pre "' +
-                                      searchQuery +
-                                      '"'
-                                    : systemLanguage === "hu"
-                                      ? 'Nincs találat a következőre: "' +
-                                        searchQuery +
-                                        '"'
-                                      : 'No results found for "' +
-                                        searchQuery +
-                                        '"'}
-                            </div>
-                        ) : (
-                            <div className="flex flex-col gap-0.5">
-                                {searchResults.map((item, idx) => {
-                                    const isSelected = idx === selectedIndex;
-                                    return (
-                                        <div
-                                            key={item.id || idx}
-                                            onClick={() =>
-                                                handleSelectSearchResult(item)
-                                            }
-                                            onMouseEnter={() =>
-                                                setSelectedIndex(idx)
-                                            }
-                                            className={`px-3 py-2.5 rounded-xl cursor-pointer transition-all flex items-start gap-3 border ${
-                                                isSelected
-                                                    ? "bg-slate-50/90 border-slate-200 text-slate-900 shadow-xs"
-                                                    : "bg-transparent border-transparent text-slate-700 hover:bg-slate-50/50"
-                                            }`}
-                                        >
-                                            <div className="mt-0.5 shrink-0 bg-slate-100 p-1.5 rounded-lg border border-slate-200/50">
-                                                {getSearchIcon(item.type)}
-                                            </div>
-
-                                            <div className="flex-1 min-w-0 text-left">
-                                                <div className="flex items-center justify-between gap-2">
-                                                    <span className="font-bold text-xs truncate text-slate-800">
-                                                        {item.title}
-                                                    </span>
-                                                    <span
-                                                        className={`text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md border shrink-0 ${getSearchTypeBadgeColor(item.type)}`}
-                                                    >
-                                                        {getSearchTypeLabel(
-                                                            item.type,
-                                                        )}
-                                                    </span>
-                                                </div>
-                                                {item.subtitle && (
-                                                    <div className="text-[10px] text-slate-400 font-bold mt-0.5 truncate">
-                                                        {item.subtitle}
-                                                    </div>
-                                                )}
-                                                {item.excerpt && (
-                                                    <div className="text-[10px] text-slate-500 font-semibold mt-1 leading-relaxed border-l-2 border-slate-200 pl-2 italic truncate">
-                                                        {item.excerpt}
-                                                    </div>
-                                                )}
-                                            </div>
-                                        </div>
-                                    );
-                                })}
-                            </div>
-                        )}
-                    </div>
-                )}
-            </div>
-
-            {/* Utilities */}
-            <div className="flex items-center gap-6">
-                {/* Pulsing DEMO MODE badge */}
-                {isDemoMode && (
-                    <a
-                        href="#settings"
-                        className="px-3 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 border border-amber-600 text-white text-[10px] font-black uppercase tracking-wider shadow-md shadow-amber-500/25 transition-all flex items-center gap-1 hover:scale-[1.02] shrink-0"
-                    >
-                        <span className="h-2 w-2 rounded-full bg-white animate-pulse" />
-                        {t("DEMO MODE", "DEMO REŽIM", "DEMÓ MÓD")}
-                    </a>
-                )}
-
-                {canCreateTask && (
-                <button
-                    onClick={onAddTask}
-                    className="h-10 w-10 rounded-xl border bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-300 hover:bg-slate-50 flex items-center justify-center transition-colors shadow-sm cursor-pointer shrink-0"
-                    title={
-                        systemLanguage === "sk"
-                            ? "Vytvoriť novú úlohu"
-                            : systemLanguage === "hu"
-                              ? "Új feladat"
-                              : "Create New Task"
-                    }
-                >
-                    <CheckSquare className="h-5 w-5 text-indigo-600" />
-                </button>
-                )}
-
-
-                {canOpenRoute("meetings") && (
-                <div className="relative" ref={meetingsDropdownRef}>
-                    <button
-                        onClick={() => setIsMeetingsOpen(!isMeetingsOpen)}
-                        aria-expanded={isMeetingsOpen}
-                        aria-haspopup="menu"
-                        className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer ${
-                            isMeetingsOpen
-                                ? "bg-[#0b1329] border-[#0b1329] text-white"
-                                : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-300 hover:bg-slate-50"
-                        }`}
-                        aria-label={t(
-                            "Meeting Room Menu",
-                            "Menu zasadačky",
-                            "Tárgyaló menü",
-                        )}
-                        title={
-                            systemLanguage === "sk"
-                                ? "Zasadačka a stretnutia"
-                                : systemLanguage === "hu"
-                                  ? "Tárgyaló és megbeszélések"
-                                  : "Meetings & Notes"
-                        }
-                    >
-                        <PencilLine className="h-5 w-5" />
-                    </button>
-
-                    {/* Popover Dropdown Panel */}
-                    {isMeetingsOpen && typeof document !== "undefined" &&
-                        createPortal(
-                            <div
-                                className="fixed inset-0 z-40"
-                                aria-hidden="true"
-                                onClick={() => setIsMeetingsOpen(false)}
-                            />,
-                            document.body,
-                        )}
-                    {isMeetingsOpen && (
-                        <div role="menu" className="absolute right-0 mt-2.5 w-60 bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-2xl rounded-2xl p-2.5 z-50 flex flex-col gap-1 select-none animate-in fade-in slide-in-from-top-2 duration-200">
-                            <div className="px-3 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 mb-1">
-                                {systemLanguage === "sk"
-                                    ? "Rýchle akcie zasadačky"
-                                    : systemLanguage === "hu"
-                                      ? "Gyors tárgyaló műveletek"
-                                      : "Meeting Room Quick Actions"}
-                            </div>
-
-                            {/* Record Meeting */}
-                            <button
-                                onClick={() => {
-                                    setIsMeetingsOpen(false);
-                                    if (
-                                        typeof (window as any).showToast ===
-                                        "function"
-                                    ) {
-                                        (window as any).showToast(
-                                            systemLanguage === "sk"
-                                                ? "Nahrávanie stretnutia: Audio nahrávanie bude k dispozícii v ďalšej aktualizácii."
-                                                : systemLanguage === "hu"
-                                                  ? "Megbeszélés rögzítése: A hangfelvétel a következő frissítésben érhető el."
-                                                  : "Record Meeting: Audio recording feature will be implemented in the next update.",
-                                        );
-                                    }
-                                }}
-                                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-all cursor-pointer group"
-                            >
-                                <Mic className="h-4 w-4 text-slate-400 group-hover:text-slate-500" />
-                                <div className="flex flex-col">
-                                    <span>
-                                        {systemLanguage === "sk"
-                                            ? "Nahrať stretnutie"
-                                            : systemLanguage === "hu"
-                                              ? "Megbeszélés rögzítése"
-                                              : "Record Meeting"}
-                                    </span>
-                                    <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">
-                                        {systemLanguage === "sk"
-                                            ? "Pripravuje sa"
-                                            : systemLanguage === "hu"
-                                              ? "Fejlesztés alatt"
-                                              : "Coming soon"}
-                                    </span>
-                                </div>
-                            </button>
-
-                            {canCreateMeeting && (
-                            <button
-                                onClick={() => {
-                                    setIsMeetingsOpen(false);
-                                    if (onNavigateMeetings) {
-                                        onNavigateMeetings("new");
-                                    }
-                                }}
-                                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-[#0b1329] hover:bg-slate-100/60 transition-all cursor-pointer group"
-                            >
-                                <Plus className="h-4 w-4 text-[#0b1329]" />
-                                <span>
-                                    {systemLanguage === "sk"
-                                        ? "Nové stretnutie"
-                                        : systemLanguage === "hu"
-                                          ? "Új megbeszélés"
-                                          : "New Meeting"}
-                                </span>
-                            </button>
+            {isMobileSearchOpen ? (
+                /* Mobile Search Overlay Bar */
+                <div ref={searchContainerRef} className="flex-1 flex items-center gap-2 animate-in fade-in duration-200">
+                    <div className="relative flex-1">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            {isSearching ? (
+                                <Loader2 className="h-4 w-4 animate-spin text-indigo-500" />
+                            ) : (
+                                <Search className="h-4 w-4 text-slate-400" />
                             )}
-
-
-                            {/* Show Meetings */}
+                        </div>
+                        <input
+                            ref={searchInputRef}
+                            type="text"
+                            autoFocus
+                            value={searchQuery}
+                            onChange={handleSearchChange}
+                            onKeyDown={handleSearchKeyDown}
+                            onFocus={() => {
+                                if (searchQuery.trim().length >= 2) {
+                                    setShowSearchDropdown(true);
+                                }
+                            }}
+                            placeholder={
+                                systemLanguage === "sk"
+                                    ? "Hľadať..."
+                                    : systemLanguage === "hu"
+                                      ? "Keresés..."
+                                      : "Search..."
+                            }
+                            className="w-full pl-9 pr-8 py-2 text-xs font-semibold rounded-xl bg-white/90 border border-slate-200 focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-slate-800"
+                        />
+                        {searchQuery && (
                             <button
                                 onClick={() => {
-                                    setIsMeetingsOpen(false);
-                                    if (onNavigateMeetings) {
-                                        onNavigateMeetings("list");
-                                    }
+                                    setSearchQuery("");
+                                    setSearchResults([]);
+                                    setShowSearchDropdown(false);
                                 }}
-                                className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-slate-700 hover:text-[#0b1329] hover:bg-slate-100/60 transition-all cursor-pointer group"
+                                className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
                             >
-                                <List className="h-4 w-4 text-slate-400 group-hover:text-[#0b1329]" />
-                                <span>
-                                    {systemLanguage === "sk"
-                                        ? "Zobraziť stretnutia"
-                                        : systemLanguage === "hu"
-                                          ? "Megbeszélések mutatása"
-                                          : "Show Meetings"}
-                                </span>
+                                <X className="h-3.5 w-3.5" />
                             </button>
-                        </div>
-                    )}
-                </div>
-                )}
-
-
-                {canRunWorkflows && (
-                <div className="relative" ref={toolboxDropdownRef}>
-                    <button
-                        onClick={() => setIsToolboxOpen(!isToolboxOpen)}
-                        aria-expanded={isToolboxOpen}
-                        aria-haspopup="menu"
-                        className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer ${
-                            isToolboxOpen
-                                ? "bg-[#0b1329] border-[#0b1329] text-white"
-                                : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-300 hover:bg-slate-50"
-                        }`}
-                        title={t(
-                            "Automation Toolbox",
-                            "Automatizačný panel",
-                            "Automatizálási eszköztár",
                         )}
+                    </div>
+                    <button
+                        onClick={() => {
+                            setIsMobileSearchOpen(false);
+                            setShowSearchDropdown(false);
+                        }}
+                        className="h-9 px-3 rounded-xl border bg-white/80 border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 flex items-center justify-center shrink-0 shadow-sm"
                     >
-                        <Workflow className="h-5 w-5 text-purple-700" />
+                        {t("Cancel", "Zrušiť", "Mégse")}
                     </button>
 
-                    {isToolboxOpen && typeof document !== "undefined" &&
-                        createPortal(
-                            <div
-                                className="fixed inset-0 z-40"
-                                aria-hidden="true"
-                                onClick={() => setIsToolboxOpen(false)}
-                            />,
-                            document.body,
-                        )}
-                    {isToolboxOpen && (
-                        <div role="menu" className="absolute right-0 mt-2.5 w-64 bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-2xl rounded-2xl p-3.5 z-50 flex flex-col gap-2 select-none animate-in fade-in slide-in-from-top-2 duration-200">
-                            <div className="px-1.5 pb-2 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 mb-1 flex items-center justify-between">
-                                <span>
-                                    {t(
-                                        "Manual Triggers",
-                                        "Manuálne spúšťače",
-                                        "Kézi indítók",
-                                    )}
-                                </span>
-                                <Workflow className="h-3 w-3 text-purple-400" />
-                            </div>
-
-                            {manualWorkflows.length === 0 ? (
-                                <div className="py-6 text-center text-xs text-slate-400 font-medium">
-                                    {t(
-                                        "No active manual workflows.",
-                                        "Žiadne aktívne manuálne spúšťače.",
-                                        "Nincsenek aktívny kézi indítók.",
-                                    )}
+                    {/* Dropdown Suggestions */}
+                    {showSearchDropdown && (
+                        <div className="absolute left-2 right-2 top-full mt-1 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl max-h-[380px] overflow-y-auto z-[999] p-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
+                            {searchResults.length === 0 ? (
+                                <div className="py-6 text-center text-xs text-slate-400 font-semibold">
+                                    {systemLanguage === "sk"
+                                        ? 'Žiadne výsledky pre "' + searchQuery + '"'
+                                        : systemLanguage === "hu"
+                                          ? 'Nincs találat a következőre: "' + searchQuery + '"'
+                                          : 'No results found for "' + searchQuery + '"'}
                                 </div>
                             ) : (
-                                <div className="flex flex-col gap-1.5 max-h-60 overflow-y-auto pr-0.5">
-                                    {manualWorkflows.map((wf) => {
-                                        const cfg = wf.trigger_config || {};
-                                        const btnColor =
-                                            cfg.buttonColor || "#6b21a8";
-                                        const btnIconName =
-                                            cfg.buttonIcon || "Play";
-                                        const btnStyle =
-                                            cfg.buttonStyle || "full";
-
-                                        const IconComponent =
-                                            (Icons as any)[btnIconName] || Play;
-
-                                        let buttonClass = "";
-                                        let inlineStyle: React.CSSProperties =
-                                            {};
-
-                                        if (btnStyle === "skeleton") {
-                                            buttonClass =
-                                                "w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border-2 text-xs font-bold transition-all hover:scale-[1.01] active:scale-[0.99]";
-                                            inlineStyle = {
-                                                borderColor: btnColor,
-                                                color: btnColor,
-                                            };
-                                        } else if (btnStyle === "icon_only") {
-                                            buttonClass =
-                                                "w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-slate-100 text-xs font-bold transition-all hover:bg-slate-50 hover:scale-[1.01] active:scale-[0.99]";
-                                            inlineStyle = { color: btnColor };
-                                        } else {
-                                            // 'full'
-                                            buttonClass =
-                                                "w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-white text-xs font-bold transition-all hover:opacity-90 hover:scale-[1.01] active:scale-[0.99]";
-                                            inlineStyle = {
-                                                backgroundColor: btnColor,
-                                            };
-                                        }
-
+                                <div className="flex flex-col gap-0.5">
+                                    {searchResults.map((item, idx) => {
+                                        const isSelected = idx === selectedIndex;
                                         return (
-                                            <button
-                                                key={wf.id}
-                                                onClick={() =>
-                                                    handleRunWorkflow(wf)
-                                                }
-                                                disabled={runningWfId === wf.id}
-                                                className={buttonClass}
-                                                style={inlineStyle}
-                                                title={wf.description}
+                                            <div
+                                                key={item.id || idx}
+                                                onClick={() => {
+                                                    handleSelectSearchResult(item);
+                                                    setIsMobileSearchOpen(false);
+                                                }}
+                                                onMouseEnter={() => setSelectedIndex(idx)}
+                                                className={`px-3 py-2.5 rounded-xl cursor-pointer transition-all flex items-start gap-3 border ${
+                                                    isSelected
+                                                        ? "bg-slate-50/90 border-slate-200 text-slate-900 shadow-xs"
+                                                        : "bg-transparent border-transparent text-slate-700 hover:bg-slate-50/50"
+                                                }`}
                                             >
-                                                {runningWfId === wf.id ? (
-                                                    <Loader2 className="h-4 w-4 animate-spin" />
-                                                ) : (
-                                                    <IconComponent className="h-4 w-4 shrink-0" />
-                                                )}
-                                                {btnStyle !== "icon_only" && (
-                                                    <span className="truncate">
-                                                        {wf.name}
-                                                    </span>
-                                                )}
-                                            </button>
+                                                <div className="mt-0.5 shrink-0 bg-slate-100 p-1.5 rounded-lg border border-slate-200/50">
+                                                    {getSearchIcon(item.type)}
+                                                </div>
+                                                <div className="flex-1 min-w-0 text-left">
+                                                    <div className="flex items-center justify-between gap-2">
+                                                        <span className="font-bold text-xs truncate text-slate-800">
+                                                            {item.title}
+                                                        </span>
+                                                        <span
+                                                            className={`text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md border shrink-0 ${getSearchTypeBadgeColor(item.type)}`}
+                                                        >
+                                                            {getSearchTypeLabel(item.type)}
+                                                        </span>
+                                                    </div>
+                                                    {item.subtitle && (
+                                                        <div className="text-[10px] text-slate-400 font-bold mt-0.5 truncate">
+                                                            {item.subtitle}
+                                                        </div>
+                                                    )}
+                                                    {item.excerpt && (
+                                                        <div className="text-[10px] text-slate-500 font-semibold mt-1 leading-relaxed border-l-2 border-slate-200 pl-2 italic truncate">
+                                                            {item.excerpt}
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
                                         );
                                     })}
                                 </div>
@@ -908,51 +619,463 @@ export const Header: React.FC<HeaderProps> = ({
                         </div>
                     )}
                 </div>
-                )}
+            ) : (
+                <>
+                    {/* Brand Title */}
+                    <div className="flex flex-col shrink-0">
+                        <h1 className="text-sm xs:text-base sm:text-xl font-heading font-extrabold text-slate-900 tracking-tight leading-none uppercase">
+                            {systemName}
+                        </h1>
+                    </div>
 
+                    {/* Universal Search bar in the center (Desktop & Tablet) */}
+                    <div
+                        ref={searchContainerRef}
+                        className="relative hidden sm:block sm:w-48 md:w-72 lg:w-96 mx-2 sm:mx-4"
+                    >
+                        <div className="relative">
+                            <div className="absolute inset-y-0 left-0 pl-2.5 sm:pl-3 flex items-center pointer-events-none">
+                                {isSearching ? (
+                                    <Loader2 className="h-3.5 w-3.5 sm:h-4 sm:w-4 animate-spin text-indigo-500" />
+                                ) : (
+                                    <Search className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-slate-400" />
+                                )}
+                            </div>
+                            <input
+                                ref={searchInputRef}
+                                type="text"
+                                value={searchQuery}
+                                onChange={handleSearchChange}
+                                onKeyDown={handleSearchKeyDown}
+                                onFocus={() => {
+                                    if (searchQuery.trim().length >= 2) {
+                                        setShowSearchDropdown(true);
+                                    }
+                                }}
+                                placeholder={
+                                    systemLanguage === "sk"
+                                        ? "Hľadať... (Cmd + K)"
+                                        : systemLanguage === "hu"
+                                          ? "Keresés... (Cmd + K)"
+                                          : "Search... (Cmd + K)"
+                                }
+                                className="w-full pl-7 sm:pl-9 pr-6 sm:pr-10 py-1.5 sm:py-2 text-[11px] sm:text-xs font-semibold rounded-xl bg-white/70 border border-slate-200 focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-slate-800"
+                            />
+                            {searchQuery && (
+                                <button
+                                    onClick={() => {
+                                        setSearchQuery("");
+                                        setSearchResults([]);
+                                        setShowSearchDropdown(false);
+                                    }}
+                                    className="absolute inset-y-0 right-0 pr-2 sm:pr-3 flex items-center text-slate-400 hover:text-slate-600 cursor-pointer"
+                                >
+                                    <X className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
+                                </button>
+                            )}
+                        </div>
 
-                {/* Product Release Notes Updates Button */}
-                {canOpenRoute("updates") && updatesList.length > 0 && (
-                    <div className="relative">
+                        {/* Dropdown Suggestions */}
+                        {showSearchDropdown && (
+                            <div className="absolute left-0 right-0 top-full mt-1 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl max-h-[380px] overflow-y-auto z-[999] p-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
+                                {searchResults.length === 0 ? (
+                                    <div className="py-6 text-center text-xs text-slate-400 font-semibold">
+                                        {systemLanguage === "sk"
+                                            ? 'Žiadne výsledky pre "' + searchQuery + '"'
+                                            : systemLanguage === "hu"
+                                              ? 'Nincs találat a következőre: "' + searchQuery + '"'
+                                              : 'No results found for "' + searchQuery + '"'}
+                                    </div>
+                                ) : (
+                                    <div className="flex flex-col gap-0.5">
+                                        {searchResults.map((item, idx) => {
+                                            const isSelected = idx === selectedIndex;
+                                            return (
+                                                <div
+                                                    key={item.id || idx}
+                                                    onClick={() => handleSelectSearchResult(item)}
+                                                    onMouseEnter={() => setSelectedIndex(idx)}
+                                                    className={`px-3 py-2.5 rounded-xl cursor-pointer transition-all flex items-start gap-3 border ${
+                                                        isSelected
+                                                            ? "bg-slate-50/90 border-slate-200 text-slate-900 shadow-xs"
+                                                            : "bg-transparent border-transparent text-slate-700 hover:bg-slate-50/50"
+                                                    }`}
+                                                >
+                                                    <div className="mt-0.5 shrink-0 bg-slate-100 p-1.5 rounded-lg border border-slate-200/50">
+                                                        {getSearchIcon(item.type)}
+                                                    </div>
+                                                    <div className="flex-1 min-w-0 text-left">
+                                                        <div className="flex items-center justify-between gap-2">
+                                                            <span className="font-bold text-xs truncate text-slate-800">
+                                                                {item.title}
+                                                            </span>
+                                                            <span
+                                                                className={`text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md border shrink-0 ${getSearchTypeBadgeColor(item.type)}`}
+                                                            >
+                                                                {getSearchTypeLabel(item.type)}
+                                                            </span>
+                                                        </div>
+                                                        {item.subtitle && (
+                                                            <div className="text-[10px] text-slate-400 font-bold mt-0.5 truncate">
+                                                                {item.subtitle}
+                                                            </div>
+                                                        )}
+                                                        {item.excerpt && (
+                                                            <div className="text-[10px] text-slate-500 font-semibold mt-1 leading-relaxed border-l-2 border-slate-200 pl-2 italic truncate">
+                                                                {item.excerpt}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Utilities */}
+                    <div className="flex items-center gap-1 xs:gap-1.5 sm:gap-2.5 md:gap-4 shrink-0">
+                        {/* Mobile Search Button */}
                         <button
-                            onClick={handleOpenUpdates}
-                            className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer relative ${
-                                activeTab === "updates"
-                                    ? "bg-[#0b1329] border-[#0b1329] text-white"
-                                    : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-300 hover:bg-slate-50"
-                            }`}
+                            onClick={() => {
+                                setIsMobileSearchOpen(true);
+                                setTimeout(() => searchInputRef.current?.focus(), 50);
+                            }}
+                            className="h-8.5 w-8.5 xs:h-9 xs:w-9 sm:hidden rounded-xl border bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-300 hover:bg-slate-50 flex items-center justify-center transition-colors shadow-sm cursor-pointer shrink-0"
+                            title={t("Search", "Hľadať", "Keresés")}
+                        >
+                            <Search className="h-4 w-4 text-slate-600" />
+                        </button>
+
+                        {/* Pulsing DEMO MODE badge */}
+                        {isDemoMode && (
+                            <a
+                                href="#settings"
+                                className="px-1.5 xs:px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 border border-amber-600 text-white text-[8px] xs:text-[9px] sm:text-[10px] font-black uppercase tracking-wider shadow-md shadow-amber-500/25 transition-all flex items-center gap-1 hover:scale-[1.02] shrink-0"
+                            >
+                                <span className="h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full bg-white animate-pulse" />
+                                <span className="hidden sm:inline">{t("DEMO MODE", "DEMO REŽIM", "DEMÓ MÓD")}</span>
+                                <span className="inline sm:hidden">DEMO</span>
+                            </a>
+                        )}
+
+                        {canCreateTask && (
+                        <button
+                            onClick={onAddTask}
+                            className="h-8.5 w-8.5 xs:h-9 xs:w-9 sm:h-10 sm:w-10 rounded-xl border bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-300 hover:bg-slate-50 flex items-center justify-center transition-colors shadow-sm cursor-pointer shrink-0"
                             title={
                                 systemLanguage === "sk"
-                                    ? "Aktualizácie a novinky"
+                                    ? "Vytvoriť novú úlohu"
                                     : systemLanguage === "hu"
-                                      ? "Frissítések és hírek"
-                                      : "Updates & News"
+                                      ? "Új feladat"
+                                      : "Create New Task"
                             }
                         >
-                            <Sparkles className="h-5 w-5 text-amber-500" />
-                            {hasNewUpdate && (
-                                <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
-                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
-                                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
-                                </span>
-                            )}
+                            <CheckSquare className="h-4 w-4 sm:h-5 sm:w-5 text-indigo-600" />
                         </button>
-                    </div>
-                )}
-
-                {/* User Account Trigger Button */}
-                <div>
-                    <button
-                        onClick={() => setIsProfileOpen(true)}
-                        className="h-10 w-10 rounded-xl bg-white/80 border border-slate-200 flex items-center justify-center hover:border-slate-300 text-slate-700 transition-colors shadow-sm cursor-pointer"
-                        aria-label={t(
-                            "User Profile Menu",
-                            "Menu používateľského profilu",
-                            "Felhasználói profil menü",
                         )}
-                    >
-                        <User className="h-5 w-5 text-indigo-600" />
-                    </button>
+
+
+                        {canOpenRoute("meetings") && (
+                        <div className="relative" ref={meetingsDropdownRef}>
+                            <button
+                                onClick={() => setIsMeetingsOpen(!isMeetingsOpen)}
+                                aria-expanded={isMeetingsOpen}
+                                aria-haspopup="menu"
+                                className={`h-8.5 w-8.5 xs:h-9 xs:w-9 sm:h-10 sm:w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer ${
+                                    isMeetingsOpen
+                                        ? "bg-[#0b1329] border-[#0b1329] text-white"
+                                        : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-300 hover:bg-slate-50"
+                                }`}
+                                aria-label={t(
+                                    "Meeting Room Menu",
+                                    "Menu zasadačky",
+                                    "Tárgyaló menü",
+                                )}
+                                title={
+                                    systemLanguage === "sk"
+                                        ? "Zasadačka a stretnutia"
+                                        : systemLanguage === "hu"
+                                          ? "Tárgyaló és megbeszélések"
+                                          : "Meetings & Notes"
+                                }
+                            >
+                                <PencilLine className="h-4 w-4 sm:h-5 sm:w-5" />
+                            </button>
+
+                            {/* Popover Dropdown Panel */}
+                            {isMeetingsOpen && typeof document !== "undefined" &&
+                                createPortal(
+                                    <div
+                                        className="fixed inset-0 z-40"
+                                        aria-hidden="true"
+                                        onClick={() => setIsMeetingsOpen(false)}
+                                    />,
+                                    document.body,
+                                )}
+                            {isMeetingsOpen && (
+                                <div role="menu" className="absolute right-0 mt-2.5 w-60 bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-2xl rounded-2xl p-2.5 z-50 flex flex-col gap-1 select-none animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <div className="px-3 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 mb-1">
+                                        {systemLanguage === "sk"
+                                            ? "Rýchle akcie zasadačky"
+                                            : systemLanguage === "hu"
+                                              ? "Gyors tárgyaló műveletek"
+                                              : "Meeting Room Quick Actions"}
+                                    </div>
+
+                                    {/* Record Meeting */}
+                                    <button
+                                        onClick={() => {
+                                            setIsMeetingsOpen(false);
+                                            if (
+                                                typeof (window as any).showToast ===
+                                                "function"
+                                            ) {
+                                                (window as any).showToast(
+                                                    systemLanguage === "sk"
+                                                        ? "Nahrávanie stretnutia: Audio nahrávanie bude k dispozícii v ďalšej aktualizácii."
+                                                        : systemLanguage === "hu"
+                                                          ? "Megbeszélés rögzítése: A hangfelvétel a következő frissítésben érhető el."
+                                                          : "Record Meeting: Audio recording feature will be implemented in the next update.",
+                                                );
+                                            }
+                                        }}
+                                        className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-all cursor-pointer group"
+                                    >
+                                        <Mic className="h-4 w-4 text-slate-400 group-hover:text-slate-500" />
+                                        <div className="flex flex-col">
+                                            <span>
+                                                {systemLanguage === "sk"
+                                                    ? "Nahrať stretnutie"
+                                                    : systemLanguage === "hu"
+                                                      ? "Megbeszélés rögzítése"
+                                                      : "Record Meeting"}
+                                            </span>
+                                            <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">
+                                                {systemLanguage === "sk"
+                                                    ? "Pripravuje sa"
+                                                    : systemLanguage === "hu"
+                                                      ? "Fejlesztés alatt"
+                                                      : "Coming soon"}
+                                            </span>
+                                        </div>
+                                    </button>
+
+                                    {canCreateMeeting && (
+                                    <button
+                                        onClick={() => {
+                                            setIsMeetingsOpen(false);
+                                            if (onNavigateMeetings) {
+                                                onNavigateMeetings("new");
+                                            }
+                                        }}
+                                        className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-[#0b1329] hover:bg-slate-100/60 transition-all cursor-pointer group"
+                                    >
+                                        <Plus className="h-4 w-4 text-[#0b1329]" />
+                                        <span>
+                                            {systemLanguage === "sk"
+                                                ? "Nové stretnutie"
+                                                : systemLanguage === "hu"
+                                                  ? "Új megbeszélés"
+                                                  : "New Meeting"}
+                                        </span>
+                                    </button>
+                                    )}
+
+
+                                    {/* Show Meetings */}
+                                    <button
+                                        onClick={() => {
+                                            setIsMeetingsOpen(false);
+                                            if (onNavigateMeetings) {
+                                                onNavigateMeetings("list");
+                                            }
+                                        }}
+                                        className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-slate-700 hover:text-[#0b1329] hover:bg-slate-100/60 transition-all cursor-pointer group"
+                                    >
+                                        <List className="h-4 w-4 text-slate-400 group-hover:text-[#0b1329]" />
+                                        <span>
+                                            {systemLanguage === "sk"
+                                                ? "Zobraziť stretnutia"
+                                                : systemLanguage === "hu"
+                                                  ? "Megbeszélések mutatása"
+                                                  : "Show Meetings"}
+                                        </span>
+                                    </button>
+                                </div>
+                            )}
+                        </div>
+                        )}
+
+
+                        {canRunWorkflows && (
+                        <div className="relative" ref={toolboxDropdownRef}>
+                            <button
+                                onClick={() => setIsToolboxOpen(!isToolboxOpen)}
+                                aria-expanded={isToolboxOpen}
+                                aria-haspopup="menu"
+                                className={`h-8.5 w-8.5 xs:h-9 xs:w-9 sm:h-10 sm:w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer ${
+                                    isToolboxOpen
+                                        ? "bg-[#0b1329] border-[#0b1329] text-white"
+                                        : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-300 hover:bg-slate-50"
+                                }`}
+                                title={t(
+                                    "Automation Toolbox",
+                                    "Automatizačný panel",
+                                    "Automatizálási eszköztár",
+                                )}
+                            >
+                                <Workflow className="h-4 w-4 sm:h-5 sm:w-5 text-purple-700" />
+                            </button>
+
+                            {isToolboxOpen && typeof document !== "undefined" &&
+                                createPortal(
+                                    <div
+                                        className="fixed inset-0 z-40"
+                                        aria-hidden="true"
+                                        onClick={() => setIsToolboxOpen(false)}
+                                    />,
+                                    document.body,
+                                )}
+                            {isToolboxOpen && (
+                                <div role="menu" className="absolute right-0 mt-2.5 w-64 bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-2xl rounded-2xl p-3.5 z-50 flex flex-col gap-2 select-none animate-in fade-in slide-in-from-top-2 duration-200">
+                                    <div className="px-1.5 pb-2 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 mb-1 flex items-center justify-between">
+                                        <span>
+                                            {t(
+                                                "Manual Triggers",
+                                                "Manuálne spúšťače",
+                                                "Kézi indítók",
+                                            )}
+                                        </span>
+                                        <Workflow className="h-3 w-3 text-purple-400" />
+                                    </div>
+
+                                    {manualWorkflows.length === 0 ? (
+                                        <div className="py-6 text-center text-xs text-slate-400 font-medium">
+                                            {t(
+                                                "No active manual workflows.",
+                                                "Žiadne aktívne manuálne spúšťače.",
+                                                "Nincsenek aktívny kézi indítók.",
+                                            )}
+                                        </div>
+                                    ) : (
+                                        <div className="flex flex-col gap-1.5 max-h-60 overflow-y-auto pr-0.5">
+                                            {manualWorkflows.map((wf) => {
+                                                const cfg = wf.trigger_config || {};
+                                                const btnColor =
+                                                    cfg.buttonColor || "#6b21a8";
+                                                const btnIconName =
+                                                    cfg.buttonIcon || "Play";
+                                                const btnStyle =
+                                                    cfg.buttonStyle || "full";
+
+                                                const IconComponent =
+                                                    (Icons as any)[btnIconName] || Play;
+
+                                                let buttonClass = "";
+                                                let inlineStyle: React.CSSProperties =
+                                                    {};
+
+                                                if (btnStyle === "skeleton") {
+                                                    buttonClass =
+                                                        "w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border-2 text-xs font-bold transition-all hover:scale-[1.01] active:scale-[0.99]";
+                                                    inlineStyle = {
+                                                        borderColor: btnColor,
+                                                        color: btnColor,
+                                                    };
+                                                } else if (btnStyle === "icon_only") {
+                                                    buttonClass =
+                                                        "w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-slate-100 text-xs font-bold transition-all hover:bg-slate-50 hover:scale-[1.01] active:scale-[0.99]";
+                                                    inlineStyle = { color: btnColor };
+                                                } else {
+                                                    // 'full'
+                                                    buttonClass =
+                                                        "w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-white text-xs font-bold transition-all hover:opacity-90 hover:scale-[1.01] active:scale-[0.99]";
+                                                    inlineStyle = {
+                                                        backgroundColor: btnColor,
+                                                    };
+                                                }
+
+                                                return (
+                                                    <button
+                                                        key={wf.id}
+                                                        onClick={() =>
+                                                            handleRunWorkflow(wf)
+                                                        }
+                                                        disabled={runningWfId === wf.id}
+                                                        className={buttonClass}
+                                                        style={inlineStyle}
+                                                        title={wf.description}
+                                                    >
+                                                        {runningWfId === wf.id ? (
+                                                            <Loader2 className="h-4 w-4 animate-spin" />
+                                                        ) : (
+                                                            <IconComponent className="h-4 w-4 shrink-0" />
+                                                        )}
+                                                        {btnStyle !== "icon_only" && (
+                                                            <span className="truncate">
+                                                                {wf.name}
+                                                            </span>
+                                                        )}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
+                        )}
+
+
+                        {/* Product Release Notes Updates Button */}
+                        {canOpenRoute("updates") && updatesList.length > 0 && (
+                            <div className="relative">
+                                <button
+                                    onClick={handleOpenUpdates}
+                                    className={`h-8.5 w-8.5 xs:h-9 xs:w-9 sm:h-10 sm:w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer relative ${
+                                        activeTab === "updates"
+                                            ? "bg-[#0b1329] border-[#0b1329] text-white"
+                                            : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-300 hover:bg-slate-50"
+                                    }`}
+                                    title={
+                                        systemLanguage === "sk"
+                                            ? "Aktualizácie a novinky"
+                                            : systemLanguage === "hu"
+                                              ? "Frissítések és hírek"
+                                              : "Updates & News"
+                                    }
+                                >
+                                    <Sparkles className="h-4 w-4 sm:h-5 sm:w-5 text-amber-500" />
+                                    {hasNewUpdate && (
+                                        <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+                                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500"></span>
+                                        </span>
+                                    )}
+                                </button>
+                            </div>
+                        )}
+
+                        {/* User Account Trigger Button */}
+                        <div>
+                            <button
+                                onClick={() => setIsProfileOpen(true)}
+                                className="h-8.5 w-8.5 xs:h-9 xs:w-9 sm:h-10 sm:w-10 rounded-xl bg-white/80 border border-slate-200 flex items-center justify-center hover:border-slate-300 text-slate-700 transition-colors shadow-sm cursor-pointer"
+                                aria-label={t(
+                                    "User Profile Menu",
+                                    "Menu používateľského profilu",
+                                    "Felhasználói profil menü",
+                                )}
+                            >
+                                <User className="h-4 w-4 sm:h-5 sm:w-5 text-indigo-600" />
+                            </button>
+                        </div>
+                    </div>
+                </>
+            )}
 
                     {/* User Account Right Slideout Drawer */}
                     {(isProfileOpen || isClosing) &&
@@ -968,7 +1091,7 @@ export const Header: React.FC<HeaderProps> = ({
                             ),
                             createPortal(
                                 <div
-                                    className={`fixed top-20 right-0 bottom-0 w-80 md:w-90 bg-white/95 backdrop-blur-lg border-l border-slate-200/80 shadow-2xl flex flex-col justify-between overflow-y-auto p-0 z-50 ${isClosing ? "animate-slide-out-right" : "animate-slide-in-right"}`}
+                                    className={`fixed top-20 right-0 bottom-0 w-full max-w-[320px] sm:max-w-sm md:w-90 bg-white/95 backdrop-blur-lg border-l border-slate-200/80 shadow-2xl flex flex-col justify-between overflow-y-auto p-0 z-50 ${isClosing ? "animate-slide-out-right" : "animate-slide-in-right"}`}
                                     onClick={(e) => e.stopPropagation()}
                                     key="drawer-panel"
                                 >
@@ -1159,8 +1282,6 @@ export const Header: React.FC<HeaderProps> = ({
                                 document.body,
                             ),
                         ])}
-                </div>
-            </div>
         </header>
     );
 };

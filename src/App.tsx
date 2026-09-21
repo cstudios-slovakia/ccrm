@@ -24,6 +24,9 @@ import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AiKeyBanner } from "./components/ui/AiKeyBanner";
 import { QuickAddClientProvider } from "./components/ui/QuickAddClient";
 import FilePreviewPane from "./components/FilePreviewPane";
+import { FloatingCopilotOrb, type CopilotCorner } from "./components/executive/FloatingCopilotOrb";
+import { CopilotSidebar } from "./components/executive/CopilotSidebar";
+import { useCurrentScreenContext } from "./hooks/useCurrentScreenContext";
 import { RefreshCw, AlertOctagon, Trash2, Copy } from "lucide-react";
 import { ShaderGradient } from "shadergradient";
 import { Canvas, type EventManager } from "@react-three/fiber";
@@ -105,6 +108,7 @@ const FilesView = safeLazy(() => import("./components/FilesView").then(m => ({ d
 const PersonalSettingsView = safeLazy(() => import("./components/PersonalSettingsView").then(m => ({ default: m.PersonalSettingsView })));
 const EmailView = safeLazy(() => import("./components/EmailView").then(m => ({ default: m.EmailView })));
 const RagAiView = safeLazy(() => import("./components/RagAiView").then(m => ({ default: m.RagAiView })));
+const SaiModule = safeLazy(() => import("./components/sai/SaiModule").then(m => ({ default: m.SaiModule })));
 const ProjectsView = safeLazy(() => import("./components/ProjectsView").then(m => ({ default: m.ProjectsView })));
 const MeetingRoomView = safeLazy(() => import("./components/MeetingRoomView").then(m => ({ default: m.MeetingRoomView })));
 const UnifiedEntryView = safeLazy(() => import("./components/UnifiedEntryView").then(m => ({ default: m.UnifiedEntryView })));
@@ -381,17 +385,54 @@ function App() {
 
   const getTabFromHash = () => {
     const rawHash = window.location.hash.replace("#", "");
-    const baseHash = rawHash.split(/[/?]/)[0];
-    const hashLower = baseHash.toLowerCase();
-    if (hashLower.startsWith("client-") || hashLower.startsWith("lead-") || hashLower.startsWith("user-") || hashLower.startsWith("ue_") || hashLower.startsWith("dash_") || hashLower.startsWith("settings") || hashLower.startsWith("warehouse") || hashLower.startsWith("financial") || hashLower.startsWith("invoices")) {
-      return rawHash; // Keep case sensitivity and allow sub-tabs for settings, warehouse, financial and invoices
+    const [baseRaw, queryRaw] = rawHash.split(/[/?]/);
+    const hashLower = (baseRaw || "").toLowerCase();
+
+    // Map common synonyms & aliases directly to canonical app tabs
+    const aliasMap: Record<string, string> = {
+      finances: "financial",
+      financials: "financial",
+      cashflow: "financial",
+      finance: "financial",
+      penzugy: "financial",
+      penzugyek: "financial",
+      offers: "invoices",
+      invoice: "invoices",
+      szamlak: "invoices",
+      faktury: "invoices",
+      kanban: "tasks",
+      task: "tasks",
+      meeting: "meetings",
+      documents: "files",
+      social: "social_media",
+      client: "clients",
+      lead: "leads",
+      project: "projects",
+    };
+
+    const resolvedBase = aliasMap[hashLower] || hashLower;
+
+    if (resolvedBase.startsWith("client-") || resolvedBase.startsWith("lead-") || resolvedBase.startsWith("user-") || resolvedBase.startsWith("ue_") || resolvedBase.startsWith("dash_") || resolvedBase.startsWith("settings") || resolvedBase.startsWith("warehouse") || resolvedBase.startsWith("financial") || resolvedBase.startsWith("invoices") || resolvedBase.startsWith("sai") || resolvedBase.startsWith("automation")) {
+      return queryRaw ? `${resolvedBase}?${queryRaw}` : resolvedBase;
     }
-    const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "tasks", "files", "personal-settings", "email", "rag_ai", "automation", "meetings", "projects", "updates", "warehouse", "financial", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
-    return validTabs.includes(hashLower) ? rawHash : "dashboard";
+    const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "tasks", "files", "personal-settings", "email", "rag_ai", "sai", "automation", "meetings", "projects", "updates", "warehouse", "financial", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
+    return validTabs.includes(resolvedBase) ? (queryRaw ? `${resolvedBase}?${queryRaw}` : resolvedBase) : "dashboard";
   };
 
   const [activeTab, setActiveTab] = useState(getTabFromHash);
   const [isInitialSyncResolved, setIsInitialSyncResolved] = useState(false);
+
+  // Executive Copilot State
+  const [isCopilotOpen, setIsCopilotOpen] = useState(false);
+  const [copilotCorner, setCopilotCorner] = useState<CopilotCorner>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("ccrm_copilot_corner") as CopilotCorner;
+      if (saved && ["bottom-right", "bottom-left", "top-right", "top-left"].includes(saved)) {
+        return saved;
+      }
+    }
+    return "bottom-right";
+  });
   type ToastPayload = {
     // Identity, not the message text: two saves in a row raise the same wording,
     // and matching on the text let the first toast's timer close the second one early.
@@ -478,8 +519,15 @@ function App() {
     };
   }, []);
   const [systemName, setSystemName] = useState("CCRM");
-  const [systemLanguage, setSystemLanguage] = useState<"en" | "sk" | "hu">("sk");
-  const [userLanguage, setUserLanguage] = useState<"en" | "sk" | "hu">("sk");
+  const [systemLanguage, setSystemLanguage] = useState<"en" | "sk" | "hu">(() => {
+    const stored = typeof window !== 'undefined' ? localStorage.getItem("crm_language") : null;
+    return (stored === "en" || stored === "sk" || stored === "hu") ? stored : "sk";
+  });
+  const [userLanguage, setUserLanguage] = useState<"en" | "sk" | "hu">(() => {
+    const stored = typeof window !== 'undefined' ? localStorage.getItem("crm_language") : null;
+    return (stored === "en" || stored === "sk" || stored === "hu") ? stored : "sk";
+  });
+  const currentScreenContext = useCurrentScreenContext(activeTab, userLanguage);
   // Appearance (light/dark/system/auto) and the light palette are independent:
   // switching to dark and back has to give the user their herb theme again.
   const [userTheme, setUserTheme] = useState<string>(getStoredTheme);
@@ -813,7 +861,8 @@ ${log.payload || ''}
   };
 
   useEffect(() => {
-    setUserLanguage(getUserLanguage(currentUser) || systemLanguage);
+    const stored = typeof window !== 'undefined' ? (localStorage.getItem("crm_language") as "en" | "sk" | "hu") : null;
+    setUserLanguage(getUserLanguage(currentUser) || (stored === "en" || stored === "sk" || stored === "hu" ? stored : systemLanguage));
   }, [currentUser, systemLanguage]);
 
   // Mirror the active language into localStorage. Components that render OUTSIDE
@@ -902,6 +951,9 @@ ${log.payload || ''}
           break;
         case "rag_ai":
           viewName = t("RAG AI Assistant", "RAG AI Asistent", "RAG AI Asszisztens");
+          break;
+        case "sai":
+          viewName = "SAI";
           break;
         case "automation":
           viewName = t("Automation", "Automatizácia", "Automatizálás");
@@ -2380,7 +2432,15 @@ ${log.payload || ''}
       }
     }, 5000);
 
-    return () => clearInterval(poller);
+    const handleReloadEvent = () => {
+      fetchFull();
+    };
+    window.addEventListener("ccrm:reload-data", handleReloadEvent);
+
+    return () => {
+      clearInterval(poller);
+      window.removeEventListener("ccrm:reload-data", handleReloadEvent);
+    };
     // Re-subscribe on login/logout so a fresh session immediately re-syncs
     // (the GET now requires auth) and the poller closure never holds a stale user.
   }, [isInstalled, currentUser?.email]);
@@ -2957,6 +3017,10 @@ ${log.payload || ''}
         return (
           <RagAiView systemLanguage={userLanguage} currentUser={activeUser} leads={leads} />
         );
+      case "sai":
+        return (
+          <SaiModule isDemoMode={isDemoMode} unifiedEntries={unifiedEntries} systemLanguage={userLanguage} />
+        );
       case "meetings":
         return (
           <MeetingRoomView 
@@ -3375,7 +3439,35 @@ ${log.payload || ''}
             </footer>
           </main>
         </div>
+
+        {/* Global Executive Copilot Sidebar (contracts workspace side-by-side on desktop) */}
+        {currentUser && isCopilotOpen && (
+          <CopilotSidebar
+            isOpen={isCopilotOpen}
+            onClose={() => setIsCopilotOpen(false)}
+            systemLanguage={userLanguage}
+            screenContext={currentScreenContext}
+            currentUser={currentUser}
+          />
+        )}
       </div>
+
+      {/* Global Floating Copilot Orb (Draggable to any of the 4 corners) */}
+      {currentUser && (
+        <FloatingCopilotOrb
+          isOpen={isCopilotOpen}
+          onOpen={() => setIsCopilotOpen(true)}
+          systemLanguage={userLanguage}
+          screenTitle={currentScreenContext.title}
+          corner={copilotCorner}
+          onCornerChange={(newCorner) => {
+            setCopilotCorner(newCorner);
+            if (typeof window !== "undefined") {
+              localStorage.setItem("ccrm_copilot_corner", newCorner);
+            }
+          }}
+        />
+      )}
       
 
 

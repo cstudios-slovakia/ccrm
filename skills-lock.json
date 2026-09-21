@@ -18,6 +18,18 @@
       "sourceType": "github",
       "skillPath": ".agents/skills/impeccable/SKILL.md",
       "computedHash": "367213d4969b278c39978bc34ad2d100a6d1fa9c08254a11e5eb543fd3484ef9"
+    },
+    "pitch-deck": {
+      "source": "anthropics/financial-services",
+      "sourceType": "github",
+      "skillPath": "plugins/vertical-plugins/investment-banking/skills/pitch-deck/SKILL.md",
+      "computedHash": "52cb8677872896c311b474ad78c0339224af063bfe5e05e466c83b3e83a8fcb9"
+    },
+    "slides": {
+      "source": "nextlevelbuilder/ui-ux-pro-max-skill",
+      "sourceType": "github",
+      "skillPath": ".claude/skills/slides/SKILL.md",
+      "computedHash": "c72a8bcd2ee98a7caab8f00a816c7e7ccfa46bba6682539db2186e71220155f1"
     }
   }
 }
