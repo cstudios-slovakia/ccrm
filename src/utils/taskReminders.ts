@@ -67,3 +67,19 @@ export const withTaskReminder = (
   else delete next[userName];
   return Object.keys(next).length ? next : undefined;
 };
+
+/**
+ * Whether Settings → Email Server has an outgoing mail server the reminders can
+ * be sent through. Mirrors ccrm_system_mail_configured() in
+ * api/mail_broker.php, which api/task_reminders.php uses to skip every
+ * reminder when this is false.
+ * Secrets arrive masked, which still counts as filled in.
+ */
+export const isSystemMailConfigured = (config: Record<string, any> | null | undefined): boolean => {
+  if (!config) return false;
+  const provider = config.emailProvider ?? config.provider ?? "smtp";
+  if (provider === "exchange") {
+    return String(config.exchMailbox ?? "") !== "" && String(config.exchPassword ?? "") !== "";
+  }
+  return String(config.smtpHost ?? "") !== "" && Number(config.smtpPort ?? 0) > 0;
+};

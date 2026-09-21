@@ -268,6 +268,8 @@ interface TaskDashboardViewProps {
     autoOpenAddTask?: boolean;
     setAutoOpenAddTask?: (val: boolean) => void;
     taskAccess?: TaskAccess;
+    /** False when no outgoing mail server is set up; task e-mail reminders then warn. */
+    mailConfigured?: boolean;
 }
 
 export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
@@ -288,6 +290,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     autoOpenAddTask,
     setAutoOpenAddTask,
     taskAccess = { view: true, create: true, edit: true, delete: true, viewAll: true },
+    mailConfigured,
 
 }) => {
     const isDoneState = (status: string) => {
@@ -2901,6 +2904,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     taskStates={taskStates}
                     systemLanguage={systemLanguage}
                     currentUserName={currentUser?.name || defaultUserName}
+                    mailConfigured={mailConfigured}
                     canEdit={mayEditTask(editingTask)}
                     canArchive={mayArchiveTask(editingTask)}
                     onSave={(next) => {
@@ -3152,6 +3156,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             users={users}
                             systemLanguage={systemLanguage}
                             t={t}
+                            mailConfigured={mailConfigured}
                         />
 
                         <button

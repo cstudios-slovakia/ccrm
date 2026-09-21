@@ -7,6 +7,7 @@ import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, Uni
 import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAssignment";
 import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils/projectAutoCreate";
 import { normalizeLeadStateSla, type LeadStateSla } from "./utils/leadSla";
+import { isSystemMailConfigured } from "./utils/taskReminders";
 import { listIdsSignature, normalizeListIds, type ListIds } from "./utils/listIds";
 import { VERSION } from "./utils/version";
 import { reconcileInvoiceMovements } from "./utils/invoiceFinanceBridge";
@@ -2784,6 +2785,7 @@ ${log.payload || ''}
             taskStateColors={taskStateColors}
             taskAccess={taskAccess}
             currentUser={activeUser}
+            mailConfigured={isSystemMailConfigured(integrationsConfig)}
           />
         );
       case "clients":
@@ -3043,6 +3045,7 @@ ${log.payload || ''}
             taskStates={taskStates}
             taskStateColors={taskStateColors}
             taskAccess={taskAccess}
+            mailConfigured={isSystemMailConfigured(integrationsConfig)}
             autoOpenAddTask={autoOpenAddTask}
             setAutoOpenAddTask={setAutoOpenAddTask}
           />

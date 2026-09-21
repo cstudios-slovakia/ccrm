@@ -812,6 +812,9 @@ const SETTINGS = {
   leadStateSla: { 'offer sent': 5 },
   taskStates: TASK_STATES,
   taskStateColors: { New: '#3b82f6', 'In progress': '#f59e0b', Blocked: '#ef4444', Done: '#10b981' },
+  // An outgoing mail server, as a working install has one. Without it the task
+  // e-mail reminder warns that nothing can be sent instead of saying when.
+  integrationsConfig: { emailProvider: 'smtp', smtpHost: 'smtp.crm.test', smtpPort: '465', smtpSecure: 'ssl' },
 };
 
 /** The exact JSON body the app expects from a `GET /sync.php`. */

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { taskReminderSendAt, withTaskReminder } from "./taskReminders.ts";
+import { isSystemMailConfigured, taskReminderSendAt, withTaskReminder } from "./taskReminders.ts";
 
 const stamp = (d: Date | null) =>
   d
@@ -35,4 +35,14 @@ test("withTaskReminder: sets and clears one user's choice, leaves others alone",
   assert.deepEqual(both, { Jana: "1d", Peter: "1h" });
   assert.deepEqual(withTaskReminder(both, "Peter", null), { Jana: "1d" });
   assert.equal(withTaskReminder({ Peter: "1h" }, "Peter", null), undefined);
+});
+
+// Mirrors ccrm_system_mail_configured(): without a mail server the server skips
+// every reminder, so the drawer must not promise one.
+test("isSystemMailConfigured: needs a host and port, or an Exchange mailbox", () => {
+  assert.equal(isSystemMailConfigured(null), false);
+  assert.equal(isSystemMailConfigured({ emailProvider: "smtp", smtpHost: "", smtpPort: "465" }), false);
+  assert.equal(isSystemMailConfigured({ emailProvider: "smtp", smtpHost: "smtp.example.com", smtpPort: "465" }), true);
+  assert.equal(isSystemMailConfigured({ emailProvider: "exchange", exchMailbox: "a@b.sk", exchPassword: "" }), false);
+  assert.equal(isSystemMailConfigured({ emailProvider: "exchange", exchMailbox: "a@b.sk", exchPassword: "********" }), true);
 });

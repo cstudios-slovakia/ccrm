@@ -153,6 +153,8 @@ interface ProjectsViewProps {
   taskStateColors?: Record<string, string>;
   taskAccess?: TaskAccess;
   currentUser?: UserProfile;
+  /** False when no outgoing mail server is set up; task e-mail reminders then warn. */
+  mailConfigured?: boolean;
 }
 
 export const ProjectsView: React.FC<ProjectsViewProps> = ({
@@ -179,7 +181,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   taskStates,
   taskStateColors,
   taskAccess,
-  currentUser
+  currentUser,
+  mailConfigured
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
 
@@ -942,6 +945,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         taskStateColors={taskStateColors}
         taskAccess={taskAccess}
         currentUser={currentUser}
+        mailConfigured={mailConfigured}
         onClose={() => {
           setEditingProject(null);
           setEditingProjectType(null);

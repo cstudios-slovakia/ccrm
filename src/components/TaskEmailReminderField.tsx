@@ -15,6 +15,11 @@ interface TaskEmailReminderFieldProps {
     systemLanguage: Language;
     t: Translate;
     disabled?: boolean;
+    /**
+     * False when Settings → Email Server has no outgoing mail server, so the
+     * server would skip the reminder. Left out, the field does not warn.
+     */
+    mailConfigured?: boolean;
 }
 
 const LOCALES: Record<string, string> = { sk: "sk-SK", hu: "hu-HU", en: "en-GB" };
@@ -32,6 +37,7 @@ export const TaskEmailReminderField: React.FC<TaskEmailReminderFieldProps> = ({
     systemLanguage,
     t,
     disabled = false,
+    mailConfigured = true,
 }) => {
     const reminders = task.emailReminders || {};
     const mine = currentUserName ? reminders[currentUserName] : undefined;
@@ -62,6 +68,16 @@ export const TaskEmailReminderField: React.FC<TaskEmailReminderFieldProps> = ({
                     "Your profile has no e-mail address, so nothing can be sent.",
                     "Váš profil nemá e-mailovú adresu, preto nie je kam poslať upozornenie.",
                     "A profiljában nincs e-mail-cím, így nem lehet értesítést küldeni.",
+                ),
+            };
+        }
+        if (!mailConfigured) {
+            return {
+                tone: "warn" as const,
+                text: t(
+                    "No outgoing mail server is set up (Settings → Email Server), so nothing can be sent yet.",
+                    "Nie je nastavený server odchádzajúcej pošty (Nastavenia → E-mailový server), preto sa zatiaľ nič neodošle.",
+                    "Nincs beállítva kimenő levelezőszerver (Beállítások → E-mail szerver), ezért egyelőre semmi sem küldhető.",
                 ),
             };
         }

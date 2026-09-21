@@ -1,5 +1,6 @@
 import { expect, test, type Page } from '@playwright/test';
 import { gotoView, startSession } from './helpers/appDriver';
+import { buildSyncPayload } from './helpers/fixture';
 
 /**
  * "Notify me about the task by e-mail" in the task drawers. The server sends
@@ -87,6 +88,29 @@ test.describe('Task e-mail reminder', () => {
 
     await drawer.getByRole('button', { name: /^(Save Task|Uložiť|Mentés)$/ }).click();
     await expect.poll(() => pushedByTitle(pushed, NEW_TASK)?.emailReminders).toEqual({ Erik: '1d' });
+  });
+
+  // The server skips every reminder when no outgoing mail server is set up, so
+  // the drawer must say that rather than promise a mail that never comes.
+  test('warns when no outgoing mail server is set up', async ({ page }) => {
+    await startSession(page);
+    await page.route('**/sync.php**', (route) => {
+      if (route.request().method() !== 'GET') return route.fallback();
+      const payload = buildSyncPayload();
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ ...payload, settings: { ...payload.settings, integrationsConfig: { emailProvider: 'smtp', smtpHost: '' } } }),
+      });
+    });
+    await gotoView(page, '#tasks');
+
+    const drawer = await openEditDrawer(page);
+    const field = drawer.getByTestId('task-email-reminder');
+    await field.getByTestId('task-email-reminder-toggle').check();
+    const hint = field.getByTestId('task-email-reminder-hint');
+    await expect(hint).toContainText(/Email Server|E-mailový server|E-mail szerver/);
+    await expect(hint).not.toContainText('erik@crm.com');
   });
 
   test('unticking removes only my reminder', async ({ page }) => {

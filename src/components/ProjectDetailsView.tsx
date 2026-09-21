@@ -96,6 +96,8 @@ interface ProjectDetailsViewProps {
   /** Task permissions — separate from the project ones in `canEdit`/`canDelete`. */
   taskAccess?: TaskAccess;
   currentUser?: UserProfile;
+  /** False when no outgoing mail server is set up; task e-mail reminders then warn. */
+  mailConfigured?: boolean;
 }
 
 /**
@@ -135,7 +137,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   taskStates = DEFAULT_TASK_STATES,
   taskStateColors,
   taskAccess = FULL_TASK_ACCESS,
-  currentUser
+  currentUser,
+  mailConfigured
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
   // Removing something is a change, so the delete flag never outranks edit.
@@ -2455,6 +2458,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               taskStateColors={taskStateColors}
               taskAccess={taskAccess}
               currentUser={currentUser}
+              mailConfigured={mailConfigured}
             />
           )}
 

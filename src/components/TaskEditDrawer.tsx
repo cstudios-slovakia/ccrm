@@ -144,6 +144,8 @@ interface TaskEditDrawerProps {
     canEdit: boolean;
     canArchive?: boolean;
     canDelete?: boolean;
+    /** False when no outgoing mail server is set up; the e-mail reminder then warns. */
+    mailConfigured?: boolean;
     onSave: (task: Task) => void;
     onToggleArchive?: (task: Task) => void;
     /** Resolves true once the task is really gone; the drawer only closes then. */
@@ -168,6 +170,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
     canEdit,
     canArchive = false,
     canDelete = false,
+    mailConfigured,
     onSave,
     onToggleArchive,
     onDelete,
@@ -456,6 +459,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                             systemLanguage={systemLanguage}
                             t={t}
                             disabled={!canEdit}
+                            mailConfigured={mailConfigured}
                         />
                     </fieldset>
 

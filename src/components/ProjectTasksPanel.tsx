@@ -60,6 +60,8 @@ interface ProjectTasksPanelProps {
   taskStateColors?: Record<string, string>;
   taskAccess: TaskAccess;
   currentUser?: UserProfile;
+  /** False when no outgoing mail server is set up; task e-mail reminders then warn. */
+  mailConfigured?: boolean;
 }
 
 /**
@@ -81,6 +83,7 @@ export const ProjectTasksPanel: React.FC<ProjectTasksPanelProps> = ({
   taskStateColors = {},
   taskAccess,
   currentUser,
+  mailConfigured,
 }) => {
   const t: Translate = (en, sk, hu) => (userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en);
   const locale = userLanguage === "sk" ? "sk-SK" : userLanguage === "hu" ? "hu-HU" : "en-US";
@@ -450,6 +453,7 @@ export const ProjectTasksPanel: React.FC<ProjectTasksPanelProps> = ({
           taskStates={taskStates}
           systemLanguage={userLanguage}
           currentUserName={myName}
+          mailConfigured={mailConfigured}
           canEdit={canEditTask(editingTask, currentUser, taskAccess)}
           canArchive={taskAccess.edit && canArchiveTask(editingTask, currentUser)}
           canDelete={canDeleteTask(editingTask, currentUser, taskAccess)}
