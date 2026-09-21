@@ -3181,7 +3181,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             setTasks((prev) => [autoPMTask, ...prev]);
         }
 
-        // Reset log states
+        resetLogForm();
+    };
+
+    /** Empties the "log an activity" form, including a recorded note. */
+    const resetLogForm = () => {
         setLogContent("");
         setLogAmount("");
         setLogTime("");
@@ -3204,6 +3208,33 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         refreshLogWhen();
         setLogEmailOutgoing(true);
     };
+
+    /* One LeadsDatagrid instance serves every lead: going from lead A to lead B
+       (directly, or through the list) keeps this component and all its drafts.
+       The profile form stayed in edit mode with A's fields in it — the sync
+       effect above skips while editing — so "Save changes" wrote A's name,
+       value and owner over B. The log form, a recorded note and the gate-task
+       title carried over the same way and were filed on B. A draft belongs to
+       the lead it was started on; a different lead starts clean. (Back to the
+       list and into the same lead again keeps it, as before.) */
+    const draftLeadIdRef = React.useRef(initialSelectedLeadId ?? null);
+    useEffect(() => {
+        const nextId = initialSelectedLeadId ?? null;
+        if (!nextId || draftLeadIdRef.current === nextId) return;
+        const hadLead = draftLeadIdRef.current !== null;
+        draftLeadIdRef.current = nextId;
+        if (!hadLead) return;
+        setIsEditingLead(false);
+        setEditingEventId(null);
+        setInlineTaskTitle("");
+        // A recording still running belongs to the microphone, not to a lead —
+        // leave it to its own stop/discard controls.
+        if (recordingState !== "recording" && recordingState !== "paused") {
+            resetLogForm();
+            setEditorKey((prev) => prev + 1);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialSelectedLeadId]);
 
     // Begin editing an already-logged event: prefill the draft with its text and
     // its moment. Rich "note" events are stored as JSON blocks — flatten them to

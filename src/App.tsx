@@ -54,6 +54,7 @@ import {
   normalizeFinancialTrend,
   readLegacyFinancialTrend,
 } from "./utils/financialTrend";
+import { flushPendingSaves } from "./utils/pendingSaves";
 
 /**
  * Routes whose whole purpose depends on OpenAI. Visiting one without a
@@ -1942,7 +1943,10 @@ ${log.payload || ''}
     const handler = (e: BeforeUnloadEvent) => {
       // A debounced settings edit has not left the browser yet, so it counts as
       // unsaved just as much as a request already in flight.
-      if (isSyncing || settingsPushTimerRef.current !== null) {
+      // An autosave still waiting inside a component (project, project type,
+      // meeting note, category colour) is handed over now and counts too.
+      const handedOver = flushPendingSaves();
+      if (handedOver || isSyncing || settingsPushTimerRef.current !== null) {
         e.preventDefault();
         e.returnValue = "";
       }
@@ -2038,6 +2042,14 @@ ${log.payload || ''}
       return serverEmail !== "" && shownEmail !== "" && serverEmail !== shownEmail;
     };
 
+    // A pull hands back the same data as a brand-new object. Keep the old
+    // identity when nothing changed: editors seed their drafts from these
+    // stores in effects keyed on them, so a fresh object every forced pull
+    // (about once a minute) re-seeded the draft and wiped what the user was
+    // still typing — a product card, the billing form, invoicing credentials.
+    const sameOr = <T,>(next: T) => (prev: T): T =>
+      JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+
     const applyServerData = (data: any) => {
       setIsInstalled(true);
       setIsDemoMode(data.demoMode === true);
@@ -2118,46 +2130,46 @@ ${log.payload || ''}
         setUnifiedEntriesData((prev) => JSON.stringify(prev) === JSON.stringify(data.unifiedEntriesData) ? prev : data.unifiedEntriesData);
       }
       if (data.customDashboards && Array.isArray(data.customDashboards)) {
-        setCustomDashboards(data.customDashboards);
+        setCustomDashboards(sameOr(data.customDashboards));
       }
       if (data.projectTypes && Array.isArray(data.projectTypes)) {
-        setProjectTypes(data.projectTypes);
+        setProjectTypes(sameOr(data.projectTypes));
       }
       if (data.projects && Array.isArray(data.projects)) {
-        setProjects(data.projects);
+        setProjects(sameOr(data.projects));
       }
       if (data.warehouses && Array.isArray(data.warehouses)) {
-        setWarehouses(data.warehouses);
+        setWarehouses(sameOr(data.warehouses));
       }
       if (data.suppliers && Array.isArray(data.suppliers)) {
-        setSuppliers(data.suppliers);
+        setSuppliers(sameOr(data.suppliers));
       }
       if (data.warehouseItems && Array.isArray(data.warehouseItems)) {
-        setWarehouseItems(data.warehouseItems);
+        setWarehouseItems(sameOr(data.warehouseItems));
       }
       if (data.warehouseStock && Array.isArray(data.warehouseStock)) {
-        setWarehouseStock(data.warehouseStock);
+        setWarehouseStock(sameOr(data.warehouseStock));
       }
       if (data.warehouseBatches && Array.isArray(data.warehouseBatches)) {
-        setWarehouseBatches(data.warehouseBatches);
+        setWarehouseBatches(sameOr(data.warehouseBatches));
       }
       if (data.warehouseMovements && Array.isArray(data.warehouseMovements)) {
-        setWarehouseMovements(data.warehouseMovements);
+        setWarehouseMovements(sameOr(data.warehouseMovements));
       }
       if (data.financialCategories && Array.isArray(data.financialCategories)) {
-        setFinancialCategories(data.financialCategories);
+        setFinancialCategories(sameOr(data.financialCategories));
       }
       if (data.financialRecords && Array.isArray(data.financialRecords)) {
-        setFinancialRecords(data.financialRecords);
+        setFinancialRecords(sameOr(data.financialRecords));
       }
       if (data.invoicesOffers && Array.isArray(data.invoicesOffers)) {
-        setInvoicesOffers(data.invoicesOffers);
+        setInvoicesOffers(sameOr(data.invoicesOffers));
       }
       if (data.aiCustomTemplates && Array.isArray(data.aiCustomTemplates)) {
-        setAiCustomTemplates(data.aiCustomTemplates);
+        setAiCustomTemplates(sameOr(data.aiCustomTemplates));
       }
       if (data.clientCategories && Array.isArray(data.clientCategories)) {
-        setClientCategories(data.clientCategories);
+        setClientCategories(sameOr(data.clientCategories));
       }
       // Absent key = a sync.php that predates the trend anchors. Keep whatever
       // is in memory rather than blanking the chart back to the default curve.
@@ -2172,8 +2184,8 @@ ${log.payload || ''}
         if (s.systemName && s.systemName !== systemName) setSystemName(s.systemName);
         if (s.systemLanguage && s.systemLanguage !== systemLanguage) setSystemLanguage(s.systemLanguage);
         if (s.systemCurrency !== undefined && s.systemCurrency !== systemCurrency) setSystemCurrency(s.systemCurrency || "");
-        if (s.companyBillingSettings) setCompanyBillingSettings(s.companyBillingSettings);
-        if (s.invoicingIntegrations) setInvoicingIntegrations(s.invoicingIntegrations);
+        if (s.companyBillingSettings) setCompanyBillingSettings(sameOr(s.companyBillingSettings));
+        if (s.invoicingIntegrations) setInvoicingIntegrations(sameOr(s.invoicingIntegrations));
         setLeadStates((prev) => s.leadStates && JSON.stringify(s.leadStates) !== JSON.stringify(prev) ? s.leadStates : prev);
         setLeadSources((prev) => s.leadSources && JSON.stringify(s.leadSources) !== JSON.stringify(prev) ? s.leadSources : prev);
         setLeadCategories((prev) => s.leadCategories && JSON.stringify(s.leadCategories) !== JSON.stringify(prev) ? s.leadCategories : prev);

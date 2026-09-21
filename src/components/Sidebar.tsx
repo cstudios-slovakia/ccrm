@@ -194,6 +194,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
     // Automatically append to active navigation items in edit mode
     const itemNavId = `dash_${safeId}`;
     setActiveItems(prev => [...prev, itemNavId]);
+    // A saved layout lists exactly what the sidebar shows, and the local append
+    // above was never written into it — so the new dashboard vanished from the
+    // sidebar as soon as the layout was re-read. Write it in.
+    const storedLayout: unknown = userMetadata?.navLayout;
+    if (canEditNav && Array.isArray(storedLayout) && storedLayout.length > 0 && !storedLayout.includes(itemNavId)) {
+      onSaveUserLayout([...storedLayout, itemNavId]);
+    }
 
     // Reset and close
     setDashName("");

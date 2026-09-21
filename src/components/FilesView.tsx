@@ -213,36 +213,46 @@ export const FilesView: React.FC<FilesViewProps> = ({
         extractedText: string;
       }> = [];
 
+      // A file that fails stops the batch, but the ones already on the server
+      // are still recorded below. They used to be recorded only when every file
+      // succeeded: a failure left them on disk with no timeline entry, and a
+      // retry uploaded them a second time.
+      let failure: Error | null = null;
       for (const item of uploadQueue) {
-        const eventId = `ev-doc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
-        const formData = new FormData();
-        formData.append("file", item.file);
-        formData.append("eventId", eventId);
+        try {
+          const eventId = `ev-doc-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+          const formData = new FormData();
+          formData.append("file", item.file);
+          formData.append("eventId", eventId);
 
-        const res = await fetch("/upload.php", {
-          method: "POST",
-          body: formData
-        });
-
-        if (!res.ok) {
-          const errData = await res.json();
-          throw new Error(errData.error || `Failed to upload: ${item.file.name}`);
-        }
-
-        const data = await res.json();
-        if (data.success) {
-          uploadResults.push({
-            queuedFile: item,
-            eventId,
-            fileName: data.fileName || item.file.name,
-            extractedText: data.extractedText || ""
+          const res = await fetch("/upload.php", {
+            method: "POST",
+            body: formData
           });
-        } else {
-          throw new Error(data.error || `Failed to save: ${item.file.name}`);
+
+          if (!res.ok) {
+            const errData = await res.json();
+            throw new Error(errData.error || `Failed to upload: ${item.file.name}`);
+          }
+
+          const data = await res.json();
+          if (data.success) {
+            uploadResults.push({
+              queuedFile: item,
+              eventId,
+              fileName: data.fileName || item.file.name,
+              extractedText: data.extractedText || ""
+            });
+          } else {
+            throw new Error(data.error || `Failed to save: ${item.file.name}`);
+          }
+        } catch (err: any) {
+          failure = err instanceof Error ? err : new Error(String(err));
+          break;
         }
       }
 
-      setLeads((prevLeads: Lead[]) => {
+      if (uploadResults.length > 0) setLeads((prevLeads: Lead[]) => {
         const hasUnassigned = prevLeads.some(l => l.id === "unassigned-docs");
         let baseLeads = prevLeads;
         if (!hasUnassigned) {
@@ -320,6 +330,19 @@ export const FilesView: React.FC<FilesViewProps> = ({
           };
         });
       });
+
+      if (failure) {
+        // Keep only what did not make it, so a retry sends just those.
+        const done = new Set(uploadResults.map(r => r.queuedFile.id));
+        setUploadQueue(prev => prev.filter(q => !done.has(q.id)));
+        throw new Error(uploadResults.length > 0
+          ? t(
+              `${uploadResults.length} of ${uploadQueue.length} files were uploaded and saved. ${failure.message}`,
+              `${uploadResults.length} z ${uploadQueue.length} súborov sa nahralo a uložilo. ${failure.message}`,
+              `${uploadResults.length} / ${uploadQueue.length} fájl feltöltve és mentve. ${failure.message}`
+            )
+          : failure.message);
+      }
 
       if (typeof (window as any).showToast === "function") {
         (window as any).showToast(

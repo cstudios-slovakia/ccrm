@@ -124,6 +124,40 @@ test.describe('Invoicing — dated edits (audit F11/F12)', () => {
     expect(created.validUntil).toBe(EXPECTED_VALID_UNTIL);
   });
 
+  test('F11: the issue date of an existing document can be changed, and due/valid-until move with it', async ({
+    page
+  }) => {
+    await startSession(page);
+    const pushed = recordSyncedOffers(page);
+    const title = 'Ponuka — preplánovaná';
+
+    await openNewDocumentWizard(page);
+    await fillAndIssue(page, title, BACK_DATED_ISSUE);
+    const row = page.locator('tbody tr').filter({ hasText: title });
+    await expect(row).toBeVisible();
+
+    // Reopen it, move the issue date by four days and save — nothing else.
+    await row.getByTitle(/^(Edit|Upraviť)$/).click();
+    const issuedOnInput = page
+      .locator('label:has-text("Issued on"), label:has-text("Dátum vystavenia")')
+      .locator('xpath=following::input[@type="date"][1]');
+    await expect(issuedOnInput).toHaveValue(BACK_DATED_ISSUE);
+    await issuedOnInput.fill('2026-08-05');
+    for (let step = 2; step <= 5; step++) {
+      await page.getByRole('button', { name: /Continue|Pokračovať/ }).click();
+      await expect(page.getByText(new RegExp(`Step ${step} of 5|Krok ${step} z 5`))).toBeVisible();
+    }
+    await page.getByRole('button', { name: /Save changes|Uložiť zmeny/ }).click();
+
+    await expect.poll(
+      () => {
+        const saved = [...pushed.values()].find((o) => o.title === title);
+        return saved && { issuedAt: saved.issuedAt, dueDate: saved.dueDate, validUntil: saved.validUntil };
+      },
+      { timeout: 10_000 }
+    ).toEqual({ issuedAt: '2026-08-05', dueDate: '2026-08-19', validUntil: '2026-09-04' });
+  });
+
   test('F12: sent / approved / invoiced / cancelled carry the date they happened', async ({ page }) => {
     await startSession(page);
     const pushed = recordSyncedOffers(page);

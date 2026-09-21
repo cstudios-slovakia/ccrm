@@ -209,14 +209,23 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     return () => window.removeEventListener("hashchange", handleHash);
   }, [canEdit]);
 
-  // When selectedProductDetailId changes from URL, auto-populate itemForm
+  // When selectedProductDetailId changes from URL, auto-populate itemForm.
+  // The effect also re-runs whenever the stored items change (a pull, another
+  // user, a purchase recorded on this very card). Re-seeding the whole form
+  // then wiped whatever was typed but not saved yet; for the same product only
+  // the fields the user has not touched take the new stored value.
+  const seededItemFormRef = useRef<{ id: string; form: Record<string, unknown> } | null>(null);
   useEffect(() => {
-    if (selectedProductDetailId && selectedProductDetailId !== "new") {
+    if (!selectedProductDetailId || selectedProductDetailId === "new") {
+      seededItemFormRef.current = null;
+      return;
+    }
+    {
       const item = warehouseItems.find(i => i.id === selectedProductDetailId || i.sku === selectedProductDetailId);
       if (item) {
         setEditingItem(item);
         const itemCats = getItemCategories(item);
-        setItemForm({
+        const fresh = {
           name: item.name,
           sku: item.sku,
           barcode: item.barcode || "",
@@ -230,6 +239,19 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
           defaultSellPrice: item.defaultSellPrice,
           avgPurchasePrice: item.avgPurchasePrice,
           description: item.description || ""
+        };
+        const seeded = seededItemFormRef.current;
+        seededItemFormRef.current = { id: selectedProductDetailId, form: fresh };
+        if (!seeded || seeded.id !== selectedProductDetailId) {
+          setItemForm(fresh);
+          return;
+        }
+        setItemForm(prev => {
+          const next: Record<string, unknown> = { ...prev };
+          for (const [key, value] of Object.entries(fresh)) {
+            if (JSON.stringify((prev as Record<string, unknown>)[key]) === JSON.stringify(seeded.form[key])) next[key] = value;
+          }
+          return next as typeof prev;
         });
       }
     }

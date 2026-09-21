@@ -471,6 +471,12 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                         <button
                             type="button"
                             onClick={() => {
+                                // Both parents flip only the stored task's flag, so
+                                // edits made in the drawer before archiving were
+                                // dropped without a word. Keep them first.
+                                if (canEdit && draft.title.trim() && JSON.stringify(draft) !== JSON.stringify(task)) {
+                                    onSave(draft);
+                                }
                                 onToggleArchive(draft);
                                 requestClose();
                             }}

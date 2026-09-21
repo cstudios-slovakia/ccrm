@@ -34,6 +34,7 @@ import type { Task } from "../types";
 import { isDoneTaskState } from "../utils/projectTasks";
 import { isOnPersonalDashboard, type TaskAccess } from "../utils/taskSelectors";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
+import { registerPendingSave } from "../utils/pendingSaves";
 
 /** The tabs of the right-hand column, as they also appear in the URL's `tab` parameter. */
 type RightTab = "timeline" | "tasks" | "gantt" | "finances" | "files";
@@ -472,6 +473,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   // Leaving the view — back to the list, or to another module — must not
   // drop the last edit made within the pause.
   useEffect(() => () => flushPendingSave(), [flushPendingSave]);
+  // …nor a reload or a closed tab inside the pause.
+  useEffect(() => registerPendingSave({
+    isPending: () => pendingSaveRef.current !== null,
+    flush: flushPendingSave,
+  }), [flushPendingSave]);
 
   // A different project opened in the same view: fresh UI modes and tab.
   useEffect(() => {

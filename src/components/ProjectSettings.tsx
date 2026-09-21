@@ -9,6 +9,7 @@ import { DEFAULT_PROJECT_AUTO_CREATE, isProjectAutoCreateActive } from "../utils
 import { DEFAULT_DEADLINE_WARNING_DAYS, normalizeDeadlineWarningDays } from "../utils/projects";
 import type { Language } from "../utils/translations";
 import { useUserPref } from "../utils/userPrefs";
+import { registerPendingSave } from "../utils/pendingSaves";
 
 /**
  * PROJECT-AUTO-CREATE-DISABLED (v1.9.29): automatic project creation from leads
@@ -320,6 +321,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setDeadlineRequired(false);
     setFileFields([]);
     setNewFileFieldName("");
+    setNewTeTypeName("");
     setAttributes([]);
     setTimelineEventTypes([]);
     setSelectedTeTypeId(null);
@@ -357,6 +359,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setDeadlineRequired(!!type.deadlineRequired);
     setFileFields(type.fileFields || []);
     setNewFileFieldName("");
+    setNewTeTypeName("");
     setEditSection("general");
     setAttributes(type.attributes || []);
     setTimelineEventTypes(type.timelineEventTypes || []);
@@ -577,22 +580,19 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setNewTeAttrType(next);
   };
 
-  const handleSaveTimelineAttribute = () => {
-    if (!selectedTeTypeId || !newTeAttrName.trim()) return;
+  /** The event types with the timeline-attribute form applied — like
+      applyAttrForm, so Save and Close keep one filled in but never added. */
+  const applyTeAttrForm = (list: TimelineEventType[]): TimelineEventType[] => {
     const name = newTeAttrName.trim();
+    if (!selectedTeTypeId || !name) return list;
     const options = cleanAttrOptions(newTeAttrType, newTeAttrOptions, newTeAttrOptionDraft);
     if (editingTeAttrId) {
-      setTimelineEventTypes(prev => prev.map(t => {
-        if (t.id !== selectedTeTypeId) return t;
-        return {
-          ...t,
-          attributes: t.attributes.map(a => a.id === editingTeAttrId
-            ? { ...a, name, type: newTeAttrType, required: newTeAttrRequired, options }
-            : a)
-        };
-      }));
-      resetTeAttrForm();
-      return;
+      return list.map(t => t.id !== selectedTeTypeId ? t : {
+        ...t,
+        attributes: t.attributes.map(a => a.id === editingTeAttrId
+          ? { ...a, name, type: newTeAttrType, required: newTeAttrRequired, options }
+          : a)
+      });
     }
     const newAttr: ProjectAttribute = {
       id: "tattr_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
@@ -601,12 +601,12 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
       required: newTeAttrRequired,
       options
     };
-    setTimelineEventTypes(prev => prev.map(t => {
-      if (t.id === selectedTeTypeId) {
-        return { ...t, attributes: [...t.attributes, newAttr] };
-      }
-      return t;
-    }));
+    return list.map(t => t.id === selectedTeTypeId ? { ...t, attributes: [...t.attributes, newAttr] } : t);
+  };
+
+  const handleSaveTimelineAttribute = () => {
+    if (!selectedTeTypeId || !newTeAttrName.trim()) return;
+    setTimelineEventTypes(applyTeAttrForm(timelineEventTypes));
     resetTeAttrForm();
   };
 
@@ -667,10 +667,43 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
       timelineEventTypes
   });
 
-  /** Writes a type into the list: replaces the stored one, or appends a new one. */
-  const writeType = (next: ProjectType) => {
+  /** Something typed into one of the editor's own add forms but not added. */
+  const hasPendingSubForm = () =>
+    !!newAttrName.trim() || !!newTeTypeName.trim() || !!newTeAttrName.trim() || !!newFileFieldName.trim();
+
+  /** The type with every add form applied: a custom attribute, a timeline event
+      type, a timeline attribute or a file slot filled in but not added yet.
+      Save, Close and leaving the screen keep them instead of dropping them. */
+  const buildTypeWithForms = (id: string): ProjectType => {
+    let eventTypes = applyTeAttrForm(timelineEventTypes);
+    const teName = newTeTypeName.trim();
+    if (teName && !eventTypes.some(et => et.name.toLowerCase() === teName.toLowerCase())) {
+      eventTypes = [...eventTypes, {
+        id: "tet_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
+        name: teName,
+        color: newTeTypeColor,
+        icon: newTeTypeIcon,
+        attributes: []
+      }];
+    }
+    const fileName = newFileFieldName.trim();
+    const files = fileName && !fileFields.some(f => f.name.toLowerCase() === fileName.toLowerCase())
+      ? [...fileFields, { id: "file_" + Date.now() + "_" + Math.floor(Math.random() * 1000), name: fileName }]
+      : fileFields;
+    return {
+      ...buildType(id, applyAttrForm(attributes)),
+      fileFields: files.map(({ id: fid, name }) => ({ id: fid, name })),
+      timelineEventTypes: eventTypes
+    };
+  };
+
+  /** Writes a type into the list: replaces the stored one, or appends a new one.
+      Only a create appends — an autosave or close flush for a type deleted in
+      the meantime (another device) must not bring it back. */
+  const writeType = (next: ProjectType, create = false) => {
     setProjectTypes(prev => {
       const exists = prev.some(t => t.id === next.id);
+      if (!exists && !create) return prev;
       if (exists) {
         // The list's column layout is edited from the projects table's View
         // menu, not here — carry whatever it holds now through the save.
@@ -701,8 +734,24 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     writeTypeRef.current(pending);
   }, []);
 
-  // Leaving the settings screen altogether must not drop the last change.
-  useEffect(() => () => flushPendingType(), [flushPendingType]);
+  // Leaving the settings screen altogether (another settings tab, another
+  // module, browser back) must not drop the last change — nor an add form
+  // filled in but not added, which Close keeps too.
+  const leaveEditorRef = React.useRef<() => void>(() => {});
+  leaveEditorRef.current = () => {
+    if (editingType && !isCreating && hasPendingSubForm()) {
+      pendingTypeRef.current = null;
+      writeType(buildTypeWithForms(editingType.id));
+    } else {
+      flushPendingType();
+    }
+  };
+  useEffect(() => () => leaveEditorRef.current(), []);
+  // A reload or a closed tab inside the pause writes it too.
+  useEffect(() => registerPendingSave({
+    isPending: () => pendingTypeRef.current !== null,
+    flush: flushPendingType,
+  }), [flushPendingType]);
 
   const editingTypeId = editingType?.id ?? null;
   useEffect(() => {
@@ -735,7 +784,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
 
   /** Something typed into the create form that Save would keep. */
   const hasUnsavedNewType = () => isCreating && (
-    !!typeName.trim() || !!typeDesc.trim() || attributes.length > 0 || !!newAttrName.trim()
+    !!typeName.trim() || !!typeDesc.trim() || attributes.length > 0 || hasPendingSubForm()
     || timelineEventTypes.length > 0 || fileFields.length > 0
   );
 
@@ -747,13 +796,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
       "Tento typ projektu ešte nie je uložený. Zahodiť ho?",
       "Ez a projekt típus még nincs mentve. Elveti?"
     ))) return;
-    if (!isCreating && newAttrName.trim() && editingType) {
-      // An attribute filled in but not added yet is kept, like the Save button does.
-      writeType(buildType(editingType.id, applyAttrForm(attributes)));
-      pendingTypeRef.current = null;
-    } else {
-      flushPendingType();
-    }
+    if (!isCreating) leaveEditorRef.current();
     setIsCreating(false);
     setEditingType(null);
   };
@@ -766,7 +809,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     }
 
     pendingTypeRef.current = null;
-    writeType(buildType(editingType?.id || "pt_" + Date.now(), applyAttrForm(attributes)));
+    writeType(buildTypeWithForms(editingType?.id || "pt_" + Date.now()), isCreating);
 
     setIsCreating(false);
     setEditingType(null);

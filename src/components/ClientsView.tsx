@@ -2166,6 +2166,53 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     }
   }, [activeClient, isEditingProfile]);
 
+  /** Empties the "log an activity" form, including a recorded note. */
+  const resetLogForm = () => {
+    setLogContent("");
+    setLogAmount("");
+    setLogTime("");
+    setLogFileName("");
+    setLogFileSize("");
+    setLogFileType("offer");
+    setSelectedLogFile(null);
+    setLogType(null); // Reset selector so fields close smoothly
+
+    // Reset audio and note editor states
+    setNoteBlocks([{ id: "b-1", type: "paragraph", content: "" }]);
+    setAudioUrl(null);
+    setUploadedAudioFile(null);
+    setRecordingState("none");
+    setRecordingMeetingId(null);
+    if ((window as any)._latestTranscription) delete (window as any)._latestTranscription;
+
+    // Reset date/time to now
+    const tzOffset = (new Date()).getTimezoneOffset() * 60000;
+    setLogDate((new Date(Date.now() - tzOffset)).toISOString().split("T")[0]);
+    setLogTimeOfEvent(new Date().toTimeString().substring(0, 5));
+  };
+
+  /* One ClientsView instance serves every client, and only the profile form
+     above resets on a switch. The log form, a recorded note and a file picked
+     for "Attach File to Client" stayed, so pressing Log or Attach on client B
+     filed client A's note or document on B. A draft belongs to the client it
+     was started on; a different client starts clean (back to the list and into
+     the same client again keeps it). */
+  const draftClientNameRef = useRef<string | null>(null);
+  const activeClientName = activeClient?.name ?? null;
+  useEffect(() => {
+    if (!activeClientName || draftClientNameRef.current === activeClientName) return;
+    const hadClient = draftClientNameRef.current !== null;
+    draftClientNameRef.current = activeClientName;
+    if (!hadClient) return;
+    setUploadFileName("");
+    setUploadFileSize("");
+    setUploadDescription("");
+    setSelectedUploadFile(null);
+    // A recording still running belongs to the microphone, not to a client.
+    if (recordingState !== "recording" && recordingState !== "paused") resetLogForm();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeClientName]);
+
   // --- PERSIST DUAL-PANEL CLIENT DETAILS CHANGES ---
   const handleUpdateClientProfile = (e: React.FormEvent) => {
     e.preventDefault();
@@ -2395,27 +2442,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       setTasks(prev => [autoPMTask, ...prev]);
     }
 
-    setLogContent("");
-    setLogAmount("");
-    setLogTime("");
-    setLogFileName("");
-    setLogFileSize("");
-    setLogFileType("offer");
-    setSelectedLogFile(null);
-    setLogType(null); // Reset selector so fields close smoothly
-
-    // Reset audio and note editor states
-    setNoteBlocks([{ id: "b-1", type: "paragraph", content: "" }]);
-    setAudioUrl(null);
-    setUploadedAudioFile(null);
-    setRecordingState("none");
-    setRecordingMeetingId(null);
-    if ((window as any)._latestTranscription) delete (window as any)._latestTranscription;
-    
-    // Reset date/time to now
-    const tzOffset = (new Date()).getTimezoneOffset() * 60000;
-    setLogDate((new Date(Date.now() - tzOffset)).toISOString().split("T")[0]);
-    setLogTimeOfEvent(new Date().toTimeString().substring(0, 5));
+    resetLogForm();
     (window as any).showToast(t("Event logged successfully!", "Udalosť bola úspešne zaznamenaná!", "Az esemény sikeresen rögzítve!"));
   };
 

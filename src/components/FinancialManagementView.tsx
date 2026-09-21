@@ -820,6 +820,17 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     if (!canEdit) return;
     setFinancialCategoriesRaw(updater);
   };
+  /** The two setters above drop a write silently without edit rights. A handler
+      that would then say "saved" asks here first and says it was not. */
+  const refuseWithoutEdit = (): boolean => {
+    if (canEdit) return false;
+    (window as any).showToast?.(t(
+      "You can view finances but not change them — nothing was saved.",
+      "Financie môžete prezerať, ale nie meniť — nič sa neuložilo.",
+      "A pénzügyeket megtekintheti, de nem módosíthatja — semmi sem lett mentve."
+    ));
+    return true;
+  };
 
   const money = (v: number) => formatMoney(v, currencyCode, userLanguage);
 
@@ -1789,6 +1800,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
   // Helper to duplicate a recurring expense rule
   const handleDuplicateRecurring = (rec: FinancialRecord) => {
+    if (refuseWithoutEdit()) return;
     const copy: FinancialRecord = {
       ...rec,
       id: `fr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
@@ -3071,6 +3083,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
    * lists the day among those it no longer charges.
    */
   const handleSaveOccurrence = () => {
+    if (refuseWithoutEdit()) return;
     if (!editingOccurrence) return;
     const { rule, date, existing } = editingOccurrence;
     const now = new Date().toISOString();
@@ -3155,6 +3168,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   // Save Transaction
   const handleSaveTransaction = (e: React.FormEvent) => {
     e.preventDefault();
+    if (refuseWithoutEdit()) return;
     if (editingOccurrence) {
       handleSaveOccurrence();
       return;
@@ -3404,6 +3418,11 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
   // Create Category
   const handleCreateCategory = (e: React.FormEvent) => {
+    if (!canEdit) {
+      e.preventDefault();
+      refuseWithoutEdit();
+      return;
+    }
     e.preventDefault();
     if (!newCatName.trim()) return;
 
@@ -3525,6 +3544,11 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   };
 
   const handleCategoryDrop = (e: React.DragEvent<HTMLElement>) => {
+    if (!canEdit) {
+      e.preventDefault();
+      endCategoryDrag();
+      return;
+    }
     e.preventDefault();
     e.stopPropagation();
     const dragId = draggedCategoryId;
@@ -3542,6 +3566,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     cat ? categoryColorDrafts[cat.id] ?? cat.color ?? null : null;
 
   const handleCategoryColorChange = (id: string, color: string) => {
+    if (!canEdit) return;
     setCategoryColorDrafts((drafts) => ({ ...drafts, [id]: color }));
     clearTimeout(categoryColorTimers.current[id]);
     categoryColorTimers.current[id] = setTimeout(() => {
