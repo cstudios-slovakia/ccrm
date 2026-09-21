@@ -77,11 +77,11 @@ working tree (and any unpushed commits) against `origin/<branch>` / `origin/dev`
 only those. It prints the scope and the reason on every run. It escalates to a
 full run on its own only when the change touches real harness plumbing —
 `playwright.config.ts`, `scripts/qa/`, or the shared fixtures under
-`tests/e2e/helpers/` (plus `crawler.spec.ts` / `darkmode.spec.ts` /
-`navigation.spec.ts`, which are suite-wide by nature). Adding or editing an
-ordinary standalone journey spec (`projectRating.spec.ts`,
-`financialTrendShared.spec.ts`, ...) does **not** force a full run — it scopes
-to that spec's own tests instead.
+`tests/e2e/helpers/`, `globalSetup.ts`, `globalTeardown.ts`. Adding or
+editing any spec file — a journey spec like `projectRating.spec.ts`, or one of
+the suite-wide `crawler.spec.ts` / `darkmode.spec.ts` / `navigation.spec.ts` —
+scopes to that spec's own tests, so `--files tests/e2e/navigation.spec.ts`
+re-runs its 2 tests, not all 87.
 
 **Run `npm run test:qa:full` only when a human asks for it.** AI agents should
 default to plain `npm run test:qa` after finishing a change and never reach for
@@ -111,7 +111,8 @@ time:
   its port is not held by a server it did not start.
 - It runs **1 worker** unless at least 4 GB is free, then 2. `QA_WORKERS`
   overrides.
-- The whole run is capped: **15 minutes scoped, 45 full**
+- The whole run is capped: **15 minutes scoped, 45 full** (or when the scope
+  includes the per-module crawler or dark-mode sweep)
   (`QA_GLOBAL_TIMEOUT_MS`). A run that needs longer is starved, not thorough.
 - It gives up after `QA_WAIT_MIN` minutes (default 30) with exit code 2 and
   runs nothing, rather than start a run whose findings would be noise.

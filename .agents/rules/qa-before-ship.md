@@ -67,6 +67,10 @@ enforces the fix mechanically, and the rules that go with it are:
   working tree, so its scope is every session's changes, not yours.
 - **Pure logic needs no browser.** A change confined to `src/utils` is covered
   by `npm run test:unit`; the scoped run would only add the shell tests.
+- **Do not pipe the runner through `tail` or `head`.** The output then only
+  appears when the run ends, so you cannot see `Waiting:`, the scope line
+  (`Scope: FULL SUITE` means stop and reconsider) or progress. Redirect to a
+  log file and read it instead.
 - A run that hits its time cap (15 min scoped, 45 full) or reports defects
   while other runs were live is **load, not evidence** — re-run it alone
   before touching product code.

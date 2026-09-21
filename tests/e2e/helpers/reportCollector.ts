@@ -244,11 +244,11 @@ class Collector {
   private findings: QAFinding[] = [];
   private passes: QAPass[] = [];
   private scopeIds = new Set<string>();
-  private readonly file: string;
-
-  constructor() {
-    this.file = path.join(findingsDir(), `worker-${process.pid}-${crypto.randomBytes(3).toString('hex')}.json`);
-  }
+  /* Only the name is fixed up front. The folder is resolved at first write:
+     this module is also loaded by playwright's main process while it collects
+     test files, before globalSetup has opened the run, and resolving it there
+     created a second, empty run folder for every run. */
+  private readonly fileName = `worker-${process.pid}-${crypto.randomBytes(3).toString('hex')}.json`;
 
   /** Starts tracking findings for one test, so that test can fail on its own defects. */
   beginScope() {
@@ -282,9 +282,10 @@ class Collector {
   }
 
   private flush() {
-    fs.mkdirSync(findingsDir(), { recursive: true });
+    const dir = findingsDir();
+    fs.mkdirSync(dir, { recursive: true });
     const payload: CollectedData = { findings: this.findings, passes: this.passes };
-    fs.writeFileSync(this.file, JSON.stringify(payload, null, 2), 'utf-8');
+    fs.writeFileSync(path.join(dir, this.fileName), JSON.stringify(payload, null, 2), 'utf-8');
   }
 }
 
