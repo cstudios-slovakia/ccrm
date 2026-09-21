@@ -1815,13 +1815,25 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               </h4>
             </div>
             <div className="grid grid-cols-2 gap-x-4 gap-y-4">
-              {(projectType.attributes || []).map(attr => {
+              {(() => {
+                const attrs = projectType.attributes || [];
+                const isWide = (a: typeof attrs[number]) => a.type === "textarea" || a.type === "files"
+                  || (isEditingAttrs && (a.type === "money" || a.type === "contact"));
+                // A half-width attribute with nothing beside it — the next one is
+                // full-width, or there is no next one — takes the whole row.
+                const lone = new Set<string>();
+                let col = 0;
+                attrs.forEach((a, i) => {
+                  if (isWide(a)) { col = 0; return; }
+                  if (col === 0 && (i === attrs.length - 1 || isWide(attrs[i + 1]))) lone.add(a.id);
+                  col = col === 0 ? 1 : 0;
+                });
+                return attrs.map(attr => {
                 const val = dynamicData[attr.id] ?? "";
                 const updateVal = (newVal: any) => {
                   setDynamicData(prev => ({ ...prev, [attr.id]: newVal }));
                 };
-                const wide = attr.type === "textarea" || attr.type === "files"
-                  || (isEditingAttrs && (attr.type === "money" || attr.type === "contact"));
+                const wide = isWide(attr) || lone.has(attr.id);
                 // Nothing blocks a save any more, so an empty required value is
                 // pointed out where it sits instead.
                 const missingRequired = !!attr.required && (attr.type === "money"
@@ -1963,33 +1975,42 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                 </label>
                               ))}
                               {list.extra.map(extra => (
-                                <div key={extra.label} className="group flex items-center gap-2 text-xs font-semibold text-slate-600">
-                                  <label className="flex items-center gap-2 cursor-pointer min-w-0">
+                                <div key={extra.label} className="group flex items-start gap-2 text-xs font-semibold text-slate-600">
+                                  {/* Required reads as the same red "*" as the type's own
+                                      options; a word-sized badge here squeezed the label
+                                      to a few letters in a half-width column. */}
+                                  <label className="flex min-w-0 items-start gap-2 cursor-pointer">
                                     <input
                                       type="checkbox"
                                       checked={list.checked.includes(extra.label)}
                                       onChange={() => toggle(extra.label)}
                                       className="h-4 w-4 shrink-0 rounded border-slate-300 text-indigo-600"
                                     />
-                                    <span className="truncate">{extra.label}</span>
+                                    <span className="min-w-0 break-words">{extra.label}</span>
                                   </label>
-                                  <button
-                                    type="button"
-                                    aria-pressed={extra.required}
-                                    title={extra.required
+                                  {(() => {
+                                    const hint = extra.required
                                       ? t("Required — click to make optional", "Povinné — kliknutím nastavíte ako nepovinné", "Kötelező — kattintson az opcionálishoz")
-                                      : t("Optional — click to make required", "Nepovinné — kliknutím nastavíte ako povinné", "Opcionális — kattintson a kötelezőhöz")}
-                                    onClick={() => save({
-                                      extra: list.extra.map(e => e.label === extra.label ? { ...e, required: !e.required } : e),
-                                    })}
-                                    className={`shrink-0 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider transition-all duration-150 active:scale-95 cursor-pointer ${
-                                      extra.required
-                                        ? "bg-rose-50 text-rose-600 hover:bg-rose-100"
-                                        : "bg-slate-100 text-slate-400 hover:text-slate-600"
-                                    }`}
-                                  >
-                                    {extra.required ? t("Required", "Povinné", "Kötelező") : t("Optional", "Nepovinné", "Opcionális")}
-                                  </button>
+                                      : t("Optional — click to make required", "Nepovinné — kliknutím nastavíte ako povinné", "Opcionális — kattintson a kötelezőhöz");
+                                    return (
+                                      <button
+                                        type="button"
+                                        aria-pressed={extra.required}
+                                        aria-label={hint}
+                                        title={hint}
+                                        onClick={() => save({
+                                          extra: list.extra.map(e => e.label === extra.label ? { ...e, required: !e.required } : e),
+                                        })}
+                                        className={`-ml-1 shrink-0 w-4 h-4 flex items-center justify-center rounded text-sm leading-none font-black transition-all duration-150 active:scale-90 cursor-pointer ${
+                                          extra.required
+                                            ? "text-red-500 hover:bg-rose-50"
+                                            : "text-slate-300 hover:text-red-400 hover:bg-slate-100"
+                                        }`}
+                                      >
+                                        *
+                                      </button>
+                                    );
+                                  })()}
                                   {canDelete && (
                                     <button
                                       type="button"
@@ -2117,7 +2138,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     )}
                   </div>
                 );
-              })}
+                });
+              })()}
             </div>
           </div>
           )}
