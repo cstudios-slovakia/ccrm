@@ -14,6 +14,7 @@ import type { Lead, Project, Task, UserProfile } from "../types";
 import type { Language } from "../utils/translations";
 import { CustomSelect, type DropdownOption } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
+import { TaskEmailReminderField } from "./TaskEmailReminderField";
 import { projectDisplayName } from "../utils/projects";
 import { isDoneTaskState, localStampStr } from "../utils/projectTasks";
 import { taskPriorityLabel, taskStateLabel, type Translate } from "../utils/taskLabels";
@@ -446,6 +447,16 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                 />
                             </div>
                         )}
+
+                        <TaskEmailReminderField
+                            task={draft}
+                            onChange={(emailReminders) => update({ emailReminders })}
+                            currentUserName={currentUserName}
+                            users={users}
+                            systemLanguage={systemLanguage}
+                            t={t}
+                            disabled={!canEdit}
+                        />
                     </fieldset>
 
                     <button

@@ -1,5 +1,6 @@
 <?php
 require_once __DIR__ . '/workflows_engine.php';
+require_once __DIR__ . '/task_reminders.php';
 
 header('Content-Type: application/json');
 header('Cache-Control: no-store');
@@ -79,10 +80,18 @@ try {
     if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
 }
 
-// 2. Process Workflow Queue
+// 2. Task e-mail reminders ("Notify me by e-mail" in the task drawer)
+$taskReminders = null;
+try {
+    $taskReminders = ccrm_process_task_reminders($pdo);
+} catch (\Throwable $e) {
+    if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+}
+
+// 3. Process Workflow Queue
 try {
     ccrm_process_workflow_queue($pdo);
-    echo json_encode(['success' => true, 'message' => 'Queue processed successfully.']);
+    echo json_encode(['success' => true, 'message' => 'Queue processed successfully.', 'taskReminders' => $taskReminders]);
 } catch (\Throwable $e) {
     if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
     http_response_code(500);

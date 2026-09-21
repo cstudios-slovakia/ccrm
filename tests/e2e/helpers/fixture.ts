@@ -235,6 +235,8 @@ const TASKS = [
     createdBy: 'Erik',
     assignedUsers: ['Erik'],
     relatedLeadId: 'lead-silvia',
+    // A colleague's e-mail reminder — ticking "Notify me" must leave it alone.
+    emailReminders: { Mária: '1d' },
   },
   {
     id: 'task-2',

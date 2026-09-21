@@ -12,6 +12,7 @@
  */
 require_once __DIR__ . '/api/auth.php';
 require_once __DIR__ . '/api/schema.php';
+require_once __DIR__ . '/api/task_reminders.php';
 
 header('Content-Type: application/json');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -711,6 +712,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         }
     }
 
+    // Task e-mail reminders ride on the polling every open browser already does,
+    // so they go out even where no host cron calls api/cron.php. They run after
+    // the response has been handed back and at most once a minute overall.
+    register_shutdown_function(function () use ($pdo) {
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_write_close();
+        }
+        if (function_exists('fastcgi_finish_request')) {
+            fastcgi_finish_request();
+        }
+        ccrm_maybe_process_task_reminders($pdo);
+    });
+
     // Identity of the session, resolved from `users` rather than taken from the
     // session copy: api/auth.php only refreshes that copy every 60 seconds, so a
     // user who has just changed their own e-mail would look like a different
@@ -897,6 +911,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'archived' => intval($row['archived'] ?? 0) === 1,
             'completedBy' => $row['completed_by'] ?? null,
             'completedAt' => $row['completed_at'] ?? null,
+            'emailReminders' => ccrm_decode_task_reminders($row['email_reminders_json'] ?? null),
             'assignedUsers' => $assignedUsers
         ];
     }
@@ -3357,7 +3372,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // completed_by/completed_at are in the UPDATE list on purpose: reopening a
             // task ("Restore" in the archive) sends them back as null and must clear
             // the stored attribution, not keep the stale one.
-            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `is_locking`, `archived`, `completed_by`, `completed_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`), `completed_by` = VALUES(`completed_by`), `completed_at` = VALUES(`completed_at`)");
+            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `is_locking`, `archived`, `completed_by`, `completed_at`, `email_reminders_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`), `completed_by` = VALUES(`completed_by`), `completed_at` = VALUES(`completed_at`), `email_reminders_json` = VALUES(`email_reminders_json`)");
 
             foreach ($payload['tasks'] as $t) {
                 // Skip malformed items rather than aborting the whole sync — but
@@ -3403,7 +3418,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ($t['isLocking'] ?? false) ? 1 : 0,
                     ($t['archived'] ?? false) ? 1 : 0,
                     (isset($t['completedBy']) && $t['completedBy'] !== '') ? $t['completedBy'] : null,
-                    (isset($t['completedAt']) && $t['completedAt'] !== '') ? substr($t['completedAt'], 0, 16) : null
+                    (isset($t['completedAt']) && $t['completedAt'] !== '') ? substr($t['completedAt'], 0, 16) : null,
+                    ccrm_encode_task_reminders($t['emailReminders'] ?? null)
                 ]);
                 $processedTaskIds[] = $taskId;
 

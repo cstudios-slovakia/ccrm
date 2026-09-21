@@ -140,6 +140,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `archived` TINYINT(1) NOT NULL DEFAULT 0,
               `completed_by` VARCHAR(100) NULL COMMENT 'Name of the user who moved the task to a done state; NULL for legacy rows',
               `completed_at` VARCHAR(16) NULL COMMENT 'YYYY-MM-DD HH:MM local completion timestamp; NULL for legacy rows',
+              `email_reminders_json` TEXT NULL COMMENT 'Per-user e-mail reminder choice, JSON: user name to morning, 1h or 1d',
               `metadata_json` TEXT NULL COMMENT 'Plugin support',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -155,6 +156,20 @@ if (!function_exists('ccrm_schema_statements')) {
               `task_id` VARCHAR(50) NOT NULL,
               `user_name` VARCHAR(100) NOT NULL,
               PRIMARY KEY (`task_id`, `user_name`),
+              FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Task e-mail reminders already sent. One row per task, recipient and
+            // the moment the reminder was due, so rescheduling a task earns a new
+            // reminder while a repeated cron run never sends the same one twice.
+            "CREATE TABLE IF NOT EXISTS `task_reminder_log` (
+              `task_id` VARCHAR(50) NOT NULL,
+              `user_name` VARCHAR(100) NOT NULL,
+              `scheduled_for` VARCHAR(16) NOT NULL COMMENT 'YYYY-MM-DD HH:MM local time the reminder was due',
+              `status` VARCHAR(10) NOT NULL DEFAULT 'sent' COMMENT 'sent | failed',
+              `error` VARCHAR(500) NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (`task_id`, `user_name`, `scheduled_for`),
               FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
@@ -1044,6 +1059,11 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         if (!ccrm_column_exists($pdo, 'tasks', 'completed_at')) {
             $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `completed_at` VARCHAR(16) NULL AFTER `completed_by`");
+        }
+        // "Notify me by e-mail" on a task: which users asked for a reminder and
+        // when. Sent by api/task_reminders.php through the system SMTP profile.
+        if (!ccrm_column_exists($pdo, 'tasks', 'email_reminders_json')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `email_reminders_json` TEXT NULL AFTER `completed_at`");
         }
         // A recurring rule is stored as one row, so the reports derive every past
         // charge from the rule itself. Raising the price used to rewrite the months

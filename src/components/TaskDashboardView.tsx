@@ -29,6 +29,7 @@ import { CalendarPane } from "./Dashboard";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { DeadlineTimePicker, TaskEditDrawer, taskProjectOptions } from "./TaskEditDrawer";
+import { TaskEmailReminderField } from "./TaskEmailReminderField";
 import { projectDisplayName } from "../utils/projects";
 import { taskPriorityLabel, taskStateLabel } from "../utils/taskLabels";
 import { requestTaskDeletion } from "../utils/taskApi";
@@ -601,6 +602,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const [newRelatedLeadId, setNewRelatedLeadId] = useState("");
     const [newRelatedProjectId, setNewRelatedProjectId] = useState("");
     const [newIsLocking, setNewIsLocking] = useState(false);
+    const [newEmailReminders, setNewEmailReminders] = useState<Task["emailReminders"]>(undefined);
     const [newAssignedUser, setNewAssignedUser] = useState(defaultUserName);
 
     // Resets the "New Task" form to fresh defaults; called every time the
@@ -615,6 +617,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         setNewRelatedLeadId("");
         setNewRelatedProjectId("");
         setNewIsLocking(false);
+        setNewEmailReminders(undefined);
         setNewAssignedUser(defaultUserName);
     };
 
@@ -947,6 +950,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             relatedLeadId: newRelatedLeadId || undefined,
             relatedProjectId: newRelatedProjectId || undefined,
             isLocking: newRelatedLeadId ? newIsLocking : false,
+            emailReminders: newEmailReminders,
         };
 
         setTasks((prev) => [createdTask, ...prev]);
@@ -3136,6 +3140,19 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 />
                             </div>
                         )}
+
+                        <TaskEmailReminderField
+                            task={{
+                                deadline: newDeadline,
+                                deadlineTime: newDeadlineTime,
+                                emailReminders: newEmailReminders,
+                            }}
+                            onChange={setNewEmailReminders}
+                            currentUserName={myName}
+                            users={users}
+                            systemLanguage={systemLanguage}
+                            t={t}
+                        />
 
                         <button
                             type="submit"

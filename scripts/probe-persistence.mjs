@@ -552,12 +552,13 @@ echo 'ok';`);
   {
     const taskId = `${PREFIX}task-${t0}`;
     const task = { id: taskId, title: "Úloha", description: "popis", priority: "high", startDate: "2026-09-01", deadline: "2026-09-30", deadlineTime: "14:30",
-      status: "todo", owner: "Probe", assignedUsers: ["Probe"], relatedLeadId: fullLeadId, isLocking: true, archived: false };
+      status: "todo", owner: "Probe", assignedUsers: ["Probe"], relatedLeadId: fullLeadId, isLocking: true, archived: false,
+      emailReminders: { Probe: "1h", "Ján Kováč": "morning" } };
     const r = await post({ baseSyncedAt: await clock(), tasks: [task, { id: `${taskId}-bad`, title: "x", deadline: "", owner: "", assignedUsers: [] }] });
     check("POST tasks 200", r.status === 200 && r.body?.success === true, `status=${r.status} body=${JSON.stringify(r.body)?.slice(0, 300)}`);
     check("task: a row the server refuses is reported as a conflict", (r.body?.conflicts?.tasks || []).includes(`${taskId}-bad`), `conflicts=${JSON.stringify(r.body?.conflicts)}`);
     const back = ((await json("/sync.php")).body?.tasks || []).find((x) => x.id === taskId);
-    const keys = ["title", "description", "priority", "startDate", "deadline", "deadlineTime", "status", "owner", "assignedUsers", "relatedLeadId", "isLocking", "archived"];
+    const keys = ["title", "description", "priority", "startDate", "deadline", "deadlineTime", "status", "owner", "assignedUsers", "relatedLeadId", "isLocking", "archived", "emailReminders"];
     const d = diffKeys(back, task, keys);
     check("task: every field reads back unchanged", !!back && d.length === 0, `diffs=${d.map((k) => `${k}=${JSON.stringify(back?.[k])}`).join(" ")}`);
   }
