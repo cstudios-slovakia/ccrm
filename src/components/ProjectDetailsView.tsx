@@ -28,6 +28,7 @@ import { ClientSelect } from "./ui/ClientSelect";
 import { PipelineStrip } from "./ui/PipelineStrip";
 import { StarRating } from "./ui/StarRating";
 import { ratingValue } from "../utils/rating";
+import { missingChecklistItems, readChecklistValue, writeChecklistValue } from "../utils/projectColumns";
 import { ProjectTasksPanel } from "./ProjectTasksPanel";
 import type { Task } from "../types";
 import { isDoneTaskState } from "../utils/projectTasks";
@@ -235,7 +236,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
         if (!attr.options) return rawVal
           ? t("Yes", "Áno", "Igen")
           : <span className="text-slate-300 italic font-semibold">{t("No", "Nie", "Nem")}</span>;
-        const picked = asList(rawVal);
+        const picked = readChecklistValue(rawVal).checked;
         if (picked.length === 0) return empty;
         return (
           <div className="flex flex-wrap gap-1.5">
@@ -313,6 +314,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const [isEditingAttrsState, setIsEditingAttrs] = useState(false);
   const isEditingAttrs = canEdit && isEditingAttrsState;
   const [dynamicData, setDynamicData] = useState<Record<string, any>>({});
+  // The label being typed for a checkbox this project adds, per checkbox attribute.
+  const [newChecklistLabels, setNewChecklistLabels] = useState<Record<string, string>>({});
   const [timeline, setTimeline] = useState<ProjectTimelineEvent[]>([]);
   const [gantt, setGantt] = useState<ProjectGanttRow[]>([]);
   // File slots added on this project alone, on top of the type's default files.
@@ -1845,14 +1848,26 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 // pointed out where it sits instead.
                 const missingRequired = !!attr.required && (attr.type === "money"
                   ? isMoneyValueEmpty(dynamicData[attr.id], defaultCurrency)
-                  : attr.type === "files" || (attr.type === "checkbox" && attr.options)
-                    ? asList(dynamicData[attr.id]).length === 0
-                    : val === "" || val === null || (Array.isArray(val) && val.length === 0));
+                  : attr.type === "checkbox" && attr.options
+                    ? readChecklistValue(dynamicData[attr.id]).checked.length === 0
+                    : attr.type === "files"
+                      ? asList(dynamicData[attr.id]).length === 0
+                      : val === "" || val === null || (Array.isArray(val) && val.length === 0));
+                // Required boxes — the type's and this project's own — still unticked.
+                const missingBoxes = missingChecklistItems(attr, dynamicData[attr.id]);
 
                 return (
                   <div key={attr.id} className={`min-w-0 break-words ${wide ? "col-span-2" : ""}`}>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
-                      {attr.name} {canEdit && attr.required && <span className="text-red-500">*</span>}
+                    <label className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] font-black text-slate-400 uppercase mb-1">
+                      <span>{attr.name} {canEdit && attr.required && <span className="text-red-500">*</span>}</span>
+                      {missingBoxes.length > 0 && (
+                        <span
+                          title={missingBoxes.join(", ")}
+                          className="px-1.5 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-rose-600 text-[9px] font-black normal-case tracking-normal leading-none tabular-nums animate-fade-in"
+                        >
+                          {missingBoxes.length} {t("missing", "chýba", "hiányzik")}
+                        </span>
+                      )}
                     </label>
 
                     {!isEditingAttrs ? (
@@ -1935,28 +1950,110 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     {/* Checkbox (options-based or single boolean) */}
                     {attr.type === "checkbox" && (
                       <div className="space-y-1 py-1">
-                        {attr.options ? (
-                          attr.options.map(opt => {
-                            const checkedList = asList(val);
-                            const isChecked = checkedList.includes(opt);
-                            return (
-                              <label key={opt} className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-600">
+                        {attr.options ? (() => {
+                          // The type's options, then the boxes this project added
+                          // itself — the checklist twin of the Files tab's own slots.
+                          const list = readChecklistValue(val);
+                          const save = (next: Partial<typeof list>) => updateVal(writeChecklistValue({ ...list, ...next }));
+                          const toggle = (label: string) => save({
+                            checked: list.checked.includes(label)
+                              ? list.checked.filter(o => o !== label)
+                              : [...list.checked, label],
+                          });
+                          const requiredOptions = attr.requiredOptions || [];
+                          const draft = newChecklistLabels[attr.id] || "";
+                          const addExtra = () => {
+                            const label = draft.trim();
+                            if (!label) return;
+                            const taken = [...(attr.options || []), ...list.extra.map(e => e.label)]
+                              .some(l => l.toLowerCase() === label.toLowerCase());
+                            if (!taken) save({ extra: [...list.extra, { label, required: true }] });
+                            setNewChecklistLabels(prev => ({ ...prev, [attr.id]: "" }));
+                          };
+                          return (
+                            <>
+                              {(attr.options || []).map(opt => (
+                                <label key={opt} className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-600">
+                                  <input
+                                    type="checkbox"
+                                    checked={list.checked.includes(opt)}
+                                    onChange={() => toggle(opt)}
+                                    className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                                  />
+                                  <span>{opt}</span>
+                                  {requiredOptions.includes(opt) && <span className="text-red-500">*</span>}
+                                </label>
+                              ))}
+                              {list.extra.map(extra => (
+                                <div key={extra.label} className="group flex items-center gap-2 text-xs font-semibold text-slate-600">
+                                  <label className="flex items-center gap-2 cursor-pointer min-w-0">
+                                    <input
+                                      type="checkbox"
+                                      checked={list.checked.includes(extra.label)}
+                                      onChange={() => toggle(extra.label)}
+                                      className="h-4 w-4 shrink-0 rounded border-slate-300 text-indigo-600"
+                                    />
+                                    <span className="truncate">{extra.label}</span>
+                                  </label>
+                                  <button
+                                    type="button"
+                                    aria-pressed={extra.required}
+                                    title={extra.required
+                                      ? t("Required — click to make optional", "Povinné — kliknutím nastavíte ako nepovinné", "Kötelező — kattintson az opcionálishoz")
+                                      : t("Optional — click to make required", "Nepovinné — kliknutím nastavíte ako povinné", "Opcionális — kattintson a kötelezőhöz")}
+                                    onClick={() => save({
+                                      extra: list.extra.map(e => e.label === extra.label ? { ...e, required: !e.required } : e),
+                                    })}
+                                    className={`shrink-0 px-1.5 py-0.5 rounded-md text-[9px] font-black uppercase tracking-wider transition-all duration-150 active:scale-95 cursor-pointer ${
+                                      extra.required
+                                        ? "bg-rose-50 text-rose-600 hover:bg-rose-100"
+                                        : "bg-slate-100 text-slate-400 hover:text-slate-600"
+                                    }`}
+                                  >
+                                    {extra.required ? t("Required", "Povinné", "Kötelező") : t("Optional", "Nepovinné", "Opcionális")}
+                                  </button>
+                                  {canDelete && (
+                                    <button
+                                      type="button"
+                                      aria-label={t("Remove checkbox", "Odstrániť políčko", "Jelölőnégyzet törlése")}
+                                      onClick={() => save({
+                                        extra: list.extra.filter(e => e.label !== extra.label),
+                                        checked: list.checked.filter(o => o !== extra.label),
+                                      })}
+                                      className="shrink-0 p-0.5 rounded text-slate-300 hover:text-rose-600 hover:bg-rose-50 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all duration-150 active:scale-95 cursor-pointer"
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                              <div className="flex items-center gap-1.5 pt-1">
                                 <input
-                                  type="checkbox"
-                                  checked={isChecked}
-                                  onChange={() => {
-                                    const nextList = isChecked 
-                                      ? checkedList.filter(o => o !== opt)
-                                      : [...checkedList, opt];
-                                    updateVal(nextList);
+                                  type="text"
+                                  value={draft}
+                                  onChange={e => setNewChecklistLabels(prev => ({ ...prev, [attr.id]: e.target.value }))}
+                                  onKeyDown={e => {
+                                    if (e.key === "Enter") {
+                                      e.preventDefault();
+                                      addExtra();
+                                    }
                                   }}
-                                  className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                                  placeholder={t("Add checkbox…", "Pridať políčko…", "Jelölőnégyzet hozzáadása…")}
+                                  className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold bg-white text-slate-800"
                                 />
-                                <span>{opt}</span>
-                              </label>
-                            );
-                          })
-                        ) : (
+                                <button
+                                  type="button"
+                                  onClick={addExtra}
+                                  disabled={!draft.trim()}
+                                  aria-label={t("Add checkbox", "Pridať políčko", "Jelölőnégyzet hozzáadása")}
+                                  className="shrink-0 p-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 active:scale-95 cursor-pointer"
+                                >
+                                  <Plus className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </>
+                          );
+                        })() : (
                           <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-600">
                             <input
                               type="checkbox"

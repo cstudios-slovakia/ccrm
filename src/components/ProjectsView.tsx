@@ -35,6 +35,7 @@ import { matchesRatingFilter, ratingFilterOptions, ratingValue } from "../utils/
 import {
   BUILTIN_COLUMN_LABELS,
   asAttributeList,
+  readChecklistValue,
   isBooleanCheckbox,
   projectAttributeSortValue,
   resolveProjectColumns,
@@ -692,7 +693,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             ? <Check className="h-4 w-4 text-emerald-600" aria-label={t("Yes", "Áno", "Igen")} />
             : <Minus className="h-4 w-4 text-slate-300" aria-label={t("No", "Nie", "Nem")} />;
         }
-        const picked = asAttributeList(rawVal).map(String);
+        const picked = readChecklistValue(rawVal).checked;
         if (picked.length === 0) return emptyCell;
         return (
           <div className="flex flex-wrap items-center gap-1 max-w-[14rem]" title={picked.join(", ")}>

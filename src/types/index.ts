@@ -448,6 +448,23 @@ export interface ProjectAttribute {
   type: ProjectAttributeType;
   required: boolean;
   options?: string[];
+  /**
+   * A "checkbox" attribute with options only: the options every project of the
+   * type is expected to tick. The project card counts the ones still unticked
+   * beside the attribute's title. Unlike `required`, which asks for any one
+   * option, this names each box that has to be checked.
+   */
+  requiredOptions?: string[];
+}
+
+/**
+ * A checkbox added to one project only, on top of its type's options — the
+ * checklist counterpart of {@link ProjectCustomFileField}. Stored inside the
+ * attribute's own value; see readChecklistValue in utils/projectColumns.ts.
+ */
+export interface ProjectChecklistExtra {
+  label: string;
+  required: boolean;
 }
 
 /**

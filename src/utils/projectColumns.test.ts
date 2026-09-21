@@ -8,11 +8,14 @@ import {
   attributeIdFromColumnKey,
   isAttributeColumnKey,
   isBooleanCheckbox,
+  missingChecklistItems,
   moveProjectColumn,
   projectAttributeSortValue,
+  readChecklistValue,
   resolveProjectColumns,
   toStoredColumns,
   visibleProjectColumns,
+  writeChecklistValue,
 } from "./projectColumns.ts";
 import type { ProjectAttribute, ProjectListColumn } from "../types/index.ts";
 
@@ -208,6 +211,35 @@ test("list attributes sort by their picks, files by how many there are", () => {
   assert.equal(projectAttributeSortValue(attr("c", "checkbox", { options: ["x"] }), [], ctx), null);
   assert.equal(projectAttributeSortValue(attr("f", "files"), '[{"name":"a"},{"name":"b"}]', ctx), 2);
   assert.equal(projectAttributeSortValue(attr("f", "files"), [], ctx), null);
+});
+
+test("a checklist reads its plain array and its {checked, extra} shape, raw or as JSON", () => {
+  assert.deepEqual(readChecklistValue(["a"]), { checked: ["a"], extra: [] });
+  assert.deepEqual(readChecklistValue('["a"]'), { checked: ["a"], extra: [] });
+  const withExtra = { checked: ["x"], extra: [{ label: "x", required: true }] };
+  assert.deepEqual(readChecklistValue(withExtra), withExtra);
+  assert.deepEqual(readChecklistValue(JSON.stringify(withExtra)), withExtra);
+  assert.deepEqual(readChecklistValue("{broken"), { checked: [], extra: [] });
+  assert.deepEqual(readChecklistValue(undefined), { checked: [], extra: [] });
+});
+
+test("a checklist without extras is written back as the plain array", () => {
+  assert.deepEqual(writeChecklistValue({ checked: ["a"], extra: [] }), ["a"]);
+  const withExtra = { checked: [], extra: [{ label: "x", required: false }] };
+  assert.deepEqual(writeChecklistValue(withExtra), withExtra);
+  assert.deepEqual(readChecklistValue(writeChecklistValue(withExtra)), withExtra);
+});
+
+test("missing boxes are the required ones — the type's and the project's — left unticked", () => {
+  const box = attr("c", "checkbox", { options: ["a", "b", "c"], requiredOptions: ["a", "b", "gone"] });
+  assert.deepEqual(missingChecklistItems(box, []), ["a", "b"]);
+  assert.deepEqual(missingChecklistItems(box, ["a"]), ["b"]);
+  assert.deepEqual(
+    missingChecklistItems(box, { checked: ["a", "b"], extra: [{ label: "x", required: true }, { label: "y", required: false }] }),
+    ["x"],
+  );
+  assert.deepEqual(missingChecklistItems(attr("c", "checkbox"), false), []);
+  assert.deepEqual(projectAttributeSortValue(box, { checked: ["a"], extra: [] }, ctx), "a");
 });
 
 test("a contact column sorts by the name, not the id behind it", () => {

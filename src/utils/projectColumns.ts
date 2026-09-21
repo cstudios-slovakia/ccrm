@@ -4,7 +4,7 @@
 // editor in project type settings all read one catalogue and cannot drift — the
 // two hand-written copies of the column list they replaced already had.
 
-import type { ProjectAttribute, ProjectListColumn } from "../types";
+import type { ProjectAttribute, ProjectChecklistExtra, ProjectListColumn } from "../types";
 
 /** A column that is always there, whatever the project type. */
 export type BuiltinProjectColumnKey =
@@ -221,6 +221,59 @@ export function asAttributeList(rawVal: unknown): any[] {
 export const isBooleanCheckbox = (attr: ProjectAttribute): boolean =>
   attr.type === "checkbox" && (!attr.options || attr.options.length === 0);
 
+/** A checkbox-with-options value: the ticked labels, plus the boxes this project added itself. */
+export interface ChecklistValue {
+  checked: string[];
+  extra: ProjectChecklistExtra[];
+}
+
+/**
+ * Reads a checkbox-with-options value in either of its stored shapes.
+ *
+ * The plain shape — and the only one before projects could add their own boxes
+ * — is the array of ticked labels. A project that added boxes stores
+ * `{ checked, extra }` instead. Either may arrive as its JSON text after a
+ * round trip (see asAttributeList).
+ */
+export function readChecklistValue(rawVal: unknown): ChecklistValue {
+  let raw = rawVal;
+  if (typeof raw === "string" && raw.trim().startsWith("{")) {
+    try {
+      raw = JSON.parse(raw);
+    } catch {
+      raw = null;
+    }
+  }
+  if (raw && typeof raw === "object" && !Array.isArray(raw)) {
+    const obj = raw as { checked?: unknown; extra?: unknown };
+    const extra = (Array.isArray(obj.extra) ? obj.extra : [])
+      .filter((e: any) => e && typeof e.label === "string" && e.label.trim())
+      .map((e: any) => ({ label: String(e.label), required: !!e.required }));
+    return { checked: asAttributeList(obj.checked).map(String), extra };
+  }
+  return { checked: asAttributeList(raw).map(String), extra: [] };
+}
+
+/**
+ * The inverse of readChecklistValue. Without extras it writes the plain array,
+ * so a project that never added a box keeps the shape every other reader knows.
+ */
+export function writeChecklistValue(value: ChecklistValue): string[] | ChecklistValue {
+  return value.extra.length === 0 ? value.checked : { checked: value.checked, extra: value.extra };
+}
+
+/** The required boxes — the type's own and the project's — that are not ticked yet. */
+export function missingChecklistItems(attr: ProjectAttribute, rawVal: unknown): string[] {
+  if (attr.type !== "checkbox" || isBooleanCheckbox(attr)) return [];
+  const { checked, extra } = readChecklistValue(rawVal);
+  const options = attr.options || [];
+  const required = [
+    ...(attr.requiredOptions || []).filter(o => options.includes(o)),
+    ...extra.filter(e => e.required).map(e => e.label),
+  ];
+  return [...new Set(required)].filter(label => !checked.includes(label));
+}
+
 /**
  * What sorting an attribute column compares — a number where the attribute is
  * one, text otherwise, and null for "no value", which always sorts last.
@@ -244,8 +297,8 @@ export function projectAttributeSortValue(
     case "checkbox": {
       // A yes/no box is never empty: "no" is an answer, and sorts below "yes".
       if (isBooleanCheckbox(attr)) return rawVal ? 1 : 0;
-      const picked = asAttributeList(rawVal);
-      return picked.length === 0 ? null : picked.map(String).join(", ");
+      const picked = readChecklistValue(rawVal).checked;
+      return picked.length === 0 ? null : picked.join(", ");
     }
     case "files": {
       const files = asAttributeList(rawVal);
