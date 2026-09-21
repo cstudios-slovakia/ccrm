@@ -21,6 +21,7 @@ import {
     FolderKanban,
     Trash2,
     Users,
+    ArrowUpRight,
 } from "lucide-react";
 import type { Task, UserProfile, Lead, Project } from "../types";
 import type { Language } from "../utils/translations";
@@ -1368,6 +1369,36 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         .filter((t) => t.deadline > tomorrowStr && !isDoneState(t.status))
         .sort(byDeadline);
 
+    // The lead a task is linked to, as a link straight to that lead's detail —
+    // so a task on the calendar can be followed to its client without leaving
+    // for the pipeline and searching. A lead that no longer exists stays a
+    // plain, unclickable badge.
+    const renderLeadBadge = (task: Task, maxWidth: string) => {
+        if (!task.relatedLeadId) return null;
+        const lead = leads.find((l) => String(l.id) === String(task.relatedLeadId));
+        if (!lead) {
+            return (
+                <span className={`text-[9px] font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md truncate ${maxWidth}`}>
+                    <Briefcase className="h-2.5 w-2.5 shrink-0" />
+                    <span className="truncate">Lead</span>
+                </span>
+            );
+        }
+        return (
+            <a
+                href={`#lead-${encodeURIComponent(lead.id)}`}
+                onClick={(e) => e.stopPropagation()}
+                data-testid="task-lead-link"
+                title={t("Open lead", "Otvoriť lead", "Lead megnyitása")}
+                className={`group/lead text-[9px] font-bold text-slate-600 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md ${maxWidth} hover:bg-indigo-100 hover:text-indigo-700 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 transition-all cursor-pointer`}
+            >
+                <Briefcase className="h-2.5 w-2.5 shrink-0" />
+                <span className="truncate">{lead.name || "Lead"}</span>
+                <ArrowUpRight className="h-2.5 w-2.5 shrink-0 transition-transform group-hover/lead:translate-x-px group-hover/lead:-translate-y-px" />
+            </a>
+        );
+    };
+
     const renderTaskCard = (task: Task) => (
         <div
             key={task.id}
@@ -1536,15 +1567,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         </span>
                     </span>
 
-                    {task.relatedLeadId && (
-                        <span className="text-[9px] font-bold text-slate-600 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md truncate max-w-[120px]">
-                            <Briefcase className="h-2.5 w-2.5 shrink-0" />
-                            <span className="truncate">
-                                {leads.find((l) => l.id === task.relatedLeadId)
-                                    ?.name || "Lead"}
-                            </span>
-                        </span>
-                    )}
+                    {renderLeadBadge(task, "max-w-[140px]")}
 
                     {projectNameFor(task) && (
                         <span className="text-[9px] font-bold text-purple-700 flex items-center gap-1 bg-purple-50 px-1.5 py-0.5 rounded-md truncate max-w-[140px]">
@@ -1606,22 +1629,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     task.title
                                 }
                             </span>
-                            {task.relatedLeadId && (
-                                <span className="text-[9px] font-bold text-slate-500 flex items-center gap-0.5 bg-slate-100 px-1.5 py-0.5 rounded-md truncate max-w-[120px]">
-                                    <Briefcase className="h-2.5 w-2.5 shrink-0" />
-                                    <span className="truncate">
-                                        {leads.find(
-                                            (
-                                                l,
-                                            ) =>
-                                                l.id ===
-                                                task.relatedLeadId,
-                                        )
-                                            ?.name ||
-                                            "Lead"}
-                                    </span>
-                                </span>
-                            )}
+                            {renderLeadBadge(task, "max-w-[140px]")}
                             {projectNameFor(task) && (
                                 <span className="text-[9px] font-bold text-purple-700 flex items-center gap-0.5 bg-purple-50 px-1.5 py-0.5 rounded-md truncate max-w-[140px]">
                                     <FolderKanban className="h-2.5 w-2.5 shrink-0" />

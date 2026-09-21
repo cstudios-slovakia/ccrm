@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
     Archive as ArchiveIcon,
+    ArrowUpRight,
     CheckSquare,
     FolderKanban,
     Lock,
@@ -205,6 +206,10 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
         });
     }
 
+    const linkedLead = task.relatedLeadId
+        ? leads.find((l) => String(l.id) === String(task.relatedLeadId))
+        : undefined;
+
     if (typeof document === "undefined") return null;
 
     return createPortal(
@@ -391,9 +396,24 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                         </div>
 
                         <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase">
-                                {t("Link to Lead/Client", "Prepojiť so záujemcom", "Összekapcsolás ügyféllel")}
-                            </label>
+                            <div className="flex items-center justify-between gap-2">
+                                <label className="text-[9px] font-black text-slate-500 uppercase">
+                                    {t("Link to Lead/Client", "Prepojiť so záujemcom", "Összekapcsolás ügyféllel")}
+                                </label>
+                                {/* Straight to the linked lead, instead of hunting for
+                                    it in the pipeline. Leaving the page drops unsaved
+                                    edits, so it only shows once the link is saved. */}
+                                {linkedLead && draft.relatedLeadId === task.relatedLeadId && (
+                                    <a
+                                        href={`#lead-${encodeURIComponent(linkedLead.id)}`}
+                                        data-testid="task-drawer-lead-link"
+                                        className="group/lead text-[9px] font-black uppercase text-indigo-600 hover:text-indigo-800 flex items-center gap-0.5 rounded focus-visible:outline-2 focus-visible:outline-offset-2 transition-colors"
+                                    >
+                                        {t("Open lead", "Otvoriť lead", "Lead megnyitása")}
+                                        <ArrowUpRight className="h-3 w-3 transition-transform group-hover/lead:translate-x-px group-hover/lead:-translate-y-px" />
+                                    </a>
+                                )}
+                            </div>
                             <ClientSelect
                                 leads={leads}
                                 value={draft.relatedLeadId || ""}
