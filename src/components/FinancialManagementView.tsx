@@ -1527,7 +1527,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     type Group = {
       monthKey: string; // e.g. "2026-08"
       monthLabel: string; // e.g. "August 2026"
-      /** `real + estimated` — what the month is worth once everything settles. */
+      /** Settled only — what has actually reached (or left) the account, the
+       *  figure the Overview table shows as Skutočnosť. The unsettled part is
+       *  shown beside it as `est:`, never added in. */
       totalIncome: number;
       totalExpense: number;
       /** Settled vs still-expected, split the same way `splitRecordAmounts` does everywhere else (see F4). */
@@ -1613,11 +1615,11 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         if (type === "income") {
           group.incomeReal += real;
           group.incomeEstimated += estimated;
-          group.totalIncome += real + estimated;
+          group.totalIncome += real;
         } else {
           group.expenseReal += real;
           group.expenseEstimated += estimated;
-          group.totalExpense += real + estimated;
+          group.totalExpense += real;
         }
         group.net = group.totalIncome - group.totalExpense;
       } else {
@@ -5781,8 +5783,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                     )}
                   </div>
 
-                  {/* Settled vs still-expected within the totals above, so "Incomes: +X"
-                      is never mistaken for money that has actually arrived (see F4). */}
+                  {/* The totals above are settled money only; this line shows the
+                      still-expected part beside them, never added in (see F4). */}
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 px-0.5 text-[10px] font-semibold text-slate-400">
                     <span>
                       {t("Income:", "Príjmy:", "Bevételek:")} +{money(movementsSummary.incomeReal)}{" "}
