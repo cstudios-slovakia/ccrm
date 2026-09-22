@@ -37,6 +37,7 @@ interface StartMenuProps {
   pinnedSidebarItems?: string[];
   onTogglePinToSidebar?: (itemId: string) => void;
   initialEditing?: boolean;
+  onAddSidebarGroup?: () => void;
 }
 
 /** The stored group shape, defined next to the layout it is persisted in. */
@@ -72,7 +73,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   onOpenCreateDashboard,
   pinnedSidebarItems = [],
   onTogglePinToSidebar,
-  initialEditing = false
+  initialEditing = false,
+  onAddSidebarGroup
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
@@ -798,7 +800,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               </div>
               <p className="text-[11px] text-slate-400 font-medium">
                 {(isEditing
-                  ? t("Drag groups to reorder columns • Add new group • Pin 📌 items to left sidebar", "Presúvajte celé skupiny • Vytvorte novú skupinu • Pripnite 📌 položky na bočný panel", "Csoportok átrendezése • Új csoport • Kitűzés 📌 a bal oldalsávra")
+                  ? t("Drag groups to reorder columns • Add new group to sidebar • Pin 📌 items to left sidebar", "Presúvajte celé skupiny • Vytvorte novú skupinu pre bočný panel • Pripnite 📌 položky na bočný panel", "Csoportok átrendezése • Új csoport az oldalsávhoz • Kitűzés 📌 a bal oldalsávra")
                   : t("Quick access to all CRM modules & applications", "Rýchly prístup k modulom a evidenciám", "Gyors hozzáférés az összes modulhoz"))}
               </p>
             </div>
@@ -827,13 +829,19 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               )}
             </div>
 
-            {/* Create New Group Button (in Edit Mode) */}
+            {/* Create New Group Button (in Edit Mode - adds group to Sidebar navigation) */}
             {isEditing && (
               <button
                 type="button"
-                onClick={handleCreateGroup}
-                className="px-3 py-2 rounded-2xl text-xs font-bold bg-purple-50  hover:bg-purple-100  text-purple-700  border border-purple-200  transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
-                title={t("Create New Group Column", "Vytvoriť novú skupinu", "Új csoport létrehozása")}
+                onClick={() => {
+                  if (onAddSidebarGroup) {
+                    onAddSidebarGroup();
+                  } else {
+                    handleCreateGroup();
+                  }
+                }}
+                className="px-3 py-2 rounded-2xl text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-all cursor-pointer flex items-center gap-1.5 shrink-0 shadow-xs"
+                title={t("Add New Group to Sidebar", "Pridať novú skupinu do bočného panelu", "Új csoport hozzáadása az oldalsávhoz")}
               >
                 <FolderPlus className="h-3.5 w-3.5" />
                 <span>{t("New Group", "Nová skupina", "Új csoport")}</span>

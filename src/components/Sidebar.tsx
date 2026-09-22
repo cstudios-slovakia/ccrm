@@ -19,7 +19,10 @@ import {
   Coins,
   ListTodo,
   Pin,
-  Plus
+  Plus,
+  Check,
+  Trash2,
+  FolderPlus
 } from "lucide-react";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
@@ -364,6 +367,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [isStartMenuOpen, setIsStartMenuOpen] = useState(false);
   const [startMenuEditMode, setStartMenuEditMode] = useState(false);
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [editingGroupTitle, setEditingGroupTitle] = useState<string>("");
   const sidebarRef = useRef<HTMLElement>(null);
   const navRef = useRef<HTMLElement>(null);
 
@@ -724,6 +729,49 @@ export const Sidebar: React.FC<SidebarProps> = ({
     setActiveTab(itemNavId);
   };
 
+  const handleAddNewSidebarGroup = (customTitle?: string) => {
+    const current = normalizeSidebarGroups(storedSidebarGroups, activeVisibleLayout);
+    const newId = `group_${Date.now()}`;
+    const nextNum = current.length + 1;
+    const title = customTitle || `${t("Group", "Skupina", "Csoport")} ${nextNum}`;
+    const newGroup: SidebarGroup = {
+      id: newId,
+      title,
+      items: []
+    };
+    const nextGroups = [...current, newGroup];
+    setStoredSidebarGroups(nextGroups);
+    setEditingGroupId(newId);
+    setEditingGroupTitle(title);
+  };
+
+  const handleRenameSidebarGroup = (groupId: string, newTitle: string) => {
+    if (!newTitle.trim()) {
+      setEditingGroupId(null);
+      return;
+    }
+    const current = normalizeSidebarGroups(storedSidebarGroups, activeVisibleLayout);
+    const nextGroups = current.map((g) =>
+      g.id === groupId ? { ...g, title: newTitle.trim() } : g
+    );
+    setStoredSidebarGroups(nextGroups);
+    setEditingGroupId(null);
+    setEditingGroupTitle("");
+  };
+
+  const handleDeleteSidebarGroup = (groupId: string) => {
+    const current = normalizeSidebarGroups(storedSidebarGroups, activeVisibleLayout);
+    if (current.length <= 1) return;
+    const toDelete = current.find((g) => g.id === groupId);
+    const remaining = current.filter((g) => g.id !== groupId);
+    if (toDelete && toDelete.items.length > 0 && remaining.length > 0) {
+      remaining[0].items = Array.from(new Set([...remaining[0].items, ...toDelete.items]));
+    }
+    setStoredSidebarGroups(remaining);
+    const newActiveLayout = flattenSidebarGroups(remaining);
+    onSaveUserLayout(newActiveLayout);
+  };
+
   // Flattened active items with group boundaries for direct nav button rendering
   const flattenedNavItems = useMemo(() => {
     const list: Array<
@@ -744,8 +792,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         list.push({ type: "divider", groupId: group.id });
       }
 
-      if (isExpanded && group.title) {
-        list.push({ type: "header", title: group.title, groupId: group.id });
+      const displayTitle =
+        group.title ||
+        (isStartMenuOpen && startMenuEditMode && sidebarGroups.length > 1
+          ? `${t("Group", "Skupina", "Csoport")} ${gIdx + 1}`
+          : "");
+
+      if (isExpanded && displayTitle) {
+        list.push({ type: "header", title: displayTitle, groupId: group.id });
       }
 
       groupItemObjs.forEach((item, iIdx) => {
@@ -758,7 +812,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     });
 
     return list;
-  }, [sidebarGroups, allPossibleItems, isExpanded, isStartMenuOpen, startMenuEditMode]);
+  }, [sidebarGroups, allPossibleItems, isExpanded, isStartMenuOpen, startMenuEditMode, systemLanguage]);
 
   return (
     <>
@@ -880,7 +934,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         >
           {/* Editing Navigation Mode Indicator Banner */}
           {isStartMenuOpen && startMenuEditMode && (
-            <div className="p-3 mb-2 rounded-2xl bg-indigo-50 border border-indigo-200/90 flex flex-col gap-1.5 animate-in fade-in duration-200 select-none">
+            <div className="p-3 mb-2 rounded-2xl bg-indigo-50 border border-indigo-200/90 flex flex-col gap-2 animate-in fade-in duration-200 select-none">
               <div className="flex items-center justify-between">
                 <span className="text-[10.5px] font-black uppercase tracking-wider text-indigo-700 flex items-center gap-1.5">
                   <Pencil className="h-3.5 w-3.5 text-indigo-600" />
@@ -905,6 +959,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   "Húzzon modulokat a Start menüből az alábbi csoportokba."
                 )}
               </p>
+              <button
+                type="button"
+                onClick={() => handleAddNewSidebarGroup()}
+                className="w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-100/70 text-[11px] font-bold transition-all shadow-xs cursor-pointer active:scale-[0.98]"
+              >
+                <Plus className="h-3.5 w-3.5 text-indigo-600" />
+                <span>{t("New Group", "Nová skupina", "Új csoport")}</span>
+              </button>
             </div>
           )}
 
@@ -919,12 +981,75 @@ export const Sidebar: React.FC<SidebarProps> = ({
             }
 
             if (entry.type === "header") {
+              const isGroupEditing = editingGroupId === entry.groupId;
               return (
                 <div
                   key={`hdr_${entry.groupId}_${idx}`}
-                  className="px-3 pt-2 pb-0.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest truncate"
+                  className="px-3 pt-3 pb-1 flex items-center justify-between gap-2 group/header select-none"
                 >
-                  {entry.title}
+                  {isGroupEditing ? (
+                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                      <input
+                        type="text"
+                        value={editingGroupTitle}
+                        onChange={(e) => setEditingGroupTitle(e.target.value)}
+                        placeholder={t("Group Title", "Názov skupiny", "Csoport neve")}
+                        className="flex-1 min-w-0 px-2 py-0.5 rounded-md bg-white border border-indigo-400 text-slate-800 text-[11px] font-bold focus:outline-none shadow-xs"
+                        autoFocus
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handleRenameSidebarGroup(entry.groupId, editingGroupTitle);
+                          if (e.key === "Escape") setEditingGroupId(null);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleRenameSidebarGroup(entry.groupId, editingGroupTitle)}
+                        className="p-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer shadow-xs shrink-0"
+                        title={t("Save", "Uložiť", "Mentés")}
+                      >
+                        <Check className="h-3 w-3" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingGroupId(null)}
+                        className="p-1 rounded-md text-slate-400 hover:text-slate-600 transition-colors cursor-pointer shrink-0"
+                        title={t("Cancel", "Zrušiť", "Mégse")}
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest truncate">
+                        {entry.title}
+                      </span>
+                      {isStartMenuOpen && startMenuEditMode && (
+                        <div className="flex items-center gap-1 opacity-70 group-hover/header:opacity-100 transition-opacity">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setEditingGroupId(entry.groupId);
+                              setEditingGroupTitle(entry.title);
+                            }}
+                            className="p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+                            title={t("Rename group", "Premenovať skupinu", "Csoport átnevezése")}
+                          >
+                            <Pencil className="h-3 w-3" />
+                          </button>
+                          {sidebarGroups.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteSidebarGroup(entry.groupId)}
+                              className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                              title={t("Delete group", "Vymazať skupinu", "Csoport törlése")}
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          )}
+                        </div>
+                      )}
+                    </>
+                  )}
                 </div>
               );
             }
@@ -1011,6 +1136,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
               />
             );
           })}
+
+          {/* New Group Button (at bottom of nav list during edit mode) */}
+          {isStartMenuOpen && startMenuEditMode && (
+            <div className="pt-2 pb-1">
+              <button
+                type="button"
+                onClick={() => handleAddNewSidebarGroup()}
+                className="w-full py-2 px-3 rounded-xl border border-dashed border-indigo-300 hover:border-indigo-400 bg-indigo-50/40 hover:bg-indigo-50 text-indigo-600 hover:text-indigo-700 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-[0.98]"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                <span>{t("New Group", "Nová skupina", "Új csoport")}</span>
+              </button>
+            </div>
+          )}
 
           {/* Collapse/Expand Toggle Button (matching e2e selector aside nav button[aria-label]) */}
           <button
@@ -1356,6 +1495,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         pinnedSidebarItems={resolvedLayout}
         onTogglePinToSidebar={handleTogglePinItem}
         initialEditing={startMenuEditMode}
+        onAddSidebarGroup={() => handleAddNewSidebarGroup()}
       />
 
       {/* New Custom Dashboard Modal */}
