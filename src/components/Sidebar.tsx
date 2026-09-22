@@ -18,7 +18,6 @@ import {
   Sparkles,
   Coins,
   ListTodo,
-  Pin,
   Plus,
   Check,
   Trash2
@@ -1150,30 +1149,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
           )}
 
-          {/* Collapse/Expand Toggle Button (matching e2e selector aside nav button[aria-label]) */}
-          <button
-            type="button"
-            onClick={() => {
-              if (isPinned) setSidebarPinned(false);
-              setIsCollapsed(!isCollapsed);
-            }}
-            className="w-full flex items-center gap-3.5 px-3 py-2.5 rounded-2xl transition-all duration-200 text-slate-400 hover:text-slate-700 hover:bg-slate-100/50 text-left cursor-pointer"
-            aria-label={t("Toggle Navigation Sidebar", "Prepnúť navigačný panel", "Navigációs oldalsáv váltása")}
-          >
-            {!isExpanded ? (
-              <ChevronRight className="h-5 w-5 shrink-0 text-slate-400 animate-pulse" />
-            ) : (
-              <ChevronLeft className="h-5 w-5 shrink-0 text-slate-400" />
-            )}
-            {isExpanded && (
-              <span className="text-sm font-heading font-medium tracking-wide truncate min-w-0 flex-1">
-                {getTranslation(systemLanguage, "sidebar.collapse")}
-              </span>
-            )}
-          </button>
-        </nav>
-
-        {/* Dynamic Dock Floating Tooltip */}
+          {/* Dynamic Dock Floating Tooltip */}
         {hoveredItemId && hoveredItemPos && isDockMode && !isExpanded && (
           <div
             className="fixed z-[3000] px-3.5 py-2 rounded-xl bg-slate-900/95 text-white text-xs font-bold shadow-2xl border border-white/10 pointer-events-none -translate-y-1/2 flex items-center gap-2 animate-in fade-in zoom-in-95 duration-100 backdrop-blur-md whitespace-nowrap"
@@ -1197,33 +1173,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
         {/* Bottom Actions Footer */}
         <div className="p-3 flex flex-col gap-1.5 shrink-0 border-t border-slate-100/80 bg-slate-50/40">
-          {/* Pin Sidebar Toggle Button */}
+          {/* Collapse/Expand Toggle Caret Button (in place of Pin) */}
           <button
             type="button"
-            onClick={() => setSidebarPinned(!sidebarPinned)}
-            className={cn(
-              "w-full flex items-center gap-3.5 px-3 py-2 rounded-xl transition-all duration-200 group text-left cursor-pointer",
-              sidebarPinned
-                ? "bg-indigo-50 text-indigo-600 font-bold border border-indigo-200"
-                : "text-slate-400 hover:text-slate-700 hover:bg-slate-100/50"
-            )}
+            onClick={() => {
+              if (isPinned) setSidebarPinned(false);
+              setIsCollapsed(!isCollapsed);
+            }}
+            className="w-full flex items-center gap-3.5 px-3 py-2 rounded-xl transition-all duration-200 text-slate-400 hover:text-slate-700 hover:bg-slate-100/50 text-left cursor-pointer group"
+            aria-label={t("Toggle Navigation Sidebar", "Prepnúť navigačný panel", "Navigációs oldalsáv váltása")}
             title={
-              sidebarPinned
-                ? t("Unpin sidebar from left", "Odopnúť bočné menu", "Oldalsáv rögzítésének feloldása")
-                : t("Pin sidebar to left", "Pripnúť bočné menu vľavo", "Oldalsáv rögzítése balra")
+              !isExpanded
+                ? t("Expand navigation sidebar", "Rozbaliť bočné menu", "Oldalsáv kibontása")
+                : t("Collapse navigation sidebar", "Zbaliť bočné menu", "Oldalsáv összecsukása")
             }
           >
-            <Pin
-              className={cn(
-                "h-4.5 w-4.5 shrink-0 transition-transform",
-                sidebarPinned ? "fill-indigo-600 text-indigo-600 rotate-45" : "group-hover:scale-110"
-              )}
-            />
+            {!isExpanded ? (
+              <ChevronRight className="h-4.5 w-4.5 shrink-0 text-slate-400 transition-transform group-hover:scale-110 group-hover:text-slate-600" />
+            ) : (
+              <ChevronLeft className="h-4.5 w-4.5 shrink-0 text-slate-400 transition-transform group-hover:scale-110 group-hover:text-slate-600" />
+            )}
             {isExpanded && (
               <span className="text-xs font-semibold tracking-wide truncate min-w-0 flex-1">
-                {sidebarPinned
-                  ? t("Pinned", "Pripnuté", "Rögzítve")
-                  : t("Pin Sidebar", "Pripnúť menu", "Oldalsáv rögzítése")}
+                {getTranslation(systemLanguage, "sidebar.collapse")}
               </span>
             )}
           </button>
@@ -1307,7 +1279,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
             )}
           </button>
         </div>
-      </aside>
+      </nav>
+    </aside>
 
       {/* MOBILE INTEGRATED DRAWER */}
       <div
