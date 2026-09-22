@@ -21,8 +21,7 @@ import {
   Pin,
   Plus,
   Check,
-  Trash2,
-  FolderPlus
+  Trash2
 } from "lucide-react";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
