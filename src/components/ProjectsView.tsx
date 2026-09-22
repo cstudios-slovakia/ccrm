@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import * as Icons from "lucide-react";
-import { Plus, Trash2, Settings, Search, Users, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, CalendarClock, Flag, ArrowUp, ArrowDown, ArrowUpDown, Lock, Star, Check, Minus, Paperclip, GripVertical, GripHorizontal } from "lucide-react";
+import { Plus, Trash2, Settings, Search, Users, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, ListTree, Move, CalendarClock, Flag, ArrowUp, ArrowDown, ArrowUpDown, Lock, Star, Check, Minus, Paperclip, GripVertical, GripHorizontal } from "lucide-react";
 import type { Project, ProjectAttribute, ProjectAutoCreateSettings, ProjectStatus, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory } from "../types";
 import { ProjectDetailsView } from "./ProjectDetailsView";
 import type { Task } from "../types";
@@ -208,17 +208,20 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   const [isCreateDropdownOpen, setIsCreateDropdownOpen] = useState(false);
   const createDropdownRef = useRef<HTMLDivElement>(null);
 
-  /* Roomy cards or a dense table. Kept in the user's DB-backed preferences, so
-     the choice follows them to their next device like the leads list's does. */
+  /* The structure, roomy cards or a dense table. Kept in the user's DB-backed
+     preferences, so the choice follows them to their next device like the
+     leads list's does. The structure is a table too, but one that always shows
+     the hand-set order and is rearranged by dragging — no column sorts it. */
   const [viewMode, setViewMode] = useUserPref("projectsViewMode");
+  const isStructure = viewMode === "structure";
 
   /* How the list is ordered. The table's column headers and the sort menu in the
      filter bar write the same DB-backed preference, so cards and table agree and
      the choice follows the user to their next device. */
   const [storedSort, setStoredSort] = useUserPref("projectsSort");
   const sort = normalizeProjectSort(storedSort);
-  /* The order dragged into place rides along in the same preference, so it
-     survives a detour through a column sort; only Reset forgets it. */
+  /* The structure — the order dragged into place — rides along in the same
+     preference, so it survives any detour through a column sort, and Reset. */
   const manualOrder = useMemo(() => storedManualOrder(storedSort), [storedSort]);
   const setSort = (next: ProjectSort, order: string[] = manualOrder) =>
     setStoredSort(next.key === "default" && order.length === 0
@@ -562,23 +565,34 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projects, manualOrder, effectiveSort.key, effectiveSort.direction, projectTypes, leads, today, sortableAttributes, defaultCurrency]);
 
-  /* The filtered list, in that order. */
+  /* Every project in the structure: the hand-set order, whatever the sort says.
+     Projects it has never seen (created since the last drag) sit on top. */
+  const structureProjects = useMemo(
+    () => applyManualOrder(newestFirst(projects), manualOrder),
+    [projects, manualOrder]
+  );
+
+  /* The filtered list, in the order the current view shows. */
   const sortedProjects = useMemo(() => {
     const visible = new Set(filteredProjects.map(p => p.id));
-    return orderedProjects.filter(p => visible.has(p.id));
-  }, [orderedProjects, filteredProjects]);
+    return (isStructure ? structureProjects : orderedProjects).filter(p => visible.has(p.id));
+  }, [isStructure, structureProjects, orderedProjects, filteredProjects]);
 
-  /* Drag a row or a card onto another to put it there. The order is the user's
-     own view preference, like the sort, so anyone who can see the list may
-     rearrange it. Dropping while a column sort is on adopts what is on screen
-     as the starting point and switches the list to "Custom order" — the drop
-     would otherwise be undone by the sort on the very next frame. */
+  /* Drag a row or a card onto another to put it there. The structure is the
+     user's own view preference, like the sort, so anyone who can see the list
+     may rearrange it. Dragging only works where the screen shows the structure
+     — the Structure view, or the table and cards on "Custom order" — so a
+     column sort can never be adopted as the structure by accident. The whole
+     structure is moved, not just the filtered rows, so a drop made while the
+     list is filtered leaves the hidden projects where they were. The sort the
+     table and cards use is left alone. */
+  const canDragProjects = isStructure || effectiveSort.key === "manual";
   const handleProjectMove = (dragId: string, targetId: string, position: DropPosition) => {
-    const ids = orderedProjects.map(p => p.id);
-    setSort({ key: "manual", direction: "asc" }, moveRelative(ids, id => id, dragId, targetId, position));
+    const ids = structureProjects.map(p => p.id);
+    setSort(sort, moveRelative(ids, id => id, dragId, targetId, position));
   };
   const projectDrag = useDragReorder({
-    enabled: true,
+    enabled: canDragProjects,
     axis: viewMode === "grid" ? "horizontal" : "vertical",
     onMove: handleProjectMove,
   });
@@ -596,7 +610,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
      otherwise the cards view could not be ordered by one at all. */
   const sortOptions: { value: ProjectSortKey; label: string }[] = [
     { value: "default", label: t("Newest first", "Najnovšie prvé", "Legújabb elöl") },
-    { value: "manual", label: t("Custom order (drag & drop)", "Vlastné poradie (potiahnutím)", "Egyéni sorrend (húzással)") },
+    { value: "manual", label: t("Structure order (drag & drop)", "Poradie v štruktúre (potiahnutím)", "Struktúra szerinti sorrend (húzással)") },
     { value: "name", label: t("Project name", "Názov projektu", "Projekt neve") },
     { value: "client", label: t("Client", "Klient", "Ügyfél") },
     { value: "type", label: t("Type", "Typ", "Típus") },
@@ -1218,6 +1232,9 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 sort={effectiveSort}
                 sortOptions={sortOptions}
                 onSortChange={setSort}
+                sortNote={isStructure
+                  ? t("The structure is always in its own order. Drag rows to rearrange it.", "Štruktúra má vždy vlastné poradie. Zmeníte ho potiahnutím riadkov.", "A struktúra mindig a saját sorrendjében van. Sorok húzásával rendezheti át.")
+                  : undefined}
                 columns={allColumns}
                 onColumnsChange={saveColumns}
                 columnLabel={columnLabel}
@@ -1228,14 +1245,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     : t(`Columns of the "${layoutType.name}" type. Only someone who can edit project types can change them.`, `Stĺpce typu „${layoutType.name}“. Zmeniť ich môže len ten, kto smie upravovať typy projektov.`, `A(z) „${layoutType.name}” típus oszlopai. Csak projekt típusokat szerkeszteni jogosult felhasználó módosíthatja őket.`))
                   : t("All types: built-in columns only. Filter the list by one type to show its own attributes as columns.", "Všetky typy: len vstavané stĺpce. Vyfiltrujte zoznam podľa typu a zobrazíte aj jeho atribúty.", "Minden típus: csak beépített oszlopok. Szűrjön egy típusra, hogy az attribútumai is oszlopként megjelenjenek.")}
                 onReset={() => {
-                  setSort({ key: "default", direction: "asc" }, []);
+                  // The structure is content the user built, not a view setting — Reset keeps it.
+                  setSort({ key: "default", direction: "asc" });
                   if (canEditColumns) saveColumns(null);
                 }}
               />
 
-              {/* Cards or table. */}
+              {/* Structure, table or cards. */}
               <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200 select-none shrink-0">
                 {([
+                  { mode: "structure" as const, Icon: ListTree, label: t("Structure view", "Zobrazenie štruktúry", "Struktúra nézet") },
                   { mode: "list" as const, Icon: Rows3, label: t("List view", "Zobrazenie zoznamu", "Lista nézet") },
                   { mode: "grid" as const, Icon: LayoutGrid, label: t("Grid view", "Zobrazenie kariet", "Kártyás nézet") },
                 ]).map(({ mode, Icon, label }) => (
@@ -1289,7 +1308,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 <p className="text-sm font-semibold">{t("No projects found matching filters.", "Nenašli sa žiadne projekty.", "Nem találhatóak projektek.")}</p>
               )}
             </div>
-          ) : viewMode === "list" ? (
+          ) : viewMode === "list" || isStructure ? (
             <div ref={resultsRef} className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass mt-6 overflow-hidden">
               <div className="overflow-x-auto scrollbar-thin">
                 <table className="w-full text-left border-collapse min-w-[840px]">
@@ -1304,6 +1323,17 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                         // Click to sort; again to flip; a third time returns to the default order.
                         const active = effectiveSort.key === key;
                         const SortIcon = !active ? ArrowUpDown : effectiveSort.direction === "asc" ? ArrowUp : ArrowDown;
+                        // The structure is never sorted, so its headers are plain labels.
+                        if (isStructure) {
+                          return (
+                            <th
+                              key={col.key}
+                              className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap"
+                            >
+                              {columnLabel(col)}
+                            </th>
+                          );
+                        }
                         return (
                           <th
                             key={col.key}
@@ -1360,13 +1390,30 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                         >
                           {activeColumns.map((col, colIndex) => (
                             <td key={col.key} className={`px-4 py-3 ${colIndex === 0 ? "relative" : ""}`}>
-                              {colIndex === 0 && (
-                                <GripVertical
-                                  aria-hidden
-                                  className="absolute left-0.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity duration-150 cursor-grab"
-                                />
+                              {colIndex === 0 && isStructure ? (
+                                /* The structure's move handle sits in front of the
+                                   first cell and is always shown, as in a CMS
+                                   structure; the whole row drags, the handle
+                                   says so. */
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <Move
+                                    aria-hidden
+                                    data-structure-handle
+                                    className="h-3.5 w-3.5 shrink-0 text-slate-300 group-hover:text-indigo-500 transition-colors duration-150 cursor-grab active:cursor-grabbing"
+                                  />
+                                  <div className="min-w-0 flex-1">{renderColumnCell(col, { project: p, pType, lead, title, progress, dl })}</div>
+                                </div>
+                              ) : (
+                                <>
+                                  {colIndex === 0 && canDragProjects && (
+                                    <GripVertical
+                                      aria-hidden
+                                      className="absolute left-0.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity duration-150 cursor-grab"
+                                    />
+                                  )}
+                                  {renderColumnCell(col, { project: p, pType, lead, title, progress, dl })}
+                                </>
                               )}
-                              {renderColumnCell(col, { project: p, pType, lead, title, progress, dl })}
                             </td>
                           ))}
                           <td className="px-4 py-3">
@@ -1512,10 +1559,12 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
                     {/* Drag affordance. Last in the card on purpose: useGridFlip
                         counter-scales a card's first child while it glides. */}
-                    <GripHorizontal
-                      aria-hidden
-                      className="absolute left-1/2 top-1 -translate-x-1/2 h-4 w-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity duration-150 cursor-grab"
-                    />
+                    {canDragProjects && (
+                      <GripHorizontal
+                        aria-hidden
+                        className="absolute left-1/2 top-1 -translate-x-1/2 h-4 w-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity duration-150 cursor-grab"
+                      />
+                    )}
 
                     {/* Drop marker in the gap beside the card — cards flow along a row. */}
                     {drop && (

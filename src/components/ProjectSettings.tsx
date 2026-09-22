@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import * as Icons from "lucide-react";
-import { Plus, Trash2, ArrowUp, ArrowDown, Save, X, Check, Workflow, LayoutGrid, Rows3, CalendarClock, Paperclip, FileText, SlidersHorizontal, History, ListChecks, GripVertical, Pencil } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, Save, X, Check, Workflow, LayoutGrid, Rows3, ListTree, CalendarClock, Paperclip, FileText, SlidersHorizontal, History, ListChecks, GripVertical, Pencil } from "lucide-react";
 import { CustomSelect } from "./ui/CustomSelect";
 import { cn } from "../utils/cn";
 import { ColorPicker } from "./ui/ColorPicker";
@@ -1780,6 +1780,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
 
         <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200 select-none shrink-0">
           {([
+            { mode: "structure" as const, Icon: ListTree, label: t("Structure", "Štruktúra", "Struktúra") },
             { mode: "list" as const, Icon: Rows3, label: t("List", "Zoznam", "Lista") },
             { mode: "grid" as const, Icon: LayoutGrid, label: t("Cards", "Karty", "Kártyák") },
           ]).map(({ mode, Icon, label }) => (

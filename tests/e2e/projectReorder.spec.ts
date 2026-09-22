@@ -9,8 +9,10 @@ import { TEST_USER, buildSyncPayload } from './helpers/fixture';
  * shared backend below stands in for — the fixture's own memory forgets a
  * pushed preference the moment the page reloads.
  *
- * Also pinned here: a drop made while a column sort is on switches the list to
- * "Custom order", otherwise the sort would undo the drop on the next frame.
+ * The order is the project structure. The Structure view always shows it and
+ * is where it is dragged; the table and cards show it only on "Custom order"
+ * and refuse a drag under a column sort, so a sort can never be adopted as the
+ * structure — the reason the Structure view exists at all.
  */
 
 type MetaStore = { meta: Map<string, unknown> };
@@ -66,12 +68,21 @@ async function dragOnto(source: Locator, target: Locator, edge: 'top' | 'bottom'
   await source.dragTo(target, { targetPosition });
 }
 
+/** Starts the backend with preferences already stored for the test user, as if set on another device. */
+function seedPrefs(store: MetaStore, preferences: Record<string, unknown>) {
+  store.meta.set(TEST_USER.email, JSON.stringify({ ...JSON.parse(TEST_USER.metadata_json), preferences }));
+}
+
+const isDraggable = (row: Locator) => row.evaluate((el) => (el as HTMLElement).draggable);
+
 test.describe('Project reordering', () => {
-  test('dragging a row reorders the table, and the order survives a reload', async ({ page }) => {
+  test('dragging a row in the structure reorders it, and it survives a reload', async ({ page }) => {
     const store: MetaStore = { meta: new Map() };
     await startSession(page);
     await installUserBackend(page, store);
     await gotoView(page, '#projects');
+    await page.getByRole('button', { name: 'Zobrazenie štruktúry' }).click();
+    await expect(page.locator('[data-structure-handle]').first()).toBeVisible();
 
     const before = await rowIds(page);
     expect(before.length).toBeGreaterThanOrEqual(3);
@@ -85,24 +96,59 @@ test.describe('Project reordering', () => {
     // A drag does not open the project it moved.
     await expect(page.getByPlaceholder(/Vyhľadať projekty/)).toBeVisible();
 
-    await expect.poll(() => storedSort(store)?.key, { timeout: 10_000 }).toBe('manual');
-    expect(storedSort(store)?.order?.slice(-1)).toEqual([first]);
-    await page.screenshot({ path: 'test-results/project-reorder-list.png', fullPage: false });
+    await expect.poll(() => storedSort(store)?.order?.slice(-1), { timeout: 10_000 }).toEqual([first]);
+    // Rearranging the structure is not a choice of sort for the table and cards.
+    expect(storedSort(store)?.key).toBe('default');
+    await page.screenshot({ path: 'test-results/project-reorder-structure.png', fullPage: false });
 
+    // The structure is also the view the screen reopens on.
     await gotoView(page, '#projects');
+    await expect(page.locator('[data-structure-handle]').first()).toBeVisible();
     await expect.poll(() => rowIds(page)).toEqual(expected);
   });
 
-  test('dragging a card reorders the grid, even out of a column sort', async ({ page }) => {
+  test('a column sort never touches the structure, and cannot be dragged into it', async ({ page }) => {
     const store: MetaStore = { meta: new Map() };
     await startSession(page);
     await installUserBackend(page, store);
     await gotoView(page, '#projects');
+    await page.getByRole('button', { name: 'Zobrazenie štruktúry' }).click();
+    const structure = await rowIds(page);
+    expect(structure.length).toBeGreaterThanOrEqual(3);
 
-    // Sort by name first: the drop must switch the list to the custom order.
-    await page.locator('thead').getByRole('button', { name: 'Projekt', exact: true }).click();
-    await expect(page.locator('thead th[aria-sort="ascending"]')).toHaveCount(1);
-    await page.getByRole('button', { name: 'Zobrazenie kariet' }).click();
+    // Sort the table by name, descending, so it cannot match the structure by chance.
+    await page.getByRole('button', { name: 'Zobrazenie zoznamu' }).click();
+    const nameHeader = page.locator('thead').getByRole('button', { name: 'Projekt', exact: true });
+    await nameHeader.click();
+    await nameHeader.click();
+    await expect(page.locator('thead th[aria-sort="descending"]')).toHaveCount(1);
+    const sorted = await rowIds(page);
+
+    // A sorted table refuses the drag that used to overwrite the structure.
+    expect(await isDraggable(page.locator(`tr[data-project-row="${sorted[0]}"]`))).toBe(false);
+
+    // The structure is where it was, headers are plain labels, rows drag.
+    await page.getByRole('button', { name: 'Zobrazenie štruktúry' }).click();
+    await expect.poll(() => rowIds(page)).toEqual(structure);
+    await expect(page.locator('thead th[aria-sort]')).toHaveCount(0);
+    const last = structure[structure.length - 1];
+    await dragOnto(page.locator(`tr[data-project-row="${last}"]`), page.locator(`tr[data-project-row="${structure[0]}"]`), 'top');
+    const expected = [last, ...structure.slice(0, -1)];
+    await expect.poll(() => rowIds(page)).toEqual(expected);
+
+    // Back in the table the name sort is still on.
+    await page.getByRole('button', { name: 'Zobrazenie zoznamu' }).click();
+    await expect(page.locator('thead th[aria-sort="descending"]')).toHaveCount(1);
+    await expect.poll(() => rowIds(page)).toEqual(sorted);
+    await expect.poll(() => storedSort(store)?.order, { timeout: 10_000 }).toEqual(expected);
+  });
+
+  test('on "Custom order" the cards show the structure and can be dragged', async ({ page }) => {
+    const store: MetaStore = { meta: new Map() };
+    seedPrefs(store, { projectsViewMode: 'grid', projectsSort: { key: 'manual', direction: 'asc' } });
+    await startSession(page);
+    await installUserBackend(page, store);
+    await gotoView(page, '#projects');
     await expect(page.locator('[data-project-card]').first()).toBeVisible();
 
     const before = await cardIds(page);
@@ -113,11 +159,12 @@ test.describe('Project reordering', () => {
     await dragOnto(page.locator(`[data-project-card="${last}"]`), page.locator(`[data-project-card="${before[0]}"]`), 'left');
     const expected = [last, ...before.slice(0, -1)];
     await expect.poll(() => cardIds(page)).toEqual(expected);
-    await expect.poll(() => storedSort(store)?.key, { timeout: 10_000 }).toBe('manual');
+    await expect.poll(() => storedSort(store)?.order, { timeout: 10_000 }).toEqual(expected);
+    expect(storedSort(store)?.key).toBe('manual');
     await page.screenshot({ path: 'test-results/project-reorder-grid.png', fullPage: false });
 
-    // The table reads the same order.
-    await page.getByRole('button', { name: 'Zobrazenie zoznamu' }).click();
+    // The structure view reads the same order.
+    await page.getByRole('button', { name: 'Zobrazenie štruktúry' }).click();
     await expect.poll(() => rowIds(page)).toEqual(expected);
   });
 });

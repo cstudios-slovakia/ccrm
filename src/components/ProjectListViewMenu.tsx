@@ -16,6 +16,8 @@ interface ProjectListViewMenuProps {
   sort: ProjectSort;
   sortOptions: { value: ProjectSortKey; label: string }[];
   onSortChange: (next: ProjectSort) => void;
+  /** Set when the current view ignores the sort (the structure): shown in place of the sort controls. */
+  sortNote?: string;
   /** Every column the table can show, hidden ones included, in order. */
   columns: ResolvedProjectColumn[];
   onColumnsChange: (next: ResolvedProjectColumn[]) => void;
@@ -37,6 +39,7 @@ export const ProjectListViewMenu: React.FC<ProjectListViewMenuProps> = ({
   sort,
   sortOptions,
   onSortChange,
+  sortNote,
   columns,
   onColumnsChange,
   columnLabel,
@@ -115,39 +118,43 @@ export const ProjectListViewMenu: React.FC<ProjectListViewMenuProps> = ({
           {/* Sort */}
           <div className="grid grid-cols-[6.5rem_1fr] items-center gap-3 px-4 py-3.5 border-b border-slate-200">
             <span className={rowLabel}>{t("Sort by", "Zoradiť podľa", "Rendezés")}</span>
-            <div className="flex items-center gap-1.5 min-w-0">
-              <div className="flex-1 min-w-0">
-                <CustomSelect
-                  className="h-9"
-                  panelClassName={SORT_PANEL_CLASS}
-                  value={sort.key}
-                  onChange={v => onSortChange({ key: v as ProjectSortKey, direction: v === sort.key ? sort.direction : "asc" })}
-                  options={sortOptions}
-                />
+            {sortNote ? (
+              <p className="text-[11px] font-semibold text-slate-400 leading-snug">{sortNote}</p>
+            ) : (
+              <div className="flex items-center gap-1.5 min-w-0">
+                <div className="flex-1 min-w-0">
+                  <CustomSelect
+                    className="h-9"
+                    panelClassName={SORT_PANEL_CLASS}
+                    value={sort.key}
+                    onChange={v => onSortChange({ key: v as ProjectSortKey, direction: v === sort.key ? sort.direction : "asc" })}
+                    options={sortOptions}
+                  />
+                </div>
+                <div className="flex items-center shrink-0 rounded-xl border border-slate-200 overflow-hidden">
+                  {directions.map(({ dir, Icon, label }) => {
+                    const active = sorted && sort.direction === dir;
+                    return (
+                      <button
+                        key={dir}
+                        type="button"
+                        disabled={!sorted}
+                        onClick={() => onSortChange({ ...sort, direction: dir })}
+                        title={label}
+                        aria-label={label}
+                        aria-pressed={active}
+                        className={cn(
+                          "h-9 w-9 flex items-center justify-center transition-colors duration-150 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40",
+                          active ? "bg-slate-700 text-white" : "bg-slate-100 text-slate-500 hover:text-slate-800 hover:bg-slate-200"
+                        )}
+                      >
+                        <Icon className="h-4 w-4" />
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="flex items-center shrink-0 rounded-xl border border-slate-200 overflow-hidden">
-                {directions.map(({ dir, Icon, label }) => {
-                  const active = sorted && sort.direction === dir;
-                  return (
-                    <button
-                      key={dir}
-                      type="button"
-                      disabled={!sorted}
-                      onClick={() => onSortChange({ ...sort, direction: dir })}
-                      title={label}
-                      aria-label={label}
-                      aria-pressed={active}
-                      className={cn(
-                        "h-9 w-9 flex items-center justify-center transition-colors duration-150 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40",
-                        active ? "bg-slate-700 text-white" : "bg-slate-100 text-slate-500 hover:text-slate-800 hover:bg-slate-200"
-                      )}
-                    >
-                      <Icon className="h-4 w-4" />
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            )}
           </div>
 
           {/* Columns */}

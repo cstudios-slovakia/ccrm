@@ -40,18 +40,20 @@ export interface UserPrefs {
   /** Leads screen: dense rows. */
   leadsCompactMode: boolean;
   /**
-   * Projects screen: roomy cards or a dense table. Doubles as the "default
-   * view" setting — it is both what the toggle in the list writes and what the
-   * screen opens on, so there is one answer to "which view do I get?" rather
-   * than a stored default quietly disagreeing with the toggle.
+   * Projects screen: the structure (the hand-set order, drag to rearrange,
+   * never sorted by a column), roomy cards or a dense table. Doubles as the
+   * "default view" setting — it is both what the toggle in the list writes and
+   * what the screen opens on, so there is one answer to "which view do I get?"
+   * rather than a stored default quietly disagreeing with the toggle.
    */
-  projectsViewMode: "grid" | "list";
+  projectsViewMode: "structure" | "grid" | "list";
   /**
    * Projects screen: which column the list is ordered by, or null for the
    * stored order. Loosely typed like themeMode; ProjectsView validates it with
-   * normalizeProjectSort() from utils/projectSort.ts. `order` is the hand-set
-   * order dragged into place (project ids), kept here so switching to it is
-   * the same write as saving it — see storedManualOrder().
+   * normalizeProjectSort() from utils/projectSort.ts. `order` is the project
+   * structure — the hand-set order dragged into place (project ids) — kept here
+   * so switching to it is the same write as saving it; see storedManualOrder().
+   * Picking a column, or Reset, never touches it.
    */
   projectsSort: { key: string; direction: string; order?: string[] } | null;
   /**
