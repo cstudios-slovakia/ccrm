@@ -159,8 +159,22 @@ const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
     damping: 12,
   });
 
+  // Lateral projection (moves slightly out into canvas when magnified)
   const xTransform = useTransform(springScale, (s) => (s > 1.02 ? (s - 1) * 8 : 0));
   const zIndexTransform = useTransform(springScale, (s) => (s > 1.02 ? Math.round(s * 100) : 1));
+
+  // Dynamic push-away displacement: moves items above cursor upward (-y) and items below downward (+y)
+  const yDisplacement = useTransform(
+    distanceCalc,
+    [-140, -70, 0, 70, 140],
+    [0, 16, 0, -16, 0]
+  );
+
+  const springY = useSpring(yDisplacement, {
+    mass: 0.1,
+    stiffness: 150,
+    damping: 12,
+  });
 
   return (
     <motion.button
@@ -190,6 +204,7 @@ const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
       style={{
         scale: !isExpanded && isDockMode ? springScale : 1,
         x: !isExpanded && isDockMode ? xTransform : 0,
+        y: !isExpanded && isDockMode ? springY : 0,
         zIndex: !isExpanded && isDockMode ? zIndexTransform : undefined,
         transformOrigin: "center left",
         ...(isActive && (item.isCustomUE || item.isCustomDash)

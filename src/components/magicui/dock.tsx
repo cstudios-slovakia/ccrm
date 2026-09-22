@@ -162,6 +162,18 @@ export const DockIcon = React.forwardRef<HTMLDivElement, DockIconProps>(
       damping: 12,
     });
 
+    const displacementTransform = useTransform(
+      distanceCalc,
+      [-iconDistance, -iconDistance / 2, 0, iconDistance / 2, iconDistance],
+      [0, (iconMagnification - iconSize) * 0.4, 0, -(iconMagnification - iconSize) * 0.4, 0]
+    );
+
+    const springDisplacement = useSpring(displacementTransform, {
+      mass: 0.1,
+      stiffness: 150,
+      damping: 12,
+    });
+
     return (
       <motion.div
         ref={(el) => {
@@ -175,6 +187,8 @@ export const DockIcon = React.forwardRef<HTMLDivElement, DockIconProps>(
         style={{
           width: disableMagnification ? iconSize : springSize,
           height: disableMagnification ? iconSize : springSize,
+          x: orientation === "horizontal" && !disableMagnification ? springDisplacement : undefined,
+          y: orientation === "vertical" && !disableMagnification ? springDisplacement : undefined,
           ...style,
         }}
         className={cn(
