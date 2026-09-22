@@ -30,6 +30,13 @@ import { StartMenu } from "./StartMenu";
 import { FlockIcon } from "./icons/FlockIcon";
 import { isHomeDashboard } from "../utils/dashboardWidgets";
 import { useUserPref } from "../utils/userPrefs";
+import {
+  motion,
+  useMotionValue,
+  useSpring,
+  useTransform,
+  type MotionValue
+} from "framer-motion";
 import { normalizeSidebarGroups, flattenSidebarGroups, type SidebarGroup } from "../utils/sidebarLayout";
 
 /**
@@ -78,6 +85,237 @@ interface SidebarProps {
   onSaveDefaultPage?: (pageId: string) => void;
 }
 
+interface SidebarDockButtonProps {
+  entry: {
+    type: "item";
+    item: any;
+    group: SidebarGroup;
+    indexInGroup: number;
+  };
+  isActive: boolean;
+  isExpanded: boolean;
+  isDockMode: boolean;
+  mouseY: MotionValue<number>;
+  widthClasses: {
+    collapsed: string;
+    expanded: string;
+    itemPad: string;
+    iconSize: string;
+    textSize: string;
+    spacing: string;
+    headerHeight: string;
+  };
+  dragOverIndex: number | null;
+  isStartMenuOpen: boolean;
+  startMenuEditMode: boolean;
+  onItemClick: (itemId: string) => void;
+  onHoverStart: (itemId: string, rect: DOMRect) => void;
+  onHoverEnd: () => void;
+  onDrop: (e: React.DragEvent, groupId: string, indexInGroup: number) => void;
+  onDragOver: (e: React.DragEvent, indexInGroup: number) => void;
+  onTogglePinItem: (itemId: string) => void;
+  t: (en: string, sk: string, hu: string) => string;
+}
+
+const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
+  entry,
+  isActive,
+  isExpanded,
+  isDockMode,
+  mouseY,
+  widthClasses,
+  dragOverIndex,
+  isStartMenuOpen,
+  startMenuEditMode,
+  onItemClick,
+  onHoverStart,
+  onHoverEnd,
+  onDrop,
+  onDragOver,
+  onTogglePinItem,
+  t,
+}) => {
+  const item = entry.item;
+  const Icon = item.icon;
+  const btnRef = useRef<HTMLButtonElement>(null);
+
+  // Magic UI Framer Motion distance & physics spring animation
+  const distanceCalc = useTransform(mouseY, (val: number) => {
+    if (!isDockMode || isExpanded || val === Infinity) return Infinity;
+    const bounds = btnRef.current?.getBoundingClientRect();
+    if (!bounds) return Infinity;
+    return val - (bounds.y + bounds.height / 2);
+  });
+
+  const scaleTransform = useTransform(
+    distanceCalc,
+    [-140, 0, 140],
+    [1.0, 1.85, 1.0]
+  );
+
+  const springScale = useSpring(scaleTransform, {
+    mass: 0.1,
+    stiffness: 150,
+    damping: 12,
+  });
+
+  const xTransform = useTransform(springScale, (s) => (s > 1.02 ? (s - 1) * 8 : 0));
+  const zIndexTransform = useTransform(springScale, (s) => (s > 1.02 ? Math.round(s * 100) : 1));
+
+  return (
+    <motion.button
+      ref={btnRef}
+      type="button"
+      onClick={() => {
+        if (isStartMenuOpen && startMenuEditMode) return;
+        onItemClick(item.id);
+      }}
+      onMouseEnter={() => {
+        if (isDockMode && !isExpanded && btnRef.current) {
+          onHoverStart(item.id, btnRef.current.getBoundingClientRect());
+        }
+      }}
+      onMouseMove={() => {
+        if (isDockMode && !isExpanded && btnRef.current) {
+          onHoverStart(item.id, btnRef.current.getBoundingClientRect());
+        }
+      }}
+      onMouseLeave={() => {
+        if (isDockMode && !isExpanded) {
+          onHoverEnd();
+        }
+      }}
+      onDragOver={(e) => onDragOver(e, entry.indexInGroup)}
+      onDrop={(e) => onDrop(e, entry.group.id, entry.indexInGroup)}
+      style={{
+        scale: !isExpanded && isDockMode ? springScale : 1,
+        x: !isExpanded && isDockMode ? xTransform : 0,
+        zIndex: !isExpanded && isDockMode ? zIndexTransform : undefined,
+        transformOrigin: "center left",
+        ...(isActive && (item.isCustomUE || item.isCustomDash)
+          ? {
+              backgroundColor: item.customColor,
+              boxShadow: `0 10px 15px -3px ${item.customColor}4D, 0 4px 6px -4px ${item.customColor}4D`
+            }
+          : {})
+      }}
+      className={cn(
+        "w-full flex items-center gap-3.5 rounded-2xl transition-colors duration-150 group text-left relative cursor-pointer",
+        widthClasses.itemPad,
+        dragOverIndex === entry.indexInGroup && "ring-2 ring-indigo-400 bg-indigo-50/50",
+        item.isCustomUE || item.isCustomDash
+          ? isActive
+            ? "text-white font-bold"
+            : "text-slate-400 hover:text-slate-700 hover:bg-slate-100/50"
+          : item.isPurpleToGreen
+            ? isActive
+              ? "bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 text-white font-bold shadow-lg shadow-purple-600/30 border border-purple-500/20"
+              : "text-purple-600 hover:text-emerald-600 hover:bg-gradient-to-r hover:from-purple-50/60 hover:to-emerald-50/60"
+            : item.isPurple
+              ? isActive
+                ? "bg-purple-600 text-white font-bold shadow-lg shadow-purple-600/30 border border-purple-500/20"
+                : "text-purple-600 hover:text-purple-700 hover:bg-purple-50/50"
+              : item.isLavender
+                ? isActive
+                  ? "bg-purple-500 text-white font-bold shadow-lg shadow-purple-500/30 border border-purple-400/20"
+                  : "text-purple-500 hover:text-purple-600 hover:bg-purple-50/50"
+                : item.isNavy
+                  ? isActive
+                    ? "bg-blue-950 text-white font-bold shadow-lg shadow-blue-950/30 border border-blue-900/20"
+                    : "text-blue-950 hover:text-blue-900 hover:bg-blue-50/50"
+                  : item.isIndigo
+                    ? isActive
+                      ? "bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-600/30 border border-indigo-500/20"
+                      : "text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50/50"
+                    : item.isEmerald
+                      ? isActive
+                        ? "bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-600/30 border border-emerald-500/20"
+                        : "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50/50"
+                      : item.isNightBlue
+                        ? isActive
+                          ? "bg-slate-900 text-white font-bold shadow-lg shadow-slate-900/30 border border-slate-800/20"
+                          : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/50"
+                        : isActive
+                          ? item.id === "leads"
+                            ? "bg-blue-600 text-white font-bold shadow-lg shadow-blue-600/30 border border-blue-500/20"
+                            : item.id === "clients"
+                              ? "bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-600/30 border border-emerald-500/20"
+                              : item.id === "files"
+                                ? "bg-amber-700 text-white font-bold shadow-lg shadow-amber-700/30 border border-amber-600/20"
+                                : item.id === "overview"
+                                  ? "bg-cyan-600 text-white font-bold shadow-lg shadow-cyan-600/30 border border-cyan-500/20"
+                                  : item.id === "email"
+                                    ? "bg-pink-600 text-white font-bold shadow-lg shadow-pink-600/30 border border-pink-500/20"
+                                    : "bg-orange-500 text-white font-bold shadow-lg shadow-orange-500/30 border border-orange-400/20"
+                          : "text-slate-400 hover:text-slate-700 hover:bg-slate-100/50"
+      )}
+      title={!isDockMode || isExpanded ? item.label : undefined}
+    >
+      <Icon
+        className={cn(
+          widthClasses.iconSize,
+          "shrink-0 transition-transform duration-200",
+          isActive ? "text-white" : "group-hover:scale-105"
+        )}
+        style={!isActive ? { color: item.color || item.customColor } : undefined}
+      />
+
+      {isExpanded && (
+        <span
+          className={cn(
+            "font-heading font-medium tracking-wide truncate min-w-0 flex-1",
+            widthClasses.textSize,
+            item.isCustomUE || item.isCustomDash
+              ? isActive
+                ? "text-white font-bold"
+                : "text-slate-500 font-semibold group-hover:text-slate-700"
+              : item.isPurpleToGreen
+                ? isActive
+                  ? "text-white font-bold"
+                  : "text-transparent bg-clip-text bg-gradient-to-r from-purple-700 to-emerald-600 font-bold"
+                : item.isPurple
+                  ? isActive
+                    ? "text-white font-bold"
+                    : "text-purple-600 font-bold"
+                  : item.isLavender
+                    ? isActive
+                      ? "text-white font-bold"
+                      : "text-purple-500 font-semibold"
+                    : item.isNavy
+                      ? isActive
+                        ? "text-white font-bold"
+                        : "text-blue-950 font-semibold"
+                      : item.isNightBlue
+                        ? isActive
+                          ? "text-white font-bold"
+                          : "text-slate-800 font-semibold"
+                        : isActive
+                          ? "text-white font-bold"
+                          : "text-slate-500 font-semibold"
+          )}
+        >
+          {item.label}
+        </span>
+      )}
+
+      {/* Quick Unpin Button in Edit Mode */}
+      {isStartMenuOpen && startMenuEditMode && isExpanded && (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            onTogglePinItem(item.id);
+          }}
+          className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer shrink-0 ml-auto"
+          title={t("Remove from sidebar", "Odstrániť z bočného menu", "Eltávolítás az oldalsávról")}
+        >
+          <X className="h-3.5 w-3.5" />
+        </button>
+      )}
+    </motion.button>
+  );
+};
+
 export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   setActiveTab,
@@ -114,11 +352,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const sidebarRef = useRef<HTMLElement>(null);
   const navRef = useRef<HTMLElement>(null);
 
-  // Dynamic Dock states
-  const [mouseY, setMouseY] = useState<number | null>(null);
+  // Magic UI Dynamic Dock states
+  const dockMouseY = useMotionValue(Infinity);
   const [hoveredItemId, setHoveredItemId] = useState<string | null>(null);
   const [hoveredItemPos, setHoveredItemPos] = useState<{ top: number; left: number } | null>(null);
-  const itemRefs = useRef<Map<string, HTMLElement>>(new Map());
 
   // Drag states
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
@@ -321,19 +558,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   }[compactness];
 
-  // Dynamic Dock Scale calculation (macOS Dock wave magnification)
-  const getItemScale = (itemId: string) => {
-    if (!isDockMode || isExpanded || mouseY === null) return 1;
-    const el = itemRefs.current.get(itemId);
-    if (!el || !navRef.current) return 1;
-    const itemCenter = el.offsetTop + el.offsetHeight / 2 - navRef.current.scrollTop;
-    const dist = Math.abs(mouseY - itemCenter);
-    const maxDist = 130; // Smooth wave influence radius
-    if (dist > maxDist) return 1;
-    const norm = dist / maxDist; // 0 (center) to 1 (edge)
-    const bell = (Math.cos(norm * Math.PI) + 1) / 2; // Smooth cosine bell curve (1.0 at center, 0.0 at edge)
-    return 1 + bell * 1.0; // Peak scale = 2.0x (2x magnification)
-  };
 
   // Click outside to collapse unpinned overlay
   useEffect(() => {
@@ -542,15 +766,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
           }
         }}
         onMouseMove={(e) => {
-          if (isDockMode && !isExpanded && navRef.current) {
-            const rect = navRef.current.getBoundingClientRect();
-            setMouseY(e.clientY - rect.top);
+          if (isDockMode && !isExpanded) {
+            dockMouseY.set(e.clientY);
           }
         }}
         onMouseLeave={() => {
           if (!isPinned) {
             setIsCollapsed(true);
-            setMouseY(null);
+          }
+          if (isDockMode && !isExpanded) {
+            dockMouseY.set(Infinity);
             setHoveredItemId(null);
           }
         }}
@@ -620,14 +845,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <nav
           ref={navRef}
           onMouseMove={(e) => {
-            if (isDockMode && !isExpanded && navRef.current) {
-              const rect = navRef.current.getBoundingClientRect();
-              setMouseY(e.clientY - rect.top);
+            if (isDockMode && !isExpanded) {
+              dockMouseY.set(e.clientY);
             }
           }}
           onMouseLeave={() => {
             if (isDockMode && !isExpanded) {
-              setMouseY(null);
+              dockMouseY.set(Infinity);
               setHoveredItemId(null);
             }
           }}
@@ -724,193 +948,52 @@ export const Sidebar: React.FC<SidebarProps> = ({
             }
 
             const item = entry.item;
-            const Icon = item.icon;
             const isActive =
               activeTab === item.id ||
               activeTab.startsWith(item.id + "/") ||
               activeTab.startsWith(item.id + "?") ||
               (item.id === "clients" && activeTab.startsWith("client-"));
 
-            const scale = getItemScale(item.id);
-            const isMagnified = !isExpanded && isDockMode && scale > 1.05;
-
             return (
-              <button
+              <SidebarDockButton
                 key={item.id}
-                ref={(el) => {
-                  if (el) itemRefs.current.set(item.id, el);
-                  else itemRefs.current.delete(item.id);
-                }}
-                type="button"
-                onClick={() => {
-                  if (isStartMenuOpen && startMenuEditMode) return;
-                  setActiveTab(item.id);
+                entry={entry}
+                isActive={isActive}
+                isExpanded={isExpanded}
+                isDockMode={isDockMode}
+                mouseY={dockMouseY}
+                widthClasses={widthClasses}
+                dragOverIndex={dragOverIndex}
+                isStartMenuOpen={isStartMenuOpen}
+                startMenuEditMode={startMenuEditMode}
+                onItemClick={(id) => {
+                  setActiveTab(id);
                   if (!isPinned) setIsCollapsed(true);
                 }}
-                onMouseEnter={(e) => {
-                  if (isDockMode && !isExpanded) {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    setHoveredItemId(item.id);
-                    setHoveredItemPos({
-                      top: rect.top + rect.height / 2,
-                      left: rect.left + Math.max(56, 44 * scale) + 16
-                    });
-                  }
+                onHoverStart={(id, rect) => {
+                  setHoveredItemId(id);
+                  setHoveredItemPos({
+                    top: rect.top + rect.height / 2,
+                    left: rect.left + rect.width + 16
+                  });
                 }}
-                onMouseMove={(e) => {
-                  if (isDockMode && !isExpanded) {
-                    const rect = e.currentTarget.getBoundingClientRect();
-                    setHoveredItemId(item.id);
-                    setHoveredItemPos({
-                      top: rect.top + rect.height / 2,
-                      left: rect.left + Math.max(56, 44 * scale) + 16
-                    });
-                  }
+                onHoverEnd={() => {
+                  setHoveredItemId(null);
                 }}
-                onMouseLeave={() => {
-                  if (isDockMode && !isExpanded) {
-                    setHoveredItemId(null);
-                  }
-                }}
-                onDragOver={(e) => {
+                onDragOver={(e, indexInGrp) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  setDragOverIndex(entry.indexInGroup);
+                  setDragOverIndex(indexInGrp);
                 }}
-                onDrop={(e) => {
+                onDrop={(e, grpId, indexInGrp) => {
                   e.stopPropagation();
-                  handleDropOnSidebar(e, entry.group.id, entry.indexInGroup);
+                  handleDropOnSidebar(e, grpId, indexInGrp);
                 }}
-                style={{
-                  transform: isMagnified ? `scale(${scale}) translateX(${(scale - 1) * 6}px)` : undefined,
-                  transformOrigin: "center left",
-                  zIndex: isDockMode && !isExpanded ? Math.round(scale * 100) : undefined,
-                  boxShadow: isMagnified && scale > 1.15
-                    ? `0 12px 24px -4px rgba(0,0,0,0.22), 0 6px 12px -3px rgba(0,0,0,0.12)`
-                    : undefined,
-                  transition: isDockMode ? "transform 0.1s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.15s ease" : undefined,
-                  ...(isActive && (item.isCustomUE || item.isCustomDash)
-                    ? {
-                        backgroundColor: item.customColor,
-                        boxShadow: `0 10px 15px -3px ${item.customColor}4D, 0 4px 6px -4px ${item.customColor}4D`
-                      }
-                    : {})
+                onTogglePinItem={(id) => {
+                  handleTogglePinItem(id);
                 }}
-                className={cn(
-                  "w-full flex items-center gap-3.5 rounded-2xl transition-all duration-200 group text-left relative cursor-pointer",
-                  widthClasses.itemPad,
-                  isMagnified && !isActive && "bg-white/95 border border-slate-200/90 shadow-lg text-slate-800",
-                  dragOverIndex === entry.indexInGroup && "ring-2 ring-indigo-400 bg-indigo-50/50",
-                  item.isCustomUE || item.isCustomDash
-                    ? isActive
-                      ? "text-white font-bold"
-                      : "text-slate-400 hover:text-slate-700 hover:bg-slate-100/50"
-                    : item.isPurpleToGreen
-                      ? isActive
-                        ? "bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 text-white font-bold shadow-lg shadow-purple-600/30 border border-purple-500/20"
-                        : "text-purple-600 hover:text-emerald-600 hover:bg-gradient-to-r hover:from-purple-50/60 hover:to-emerald-50/60"
-                      : item.isPurple
-                        ? isActive
-                          ? "bg-purple-600 text-white font-bold shadow-lg shadow-purple-600/30 border border-purple-500/20"
-                          : "text-purple-600 hover:text-purple-700 hover:bg-purple-50/50"
-                        : item.isLavender
-                          ? isActive
-                            ? "bg-purple-500 text-white font-bold shadow-lg shadow-purple-500/30 border border-purple-400/20"
-                            : "text-purple-500 hover:text-purple-600 hover:bg-purple-50/50"
-                          : item.isNavy
-                            ? isActive
-                              ? "bg-blue-950 text-white font-bold shadow-lg shadow-blue-950/30 border border-blue-900/20"
-                              : "text-blue-950 hover:text-blue-900 hover:bg-blue-50/50"
-                            : item.isIndigo
-                              ? isActive
-                                ? "bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-600/30 border border-indigo-500/20"
-                                : "text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50/50"
-                              : item.isEmerald
-                                ? isActive
-                                  ? "bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-600/30 border border-emerald-500/20"
-                                  : "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50/50"
-                                : item.isNightBlue
-                                  ? isActive
-                                    ? "bg-slate-900 text-white font-bold shadow-lg shadow-slate-900/30 border border-slate-800/20"
-                                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/50"
-                                  : isActive
-                                    ? item.id === "leads"
-                                      ? "bg-blue-600 text-white font-bold shadow-lg shadow-blue-600/30 border border-blue-500/20"
-                                      : item.id === "clients"
-                                        ? "bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-600/30 border border-emerald-500/20"
-                                        : item.id === "files"
-                                          ? "bg-amber-700 text-white font-bold shadow-lg shadow-amber-700/30 border border-amber-600/20"
-                                          : item.id === "overview"
-                                            ? "bg-cyan-600 text-white font-bold shadow-lg shadow-cyan-600/30 border border-cyan-500/20"
-                                            : item.id === "email"
-                                              ? "bg-pink-600 text-white font-bold shadow-lg shadow-pink-600/30 border border-pink-500/20"
-                                              : "bg-orange-500 text-white font-bold shadow-lg shadow-orange-500/30 border border-orange-400/20"
-                                    : "text-slate-400 hover:text-slate-700 hover:bg-slate-100/50"
-                )}
-                title={!isDockMode || isExpanded ? item.label : undefined}
-              >
-                <Icon
-                  className={cn(
-                    widthClasses.iconSize,
-                    "shrink-0 transition-transform duration-200",
-                    isActive ? "text-white" : "group-hover:scale-110"
-                  )}
-                  style={!isActive ? { color: item.color || item.customColor } : undefined}
-                />
-
-                {isExpanded && (
-                  <span
-                    className={cn(
-                      "font-heading font-medium tracking-wide truncate min-w-0 flex-1",
-                      widthClasses.textSize,
-                      item.isCustomUE || item.isCustomDash
-                        ? isActive
-                          ? "text-white font-bold"
-                          : "text-slate-500 font-semibold group-hover:text-slate-700"
-                        : item.isPurpleToGreen
-                          ? isActive
-                            ? "text-white font-bold"
-                            : "text-transparent bg-clip-text bg-gradient-to-r from-purple-700 to-emerald-600 font-bold"
-                          : item.isPurple
-                            ? isActive
-                              ? "text-white font-bold"
-                              : "text-purple-600 font-bold"
-                            : item.isLavender
-                              ? isActive
-                                ? "text-white font-bold"
-                                : "text-purple-500 font-semibold"
-                              : item.isNavy
-                                ? isActive
-                                  ? "text-white font-bold"
-                                  : "text-blue-950 font-semibold"
-                                : item.isNightBlue
-                                  ? isActive
-                                    ? "text-white font-bold"
-                                    : "text-slate-800 font-semibold"
-                                  : isActive
-                                    ? "text-white font-bold"
-                                    : "text-slate-500 font-semibold"
-                    )}
-                  >
-                    {item.label}
-                  </span>
-                )}
-
-                {/* Quick Unpin Button in Edit Mode */}
-                {isStartMenuOpen && startMenuEditMode && isExpanded && (
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      handleTogglePinItem(item.id);
-                    }}
-                    className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer shrink-0 ml-auto"
-                    title={t("Remove from sidebar", "Odstrániť z bočného menu", "Eltávolítás az oldalsávról")}
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
-              </button>
+                t={t}
+              />
             );
           })}
 
