@@ -319,16 +319,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
   }[compactness];
 
-  // Dynamic Dock Scale calculation
+  // Dynamic Dock Scale calculation (macOS Dock wave magnification)
   const getItemScale = (itemId: string) => {
     if (!isDockMode || isExpanded || mouseY === null) return 1;
     const el = itemRefs.current.get(itemId);
     if (!el || !navRef.current) return 1;
     const itemCenter = el.offsetTop + el.offsetHeight / 2 - navRef.current.scrollTop;
     const dist = Math.abs(mouseY - itemCenter);
-    const maxDist = 85;
+    const maxDist = 200; // Smooth wave influence radius
     if (dist > maxDist) return 1;
-    return 1 + (1 - dist / maxDist) * 0.42;
+    const norm = dist / maxDist; // 0 (center) to 1 (edge)
+    const bell = (Math.cos(norm * Math.PI) + 1) / 2; // Smooth cosine bell curve (1.0 at center, 0.0 at edge)
+    return 1 + bell * 4.2; // Peak scale = 5.2x (5x+ magnification)
   };
 
   // Click outside to collapse unpinned overlay
@@ -532,6 +534,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
             setIsCollapsed(false);
           }
         }}
+        onMouseMove={(e) => {
+          if (isDockMode && !isExpanded && navRef.current) {
+            const rect = navRef.current.getBoundingClientRect();
+            setMouseY(e.clientY - rect.top);
+          }
+        }}
         onMouseLeave={() => {
           if (!isPinned) {
             setIsCollapsed(true);
@@ -541,6 +549,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         }}
         className={cn(
           "h-screen fixed left-0 top-0 bg-white flex flex-col transition-all duration-300 z-[1000] select-none shrink-0 hidden lg:flex",
+          isDockMode && !isExpanded && "overflow-visible",
           isExpanded ? widthClasses.expanded : widthClasses.collapsed,
           isPinned
             ? "shadow-[inset_-10px_0_16px_-6px_rgba(0,0,0,0.08)] border-r border-slate-200/90"
@@ -616,7 +625,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           }}
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => handleDropOnSidebar(e)}
-          className={cn("flex-1 px-3 py-3 overflow-y-auto scrollbar-thin", widthClasses.spacing)}
+          className={cn(
+            "flex-1 px-3 py-3",
+            isDockMode && !isExpanded ? "overflow-visible" : "overflow-y-auto scrollbar-thin",
+            widthClasses.spacing
+          )}
         >
           {flattenedNavItems.map((entry, idx) => {
             if (entry.type === "divider") {
@@ -648,6 +661,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               (item.id === "clients" && activeTab.startsWith("client-"));
 
             const scale = getItemScale(item.id);
+            const isMagnified = !isExpanded && isDockMode && scale > 1.05;
 
             return (
               <button
@@ -667,7 +681,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     setHoveredItemId(item.id);
                     setHoveredItemPos({
                       top: rect.top + rect.height / 2,
-                      left: rect.right + 12
+                      left: rect.left + Math.max(64, 48 * scale) + 20
+                    });
+                  }
+                }}
+                onMouseMove={(e) => {
+                  if (isDockMode && !isExpanded) {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setHoveredItemId(item.id);
+                    setHoveredItemPos({
+                      top: rect.top + rect.height / 2,
+                      left: rect.left + Math.max(64, 48 * scale) + 20
                     });
                   }
                 }}
@@ -686,9 +710,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   handleDropOnSidebar(e, entry.group.id, entry.indexInGroup);
                 }}
                 style={{
-                  transform: !isExpanded && isDockMode && scale > 1 ? `scale(${scale})` : undefined,
+                  transform: isMagnified ? `scale(${scale}) translateX(${(scale - 1) * 6}px)` : undefined,
                   transformOrigin: "center left",
-                  transition: isDockMode ? "transform 0.12s cubic-bezier(0.2, 0, 0, 1)" : undefined,
+                  zIndex: isDockMode && !isExpanded ? Math.round(scale * 100) : undefined,
+                  boxShadow: isMagnified && scale > 1.3
+                    ? `0 20px 40px -10px rgba(0,0,0,0.35), 0 10px 20px -5px rgba(0,0,0,0.2)`
+                    : undefined,
+                  transition: isDockMode ? "transform 0.1s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.15s ease" : undefined,
                   ...(isActive && (item.isCustomUE || item.isCustomDash)
                     ? {
                         backgroundColor: item.customColor,
@@ -699,6 +727,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 className={cn(
                   "w-full flex items-center gap-3.5 rounded-2xl transition-all duration-200 group text-left relative cursor-pointer",
                   widthClasses.itemPad,
+                  isMagnified && !isActive && "bg-white/95 border border-slate-200/90 shadow-lg text-slate-800",
                   dragOverIndex === entry.indexInGroup && "ring-2 ring-indigo-400 bg-indigo-50/50",
                   item.isCustomUE || item.isCustomDash
                     ? isActive
@@ -824,7 +853,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Dynamic Dock Floating Tooltip */}
         {hoveredItemId && hoveredItemPos && isDockMode && !isExpanded && (
           <div
-            className="fixed z-[3000] px-3 py-1.5 rounded-xl bg-slate-900/95 text-white text-xs font-bold shadow-2xl border border-white/10 pointer-events-none -translate-y-1/2 flex items-center gap-2 animate-in fade-in zoom-in-95 duration-100 backdrop-blur-md"
+            className="fixed z-[3000] px-3.5 py-2 rounded-xl bg-slate-900/95 text-white text-xs font-bold shadow-2xl border border-white/10 pointer-events-none -translate-y-1/2 flex items-center gap-2 animate-in fade-in zoom-in-95 duration-100 backdrop-blur-md whitespace-nowrap"
             style={{ top: hoveredItemPos.top, left: hoveredItemPos.left }}
           >
             {(() => {
