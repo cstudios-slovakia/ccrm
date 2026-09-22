@@ -884,7 +884,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                   className="bg-transparent text-xs font-bold text-amber-950 focus:outline-none cursor-pointer pr-1"
                   title={t("Screen that opens when launching CCRM", "Obrazovka, ktorá sa otvorí pri spustení CCRM", "A CCRM indításakor megnyíló képernyő")}
                 >
-                  {allMenuItems
+                  {allItems
                     .filter((m) => canOpenRoute(m.id))
                     .map((m) => (
                       <option key={m.id} value={m.id} className="text-slate-800 bg-white">
@@ -1366,7 +1366,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               className="bg-transparent text-xs font-bold text-slate-800 focus:outline-none cursor-pointer pr-1 max-w-[130px] sm:max-w-[180px] truncate"
               title={t("Screen that opens when launching CCRM", "Obrazovka, ktorá sa otvorí pri spustení CCRM", "A CCRM indításakor megnyíló képernyő")}
             >
-              {allMenuItems
+              {allItems
                 .filter((m) => canOpenRoute(m.id))
                 .map((m) => (
                   <option key={m.id} value={m.id} className="text-slate-800 bg-white">
