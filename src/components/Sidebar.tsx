@@ -328,11 +328,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
     if (!el || !navRef.current) return 1;
     const itemCenter = el.offsetTop + el.offsetHeight / 2 - navRef.current.scrollTop;
     const dist = Math.abs(mouseY - itemCenter);
-    const maxDist = 200; // Smooth wave influence radius
+    const maxDist = 130; // Smooth wave influence radius
     if (dist > maxDist) return 1;
     const norm = dist / maxDist; // 0 (center) to 1 (edge)
     const bell = (Math.cos(norm * Math.PI) + 1) / 2; // Smooth cosine bell curve (1.0 at center, 0.0 at edge)
-    return 1 + bell * 4.2; // Peak scale = 5.2x (5x+ magnification)
+    return 1 + bell * 1.0; // Peak scale = 2.0x (2x magnification)
   };
 
   // Click outside to collapse unpinned overlay
@@ -753,7 +753,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     setHoveredItemId(item.id);
                     setHoveredItemPos({
                       top: rect.top + rect.height / 2,
-                      left: rect.left + Math.max(64, 48 * scale) + 20
+                      left: rect.left + Math.max(56, 44 * scale) + 16
                     });
                   }
                 }}
@@ -763,7 +763,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     setHoveredItemId(item.id);
                     setHoveredItemPos({
                       top: rect.top + rect.height / 2,
-                      left: rect.left + Math.max(64, 48 * scale) + 20
+                      left: rect.left + Math.max(56, 44 * scale) + 16
                     });
                   }
                 }}
@@ -785,8 +785,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   transform: isMagnified ? `scale(${scale}) translateX(${(scale - 1) * 6}px)` : undefined,
                   transformOrigin: "center left",
                   zIndex: isDockMode && !isExpanded ? Math.round(scale * 100) : undefined,
-                  boxShadow: isMagnified && scale > 1.3
-                    ? `0 20px 40px -10px rgba(0,0,0,0.35), 0 10px 20px -5px rgba(0,0,0,0.2)`
+                  boxShadow: isMagnified && scale > 1.15
+                    ? `0 12px 24px -4px rgba(0,0,0,0.22), 0 6px 12px -3px rgba(0,0,0,0.12)`
                     : undefined,
                   transition: isDockMode ? "transform 0.1s cubic-bezier(0.2, 0, 0, 1), box-shadow 0.15s ease" : undefined,
                   ...(isActive && (item.isCustomUE || item.isCustomDash)
