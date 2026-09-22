@@ -37,6 +37,7 @@ interface StartMenuProps {
   pinnedSidebarItems?: string[];
   onTogglePinToSidebar?: (itemId: string) => void;
   initialEditing?: boolean;
+  onEditModeChange?: (editing: boolean) => void;
   onAddSidebarGroup?: () => void;
   defaultPage?: string;
   onSaveDefaultPage?: (pageId: string) => void;
@@ -76,6 +77,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   pinnedSidebarItems = [],
   onTogglePinToSidebar,
   initialEditing = false,
+  onEditModeChange,
   onAddSidebarGroup,
   defaultPage,
   onSaveDefaultPage
@@ -106,6 +108,17 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   const [isClosing, setIsClosing] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [isEditing, setIsEditing] = useState(initialEditing);
+
+  const setEditingMode = (editing: boolean) => {
+    setIsEditing(editing);
+    onEditModeChange?.(editing);
+  };
+
+  useEffect(() => {
+    if (isOpen && initialEditing !== undefined) {
+      setIsEditing(initialEditing);
+    }
+  }, [initialEditing, isOpen]);
 
   // Group editing states
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
@@ -195,7 +208,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     if (isOpen) {
       setIsClosing(false);
       if (initialEditing) {
-        setIsEditing(true);
+        setEditingMode(true);
       }
       const frame = requestAnimationFrame(() => {
         setIsVisible(true);
@@ -205,7 +218,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     } else {
       setIsVisible(false);
       setSearchQuery("");
-      setIsEditing(false);
+      setEditingMode(false);
       setEditingGroupId(null);
     }
   }, [isOpen, initialEditing]);
@@ -236,6 +249,11 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (isOpen && !isClosing && menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        // Do NOT close if clicking inside the sidebar navigation (aside or [data-sidebar])
+        const target = e.target as HTMLElement | null;
+        if (target && target.closest("aside, [data-sidebar]")) {
+          return;
+        }
         handleAnimatedClose();
       }
     };
@@ -793,6 +811,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       */}
       <div
         ref={menuRef}
+        data-start-menu="true"
         className={`relative z-10 w-full max-w-6xl bg-white backdrop-blur-2xl border border-slate-200/90 rounded-3xl shadow-[0_25px_70px_rgba(0,0,0,0.25)] overflow-hidden flex flex-col max-h-[92vh] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] transform ${
           isVisible
             ? "scale-100 opacity-100 translate-y-0 translate-x-0"
@@ -856,7 +875,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             {isEditing && (
               <button
                 type="button"
-                onClick={() => {
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
                   if (onAddSidebarGroup) {
                     onAddSidebarGroup();
                   } else {
@@ -898,7 +919,11 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             {/* Edit / Customize Toggle Button */}
             <button
               type="button"
-              onClick={() => setIsEditing(!isEditing)}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditingMode(!isEditing);
+              }}
               className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
                 isEditing
                   ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20 ring-2 ring-indigo-400/30"
@@ -957,7 +982,11 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             </div>
             <button
               type="button"
-              onClick={() => setIsEditing(false)}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditingMode(false);
+              }}
               className="text-xs font-bold text-indigo-600  hover:underline cursor-pointer shrink-0"
             >
               {t("Done Editing ➔", "Hotovo ➔", "Kész ➔")}

@@ -50,6 +50,7 @@ import {
   clearLegacyStartMenuLayout,
   readLegacyStartMenuLayout,
 } from "./utils/startMenuLayout";
+import type { SidebarGroup } from "./utils/sidebarLayout";
 import type { FinancialTrendSettings } from "./utils/financialTrend";
 import {
   EMPTY_FINANCIAL_TREND,
@@ -1758,16 +1759,22 @@ ${log.payload || ''}
       setAnonPrefs(prev => ({ ...prev, [key]: value }));
       return;
     }
-    const nextMeta = {
-      ...parseUserMetadata(currentUser),
-      preferences: { ...readUserPrefs(currentUser), [key]: value }
-    };
-    updateUsersAndSync(prevUsers => prevUsers.map(u =>
-      u.email === currentUser.email ? { ...u, metadata_json: nextMeta } : u
-    ));
-    // Keep the in-memory profile in step so the change paints immediately rather
-    // than waiting for the users list to round-trip.
-    setCurrentUser(prev => prev ? { ...prev, metadata_json: nextMeta } : prev);
+    let updatedMeta: any = null;
+    updateUsersAndSync(prevUsers => prevUsers.map(u => {
+      if (u.email === currentUser.email) {
+        const meta = parseUserMetadata(u);
+        const nextMeta = {
+          ...meta,
+          preferences: { ...readUserPrefs(u), [key]: value }
+        };
+        updatedMeta = nextMeta;
+        return { ...u, metadata_json: nextMeta };
+      }
+      return u;
+    }));
+    if (updatedMeta) {
+      setCurrentUser(prev => prev ? { ...prev, metadata_json: updatedMeta } : prev);
+    }
   };
 
   // The context value must not close over a stale setter: pushStateToServer reads
@@ -1944,25 +1951,38 @@ ${log.payload || ''}
     });
   }, [currentUser, users, isInitialSyncResolved]);
 
-  const handleSaveUserLayout = (layout: string[], hidden?: string[]) => {
+  const handleSaveUserLayout = (layout: string[], hidden?: string[], sidebarGroups?: SidebarGroup[]) => {
     if (!currentUser) return;
-    let currentMeta: any = {};
-    try {
-      currentMeta = typeof currentUser.metadata_json === "string"
-        ? JSON.parse(currentUser.metadata_json || "{}")
-        : (currentUser.metadata_json || {});
-    } catch (e) {
-      console.error("Error parsing user metadata_json", e);
-    }
-    // navHidden records what the user removed on purpose, so a module added to
-    // the product later can be told apart from one they chose to hide.
-    const nextMeta = { ...currentMeta, navLayout: layout, ...(hidden ? { navHidden: hidden } : {}) };
+    let updatedMeta: any = null;
     updateUsersAndSync(prevUsers => prevUsers.map(u => {
       if (u.email === currentUser.email) {
+        let existingMeta: any = {};
+        try {
+          existingMeta = typeof u.metadata_json === "string"
+            ? JSON.parse(u.metadata_json || "{}")
+            : (u.metadata_json || {});
+        } catch (e) {
+          console.error("Error parsing user metadata_json", e);
+        }
+        const nextMeta = {
+          ...existingMeta,
+          navLayout: layout,
+          ...(hidden !== undefined ? { navHidden: hidden } : {}),
+          ...(sidebarGroups !== undefined ? {
+            preferences: {
+              ...(existingMeta.preferences || {}),
+              sidebarGroups: sidebarGroups
+            }
+          } : {})
+        };
+        updatedMeta = nextMeta;
         return { ...u, metadata_json: nextMeta };
       }
       return u;
     }));
+    if (updatedMeta) {
+      setCurrentUser(prev => prev ? { ...prev, metadata_json: updatedMeta } : prev);
+    }
   };
 
   // Resolve the default landing page stored in a user's metadata (falls back to caller default)
@@ -1980,26 +2000,31 @@ ${log.payload || ''}
 
   const handleSaveDefaultPage = (pageId: string) => {
     if (!currentUser) return;
-    let currentMeta: any = {};
-    try {
-      currentMeta = typeof currentUser.metadata_json === "string"
-        ? JSON.parse(currentUser.metadata_json || "{}")
-        : (currentUser.metadata_json || {});
-    } catch (e) {
-      console.error("Error parsing user metadata_json", e);
-    }
-    const currentPrefs = currentMeta.preferences || {};
-    const nextMeta = {
-      ...currentMeta,
-      defaultPage: pageId,
-      preferences: { ...currentPrefs, defaultPage: pageId }
-    };
+    let updatedMeta: any = null;
     updateUsersAndSync(prevUsers => prevUsers.map(u => {
       if (u.email === currentUser.email) {
+        let currentMeta: any = {};
+        try {
+          currentMeta = typeof u.metadata_json === "string"
+            ? JSON.parse(u.metadata_json || "{}")
+            : (u.metadata_json || {});
+        } catch (e) {
+          console.error("Error parsing user metadata_json", e);
+        }
+        const currentPrefs = currentMeta.preferences || {};
+        const nextMeta = {
+          ...currentMeta,
+          defaultPage: pageId,
+          preferences: { ...currentPrefs, defaultPage: pageId }
+        };
+        updatedMeta = nextMeta;
         return { ...u, metadata_json: nextMeta };
       }
       return u;
     }));
+    if (updatedMeta) {
+      setCurrentUser(prev => prev ? { ...prev, metadata_json: updatedMeta } : prev);
+    }
     if (typeof (window as any).showToast === "function") {
       (window as any).showToast(t("Default landing page set.", "Predvolená úvodná stránka nastavená.", "Az alapértelmezett kezdőoldal beállítva."));
     }

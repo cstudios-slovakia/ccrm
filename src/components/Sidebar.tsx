@@ -78,7 +78,7 @@ interface SidebarProps {
   canEditNav: boolean;
   /** Route gate from the permission resolver — the sidebar never reads roles itself. */
   canOpenRoute: (routeId: string) => boolean;
-  onSaveUserLayout: (layout: string[], hidden?: string[]) => void;
+  onSaveUserLayout: (layout: string[], hidden?: string[], groups?: SidebarGroup[]) => void;
   unifiedEntries?: UnifiedEntryRegistry[];
   customDashboards?: CustomDashboard[];
   onSaveCustomDashboards?: (dashboards: CustomDashboard[]) => void;
@@ -581,6 +581,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (isPinned) return;
+      if (isStartMenuOpen && startMenuEditMode) return;
+      const target = event.target as HTMLElement | null;
+      if (target && target.closest("[data-start-menu]")) return;
       if (!isCollapsed && sidebarRef.current && !sidebarRef.current.contains(event.target as Node)) {
         setIsCollapsed(true);
       }
@@ -589,7 +592,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     return () => {
       document.removeEventListener("mousedown", handleClickOutside);
     };
-  }, [isCollapsed, isPinned]);
+  }, [isCollapsed, isPinned, isStartMenuOpen, startMenuEditMode]);
 
   // Touch Swipe for Mobile Menu
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -619,12 +622,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       newHidden = currentHidden.filter((id: string) => id !== itemId);
     }
 
-    onSaveUserLayout(newActive, newHidden);
-
+    let updatedGroups: SidebarGroup[] | undefined;
     if (storedSidebarGroups) {
-      const updated = normalizeSidebarGroups(storedSidebarGroups, newActive);
-      setStoredSidebarGroups(updated);
+      updatedGroups = normalizeSidebarGroups(storedSidebarGroups, newActive);
+      setStoredSidebarGroups(updatedGroups);
     }
+
+    onSaveUserLayout(newActive, newHidden, updatedGroups);
   };
 
   // Drag & Drop onto sidebar
@@ -669,7 +673,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
     const newActiveLayout = flattenSidebarGroups(nextGroups);
     setStoredSidebarGroups(nextGroups);
-    onSaveUserLayout(newActiveLayout);
+    onSaveUserLayout(newActiveLayout, undefined, nextGroups);
 
     setDraggedItemId(null);
     setDragOverIndex(null);
@@ -741,6 +745,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     setStoredSidebarGroups(nextGroups);
     setEditingGroupId(newId);
     setEditingGroupTitle(title);
+    onSaveUserLayout(activeVisibleLayout, undefined, nextGroups);
   };
 
   const handleRenameSidebarGroup = (groupId: string, newTitle: string) => {
@@ -755,6 +760,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     setStoredSidebarGroups(nextGroups);
     setEditingGroupId(null);
     setEditingGroupTitle("");
+    onSaveUserLayout(activeVisibleLayout, undefined, nextGroups);
   };
 
   const handleDeleteSidebarGroup = (groupId: string) => {
@@ -767,7 +773,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }
     setStoredSidebarGroups(remaining);
     const newActiveLayout = flattenSidebarGroups(remaining);
-    onSaveUserLayout(newActiveLayout);
+    onSaveUserLayout(newActiveLayout, undefined, remaining);
   };
 
   // Flattened active items with group boundaries for direct nav button rendering
@@ -827,6 +833,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       {/* DESKTOP SIDEBAR */}
       <aside
         ref={sidebarRef}
+        data-sidebar="true"
         onMouseEnter={() => {
           if (!isPinned && sidebarUnpinnedStyle === "overlay") {
             setIsCollapsed(false);
@@ -838,7 +845,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           }
         }}
         onMouseLeave={() => {
-          if (!isPinned) {
+          if (!isPinned && !(isStartMenuOpen && startMenuEditMode)) {
             setIsCollapsed(true);
           }
           if (isDockMode && !isExpanded) {
@@ -868,9 +875,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
         >
           <button
             type="button"
-            onClick={() => {
-              setStartMenuEditMode(false);
-              setIsStartMenuOpen(true);
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (isStartMenuOpen) {
+                setIsStartMenuOpen(false);
+                setStartMenuEditMode(false);
+                if (!isPinned) setIsCollapsed(true);
+              } else {
+                setStartMenuEditMode(false);
+                setIsStartMenuOpen(true);
+              }
             }}
             className={cn(
               "flex items-center gap-3 p-2 rounded-2xl bg-slate-50 border border-slate-200/90 shadow-xs hover:border-slate-300 hover:bg-slate-100 active:scale-[0.98] transition-all cursor-pointer group mx-auto focus:outline-none focus:ring-2 focus:ring-indigo-500/30",
@@ -940,7 +955,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </span>
                 <button
                   type="button"
-                  onClick={() => {
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => {
+                    e.stopPropagation();
                     setIsStartMenuOpen(false);
                     setStartMenuEditMode(false);
                     if (!isPinned) setIsCollapsed(true);
@@ -959,7 +976,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </p>
               <button
                 type="button"
-                onClick={() => handleAddNewSidebarGroup()}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleAddNewSidebarGroup();
+                }}
                 className="w-full flex items-center justify-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-white border border-indigo-200 text-indigo-700 hover:bg-indigo-100/70 text-[11px] font-bold transition-all shadow-xs cursor-pointer active:scale-[0.98]"
               >
                 <Plus className="h-3.5 w-3.5 text-indigo-600" />
@@ -991,17 +1012,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         type="text"
                         value={editingGroupTitle}
                         onChange={(e) => setEditingGroupTitle(e.target.value)}
+                        onMouseDown={(e) => e.stopPropagation()}
                         placeholder={t("Group Title", "Názov skupiny", "Csoport neve")}
                         className="flex-1 min-w-0 px-2 py-0.5 rounded-md bg-white border border-indigo-400 text-slate-800 text-[11px] font-bold focus:outline-none shadow-xs"
                         autoFocus
                         onKeyDown={(e) => {
+                          e.stopPropagation();
                           if (e.key === "Enter") handleRenameSidebarGroup(entry.groupId, editingGroupTitle);
                           if (e.key === "Escape") setEditingGroupId(null);
                         }}
                       />
                       <button
                         type="button"
-                        onClick={() => handleRenameSidebarGroup(entry.groupId, editingGroupTitle)}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRenameSidebarGroup(entry.groupId, editingGroupTitle);
+                        }}
                         className="p-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer shadow-xs shrink-0"
                         title={t("Save", "Uložiť", "Mentés")}
                       >
@@ -1009,7 +1036,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       </button>
                       <button
                         type="button"
-                        onClick={() => setEditingGroupId(null)}
+                        onMouseDown={(e) => e.stopPropagation()}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingGroupId(null);
+                        }}
                         className="p-1 rounded-md text-slate-400 hover:text-slate-600 transition-colors cursor-pointer shrink-0"
                         title={t("Cancel", "Zrušiť", "Mégse")}
                       >
@@ -1025,7 +1056,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <div className="flex items-center gap-1 opacity-70 group-hover/header:opacity-100 transition-opacity">
                           <button
                             type="button"
-                            onClick={() => {
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                              e.stopPropagation();
                               setEditingGroupId(entry.groupId);
                               setEditingGroupTitle(entry.title);
                             }}
@@ -1037,7 +1070,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           {sidebarGroups.length > 1 && (
                             <button
                               type="button"
-                              onClick={() => handleDeleteSidebarGroup(entry.groupId)}
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteSidebarGroup(entry.groupId);
+                              }}
                               className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                               title={t("Delete group", "Vymazať skupinu", "Csoport törlése")}
                             >
@@ -1140,7 +1177,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="pt-2 pb-1">
               <button
                 type="button"
-                onClick={() => handleAddNewSidebarGroup()}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleAddNewSidebarGroup();
+                }}
                 className="w-full py-2 px-3 rounded-xl border border-dashed border-indigo-300 hover:border-indigo-400 bg-indigo-50/40 hover:bg-indigo-50 text-indigo-600 hover:text-indigo-700 text-[11px] font-bold flex items-center justify-center gap-1.5 transition-all cursor-pointer shadow-xs active:scale-[0.98]"
               >
                 <Plus className="h-3.5 w-3.5" />
@@ -1448,6 +1489,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           setIsStartMenuOpen(false);
           setStartMenuEditMode(false);
         }}
+        onEditModeChange={setStartMenuEditMode}
         activeTab={activeTab}
         onSelectTab={(tabId) => {
           setActiveTab(tabId);
