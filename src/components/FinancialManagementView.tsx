@@ -6846,6 +6846,17 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 {canEdit && (
                 <button
                   type="button"
+                  onClick={() => handleOpenCreateRecurringModal("income", "global")}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>{t("New Recurring Income", "Nový pravidelný príjem", "Új rendszeres bevétel")}</span>
+                </button>
+                )}
+
+                {canEdit && (
+                <button
+                  type="button"
                   onClick={() => handleOpenCreateRecurringModal("expense", "global")}
                   className="px-4 py-2 bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold rounded-xl flex items-center gap-1.5 cursor-pointer shadow-xs transition-all"
                 >
