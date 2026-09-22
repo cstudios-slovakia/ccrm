@@ -385,8 +385,19 @@ function App() {
 
   const getTabFromHash = () => {
     const rawHash = window.location.hash.replace("#", "");
-    const [baseRaw, queryRaw] = rawHash.split(/[/?]/);
-    const hashLower = (baseRaw || "").toLowerCase();
+    // Split the query off on "?" only, and the alias-able base off on the first
+    // "/" only. Splitting on /[/?]/ at once turned "settings/managers" into
+    // "settings?managers": every sub-path (settings sections, unified edit ids,
+    // warehouse/financial sub-views) was dropped, and a settings section click
+    // did nothing. The rest of the route keeps its original case, because
+    // client-/user- routes carry names.
+    const qIdx = rawHash.indexOf("?");
+    const pathRaw = qIdx === -1 ? rawHash : rawHash.slice(0, qIdx);
+    const queryRaw = qIdx === -1 ? "" : rawHash.slice(qIdx + 1);
+    const slashIdx = pathRaw.indexOf("/");
+    const baseRaw = slashIdx === -1 ? pathRaw : pathRaw.slice(0, slashIdx);
+    const subPath = slashIdx === -1 ? "" : pathRaw.slice(slashIdx);
+    const hashLower = baseRaw.toLowerCase();
 
     // Map common synonyms & aliases directly to canonical app tabs
     const aliasMap: Record<string, string> = {
@@ -413,10 +424,14 @@ function App() {
     const resolvedBase = aliasMap[hashLower] || hashLower;
 
     if (resolvedBase.startsWith("client-") || resolvedBase.startsWith("lead-") || resolvedBase.startsWith("user-") || resolvedBase.startsWith("ue_") || resolvedBase.startsWith("dash_") || resolvedBase.startsWith("settings") || resolvedBase.startsWith("warehouse") || resolvedBase.startsWith("financial") || resolvedBase.startsWith("invoices") || resolvedBase.startsWith("sai") || resolvedBase.startsWith("automation")) {
-      return queryRaw ? `${resolvedBase}?${queryRaw}` : resolvedBase;
+      // An alias maps to its canonical tab; anything else keeps its original case.
+      const route = (aliasMap[hashLower] || baseRaw) + subPath;
+      return queryRaw ? `${route}?${queryRaw}` : route;
     }
     const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "tasks", "files", "personal-settings", "email", "rag_ai", "sai", "automation", "meetings", "projects", "updates", "warehouse", "financial", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
-    return validTabs.includes(resolvedBase) ? (queryRaw ? `${resolvedBase}?${queryRaw}` : resolvedBase) : "dashboard";
+    if (!validTabs.includes(resolvedBase)) return "dashboard";
+    const route = resolvedBase + subPath;
+    return queryRaw ? `${route}?${queryRaw}` : route;
   };
 
   const [activeTab, setActiveTab] = useState(getTabFromHash);
