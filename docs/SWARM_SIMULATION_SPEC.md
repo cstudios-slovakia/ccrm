@@ -1,4 +1,4 @@
-# CCRM Swarm Simulation Specification (v1.10-kiwi)
+# CCRM Swarm Simulation Specification (v1.11-lemon)
 
 > **Document Purpose**: Technical architecture and functional specification for integrating an autonomous multi-agent simulation sandbox directly into CCRM.
 > **Architecture Pattern**: Client-Orchestrated JavaScript Runtime (React 19 / Browser) + Server-Persisted Checkpointing & History (PHP 8 / MySQL).
