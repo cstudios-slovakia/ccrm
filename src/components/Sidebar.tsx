@@ -18,7 +18,8 @@ import {
   Sparkles,
   Coins,
   ListTodo,
-  Pin
+  Pin,
+  Plus
 } from "lucide-react";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
@@ -285,9 +286,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const compactness = sidebarCompactness || "comfortable";
   const isPinned = sidebarPinned === true;
   const isDockMode = !isPinned && sidebarUnpinnedStyle === "dock";
+  const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null);
 
-  // When pinned, sidebar stays expanded permanently
-  const isExpanded = isPinned || !isCollapsed;
+  // When pinned or editing navigation, sidebar stays expanded
+  const isExpanded = isPinned || !isCollapsed || (isStartMenuOpen && startMenuEditMode);
 
   const widthClasses = {
     compact: {
@@ -489,6 +491,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       | { type: "item"; item: any; group: SidebarGroup; indexInGroup: number }
       | { type: "header"; title: string; groupId: string }
       | { type: "divider"; groupId: string }
+      | { type: "dropzone"; groupId: string }
     > = [];
 
     sidebarGroups.forEach((group, gIdx) => {
@@ -496,7 +499,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         .map((id) => allPossibleItems.find((i) => i.id === id))
         .filter(Boolean) as any[];
 
-      if (groupItemObjs.length === 0) return;
+      if (groupItemObjs.length === 0 && !(isStartMenuOpen && startMenuEditMode)) return;
 
       if (!isExpanded && gIdx > 0) {
         list.push({ type: "divider", groupId: group.id });
@@ -509,10 +512,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
       groupItemObjs.forEach((item, iIdx) => {
         list.push({ type: "item", item, group, indexInGroup: iIdx });
       });
+
+      if (isStartMenuOpen && startMenuEditMode) {
+        list.push({ type: "dropzone", groupId: group.id });
+      }
     });
 
     return list;
-  }, [sidebarGroups, allPossibleItems, isExpanded]);
+  }, [sidebarGroups, allPossibleItems, isExpanded, isStartMenuOpen, startMenuEditMode]);
 
   return (
     <>
@@ -548,12 +555,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           }
         }}
         className={cn(
-          "h-screen fixed left-0 top-0 bg-white flex flex-col transition-all duration-300 z-[1000] select-none shrink-0 hidden lg:flex",
+          "h-screen fixed left-0 top-0 bg-white flex flex-col transition-all duration-300 select-none shrink-0 hidden lg:flex",
+          isStartMenuOpen ? "z-[100001]" : "z-[1000]",
           isDockMode && !isExpanded && "overflow-visible",
           isExpanded ? widthClasses.expanded : widthClasses.collapsed,
           isPinned
             ? "shadow-[inset_-10px_0_16px_-6px_rgba(0,0,0,0.08)] border-r border-slate-200/90"
-            : isCollapsed
+            : isCollapsed && !(isStartMenuOpen && startMenuEditMode)
               ? "shadow-none border-r border-slate-200/80"
               : "shadow-[10px_0_30px_rgba(0,0,0,0.06)] border-r-transparent"
         )}
@@ -631,6 +639,36 @@ export const Sidebar: React.FC<SidebarProps> = ({
             widthClasses.spacing
           )}
         >
+          {/* Editing Navigation Mode Indicator Banner */}
+          {isStartMenuOpen && startMenuEditMode && (
+            <div className="p-3 mb-2 rounded-2xl bg-indigo-50 border border-indigo-200/90 flex flex-col gap-1.5 animate-in fade-in duration-200 select-none">
+              <div className="flex items-center justify-between">
+                <span className="text-[10.5px] font-black uppercase tracking-wider text-indigo-700 flex items-center gap-1.5">
+                  <Pencil className="h-3.5 w-3.5 text-indigo-600" />
+                  {t("Edit Navigation", "Úprava menu", "Menü szerkesztése")}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsStartMenuOpen(false);
+                    setStartMenuEditMode(false);
+                    if (!isPinned) setIsCollapsed(true);
+                  }}
+                  className="px-2 py-0.5 rounded-lg bg-indigo-600 text-white text-[10px] font-bold hover:bg-indigo-700 transition-colors cursor-pointer shadow-xs"
+                >
+                  {t("Done", "Hotovo", "Kész")}
+                </button>
+              </div>
+              <p className="text-[10px] text-indigo-600/90 leading-snug">
+                {t(
+                  "Drag modules from the Start Menu onto any group below to pin them.",
+                  "Presuňte moduly zo Štart menu na skupiny nižšie pre pripnutie.",
+                  "Húzzon modulokat a Start menüből az alábbi csoportokba."
+                )}
+              </p>
+            </div>
+          )}
+
           {flattenedNavItems.map((entry, idx) => {
             if (entry.type === "divider") {
               return (
@@ -648,6 +686,39 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   className="px-3 pt-2 pb-0.5 text-[10px] font-bold text-slate-500 uppercase tracking-widest truncate"
                 >
                   {entry.title}
+                </div>
+              );
+            }
+
+            if (entry.type === "dropzone") {
+              return (
+                <div
+                  key={`dropzone_${entry.groupId}_${idx}`}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setDragOverIndex(-1);
+                    setDragOverGroupId(entry.groupId);
+                  }}
+                  onDragLeave={() => {
+                    if (dragOverGroupId === entry.groupId) setDragOverGroupId(null);
+                  }}
+                  onDrop={(e) => {
+                    e.stopPropagation();
+                    handleDropOnSidebar(e, entry.groupId);
+                    setDragOverGroupId(null);
+                  }}
+                  className={cn(
+                    "p-2.5 my-1.5 rounded-xl border-2 border-dashed transition-all text-center flex items-center justify-center gap-1.5 select-none",
+                    dragOverGroupId === entry.groupId
+                      ? "border-indigo-500 bg-indigo-50/90 text-indigo-700 font-bold scale-[1.02]"
+                      : "border-slate-200/90 hover:border-indigo-300 text-slate-400 hover:text-indigo-600 bg-slate-50/50"
+                  )}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                  <span className="text-[10px] font-bold">
+                    {t("Drop module here", "Presuňte sem modul", "Húzza ide a modult")}
+                  </span>
                 </div>
               );
             }
@@ -672,6 +743,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 }}
                 type="button"
                 onClick={() => {
+                  if (isStartMenuOpen && startMenuEditMode) return;
                   setActiveTab(item.id);
                   if (!isPinned) setIsCollapsed(true);
                 }}
@@ -823,6 +895,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     {item.label}
                   </span>
                 )}
+
+                {/* Quick Unpin Button in Edit Mode */}
+                {isStartMenuOpen && startMenuEditMode && isExpanded && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleTogglePinItem(item.id);
+                    }}
+                    className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer shrink-0 ml-auto"
+                    title={t("Remove from sidebar", "Odstrániť z bočného menu", "Eltávolítás az oldalsávról")}
+                  >
+                    <X className="h-3.5 w-3.5" />
+                  </button>
+                )}
               </button>
             );
           })}
@@ -910,6 +997,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <button
               type="button"
               onClick={() => {
+                setIsCollapsed(false);
                 setStartMenuEditMode(true);
                 setIsStartMenuOpen(true);
               }}

@@ -750,7 +750,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 sm:p-6 select-none">
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 sm:p-6 lg:pl-72 lg:pr-8 select-none">
       {/* Backdrop overlay */}
       <div
         className={`fixed inset-0 bg-slate-950/40 backdrop-blur-md transition-opacity duration-250 ease-out ${
