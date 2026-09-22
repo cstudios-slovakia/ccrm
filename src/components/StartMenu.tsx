@@ -36,6 +36,7 @@ interface StartMenuProps {
   onOpenCreateDashboard?: () => void;
   pinnedSidebarItems?: string[];
   onTogglePinToSidebar?: (itemId: string) => void;
+  initialEditing?: boolean;
 }
 
 /** The stored group shape, defined next to the layout it is persisted in. */
@@ -70,7 +71,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   unifiedEntries = [],
   onOpenCreateDashboard,
   pinnedSidebarItems = [],
-  onTogglePinToSidebar
+  onTogglePinToSidebar,
+  initialEditing = false
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
@@ -78,7 +80,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [isClosing, setIsClosing] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(initialEditing);
 
   // Group editing states
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
@@ -167,6 +169,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   useEffect(() => {
     if (isOpen) {
       setIsClosing(false);
+      if (initialEditing) {
+        setIsEditing(true);
+      }
       const frame = requestAnimationFrame(() => {
         setIsVisible(true);
       });
@@ -178,7 +183,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       setIsEditing(false);
       setEditingGroupId(null);
     }
-  }, [isOpen]);
+  }, [isOpen, initialEditing]);
 
   const handleAnimatedClose = () => {
     setIsClosing(true);
@@ -605,6 +610,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     if (!isEditing) return;
     setDraggedItemId(id);
     setDraggedFromGroup(fromGroup);
+    try {
+      e.dataTransfer.setData("application/json", JSON.stringify({ type: "module", id }));
+    } catch (err) {}
     e.dataTransfer.setData("text/plain", id);
     e.dataTransfer.effectAllowed = "move";
   };

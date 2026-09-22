@@ -108,6 +108,14 @@ export interface UserPrefs {
   aiKeyBannerDismissed: boolean;
   /** Customised built-in RAG agent, or null while it is still the stock one. */
   ragDefaultAgent: any | null;
+  /** Sidebar persistent pinned state on the left. If true, stays expanded and renders a right inner shadow. */
+  sidebarPinned: boolean;
+  /** Sidebar compactness density: "compact" | "comfortable" | "spacious". */
+  sidebarCompactness: "compact" | "comfortable" | "spacious";
+  /** Unpinned behavior: "overlay" (slide-out on hover) | "dock" (macOS cursor-distance magnification). */
+  sidebarUnpinnedStyle: "overlay" | "dock";
+  /** Custom sidebar groups structure. */
+  sidebarGroups: Array<{ id: string; title: string; items: string[] }> | null;
 }
 
 export const DEFAULT_USER_PREFS: UserPrefs = {
@@ -128,6 +136,10 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   licenseNoticeSuppressed: null,
   aiKeyBannerDismissed: false,
   ragDefaultAgent: null,
+  sidebarPinned: false,
+  sidebarCompactness: "comfortable",
+  sidebarUnpinnedStyle: "overlay",
+  sidebarGroups: null,
 };
 
 /** Anything with a metadata_json blob — UserProfile, or a raw sync.php row. */

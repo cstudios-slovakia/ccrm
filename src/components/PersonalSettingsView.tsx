@@ -6,6 +6,7 @@ import type { Language } from "../utils/translations";
 import type { Appearance, ThemeMode } from "../utils/theme";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ThemeSettings } from "./ThemeSettings";
+import { SidebarSettings } from "./SidebarSettings";
 import { SecretInput } from "./ui/SecretInput";
 
 interface PersonalSettingsViewProps {
@@ -424,6 +425,8 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                 setThemeMode={setThemeMode}
                 appearance={appearance}
               />
+
+              <SidebarSettings systemLanguage={systemLanguage} />
 
               <div className="flex justify-end pt-2">
                 <button
