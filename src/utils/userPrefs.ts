@@ -116,6 +116,8 @@ export interface UserPrefs {
   sidebarUnpinnedStyle: "overlay" | "dock";
   /** Custom sidebar groups structure. */
   sidebarGroups: Array<{ id: string; title: string; items: string[] }> | null;
+  /** Default startup screen / landing page route id. */
+  defaultPage: string | null;
 }
 
 export const DEFAULT_USER_PREFS: UserPrefs = {
@@ -140,6 +142,7 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   sidebarCompactness: "comfortable",
   sidebarUnpinnedStyle: "overlay",
   sidebarGroups: null,
+  defaultPage: null,
 };
 
 /** Anything with a metadata_json blob — UserProfile, or a raw sync.php row. */

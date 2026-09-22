@@ -1972,7 +1972,7 @@ ${log.payload || ''}
       const meta = typeof user.metadata_json === "string"
         ? JSON.parse(user.metadata_json || "{}")
         : (user.metadata_json || {});
-      return meta?.defaultPage || null;
+      return meta?.preferences?.defaultPage || meta?.defaultPage || null;
     } catch (e) {
       return null;
     }
@@ -1988,7 +1988,12 @@ ${log.payload || ''}
     } catch (e) {
       console.error("Error parsing user metadata_json", e);
     }
-    const nextMeta = { ...currentMeta, defaultPage: pageId };
+    const currentPrefs = currentMeta.preferences || {};
+    const nextMeta = {
+      ...currentMeta,
+      defaultPage: pageId,
+      preferences: { ...currentPrefs, defaultPage: pageId }
+    };
     updateUsersAndSync(prevUsers => prevUsers.map(u => {
       if (u.email === currentUser.email) {
         return { ...u, metadata_json: nextMeta };

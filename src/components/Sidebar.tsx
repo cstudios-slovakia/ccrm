@@ -350,8 +350,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   unifiedEntries = [],
   customDashboards = [],
   onSaveCustomDashboards,
-  defaultPage: _defaultPage,
-  onSaveDefaultPage: _onSaveDefaultPage
+  defaultPage,
+  onSaveDefaultPage
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
@@ -1468,6 +1468,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         onTogglePinToSidebar={handleTogglePinItem}
         initialEditing={startMenuEditMode}
         onAddSidebarGroup={() => handleAddNewSidebarGroup()}
+        defaultPage={defaultPage}
+        onSaveDefaultPage={onSaveDefaultPage}
       />
 
       {/* New Custom Dashboard Modal */}

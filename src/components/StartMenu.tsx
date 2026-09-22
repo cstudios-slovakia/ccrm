@@ -5,7 +5,7 @@ import {
   Package, Coins, PencilLine, FolderOpen, Mail, Brain, Workflow,
   Globe, Sparkles, Settings, User, Search, X, ChevronRight,
   Check, Pencil, GripVertical, Pin, RotateCcw, Plus,
-  Archive, EyeOff, Trash2, FolderPlus, ListTodo
+  Archive, EyeOff, Trash2, FolderPlus, ListTodo, Home
 } from "lucide-react";
 import type { UserProfile, RolePermission, UnifiedEntryRegistry, CustomDashboard } from "../types";
 import type { Language } from "../utils/translations";
@@ -38,6 +38,8 @@ interface StartMenuProps {
   onTogglePinToSidebar?: (itemId: string) => void;
   initialEditing?: boolean;
   onAddSidebarGroup?: () => void;
+  defaultPage?: string;
+  onSaveDefaultPage?: (pageId: string) => void;
 }
 
 /** The stored group shape, defined next to the layout it is persisted in. */
@@ -74,10 +76,31 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   pinnedSidebarItems = [],
   onTogglePinToSidebar,
   initialEditing = false,
-  onAddSidebarGroup
+  onAddSidebarGroup,
+  defaultPage,
+  onSaveDefaultPage
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+
+  const [storedDefaultPage, setStoredDefaultPage] = useUserPref("defaultPage");
+  const effectiveDefaultPage = defaultPage || storedDefaultPage || "dashboard";
+
+  const handleSetDefaultPage = (pageId: string) => {
+    if (onSaveDefaultPage) {
+      onSaveDefaultPage(pageId);
+    }
+    setStoredDefaultPage(pageId);
+    if (typeof (window as any).showToast === "function") {
+      (window as any).showToast(
+        t(
+          "Default start screen updated.",
+          "Predvolená úvodná obrazovka bola zmenená.",
+          "Az alapértelmezett kezdőképernyő frissítve."
+        )
+      );
+    }
+  };
 
   const [searchQuery, setSearchQuery] = useState("");
   const [isClosing, setIsClosing] = useState(false);
@@ -848,6 +871,30 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               </button>
             )}
 
+            {/* Default Startup Screen Selector (in Edit Mode) */}
+            {isEditing && (
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-amber-50 hover:bg-amber-100/80 border border-amber-200 text-amber-900 transition-all shadow-xs shrink-0">
+                <Home className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                <span className="text-[11px] font-bold whitespace-nowrap hidden md:inline">
+                  {t("Start Screen:", "Úvodná obrazovka:", "Kezdőképernyő:")}
+                </span>
+                <select
+                  value={effectiveDefaultPage}
+                  onChange={(e) => handleSetDefaultPage(e.target.value)}
+                  className="bg-transparent text-xs font-bold text-amber-950 focus:outline-none cursor-pointer pr-1"
+                  title={t("Screen that opens when launching CCRM", "Obrazovka, ktorá sa otvorí pri spustení CCRM", "A CCRM indításakor megnyíló képernyő")}
+                >
+                  {allMenuItems
+                    .filter((m) => canOpenRoute(m.id))
+                    .map((m) => (
+                      <option key={m.id} value={m.id} className="text-slate-800 bg-white">
+                        {m.label}
+                      </option>
+                    ))}
+                </select>
+              </div>
+            )}
+
             {/* Edit / Customize Toggle Button */}
             <button
               type="button"
@@ -1079,6 +1126,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                             isEditing={isEditing}
                             isDragging={isBeingDragged}
                             isPinned={pinnedSidebarItems.includes(item.id)}
+                            isDefault={item.id === effectiveDefaultPage}
+                            onSetDefault={() => handleSetDefaultPage(item.id)}
                             onTogglePin={() => onTogglePinToSidebar?.(item.id)}
                             onHide={() => handleHideItem(item.id, group.id)}
                             onDragStart={(e) => handleItemDragStart(e, item.id, group.id)}
@@ -1086,6 +1135,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                             onDragOver={(e) => handleItemDragOverItem(e, group.id, idx)}
                             onDrop={(e) => handleItemDropOnGroup(e, group.id, idx)}
                             onClick={() => handleItemClick(item.id)}
+                            systemLanguage={systemLanguage}
                           />
                         </React.Fragment>
                       );
@@ -1282,7 +1332,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
           )}
         </div>
 
-        {/* Footer: User Profile & Quick Actions */}
+        {/* Footer: User Profile & Default Start Screen Quick Selector */}
         <div className="p-4 sm:px-6 bg-slate-50/90  border-t border-slate-100  flex items-center justify-between gap-3 text-xs">
           <button
             type="button"
@@ -1303,6 +1353,28 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             </div>
             <User className="h-3.5 w-3.5 text-slate-400 group-hover:text-slate-600 transition-colors" />
           </button>
+
+          {/* Quick Start Screen Selector */}
+          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200/90 shadow-2xs hover:border-slate-300 transition-colors">
+            <Home className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+            <span className="text-[11px] font-semibold text-slate-500 hidden sm:inline">
+              {t("Start Screen:", "Úvodná obrazovka:", "Kezdőképernyő:")}
+            </span>
+            <select
+              value={effectiveDefaultPage}
+              onChange={(e) => handleSetDefaultPage(e.target.value)}
+              className="bg-transparent text-xs font-bold text-slate-800 focus:outline-none cursor-pointer pr-1 max-w-[130px] sm:max-w-[180px] truncate"
+              title={t("Screen that opens when launching CCRM", "Obrazovka, ktorá sa otvorí pri spustení CCRM", "A CCRM indításakor megnyíló képernyő")}
+            >
+              {allMenuItems
+                .filter((m) => canOpenRoute(m.id))
+                .map((m) => (
+                  <option key={m.id} value={m.id} className="text-slate-800 bg-white">
+                    {m.label}
+                  </option>
+                ))}
+            </select>
+          </div>
         </div>
       </div>
     </div>
@@ -1315,6 +1387,8 @@ interface StartMenuItemTileProps {
   isEditing?: boolean;
   isDragging?: boolean;
   isPinned?: boolean;
+  isDefault?: boolean;
+  onSetDefault?: () => void;
   onTogglePin?: () => void;
   onHide?: () => void;
   onDragStart?: (e: React.DragEvent) => void;
@@ -1322,6 +1396,7 @@ interface StartMenuItemTileProps {
   onDragOver?: (e: React.DragEvent) => void;
   onDrop?: (e: React.DragEvent) => void;
   onClick: () => void;
+  systemLanguage?: Language;
 }
 
 const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
@@ -1330,13 +1405,16 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
   isEditing = false,
   isDragging = false,
   isPinned = false,
+  isDefault = false,
+  onSetDefault,
   onTogglePin,
   onHide,
   onDragStart,
   onDragEnd,
   onDragOver,
   onDrop,
-  onClick
+  onClick,
+  systemLanguage = "en"
 }) => {
   const Icon = item.icon;
 
@@ -1372,7 +1450,28 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
           <span className="text-xs font-bold text-slate-900  truncate flex-1">
             {item.label}
           </span>
-          {item.badge && (
+          {isDefault && (
+            <span
+              className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-300/80 flex items-center gap-1 shrink-0"
+              title={
+                systemLanguage === "sk"
+                  ? "Predvolená úvodná obrazovka"
+                  : systemLanguage === "hu"
+                  ? "Alapértelmezett kezdőképernyő"
+                  : "Default start screen"
+              }
+            >
+              <Home className="h-2.5 w-2.5 fill-current" />
+              <span>
+                {systemLanguage === "sk"
+                  ? "Úvodná"
+                  : systemLanguage === "hu"
+                  ? "Kezdő"
+                  : "Start"}
+              </span>
+            </span>
+          )}
+          {item.badge && !isDefault && (
             <span className="text-[8px] font-black uppercase px-1.5 py-0.2 rounded-md bg-slate-100  text-slate-500  shrink-0">
               {item.badge}
             </span>
@@ -1381,6 +1480,50 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
 
         {/* Bottom Actions Row (Below the title) */}
         <div className="flex items-center gap-1.5 pt-1 border-t border-slate-100 ">
+          {/* Default Startup Screen Button */}
+          {onSetDefault && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSetDefault();
+              }}
+              className={`flex-1 py-1 px-2 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                isDefault
+                  ? "bg-amber-600 text-white shadow-xs ring-1 ring-amber-500 hover:bg-amber-700"
+                  : "bg-slate-100 hover:bg-amber-50 hover:text-amber-700 text-slate-600"
+              }`}
+              title={
+                isDefault
+                  ? systemLanguage === "sk"
+                    ? "Predvolená úvodná obrazovka"
+                    : systemLanguage === "hu"
+                    ? "Alapértelmezett kezdőképernyő"
+                    : "Default start screen"
+                  : systemLanguage === "sk"
+                  ? "Nastaviť ako úvodnú obrazovku"
+                  : systemLanguage === "hu"
+                  ? "Beállítás kezdőképernyőként"
+                  : "Set as default start screen"
+              }
+            >
+              <Home className={`h-3 w-3 ${isDefault ? "fill-current" : ""}`} />
+              <span>
+                {isDefault
+                  ? systemLanguage === "sk"
+                    ? "Predvolená"
+                    : systemLanguage === "hu"
+                    ? "Kezdő"
+                    : "Default"
+                  : systemLanguage === "sk"
+                  ? "Úvodná"
+                  : systemLanguage === "hu"
+                  ? "Kezdő"
+                  : "Start"}
+              </span>
+            </button>
+          )}
+
           {/* Pin to Sidebar button */}
           {onTogglePin && (
             <button
@@ -1389,15 +1532,39 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
                 e.stopPropagation();
                 onTogglePin();
               }}
-              className={`flex-1 py-1 px-2 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+              className={`py-1 px-2 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
                 isPinned
                   ? "bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-500 hover:bg-indigo-700"
                   : "bg-slate-100  hover:bg-indigo-50 hover:text-indigo-600  text-slate-600 "
               }`}
-              title={isPinned ? "Pinned to left sidebar. Click to unpin." : "Pin to left sidebar"}
+              title={
+                isPinned
+                  ? systemLanguage === "sk"
+                    ? "Pripnuté v bočnom paneli. Kliknite pre odopnutie."
+                    : systemLanguage === "hu"
+                    ? "Kitűzve az oldalsávra."
+                    : "Pinned to left sidebar. Click to unpin."
+                  : systemLanguage === "sk"
+                  ? "Pripnúť na bočný panel"
+                  : systemLanguage === "hu"
+                  ? "Kitűzés az oldalsávra"
+                  : "Pin to left sidebar"
+              }
             >
               <Pin className={`h-3 w-3 ${isPinned ? "fill-current" : ""}`} />
-              <span>{isPinned ? "Pinned" : "Pin"}</span>
+              <span>
+                {isPinned
+                  ? systemLanguage === "sk"
+                    ? "Pripnuté"
+                    : systemLanguage === "hu"
+                    ? "Kitűzve"
+                    : "Pinned"
+                  : systemLanguage === "sk"
+                  ? "Pripnúť"
+                  : systemLanguage === "hu"
+                  ? "Kitűzés"
+                  : "Pin"}
+              </span>
             </button>
           )}
 
@@ -1409,11 +1576,23 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
                 e.stopPropagation();
                 onHide();
               }}
-              className="py-1 px-2.5 rounded-xl bg-slate-100  hover:bg-rose-50  hover:text-rose-600 text-slate-500  text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
-              title="Hide item (move to Unused)"
+              className="py-1 px-2 rounded-xl bg-slate-100  hover:bg-rose-50  hover:text-rose-600 text-slate-500  text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+              title={
+                systemLanguage === "sk"
+                  ? "Skryť modul"
+                  : systemLanguage === "hu"
+                  ? "Modul elrejtése"
+                  : "Hide item"
+              }
             >
               <EyeOff className="h-3 w-3" />
-              <span>Hide</span>
+              <span>
+                {systemLanguage === "sk"
+                  ? "Skryť"
+                  : systemLanguage === "hu"
+                  ? "Elrejtés"
+                  : "Hide"}
+              </span>
             </button>
           )}
         </div>
@@ -1423,12 +1602,6 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
 
   return (
     <>
-      {/*
-        Dark Theme Preset for Tile:
-        isActive
-          ? "bg-indigo-50/90  border-indigo-400  shadow-xs ring-1 ring-indigo-500/20"
-          : "bg-slate-50  border-transparent hover:border-slate-200  hover:bg-white  hover:shadow-md hover:scale-[1.015] hover:-translate-y-0.5 active:scale-[0.98]"
-      */}
       <div
         onClick={onClick}
         className={`w-full p-2.5 rounded-2xl text-left transition-all duration-200 flex items-start gap-2.5 group relative border cursor-pointer ${
@@ -1450,10 +1623,31 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
 
       {/* Content */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <span className={`text-xs font-bold truncate transition-colors ${isActive ? "text-indigo-600 " : "text-slate-800  group-hover:text-slate-950 "}`}>
             {item.label}
           </span>
+          {isDefault && (
+            <span
+              className="text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-amber-50 text-amber-700 border border-amber-200/80 flex items-center gap-1 shrink-0 shadow-2xs"
+              title={
+                systemLanguage === "sk"
+                  ? "Predvolená úvodná obrazovka"
+                  : systemLanguage === "hu"
+                  ? "Alapértelmezett kezdőképernyő"
+                  : "Default start screen"
+              }
+            >
+              <Home className="h-2.5 w-2.5 text-amber-600 fill-current" />
+              <span className="hidden sm:inline">
+                {systemLanguage === "sk"
+                  ? "Úvodná"
+                  : systemLanguage === "hu"
+                  ? "Kezdő"
+                  : "Start"}
+              </span>
+            </span>
+          )}
           {item.badge && (
             <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded-md bg-slate-100  text-slate-500 ">
               {item.badge}
