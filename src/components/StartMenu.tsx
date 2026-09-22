@@ -5,7 +5,8 @@ import {
   Package, Coins, PencilLine, FolderOpen, Mail, Brain, Workflow,
   Globe, Sparkles, Settings, User, Search, X, ChevronRight,
   Check, Pencil, GripVertical, Pin, RotateCcw, Plus,
-  Archive, EyeOff, Trash2, FolderPlus, ListTodo, Home
+  Archive, EyeOff, Trash2, FolderPlus, ListTodo, Home,
+  ChevronUp, ChevronDown
 } from "lucide-react";
 import type { UserProfile, RolePermission, UnifiedEntryRegistry, CustomDashboard } from "../types";
 import type { Language } from "../utils/translations";
@@ -16,6 +17,7 @@ import { normalizeStartMenuLayout } from "../utils/startMenuLayout";
 import { SOCIAL_MEDIA_ENABLED } from "../utils/featureFlags";
 import { FlockIcon } from "./icons/FlockIcon";
 import { isHomeDashboard } from "../utils/dashboardWidgets";
+import { cn } from "../utils/cn";
 
 interface StartMenuProps {
   isOpen: boolean;
@@ -123,6 +125,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   // Group editing states
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editingGroupName, setEditingGroupName] = useState("");
+  const [addMenuGroupId, setAddMenuGroupId] = useState<string | null>(null);
 
   // Item drag & drop state
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
@@ -220,6 +223,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       setSearchQuery("");
       setEditingMode(false);
       setEditingGroupId(null);
+      setAddMenuGroupId(null);
     }
   }, [isOpen, initialEditing]);
 
@@ -260,6 +264,18 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isOpen, isClosing]);
+
+  // Close menu group picker on outside click
+  useEffect(() => {
+    if (!addMenuGroupId) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && target.closest("[data-start-group-picker]")) return;
+      setAddMenuGroupId(null);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [addMenuGroupId]);
 
   // Build all available navigation items
   const allItems: NavMenuItem[] = useMemo(() => {
@@ -653,6 +669,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     if (!isEditing) return;
     setDraggedItemId(id);
     setDraggedFromGroup(fromGroup);
+    (window as any).__draggedModuleId = id;
     try {
       e.dataTransfer.setData("application/json", JSON.stringify({ type: "module", id }));
     } catch (err) {}
@@ -684,6 +701,67 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     setDraggedFromGroup(null);
     setDragOverGroup(null);
     setDragOverItemIndex(null);
+    (window as any).__draggedModuleId = null;
+  };
+
+  // Reorder item within a group
+  const handleMoveMenuItem = (groupId: string, indexInGroup: number, direction: -1 | 1) => {
+    const grp = resolvedGroupsData.groupsWithItems.find((g) => g.id === groupId);
+    if (!grp) return;
+    const newIndex = indexInGroup + direction;
+    if (newIndex < 0 || newIndex >= grp.items.length) return;
+
+    const nextItems = grp.items.map((i) => i.id);
+    const [moved] = nextItems.splice(indexInGroup, 1);
+    nextItems.splice(newIndex, 0, moved);
+
+    const nextGroupItems: Record<string, string[]> = {};
+    resolvedGroupsData.groupsWithItems.forEach((g) => {
+      nextGroupItems[g.id] = g.id === groupId ? nextItems : g.items.map((i) => i.id);
+    });
+    const nextUnused = resolvedGroupsData.unused.map((i) => i.id);
+
+    persistLayout(groups, nextGroupItems, nextUnused);
+  };
+
+  // Move item directly to another group
+  const handleMoveMenuItemToGroup = (itemId: string, fromGroupId: string, targetGroupId: string) => {
+    if (fromGroupId === targetGroupId) return;
+    const nextGroupItems: Record<string, string[]> = {};
+    resolvedGroupsData.groupsWithItems.forEach((g) => {
+      nextGroupItems[g.id] = g.items.map((i) => i.id).filter((id) => id !== itemId);
+    });
+    let nextUnused = resolvedGroupsData.unused.map((i) => i.id).filter((id) => id !== itemId);
+
+    if (targetGroupId === "unused") {
+      nextUnused.push(itemId);
+    } else {
+      if (!nextGroupItems[targetGroupId]) {
+        nextGroupItems[targetGroupId] = [];
+      }
+      nextGroupItems[targetGroupId].push(itemId);
+    }
+
+    persistLayout(groups, nextGroupItems, nextUnused);
+  };
+
+  // Add item directly to a group
+  const handleAddItemToMenuGroup = (itemId: string, targetGroupId: string) => {
+    const nextGroupItems: Record<string, string[]> = {};
+    resolvedGroupsData.groupsWithItems.forEach((g) => {
+      nextGroupItems[g.id] = g.items.map((i) => i.id).filter((id) => id !== itemId);
+    });
+    let nextUnused = resolvedGroupsData.unused.map((i) => i.id).filter((id) => id !== itemId);
+
+    if (!nextGroupItems[targetGroupId]) {
+      nextGroupItems[targetGroupId] = [];
+    }
+    if (!nextGroupItems[targetGroupId].includes(itemId)) {
+      nextGroupItems[targetGroupId].push(itemId);
+    }
+
+    persistLayout(groups, nextGroupItems, nextUnused);
+    setAddMenuGroupId(null);
   };
 
   const handleItemDropOnGroup = (e: React.DragEvent, targetGroupId: string, targetIndex?: number) => {
@@ -1092,6 +1170,22 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                       </span>
                       {isEditing && editingGroupId !== group.id && (
                         <>
+                          {/* Add Module to this group button */}
+                          <button
+                            type="button"
+                            onClick={() => setAddMenuGroupId(addMenuGroupId === group.id ? null : group.id)}
+                            className={cn(
+                              "flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold transition-colors cursor-pointer",
+                              addMenuGroupId === group.id
+                                ? "bg-indigo-600 text-white shadow-xs"
+                                : "text-indigo-600 hover:bg-indigo-50 border border-indigo-200"
+                            )}
+                            title={t("Add module to this group", "Pridať modul do tejto skupiny", "Modul hozzáadása ehhez a csoporthoz")}
+                          >
+                            <Plus className="h-3 w-3" />
+                            <span>{t("Add", "Pridať", "Hozzáadás")}</span>
+                          </button>
+
                           <button
                             type="button"
                             onClick={() => {
@@ -1118,6 +1212,56 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                     </div>
                   </div>
 
+                  {/* Inline Module Picker Popover for StartMenu Group */}
+                  {addMenuGroupId === group.id && (
+                    <div
+                      data-start-group-picker="true"
+                      className="mb-2 p-2 bg-white rounded-xl border border-indigo-200 shadow-lg flex flex-col gap-1.5 animate-in fade-in zoom-in-95 duration-150 max-h-56 overflow-y-auto z-20"
+                    >
+                      <div className="flex items-center justify-between px-1 pb-1 border-b border-slate-100">
+                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+                          {t("Add to group", "Pridať do skupiny", "Hozzáadás a csoporthoz")}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setAddMenuGroupId(null)}
+                          className="p-0.5 rounded text-slate-400 hover:text-slate-600 cursor-pointer"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        {allItems
+                          .filter((i) => !group.items.some((gi) => gi.id === i.id))
+                          .map((mod) => {
+                            const ModIcon = mod.icon;
+                            return (
+                              <button
+                                key={mod.id}
+                                type="button"
+                                onClick={() => handleAddItemToMenuGroup(mod.id, group.id)}
+                                className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-left transition-colors cursor-pointer group"
+                              >
+                                <div
+                                  className="p-1 rounded-md shrink-0"
+                                  style={{ backgroundColor: mod.bgColor || `${mod.color}15`, color: mod.color }}
+                                >
+                                  <ModIcon className="h-3.5 w-3.5" />
+                                </div>
+                                <span className="text-xs font-medium truncate flex-1">{mod.label}</span>
+                                <Plus className="h-3 w-3 text-slate-400 group-hover:text-indigo-600 shrink-0" />
+                              </button>
+                            );
+                          })}
+                        {allItems.filter((i) => !group.items.some((gi) => gi.id === i.id)).length === 0 && (
+                          <p className="text-[11px] text-slate-400 text-center py-2">
+                            {t("All modules are in this group", "Všetky moduly sú v tejto skupine", "Minden modul ebben a csoportban van")}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Group Items Container */}
                   <div className="space-y-1.5 flex-1 min-h-[50px]">
                     {filteredItems.map((item, idx) => {
@@ -1126,27 +1270,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
                       return (
                         <React.Fragment key={item.id}>
-                          {/* Landing Target Slot matching card dimensions */}
+                          {/* Non-displacing insertion line indicator */}
                           {isDropTargetBefore && (
-                            <div
-                              onDragOver={(e) => handleItemDragOverItem(e, group.id, idx)}
-                              onDrop={(e) => handleItemDropOnGroup(e, group.id, idx)}
-                              className="w-full p-2.5 rounded-2xl border-2 border-dashed border-indigo-500 bg-indigo-50/90  shadow-sm flex flex-col gap-2 animate-in fade-in zoom-in-95 duration-150 ring-2 ring-indigo-400/30"
-                              style={{ minHeight: "72px" }}
-                            >
-                              <div className="flex items-center gap-2">
-                                <div className="p-1.5 rounded-xl bg-indigo-200/80  text-indigo-700  shrink-0 animate-bounce">
-                                  {draggedItemObj ? <draggedItemObj.icon className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-                                </div>
-                                <span className="text-xs font-bold text-indigo-900  truncate flex-1">
-                                  {draggedItemObj?.label || t("Drop item here", "Pustiť sem", "Ide helyezés")}
-                                </span>
-                                <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-indigo-200  text-indigo-800  shrink-0">
-                                  {t("Landing slot", "Miesto vloženia", "Beillesztési hely")}
-                                </span>
-                              </div>
-                              <div className="h-4 rounded-xl bg-indigo-200/40  w-full" />
-                            </div>
+                            <div className="w-full h-1.5 bg-indigo-500 rounded-full my-1 shadow-sm ring-2 ring-indigo-400/40 animate-pulse pointer-events-none" />
                           )}
 
                           <StartMenuItemTile
@@ -1159,6 +1285,13 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                             onSetDefault={() => handleSetDefaultPage(item.id)}
                             onTogglePin={() => onTogglePinToSidebar?.(item.id)}
                             onHide={() => handleHideItem(item.id, group.id)}
+                            onMoveUp={() => handleMoveMenuItem(group.id, idx, -1)}
+                            onMoveDown={() => handleMoveMenuItem(group.id, idx, 1)}
+                            canMoveUp={idx > 0}
+                            canMoveDown={idx < filteredItems.length - 1}
+                            groups={groups}
+                            currentGroupId={group.id}
+                            onMoveToGroup={(targetGId) => handleMoveMenuItemToGroup(item.id, group.id, targetGId)}
                             onDragStart={(e) => handleItemDragStart(e, item.id, group.id)}
                             onDragEnd={handleItemDragEnd}
                             onDragOver={(e) => handleItemDragOverItem(e, group.id, idx)}
@@ -1170,7 +1303,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                       );
                     })}
 
-                    {/* Landing Target Slot at end of group list */}
+                    {/* Compact dropzone indicator at end of group list */}
                     {isEditing &&
                       draggedItemId &&
                       dragOverGroup === group.id &&
@@ -1179,21 +1312,10 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                         <div
                           onDragOver={(e) => handleItemDragOverContainer(e, group.id)}
                           onDrop={(e) => handleItemDropOnGroup(e, group.id, filteredItems.length)}
-                          className="w-full p-2.5 rounded-2xl border-2 border-dashed border-indigo-500 bg-indigo-50/90  shadow-sm flex flex-col gap-2 animate-in fade-in zoom-in-95 duration-150 ring-2 ring-indigo-400/30"
-                          style={{ minHeight: "72px" }}
+                          className="w-full p-2 rounded-xl border border-dashed border-indigo-400 bg-indigo-50/60 text-indigo-700 text-xs font-bold flex items-center justify-center gap-1.5 animate-in fade-in duration-100"
                         >
-                          <div className="flex items-center gap-2">
-                            <div className="p-1.5 rounded-xl bg-indigo-200/80  text-indigo-700  shrink-0 animate-bounce">
-                              {draggedItemObj ? <draggedItemObj.icon className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-                            </div>
-                            <span className="text-xs font-bold text-indigo-900  truncate flex-1">
-                              {draggedItemObj?.label || t("Drop item here", "Pustiť sem", "Ide helyezés")}
-                            </span>
-                            <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-indigo-200  text-indigo-800  shrink-0">
-                              {t("Landing slot", "Miesto vloženia", "Beillesztési hely")}
-                            </span>
-                          </div>
-                          <div className="h-4 rounded-xl bg-indigo-200/40  w-full" />
+                          <Plus className="h-3.5 w-3.5" />
+                          <span>{t("Drop item here", "Pustiť sem", "Ide helyezés")}</span>
                         </div>
                       )}
 
@@ -1351,6 +1473,29 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                             <Plus className="h-3 w-3" />
                             <span>{t("Restore", "Vrátiť", "Vissza")}</span>
                           </button>
+
+                          {/* Restore directly to a specific group */}
+                          {groups.length > 1 && (
+                            <select
+                              defaultValue=""
+                              onChange={(e) => {
+                                if (e.target.value) {
+                                  handleAddItemToMenuGroup(item.id, e.target.value);
+                                }
+                              }}
+                              className="text-[9px] font-bold bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded px-1.5 py-1 text-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer max-w-[70px] truncate shrink-0"
+                              title={t("Restore to group...", "Vrátiť do skupiny...", "Visszaállítás ide...")}
+                            >
+                              <option value="" disabled>
+                                {t("To...", "Do...", "Hova...")}
+                              </option>
+                              {groups.map((g) => (
+                                <option key={g.id} value={g.id}>
+                                  {g.name}
+                                </option>
+                              ))}
+                            </select>
+                          )}
                         </div>
                       </div>
                     );
@@ -1420,6 +1565,13 @@ interface StartMenuItemTileProps {
   onSetDefault?: () => void;
   onTogglePin?: () => void;
   onHide?: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
+  groups?: MenuGroup[];
+  currentGroupId?: string;
+  onMoveToGroup?: (targetGroupId: string) => void;
   onDragStart?: (e: React.DragEvent) => void;
   onDragEnd?: (e: React.DragEvent) => void;
   onDragOver?: (e: React.DragEvent) => void;
@@ -1438,6 +1590,13 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
   onSetDefault,
   onTogglePin,
   onHide,
+  onMoveUp,
+  onMoveDown,
+  canMoveUp,
+  canMoveDown,
+  groups,
+  currentGroupId,
+  onMoveToGroup,
   onDragStart,
   onDragEnd,
   onDragOver,
@@ -1446,6 +1605,8 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
   systemLanguage = "en"
 }) => {
   const Icon = item.icon;
+  const t = (en: string, sk: string, hu: string) =>
+    systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
 
   if (isEditing) {
     // EDIT MODE: Full-width title on top, NO description, actions row placed cleanly BELOW the title!
@@ -1462,8 +1623,8 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
             : "bg-white  border border-slate-200/90  shadow-2xs hover:shadow-md hover:border-indigo-300 "
         }`}
       >
-        {/* Top Row: Drag Handle + Icon + Full Title + Badge */}
-        <div className="flex items-center gap-2 min-w-0">
+        {/* Top Row: Drag Handle + Icon + Full Title + Up/Down + Group Select + Badge */}
+        <div className="flex items-center gap-1.5 min-w-0">
           <div className="shrink-0 text-slate-300  group-hover:text-slate-500">
             <GripVertical className="h-4 w-4" />
           </div>
@@ -1476,9 +1637,69 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
           >
             <Icon className="h-3.5 w-3.5" />
           </div>
-          <span className="text-xs font-bold text-slate-900  truncate flex-1">
+          <span className="text-xs font-bold text-slate-900  truncate flex-1 min-w-0">
             {item.label}
           </span>
+
+          {/* Up / Down Reorder Arrows */}
+          {(onMoveUp || onMoveDown) && (
+            <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+              {onMoveUp && (
+                <button
+                  type="button"
+                  disabled={!canMoveUp}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onMoveUp();
+                  }}
+                  className={`p-0.5 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer ${
+                    !canMoveUp ? "opacity-20 cursor-not-allowed hover:bg-transparent hover:text-slate-400" : ""
+                  }`}
+                  title={t("Move up", "Posunúť nahor", "Mozgatás fel")}
+                >
+                  <ChevronUp className="h-3 w-3" />
+                </button>
+              )}
+              {onMoveDown && (
+                <button
+                  type="button"
+                  disabled={!canMoveDown}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onMoveDown();
+                  }}
+                  className={`p-0.5 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer ${
+                    !canMoveDown ? "opacity-20 cursor-not-allowed hover:bg-transparent hover:text-slate-400" : ""
+                  }`}
+                  title={t("Move down", "Posunúť nadol", "Mozgatás le")}
+                >
+                  <ChevronDown className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Move to group selector if more than 1 group */}
+          {groups && groups.length > 1 && onMoveToGroup && currentGroupId && (
+            <select
+              value={currentGroupId}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onChange={(e) => {
+                e.stopPropagation();
+                onMoveToGroup(e.target.value);
+              }}
+              className="text-[9px] font-bold bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded px-1 py-0.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer max-w-[65px] truncate shrink-0"
+              title={t("Move to group", "Presunúť do skupiny", "Áthelyezés csoportba")}
+            >
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          )}
+
           {isDefault && (
             <span
               className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-300/80 flex items-center gap-1 shrink-0"

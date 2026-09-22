@@ -20,7 +20,10 @@ import {
   ListTodo,
   Plus,
   Check,
-  Trash2
+  Trash2,
+  ChevronUp,
+  ChevronDown,
+  GripVertical
 } from "lucide-react";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
@@ -92,6 +95,7 @@ interface SidebarDockButtonProps {
     item: any;
     group: SidebarGroup;
     indexInGroup: number;
+    totalInGroup: number;
   };
   isActive: boolean;
   isExpanded: boolean;
@@ -109,11 +113,16 @@ interface SidebarDockButtonProps {
   dragOverIndex: number | null;
   isStartMenuOpen: boolean;
   startMenuEditMode: boolean;
+  sidebarGroups?: SidebarGroup[];
   onItemClick: (itemId: string) => void;
   onHoverStart: (itemId: string, rect: DOMRect) => void;
   onHoverEnd: () => void;
   onDrop: (e: React.DragEvent, groupId: string, indexInGroup: number) => void;
   onDragOver: (e: React.DragEvent, indexInGroup: number) => void;
+  onDragStartItem?: (e: React.DragEvent, itemId: string, fromGroupId: string) => void;
+  onDragEndItem?: () => void;
+  onMoveItemInGroup?: (groupId: string, indexInGroup: number, direction: -1 | 1) => void;
+  onMoveItemToGroup?: (itemId: string, targetGroupId: string) => void;
   onTogglePinItem: (itemId: string) => void;
   t: (en: string, sk: string, hu: string) => string;
 }
@@ -128,17 +137,23 @@ const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
   dragOverIndex,
   isStartMenuOpen,
   startMenuEditMode,
+  sidebarGroups,
   onItemClick,
   onHoverStart,
   onHoverEnd,
   onDrop,
   onDragOver,
+  onDragStartItem,
+  onDragEndItem,
+  onMoveItemInGroup,
+  onMoveItemToGroup,
   onTogglePinItem,
   t,
 }) => {
   const item = entry.item;
   const Icon = item.icon;
-  const btnRef = useRef<HTMLButtonElement>(null);
+  const btnRef = useRef<any>(null);
+  const isEditing = isStartMenuOpen && startMenuEditMode;
 
   // Magic UI Framer Motion distance & physics spring animation
   const distanceCalc = useTransform(mouseY, (val: number) => {
@@ -177,13 +192,177 @@ const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
     damping: 12,
   });
 
+  const commonStyle = {
+    scale: !isExpanded && isDockMode ? springScale : 1,
+    x: !isExpanded && isDockMode ? xTransform : 0,
+    y: !isExpanded && isDockMode ? springY : 0,
+    zIndex: !isExpanded && isDockMode ? zIndexTransform : undefined,
+    transformOrigin: "center left" as const,
+    ...(isActive && (item.isCustomUE || item.isCustomDash)
+      ? {
+          backgroundColor: item.customColor,
+          boxShadow: `0 10px 15px -3px ${item.customColor}4D, 0 4px 6px -4px ${item.customColor}4D`
+        }
+      : {})
+  };
+
+  const commonClass = cn(
+    "w-full flex items-center gap-2 rounded-2xl transition-colors duration-150 group text-left relative select-none",
+    isEditing ? "cursor-grab active:cursor-grabbing hover:bg-slate-50 border border-transparent hover:border-slate-200" : "cursor-pointer",
+    widthClasses.itemPad,
+    dragOverIndex === entry.indexInGroup && "ring-2 ring-indigo-400 bg-indigo-50/50",
+    item.isCustomUE || item.isCustomDash
+      ? isActive
+        ? "text-white font-bold"
+        : "text-slate-400 hover:text-slate-700 hover:bg-slate-100/50"
+      : item.isPurpleToGreen
+        ? isActive
+          ? "bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 text-white font-bold shadow-lg shadow-purple-600/30 border border-purple-500/20"
+          : "text-purple-600 hover:text-emerald-600 hover:bg-gradient-to-r hover:from-purple-50/60 hover:to-emerald-50/60"
+        : item.isPurple
+          ? isActive
+            ? "bg-purple-600 text-white font-bold shadow-lg shadow-purple-600/30 border border-purple-500/20"
+            : "text-purple-600 hover:text-purple-700 hover:bg-purple-50/50"
+          : item.isLavender
+            ? isActive
+              ? "bg-purple-500 text-white font-bold shadow-lg shadow-purple-500/30 border border-purple-400/20"
+              : "text-purple-500 hover:text-purple-600 hover:bg-purple-50/50"
+            : item.isNavy
+              ? isActive
+                ? "bg-blue-950 text-white font-bold shadow-lg shadow-blue-950/30 border border-blue-900/20"
+                : "text-blue-950 hover:text-blue-900 hover:bg-blue-50/50"
+              : item.isIndigo
+                ? isActive
+                  ? "bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-600/30 border border-indigo-500/20"
+                  : "text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50/50"
+                : item.isEmerald
+                  ? isActive
+                    ? "bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-600/30 border border-emerald-500/20"
+                    : "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50/50"
+                  : item.isNightBlue
+                    ? isActive
+                      ? "bg-slate-900 text-white font-bold shadow-lg shadow-slate-900/30 border border-slate-800/20"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/50"
+                    : isActive
+                      ? item.id === "leads"
+                        ? "bg-blue-600 text-white font-bold shadow-lg shadow-blue-600/30 border border-blue-500/20"
+                        : item.id === "clients"
+                          ? "bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-600/30 border border-emerald-500/20"
+                          : item.id === "files"
+                            ? "bg-amber-700 text-white font-bold shadow-lg shadow-amber-700/30 border border-amber-600/20"
+                            : item.id === "overview"
+                              ? "bg-cyan-600 text-white font-bold shadow-lg shadow-cyan-600/30 border border-cyan-500/20"
+                              : item.id === "email"
+                                ? "bg-pink-600 text-white font-bold shadow-lg shadow-pink-600/30 border border-pink-500/20"
+                                : "bg-orange-500 text-white font-bold shadow-lg shadow-orange-500/30 border border-orange-400/20"
+                      : "text-slate-400 hover:text-slate-700 hover:bg-slate-100/50"
+  );
+
+  const innerLabel = isExpanded && (
+    <span
+      className={cn(
+        "font-heading font-medium tracking-wide truncate min-w-0 flex-1",
+        widthClasses.textSize,
+        item.isCustomUE || item.isCustomDash
+          ? isActive
+            ? "text-white font-bold"
+            : "text-slate-500 font-semibold group-hover:text-slate-700"
+          : item.isPurpleToGreen
+            ? isActive
+              ? "text-white font-bold"
+              : "text-transparent bg-clip-text bg-gradient-to-r from-purple-700 to-emerald-600 font-bold"
+            : item.isPurple
+              ? isActive
+                ? "text-white font-bold"
+                : "text-purple-600 font-bold"
+              : item.isLavender
+                ? isActive
+                  ? "text-white font-bold"
+                  : "text-purple-500 font-semibold"
+                : item.isNavy
+                  ? isActive
+                    ? "text-white font-bold"
+                    : "text-blue-950 font-semibold"
+                  : item.isNightBlue
+                    ? isActive
+                      ? "text-white font-bold"
+                      : "text-slate-800 font-semibold"
+                    : isActive
+                      ? "text-white font-bold"
+                      : "text-slate-500 font-semibold"
+      )}
+    >
+      {item.label}
+    </span>
+  );
+
+  if (!isEditing) {
+    return (
+      <motion.button
+        type="button"
+        ref={btnRef}
+        onClick={() => onItemClick(item.id)}
+        onMouseEnter={() => {
+          if (isDockMode && !isExpanded && btnRef.current) {
+            onHoverStart(item.id, btnRef.current.getBoundingClientRect());
+          }
+        }}
+        onMouseMove={() => {
+          if (isDockMode && !isExpanded && btnRef.current) {
+            onHoverStart(item.id, btnRef.current.getBoundingClientRect());
+          }
+        }}
+        onMouseLeave={() => {
+          if (isDockMode && !isExpanded) {
+            onHoverEnd();
+          }
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          e.dataTransfer.dropEffect = "move";
+          onDragOver(e, entry.indexInGroup);
+        }}
+        onDrop={(e) => {
+          e.stopPropagation();
+          onDrop(e, entry.group.id, entry.indexInGroup);
+        }}
+        style={commonStyle}
+        className={commonClass}
+        title={!isDockMode || isExpanded ? item.label : undefined}
+      >
+        <Icon
+          className={cn(
+            widthClasses.iconSize,
+            "shrink-0 transition-transform duration-200",
+            isActive ? "text-white" : "group-hover:scale-105"
+          )}
+          style={!isActive ? { color: item.color || item.customColor } : undefined}
+        />
+        {innerLabel}
+      </motion.button>
+    );
+  }
+
   return (
-    <motion.button
+    <motion.div
       ref={btnRef}
-      type="button"
+      role="button"
+      tabIndex={0}
+      draggable={true}
+      onDragStart={(e) => {
+        onDragStartItem?.(e, item.id, entry.group.id);
+      }}
+      onDragEnd={() => {
+        onDragEndItem?.();
+      }}
       onClick={() => {
-        if (isStartMenuOpen && startMenuEditMode) return;
         onItemClick(item.id);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          onItemClick(item.id);
+        }
       }}
       onMouseEnter={() => {
         if (isDockMode && !isExpanded && btnRef.current) {
@@ -200,73 +379,27 @@ const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
           onHoverEnd();
         }
       }}
-      onDragOver={(e) => onDragOver(e, entry.indexInGroup)}
-      onDrop={(e) => onDrop(e, entry.group.id, entry.indexInGroup)}
-      style={{
-        scale: !isExpanded && isDockMode ? springScale : 1,
-        x: !isExpanded && isDockMode ? xTransform : 0,
-        y: !isExpanded && isDockMode ? springY : 0,
-        zIndex: !isExpanded && isDockMode ? zIndexTransform : undefined,
-        transformOrigin: "center left",
-        ...(isActive && (item.isCustomUE || item.isCustomDash)
-          ? {
-              backgroundColor: item.customColor,
-              boxShadow: `0 10px 15px -3px ${item.customColor}4D, 0 4px 6px -4px ${item.customColor}4D`
-            }
-          : {})
+      onDragOver={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        e.dataTransfer.dropEffect = "move";
+        onDragOver(e, entry.indexInGroup);
       }}
-      className={cn(
-        "w-full flex items-center gap-3.5 rounded-2xl transition-colors duration-150 group text-left relative cursor-pointer",
-        widthClasses.itemPad,
-        dragOverIndex === entry.indexInGroup && "ring-2 ring-indigo-400 bg-indigo-50/50",
-        item.isCustomUE || item.isCustomDash
-          ? isActive
-            ? "text-white font-bold"
-            : "text-slate-400 hover:text-slate-700 hover:bg-slate-100/50"
-          : item.isPurpleToGreen
-            ? isActive
-              ? "bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 text-white font-bold shadow-lg shadow-purple-600/30 border border-purple-500/20"
-              : "text-purple-600 hover:text-emerald-600 hover:bg-gradient-to-r hover:from-purple-50/60 hover:to-emerald-50/60"
-            : item.isPurple
-              ? isActive
-                ? "bg-purple-600 text-white font-bold shadow-lg shadow-purple-600/30 border border-purple-500/20"
-                : "text-purple-600 hover:text-purple-700 hover:bg-purple-50/50"
-              : item.isLavender
-                ? isActive
-                  ? "bg-purple-500 text-white font-bold shadow-lg shadow-purple-500/30 border border-purple-400/20"
-                  : "text-purple-500 hover:text-purple-600 hover:bg-purple-50/50"
-                : item.isNavy
-                  ? isActive
-                    ? "bg-blue-950 text-white font-bold shadow-lg shadow-blue-950/30 border border-blue-900/20"
-                    : "text-blue-950 hover:text-blue-900 hover:bg-blue-50/50"
-                  : item.isIndigo
-                    ? isActive
-                      ? "bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-600/30 border border-indigo-500/20"
-                      : "text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50/50"
-                    : item.isEmerald
-                      ? isActive
-                        ? "bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-600/30 border border-emerald-500/20"
-                        : "text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50/50"
-                      : item.isNightBlue
-                        ? isActive
-                          ? "bg-slate-900 text-white font-bold shadow-lg shadow-slate-900/30 border border-slate-800/20"
-                          : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/50"
-                        : isActive
-                          ? item.id === "leads"
-                            ? "bg-blue-600 text-white font-bold shadow-lg shadow-blue-600/30 border border-blue-500/20"
-                            : item.id === "clients"
-                              ? "bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-600/30 border border-emerald-500/20"
-                              : item.id === "files"
-                                ? "bg-amber-700 text-white font-bold shadow-lg shadow-amber-700/30 border border-amber-600/20"
-                                : item.id === "overview"
-                                  ? "bg-cyan-600 text-white font-bold shadow-lg shadow-cyan-600/30 border border-cyan-500/20"
-                                  : item.id === "email"
-                                    ? "bg-pink-600 text-white font-bold shadow-lg shadow-pink-600/30 border border-pink-500/20"
-                                    : "bg-orange-500 text-white font-bold shadow-lg shadow-orange-500/30 border border-orange-400/20"
-                          : "text-slate-400 hover:text-slate-700 hover:bg-slate-100/50"
-      )}
+      onDrop={(e) => {
+        e.stopPropagation();
+        onDrop(e, entry.group.id, entry.indexInGroup);
+      }}
+      style={commonStyle}
+      className={commonClass}
       title={!isDockMode || isExpanded ? item.label : undefined}
     >
+      {/* Drag Grip Handle in Edit Mode */}
+      {isExpanded && (
+        <div className="shrink-0 text-slate-300 hover:text-slate-600 transition-colors cursor-grab active:cursor-grabbing">
+          <GripVertical className="h-3.5 w-3.5" />
+        </div>
+      )}
+
       <Icon
         className={cn(
           widthClasses.iconSize,
@@ -276,59 +409,81 @@ const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
         style={!isActive ? { color: item.color || item.customColor } : undefined}
       />
 
-      {isExpanded && (
-        <span
-          className={cn(
-            "font-heading font-medium tracking-wide truncate min-w-0 flex-1",
-            widthClasses.textSize,
-            item.isCustomUE || item.isCustomDash
-              ? isActive
-                ? "text-white font-bold"
-                : "text-slate-500 font-semibold group-hover:text-slate-700"
-              : item.isPurpleToGreen
-                ? isActive
-                  ? "text-white font-bold"
-                  : "text-transparent bg-clip-text bg-gradient-to-r from-purple-700 to-emerald-600 font-bold"
-                : item.isPurple
-                  ? isActive
-                    ? "text-white font-bold"
-                    : "text-purple-600 font-bold"
-                  : item.isLavender
-                    ? isActive
-                      ? "text-white font-bold"
-                      : "text-purple-500 font-semibold"
-                    : item.isNavy
-                      ? isActive
-                        ? "text-white font-bold"
-                        : "text-blue-950 font-semibold"
-                      : item.isNightBlue
-                        ? isActive
-                          ? "text-white font-bold"
-                          : "text-slate-800 font-semibold"
-                        : isActive
-                          ? "text-white font-bold"
-                          : "text-slate-500 font-semibold"
-          )}
-        >
-          {item.label}
-        </span>
-      )}
+      {innerLabel}
 
-      {/* Quick Unpin Button in Edit Mode */}
-      {isStartMenuOpen && startMenuEditMode && isExpanded && (
-        <button
-          type="button"
-          onClick={(e) => {
-            e.stopPropagation();
-            onTogglePinItem(item.id);
-          }}
-          className="p-1 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer shrink-0 ml-auto"
-          title={t("Remove from sidebar", "Odstrániť z bočného menu", "Eltávolítás az oldalsávról")}
-        >
-          <X className="h-3.5 w-3.5" />
-        </button>
+      {/* Reorder and Group Actions in Edit Mode */}
+      {isExpanded && (
+        <div className="flex items-center gap-0.5 shrink-0 ml-auto" onClick={(e) => e.stopPropagation()}>
+          {/* Move Up */}
+          <button
+            type="button"
+            disabled={entry.indexInGroup === 0}
+            onClick={(e) => {
+              e.stopPropagation();
+              onMoveItemInGroup?.(entry.group.id, entry.indexInGroup, -1);
+            }}
+            className={cn(
+              "p-0.5 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer",
+              entry.indexInGroup === 0 && "opacity-20 cursor-not-allowed hover:bg-transparent hover:text-slate-400"
+            )}
+            title={t("Move up", "Posunúť nahor", "Mozgatás fel")}
+          >
+            <ChevronUp className="h-3 w-3" />
+          </button>
+
+          {/* Move Down */}
+          <button
+            type="button"
+            disabled={entry.indexInGroup >= entry.totalInGroup - 1}
+            onClick={(e) => {
+              e.stopPropagation();
+              onMoveItemInGroup?.(entry.group.id, entry.indexInGroup, 1);
+            }}
+            className={cn(
+              "p-0.5 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer",
+              entry.indexInGroup >= entry.totalInGroup - 1 && "opacity-20 cursor-not-allowed hover:bg-transparent hover:text-slate-400"
+            )}
+            title={t("Move down", "Posunúť nadol", "Mozgatás le")}
+          >
+            <ChevronDown className="h-3 w-3" />
+          </button>
+
+          {/* Move to another group select dropdown if more than 1 group */}
+          {sidebarGroups && sidebarGroups.length > 1 && (
+            <select
+              value={entry.group.id}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onChange={(e) => {
+                e.stopPropagation();
+                onMoveItemToGroup?.(item.id, e.target.value);
+              }}
+              className="text-[9px] font-bold bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded px-1 py-0.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer max-w-[60px] truncate"
+              title={t("Move to group", "Presunúť do skupiny", "Áthelyezés csoportba")}
+            >
+              {sidebarGroups.map((g, gIdx) => (
+                <option key={g.id} value={g.id}>
+                  {g.title || `${t("Group", "Skupina", "Csoport")} ${gIdx + 1}`}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {/* Quick Unpin Button */}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              onTogglePinItem(item.id);
+            }}
+            className="p-0.5 rounded text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+            title={t("Remove from sidebar", "Odstrániť z bočného menu", "Eltávolítás az oldalsávról")}
+          >
+            <X className="h-3 w-3" />
+          </button>
+        </div>
       )}
-    </motion.button>
+    </motion.div>
   );
 };
 
@@ -542,6 +697,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const isPinned = sidebarPinned === true;
   const isDockMode = !isPinned && sidebarUnpinnedStyle === "dock";
   const [dragOverGroupId, setDragOverGroupId] = useState<string | null>(null);
+  const [addModuleGroupId, setAddModuleGroupId] = useState<string | null>(null);
+
+  // Close module picker on outside click
+  useEffect(() => {
+    if (!addModuleGroupId) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && target.closest("[data-module-picker]")) return;
+      setAddModuleGroupId(null);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [addModuleGroupId]);
 
   // When pinned or editing navigation, sidebar stays expanded
   const isExpanded = isPinned || !isCollapsed || (isStartMenuOpen && startMenuEditMode);
@@ -583,7 +751,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       if (isPinned) return;
       if (isStartMenuOpen && startMenuEditMode) return;
       const target = event.target as HTMLElement | null;
-      if (target && target.closest("[data-start-menu]")) return;
+      if (target && (target.closest("[data-start-menu]") || target.closest("[data-module-picker]"))) return;
       if (!isCollapsed && sidebarRef.current && !sidebarRef.current.contains(event.target as Node)) {
         setIsCollapsed(true);
       }
@@ -631,10 +799,99 @@ export const Sidebar: React.FC<SidebarProps> = ({
     onSaveUserLayout(newActive, newHidden, updatedGroups);
   };
 
+  // Move item within group
+  const handleMoveItemInGroup = (groupId: string, indexInGroup: number, direction: -1 | 1) => {
+    const currentGroups = normalizeSidebarGroups(storedSidebarGroups, activeVisibleLayout);
+    const grp = currentGroups.find((g) => g.id === groupId);
+    if (!grp) return;
+    const newIndex = indexInGroup + direction;
+    if (newIndex < 0 || newIndex >= grp.items.length) return;
+
+    const nextItems = [...grp.items];
+    const [moved] = nextItems.splice(indexInGroup, 1);
+    nextItems.splice(newIndex, 0, moved);
+
+    const nextGroups = currentGroups.map((g) => (g.id === groupId ? { ...g, items: nextItems } : g));
+    const newActiveLayout = flattenSidebarGroups(nextGroups);
+    setStoredSidebarGroups(nextGroups);
+    onSaveUserLayout(newActiveLayout, undefined, nextGroups);
+  };
+
+  // Move item directly to another group
+  const handleMoveItemToGroup = (itemId: string, targetGroupId: string) => {
+    const currentGroups = normalizeSidebarGroups(storedSidebarGroups, activeVisibleLayout);
+    const nextGroups = currentGroups.map((g) => ({
+      ...g,
+      items: g.items.filter((id) => id !== itemId)
+    }));
+    const target = nextGroups.find((g) => g.id === targetGroupId);
+    if (target) {
+      target.items.push(itemId);
+    }
+    const newActiveLayout = flattenSidebarGroups(nextGroups);
+    setStoredSidebarGroups(nextGroups);
+    onSaveUserLayout(newActiveLayout, undefined, nextGroups);
+  };
+
+  // Add module directly to a group (from "+ Add" button)
+  const handleAddItemToGroup = (itemId: string, targetGroupId: string) => {
+    const currentGroups = normalizeSidebarGroups(storedSidebarGroups, activeVisibleLayout);
+    const nextGroups = currentGroups.map((g) => ({
+      ...g,
+      items: g.items.filter((id) => id !== itemId)
+    }));
+    const target = nextGroups.find((g) => g.id === targetGroupId);
+    if (target) {
+      if (!target.items.includes(itemId)) {
+        target.items.push(itemId);
+      }
+    } else if (nextGroups.length > 0) {
+      nextGroups[0].items.push(itemId);
+    }
+    const newActiveLayout = flattenSidebarGroups(nextGroups);
+    setStoredSidebarGroups(nextGroups);
+    onSaveUserLayout(newActiveLayout, undefined, nextGroups);
+    setAddModuleGroupId(null);
+  };
+
+  // Move entire group up or down in sidebar
+  const handleMoveSidebarGroup = (groupId: string, direction: -1 | 1) => {
+    const current = normalizeSidebarGroups(storedSidebarGroups, activeVisibleLayout);
+    const idx = current.findIndex((g) => g.id === groupId);
+    if (idx === -1) return;
+    const newIdx = idx + direction;
+    if (newIdx < 0 || newIdx >= current.length) return;
+
+    const nextGroups = [...current];
+    const [moved] = nextGroups.splice(idx, 1);
+    nextGroups.splice(newIdx, 0, moved);
+
+    setStoredSidebarGroups(nextGroups);
+    const newActiveLayout = flattenSidebarGroups(nextGroups);
+    onSaveUserLayout(newActiveLayout, undefined, nextGroups);
+  };
+
+  const handleItemDragStart = (e: React.DragEvent, id: string, fromGroupId?: string) => {
+    setDraggedItemId(id);
+    (window as any).__draggedModuleId = id;
+    try {
+      e.dataTransfer.setData("application/json", JSON.stringify({ type: "module", id, fromGroup: fromGroupId }));
+    } catch (err) {}
+    e.dataTransfer.setData("text/plain", id);
+    e.dataTransfer.effectAllowed = "move";
+  };
+
+  const handleItemDragEnd = () => {
+    setDraggedItemId(null);
+    (window as any).__draggedModuleId = null;
+    setDragOverIndex(null);
+    setDragOverGroupId(null);
+  };
+
   // Drag & Drop onto sidebar
   const handleDropOnSidebar = (e: React.DragEvent, targetGroupId?: string, targetIndex?: number) => {
     e.preventDefault();
-    let droppedId = draggedItemId;
+    let droppedId = draggedItemId || (window as any).__draggedModuleId;
 
     if (!droppedId) {
       try {
@@ -651,7 +908,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
     if (!droppedId || !isItemVisibleInSystem(droppedId)) {
       setDraggedItemId(null);
+      (window as any).__draggedModuleId = null;
       setDragOverIndex(null);
+      setDragOverGroupId(null);
       return;
     }
 
@@ -665,7 +924,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
     const targetGrp = nextGroups.find((g) => g.id === grpId);
     if (targetGrp) {
-      const insertAt = targetIndex !== undefined && targetIndex >= 0 ? targetIndex : targetGrp.items.length;
+      let insertAt = targetIndex !== undefined && targetIndex >= 0 ? targetIndex : targetGrp.items.length;
+      if (insertAt > targetGrp.items.length) insertAt = targetGrp.items.length;
       targetGrp.items.splice(insertAt, 0, droppedId);
     } else if (nextGroups.length > 0) {
       nextGroups[0].items.push(droppedId);
@@ -676,7 +936,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     onSaveUserLayout(newActiveLayout, undefined, nextGroups);
 
     setDraggedItemId(null);
+    (window as any).__draggedModuleId = null;
     setDragOverIndex(null);
+    setDragOverGroupId(null);
   };
 
   const handleCreateDashboard = () => {
@@ -779,8 +1041,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // Flattened active items with group boundaries for direct nav button rendering
   const flattenedNavItems = useMemo(() => {
     const list: Array<
-      | { type: "item"; item: any; group: SidebarGroup; indexInGroup: number }
-      | { type: "header"; title: string; groupId: string }
+      | { type: "item"; item: any; group: SidebarGroup; indexInGroup: number; totalInGroup: number }
+      | { type: "header"; title: string; groupId: string; groupIndex: number }
       | { type: "divider"; groupId: string }
       | { type: "dropzone"; groupId: string }
     > = [];
@@ -803,11 +1065,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
           : "");
 
       if (isExpanded && displayTitle) {
-        list.push({ type: "header", title: displayTitle, groupId: group.id });
+        list.push({ type: "header", title: displayTitle, groupId: group.id, groupIndex: gIdx });
       }
 
       groupItemObjs.forEach((item, iIdx) => {
-        list.push({ type: "item", item, group, indexInGroup: iIdx });
+        list.push({ type: "item", item, group, indexInGroup: iIdx, totalInGroup: groupItemObjs.length });
       });
 
       if (isStartMenuOpen && startMenuEditMode) {
@@ -852,6 +1114,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
             dockMouseY.set(Infinity);
             setHoveredItemId(null);
           }
+        }}
+        onDragOver={(e) => {
+          e.preventDefault();
+          e.dataTransfer.dropEffect = "move";
         }}
         className={cn(
           "h-screen fixed left-0 top-0 bg-white flex flex-col transition-all duration-300 select-none shrink-0 hidden lg:flex",
@@ -937,7 +1203,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
               setHoveredItemId(null);
             }
           }}
-          onDragOver={(e) => e.preventDefault()}
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "move";
+          }}
           onDrop={(e) => handleDropOnSidebar(e)}
           className={cn(
             "flex-1 flex flex-col min-h-0 px-3 py-3",
@@ -969,9 +1238,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
               <p className="text-[10px] text-indigo-600/90 leading-snug">
                 {t(
-                  "Drag modules from the Start Menu onto any group below to pin them.",
-                  "Presuňte moduly zo Štart menu na skupiny nižšie pre pripnutie.",
-                  "Húzzon modulokat a Start menüből az alábbi csoportokba."
+                  "Use up/down arrows or drag items to reorder. Click '+ Add' on any group to insert modules.",
+                  "Použite šípky hore/dole alebo presuňte položky. Kliknite '+ Pridať' pre pridanie modulu.",
+                  "Használja a nyilakat vagy húzza az elemeket. Kattintson a '+ Hozzáadás' gombra a modulok beszúrásához."
                 )}
               </p>
               <button
@@ -1001,123 +1270,305 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
             if (entry.type === "header") {
               const isGroupEditing = editingGroupId === entry.groupId;
+              const isPickerOpenForThisGroup = addModuleGroupId === entry.groupId;
               return (
-                <div
-                  key={`hdr_${entry.groupId}_${idx}`}
-                  className="px-3 pt-3 pb-1 flex items-center justify-between gap-2 group/header select-none"
-                >
-                  {isGroupEditing ? (
-                    <div className="flex items-center gap-1.5 flex-1 min-w-0">
-                      <input
-                        type="text"
-                        value={editingGroupTitle}
-                        onChange={(e) => setEditingGroupTitle(e.target.value)}
-                        onMouseDown={(e) => e.stopPropagation()}
-                        placeholder={t("Group Title", "Názov skupiny", "Csoport neve")}
-                        className="flex-1 min-w-0 px-2 py-0.5 rounded-md bg-white border border-indigo-400 text-slate-800 text-[11px] font-bold focus:outline-none shadow-xs"
-                        autoFocus
-                        onKeyDown={(e) => {
-                          e.stopPropagation();
-                          if (e.key === "Enter") handleRenameSidebarGroup(entry.groupId, editingGroupTitle);
-                          if (e.key === "Escape") setEditingGroupId(null);
-                        }}
-                      />
-                      <button
-                        type="button"
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleRenameSidebarGroup(entry.groupId, editingGroupTitle);
-                        }}
-                        className="p-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer shadow-xs shrink-0"
-                        title={t("Save", "Uložiť", "Mentés")}
-                      >
-                        <Check className="h-3 w-3" />
-                      </button>
-                      <button
-                        type="button"
-                        onMouseDown={(e) => e.stopPropagation()}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setEditingGroupId(null);
-                        }}
-                        className="p-1 rounded-md text-slate-400 hover:text-slate-600 transition-colors cursor-pointer shrink-0"
-                        title={t("Cancel", "Zrušiť", "Mégse")}
-                      >
-                        <X className="h-3 w-3" />
-                      </button>
-                    </div>
-                  ) : (
-                    <>
-                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest truncate">
-                        {entry.title}
-                      </span>
-                      {isStartMenuOpen && startMenuEditMode && (
-                        <div className="flex items-center gap-1 opacity-70 group-hover/header:opacity-100 transition-opacity">
-                          <button
-                            type="button"
-                            onMouseDown={(e) => e.stopPropagation()}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setEditingGroupId(entry.groupId);
-                              setEditingGroupTitle(entry.title);
-                            }}
-                            className="p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
-                            title={t("Rename group", "Premenovať skupinu", "Csoport átnevezése")}
-                          >
-                            <Pencil className="h-3 w-3" />
-                          </button>
-                          {sidebarGroups.length > 1 && (
+                <div key={`hdr_wrap_${entry.groupId}_${idx}`} className="flex flex-col">
+                  <div
+                    className="px-3 pt-3 pb-1 flex items-center justify-between gap-1 group/header select-none"
+                  >
+                    {isGroupEditing ? (
+                      <div className="flex items-center gap-1.5 flex-1 min-w-0">
+                        <input
+                          type="text"
+                          value={editingGroupTitle}
+                          onChange={(e) => setEditingGroupTitle(e.target.value)}
+                          onMouseDown={(e) => e.stopPropagation()}
+                          placeholder={t("Group Title", "Názov skupiny", "Csoport neve")}
+                          className="flex-1 min-w-0 px-2 py-0.5 rounded-md bg-white border border-indigo-400 text-slate-800 text-[11px] font-bold focus:outline-none shadow-xs"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            e.stopPropagation();
+                            if (e.key === "Enter") handleRenameSidebarGroup(entry.groupId, editingGroupTitle);
+                            if (e.key === "Escape") setEditingGroupId(null);
+                          }}
+                        />
+                        <button
+                          type="button"
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRenameSidebarGroup(entry.groupId, editingGroupTitle);
+                          }}
+                          className="p-1 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 transition-colors cursor-pointer shadow-xs shrink-0"
+                          title={t("Save", "Uložiť", "Mentés")}
+                        >
+                          <Check className="h-3 w-3" />
+                        </button>
+                        <button
+                          type="button"
+                          onMouseDown={(e) => e.stopPropagation()}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingGroupId(null);
+                          }}
+                          className="p-1 rounded-md text-slate-400 hover:text-slate-600 transition-colors cursor-pointer shrink-0"
+                          title={t("Cancel", "Zrušiť", "Mégse")}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ) : (
+                      <>
+                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest truncate flex-1 min-w-0">
+                          {entry.title}
+                        </span>
+                        {isStartMenuOpen && startMenuEditMode && (
+                          <div className="flex items-center gap-0.5 shrink-0 opacity-80 group-hover/header:opacity-100 transition-opacity">
+                            {/* Add Module to this group */}
                             <button
                               type="button"
                               onMouseDown={(e) => e.stopPropagation()}
                               onClick={(e) => {
                                 e.stopPropagation();
-                                handleDeleteSidebarGroup(entry.groupId);
+                                setAddModuleGroupId(isPickerOpenForThisGroup ? null : entry.groupId);
                               }}
-                              className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                              title={t("Delete group", "Vymazať skupinu", "Csoport törlése")}
+                              className={cn(
+                                "flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold transition-colors cursor-pointer",
+                                isPickerOpenForThisGroup
+                                  ? "bg-indigo-600 text-white shadow-xs"
+                                  : "text-indigo-600 hover:bg-indigo-50 border border-indigo-200"
+                              )}
+                              title={t("Add module to this group", "Pridať modul do tejto skupiny", "Modul hozzáadása ehhez a csoporthoz")}
                             >
-                              <Trash2 className="h-3 w-3" />
+                              <Plus className="h-3 w-3" />
+                              <span>{t("Add", "Pridať", "Hozzáadás")}</span>
                             </button>
-                          )}
-                        </div>
-                      )}
-                    </>
+
+                            {/* Move Group Up */}
+                            {sidebarGroups.length > 1 && (
+                              <button
+                                type="button"
+                                disabled={entry.groupIndex === 0}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMoveSidebarGroup(entry.groupId, -1);
+                                }}
+                                className={cn(
+                                  "p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer",
+                                  entry.groupIndex === 0 && "opacity-20 cursor-not-allowed hover:bg-transparent hover:text-slate-400"
+                                )}
+                                title={t("Move group up", "Posunúť skupinu nahor", "Csoport mozgatása fel")}
+                              >
+                                <ChevronUp className="h-3 w-3" />
+                              </button>
+                            )}
+
+                            {/* Move Group Down */}
+                            {sidebarGroups.length > 1 && (
+                              <button
+                                type="button"
+                                disabled={entry.groupIndex === sidebarGroups.length - 1}
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleMoveSidebarGroup(entry.groupId, 1);
+                                }}
+                                className={cn(
+                                  "p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer",
+                                  entry.groupIndex === sidebarGroups.length - 1 && "opacity-20 cursor-not-allowed hover:bg-transparent hover:text-slate-400"
+                                )}
+                                title={t("Move group down", "Posunúť skupinu nadol", "Csoport mozgatása le")}
+                              >
+                                <ChevronDown className="h-3 w-3" />
+                              </button>
+                            )}
+
+                            {/* Rename */}
+                            <button
+                              type="button"
+                              onMouseDown={(e) => e.stopPropagation()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setEditingGroupId(entry.groupId);
+                                setEditingGroupTitle(entry.title);
+                              }}
+                              className="p-1 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+                              title={t("Rename group", "Premenovať skupinu", "Csoport átnevezése")}
+                            >
+                              <Pencil className="h-3 w-3" />
+                            </button>
+
+                            {/* Delete Group */}
+                            {sidebarGroups.length > 1 && (
+                              <button
+                                type="button"
+                                onMouseDown={(e) => e.stopPropagation()}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleDeleteSidebarGroup(entry.groupId);
+                                }}
+                                className="p-1 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                                title={t("Delete group", "Vymazať skupinu", "Csoport törlése")}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </button>
+                            )}
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  {/* Inline Module Picker Popover when "+ Add" is clicked on group header */}
+                  {isPickerOpenForThisGroup && (
+                    <div
+                      data-module-picker="true"
+                      className="mx-2 mb-2 p-2 bg-white rounded-xl border border-indigo-200 shadow-lg flex flex-col gap-1.5 animate-in fade-in zoom-in-95 duration-150 max-h-56 overflow-y-auto z-20"
+                    >
+                      <div className="flex items-center justify-between px-1 pb-1 border-b border-slate-100">
+                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+                          {t("Add to group", "Pridať do skupiny", "Hozzáadás a csoporthoz")}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setAddModuleGroupId(null);
+                          }}
+                          className="p-0.5 rounded text-slate-400 hover:text-slate-600 cursor-pointer"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        {allPossibleItems
+                          .filter((i) => isItemVisibleInSystem(i.id) && !sidebarGroups.find((g) => g.id === entry.groupId)?.items.includes(i.id))
+                          .map((mod) => {
+                            const ModIcon = mod.icon;
+                            return (
+                              <button
+                                key={mod.id}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAddItemToGroup(mod.id, entry.groupId);
+                                }}
+                                className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-left transition-colors cursor-pointer group"
+                              >
+                                <div
+                                  className="p-1 rounded-md shrink-0"
+                                  style={{ backgroundColor: `${(mod as any).color || '#6366f1'}15`, color: (mod as any).color || '#6366f1' }}
+                                >
+                                  <ModIcon className="h-3.5 w-3.5" />
+                                </div>
+                                <span className="text-xs font-medium truncate flex-1">{mod.label}</span>
+                                <Plus className="h-3 w-3 text-slate-400 group-hover:text-indigo-600 shrink-0" />
+                              </button>
+                            );
+                          })}
+                        {allPossibleItems.filter((i) => isItemVisibleInSystem(i.id) && !sidebarGroups.find((g) => g.id === entry.groupId)?.items.includes(i.id)).length === 0 && (
+                          <p className="text-[11px] text-slate-400 text-center py-2">
+                            {t("All available modules added", "Všetky moduly sú už pridané", "Minden elérhető modul hozzáadva")}
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   )}
                 </div>
               );
             }
 
             if (entry.type === "dropzone") {
+              const isPickerOpenForThisDropzone = addModuleGroupId === entry.groupId;
               return (
-                <div
-                  key={`dropzone_${entry.groupId}_${idx}`}
-                  onDragOver={(e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setDragOverIndex(-1);
-                    setDragOverGroupId(entry.groupId);
-                  }}
-                  onDragLeave={() => {
-                    if (dragOverGroupId === entry.groupId) setDragOverGroupId(null);
-                  }}
-                  onDrop={(e) => {
-                    e.stopPropagation();
-                    handleDropOnSidebar(e, entry.groupId);
-                    setDragOverGroupId(null);
-                  }}
-                  className={cn(
-                    "p-2.5 my-1.5 rounded-xl border-2 border-dashed transition-all text-center flex items-center justify-center gap-1.5 select-none",
-                    dragOverGroupId === entry.groupId
-                      ? "border-indigo-500 bg-indigo-50/90 text-indigo-700 font-bold scale-[1.02]"
-                      : "border-slate-200/90 hover:border-indigo-300 text-slate-400 hover:text-indigo-600 bg-slate-50/50"
+                <div key={`dropzone_${entry.groupId}_${idx}`} className="flex flex-col">
+                  <div
+                    onClick={() => setAddModuleGroupId(isPickerOpenForThisDropzone ? null : entry.groupId)}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      e.dataTransfer.dropEffect = "move";
+                      setDragOverIndex(-1);
+                      setDragOverGroupId(entry.groupId);
+                    }}
+                    onDragLeave={() => {
+                      if (dragOverGroupId === entry.groupId) setDragOverGroupId(null);
+                    }}
+                    onDrop={(e) => {
+                      e.stopPropagation();
+                      handleDropOnSidebar(e, entry.groupId);
+                      setDragOverGroupId(null);
+                    }}
+                    className={cn(
+                      "p-2.5 my-1.5 rounded-xl border-2 border-dashed transition-all text-center flex items-center justify-center gap-1.5 select-none cursor-pointer",
+                      dragOverGroupId === entry.groupId
+                        ? "border-indigo-500 bg-indigo-50/90 text-indigo-700 font-bold scale-[1.02]"
+                        : "border-slate-200/90 hover:border-indigo-300 text-slate-400 hover:text-indigo-600 bg-slate-50/50"
+                    )}
+                    title={t("Click to add module or drag module here", "Kliknite pre pridanie modulu alebo presuňte modul sem", "Kattintson modul hozzáadásához vagy húzza ide")}
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span className="text-[10px] font-bold">
+                      {t("+ Add or Drop module here", "+ Pridať alebo presunúť modul sem", "+ Modul hozzáadása vagy áthúzása ide")}
+                    </span>
+                  </div>
+
+                  {/* Inline Module Picker Popover when Dropzone is clicked */}
+                  {isPickerOpenForThisDropzone && (
+                    <div
+                      data-module-picker="true"
+                      className="mx-1 mb-2 p-2 bg-white rounded-xl border border-indigo-200 shadow-lg flex flex-col gap-1.5 animate-in fade-in zoom-in-95 duration-150 max-h-56 overflow-y-auto z-20"
+                    >
+                      <div className="flex items-center justify-between px-1 pb-1 border-b border-slate-100">
+                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+                          {t("Add to group", "Pridať do skupiny", "Hozzáadás a csoporthoz")}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setAddModuleGroupId(null);
+                          }}
+                          className="p-0.5 rounded text-slate-400 hover:text-slate-600 cursor-pointer"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        {allPossibleItems
+                          .filter((i) => isItemVisibleInSystem(i.id) && !sidebarGroups.find((g) => g.id === entry.groupId)?.items.includes(i.id))
+                          .map((mod) => {
+                            const ModIcon = mod.icon;
+                            return (
+                              <button
+                                key={mod.id}
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleAddItemToGroup(mod.id, entry.groupId);
+                                }}
+                                className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-left transition-colors cursor-pointer group"
+                              >
+                                <div
+                                  className="p-1 rounded-md shrink-0"
+                                  style={{ backgroundColor: `${(mod as any).color || '#6366f1'}15`, color: (mod as any).color || '#6366f1' }}
+                                >
+                                  <ModIcon className="h-3.5 w-3.5" />
+                                </div>
+                                <span className="text-xs font-medium truncate flex-1">{mod.label}</span>
+                                <Plus className="h-3 w-3 text-slate-400 group-hover:text-indigo-600 shrink-0" />
+                              </button>
+                            );
+                          })}
+                        {allPossibleItems.filter((i) => isItemVisibleInSystem(i.id) && !sidebarGroups.find((g) => g.id === entry.groupId)?.items.includes(i.id)).length === 0 && (
+                          <p className="text-[11px] text-slate-400 text-center py-2">
+                            {t("All available modules added", "Všetky moduly sú už pridané", "Minden elérhető modul hozzáadva")}
+                          </p>
+                        )}
+                      </div>
+                    </div>
                   )}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                  <span className="text-[10px] font-bold">
-                    {t("Drop module here", "Presuňte sem modul", "Húzza ide a modult")}
-                  </span>
                 </div>
               );
             }
@@ -1141,6 +1592,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 dragOverIndex={dragOverIndex}
                 isStartMenuOpen={isStartMenuOpen}
                 startMenuEditMode={startMenuEditMode}
+                sidebarGroups={sidebarGroups}
                 onItemClick={(id) => {
                   setActiveTab(id);
                   if (!isPinned) setIsCollapsed(true);
@@ -1155,9 +1607,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onHoverEnd={() => {
                   setHoveredItemId(null);
                 }}
+                onDragStartItem={handleItemDragStart}
+                onDragEndItem={handleItemDragEnd}
+                onMoveItemInGroup={handleMoveItemInGroup}
+                onMoveItemToGroup={handleMoveItemToGroup}
                 onDragOver={(e, indexInGrp) => {
                   e.preventDefault();
                   e.stopPropagation();
+                  e.dataTransfer.dropEffect = "move";
                   setDragOverIndex(indexInGrp);
                 }}
                 onDrop={(e, grpId, indexInGrp) => {
