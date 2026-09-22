@@ -18,9 +18,10 @@ import { cn } from "../utils/cn";
 
 interface SidebarSettingsProps {
   systemLanguage: Language;
+  compact?: boolean;
 }
 
-export const SidebarSettings: React.FC<SidebarSettingsProps> = ({ systemLanguage }) => {
+export const SidebarSettings: React.FC<SidebarSettingsProps> = ({ systemLanguage, compact = false }) => {
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
 
@@ -104,7 +105,7 @@ export const SidebarSettings: React.FC<SidebarSettingsProps> = ({ systemLanguage
   };
 
   return (
-    <div className="space-y-6 pt-5 border-t border-slate-200/80 text-left">
+    <div className={cn("text-left", compact ? "space-y-4" : "space-y-6 pt-5 border-t border-slate-200/80")}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="p-1.5 rounded-xl bg-indigo-50 text-indigo-600">
@@ -126,7 +127,7 @@ export const SidebarSettings: React.FC<SidebarSettingsProps> = ({ systemLanguage
       </div>
 
       {/* Grid of Main Settings */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className={cn("grid gap-4", compact ? "grid-cols-1" : "grid-cols-1 md:grid-cols-2")}>
         {/* 1. Pinning Behavior */}
         <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-3">
           <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block">
@@ -224,7 +225,7 @@ export const SidebarSettings: React.FC<SidebarSettingsProps> = ({ systemLanguage
         </div>
 
         {/* 3. Unpinned Interaction Style */}
-        <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-3 md:col-span-2">
+        <div className={cn("p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-3", !compact && "md:col-span-2")}>
           <div className="flex items-center justify-between">
             <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block">
               {t("Unpinned Interaction Style", "Štýl nepripnutého menu", "Nem rögzített oldalsáv stílusa")}
@@ -234,7 +235,7 @@ export const SidebarSettings: React.FC<SidebarSettingsProps> = ({ systemLanguage
             </span>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className={cn("grid gap-3", compact ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2")}>
             <button
               type="button"
               onClick={() => handleUnpinnedStyleChange("overlay")}
@@ -295,7 +296,7 @@ export const SidebarSettings: React.FC<SidebarSettingsProps> = ({ systemLanguage
         </div>
 
         {/* 4. Navigation Groups Organizer */}
-        <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-3 md:col-span-2">
+        <div className={cn("p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-3", !compact && "md:col-span-2")}>
           <div className="flex items-center justify-between pb-2 border-b border-slate-100">
             <div>
               <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider block">

@@ -24,6 +24,7 @@ import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import type { UpdateEntry } from "./UpdateNotesModal";
 import { useUserPref } from "../utils/userPrefs";
+import { SidebarSettings } from "./SidebarSettings";
 
 interface HeaderProps {
     activeTab: string;
@@ -1091,12 +1092,12 @@ export const Header: React.FC<HeaderProps> = ({
                             ),
                             createPortal(
                                 <div
-                                    className={`fixed top-20 right-0 bottom-0 w-full max-w-[320px] sm:max-w-sm md:w-90 bg-white/95 backdrop-blur-lg border-l border-slate-200/80 shadow-2xl flex flex-col justify-between overflow-y-auto p-0 z-50 ${isClosing ? "animate-slide-out-right" : "animate-slide-in-right"}`}
+                                    className={`fixed top-20 right-0 bottom-0 w-full max-w-[340px] sm:max-w-md md:w-[420px] bg-white/95 backdrop-blur-lg border-l border-slate-200/80 shadow-2xl flex flex-col justify-between overflow-y-auto p-0 z-50 ${isClosing ? "animate-slide-out-right" : "animate-slide-in-right"}`}
                                     onClick={(e) => e.stopPropagation()}
                                     key="drawer-panel"
                                 >
                                     {/* Upper Section */}
-                                    <div className="flex-1">
+                                    <div className="flex-1 overflow-y-auto">
                                         {/* Header info with Close Trigger */}
                                         <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
                                             <div className="flex items-center gap-3">
@@ -1217,7 +1218,7 @@ export const Header: React.FC<HeaderProps> = ({
                                         </div>
 
                                         {/* Personal Settings Button */}
-                                        <div className="p-5">
+                                        <div className="p-5 border-b border-slate-100">
                                             <button
                                                 type="button"
                                                 onClick={() => {
@@ -1250,6 +1251,11 @@ export const Header: React.FC<HeaderProps> = ({
                                                       ? "Személyes beállítások"
                                                       : "Personal Settings"}
                                             </button>
+                                        </div>
+
+                                        {/* Navigation / Sidebar Settings */}
+                                        <div className="p-5">
+                                            <SidebarSettings systemLanguage={systemLanguage} compact />
                                         </div>
                                     </div>
 
