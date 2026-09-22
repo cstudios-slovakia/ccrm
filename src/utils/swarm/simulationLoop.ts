@@ -7,6 +7,7 @@
 import { callLlmJson } from './llmProxyClient';
 import { rankFeedForAgent } from './recsysEngine';
 import { saveRoundCheckpoint } from './checkpointClient';
+import { normalizeAnswer } from './answerNormalizer.ts';
 import type { 
   SwarmAgentProfile, 
   SwarmPost, 
@@ -257,6 +258,9 @@ CRITICAL ROLEPLAY & BEHAVIORAL RULES:
 4. ANSWER & DECISION ENGINE: You are not just posting generic chatter. You are evaluating the core Strategic Question. State your current position/answer clearly, defend it, or explain why you are skeptical.
 5. If another agent's argument in the feed convinces or alarms you, update your position ("current_answer") and provide your "answer_shift_reason".
 6. NEVER write empty filler like "I am watching this". Deliver punchy, realistic, debate-provoking commentary (1-3 sentences).
+7. CRITICAL ANSWER FORMAT:
+   - "current_answer": MUST be strictly 1 to 3 words naming the entity, candidate, or stance (e.g. 'Hájos Zoltán', 'Miške Tamás', 'Bizonytalan', 'Forest Green', 'Matte Black').
+   - NEVER write full sentences, slogans, or campaign arguments in "current_answer" — full sentences belong strictly in 'content'.
 
 CRITICAL LANGUAGE REQUIREMENT:
 You MUST write your commentary/reaction strictly in natural, authentic ${langLabel}.
@@ -266,7 +270,7 @@ Output JSON strictly matching:
   "action": "POST" | "QUOTE" | "COMMENT" | "LIKE" | "DO_NOTHING",
   "target_post_id": number | null,
   "content": "${samplePost}",
-  "current_answer": "Short phrase (e.g. Forest Green, Matte Black, Oppose 20% increase, Candidate B, etc.)",
+  "current_answer": "STRICTLY 1 to 3 words naming the candidate, entity, or stance only. No full sentences.",
   "confidence_score": number between 0 and 100,
   "answer_shift_reason": "Optional short sentence if you changed your mind based on feed arguments",
   "updated_stance": "supportive" | "opposing" | "neutral",
@@ -306,12 +310,17 @@ What action and stance do you take this round? (Write in ${langLabel})`;
 
       if (decision.action === 'DO_NOTHING') return null;
 
+      const knownEntities = this.graph?.nodes?.map(n => n.name) || [];
+      const normalizedAns = decision.current_answer
+        ? normalizeAnswer(decision.current_answer, knownEntities)
+        : undefined;
+
       // Track verdict shift if answer changed
       let verdictShift: { from?: string; to?: string; reason?: string } | undefined = undefined;
-      if (decision.current_answer && agent.currentAnswer && decision.current_answer.toLowerCase().trim() !== agent.currentAnswer.toLowerCase().trim()) {
+      if (normalizedAns && agent.currentAnswer && normalizedAns.toLowerCase().trim() !== agent.currentAnswer.toLowerCase().trim()) {
         verdictShift = {
           from: agent.currentAnswer,
-          to: decision.current_answer,
+          to: normalizedAns,
           reason: decision.answer_shift_reason || undefined
         };
       }
@@ -320,8 +329,8 @@ What action and stance do you take this round? (Write in ${langLabel})`;
       if (decision.updated_stance) {
         agent.stance = decision.updated_stance;
       }
-      if (decision.current_answer) {
-        agent.currentAnswer = decision.current_answer;
+      if (normalizedAns) {
+        agent.currentAnswer = normalizedAns;
       }
       if (typeof decision.confidence_score === 'number') {
         agent.confidenceScore = Math.max(0, Math.min(100, Math.round(decision.confidence_score)));
@@ -396,7 +405,8 @@ What action and stance do you take this round? (Write in ${langLabel})`;
       else if (a.stance === 'opposing') opposing++;
       else neutral++;
 
-      const ansKey = a.currentAnswer || (a.stance === 'supportive' ? 'Support' : a.stance === 'opposing' ? 'Oppose' : 'Undecided');
+      const rawAnsKey = a.currentAnswer || (a.stance === 'supportive' ? 'Support' : a.stance === 'opposing' ? 'Oppose' : 'Undecided');
+      const ansKey = normalizeAnswer(rawAnsKey, this.graph?.nodes?.map(n => n.name) || []);
       answerDistribution[ansKey] = (answerDistribution[ansKey] || 0) + 1;
     }
 

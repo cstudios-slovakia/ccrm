@@ -5,6 +5,7 @@
 
 import { callLlmJson } from './llmProxyClient';
 import type { SwarmEntityNode, SwarmAgentProfile } from './types';
+import { normalizeAnswer } from './answerNormalizer.ts';
 
 export async function synthesizeAgentProfiles(
   nodes: SwarmEntityNode[],
@@ -46,6 +47,9 @@ CRITICAL GROUNDING & ISOLATION MANDATE:
    - Some agents must represent competitors actively spreading counter-narratives or FUD.
    - Include realistic professions, diverse MBTI types (INTJ, ESTP, INFJ, etc.), and distinct communication styles.
 5. LANGUAGE REQUIREMENT: All professions, userChar (personality traits/biases), and publicBio MUST be written in natural, professional ${langLabel}.
+6. CRITICAL ANSWER FORMAT:
+   - "initial_answer": MUST be strictly the concise option or entity name (1-3 words max, e.g. "Hájos Zoltán", "Miške Tamás", "Bizonytalan", "Forest Green", "Matte Black").
+   - NEVER write full sentences, slogans, opinions, or campaign arguments in "initial_answer". Put explanations strictly in "answer_reason".
 
 Output JSON strictly matching this schema:
 {
@@ -56,7 +60,7 @@ Output JSON strictly matching this schema:
       "profession": "${sampleProfession}",
       "mbti": "ESTJ",
       "stance": "opposing",
-      "initial_answer": "Opposes or favors a specific alternative based on profession and biases",
+      "initial_answer": "Concise option or entity name ONLY (1-3 words max, e.g. 'Hájos Zoltán', 'Miške Tamás', 'Bizonytalan')",
       "confidence_score": 75,
       "answer_reason": "Short 1-sentence motivation grounded in persona.",
       "userChar": "${sampleUserChar}",
@@ -87,6 +91,7 @@ ${JSON.stringify(nodes.map(n => ({ id: n.id, name: n.name, type: n.type, summary
 
 Generate exactly ${batchSize} unique, richly described agent profiles (Batch ${batchIdx + 1} of ${batchSizes.length}) strictly representing these entities in natural ${langLabel}.`;
 
+    const knownCandidateNames = nodes.map(n => n.name);
     try {
       const result = await callLlmJson<{
         agents: {
@@ -122,7 +127,10 @@ Generate exactly ${batchSize} unique, richly described agent profiles (Batch ${b
           profession: a.profession || (nodes[0]?.name || 'Stakeholder'),
           mbti: a.mbti || 'INTJ',
           stance: a.stance || 'neutral',
-          currentAnswer: a.initial_answer || (a.stance === 'supportive' ? 'Support' : a.stance === 'opposing' ? 'Oppose' : 'Undecided'),
+          currentAnswer: normalizeAnswer(
+            a.initial_answer || (a.stance === 'supportive' ? 'Support' : a.stance === 'opposing' ? 'Oppose' : 'Undecided'),
+            knownCandidateNames
+          ),
           confidenceScore: a.confidence_score || (a.stance === 'neutral' ? 50 : 75),
           answerReason: a.answer_reason || a.userChar?.slice(0, 120),
           userChar: a.userChar || 'Autonomous market participant.',
@@ -143,6 +151,7 @@ Generate exactly ${batchSize} unique, richly described agent profiles (Batch ${b
 
   const allBatches = await Promise.all(batchPromises);
   const rawAgents = allBatches.flat();
+  const knownCandidateNames = nodes.map(n => n.name);
 
   // If rawAgents is fewer than targetCount due to any network/token glitch, fill missing with diverse personas grounded in current nodes
   const STANCES: ('supportive' | 'opposing' | 'neutral' | 'observer')[] = ['supportive', 'opposing', 'neutral', 'observer'];
@@ -160,7 +169,10 @@ Generate exactly ${batchSize} unique, richly described agent profiles (Batch ${b
         profession: existing.profession || targetNode.name,
         mbti: existing.mbti || MBTIS[idx % MBTIS.length],
         stance: existing.stance || STANCES[idx % STANCES.length],
-        currentAnswer: existing.initial_answer || (existing.stance === 'supportive' ? 'Support' : existing.stance === 'opposing' ? 'Oppose' : 'Undecided'),
+        currentAnswer: normalizeAnswer(
+          existing.initial_answer || (existing.stance === 'supportive' ? 'Support' : existing.stance === 'opposing' ? 'Oppose' : 'Undecided'),
+          knownCandidateNames
+        ),
         confidenceScore: existing.confidence_score || (existing.stance === 'neutral' ? 50 : 75),
         answerReason: existing.answer_reason || existing.userChar?.slice(0, 120),
         userChar: existing.userChar || targetNode.summary || `Representative for ${targetNode.name}.`,

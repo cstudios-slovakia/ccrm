@@ -1,0 +1,1 @@
+import{Do as e,Eo as t,Ft as n,It as r,Lt as i}from"./index-j80Ow2Mh.js";var a=e(t(),1);function o(){!r.current&&n();let[e]=(0,a.useState)(i.current);return e}export{o as t};
