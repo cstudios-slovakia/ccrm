@@ -23,7 +23,12 @@ interface PersonalSettingsViewProps {
   onSync: () => void;
   errorSidebarEnabled: boolean;
   setErrorSidebarEnabled: (enabled: boolean) => void;
+  /** Tab to open on, from the route (`personal-settings/email`). */
+  initialSubTab?: string;
 }
+
+const SUB_TABS = ["profile", "email", "errors"] as const;
+type SubTab = (typeof SUB_TABS)[number];
 
 export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
   currentUser,
@@ -39,11 +44,14 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
   appearance,
   onSync,
   errorSidebarEnabled,
-  setErrorSidebarEnabled
+  setErrorSidebarEnabled,
+  initialSubTab
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
 
-  const [activeSubTab, setActiveSubTab] = useState<"profile" | "email" | "errors">("profile");
+  const [activeSubTab, setActiveSubTab] = useState<SubTab>(
+    (SUB_TABS as readonly string[]).includes(initialSubTab ?? "") ? (initialSubTab as SubTab) : "profile"
+  );
   const [errorLogs, setErrorLogs] = useState<any[]>([]);
   const [selectedLog, setSelectedLog] = useState<any | null>(null);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);

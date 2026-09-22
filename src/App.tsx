@@ -22,12 +22,15 @@ import { AccessDeniedView } from "./components/AccessDeniedView";
 import { InstallerWizard } from "./components/InstallerWizard";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { AiKeyBanner } from "./components/ui/AiKeyBanner";
+import { ModuleSetupRequired } from "./components/ui/ModuleSetupRequired";
+import { isPersonalMailboxConfigured, isVectorDbConfigured } from "./utils/moduleRequirements";
+import { hasOpenAiKey, openAiSettings } from "./utils/aiConfig";
 import { QuickAddClientProvider } from "./components/ui/QuickAddClient";
 import FilePreviewPane from "./components/FilePreviewPane";
 import { FloatingCopilotOrb, type CopilotCorner } from "./components/executive/FloatingCopilotOrb";
 import { CopilotSidebar } from "./components/executive/CopilotSidebar";
 import { useCurrentScreenContext } from "./hooks/useCurrentScreenContext";
-import { RefreshCw, AlertOctagon, Trash2, Copy } from "lucide-react";
+import { RefreshCw, AlertOctagon, Trash2, Copy, Brain, Mail } from "lucide-react";
 import { ShaderGradient } from "shadergradient";
 import { Canvas, type EventManager } from "@react-three/fiber";
 import { ShaderChunk } from "three";
@@ -322,6 +325,13 @@ function App() {
   const usersRef = useRef<UserProfile[]>([]);
   const meetingNotesRef = useRef<MeetingNote[]>([]);
   const integrationsConfigRef = useRef<any>(null);
+  // True once a pull has actually applied the server's settings. Until then the
+  // settings in memory are this file's hard-coded defaults, and pushing them
+  // overwrote the stored ones — the initial pull can resolve without data (401
+  // then login, a failed or skipped fetch). That is how the saved vector DB
+  // connection vanished: the server's secret merge kept the password, the
+  // default integrationsConfig wiped vectorDb, host, user and database name.
+  const serverSettingsAppliedRef = useRef(false);
   const unifiedEntriesRef = useRef<UnifiedEntryRegistry[]>([]);
   const unifiedEntriesDataRef = useRef<Record<string, UnifiedEntryRow[]>>({});
   const customDashboardsRef = useRef<CustomDashboard[]>([]);
@@ -1182,6 +1192,9 @@ ${log.payload || ''}
         invoicingIntegrations: invoicingIntegrationsRef.current
       }
     };
+    // No server settings seen yet → these are defaults, not edits. sync.php
+    // leaves every stored setting untouched when the block is absent.
+    if (!serverSettingsAppliedRef.current) delete payload.settings;
 
     // Narrow the payload to what actually changed, but only once the server has
     // said it speaks v2. Under v1 an omitted record means "deleted", so sending a
@@ -2289,6 +2302,7 @@ ${log.payload || ''}
         setTaskStates((prev) => s.taskStates && JSON.stringify(s.taskStates) !== JSON.stringify(prev) ? s.taskStates : prev);
         setTaskStateColors((prev) => s.taskStateColors && JSON.stringify(s.taskStateColors) !== JSON.stringify(prev) ? s.taskStateColors : prev);
         if (s.integrationsConfig) syncIntegrationsConfig(s.integrationsConfig);
+        serverSettingsAppliedRef.current = true;
         // Remember what the server just gave us. The settings-sync effect compares
         // against this so applying server data never triggers an echo push.
         lastSyncedSettingsSigRef.current = computeSettingsSig(s);
@@ -2497,6 +2511,12 @@ ${log.payload || ''}
     const interval = setInterval(fetchEmailsInBackground, 120000);
     return () => clearInterval(interval);
   }, [currentUser]);
+
+  // Modules that stay in the navigation before their setup is done and open to
+  // ModuleSetupRequired instead of the real view until it is.
+  const isModuleSetupPending = (route: string) =>
+    (route === "rag_ai" && !isVectorDbConfigured(integrationsConfig)) ||
+    (route === "email" && !isPersonalMailboxConfigured(currentUser || users[0]));
 
   // View router
   const renderWorkspaceView = () => {
@@ -2969,9 +2989,33 @@ ${log.payload || ''}
             onSync={() => {}}
             errorSidebarEnabled={errorSidebarEnabled}
             setErrorSidebarEnabled={(enabled: boolean) => setUserPref("errorSidebarEnabled", enabled)}
+            initialSubTab={activeRoute.split("/")[1]}
           />
         );
       case "email":
+        if (isModuleSetupPending("email")) {
+          return (
+            <ModuleSetupRequired
+              language={userLanguage}
+              icon={Mail}
+              moduleName={t("Mail Client", "Pošta", "Levelezés")}
+              description={t(
+                "The mail client works with your own mailbox. Connect it once and your inbox appears here.",
+                "Pošta pracuje s vašou vlastnou schránkou. Pripojte ju raz a doručená pošta sa zobrazí tu.",
+                "A levelezőkliens a saját postafiókjával működik. Csatlakoztassa egyszer, és a beérkezett levelek itt jelennek meg."
+              )}
+              missing={[
+                t(
+                  "Your mailbox connection (IMAP / SMTP server, login and password), verified with the connection test",
+                  "Pripojenie vašej schránky (IMAP / SMTP server, prihlasovacie meno a heslo) overené testom pripojenia",
+                  "A postafiók kapcsolata (IMAP / SMTP szerver, felhasználónév és jelszó), a kapcsolatteszttel ellenőrizve"
+                ),
+              ]}
+              settingsLocation={t("Personal settings → Email", "Osobné nastavenia → E-mail", "Személyes beállítások → E-mail")}
+              onOpenSettings={() => { window.location.hash = "personal-settings/email"; }}
+            />
+          );
+        }
         return (
           <EmailView
             access={access.module("email")}
@@ -3029,6 +3073,30 @@ ${log.payload || ''}
           />
         );
       case "rag_ai":
+        if (isModuleSetupPending("rag_ai")) {
+          return (
+            <ModuleSetupRequired
+              language={userLanguage}
+              icon={Brain}
+              moduleName={t("RAG AI Assistant", "RAG AI Asistent", "RAG AI Asszisztens")}
+              description={t(
+                "The assistant answers from a vector index of your CRM data, so it stays inactive until a vector database is connected.",
+                "Asistent odpovedá z vektorového indexu dát CRM, preto zostane neaktívny, kým nebude pripojená vektorová databáza.",
+                "Az asszisztens a CRM-adatok vektorindexéből válaszol, ezért inaktív marad, amíg nincs csatlakoztatott vektoradatbázis."
+              )}
+              missing={[
+                ...(hasOpenAiKey(integrationsConfig) ? [] : [t("OpenAI API key", "OpenAI API kľúč", "OpenAI API kulcs")]),
+                t(
+                  "Vector database connection (MariaDB, Qdrant or Pinecone), verified with “Test Vector DB Connection”",
+                  "Pripojenie vektorovej databázy (MariaDB, Qdrant alebo Pinecone) overené tlačidlom „Otestovať pripojenie k vektorovej DB“",
+                  "Vektoradatbázis-kapcsolat (MariaDB, Qdrant vagy Pinecone), a „Vektoradatbázis-kapcsolat tesztelése” gombbal ellenőrizve"
+                ),
+              ]}
+              settingsLocation={t("Settings → AI integration", "Nastavenia → AI integrácia", "Beállítások → AI integráció")}
+              onOpenSettings={getPermission("ai_config") === "edit" ? openAiSettings : undefined}
+            />
+          );
+        }
         return (
           <RagAiView systemLanguage={userLanguage} currentUser={activeUser} leads={leads} />
         );
@@ -3263,18 +3331,6 @@ ${log.payload || ''}
     metadata_json: "{}"
   };
 
-  const showMailIcon = (() => {
-    try {
-      if (displayUser && displayUser.metadata_json) {
-        const metadata = typeof displayUser.metadata_json === 'string' 
-          ? JSON.parse(displayUser.metadata_json) 
-          : displayUser.metadata_json;
-        return metadata?.emailSettings?.isValidated === true;
-      }
-    } catch (e) {}
-    return false;
-  })();
-
   if (!currentUser) {
     return (
       <LoginView 
@@ -3348,8 +3404,6 @@ ${log.payload || ''}
               });
           }}
           systemLanguage={userLanguage}
-          showMailIcon={showMailIcon}
-          integrationsConfig={integrationsConfig}
           showRagAi={access.can("rag_ai")}
           currentUser={currentUser}
           roles={roles}
@@ -3427,7 +3481,7 @@ ${log.payload || ''}
                   no hint of it until a button failed. One banner above the view
                   covers all of them; sections inside a mixed view (e.g. the client
                   financial report tab) mount their own. */}
-              {AI_DEPENDENT_TABS.includes(parseAppHash(activeTab).route.split("/")[0]) && (
+              {AI_DEPENDENT_TABS.includes(parseAppHash(activeTab).route.split("/")[0]) && !isModuleSetupPending(parseAppHash(activeTab).route.split("/")[0]) && (
                 <AiKeyBanner
                   integrationsConfig={integrationsConfig}
                   language={userLanguage}
