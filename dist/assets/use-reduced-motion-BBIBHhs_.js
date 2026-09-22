@@ -1,1 +1,0 @@
-import{Eo as e,Ft as t,It as n,Lt as r,To as i}from"./index-CIJIdD5T.js";var a=e(i(),1);function o(){!n.current&&t();let[e]=(0,a.useState)(r.current);return e}export{o as t};

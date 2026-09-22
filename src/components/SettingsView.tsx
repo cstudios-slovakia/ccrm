@@ -6420,7 +6420,254 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           <div className="lg:col-span-12 space-y-6 animate-fade-in">
             {renderReadOnlyBanner("ai_config")}
 
-            {vectorDbValidated ? (
+            {/* API CREDENTIALS — always editable, independent of vector DB connection state */}
+            <form onSubmit={handleSaveAiSettings} className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
+              <h3 className="text-sm font-heading font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2 border-b border-slate-200 pb-3">
+                <Globe className="h-4.5 w-4.5 text-indigo-500 animate-pulse" /> {t("AI & OpenAI Integration", "Integrácia AI a OpenAI", "AI és OpenAI integráció")}
+              </h3>
+
+              <div className="p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100/80 text-xs text-slate-600 leading-relaxed font-semibold">
+                {t("Configure your OpenAI access credential. Once entered, you can proceed to select your vector database sidecar and enable semantic RAG lookup inside the CRM sidebar assistant.", "Nakonfigurujte svoj prístupový údaj OpenAI. Po jeho zadaní môžete pokračovať výberom sidecar vektorovej databázy a povoliť sémantické vyhľadávanie RAG v asistentovi na bočnom paneli CRM.", "Állítsa be az OpenAI hozzáférési hitelesítő adatát. A megadás után kiválaszthatja a vektoradatbázis sidecart, és engedélyezheti a szemantikus RAG keresést a CRM oldalsávi asszisztensében.")}
+              </div>
+
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                  {t("OpenAI API Secret Key", "Tajný API kľúč OpenAI", "OpenAI API titkos kulcs")}
+                </label>
+                <SecretInput
+                  className="max-w-2xl"
+                  language={userLanguage}
+                  disabled={getPermission("ai_config") === "view"}
+                  value={openAiKey}
+                  onChange={setOpenAiKey}
+                  placeholder="sk-proj-..."
+                />
+              </div>
+
+              <div className="space-y-4 pt-4 border-t border-slate-100">
+                <p className="text-[10px] text-slate-400 font-semibold leading-relaxed max-w-2xl">
+                  {t(
+                    "Optional — these providers are only used by AI agent nodes in Automations & Workflows. Every other AI feature in the CRM runs on OpenAI.",
+                    "Voliteľné — títo poskytovatelia sa používajú iba v uzloch AI agenta v Automatizáciách a workflowoch. Všetky ostatné AI funkcie v CRM bežia na OpenAI.",
+                    "Opcionális — ezeket a szolgáltatókat csak az Automatizálások és munkafolyamatok AI ügynök csomópontjai használják. A CRM összes többi AI funkciója OpenAI-t használ."
+                  )}
+                </p>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                    {t("Anthropic API Secret Key", "Tajný API kľúč Anthropic", "Anthropic API titkos kulcs")}
+                  </label>
+                  <SecretInput
+                    className="max-w-2xl"
+                    language={userLanguage}
+                    disabled={getPermission("ai_config") === "view"}
+                    value={anthropicKey}
+                    onChange={setAnthropicKey}
+                    placeholder="sk-ant-..."
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                    {t("Google Gemini API Secret Key", "Tajný API kľúč Google Gemini", "Google Gemini API titkos kulcs")}
+                  </label>
+                  <SecretInput
+                    className="max-w-2xl"
+                    language={userLanguage}
+                    disabled={getPermission("ai_config") === "view"}
+                    value={geminiKey}
+                    onChange={setGeminiKey}
+                    placeholder="AIzaSy..."
+                  />
+                </div>
+              </div>
+
+              {!vectorDbValidated && openAiKey.trim() !== "" && (
+                <div className="space-y-4 pt-4 border-t border-slate-100 animate-slide-up">
+                  <div className="space-y-2">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                      {t("Vector Database Backend", "Backend vektorovej databázy", "Vektoradatbázis backend")}
+                    </label>
+                    <CustomSelect
+                      disabled={getPermission("ai_config") === "view"}
+                      value={vectorDb}
+                      onChange={(v) => {
+                        setVectorDb(v as any);
+                        setValidationResult(null);
+                      }}
+                      className="max-w-2xl"
+                      options={[
+                        { value: "none", label: t("Disabled", "Zakázané", "Letiltva") },
+                        { value: "mariadb", label: t("MariaDB (Native SQL Vectors - Recommended)", "MariaDB (Natívne SQL vektory – Odporúčané)", "MariaDB (Natív SQL vektorok – Ajánlott)") },
+                        { value: "qdrant", label: t("Qdrant Sidecar Container", "Qdrant Sidecar kontajner", "Qdrant Sidecar konténer") },
+                        { value: "pinecone", label: t("Pinecone Cloud Service", "Cloudová služba Pinecone", "Pinecone felhőszolgáltatás") },
+                      ]}
+                    />
+                  </div>
+
+                  {vectorDb === "mariadb" && (
+                    <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-4 max-w-2xl animate-fade-in">
+                      <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Database className="h-4 w-4 text-emerald-500" /> {t("MariaDB Vector Connection Settings", "Nastavenia pripojenia MariaDB Vector", "MariaDB vektorkapcsolat beállításai")}
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">{t("Database Host", "Hostiteľ databázy", "Adatbázis-kiszolgáló")}</label>
+                          <input
+                            type="text"
+                            value={mariaDbHost}
+                            onChange={(e) => setMariaDbHost(e.target.value)}
+                            placeholder={t("e.g. localhost or vector_db", "napr. localhost alebo vector_db", "pl. localhost vagy vector_db")}
+                            className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">{t("Port", "Port", "Port")}</label>
+                          <input
+                            type="text"
+                            value={mariaDbPort}
+                            onChange={(e) => setMariaDbPort(e.target.value)}
+                            placeholder={t("3306 or 3307", "3306 alebo 3307", "3306 vagy 3307")}
+                            className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">{t("Username", "Používateľské meno", "Felhasználónév")}</label>
+                          <input
+                            type="text"
+                            value={mariaDbUser}
+                            onChange={(e) => setMariaDbUser(e.target.value)}
+                            placeholder={t("e.g. vector_user", "napr. vector_user", "pl. vector_user")}
+                            className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">{t("Password", "Heslo", "Jelszó")}</label>
+                          <PasswordInput
+                            value={mariaDbPassword}
+                            onChange={(e) => setMariaDbPassword(e.target.value)}
+                            placeholder="••••••••"
+                            className="w-full pl-3.5 pr-10 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
+                          />
+                        </div>
+                        <div className="space-y-1 md:col-span-2">
+                          <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">{t("Database Name", "Názov databázy", "Adatbázis neve")}</label>
+                          <input
+                            type="text"
+                            value={mariaDbName}
+                            onChange={(e) => setMariaDbName(e.target.value)}
+                            placeholder={t("e.g. vector_db", "napr. vector_db", "pl. vector_db")}
+                            className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {vectorDb === "qdrant" && (
+                    <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-4 max-w-2xl animate-fade-in">
+                      <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Sliders className="h-4 w-4 text-purple-500" /> {t("Qdrant Sidecar Settings", "Nastavenia Qdrant Sidecar", "Qdrant Sidecar beállítások")}
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1 md:col-span-2">
+                          <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">{t("Server URL", "URL servera", "Szerver URL")}</label>
+                          <input
+                            type="text"
+                            value={qdrantUrl}
+                            onChange={(e) => setQdrantUrl(e.target.value)}
+                            placeholder={t("e.g. http://localhost:6333", "napr. http://localhost:6333", "pl. http://localhost:6333")}
+                            className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
+                          />
+                        </div>
+                        <div className="space-y-1 md:col-span-2">
+                          <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">{t("API Key (Optional)", "API kľúč (Voliteľné)", "API kulcs (Opcionális)")}</label>
+                          <PasswordInput
+                            value={qdrantApiKey}
+                            onChange={(e) => setQdrantApiKey(e.target.value)}
+                            placeholder={t("Leave blank if unsecured", "Ponechajte prázdne, ak je nezabezpečené", "Hagyja üresen, ha nincs védve")}
+                            className="w-full pl-3.5 pr-10 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {vectorDb === "pinecone" && (
+                    <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-4 max-w-2xl animate-fade-in">
+                      <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+                        <Globe className="h-4 w-4 text-indigo-500" /> {t("Pinecone Cloud Settings", "Nastavenia Pinecone Cloud", "Pinecone felhő beállítások")}
+                      </h4>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1 md:col-span-2">
+                          <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">{t("API Key", "API kľúč", "API kulcs")}</label>
+                          <PasswordInput
+                            value={pineconeApiKey}
+                            onChange={(e) => setPineconeApiKey(e.target.value)}
+                            placeholder="pcsk_..."
+                            className="w-full pl-3.5 pr-10 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
+                          />
+                        </div>
+                        <div className="space-y-1 md:col-span-2">
+                          <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">{t("Index Name", "Názov indexu", "Index neve")}</label>
+                          <input
+                            type="text"
+                            value={pineconeIndex}
+                            onChange={(e) => setPineconeIndex(e.target.value)}
+                            placeholder={t("e.g. company-kb", "napr. firemny-index", "pl. ceges-index")}
+                            className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {vectorDb !== "none" && (
+                    <div className="pt-2 max-w-2xl flex flex-col gap-3">
+                      <button
+                        type="button"
+                        disabled={isValidating}
+                        onClick={handleValidateConnection}
+                        className="w-fit px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md cursor-pointer active:scale-95 disabled:opacity-50"
+                      >
+                        {isValidating ? t("Validating Connection...", "Overuje sa pripojenie...", "Kapcsolat ellenőrzése...") : t("Test Vector DB Connection", "Otestovať pripojenie k vektorovej DB", "Vektoradatbázis-kapcsolat tesztelése")}
+                      </button>
+
+                      {validationResult && (
+                        <div className={`p-4 rounded-xl border text-xs font-semibold leading-relaxed animate-fade-in ${
+                          validationResult.success
+                            ? "bg-emerald-50 border-emerald-100 text-emerald-800"
+                            : "bg-rose-50 border-rose-100 text-rose-800"
+                        }`}>
+                          <div className="flex items-start gap-2.5">
+                            <span className={`h-2 w-2 rounded-full mt-1.5 shrink-0 ${validationResult.success ? "bg-emerald-500" : "bg-rose-500"}`} />
+                            <div>
+                              <span className="font-bold block mb-0.5">
+                                {validationResult.success ? t("Validation Succeeded", "Overenie úspešné", "Az ellenőrzés sikeres") : t("Validation Failed", "Overenie zlyhalo", "Az ellenőrzés sikertelen")}
+                              </span>
+                              <p className="text-[10px] text-slate-500">{validationResult.message}</p>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {getPermission("ai_config") === "edit" && (
+                <div className="flex justify-end pt-3">
+                  <button
+                    type="submit"
+                    className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg shadow-indigo-600/20 active:scale-95 transition-all cursor-pointer flex items-center gap-2"
+                  >
+                    <Save className="h-4 w-4" /> {t("Save AI Configuration", "Uložiť konfiguráciu AI", "AI konfiguráció mentése")}
+                  </button>
+                </div>
+              )}
+            </form>
+
+            {vectorDbValidated && (
               /* CONFIRMED CONNECTION CARD */
               <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4">
                 <div className="flex items-start justify-between gap-4 border-b border-slate-100 pb-4">
@@ -6500,7 +6747,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5 uppercase tracking-wider">
                     <Database className="h-4 w-4 text-purple-500 animate-pulse" /> {t("RAG Knowledge Index Ingestion", "Indexovanie znalostnej bázy RAG", "RAG tudásbázis indexelése")}
                   </h4>
-                  
+
                   {trainingStats ? (
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                       <div className="p-3 bg-slate-50 rounded-2xl border border-slate-100">
@@ -6605,253 +6852,6 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   </div>
                 </div>
               </div>
-            ) : (
-              /* CONFIGURATION FORM */
-              <form onSubmit={handleSaveAiSettings} className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
-                <h3 className="text-sm font-heading font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2 border-b border-slate-200 pb-3">
-                  <Globe className="h-4.5 w-4.5 text-indigo-500 animate-pulse" /> {t("AI & OpenAI Integration", "Integrácia AI a OpenAI", "AI és OpenAI integráció")}
-                </h3>
-                
-                <div className="p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100/80 text-xs text-slate-600 leading-relaxed font-semibold">
-                  {t("Configure your OpenAI access credential. Once entered, you can proceed to select your vector database sidecar and enable semantic RAG lookup inside the CRM sidebar assistant.", "Nakonfigurujte svoj prístupový údaj OpenAI. Po jeho zadaní môžete pokračovať výberom sidecar vektorovej databázy a povoliť sémantické vyhľadávanie RAG v asistentovi na bočnom paneli CRM.", "Állítsa be az OpenAI hozzáférési hitelesítő adatát. A megadás után kiválaszthatja a vektoradatbázis sidecart, és engedélyezheti a szemantikus RAG keresést a CRM oldalsávi asszisztensében.")}
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                    {t("OpenAI API Secret Key", "Tajný API kľúč OpenAI", "OpenAI API titkos kulcs")}
-                  </label>
-                  <SecretInput
-                    className="max-w-2xl"
-                    language={userLanguage}
-                    disabled={getPermission("ai_config") === "view"}
-                    value={openAiKey}
-                    onChange={setOpenAiKey}
-                    placeholder="sk-proj-..."
-                  />
-                </div>
-
-                <div className="space-y-4 pt-4 border-t border-slate-100">
-                  <p className="text-[10px] text-slate-400 font-semibold leading-relaxed max-w-2xl">
-                    {t(
-                      "Optional — these providers are only used by AI agent nodes in Automations & Workflows. Every other AI feature in the CRM runs on OpenAI.",
-                      "Voliteľné — títo poskytovatelia sa používajú iba v uzloch AI agenta v Automatizáciách a workflowoch. Všetky ostatné AI funkcie v CRM bežia na OpenAI.",
-                      "Opcionális — ezeket a szolgáltatókat csak az Automatizálások és munkafolyamatok AI ügynök csomópontjai használják. A CRM összes többi AI funkciója OpenAI-t használ."
-                    )}
-                  </p>
-
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                      {t("Anthropic API Secret Key", "Tajný API kľúč Anthropic", "Anthropic API titkos kulcs")}
-                    </label>
-                    <SecretInput
-                      className="max-w-2xl"
-                      language={userLanguage}
-                      disabled={getPermission("ai_config") === "view"}
-                      value={anthropicKey}
-                      onChange={setAnthropicKey}
-                      placeholder="sk-ant-..."
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                      {t("Google Gemini API Secret Key", "Tajný API kľúč Google Gemini", "Google Gemini API titkos kulcs")}
-                    </label>
-                    <SecretInput
-                      className="max-w-2xl"
-                      language={userLanguage}
-                      disabled={getPermission("ai_config") === "view"}
-                      value={geminiKey}
-                      onChange={setGeminiKey}
-                      placeholder="AIzaSy..."
-                    />
-                  </div>
-                </div>
-
-                {openAiKey.trim() !== "" && (
-                  <div className="space-y-4 pt-4 border-t border-slate-100 animate-slide-up">
-                    <div className="space-y-2">
-                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
-                        {t("Vector Database Backend", "Backend vektorovej databázy", "Vektoradatbázis backend")}
-                      </label>
-                      <CustomSelect
-                        disabled={getPermission("ai_config") === "view"}
-                        value={vectorDb}
-                        onChange={(v) => {
-                          setVectorDb(v as any);
-                          setValidationResult(null);
-                        }}
-                        className="max-w-2xl"
-                        options={[
-                          { value: "none", label: t("Disabled", "Zakázané", "Letiltva") },
-                          { value: "mariadb", label: t("MariaDB (Native SQL Vectors - Recommended)", "MariaDB (Natívne SQL vektory – Odporúčané)", "MariaDB (Natív SQL vektorok – Ajánlott)") },
-                          { value: "qdrant", label: t("Qdrant Sidecar Container", "Qdrant Sidecar kontajner", "Qdrant Sidecar konténer") },
-                          { value: "pinecone", label: t("Pinecone Cloud Service", "Cloudová služba Pinecone", "Pinecone felhőszolgáltatás") },
-                        ]}
-                      />
-                    </div>
-
-                    {vectorDb === "mariadb" && (
-                      <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-4 max-w-2xl animate-fade-in">
-                        <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                          <Database className="h-4 w-4 text-emerald-500" /> {t("MariaDB Vector Connection Settings", "Nastavenia pripojenia MariaDB Vector", "MariaDB vektorkapcsolat beállításai")}
-                        </h4>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-1">
-                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">{t("Database Host", "Hostiteľ databázy", "Adatbázis-kiszolgáló")}</label>
-                            <input
-                              type="text"
-                              value={mariaDbHost}
-                              onChange={(e) => setMariaDbHost(e.target.value)}
-                              placeholder={t("e.g. localhost or vector_db", "napr. localhost alebo vector_db", "pl. localhost vagy vector_db")}
-                              className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">{t("Port", "Port", "Port")}</label>
-                            <input
-                              type="text"
-                              value={mariaDbPort}
-                              onChange={(e) => setMariaDbPort(e.target.value)}
-                              placeholder={t("3306 or 3307", "3306 alebo 3307", "3306 vagy 3307")}
-                              className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">{t("Username", "Používateľské meno", "Felhasználónév")}</label>
-                            <input
-                              type="text"
-                              value={mariaDbUser}
-                              onChange={(e) => setMariaDbUser(e.target.value)}
-                              placeholder={t("e.g. vector_user", "napr. vector_user", "pl. vector_user")}
-                              className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
-                            />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">{t("Password", "Heslo", "Jelszó")}</label>
-                            <PasswordInput
-                              value={mariaDbPassword}
-                              onChange={(e) => setMariaDbPassword(e.target.value)}
-                              placeholder="••••••••"
-                              className="w-full pl-3.5 pr-10 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
-                            />
-                          </div>
-                          <div className="space-y-1 md:col-span-2">
-                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">{t("Database Name", "Názov databázy", "Adatbázis neve")}</label>
-                            <input
-                              type="text"
-                              value={mariaDbName}
-                              onChange={(e) => setMariaDbName(e.target.value)}
-                              placeholder={t("e.g. vector_db", "napr. vector_db", "pl. vector_db")}
-                              className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {vectorDb === "qdrant" && (
-                      <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-4 max-w-2xl animate-fade-in">
-                        <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                          <Sliders className="h-4 w-4 text-purple-500" /> {t("Qdrant Sidecar Settings", "Nastavenia Qdrant Sidecar", "Qdrant Sidecar beállítások")}
-                        </h4>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-1 md:col-span-2">
-                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">{t("Server URL", "URL servera", "Szerver URL")}</label>
-                            <input
-                              type="text"
-                              value={qdrantUrl}
-                              onChange={(e) => setQdrantUrl(e.target.value)}
-                              placeholder={t("e.g. http://localhost:6333", "napr. http://localhost:6333", "pl. http://localhost:6333")}
-                              className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
-                            />
-                          </div>
-                          <div className="space-y-1 md:col-span-2">
-                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">{t("API Key (Optional)", "API kľúč (Voliteľné)", "API kulcs (Opcionális)")}</label>
-                            <PasswordInput
-                              value={qdrantApiKey}
-                              onChange={(e) => setQdrantApiKey(e.target.value)}
-                              placeholder={t("Leave blank if unsecured", "Ponechajte prázdne, ak je nezabezpečené", "Hagyja üresen, ha nincs védve")}
-                              className="w-full pl-3.5 pr-10 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {vectorDb === "pinecone" && (
-                      <div className="p-5 rounded-2xl bg-slate-50 border border-slate-100 space-y-4 max-w-2xl animate-fade-in">
-                        <h4 className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
-                          <Globe className="h-4 w-4 text-indigo-500" /> {t("Pinecone Cloud Settings", "Nastavenia Pinecone Cloud", "Pinecone felhő beállítások")}
-                        </h4>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                          <div className="space-y-1 md:col-span-2">
-                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">{t("API Key", "API kľúč", "API kulcs")}</label>
-                            <PasswordInput
-                              value={pineconeApiKey}
-                              onChange={(e) => setPineconeApiKey(e.target.value)}
-                              placeholder="pcsk_..."
-                              className="w-full pl-3.5 pr-10 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
-                            />
-                          </div>
-                          <div className="space-y-1 md:col-span-2">
-                            <label className="text-[9px] font-bold text-slate-500 uppercase tracking-wider block">{t("Index Name", "Názov indexu", "Index neve")}</label>
-                            <input
-                              type="text"
-                              value={pineconeIndex}
-                              onChange={(e) => setPineconeIndex(e.target.value)}
-                              placeholder={t("e.g. company-kb", "napr. firemny-index", "pl. ceges-index")}
-                              className="w-full px-3.5 py-2 rounded-lg bg-white border border-slate-200 text-xs text-slate-700 focus:outline-none focus:border-indigo-500"
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {vectorDb !== "none" && (
-                      <div className="pt-2 max-w-2xl flex flex-col gap-3">
-                        <button
-                          type="button"
-                          disabled={isValidating}
-                          onClick={handleValidateConnection}
-                          className="w-fit px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md cursor-pointer active:scale-95 disabled:opacity-50"
-                        >
-                          {isValidating ? t("Validating Connection...", "Overuje sa pripojenie...", "Kapcsolat ellenőrzése...") : t("Test Vector DB Connection", "Otestovať pripojenie k vektorovej DB", "Vektoradatbázis-kapcsolat tesztelése")}
-                        </button>
-
-                        {validationResult && (
-                          <div className={`p-4 rounded-xl border text-xs font-semibold leading-relaxed animate-fade-in ${
-                            validationResult.success
-                              ? "bg-emerald-50 border-emerald-100 text-emerald-800"
-                              : "bg-rose-50 border-rose-100 text-rose-800"
-                          }`}>
-                            <div className="flex items-start gap-2.5">
-                              <span className={`h-2 w-2 rounded-full mt-1.5 shrink-0 ${validationResult.success ? "bg-emerald-500" : "bg-rose-500"}`} />
-                              <div>
-                                <span className="font-bold block mb-0.5">
-                                  {validationResult.success ? t("Validation Succeeded", "Overenie úspešné", "Az ellenőrzés sikeres") : t("Validation Failed", "Overenie zlyhalo", "Az ellenőrzés sikertelen")}
-                                </span>
-                                <p className="text-[10px] text-slate-500">{validationResult.message}</p>
-                              </div>
-                            </div>
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {getPermission("ai_config") === "edit" && (
-                  <div className="flex justify-end pt-3">
-                    <button
-                      type="submit"
-                      className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-black uppercase tracking-wider shadow-lg shadow-indigo-600/20 active:scale-95 transition-all cursor-pointer flex items-center gap-2"
-                    >
-                      <Save className="h-4 w-4" /> {t("Save AI Configuration", "Uložiť konfiguráciu AI", "AI konfiguráció mentése")}
-                    </button>
-                  </div>
-                )}
-              </form>
             )}
           </div>
         )}
