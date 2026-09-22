@@ -14,6 +14,7 @@
     "test": "npm run test:unit && npm run test:qa",
     "test:unit": "node --test --experimental-strip-types \"src/**/*.test.ts\"",
     "test:qa": "node scripts/qa/run-qa.mjs",
+    "test:persistence": "node scripts/probe-persistence.mjs",
     "test:qa:full": "node scripts/qa/run-qa.mjs --full",
     "test:qa:module": "node scripts/qa/run-qa.mjs --module",
     "test:qa:headed": "playwright test --headed --workers=1",

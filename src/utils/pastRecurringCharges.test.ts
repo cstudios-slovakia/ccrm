@@ -439,3 +439,68 @@ test("invariant 2: the current month's table estimate equals the ledger's estima
   assert.equal(september.income.estimated + restOf("income"), table.totalIncomesByCol["2026-09"].estimated);
   assert.equal(september.expense.estimated + restOf("expense"), table.totalExpensesByCol["2026-09"].estimated);
 });
+
+// ==========================================
+// One charge edited into a stored movement
+// ==========================================
+
+test("a skipped charge day is drawn by its stored movement, not by the rule", () => {
+  // August's rent was edited: 520 € paid on the 3rd. The rule skips 1 August
+  // and the one-off movement stands in for it.
+  const rent = rule({ id: "rent", title: "Rent", recurringSkippedDates: ["2026-08-01"] });
+  const august = rec({
+    id: "rent-aug",
+    title: "Rent",
+    amountPlanned: 520,
+    amountReal: 520,
+    status: "paid",
+    issueDate: "2026-08-01",
+    paidDate: "2026-08-03",
+    recurringSourceId: "rent",
+    recurringOccurrenceDate: "2026-08-01"
+  });
+  const ledger = projectPastRecurringCharges([rent, august], TODAY);
+  assert.deepEqual(chargesOf([rent, august], "rent"), [
+    ["2026-06-01", 500],
+    ["2026-07-01", 500],
+    ["2026-09-01", 500]
+  ]);
+  // The movement is an ordinary record row: not claimed, counted as itself.
+  assert.equal(ledger.claimedIds.has("rent-aug"), false);
+  assert.deepEqual(ledgerRecordSplit(august, ledger), { real: 520, estimated: 0 });
+  // And the table agrees: August is the movement's 520, not the rule's 500.
+  const table = aggregateOverviewTable([rent, august], [], monthColumns, TODAY);
+  assert.equal(table.totalExpensesByCol["2026-08"].real, 520);
+  assert.equal(table.totalExpensesByCol["2026-07"].real, 500);
+});
+
+test("editing the rule's own first payment claims its row for the stored movement", () => {
+  // Entered and paid 18 September, charging on the 1st from October: the 18
+  // September row is the first payment. Editing it stores a movement and
+  // skips that day, so the row is no longer drawn or counted.
+  const rent = rule({
+    id: "rent",
+    title: "Rent",
+    recurringStartDate: "2026-09-18",
+    issueDate: "2026-09-18",
+    paidDate: "2026-09-18",
+    recurringSkippedDates: ["2026-09-18"]
+  });
+  const first = rec({
+    id: "rent-first",
+    title: "Rent",
+    amountPlanned: 500,
+    amountReal: 450,
+    status: "paid",
+    issueDate: "2026-09-18",
+    paidDate: "2026-09-18",
+    recurringSourceId: "rent",
+    recurringOccurrenceDate: "2026-09-18"
+  });
+  const ledger = projectPastRecurringCharges([rent, first], TODAY);
+  assert.deepEqual(ledger.charges, []);
+  assert.equal(ledger.claimedIds.has("rent"), true);
+  assert.equal(ledger.uncountedIds.has("rent"), false);
+  const table = aggregateOverviewTable([rent, first], [], monthColumns, TODAY);
+  assert.equal(table.totalExpensesByCol["2026-09"].real, 450);
+});

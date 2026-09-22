@@ -113,13 +113,17 @@ const RULES = [
  * Editing the shared harness invalidates the reasoning behind any scoped run,
  * so a change here forces the full suite rather than a subset chosen by the
  * very code that just changed. This is deliberately narrower than "anything
- * under tests/e2e/": the standalone journey specs (`projectRating.spec.ts`,
- * `financialTrendShared.spec.ts`, ...) are ordinary feature tests, not
- * harness - adding one when a feature ships must not cost a 30-minute full
- * run. Only the shared plumbing and the suite-wide crawlers do that.
+ * under tests/e2e/": every spec file, the suite-wide crawler, dark-mode and
+ * navigation specs included, is scoped to its own titles below. Those three
+ * used to force the full suite as well, so `--files tests/e2e/navigation.spec.ts`
+ * - "re-run these two tests" - started all 87 and held the machine lock for
+ * half an hour.
  */
 const FORCES_FULL =
-  /^(playwright\.config\.ts$|scripts\/qa\/|tests\/e2e\/(helpers\/|globalSetup\.ts$|globalTeardown\.ts$|crawler\.spec\.ts$|darkmode\.spec\.ts$|navigation\.spec\.ts$))/;
+  /^(playwright\.config\.ts$|scripts\/qa\/|tests\/e2e\/(helpers\/|globalSetup\.ts$|globalTeardown\.ts$))/;
+
+/* Describe blocks that expand to one test per module (13 and 19 tests). */
+const LONG_SUITES = ['Deep UI audit', 'Dark mode'];
 
 /**
  * A standalone journey spec (added or edited) isn't in RULES - that table
@@ -140,7 +144,8 @@ function titlesFromSpecFile(relPath) {
   let m;
   while ((m = re.exec(text))) {
     const title = m[2].replace(/\\(.)/g, '$1').trim();
-    if (title.length > 2) titles.add(title);
+    /* `${mod.name} ...` is generated per module; its describe title covers it. */
+    if (title.length > 2 && !title.includes('${')) titles.add(title);
   }
   return [...titles];
 }
@@ -373,9 +378,11 @@ const free = freeMb();
 const workers = Number(
   process.env.QA_WORKERS ?? (free >= 4 * 1024 ? Math.max(1, Math.min(2, Math.floor(TOTAL_CORES / 4))) : 1),
 );
-/* A scoped run is a few tests; a full one is the whole ladder. Either way a
-   run still going past this is starved, not thorough. */
-const globalTimeoutMs = Number(process.env.QA_GLOBAL_TIMEOUT_MS ?? (titles === null ? 45 : 15) * 60 * 1000);
+/* A scoped run is a few tests; a full one, or one that includes a per-module
+   crawl, is the whole ladder. Either way a run still going past this is
+   starved, not thorough. */
+const long = titles === null || titles.some((t) => LONG_SUITES.includes(t));
+const globalTimeoutMs = Number(process.env.QA_GLOBAL_TIMEOUT_MS ?? (long ? 45 : 15) * 60 * 1000);
 
 const cpuCap = capped ? `${maxCores}/${TOTAL_CORES} cores` : 'uncapped';
 console.log(`Workers:  ${workers}   CPU: ${cpuCap}, below-normal priority   Video: ${process.env.QA_VIDEO === '1' ? 'on' : 'off'}`);

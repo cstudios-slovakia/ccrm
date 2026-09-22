@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import * as Icons from "lucide-react";
-import { Plus, Trash2, ArrowUp, ArrowDown, Save, X, Workflow, LayoutGrid, Rows3, CalendarClock, Paperclip, FileText, SlidersHorizontal, History, ListChecks, GripVertical, Pencil } from "lucide-react";
+import { Plus, Trash2, ArrowUp, ArrowDown, Save, X, Check, Workflow, LayoutGrid, Rows3, ListTree, CalendarClock, Paperclip, FileText, SlidersHorizontal, History, ListChecks, GripVertical, Pencil } from "lucide-react";
 import { CustomSelect } from "./ui/CustomSelect";
 import { cn } from "../utils/cn";
 import { ColorPicker } from "./ui/ColorPicker";
@@ -9,6 +9,9 @@ import { DEFAULT_PROJECT_AUTO_CREATE, isProjectAutoCreateActive } from "../utils
 import { DEFAULT_DEADLINE_WARNING_DAYS, normalizeDeadlineWarningDays } from "../utils/projects";
 import type { Language } from "../utils/translations";
 import { useUserPref } from "../utils/userPrefs";
+import { registerPendingSave } from "../utils/pendingSaves";
+import { useDragReorder } from "../hooks/useDragReorder";
+import { moveRelative } from "../utils/reorder";
 
 /**
  * PROJECT-AUTO-CREATE-DISABLED (v1.9.29): automatic project creation from leads
@@ -90,6 +93,143 @@ const Switch: React.FC<{ checked: boolean; onChange: (next: boolean) => void; di
   </button>
 );
 
+/** Trimmed, non-empty, unique — what an option attribute actually stores. */
+const cleanAttrOptions = (type: ProjectAttributeType, options: string[], draft = "") =>
+  isOptionAttrType(type)
+    ? Array.from(new Set([...options, draft].map(o => o.trim()).filter(Boolean)))
+    : undefined;
+
+/**
+ * The option list of a select / radio / checkbox attribute: one input per
+ * option plus an "Add" row for the next one. The unsubmitted draft is owned by
+ * the parent so saving the attribute keeps what was typed but not yet added.
+ * With `requiredOptions`, each option also gets its own "required" toggle.
+ */
+const AttrOptionsEditor: React.FC<{
+  options: string[];
+  onChange: (next: string[]) => void;
+  draft: string;
+  onDraftChange: (next: string) => void;
+  requiredOptions?: string[];
+  onRequiredChange?: (next: string[]) => void;
+  t: (en: string, sk: string, hu: string) => string;
+}> = ({ options, onChange, draft, onDraftChange, requiredOptions, onRequiredChange, t }) => {
+  const trimmedDraft = draft.trim();
+  const isDuplicate = !!trimmedDraft && options.some(o => o.trim() === trimmedDraft);
+
+  const add = () => {
+    if (!trimmedDraft || isDuplicate) return;
+    onChange([...options, trimmedDraft]);
+    onDraftChange("");
+  };
+
+  const rename = (index: number, value: string) => {
+    const old = options[index];
+    onChange(options.map((o, i) => (i === index ? value : o)));
+    // A required option stays required under its new name.
+    if (requiredOptions?.includes(old)) onRequiredChange?.(requiredOptions.map(o => (o === old ? value : o)));
+  };
+
+  const remove = (index: number) => {
+    const old = options[index];
+    onChange(options.filter((_, i) => i !== index));
+    if (requiredOptions?.includes(old)) onRequiredChange?.(requiredOptions.filter(o => o !== old));
+  };
+
+  const toggleRequired = (opt: string) => {
+    if (!requiredOptions) return;
+    onRequiredChange?.(requiredOptions.includes(opt) ? requiredOptions.filter(o => o !== opt) : [...requiredOptions, opt]);
+  };
+
+  return (
+    <div>
+      <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
+        {t("Options", "Možnosti", "Opciók")}
+      </label>
+      <div className="space-y-1.5">
+        {options.map((opt, index) => {
+          const required = !!requiredOptions?.includes(opt);
+          return (
+            <div key={index} className="flex items-center gap-1.5">
+              <input
+                value={opt}
+                onChange={e => rename(index, e.target.value)}
+                aria-label={t(`Option ${index + 1}`, `Možnosť ${index + 1}`, `${index + 1}. opció`)}
+                className="flex-1 min-w-0 px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white"
+              />
+              {requiredOptions && (
+                <button
+                  type="button"
+                  aria-pressed={required}
+                  onClick={() => toggleRequired(opt)}
+                  title={t("Every project has to tick this box", "Každý projekt musí toto políčko zaškrtnúť", "Minden projektnek be kell jelölnie")}
+                  className={cn(
+                    "shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-xl border text-[11px] font-bold transition-all duration-150 active:scale-95 cursor-pointer",
+                    required
+                      ? "bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100"
+                      : "bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700"
+                  )}
+                >
+                  {required ? <Check className="h-3 w-3" /> : <Plus className="h-3 w-3" />}
+                  {t("Required", "Povinné", "Kötelező")}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => remove(index)}
+                aria-label={t("Remove option", "Odstrániť možnosť", "Opció törlése")}
+                className="shrink-0 p-1.5 hover:bg-rose-50 rounded-lg text-rose-600 transition-colors duration-150 active:scale-95 cursor-pointer"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
+          );
+        })}
+        <div className="flex items-center gap-1.5">
+          <input
+            value={draft}
+            onChange={e => onDraftChange(e.target.value)}
+            onKeyDown={e => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                add();
+              }
+            }}
+            placeholder={t("New option", "Nová možnosť", "Új opció")}
+            className={cn(
+              "flex-1 min-w-0 px-3 py-2 rounded-xl border text-xs font-semibold bg-white",
+              isDuplicate ? "border-rose-300" : "border-slate-200"
+            )}
+          />
+          <button
+            type="button"
+            onClick={add}
+            disabled={!trimmedDraft || isDuplicate}
+            className="shrink-0 flex items-center gap-1 px-3 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 active:scale-95 cursor-pointer"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            {t("Add", "Pridať", "Hozzáadás")}
+          </button>
+        </div>
+      </div>
+      {isDuplicate && (
+        <p className="text-[10px] font-medium text-rose-600 mt-1">
+          {t("This option already exists.", "Táto možnosť už existuje.", "Ez az opció már létezik.")}
+        </p>
+      )}
+      {requiredOptions && options.length > 0 && (
+        <p className="text-[10px] font-medium text-slate-400 mt-1">
+          {t(
+            "Mark the boxes every project has to tick. The project shows how many are still unchecked.",
+            "Označte políčka, ktoré musí každý projekt zaškrtnúť. Projekt zobrazí, koľko ich ešte nie je zaškrtnutých.",
+            "Jelölje meg, mely négyzeteket kell minden projektnek bejelölnie. A projekt mutatja, hány nincs még bejelölve."
+          )}
+        </p>
+      )}
+    </div>
+  );
+};
+
 export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
   projectTypes,
   setProjectTypes,
@@ -144,13 +284,17 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
   const [newTeAttrName, setNewTeAttrName] = useState("");
   const [newTeAttrType, setNewTeAttrType] = useState<ProjectAttributeType>("textfield");
   const [newTeAttrRequired, setNewTeAttrRequired] = useState(false);
-  const [newTeAttrOptions, setNewTeAttrOptions] = useState("");
+  const [newTeAttrOptions, setNewTeAttrOptions] = useState<string[]>([]);
+  const [newTeAttrOptionDraft, setNewTeAttrOptionDraft] = useState("");
 
   // Attribute builder states
   const [newAttrName, setNewAttrName] = useState("");
   const [newAttrType, setNewAttrType] = useState<ProjectAttributeType>("textfield");
   const [newAttrRequired, setNewAttrRequired] = useState(false);
-  const [newAttrOptions, setNewAttrOptions] = useState("");
+  const [newAttrOptions, setNewAttrOptions] = useState<string[]>([]);
+  const [newAttrOptionDraft, setNewAttrOptionDraft] = useState("");
+  // A checkbox attribute's options every project has to tick.
+  const [newAttrRequiredOptions, setNewAttrRequiredOptions] = useState<string[]>([]);
   const [editingAttrId, setEditingAttrId] = useState<string | null>(null);
   const [editingTeAttrId, setEditingTeAttrId] = useState<string | null>(null);
 
@@ -179,6 +323,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setDeadlineRequired(false);
     setFileFields([]);
     setNewFileFieldName("");
+    setNewTeTypeName("");
     setAttributes([]);
     setTimelineEventTypes([]);
     setSelectedTeTypeId(null);
@@ -216,6 +361,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setDeadlineRequired(!!type.deadlineRequired);
     setFileFields(type.fileFields || []);
     setNewFileFieldName("");
+    setNewTeTypeName("");
     setEditSection("general");
     setAttributes(type.attributes || []);
     setTimelineEventTypes(type.timelineEventTypes || []);
@@ -225,14 +371,13 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     resetTeAttrForm();
   };
 
-  const parseAttrOptions = (type: ProjectAttributeType, raw: string) =>
-    isOptionAttrType(type) ? raw.split(",").map(o => o.trim()).filter(Boolean) : undefined;
-
   const resetAttrForm = () => {
     setNewAttrName("");
     setNewAttrType("textfield");
     setNewAttrRequired(false);
-    setNewAttrOptions("");
+    setNewAttrOptions([]);
+    setNewAttrOptionDraft("");
+    setNewAttrRequiredOptions([]);
     setEditingAttrId(null);
   };
 
@@ -240,7 +385,8 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setNewTeAttrName("");
     setNewTeAttrType("textfield");
     setNewTeAttrRequired(false);
-    setNewTeAttrOptions("");
+    setNewTeAttrOptions([]);
+    setNewTeAttrOptionDraft("");
     setEditingTeAttrId(null);
   };
 
@@ -258,7 +404,9 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setNewAttrName(attr.name);
     setNewAttrType(attr.type);
     setNewAttrRequired(!!attr.required);
-    setNewAttrOptions((attr.options || []).join(", "));
+    setNewAttrOptions(attr.options || []);
+    setNewAttrOptionDraft("");
+    setNewAttrRequiredOptions(attr.requiredOptions || []);
   };
 
   const handleAttrFormTypeChange = (next: ProjectAttributeType) => {
@@ -267,25 +415,36 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setNewAttrType(next);
   };
 
-  const handleSaveAttribute = () => {
-    if (!newAttrName.trim()) return;
+  /** The attribute list with the add/edit form applied — also used by Save Project
+      Type, so an attribute filled in but never added is not silently dropped. */
+  const applyAttrForm = (list: ProjectAttribute[]): ProjectAttribute[] => {
     const name = newAttrName.trim();
-    const options = parseAttrOptions(newAttrType, newAttrOptions);
+    if (!name) return list;
+    const options = cleanAttrOptions(newAttrType, newAttrOptions, newAttrOptionDraft);
+    // Only boxes that still exist: a renamed or deleted option drops out.
+    const requiredOptions = newAttrType === "checkbox" && options
+      ? Array.from(new Set(newAttrRequiredOptions.map(o => o.trim()))).filter(o => options.includes(o))
+      : [];
+    // Checkbox attributes are required per option only; drop any attribute-level flag.
+    const required = newAttrType === "checkbox" ? false : newAttrRequired;
     if (editingAttrId) {
-      setAttributes(prev => prev.map(a => a.id === editingAttrId
-        ? { ...a, name, type: newAttrType, required: newAttrRequired, options }
-        : a));
-      resetAttrForm();
-      return;
+      return list.map(a => a.id === editingAttrId
+        ? { ...a, name, type: newAttrType, required, options, requiredOptions }
+        : a);
     }
-    const newAttr: ProjectAttribute = {
+    return [...list, {
       id: "attr_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
       name,
       type: newAttrType,
-      required: newAttrRequired,
-      options
-    };
-    setAttributes(prev => [...prev, newAttr]);
+      required,
+      options,
+      requiredOptions
+    }];
+  };
+
+  const handleSaveAttribute = () => {
+    if (!newAttrName.trim()) return;
+    setAttributes(applyAttrForm(attributes));
     resetAttrForm();
   };
 
@@ -326,57 +485,12 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setFileFields(prev => prev.filter(f => f.id !== fieldId));
   };
 
-  /* Drag-and-drop reordering of the custom attributes. The dragged row is held
-     by id, and the drop marker by the row it points at plus which edge of it,
-     so the blue line sits exactly where the attribute will land. */
-  const [draggedAttrId, setDraggedAttrId] = useState<string | null>(null);
-  const [attrDropTarget, setAttrDropTarget] = useState<{ id: string; position: "before" | "after" } | null>(null);
-
-  const endAttrDrag = () => {
-    setDraggedAttrId(null);
-    setAttrDropTarget(null);
-  };
-
-  const handleAttrDragStart = (e: React.DragEvent<HTMLElement>, id: string) => {
-    if (!canEdit) {
-      e.preventDefault();
-      return;
-    }
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", id);
-    setDraggedAttrId(id);
-  };
-
-  const handleAttrDragOver = (e: React.DragEvent<HTMLElement>, targetId: string) => {
-    if (!draggedAttrId) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    const rect = e.currentTarget.getBoundingClientRect();
-    const position: "before" | "after" =
-      rect.height && e.clientY - rect.top > rect.height / 2 ? "after" : "before";
-    if (attrDropTarget?.id !== targetId || attrDropTarget?.position !== position) {
-      setAttrDropTarget({ id: targetId, position });
-    }
-  };
-
-  const handleAttrDrop = (e: React.DragEvent<HTMLElement>) => {
-    e.preventDefault();
-    const dragId = draggedAttrId;
-    const drop = attrDropTarget;
-    endAttrDrag();
-    if (!canEdit || !dragId || !drop) return;
-    setAttributes(prev => {
-      const from = prev.findIndex(a => a.id === dragId);
-      const onto = prev.findIndex(a => a.id === drop.id);
-      if (from === -1 || onto === -1) return prev;
-      const next = [...prev];
-      const [moved] = next.splice(from, 1);
-      // The target index shifts by one once the dragged row is lifted out from above it.
-      const base = onto > from ? onto - 1 : onto;
-      next.splice(drop.position === "after" ? base + 1 : base, 0, moved);
-      return next;
-    });
-  };
+  /* Drag-and-drop reordering of the custom attributes — see useDragReorder. */
+  const attrDrag = useDragReorder({
+    enabled: canEdit,
+    onMove: (dragId, targetId, position) =>
+      setAttributes(prev => moveRelative(prev, a => a.id, dragId, targetId, position)),
+  });
 
   const handleMoveAttribute = (index: number, direction: "up" | "down") => {
     const nextIndex = direction === "up" ? index - 1 : index + 1;
@@ -411,7 +525,8 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setNewTeAttrName(attr.name);
     setNewTeAttrType(attr.type);
     setNewTeAttrRequired(!!attr.required);
-    setNewTeAttrOptions((attr.options || []).join(", "));
+    setNewTeAttrOptions(attr.options || []);
+    setNewTeAttrOptionDraft("");
   };
 
   const handleTeAttrFormTypeChange = (next: ProjectAttributeType) => {
@@ -422,22 +537,19 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     setNewTeAttrType(next);
   };
 
-  const handleSaveTimelineAttribute = () => {
-    if (!selectedTeTypeId || !newTeAttrName.trim()) return;
+  /** The event types with the timeline-attribute form applied — like
+      applyAttrForm, so Save and Close keep one filled in but never added. */
+  const applyTeAttrForm = (list: TimelineEventType[]): TimelineEventType[] => {
     const name = newTeAttrName.trim();
-    const options = parseAttrOptions(newTeAttrType, newTeAttrOptions);
+    if (!selectedTeTypeId || !name) return list;
+    const options = cleanAttrOptions(newTeAttrType, newTeAttrOptions, newTeAttrOptionDraft);
     if (editingTeAttrId) {
-      setTimelineEventTypes(prev => prev.map(t => {
-        if (t.id !== selectedTeTypeId) return t;
-        return {
-          ...t,
-          attributes: t.attributes.map(a => a.id === editingTeAttrId
-            ? { ...a, name, type: newTeAttrType, required: newTeAttrRequired, options }
-            : a)
-        };
-      }));
-      resetTeAttrForm();
-      return;
+      return list.map(t => t.id !== selectedTeTypeId ? t : {
+        ...t,
+        attributes: t.attributes.map(a => a.id === editingTeAttrId
+          ? { ...a, name, type: newTeAttrType, required: newTeAttrRequired, options }
+          : a)
+      });
     }
     const newAttr: ProjectAttribute = {
       id: "tattr_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
@@ -446,12 +558,12 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
       required: newTeAttrRequired,
       options
     };
-    setTimelineEventTypes(prev => prev.map(t => {
-      if (t.id === selectedTeTypeId) {
-        return { ...t, attributes: [...t.attributes, newAttr] };
-      }
-      return t;
-    }));
+    return list.map(t => t.id === selectedTeTypeId ? { ...t, attributes: [...t.attributes, newAttr] } : t);
+  };
+
+  const handleSaveTimelineAttribute = () => {
+    if (!selectedTeTypeId || !newTeAttrName.trim()) return;
+    setTimelineEventTypes(applyTeAttrForm(timelineEventTypes));
     resetTeAttrForm();
   };
 
@@ -490,16 +602,9 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     }));
   };
 
-  const handleSaveType = () => {
-    if (!typeName.trim()) {
-      setEditSection("general");
-      alert(t("Name is required", "Názov je povinný", "Név megadása kötelező"));
-      return;
-    }
-
-    const typeId = editingType?.id || "pt_" + Date.now();
-    const newType: ProjectType = {
-      id: typeId,
+  /** The type as the editor currently holds it. */
+  const buildType = (id: string, attrs: ProjectAttribute[] = attributes): ProjectType => ({
+      id,
       name: typeName.trim(),
       description: typeDesc.trim(),
       icon: typeIcon,
@@ -515,20 +620,153 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
       // hasFiles stays true so the server keeps treating the slots as live.
       hasFiles: true,
       fileFields: fileFields.map(({ id, name }) => ({ id, name })),
-      attributes,
+      attributes: attrs,
       timelineEventTypes
-    };
+  });
 
+  /** Something typed into one of the editor's own add forms but not added. */
+  const hasPendingSubForm = () =>
+    !!newAttrName.trim() || !!newTeTypeName.trim() || !!newTeAttrName.trim() || !!newFileFieldName.trim();
+
+  /** The type with every add form applied: a custom attribute, a timeline event
+      type, a timeline attribute or a file slot filled in but not added yet.
+      Save, Close and leaving the screen keep them instead of dropping them. */
+  const buildTypeWithForms = (id: string): ProjectType => {
+    let eventTypes = applyTeAttrForm(timelineEventTypes);
+    const teName = newTeTypeName.trim();
+    if (teName && !eventTypes.some(et => et.name.toLowerCase() === teName.toLowerCase())) {
+      eventTypes = [...eventTypes, {
+        id: "tet_" + Date.now() + "_" + Math.floor(Math.random() * 1000),
+        name: teName,
+        color: newTeTypeColor,
+        icon: newTeTypeIcon,
+        attributes: []
+      }];
+    }
+    const fileName = newFileFieldName.trim();
+    const files = fileName && !fileFields.some(f => f.name.toLowerCase() === fileName.toLowerCase())
+      ? [...fileFields, { id: "file_" + Date.now() + "_" + Math.floor(Math.random() * 1000), name: fileName }]
+      : fileFields;
+    return {
+      ...buildType(id, applyAttrForm(attributes)),
+      fileFields: files.map(({ id: fid, name }) => ({ id: fid, name })),
+      timelineEventTypes: eventTypes
+    };
+  };
+
+  /** Writes a type into the list: replaces the stored one, or appends a new one.
+      Only a create appends — an autosave or close flush for a type deleted in
+      the meantime (another device) must not bring it back. */
+  const writeType = (next: ProjectType, create = false) => {
     setProjectTypes(prev => {
-      const exists = prev.some(t => t.id === typeId);
+      const exists = prev.some(t => t.id === next.id);
+      if (!exists && !create) return prev;
       if (exists) {
         // The list's column layout is edited from the projects table's View
         // menu, not here — carry whatever it holds now through the save.
-        return prev.map(t => t.id === typeId ? { ...newType, listColumns: t.listColumns } : t);
+        return prev.map(t => t.id === next.id ? { ...next, listColumns: t.listColumns } : t);
       } else {
-        return [...prev, newType];
+        return [...prev, next];
       }
     });
+  };
+
+  /* ── Autosave (existing types) ─────────────────────────────────────────────
+     An attribute's own "Add" / "Save changes" button used to change only this
+     editor's draft; the type was written by "Save Project Type" alone, and
+     closing the editor or going back threw the draft away without a word — so
+     an attribute that looked saved was gone after a reload. An existing type
+     now saves itself like the project view does: every change is written after
+     a short pause, and one still waiting when the editor closes goes out on the
+     way. A type being created has no record yet and keeps its Save button. */
+  const autosaveBaselineRef = React.useRef<string | null>(null);
+  const pendingTypeRef = React.useRef<ProjectType | null>(null);
+  const writeTypeRef = React.useRef(writeType);
+  writeTypeRef.current = writeType;
+
+  const flushPendingType = React.useCallback(() => {
+    const pending = pendingTypeRef.current;
+    if (!pending) return;
+    pendingTypeRef.current = null;
+    writeTypeRef.current(pending);
+  }, []);
+
+  // Leaving the settings screen altogether (another settings tab, another
+  // module, browser back) must not drop the last change — nor an add form
+  // filled in but not added, which Close keeps too.
+  const leaveEditorRef = React.useRef<() => void>(() => {});
+  leaveEditorRef.current = () => {
+    if (editingType && !isCreating && hasPendingSubForm()) {
+      pendingTypeRef.current = null;
+      writeType(buildTypeWithForms(editingType.id));
+    } else {
+      flushPendingType();
+    }
+  };
+  useEffect(() => () => leaveEditorRef.current(), []);
+  // A reload or a closed tab inside the pause writes it too.
+  useEffect(() => registerPendingSave({
+    isPending: () => pendingTypeRef.current !== null,
+    flush: flushPendingType,
+  }), [flushPendingType]);
+
+  const editingTypeId = editingType?.id ?? null;
+  useEffect(() => {
+    autosaveBaselineRef.current = null;
+    pendingTypeRef.current = null;
+  }, [editingTypeId]);
+
+  useEffect(() => {
+    if (!editingTypeId || !typeName.trim()) return;
+    const next = buildType(editingTypeId);
+    const sig = JSON.stringify(next);
+    // The first render after opening is the stored type itself, not an edit.
+    if (autosaveBaselineRef.current === null) {
+      autosaveBaselineRef.current = sig;
+      return;
+    }
+    if (sig === autosaveBaselineRef.current) {
+      pendingTypeRef.current = null;
+      return;
+    }
+    pendingTypeRef.current = next;
+    const timer = window.setTimeout(() => {
+      autosaveBaselineRef.current = sig;
+      flushPendingType();
+    }, 600);
+    return () => window.clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [editingTypeId, typeName, typeDesc, typeIcon, typeColor, hasTimeline, hasGantt, hasDeadline,
+      deadlineWarningDays, deadlineRequired, fileFields, attributes, timelineEventTypes]);
+
+  /** Something typed into the create form that Save would keep. */
+  const hasUnsavedNewType = () => isCreating && (
+    !!typeName.trim() || !!typeDesc.trim() || attributes.length > 0 || hasPendingSubForm()
+    || timelineEventTypes.length > 0 || fileFields.length > 0
+  );
+
+  /** Close the editor. An existing type's last change is written first; a new
+      type that was never saved is only thrown away after asking. */
+  const handleCloseEditor = () => {
+    if (hasUnsavedNewType() && !window.confirm(t(
+      "This project type has not been saved yet. Discard it?",
+      "Tento typ projektu ešte nie je uložený. Zahodiť ho?",
+      "Ez a projekt típus még nincs mentve. Elveti?"
+    ))) return;
+    if (!isCreating) leaveEditorRef.current();
+    setIsCreating(false);
+    setEditingType(null);
+  };
+
+  const handleSaveType = () => {
+    if (!typeName.trim()) {
+      setEditSection("general");
+      alert(t("Name is required", "Názov je povinný", "Név megadása kötelező"));
+      return;
+    }
+
+    pendingTypeRef.current = null;
+    writeType(buildTypeWithForms(editingType?.id || "pt_" + Date.now()), isCreating);
 
     setIsCreating(false);
     setEditingType(null);
@@ -560,6 +798,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     if (!window.confirm(confirmDeleteTypeMessage())) return;
 
     const typeId = editingType.id;
+    pendingTypeRef.current = null;
     setProjectTypes(prev => prev.filter(t => t.id !== typeId));
     setIsCreating(false);
     setEditingType(null);
@@ -584,10 +823,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
             {isCreating ? t("Create Project Type", "Vytvoriť typ projektu", "Projekt típus létrehozása") : t("Edit Project Type", "Upraviť typ projektu", "Projekt típus szerkesztése")}
           </h3>
           <button
-            onClick={() => {
-              setIsCreating(false);
-              setEditingType(null);
-            }}
+            onClick={handleCloseEditor}
             className="p-2 rounded-xl hover:bg-slate-100 text-slate-400 hover:text-slate-600 transition-colors"
           >
             <X className="h-5 w-5" />
@@ -1032,17 +1268,13 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                               </div>
 
                               {isOptionAttrType(newTeAttrType) && (
-                                <div>
-                                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
-                                    {t("Options (comma separated)", "Možnosti (oddelené čiarkou)", "Opciók (vesszővel elválasztva)")}
-                                  </label>
-                                  <input
-                                    value={newTeAttrOptions}
-                                    onChange={e => setNewTeAttrOptions(e.target.value)}
-                                    placeholder={t("Option 1, Option 2, Option 3", "Možnosť 1, Možnosť 2, Možnosť 3", "1. lehetőség, 2. lehetőség, 3. lehetőség")}
-                                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white"
-                                  />
-                                </div>
+                                <AttrOptionsEditor
+                                  options={newTeAttrOptions}
+                                  onChange={setNewTeAttrOptions}
+                                  draft={newTeAttrOptionDraft}
+                                  onDraftChange={setNewTeAttrOptionDraft}
+                                  t={t}
+                                />
                               )}
 
                               <div className="flex items-center justify-between pt-1">
@@ -1188,22 +1420,18 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                 </div>
               ) : (
                 attributes.map((attr, idx) => {
-                  const drop = draggedAttrId && attrDropTarget?.id === attr.id ? attrDropTarget.position : null;
+                  const drop = attrDrag.dropAt(attr.id);
                   const isEditing = editingAttrId === attr.id;
                   return (
                   <div
                     key={attr.id}
-                    draggable={canEdit && !isEditing}
-                    onDragStart={e => handleAttrDragStart(e, attr.id)}
-                    onDragEnd={endAttrDrag}
-                    onDragOver={e => handleAttrDragOver(e, attr.id)}
-                    onDrop={handleAttrDrop}
+                    {...attrDrag.rowProps(attr.id, !isEditing)}
                     title={canEdit && !isEditing ? t("Drag to reorder", "Potiahnutím zmeníte poradie", "Húzza az átrendezéshez") : undefined}
                     className={cn(
                       "group relative flex items-center justify-between p-3 bg-white border rounded-2xl shadow-sm text-xs font-semibold transition-[opacity,box-shadow,border-color] duration-150",
                       isEditing ? "border-indigo-300 ring-2 ring-indigo-100" : "border-slate-200",
                       canEdit && !isEditing && "cursor-grab active:cursor-grabbing",
-                      draggedAttrId === attr.id && "opacity-40"
+                      attrDrag.draggedId === attr.id && "opacity-40"
                     )}
                   >
                     {drop === "before" && (
@@ -1219,8 +1447,10 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                       <div className="flex flex-col min-w-0">
                         <span className="text-slate-800 text-[13px]">{attr.name}</span>
                         <span className="text-slate-400 font-medium">
-                          {attributeTypeLabel(attr.type)} 
+                          {attributeTypeLabel(attr.type)}
                           {attr.required && t(" • Required", " • Povinné", " • Kötelező")}
+                          {attr.type === "checkbox" && (attr.requiredOptions || []).length > 0 &&
+                            ` • ${(attr.requiredOptions || []).length} ${t("required boxes", "povinných políčok", "kötelező négyzet")}`}
                         </span>
                       </div>
                     </div>
@@ -1300,30 +1530,32 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                   </div>
                 </div>
 
+                {/* Checkbox options carry their own "required" toggle — counted as missing on the project card */}
                 {isOptionAttrType(newAttrType) && (
-                  <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
-                      {t("Options (comma separated)", "Možnosti (oddelené čiarkou)", "Opciók (vesszővel elválasztva)")}
-                    </label>
-                    <input
-                      value={newAttrOptions}
-                      onChange={e => setNewAttrOptions(e.target.value)}
-                      placeholder={t("Option 1, Option 2, Option 3", "Možnosť 1, Možnosť 2, Možnosť 3", "1. lehetőség, 2. lehetőség, 3. lehetőség")}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white"
-                    />
-                  </div>
+                  <AttrOptionsEditor
+                    options={newAttrOptions}
+                    onChange={setNewAttrOptions}
+                    draft={newAttrOptionDraft}
+                    onDraftChange={setNewAttrOptionDraft}
+                    requiredOptions={newAttrType === "checkbox" ? newAttrRequiredOptions : undefined}
+                    onRequiredChange={setNewAttrRequiredOptions}
+                    t={t}
+                  />
                 )}
 
                 <div className="flex items-center justify-between pt-1">
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
-                    <input
-                      type="checkbox"
-                      checked={newAttrRequired}
-                      onChange={e => setNewAttrRequired(e.target.checked)}
-                      className="h-4 w-4 rounded border-slate-300 text-indigo-600"
-                    />
-                    <span className="text-xs font-semibold text-slate-600">{t("Required field", "Povinné pole", "Kötelező mező")}</span>
-                  </label>
+                  {/* A checkbox attribute is required per option, so it has no toggle of its own */}
+                  {newAttrType === "checkbox" ? <span /> : (
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <input
+                        type="checkbox"
+                        checked={newAttrRequired}
+                        onChange={e => setNewAttrRequired(e.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                      />
+                      <span className="text-xs font-semibold text-slate-600">{t("Required field", "Povinné pole", "Kötelező mező")}</span>
+                    </label>
+                  )}
 
                   <div className="flex items-center gap-1.5">
                     {editingAttrId && (
@@ -1440,13 +1672,11 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
             )}
             <div className="flex items-center gap-3">
               <button
-                onClick={() => {
-                  setIsCreating(false);
-                  setEditingType(null);
-                }}
+                onClick={handleCloseEditor}
                 className="px-4 py-2.5 rounded-2xl border border-slate-200 text-xs font-black uppercase text-slate-500 hover:bg-slate-50 cursor-pointer"
               >
-                {t("Cancel", "Zrušiť", "Mégse")}
+                {/* An existing type saves itself, so there is nothing to cancel. */}
+                {isCreating ? t("Cancel", "Zrušiť", "Mégse") : t("Close", "Zavrieť", "Bezárás")}
               </button>
               <button
                 onClick={handleSaveType}
@@ -1550,6 +1780,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
 
         <div className="flex items-center gap-1 p-1 rounded-xl bg-slate-100 border border-slate-200 select-none shrink-0">
           {([
+            { mode: "structure" as const, Icon: ListTree, label: t("Structure", "Štruktúra", "Struktúra") },
             { mode: "list" as const, Icon: Rows3, label: t("List", "Zoznam", "Lista") },
             { mode: "grid" as const, Icon: LayoutGrid, label: t("Cards", "Karty", "Kártyák") },
           ]).map(({ mode, Icon, label }) => (

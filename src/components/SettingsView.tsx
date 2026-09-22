@@ -1545,48 +1545,59 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     }
   }, [initialSelectedUserName, users]);
 
+  /* Adopt only the stored fields that actually changed. Every write of this
+     config — Validate Connection, a Zernio test, an Ads field on blur, another
+     admin's change arriving on a pull — used to re-seed EVERY field here, so an
+     API key or SMTP setting typed but not yet saved on another part of the page
+     was silently replaced by the stored value, and the next Save wrote the old
+     one back. */
+  const seenIntegrationsRef = React.useRef<any>(null);
   React.useEffect(() => {
     if (integrationsConfig) {
-      setEmailProvider(integrationsConfig.emailProvider || "smtp");
-      setSmtpHost(integrationsConfig.smtpHost || "");
-      setSmtpPort(integrationsConfig.smtpPort || "");
-      setSmtpSecure(integrationsConfig.smtpSecure || "ssl");
-      setSmtpAuth(integrationsConfig.smtpAuth !== false);
-      setSmtpUser(integrationsConfig.smtpUser || "");
-      setSmtpPassword(integrationsConfig.smtpPassword || "");
-      setSenderName(integrationsConfig.senderName || "");
-      setSenderEmail(integrationsConfig.senderEmail || "");
-      setExchUrl(integrationsConfig.exchUrl || "");
-      setExchDomain(integrationsConfig.exchDomain || "");
-      setExchAuth(integrationsConfig.exchAuth || "oauth");
-      setExchClientId(integrationsConfig.exchClientId || "");
-      setExchTenantId(integrationsConfig.exchTenantId || "");
-      setExchClientSecret(integrationsConfig.exchClientSecret || "");
-      setExchPassword(integrationsConfig.exchPassword || "");
-      setExchMailbox(integrationsConfig.exchMailbox || "");
-      setMetaAppId(integrationsConfig.metaAppId || "");
-      setMetaAppSecret(integrationsConfig.metaAppSecret || "");
-      setMetaAccessToken(integrationsConfig.metaAccessToken || "");
-      setGoogleDevToken(integrationsConfig.googleDevToken || "");
-      setGoogleClientId(integrationsConfig.googleClientId || "");
-      setGoogleClientSecret(integrationsConfig.googleClientSecret || "");
-      setGoogleRefreshToken(integrationsConfig.googleRefreshToken || "");
-      setIsConnected(integrationsConfig.adsConnected === true);
-      setCampaigns(integrationsConfig.campaigns || []);
-      setOpenAiKey(integrationsConfig.openAiKey || "");
-      setAnthropicKey(integrationsConfig.anthropicKey || "");
-      setGeminiKey(integrationsConfig.geminiKey || "");
-      setVectorDb(integrationsConfig.vectorDb || "none");
-      setMariaDbHost(integrationsConfig.mariaDbHost || "");
-      setMariaDbPort(integrationsConfig.mariaDbPort || "3306");
-      setMariaDbUser(integrationsConfig.mariaDbUser || "");
-      setMariaDbPassword(integrationsConfig.mariaDbPassword || "");
-      setMariaDbName(integrationsConfig.mariaDbName || "");
-      setQdrantUrl(integrationsConfig.qdrantUrl || "");
-      setQdrantApiKey(integrationsConfig.qdrantApiKey || "");
-      setPineconeApiKey(integrationsConfig.pineconeApiKey || "");
-      setPineconeIndex(integrationsConfig.pineconeIndex || "");
-      setVectorDbValidated(integrationsConfig.vectorDbValidated === true);
+      const prev = seenIntegrationsRef.current;
+      seenIntegrationsRef.current = integrationsConfig;
+      const changed = (key: string) =>
+        !prev || JSON.stringify(prev[key]) !== JSON.stringify(integrationsConfig[key]);
+      if (changed("emailProvider")) setEmailProvider(integrationsConfig.emailProvider || "smtp");
+      if (changed("smtpHost")) setSmtpHost(integrationsConfig.smtpHost || "");
+      if (changed("smtpPort")) setSmtpPort(integrationsConfig.smtpPort || "");
+      if (changed("smtpSecure")) setSmtpSecure(integrationsConfig.smtpSecure || "ssl");
+      if (changed("smtpAuth")) setSmtpAuth(integrationsConfig.smtpAuth !== false);
+      if (changed("smtpUser")) setSmtpUser(integrationsConfig.smtpUser || "");
+      if (changed("smtpPassword")) setSmtpPassword(integrationsConfig.smtpPassword || "");
+      if (changed("senderName")) setSenderName(integrationsConfig.senderName || "");
+      if (changed("senderEmail")) setSenderEmail(integrationsConfig.senderEmail || "");
+      if (changed("exchUrl")) setExchUrl(integrationsConfig.exchUrl || "");
+      if (changed("exchDomain")) setExchDomain(integrationsConfig.exchDomain || "");
+      if (changed("exchAuth")) setExchAuth(integrationsConfig.exchAuth || "oauth");
+      if (changed("exchClientId")) setExchClientId(integrationsConfig.exchClientId || "");
+      if (changed("exchTenantId")) setExchTenantId(integrationsConfig.exchTenantId || "");
+      if (changed("exchClientSecret")) setExchClientSecret(integrationsConfig.exchClientSecret || "");
+      if (changed("exchPassword")) setExchPassword(integrationsConfig.exchPassword || "");
+      if (changed("exchMailbox")) setExchMailbox(integrationsConfig.exchMailbox || "");
+      if (changed("metaAppId")) setMetaAppId(integrationsConfig.metaAppId || "");
+      if (changed("metaAppSecret")) setMetaAppSecret(integrationsConfig.metaAppSecret || "");
+      if (changed("metaAccessToken")) setMetaAccessToken(integrationsConfig.metaAccessToken || "");
+      if (changed("googleDevToken")) setGoogleDevToken(integrationsConfig.googleDevToken || "");
+      if (changed("googleClientId")) setGoogleClientId(integrationsConfig.googleClientId || "");
+      if (changed("googleClientSecret")) setGoogleClientSecret(integrationsConfig.googleClientSecret || "");
+      if (changed("googleRefreshToken")) setGoogleRefreshToken(integrationsConfig.googleRefreshToken || "");
+      if (changed("adsConnected")) setIsConnected(integrationsConfig.adsConnected === true);
+      if (changed("campaigns")) setCampaigns(integrationsConfig.campaigns || []);
+      if (changed("openAiKey")) setOpenAiKey(integrationsConfig.openAiKey || "");
+      if (changed("anthropicKey")) setAnthropicKey(integrationsConfig.anthropicKey || "");
+      if (changed("geminiKey")) setGeminiKey(integrationsConfig.geminiKey || "");
+      if (changed("vectorDb")) setVectorDb(integrationsConfig.vectorDb || "none");
+      if (changed("mariaDbHost")) setMariaDbHost(integrationsConfig.mariaDbHost || "");
+      if (changed("mariaDbPort")) setMariaDbPort(integrationsConfig.mariaDbPort || "3306");
+      if (changed("mariaDbUser")) setMariaDbUser(integrationsConfig.mariaDbUser || "");
+      if (changed("mariaDbPassword")) setMariaDbPassword(integrationsConfig.mariaDbPassword || "");
+      if (changed("mariaDbName")) setMariaDbName(integrationsConfig.mariaDbName || "");
+      if (changed("qdrantUrl")) setQdrantUrl(integrationsConfig.qdrantUrl || "");
+      if (changed("qdrantApiKey")) setQdrantApiKey(integrationsConfig.qdrantApiKey || "");
+      if (changed("pineconeApiKey")) setPineconeApiKey(integrationsConfig.pineconeApiKey || "");
+      if (changed("pineconeIndex")) setPineconeIndex(integrationsConfig.pineconeIndex || "");
+      if (changed("vectorDbValidated")) setVectorDbValidated(integrationsConfig.vectorDbValidated === true);
     }
   }, [integrationsConfig]);
 

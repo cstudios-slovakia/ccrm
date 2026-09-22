@@ -83,9 +83,14 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
   const isEditingEntryView = subPath?.startsWith("entry-") || false;
   const editingEntryRow = isEditingEntryView ? (rows.find(r => r.id === subPath) || null) : null;
 
+  // Seeded from the entry being edited, and again only when THAT entry's stored
+  // copy changes. Keyed on the whole registry and every lead, it re-seeded on
+  // any change to any row or lead (another user, the mail poller) and wiped the
+  // unsaved form — including a file already uploaded for it.
+  const editingEntrySig = editingEntryRow ? JSON.stringify(editingEntryRow) : "";
   React.useEffect(() => {
     if (subPath && subPath.startsWith("entry-")) {
-      const entryRow = rows.find(r => r.id === subPath);
+      const entryRow = editingEntryRow;
       if (entryRow) {
         setFormTitle(entryRow.title || "");
         setFormDueDate(entryRow.dueDate || "");
@@ -103,7 +108,8 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
         } : null);
       }
     }
-  }, [subPath, rows, leads]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [subPath, editingEntrySig]);
 
   const isDueDateActive = registry.modules.includes("due_date") || (registry.foldersEnabled && registry.folderModules?.includes("due_date"));
   const isFileActive = registry.modules.includes("file") || (registry.foldersEnabled && registry.folderModules?.includes("file"));

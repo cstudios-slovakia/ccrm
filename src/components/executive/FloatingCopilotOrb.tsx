@@ -193,7 +193,7 @@ export const FloatingCopilotOrb: React.FC<FloatingCopilotOrbProps> = ({
         {/* Tooltip on Hover */}
         <div
           className={`absolute pointer-events-none whitespace-nowrap transition-all duration-200 z-50 ${
-            isHovered && !isDragging ? "opacity-100 scale-100" : "opacity-0 scale-95"
+            isHovered && !isDragging ? "opacity-100 scale-100 visible" : "opacity-0 scale-95 invisible"
           } ${
             isTop
               ? "top-full mt-2.5"

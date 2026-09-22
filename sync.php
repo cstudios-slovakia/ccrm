@@ -12,6 +12,7 @@
  */
 require_once __DIR__ . '/api/auth.php';
 require_once __DIR__ . '/api/schema.php';
+require_once __DIR__ . '/api/task_reminders.php';
 
 header('Content-Type: application/json');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -119,6 +120,63 @@ function ccrm_normalize_financial_trend($raw) {
 // This lets the SPA's `?probe=1` poll detect "nothing changed" without building
 // the multi-MB snapshot, and it is immune to no-op re-saves (a sync POST that
 // writes identical rows leaves the checksum untouched).
+/**
+ * The proj_data_/proj_timeline_ column that holds one custom attribute: its id
+ * lower-cased and stripped to [a-z0-9_], behind an `attr_` prefix. This is the
+ * one place the rule lives. The writers and the readers of those tables must
+ * agree on it exactly, or a value saved under one name is read back under
+ * another and looks lost after a reload — see ccrm_attr_id_for_column().
+ */
+function ccrm_attr_column(string $attrId): string {
+    return 'attr_' . preg_replace('/[^a-z0-9_]/', '', strtolower($attrId));
+}
+
+/**
+ * The attribute id a proj_data_/proj_timeline_ column belongs to, resolved
+ * against the type's own attribute list (built by the reader below).
+ *
+ * The column name alone is not enough: the ids the client mints begin with
+ * "attr_" themselves, and the old read did str_replace('attr_', '', $col),
+ * which stripped that prefix as well — column `attr_attr_1726_1` came back as
+ * key "1726_1", matched no attribute, and every saved value showed as empty
+ * after a hard refresh even though it was in the database. Only for a column
+ * no attribute claims does this fall back to dropping the single leading prefix.
+ */
+function ccrm_attr_id_for_column(array $idByColumn, string $col): string {
+    return $idByColumn[$col] ?? (string)preg_replace('/^attr_/', '', $col);
+}
+
+/**
+ * How one attribute value is stored in a proj_data_/proj_timeline_ LONGTEXT
+ * column, and how it comes back. The two are exact inverses on purpose.
+ *
+ * Arrays and objects (multi-select lists, money {amount,currency}, file slots)
+ * are stored as JSON. Booleans are stored as the words "true"/"false": bound
+ * as a plain string PDO turned true into "1" and false into "", so a ticked
+ * checkbox read back as the text "1". Everything else — text, numbers typed
+ * into a text field, option labels — is stored verbatim and read back
+ * verbatim. The old reader ran json_decode() on every stored value, so a
+ * text attribute holding "42" came back as the number 42, an option labelled
+ * "1" as the integer 1, and the checkbox's "1" as 1 rather than true.
+ */
+function ccrm_encode_attr_value($v) {
+    if (is_array($v)) return json_encode($v, JSON_UNESCAPED_UNICODE);
+    if (is_bool($v)) return $v ? 'true' : 'false';
+    return $v;
+}
+
+function ccrm_decode_attr_value($stored) {
+    if (!is_string($stored) || $stored === '') return $stored;
+    if ($stored === 'true') return true;
+    if ($stored === 'false') return false;
+    $first = $stored[0];
+    if ($first === '[' || $first === '{') {
+        $decoded = json_decode($stored, true);
+        if ($decoded !== null) return $decoded;
+    }
+    return $stored;
+}
+
 function ccrm_compute_data_version($pdo) {
     $candidates = ['leads', 'timeline_events', 'lead_categories', 'tasks', 'task_assignees', 'users', 'roles', 'meeting_notes', 'meeting_tasks', 'unified_entries', 'system_settings', 'project_types', 'projects', 'project_managers', 'warehouses', 'suppliers', 'warehouse_items', 'warehouse_stock', 'warehouse_batches', 'warehouse_movements', 'warehouse_movement_items', 'financial_categories', 'client_categories', 'financial_records', 'invoices_offers', 'invoice_offer_items', 'ai_custom_templates'];
     try {
@@ -283,21 +341,37 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
     sort($dbCats);
     if ($incCats !== $dbCats) return false;
     
-    // Compare timeline events
+    // Compare timeline events. Only the rows the client can see take part in
+    // the count: GET leaves hidden mail tombstones out, so the stored list is
+    // longer than the client's by exactly those rows, and comparing raw counts
+    // would either never match (a lead with one hidden mail is rewritten on
+    // every push) or match by accident (the very push that hides a mail has the
+    // same length as the stored list, so it was declared identical and the
+    // hide UPDATE below never ran — the mail came back after a refresh).
     $incTimeline = $inc['timeline'] ?? [];
     $dbTimeline = $db['timeline'] ?? [];
-    if (count($incTimeline) !== count($dbTimeline)) return false;
-    
+    $incVisible = 0;
+    foreach ($incTimeline as $te) { if (empty($te['hidden'])) $incVisible++; }
+    $dbVisible = 0;
+    foreach ($dbTimeline as $te) { if (empty($te['hidden'])) $dbVisible++; }
+    if ($incVisible !== $dbVisible) return false;
+
     $dbTeMap = [];
     foreach ($dbTimeline as $te) {
         $dbTeMap[$te['id']] = $te;
     }
-    
+
     foreach ($incTimeline as $te) {
         $teId = $te['id'] ?? '';
         if (!isset($dbTeMap[$teId])) return false;
         $dbTe = $dbTeMap[$teId];
-        
+
+        // The two flags the client can flip on a mail entry without touching
+        // anything else. Left out of the field list below, a "hide this mail"
+        // push looked identical to the stored lead and was skipped whole.
+        if ((!empty($te['hidden']) ? 1 : 0) !== (!empty($dbTe['hidden']) ? 1 : 0)) return false;
+        if ((!empty($te['isOutgoing']) ? 1 : 0) !== (!empty($dbTe['is_outgoing']) ? 1 : 0)) return false;
+
         $teFields = [
             'type' => $te['type'] ?? 'note',
             'title' => $te['title'] ?? '',
@@ -638,6 +712,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         }
     }
 
+    // Task e-mail reminders ride on the polling every open browser already does,
+    // so they go out even where no host cron calls api/cron.php. They run after
+    // the response has been handed back and at most once a minute overall.
+    register_shutdown_function(function () use ($pdo) {
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            session_write_close();
+        }
+        if (function_exists('fastcgi_finish_request')) {
+            fastcgi_finish_request();
+        }
+        ccrm_maybe_process_task_reminders($pdo);
+    });
+
     // Identity of the session, resolved from `users` rather than taken from the
     // session copy: api/auth.php only refreshes that copy every 60 seconds, so a
     // user who has just changed their own e-mail would look like a different
@@ -686,7 +773,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'title' => $te['title'],
             'content' => $te['content']
         ];
+        // Offers always carry their amount. Any other entry that stored one
+        // (the warehouse's goods-issue note logs the sale total) keeps it too:
+        // it used to be written and never read back, so the figure was gone
+        // after the first reload.
         if ($te['type'] === 'offer') {
+            $event['amount'] = floatval($te['amount']);
+        } elseif ($te['amount'] !== null && floatval($te['amount']) != 0.0) {
             $event['amount'] = floatval($te['amount']);
         }
         // Offers and the business-document types (order, proforma invoice,
@@ -818,6 +911,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'archived' => intval($row['archived'] ?? 0) === 1,
             'completedBy' => $row['completed_by'] ?? null,
             'completedAt' => $row['completed_at'] ?? null,
+            'emailReminders' => ccrm_decode_task_reminders($row['email_reminders_json'] ?? null),
             'assignedUsers' => $assignedUsers
         ];
     }
@@ -838,7 +932,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'role' => ccrm_role_label($row['role']),
             'color' => $row['color'] ?? '#3b82f6',
             'avatar' => $row['avatar'] ?? null,
-            'activityLog' => [],
+            // Stored inside metadata_json by the users write below; it used to be
+            // a hardcoded [] here, so every entry vanished on the next reload.
+            'activityLog' => (function ($raw) {
+                $m = is_string($raw) && $raw !== '' ? json_decode($raw, true) : null;
+                return (is_array($m) && isset($m['activityLog']) && is_array($m['activityLog'])) ? array_values($m['activityLog']) : [];
+            })($row['metadata_json'] ?? null),
             // SECURITY: mask per-user email passwords (IMAP/SMTP) inside the
             // metadata blob so one user cannot read another's mailbox password.
             'metadata_json' => ccrm_mask_user_metadata($row['metadata_json'])
@@ -864,9 +963,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $leadStates = isset($settings['LEAD_STATES']) ? json_decode($settings['LEAD_STATES'], true) : $defaultLists['leadStates'];
     $leadSources = isset($settings['LEAD_SOURCES']) ? json_decode($settings['LEAD_SOURCES'], true) : $defaultLists['leadSources'];
     $leadCategories = isset($settings['LEAD_CATEGORIES']) ? json_decode($settings['LEAD_CATEGORIES'], true) : $defaultLists['leadCategories'];
-    $leadStateColors = isset($settings['LEAD_STATE_COLORS']) ? json_decode($settings['LEAD_STATE_COLORS'], true) : [];
-    $leadSourceColors = isset($settings['LEAD_SOURCE_COLORS']) ? json_decode($settings['LEAD_SOURCE_COLORS'], true) : [];
-    $leadCategoryColors = isset($settings['LEAD_CATEGORY_COLORS']) ? json_decode($settings['LEAD_CATEGORY_COLORS'], true) : [];
+    // Every one of these is a map keyed by name on the client. A map the
+    // client saved empty ({}) decodes to an empty PHP array here and would be
+    // re-encoded as a JSON list ([]), landing in a Record<string,...> state as
+    // an Array. `?: (object)[]` keeps the empty case an object on the way out.
+    $leadStateColors = (isset($settings['LEAD_STATE_COLORS']) ? json_decode($settings['LEAD_STATE_COLORS'], true) : []) ?: (object)[];
+    $leadSourceColors = (isset($settings['LEAD_SOURCE_COLORS']) ? json_decode($settings['LEAD_SOURCE_COLORS'], true) : []) ?: (object)[];
+    $leadCategoryColors = (isset($settings['LEAD_CATEGORY_COLORS']) ? json_decode($settings['LEAD_CATEGORY_COLORS'], true) : []) ?: (object)[];
     // Permanent ids for the two lists a website form addresses by number
     // (`source_id` / `category_id` in /api/pipeline.php). Normalized on the way
     // out — as the client normalizes on the way in — so an install that has
@@ -881,9 +984,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         $leadCategories,
         isset($settings['LEAD_CATEGORY_IDS']) ? json_decode($settings['LEAD_CATEGORY_IDS'], true) : []
     );
-    $leadStageGroups = isset($settings['LEAD_STAGE_GROUPS']) ? json_decode($settings['LEAD_STAGE_GROUPS'], true) : [];
-    $leadStateParents = isset($settings['LEAD_STATE_PARENTS']) ? json_decode($settings['LEAD_STATE_PARENTS'], true) : (object)[];
-    $leadStateFollowUp = isset($settings['LEAD_STATE_FOLLOWUP']) ? json_decode($settings['LEAD_STATE_FOLLOWUP'], true) : (object)[];
+    $leadStageGroups = (isset($settings['LEAD_STAGE_GROUPS']) ? json_decode($settings['LEAD_STAGE_GROUPS'], true) : []) ?: (object)[];
+    $leadStateParents = (isset($settings['LEAD_STATE_PARENTS']) ? json_decode($settings['LEAD_STATE_PARENTS'], true) : []) ?: (object)[];
+    $leadStateFollowUp = (isset($settings['LEAD_STATE_FOLLOWUP']) ? json_decode($settings['LEAD_STATE_FOLLOWUP'], true) : []) ?: (object)[];
     // How many days a lead may sit in each pipeline phase before the app flags it.
     // Normalized on the way out so the client never has to defend against a
     // malformed blob, and so its own normalization compares equal to this one.
@@ -1049,6 +1152,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                         }
                         if (isset($r['money_amount'])) {
                             $rowItem['moneyAmount'] = (float)$r['money_amount'];
+                        }
+                        // The currency is written whenever the money module is on,
+                        // amount or not; a row saved as "USD, amount to be filled
+                        // in" must not fall back to the default currency on reload.
+                        if (isset($r['money_currency']) && $r['money_currency'] !== '') {
                             $rowItem['moneyCurrency'] = $r['money_currency'];
                         }
                         if (isset($r['warning_days'])) {
@@ -1118,6 +1226,39 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             ];
         }
 
+        // Column -> attribute id, per type, for reading proj_data_/proj_timeline_
+        // rows back under the ids the client knows. See ccrm_attr_id_for_column().
+        $attrIdByColumn = [];
+        $tlAttrIdByColumn = [];
+        foreach ($projectTypes as $ptItem) {
+            $map = [];
+            $defs = array_merge(
+                is_array($ptItem['attributes']) ? $ptItem['attributes'] : [],
+                is_array($ptItem['fileFields']) ? $ptItem['fileFields'] : []
+            );
+            foreach ($defs as $attrDef) {
+                if (!is_array($attrDef) || !isset($attrDef['id'])) continue;
+                $map[ccrm_attr_column((string)$attrDef['id'])] = (string)$attrDef['id'];
+            }
+            $attrIdByColumn[$ptItem['id']] = $map;
+
+            // Timeline attributes live under each event type (the writer below
+            // adds a column per timelineEventTypes[].attributes[]); the flat
+            // timelineAttributes list is the older shape and is read too.
+            $tlDefs = is_array($ptItem['timelineAttributes']) ? $ptItem['timelineAttributes'] : [];
+            foreach ((is_array($ptItem['timelineEventTypes']) ? $ptItem['timelineEventTypes'] : []) as $evType) {
+                if (is_array($evType) && is_array($evType['attributes'] ?? null)) {
+                    $tlDefs = array_merge($tlDefs, $evType['attributes']);
+                }
+            }
+            $tlMap = [];
+            foreach ($tlDefs as $attrDef) {
+                if (!is_array($attrDef) || !isset($attrDef['id'])) continue;
+                $tlMap[ccrm_attr_column((string)$attrDef['id'])] = (string)$attrDef['id'];
+            }
+            $tlAttrIdByColumn[$ptItem['id']] = $tlMap;
+        }
+
         // Fetch managers
         $managersByProject = [];
         $mgrStmt = $pdo->query("SELECT `project_id`, `user_id` FROM `project_managers`");
@@ -1125,7 +1266,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             $managersByProject[$mgr['project_id']][] = $mgr['user_id'];
         }
 
-        $projStmt = $pdo->query("SELECT * FROM `projects` ORDER BY `created_at` DESC");
+        $projStmt = $pdo->query("SELECT * FROM `projects` ORDER BY `created_at` DESC, `id` DESC");
         while ($pRow = $projStmt->fetch(PDO::FETCH_ASSOC)) {
             $projId = $pRow['id'];
             $ptId = $pRow['project_type_id'];
@@ -1164,9 +1305,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 $dRow = $dStmt->fetch(PDO::FETCH_ASSOC);
                 if ($dRow) {
                     $parsedData = [];
+                    $idByCol = $attrIdByColumn[$ptId] ?? [];
                     foreach ($dRow as $col => $val) {
                         if (str_starts_with($col, 'attr_')) {
-                            $parsedData[str_replace('attr_', '', $col)] = $val;
+                            $parsedData[ccrm_attr_id_for_column($idByCol, $col)] = ccrm_decode_attr_value($val);
                         }
                     }
                     $projectItem['data'] = $parsedData;
@@ -1181,9 +1323,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                  $tStmt->execute([$projId]);
                  while ($tRow = $tStmt->fetch(PDO::FETCH_ASSOC)) {
                      $parsedTeData = [];
+                     $tlIdByCol = $tlAttrIdByColumn[$ptId] ?? [];
                      foreach ($tRow as $col => $val) {
                          if (str_starts_with($col, 'attr_')) {
-                             $parsedTeData[str_replace('attr_', '', $col)] = json_decode($val, true) !== null ? json_decode($val, true) : $val;
+                             $parsedTeData[ccrm_attr_id_for_column($tlIdByCol, $col)] = ccrm_decode_attr_value($val);
                          }
                      }
                      $projectItem['timeline'][] = [
@@ -1448,7 +1591,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'recurringConfig' => !empty($row['recurring_config_json']) ? json_decode($row['recurring_config_json'], true) : null,
                     'recurringStartDate' => $row['recurring_start_date'],
                     'recurringEndDate' => $row['recurring_end_date'],
+                    'recurringPlannedEndDate' => $row['recurring_planned_end_date'] ?? null,
                     'recurringAmountHistory' => !empty($row['recurring_amount_history_json']) ? json_decode($row['recurring_amount_history_json'], true) : null,
+                    'recurringSkippedDates' => !empty($row['recurring_skipped_dates_json']) ? json_decode($row['recurring_skipped_dates_json'], true) : null,
+                    'recurringSourceId' => $row['recurring_source_id'] ?? null,
+                    'recurringOccurrenceDate' => $row['recurring_occurrence_date'] ?? null,
                     'projectId' => $row['project_id'],
                     'clientId' => $row['client_id'],
                     'invoiceNumber' => $row['invoice_number'],
@@ -1524,6 +1671,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'customTemplateId' => $row['custom_template_id'],
                     'customTemplateStyle' => !empty($row['custom_template_style_json']) ? json_decode($row['custom_template_style_json'], true) : null,
                     'status' => $row['status'],
+                    'statusChangedAt' => $row['status_changed_at'] ?? null,
                     'issuedAt' => $row['issued_at'],
                     'validUntil' => $row['valid_until'],
                     'dueDate' => $row['due_date'],
@@ -1665,6 +1813,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // SECURITY: writes require an authenticated session.
     $sessionUser = ccrm_require_auth();
+    // The `createdBy` fallback for stock movements, financial records and
+    // documents. It used to be read here without ever being set in this branch
+    // (only GET defines it), so those rows were stored with no author.
+    $sessionEmail = (string)($sessionUser['email'] ?? '');
     // Privileged writes (global settings, RBAC registry, integration secrets,
     // and management of OTHER users / roles) are admin-only. Non-admin sync
     // payloads still carry these sections (the client always sends a full
@@ -1942,7 +2094,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $expectedCols = ['id', 'project_id', 'created_at', 'updated_at'];
 
                 foreach ($attributes as $attr) {
-                    $colName = "attr_" . preg_replace('/[^a-z0-9_]/', '', strtolower($attr['id']));
+                    $colName = ccrm_attr_column($attr['id']);
                     $expectedCols[] = $colName;
                     if (!in_array($colName, $existingCols)) {
                         $addCol = "ALTER TABLE `{$dataTable}` ADD COLUMN `{$colName}` LONGTEXT NULL";
@@ -1955,8 +2107,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Its silence must not read as "every slot was removed", which would
                 // drop the columns and every file uploaded into them.
                 $keepFileCols = !array_key_exists('fileFields', $pt);
+                // The same rule for the attribute list itself: a record that does
+                // not carry `attributes` at all (a partial writer, an older build)
+                // says nothing about which columns to keep, so none are dropped.
+                $keepAttrCols = !array_key_exists('attributes', $pt);
                 foreach ($existingCols as $col) {
                     if ($keepFileCols && str_starts_with($col, 'attr_file_')) continue;
+                    if ($keepAttrCols && !str_starts_with($col, 'attr_file_')) continue;
                     if (str_starts_with($col, 'attr_') && !in_array($col, $expectedCols)) {
                         $dropCol = "ALTER TABLE `{$dataTable}` DROP COLUMN `{$col}`";
                         $pdo->exec($dropCol);
@@ -2005,7 +2162,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $expectedTcols = ['id', 'project_id', 'type', 'event_type', 'timestamp', 'title', 'content'];
 
                 foreach ($timelineAttributes as $attr) {
-                    $colName = "attr_" . preg_replace('/[^a-z0-9_]/', '', strtolower($attr['id']));
+                    $colName = ccrm_attr_column($attr['id']);
                     $expectedTcols[] = $colName;
                     if (!in_array($colName, $existingTcols)) {
                         $addCol = "ALTER TABLE `{$timelineTable}` ADD COLUMN `{$colName}` LONGTEXT NULL";
@@ -2014,7 +2171,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
 
+                // A record without `timelineEventTypes` says nothing about which
+                // columns to keep (see $keepAttrCols above) — drop none.
+                $keepTimelineCols = !array_key_exists('timelineEventTypes', $pt);
                 foreach ($existingTcols as $col) {
+                    if ($keepTimelineCols) break;
                     if (str_starts_with($col, 'attr_') && !in_array($col, $expectedTcols)) {
                         $dropCol = "ALTER TABLE `{$timelineTable}` DROP COLUMN `{$col}`";
                         $pdo->exec($dropCol);
@@ -2181,17 +2342,42 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if ($canSettingsSources) {
                 $settingsAllowedKeys = array_merge($settingsAllowedKeys, [
                     'LEAD_SOURCES', 'LEAD_SOURCE_IDS', 'LEAD_SOURCE_COLORS',
+                    // The settings screen gates the task-state list and the lead
+                    // category list behind this same permission (SettingsView's
+                    // getPermission("traffic_sources")). Refusing them here while the
+                    // UI accepted the edit made the rename revert on the next reload
+                    // with no message at all.
+                    'TASK_STATES', 'TASK_STATE_COLORS',
+                    'LEAD_CATEGORIES', 'LEAD_CATEGORY_IDS', 'LEAD_CATEGORY_COLORS',
                 ]);
             }
             if ($canSettingsAi) {
                 $settingsAllowedKeys[] = 'INTEGRATIONS_CONFIG';
             }
             $settingsAllowed = array_flip($settingsAllowedKeys);
+            $storedSettingsForSkip = fetch_system_settings($pdo);
             foreach ($settingsList as $k => $v) {
                 // A null here means "nothing inbound and nothing stored" — skip it
                 // rather than writing a NULL row over a value another writer may
                 // have just saved.
-                if ($v === null || !isset($settingsAllowed[$k])) {
+                if ($v === null) {
+                    continue;
+                }
+                if (!isset($settingsAllowed[$k])) {
+                    // Same contract as the collections: a key this role may not
+                    // write is reported, not swallowed, so the client can warn and
+                    // stop treating its local copy as saved. Only a key whose value
+                    // actually differs from what is stored counts — the client sends
+                    // the whole settings blob on every push, and an unchanged key it
+                    // may not write is not lost work.
+                    // A key that was never stored is echoed defaults, not an edit.
+                    if (!array_key_exists($k, $storedSettingsForSkip) || (string)$storedSettingsForSkip[$k] === (string)$v) {
+                        continue;
+                    }
+                    $skipTag = 'settings:' . $k;
+                    if (!in_array($skipTag, $permissionSkipped, true)) {
+                        $permissionSkipped[] = $skipTag;
+                    }
                     continue;
                 }
                 $insSet->execute([$k, $v]);
@@ -2235,10 +2421,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Existing rows with their current password hashes so we can preserve
             // a user's password when the client does not send a new one.
             $emailToUser = [];
+            $idToUser = [];
             $userRows = $pdo->query("SELECT * FROM `users`")->fetchAll(PDO::FETCH_ASSOC);
             foreach ($userRows as $r) {
                 $emailToUser[strtolower(trim($r['email']))] = $r;
+                $idToUser[$r['id']] = $r;
             }
+            // An incoming record is "existing" by its id first, then by e-mail.
+            // Resolving by e-mail alone made a changed address look like a brand
+            // new account: on an install at its seat limit the edit was refused
+            // as a new seat and the old address came back after a reload.
+            $resolveExistingUser = function (array $pu) use ($idToUser, $emailToUser): ?array {
+                if (!empty($pu['id']) && isset($idToUser[$pu['id']])) return $idToUser[$pu['id']];
+                $puEmail = strtolower(trim((string)($pu['email'] ?? '')));
+                return $emailToUser[$puEmail] ?? null;
+            };
 
             $existingHashes = [];
             $existingMeta = [];
@@ -2270,8 +2467,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 foreach ($payload['users'] as $pu) {
                     if (empty($pu['email'])) continue;
                     $puEmail = strtolower(trim($pu['email']));
-                    $payloadUserIds[] = isset($emailToUser[$puEmail])
-                        ? $emailToUser[$puEmail]['id']
+                    $puExisting = $resolveExistingUser($pu);
+                    $payloadUserIds[] = $puExisting
+                        ? $puExisting['id']
                         : ($pu['id'] ?? ('u-' . md5($puEmail)));
                 }
                 $plannedDeletes = $isDeltaSync
@@ -2290,7 +2488,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     continue;
                 }
                 $uEmail = strtolower(trim($u['email']));
-                $existingRecord = $emailToUser[$uEmail] ?? null;
+                $existingRecord = $resolveExistingUser($u);
                 $userId = $existingRecord ? $existingRecord['id'] : ($u['id'] ?? ('u-' . md5($uEmail)));
 
                 // Creating an account past the licensed seat count. Refused here
@@ -2324,6 +2522,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 $metaJson = isset($u['metadata_json']) ? (is_array($u['metadata_json']) ? json_encode($u['metadata_json']) : $u['metadata_json']) : (isset($u['metadata']) ? (is_array($u['metadata']) ? json_encode($u['metadata']) : $u['metadata']) : null);
+                // A record with no metadata at all says nothing about it: keep the
+                // stored blob (language, preferences, mailbox credentials) rather
+                // than writing NULL over it.
+                if ($metaJson === null && isset($existingMeta[$userId]) && $existingMeta[$userId] !== null) {
+                    $metaJson = $existingMeta[$userId];
+                }
+                // The account activity log the users screen shows lives inside the
+                // metadata blob — it has no column of its own, and the read side
+                // used to hand back an empty list no matter what was saved.
+                if (array_key_exists('activityLog', $u) && is_array($u['activityLog'])) {
+                    $metaArr = json_decode((string)($metaJson ?? ''), true);
+                    if (!is_array($metaArr)) $metaArr = [];
+                    $metaArr['activityLog'] = array_values($u['activityLog']);
+                    $metaJson = json_encode($metaArr, JSON_UNESCAPED_UNICODE);
+                }
                 // Keep the stored IMAP/SMTP password when the client sent it masked.
                 $metaJson = ccrm_merge_user_metadata($metaJson, $existingMeta[$userId] ?? null);
 
@@ -2334,7 +2547,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 //    (admin must set one) rather than a predictable default.
                 $incoming = isset($u['password']) ? trim((string)$u['password']) : '';
                 $passwordChanged = false;
-                if ($incoming !== '') {
+                if ($incoming !== '' && !ccrm_is_hash($incoming)
+                    && isset($existingHashes[$userId]) && $existingHashes[$userId] !== ''
+                    && password_verify($incoming, $existingHashes[$userId])) {
+                    // The same password again. The client keeps the plaintext on
+                    // the record after a change and re-sends it with every push;
+                    // re-hashing it produced a fresh salt each time, "changed" was
+                    // true on every push, and every push logged that colleague out.
+                    $hash = $existingHashes[$userId];
+                } elseif ($incoming !== '') {
                     $hash = ccrm_hash_password($incoming);
                     // Only a genuinely new password counts: the client may echo back
                     // the stored hash unchanged, and that must not log anyone out.
@@ -2422,13 +2643,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $ptListColumns = $prevColsRow['list_columns_json'] ?? '[]';
                     }
                 }
+                // Attributes and timeline event types follow the same rule as the
+                // pre-pass that manages their columns: absent means "unchanged",
+                // never "none" — writing [] over them would orphan every value.
+                $ptAttributesJson = json_encode($pt['attributes'] ?? []);
+                $ptTimelineTypesJson = json_encode($pt['timelineEventTypes'] ?? []);
+                if (!array_key_exists('attributes', $pt) || !array_key_exists('timelineEventTypes', $pt)) {
+                    $prevLists = $pdo->prepare("SELECT `attributes_json`, `timeline_event_types_json` FROM `project_types` WHERE `id` = ?");
+                    $prevLists->execute([$pt['id']]);
+                    if ($prevListsRow = $prevLists->fetch(PDO::FETCH_ASSOC)) {
+                        if (!array_key_exists('attributes', $pt)) $ptAttributesJson = $prevListsRow['attributes_json'] ?? '[]';
+                        if (!array_key_exists('timelineEventTypes', $pt)) $ptTimelineTypesJson = $prevListsRow['timeline_event_types_json'] ?? '[]';
+                    }
+                }
                 $insPt->execute([
                     $pt['id'],
                     $pt['name'],
                     $pt['description'] ?? '',
                     $pt['icon'],
                     $pt['color'],
-                    json_encode($pt['attributes'] ?? []),
+                    $ptAttributesJson,
                     !empty($pt['hasTimeline']) ? 1 : 0,
                     !empty($pt['hasGantt']) ? 1 : 0,
                     !empty($pt['hasDeadline']) ? 1 : 0,
@@ -2439,7 +2673,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $ptHasFiles,
                     $ptFileFields,
                     $ptListColumns,
-                    json_encode($pt['timelineEventTypes'] ?? []),
+                    $ptTimelineTypesJson,
                     json_encode($pt['timelineAttributes'] ?? [])
                 ]);
                 $processedPtIds[] = $pt['id'];
@@ -2587,12 +2821,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $vals = [$projId, $projId]; 
                     $updParts = [];
                     foreach ($p['data'] as $k => $v) {
-                        $colName = "attr_" . preg_replace('/[^a-z0-9_]/', '', strtolower($k));
+                        $colName = ccrm_attr_column($k);
                         // Verify column exists
                         if (ccrm_column_exists($pdo, $dataTable, $colName)) {
                             $cols[] = $colName;
-                            // Convert arrays to JSON, store strings as is
-                            $vals[] = is_array($v) ? json_encode($v) : $v;
+                            // Lists/objects as JSON, booleans as words, text verbatim —
+                            // the exact inverse of ccrm_decode_attr_value() on read.
+                            $vals[] = ccrm_encode_attr_value($v);
                             $updParts[] = "`{$colName}`=VALUES(`{$colName}`)";
                         }
                     }
@@ -2629,10 +2864,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                         if (isset($te['data']) && is_array($te['data'])) {
                             foreach ($te['data'] as $k => $v) {
-                                $colName = "attr_" . preg_replace('/[^a-z0-9_]/', '', strtolower($k));
+                                $colName = ccrm_attr_column($k);
                                 if (ccrm_column_exists($pdo, $timelineTable, $colName)) {
                                     $cols[] = $colName;
-                                    $vals[] = is_array($v) ? json_encode($v) : $v;
+                                    $vals[] = ccrm_encode_attr_value($v);
                                 }
                             }
                         }
@@ -3137,11 +3372,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // completed_by/completed_at are in the UPDATE list on purpose: reopening a
             // task ("Restore" in the archive) sends them back as null and must clear
             // the stored attribution, not keep the stale one.
-            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `is_locking`, `archived`, `completed_by`, `completed_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`), `completed_by` = VALUES(`completed_by`), `completed_at` = VALUES(`completed_at`)");
+            $insTask = $pdo->prepare("INSERT INTO `tasks` (`id`, `title`, `description`, `priority`, `start_date`, `deadline`, `deadline_time`, `status`, `owner`, `created_by`, `related_lead_id`, `related_project_id`, `is_locking`, `archived`, `completed_by`, `completed_at`, `email_reminders_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `title` = VALUES(`title`), `description` = VALUES(`description`), `priority` = VALUES(`priority`), `start_date` = VALUES(`start_date`), `deadline` = VALUES(`deadline`), `deadline_time` = VALUES(`deadline_time`), `status` = VALUES(`status`), `owner` = VALUES(`owner`), `related_lead_id` = VALUES(`related_lead_id`), `related_project_id` = VALUES(`related_project_id`), `is_locking` = VALUES(`is_locking`), `archived` = VALUES(`archived`), `completed_by` = VALUES(`completed_by`), `completed_at` = VALUES(`completed_at`), `email_reminders_json` = VALUES(`email_reminders_json`)");
 
             foreach ($payload['tasks'] as $t) {
-                // Skip malformed items rather than aborting the whole sync.
+                // Skip malformed items rather than aborting the whole sync — but
+                // tell the client: an id that is neither processed nor conflicted
+                // is adopted as "saved" by its delta baseline, and the next pull
+                // silently replaces the edit with the stored row.
                 if (!is_array($t) || empty($t['id']) || !isset($t['title']) || $t['title'] === '' || empty($t['deadline'])) {
+                    if (is_array($t) && !empty($t['id'])) $conflictedIds['tasks'][] = (string)$t['id'];
                     continue;
                 }
                 $taskId = $t['id'];
@@ -3179,7 +3418,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     ($t['isLocking'] ?? false) ? 1 : 0,
                     ($t['archived'] ?? false) ? 1 : 0,
                     (isset($t['completedBy']) && $t['completedBy'] !== '') ? $t['completedBy'] : null,
-                    (isset($t['completedAt']) && $t['completedAt'] !== '') ? substr($t['completedAt'], 0, 16) : null
+                    (isset($t['completedAt']) && $t['completedAt'] !== '') ? substr($t['completedAt'], 0, 16) : null,
+                    ccrm_encode_task_reminders($t['emailReminders'] ?? null)
                 ]);
                 $processedTaskIds[] = $taskId;
 
@@ -3839,7 +4079,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingFrIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
             $processedFrIds = [];
 
-            $insFr = $pdo->prepare("INSERT INTO `financial_records` (`id`, `type`, `subtype`, `title`, `description`, `category_id`, `category_path`, `amount_planned`, `amount_real`, `currency`, `status`, `issue_date`, `due_date`, `paid_date`, `payment_method`, `is_recurring`, `recurring_frequency`, `recurring_config_json`, `recurring_start_date`, `recurring_end_date`, `recurring_amount_history_json`, `project_id`, `client_id`, `invoice_number`, `tax_rate`, `attachments_json`, `created_by`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `type` = VALUES(`type`), `subtype` = VALUES(`subtype`), `title` = VALUES(`title`), `description` = VALUES(`description`), `category_id` = VALUES(`category_id`), `category_path` = VALUES(`category_path`), `amount_planned` = VALUES(`amount_planned`), `amount_real` = VALUES(`amount_real`), `currency` = VALUES(`currency`), `status` = VALUES(`status`), `issue_date` = VALUES(`issue_date`), `due_date` = VALUES(`due_date`), `paid_date` = VALUES(`paid_date`), `payment_method` = VALUES(`payment_method`), `is_recurring` = VALUES(`is_recurring`), `recurring_frequency` = VALUES(`recurring_frequency`), `recurring_config_json` = VALUES(`recurring_config_json`), `recurring_start_date` = VALUES(`recurring_start_date`), `recurring_end_date` = VALUES(`recurring_end_date`), `recurring_amount_history_json` = VALUES(`recurring_amount_history_json`), `project_id` = VALUES(`project_id`), `client_id` = VALUES(`client_id`), `invoice_number` = VALUES(`invoice_number`), `tax_rate` = VALUES(`tax_rate`), `attachments_json` = VALUES(`attachments_json`), `created_by` = VALUES(`created_by`)");
+            $insFr = $pdo->prepare("INSERT INTO `financial_records` (`id`, `type`, `subtype`, `title`, `description`, `category_id`, `category_path`, `amount_planned`, `amount_real`, `currency`, `status`, `issue_date`, `due_date`, `paid_date`, `payment_method`, `is_recurring`, `recurring_frequency`, `recurring_config_json`, `recurring_start_date`, `recurring_end_date`, `recurring_planned_end_date`, `recurring_amount_history_json`, `recurring_skipped_dates_json`, `recurring_source_id`, `recurring_occurrence_date`, `project_id`, `client_id`, `invoice_number`, `tax_rate`, `attachments_json`, `created_by`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `type` = VALUES(`type`), `subtype` = VALUES(`subtype`), `title` = VALUES(`title`), `description` = VALUES(`description`), `category_id` = VALUES(`category_id`), `category_path` = VALUES(`category_path`), `amount_planned` = VALUES(`amount_planned`), `amount_real` = VALUES(`amount_real`), `currency` = VALUES(`currency`), `status` = VALUES(`status`), `issue_date` = VALUES(`issue_date`), `due_date` = VALUES(`due_date`), `paid_date` = VALUES(`paid_date`), `payment_method` = VALUES(`payment_method`), `is_recurring` = VALUES(`is_recurring`), `recurring_frequency` = VALUES(`recurring_frequency`), `recurring_config_json` = VALUES(`recurring_config_json`), `recurring_start_date` = VALUES(`recurring_start_date`), `recurring_end_date` = VALUES(`recurring_end_date`), `recurring_planned_end_date` = VALUES(`recurring_planned_end_date`), `recurring_amount_history_json` = VALUES(`recurring_amount_history_json`), `recurring_skipped_dates_json` = VALUES(`recurring_skipped_dates_json`), `recurring_source_id` = VALUES(`recurring_source_id`), `recurring_occurrence_date` = VALUES(`recurring_occurrence_date`), `project_id` = VALUES(`project_id`), `client_id` = VALUES(`client_id`), `invoice_number` = VALUES(`invoice_number`), `tax_rate` = VALUES(`tax_rate`), `attachments_json` = VALUES(`attachments_json`), `created_by` = VALUES(`created_by`)");
 
             foreach ($payload['financialRecords'] as $fr) {
                 $frId = $fr['id'];
@@ -3854,6 +4094,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $frPaidDate = ccrm_date_only($fr['paidDate'] ?? null);
                 $frRecurringStartDate = ccrm_date_only($fr['recurringStartDate'] ?? null);
                 $frRecurringEndDate = ccrm_date_only($fr['recurringEndDate'] ?? null);
+                $frRecurringPlannedEndDate = ccrm_date_only($fr['recurringPlannedEndDate'] ?? null);
+                $frRecurringOccurrenceDate = ccrm_date_only($fr['recurringOccurrenceDate'] ?? null);
+                // Only well-formed days make it into the skipped list — the schedule
+                // compares them as strings, so a stray datetime would never match.
+                $frSkippedDates = [];
+                foreach ((array) ($fr['recurringSkippedDates'] ?? []) as $skippedDay) {
+                    $skippedDayOnly = ccrm_date_only(is_string($skippedDay) ? $skippedDay : null);
+                    if ($skippedDayOnly) $frSkippedDates[] = $skippedDayOnly;
+                }
+                $frSkippedDates = array_values(array_unique($frSkippedDates));
+                sort($frSkippedDates);
                 $insFr->execute([
                     $frId,
                     $fr['type'] ?? 'expense',
@@ -3875,7 +4126,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     !empty($fr['recurringConfig']) ? json_encode($fr['recurringConfig'], JSON_UNESCAPED_UNICODE) : null,
                     $frRecurringStartDate,
                     $frRecurringEndDate,
+                    $frRecurringPlannedEndDate,
                     !empty($fr['recurringAmountHistory']) ? json_encode($fr['recurringAmountHistory'], JSON_UNESCAPED_UNICODE) : null,
+                    !empty($frSkippedDates) ? json_encode($frSkippedDates) : null,
+                    !empty($fr['recurringSourceId']) ? mb_substr((string) $fr['recurringSourceId'], 0, 50, 'UTF-8') : null,
+                    $frRecurringOccurrenceDate,
                     !empty($fr['projectId']) ? $fr['projectId'] : null,
                     $frClientId,
                     $fr['invoiceNumber'] ?? null,
@@ -3920,9 +4175,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 `title`, `subject`, `location`, `greeting_note`, `intro_note`, `usp_cards_json`, `reassurance_note`,
                 `subtotal`, `vat_amount`, `total_price`, `price_range_min`, `price_range_max`, `currency`,
                 `duration_text`, `start_date_text`, `warranty_text`, `next_steps_note`, `closing_note`, `sign_off_team`,
-                `custom_template_id`, `custom_template_style_json`, `status`, `issued_at`, `valid_until`, `due_date`,
+                `custom_template_id`, `custom_template_style_json`, `status`, `status_changed_at`, `issued_at`, `valid_until`, `due_date`,
                 `file_name`, `file_path`, `created_by`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
                 `document_number` = VALUES(`document_number`), `type` = VALUES(`type`), `mode` = VALUES(`mode`),
                 `external_provider` = VALUES(`external_provider`), `external_id` = VALUES(`external_id`), `external_pdf_url` = VALUES(`external_pdf_url`),
@@ -3937,7 +4192,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 `duration_text` = VALUES(`duration_text`), `start_date_text` = VALUES(`start_date_text`), `warranty_text` = VALUES(`warranty_text`),
                 `next_steps_note` = VALUES(`next_steps_note`), `closing_note` = VALUES(`closing_note`), `sign_off_team` = VALUES(`sign_off_team`),
                 `custom_template_id` = VALUES(`custom_template_id`), `custom_template_style_json` = VALUES(`custom_template_style_json`),
-                `status` = VALUES(`status`), `issued_at` = VALUES(`issued_at`), `valid_until` = VALUES(`valid_until`), `due_date` = VALUES(`due_date`),
+                `status` = VALUES(`status`), `status_changed_at` = VALUES(`status_changed_at`), `issued_at` = VALUES(`issued_at`), `valid_until` = VALUES(`valid_until`), `due_date` = VALUES(`due_date`),
                 `file_name` = VALUES(`file_name`), `file_path` = VALUES(`file_path`), `created_by` = VALUES(`created_by`)");
 
             $delIoItems = $pdo->prepare("DELETE FROM `invoice_offer_items` WHERE `invoice_offer_id` = ?");
@@ -3990,6 +4245,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $io['customTemplateId'] ?? null,
                     !empty($io['customTemplateStyle']) ? json_encode($io['customTemplateStyle'], JSON_UNESCAPED_UNICODE) : null,
                     $io['status'] ?? 'draft',
+                    ccrm_date_only($io['statusChangedAt'] ?? null),
                     !empty($io['issuedAt']) ? $io['issuedAt'] : date('Y-m-d'),
                     !empty($io['validUntil']) ? $io['validUntil'] : null,
                     !empty($io['dueDate']) ? $io['dueDate'] : null,

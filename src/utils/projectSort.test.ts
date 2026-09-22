@@ -3,9 +3,12 @@ import test from "node:test";
 import {
   DEFAULT_PROJECT_SORT,
   isAttributeSortKey,
+  newestFirst,
   nextProjectSort,
   normalizeProjectSort,
   sortProjects,
+  applyManualOrder,
+  storedManualOrder,
   type ProjectSortValues,
 } from "./projectSort.ts";
 
@@ -121,4 +124,51 @@ test("a project of a type without the attribute sorts as a blank, not a crash", 
     sortProjects(mixed, { key: "attr:a1", direction: "asc" }, mixedValues).map(r => r.id),
     ["p2", "p1"],
   );
+});
+
+test("newestFirst orders by creation date, whatever order the list arrives in", () => {
+  const projects = [
+    { id: "old", createdAt: "2026-01-01 10:00:00" },
+    { id: "new", createdAt: "2026-09-01 08:30:00" },
+    { id: "mid", createdAt: "2026-05-15 12:00:00" },
+  ];
+  assert.deepEqual(newestFirst(projects).map((p) => p.id), ["new", "mid", "old"]);
+});
+
+test("newestFirst puts a project not yet synced (no createdAt) on top and keeps ties in place", () => {
+  const projects = [
+    { id: "a", createdAt: "2026-03-01 10:00:00" },
+    { id: "fresh1" },
+    { id: "b", createdAt: "2026-03-01 10:00:00" },
+    { id: "fresh2", createdAt: null },
+  ];
+  assert.deepEqual(newestFirst(projects).map((p) => p.id), ["fresh1", "fresh2", "a", "b"]);
+});
+
+test("newestFirst sorts a copy", () => {
+  const projects = [{ id: "old", createdAt: "2026-01-01 00:00:00" }, { id: "new", createdAt: "2026-02-01 00:00:00" }];
+  newestFirst(projects);
+  assert.deepEqual(projects.map((p) => p.id), ["old", "new"]);
+});
+
+test("the custom order is read from the stored sort, and junk reads as none", () => {
+  assert.deepEqual(storedManualOrder({ key: "manual", direction: "asc", order: ["p2", "p1"] }), ["p2", "p1"]);
+  assert.deepEqual(storedManualOrder({ key: "manual", direction: "asc", order: ["p1", 7, null] }), ["p1"]);
+  assert.deepEqual(storedManualOrder({ key: "manual", direction: "asc", order: "p1" }), []);
+  assert.deepEqual(storedManualOrder(null), []);
+  assert.equal(normalizeProjectSort({ key: "manual", direction: "asc", order: [] }).key, "manual");
+});
+
+test("applyManualOrder follows the hand-set order, new projects on top, stale ids ignored", () => {
+  const items = [{ id: "new" }, { id: "p1" }, { id: "p2" }, { id: "p3" }];
+  assert.deepEqual(
+    applyManualOrder(items, ["p3", "gone", "p1", "p2"]).map((p) => p.id),
+    ["new", "p3", "p1", "p2"],
+  );
+  assert.deepEqual(applyManualOrder(items, []).map((p) => p.id), ["new", "p1", "p2", "p3"]);
+  assert.deepEqual(items.map((p) => p.id), ["new", "p1", "p2", "p3"]);
+});
+
+test("the manual key keeps the incoming order and has no direction", () => {
+  assert.deepEqual(order(sortProjects(rows, { key: "manual", direction: "desc" }, values)), ["p1", "p2", "p3", "p4"]);
 });

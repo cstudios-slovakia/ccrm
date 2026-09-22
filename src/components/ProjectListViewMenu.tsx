@@ -5,6 +5,7 @@ import { cn } from "../utils/cn";
 import { LOCKED_PROJECT_COLUMN, moveProjectColumn } from "../utils/projectColumns";
 import type { ResolvedProjectColumn } from "../utils/projectColumns";
 import type { ProjectSort, ProjectSortKey } from "../utils/projectSort";
+import { useDragReorder } from "../hooks/useDragReorder";
 
 /* The sort select portals its option panel to <body>; a click in it must not
    read as a click outside this menu. */
@@ -15,6 +16,8 @@ interface ProjectListViewMenuProps {
   sort: ProjectSort;
   sortOptions: { value: ProjectSortKey; label: string }[];
   onSortChange: (next: ProjectSort) => void;
+  /** Set when the current view ignores the sort (the structure): shown in place of the sort controls. */
+  sortNote?: string;
   /** Every column the table can show, hidden ones included, in order. */
   columns: ResolvedProjectColumn[];
   onColumnsChange: (next: ResolvedProjectColumn[]) => void;
@@ -36,6 +39,7 @@ export const ProjectListViewMenu: React.FC<ProjectListViewMenuProps> = ({
   sort,
   sortOptions,
   onSortChange,
+  sortNote,
   columns,
   onColumnsChange,
   columnLabel,
@@ -65,53 +69,21 @@ export const ProjectListViewMenu: React.FC<ProjectListViewMenuProps> = ({
     };
   }, [open]);
 
-  /* Drag-and-drop over the column list — the held-key-plus-edge marker the
-     attribute list in project type settings uses too. */
-  const [draggedKey, setDraggedKey] = useState<string | null>(null);
-  const [dropTarget, setDropTarget] = useState<{ key: string; position: "before" | "after" } | null>(null);
-
-  const endDrag = () => {
-    setDraggedKey(null);
-    setDropTarget(null);
-  };
-
-  const handleDragStart = (e: React.DragEvent<HTMLElement>, key: string) => {
-    if (!canEditColumns || key === LOCKED_PROJECT_COLUMN) {
-      e.preventDefault();
-      return;
-    }
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", key);
-    setDraggedKey(key);
-  };
-
-  const handleDragOver = (e: React.DragEvent<HTMLElement>, targetKey: string) => {
-    if (!draggedKey || targetKey === LOCKED_PROJECT_COLUMN) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    const rect = e.currentTarget.getBoundingClientRect();
-    const position: "before" | "after" =
-      rect.height && e.clientY - rect.top > rect.height / 2 ? "after" : "before";
-    if (dropTarget?.key !== targetKey || dropTarget?.position !== position) {
-      setDropTarget({ key: targetKey, position });
-    }
-  };
-
-  const handleDrop = (e: React.DragEvent<HTMLElement>) => {
-    e.preventDefault();
-    const dragKey = draggedKey;
-    const drop = dropTarget;
-    endDrag();
-    if (!canEditColumns || !dragKey || !drop) return;
-    onColumnsChange(moveProjectColumn(columns, dragKey, drop.key, drop.position));
-  };
+  /* Drag-and-drop over the column list — the same hook the attribute list in
+     project type settings and the projects list itself use. */
+  const columnDrag = useDragReorder({
+    enabled: canEditColumns,
+    onMove: (dragKey, targetKey, position) =>
+      onColumnsChange(moveProjectColumn(columns, dragKey, targetKey, position)),
+  });
 
   const toggleColumn = (key: string) => {
     if (!canEditColumns || key === LOCKED_PROJECT_COLUMN) return;
     onColumnsChange(columns.map(c => (c.key === key ? { ...c, visible: !c.visible } : c)));
   };
 
-  const sorted = sort.key !== "default";
+  // Neither the creation order nor a hand-set order has a direction to flip.
+  const sorted = sort.key !== "default" && sort.key !== "manual";
   const directions = [
     { dir: "asc" as const, Icon: ArrowDownNarrowWide, label: t("Ascending", "Vzostupne", "Növekvő") },
     { dir: "desc" as const, Icon: ArrowDownWideNarrow, label: t("Descending", "Zostupne", "Csökkenő") },
@@ -146,39 +118,43 @@ export const ProjectListViewMenu: React.FC<ProjectListViewMenuProps> = ({
           {/* Sort */}
           <div className="grid grid-cols-[6.5rem_1fr] items-center gap-3 px-4 py-3.5 border-b border-slate-200">
             <span className={rowLabel}>{t("Sort by", "Zoradiť podľa", "Rendezés")}</span>
-            <div className="flex items-center gap-1.5 min-w-0">
-              <div className="flex-1 min-w-0">
-                <CustomSelect
-                  className="h-9"
-                  panelClassName={SORT_PANEL_CLASS}
-                  value={sort.key}
-                  onChange={v => onSortChange({ key: v as ProjectSortKey, direction: v === sort.key ? sort.direction : "asc" })}
-                  options={sortOptions}
-                />
+            {sortNote ? (
+              <p className="text-[11px] font-semibold text-slate-400 leading-snug">{sortNote}</p>
+            ) : (
+              <div className="flex items-center gap-1.5 min-w-0">
+                <div className="flex-1 min-w-0">
+                  <CustomSelect
+                    className="h-9"
+                    panelClassName={SORT_PANEL_CLASS}
+                    value={sort.key}
+                    onChange={v => onSortChange({ key: v as ProjectSortKey, direction: v === sort.key ? sort.direction : "asc" })}
+                    options={sortOptions}
+                  />
+                </div>
+                <div className="flex items-center shrink-0 rounded-xl border border-slate-200 overflow-hidden">
+                  {directions.map(({ dir, Icon, label }) => {
+                    const active = sorted && sort.direction === dir;
+                    return (
+                      <button
+                        key={dir}
+                        type="button"
+                        disabled={!sorted}
+                        onClick={() => onSortChange({ ...sort, direction: dir })}
+                        title={label}
+                        aria-label={label}
+                        aria-pressed={active}
+                        className={cn(
+                          "h-9 w-9 flex items-center justify-center transition-colors duration-150 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40",
+                          active ? "bg-slate-700 text-white" : "bg-slate-100 text-slate-500 hover:text-slate-800 hover:bg-slate-200"
+                        )}
+                      >
+                        <Icon className="h-4 w-4" />
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
-              <div className="flex items-center shrink-0 rounded-xl border border-slate-200 overflow-hidden">
-                {directions.map(({ dir, Icon, label }) => {
-                  const active = sorted && sort.direction === dir;
-                  return (
-                    <button
-                      key={dir}
-                      type="button"
-                      disabled={!sorted}
-                      onClick={() => onSortChange({ ...sort, direction: dir })}
-                      title={label}
-                      aria-label={label}
-                      aria-pressed={active}
-                      className={cn(
-                        "h-9 w-9 flex items-center justify-center transition-colors duration-150 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40",
-                        active ? "bg-slate-700 text-white" : "bg-slate-100 text-slate-500 hover:text-slate-800 hover:bg-slate-200"
-                      )}
-                    >
-                      <Icon className="h-4 w-4" />
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
+            )}
           </div>
 
           {/* Columns */}
@@ -188,20 +164,16 @@ export const ProjectListViewMenu: React.FC<ProjectListViewMenuProps> = ({
               <div className="max-h-[50vh] overflow-y-auto scrollbar-thin -my-0.5">
                 {columns.map(col => {
                   const locked = col.key === LOCKED_PROJECT_COLUMN;
-                  const drop = draggedKey && dropTarget?.key === col.key ? dropTarget.position : null;
+                  const drop = columnDrag.dropAt(col.key);
                   const label = columnLabel(col);
                   const draggable = canEditColumns && !locked;
                   return (
                     <div
                       key={col.key}
-                      draggable={draggable}
-                      onDragStart={e => handleDragStart(e, col.key)}
-                      onDragEnd={endDrag}
-                      onDragOver={e => handleDragOver(e, col.key)}
-                      onDrop={handleDrop}
+                      {...columnDrag.rowProps(col.key, !locked, !locked)}
                       className={cn(
                         "group relative flex items-center gap-2 py-1 rounded-lg transition-opacity duration-150",
-                        draggedKey === col.key && "opacity-40"
+                        columnDrag.draggedId === col.key && "opacity-40"
                       )}
                     >
                       {drop === "before" && (

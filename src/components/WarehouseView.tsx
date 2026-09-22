@@ -209,14 +209,23 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
     return () => window.removeEventListener("hashchange", handleHash);
   }, [canEdit]);
 
-  // When selectedProductDetailId changes from URL, auto-populate itemForm
+  // When selectedProductDetailId changes from URL, auto-populate itemForm.
+  // The effect also re-runs whenever the stored items change (a pull, another
+  // user, a purchase recorded on this very card). Re-seeding the whole form
+  // then wiped whatever was typed but not saved yet; for the same product only
+  // the fields the user has not touched take the new stored value.
+  const seededItemFormRef = useRef<{ id: string; form: Record<string, unknown> } | null>(null);
   useEffect(() => {
-    if (selectedProductDetailId && selectedProductDetailId !== "new") {
+    if (!selectedProductDetailId || selectedProductDetailId === "new") {
+      seededItemFormRef.current = null;
+      return;
+    }
+    {
       const item = warehouseItems.find(i => i.id === selectedProductDetailId || i.sku === selectedProductDetailId);
       if (item) {
         setEditingItem(item);
         const itemCats = getItemCategories(item);
-        setItemForm({
+        const fresh = {
           name: item.name,
           sku: item.sku,
           barcode: item.barcode || "",
@@ -230,6 +239,19 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
           defaultSellPrice: item.defaultSellPrice,
           avgPurchasePrice: item.avgPurchasePrice,
           description: item.description || ""
+        };
+        const seeded = seededItemFormRef.current;
+        seededItemFormRef.current = { id: selectedProductDetailId, form: fresh };
+        if (!seeded || seeded.id !== selectedProductDetailId) {
+          setItemForm(fresh);
+          return;
+        }
+        setItemForm(prev => {
+          const next: Record<string, unknown> = { ...prev };
+          for (const [key, value] of Object.entries(fresh)) {
+            if (JSON.stringify((prev as Record<string, unknown>)[key]) === JSON.stringify(seeded.form[key])) next[key] = value;
+          }
+          return next as typeof prev;
         });
       }
     }
@@ -1765,7 +1787,11 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
 
       const timelineEvent = {
         id: `ev-${Date.now()}`,
-        type: "sale",
+        // "sale" is not a timeline event type: sync.php stores unknown types as
+        // "note", so the card showed as a sale until the first reload and as a
+        // note afterwards. Log it as the note it is stored as; the sale total
+        // travels in `amount`, which the server now reads back for notes too.
+        type: "note",
         timestamp: issueDate ? `${issueDate} ${new Date().toTimeString().slice(0, 5)}` : new Date().toISOString().slice(0, 16).replace("T", " "),
         title: `${t("Sale & Goods Issue", "Predaj a výdaj tovaru", "Értékesítés és kiadás")} (${docNum})`,
         content: `${t("Client", "Klient", "Ügyfél")}: ${client?.name || issueLeadId}\n${t("Issued from warehouse", "Vydané zo skladu", "Kiadva a raktárból")}: ${sourceWh?.name || issueWarehouseId}\n\n${itemsSummary}\n\n${t("Total Sale Amount", "Celková suma predaja", "Teljes összeg")}: ${formatCurrency(totalSell, systemLanguage, systemCurrency)}${issueNote ? `\n${t("Note", "Poznámka", "Megjegyzés")}: ${issueNote}` : ""}`,

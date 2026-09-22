@@ -28,11 +28,13 @@ import { ClientSelect } from "./ui/ClientSelect";
 import { PipelineStrip } from "./ui/PipelineStrip";
 import { StarRating } from "./ui/StarRating";
 import { ratingValue } from "../utils/rating";
+import { missingChecklistItems, readChecklistValue, writeChecklistValue } from "../utils/projectColumns";
 import { ProjectTasksPanel } from "./ProjectTasksPanel";
 import type { Task } from "../types";
 import { isDoneTaskState } from "../utils/projectTasks";
 import { isOnPersonalDashboard, type TaskAccess } from "../utils/taskSelectors";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
+import { registerPendingSave } from "../utils/pendingSaves";
 
 /** The tabs of the right-hand column, as they also appear in the URL's `tab` parameter. */
 type RightTab = "timeline" | "tasks" | "gantt" | "finances" | "files";
@@ -51,8 +53,8 @@ interface ProjectDetailsViewProps {
   setFinancialCategories?: React.Dispatch<React.SetStateAction<FinancialCategory[]>>;
   currencyCode?: string | null;
   onClose: () => void;
-  /** `close: false` saves in place and leaves the card open — used by the
-      controls that save without the Save button (status, budget, files). */
+  /** Called with `close: false` on every change — the view has no Save
+      button and saves itself in place, leaving the card open. */
   onSave: (updatedProject: Project, options?: { close?: boolean }) => void;
   /**
    * Removes the project and closes the card. Without it the header's delete
@@ -60,7 +62,7 @@ interface ProjectDetailsViewProps {
    * `canDelete`.
    */
   onDelete?: (projectId: string) => void;
-  /** A project that has never been saved: opens straight in edit mode, so it can be named. */
+  /** A project that has never been saved: opens with the header's name input ready, so it can be named. */
   isNew?: boolean;
   /**
    * Whether the user may change the project at all — the card, its attributes
@@ -94,6 +96,8 @@ interface ProjectDetailsViewProps {
   /** Task permissions — separate from the project ones in `canEdit`/`canDelete`. */
   taskAccess?: TaskAccess;
   currentUser?: UserProfile;
+  /** False when no outgoing mail server is set up; task e-mail reminders then warn. */
+  mailConfigured?: boolean;
 }
 
 /**
@@ -133,7 +137,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   taskStates = DEFAULT_TASK_STATES,
   taskStateColors,
   taskAccess = FULL_TASK_ACCESS,
-  currentUser
+  currentUser,
+  mailConfigured
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
   // Removing something is a change, so the delete flag never outranks edit.
@@ -235,7 +240,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
         if (!attr.options) return rawVal
           ? t("Yes", "Áno", "Igen")
           : <span className="text-slate-300 italic font-semibold">{t("No", "Nie", "Nem")}</span>;
-        const picked = asList(rawVal);
+        const picked = readChecklistValue(rawVal).checked;
         if (picked.length === 0) return empty;
         return (
           <div className="flex flex-wrap gap-1.5">
@@ -293,7 +298,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const [finishedAt, setFinishedAt] = useState("");
   const [status, setStatus] = useState("active");
   /* Star priority, 1-5, 0 while nobody has rated it. Like the status below it,
-     a click saves on the spot rather than waiting for edit mode. */
+     a click saves on the spot. */
   const [rating, setRating] = useState(0);
   const [associatedLeadId, setAssociatedLeadId] = useState("");
   const [associatedClientId, setAssociatedClientId] = useState("");
@@ -301,12 +306,18 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   // The paired lead is shown as the same green client card the lead view has;
   // the picker only comes back while re-pairing.
   const [pickingClient, setPickingClient] = useState(false);
-  // The left card reads as a card, not as a form. A project is looked at far
-  // more often than it is changed, so the inputs only come out on Edit — and
-  // never for a read-only role, whatever the state says.
-  const [isEditingState, setIsEditing] = useState(false);
-  const isEditing = canEdit && isEditingState;
+  // The name is edited in the header itself: a pencil beside the title swaps
+  // it for an input, committed on Enter or blur, dropped on Escape.
+  const [isEditingNameState, setIsEditingName] = useState(false);
+  const isEditingName = canEdit && isEditingNameState;
+  const [nameDraft, setNameDraft] = useState("");
+  const nameCancelledRef = React.useRef(false);
+  // The custom attributes card is edited in place like the rest of the view —
+  // anyone who may edit sees the inputs, and every change saves on its own.
+  const isEditingAttrs = canEdit;
   const [dynamicData, setDynamicData] = useState<Record<string, any>>({});
+  // The label being typed for a checkbox this project adds, per checkbox attribute.
+  const [newChecklistLabels, setNewChecklistLabels] = useState<Record<string, string>>({});
   const [timeline, setTimeline] = useState<ProjectTimelineEvent[]>([]);
   const [gantt, setGantt] = useState<ProjectGanttRow[]>([]);
   // File slots added on this project alone, on top of the type's default files.
@@ -392,39 +403,170 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     }
   }, [projectType]);
 
-  useEffect(() => {
-    if (project) {
-      setProjectName(project.name || "");
-      setDeadline(project.deadline || "");
-      setDelayReason(project.delayReason || "");
-      setStartDate(projectStartDate(project) || todayLocal());
-      setFinishedAt(project.finishedAt || "");
-      setStatus(project.status || "active");
-      setRating(ratingValue(project.rating));
-      setAssociatedLeadId(project.leadId || "");
-      setAssociatedClientId(project.clientId || "");
-      setSelectedManagers(project.managers || []);
-      setPickingClient(false);
-      // A blank project has nothing to read yet — the name field and the rest
-      // of the card only exist in edit mode, so that is where it starts.
-      setIsEditing(isNew);
-      setDynamicData(project.data || {});
-      setCustomFileFields(Array.isArray(project.customFileFields) ? project.customFileFields : []);
-      setTimeline(project.timeline || []);
-      setGantt(project.gantt || []);
+  /* ── Autosave ─────────────────────────────────────────────────────────────
+     There is no Save button: every change in the view is written back on its
+     own. The editable fields are compared, in the shape the state holds them,
+     against the project as last saved; a difference is saved after a short
+     pause, so typing a sentence is one write rather than one per keystroke.
+     A change still waiting when the view closes is written out on the way. */
+  const editableSnapshot = (p: Project) => ({
+    name: p.name || "",
+    deadline: p.deadline || "",
+    delayReason: p.delayReason || "",
+    startDate: projectStartDate(p) || todayLocal(),
+    finishedAt: p.finishedAt || "",
+    status: p.status || "active",
+    rating: ratingValue(p.rating),
+    leadId: p.leadId || "",
+    clientId: p.clientId || "",
+    managers: p.managers || [],
+    data: p.data || {},
+    customFileFields: Array.isArray(p.customFileFields) ? p.customFileFields : [],
+    timeline: p.timeline || [],
+    gantt: p.gantt || [],
+  });
 
-      // Resolve right tab from URL or defaults
-      const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
-      const tabParam = params.get("tab");
-      if (isRightTab(tabParam)) {
-        setActiveRightTab(tabParam);
-      } else if (projectType) {
-        if (projectType.hasTimeline) setActiveRightTab("timeline");
-        else if (projectType.hasGantt) setActiveRightTab("gantt");
-        else setActiveRightTab("finances");
-      }
+  /** The project as the view currently holds it, plus any values handed in directly. */
+  const buildProject = (overrides: Partial<Project> = {}): Project | null => {
+    if (!project || !projectType) return null;
+    return {
+      ...project,
+      name: projectName.trim(),
+      // Only a type with deadlines on can hold one. Turning the switch off on
+      // the type would otherwise leave an invisible date behind that starts
+      // counting down again the moment someone turns it back on.
+      deadline: projectType.hasDeadline ? (deadline || null) : null,
+      // Only kept while it is still the answer to something: a project that is
+      // no longer late has no delay to explain, and leaving the old text behind
+      // would make it reappear the next time a date slips.
+      delayReason: projectType.hasDeadline ? (delayReason.trim() || null) : null,
+      startDate: startDate || null,
+      finishedAt: finishedAt || null,
+      status,
+      rating,
+      leadId: associatedLeadId || null,
+      clientId: associatedClientId || null,
+      managers: selectedManagers,
+      data: dynamicData,
+      customFileFields,
+      timeline,
+      gantt,
+      ...overrides,
+    };
+  };
+
+  // Which project the state was last loaded from. Until the load effect has
+  // run for a newly opened project the state still holds the previous one,
+  // and comparing that against the new project would save it over it.
+  const [loadedId, setLoadedId] = useState<string | null>(null);
+  const pendingSaveRef = React.useRef<Project | null>(null);
+  const onSaveRef = React.useRef(onSave);
+  onSaveRef.current = onSave;
+  const [saveState, setSaveState] = useState<"saved" | "pending">("saved");
+
+  /** Writes out a change that is still waiting for its pause, if there is one. */
+  const flushPendingSave = React.useCallback(() => {
+    const pending = pendingSaveRef.current;
+    if (!pending) return;
+    pendingSaveRef.current = null;
+    onSaveRef.current(pending, { close: false });
+    setSaveState("saved");
+  }, []);
+
+  // Leaving the view — back to the list, or to another module — must not
+  // drop the last edit made within the pause.
+  useEffect(() => () => flushPendingSave(), [flushPendingSave]);
+  // …nor a reload or a closed tab inside the pause.
+  useEffect(() => registerPendingSave({
+    isPending: () => pendingSaveRef.current !== null,
+    flush: flushPendingSave,
+  }), [flushPendingSave]);
+
+  // A different project opened in the same view: fresh UI modes and tab.
+  useEffect(() => {
+    if (!project) return;
+    setPickingClient(false);
+    // A blank project has nothing to call it yet, so it opens on the name.
+    setIsEditingName(isNew);
+    nameCancelledRef.current = false;
+    setNameDraft(project.name || "");
+
+    // Resolve right tab from URL or defaults
+    const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
+    const tabParam = params.get("tab");
+    if (isRightTab(tabParam)) {
+      setActiveRightTab(tabParam);
+    } else if (projectType) {
+      if (projectType.hasTimeline) setActiveRightTab("timeline");
+      else if (projectType.hasGantt) setActiveRightTab("gantt");
+      else setActiveRightTab("finances");
     }
+  }, [project?.id, projectType?.id]);
+
+  useEffect(() => {
+    if (!project) return;
+    if (project.id !== loadedId) {
+      // The previous project's last edit goes out before its state is replaced.
+      flushPendingSave();
+    } else if (pendingSaveRef.current) {
+      // Same project, and an edit of ours is still on its way — reloading now
+      // would throw it away.
+      return;
+    }
+    const s = editableSnapshot(project);
+    setProjectName(s.name);
+    setDeadline(s.deadline);
+    setDelayReason(s.delayReason);
+    setStartDate(s.startDate);
+    setFinishedAt(s.finishedAt);
+    setStatus(s.status);
+    setRating(s.rating);
+    setAssociatedLeadId(s.leadId);
+    setAssociatedClientId(s.clientId);
+    setSelectedManagers(s.managers);
+    setDynamicData(s.data);
+    setCustomFileFields(s.customFileFields);
+    setTimeline(s.timeline);
+    setGantt(s.gantt);
+    setLoadedId(project.id);
   }, [project, projectType]);
+
+  const savedSnapshotJson = useMemo(
+    () => (project ? JSON.stringify(editableSnapshot(project)) : ""),
+    [project],
+  );
+  const currentSnapshotJson = JSON.stringify({
+    name: projectName,
+    deadline,
+    delayReason,
+    startDate,
+    finishedAt,
+    status,
+    rating,
+    leadId: associatedLeadId,
+    clientId: associatedClientId,
+    managers: selectedManagers,
+    data: dynamicData,
+    customFileFields,
+    timeline,
+    gantt,
+  });
+  // A finish before the start is the one value that is never written — the
+  // card says so under the dates, and the save resumes once it is fixed.
+  const finishBeforeStart = !!(finishedAt && startDate && finishedAt < startDate);
+
+  useEffect(() => {
+    if (!project || !canEdit || loadedId !== project.id) return;
+    if (currentSnapshotJson === savedSnapshotJson || finishBeforeStart) {
+      pendingSaveRef.current = null;
+      setSaveState("saved");
+      return;
+    }
+    pendingSaveRef.current = buildProject();
+    setSaveState("pending");
+    const timer = window.setTimeout(flushPendingSave, 600);
+    return () => window.clearTimeout(timer);
+  }, [currentSnapshotJson, savedSnapshotJson, finishBeforeStart, loadedId, canEdit]);
 
   // Project Financials Calculation & Revenue Analysis
   const projectFinancials = useMemo(() => {
@@ -519,8 +661,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     const raw = budgetDraft.replace(/\s/g, "").replace(",", ".");
     const value = raw === "" ? 0 : Number(raw);
     if (!Number.isFinite(value) || value < 0) return;
-    // Saved straight away, like the status strip — no trip through edit mode.
-    handleSave({ budget: value > 0 ? Math.round(value * 100) / 100 : null }, { validate: false, close: false });
+    // Lives on the project, not in the view's state, so it is written directly.
+    handleSave({ budget: value > 0 ? Math.round(value * 100) / 100 : null });
     setBudgetDraft(null);
   };
 
@@ -812,15 +954,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const newCustomFileTaken = fileSlots.some(s => s.name.toLowerCase() === newCustomFileName.trim().toLowerCase());
   const canAddCustomFile = canEdit && newCustomFileName.trim() !== "" && !newCustomFileTaken;
 
-  /**
-   * Writes the file slots back. Outside edit mode each change is saved on the
-   * spot; in edit mode it waits for Save together with the rest of the card.
-   */
+  /** Writes the file slots back into the state; the autosave takes it from there. */
   const commitFiles = (nextData: Record<string, any>, nextCustom: ProjectCustomFileField[]) => {
     latestFilesRef.current = { data: nextData, custom: nextCustom };
     setDynamicData(nextData);
     setCustomFileFields(nextCustom);
-    if (!isEditing) handleSave({ data: nextData, customFileFields: nextCustom }, { validate: false, close: false });
   };
 
   /** Adds files to one slot — from its button, or dropped onto its card. */
@@ -966,122 +1104,33 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   };
 
   /**
-   * Writes the project back. `overrides` lets a single control save straight
-   * away without waiting for its own state to settle — the status dropdown
-   * stays live outside edit mode and saves the value it was just given.
-   * Returns false when a required attribute blocked the save.
+   * Writes the project back at once, with `overrides` for a value that lives
+   * outside the view's own state (the budget). Everything else saves itself —
+   * see the autosave above. A read-only role is refused here too.
    */
-  const handleSave = (
-    overrides: Partial<Project> = {},
-    { validate = true, close = true }: { validate?: boolean; close?: boolean } = {},
-  ): boolean => {
-    // Every write to the project funnels through here — the one place a
-    // read-only role is refused, whichever control got as far as calling it.
-    if (!canEdit) return false;
-    /* A project that missed its deadline owes an explanation — still open and
-       past it, or finished after it. Checked against the values being saved,
-       so pushing the deadline out (or finishing on time) settles the debt in
-       the same keystroke. Completing late does not. */
-    if (validate) {
-      const nextStatus = String(overrides.status ?? status);
-      const nextDeadline = overrides.deadline !== undefined ? (overrides.deadline || "") : deadline;
-      const nextFinished = overrides.finishedAt !== undefined ? (overrides.finishedAt || "") : finishedAt;
-      if (nextFinished && startDate && nextFinished < startDate) {
-        alert(t(
-          "The real finish date cannot be before the start date.",
-          "Skutočné dokončenie nemôže byť pred začiatkom projektu.",
-          "A tényleges befejezés nem lehet a kezdés előtt.",
-        ));
-        setIsEditing(true);
-        return false;
-      }
-      if (projectType.hasDeadline && projectType.deadlineRequired && !nextDeadline) {
-        alert(t(
-          "A deadline is required for this project type.",
-          "Termín dokončenia je pre tento typ projektu povinný.",
-          "Ennél a projekt típusnál a határidő megadása kötelező.",
-        ));
-        setIsEditing(true);
-        return false;
-      }
-      const dl = evaluateProjectDeadline({ deadline: nextDeadline, status: nextStatus, finishedAt: nextFinished }, projectType, todayLocal());
-      const nextReason = String(overrides.delayReason ?? delayReason).trim();
-      if (projectMissedDeadline(dl) && !nextReason) {
-        alert(t(
-          "This project is past its deadline — a reason for the delay is required.",
-          "Projekt je po termíne — zdôvodnenie meškania je povinné.",
-          "A projekt határidőn túl van — a késés indoklása kötelező.",
-        ));
-        setIsEditing(true);
-        return false;
-      }
-    }
-
-    // Basic validations for required dynamic attributes. File slots on the
-    // Files tab are never required — missing ones are only flagged there.
-    for (const attr of (validate ? (projectType.attributes || []) : [])) {
-      if (attr.required) {
-        const val = dynamicData[attr.id];
-        // A file list comes back from the server as a JSON string, so "[]" is empty too.
-        const missing = attr.type === "money"
-          ? isMoneyValueEmpty(val, defaultCurrency)
-          : attr.type === "files"
-            ? asList(val).length === 0
-            : (val === undefined || val === null || val === "" || (Array.isArray(val) && val.length === 0));
-        if (missing) {
-          alert(`"${attr.name}" ${t("is required.", "je povinné.", "megadása kötelező.")}`);
-          return false;
-        }
-      }
-    }
-
-    const updatedProject: Project = {
-      ...project,
-      name: projectName.trim(),
-      // Only a type with deadlines on can hold one. Turning the switch off on
-      // the type would otherwise leave an invisible date behind that starts
-      // counting down again the moment someone turns it back on.
-      deadline: projectType.hasDeadline ? (deadline || null) : null,
-      // Only kept while it is still the answer to something: a project that is
-      // no longer late has no delay to explain, and leaving the old text behind
-      // would make it reappear the next time a date slips.
-      delayReason: projectType.hasDeadline ? (delayReason.trim() || null) : null,
-      startDate: startDate || null,
-      finishedAt: finishedAt || null,
-      status,
-      rating,
-      leadId: associatedLeadId || null,
-      clientId: associatedClientId || null,
-      managers: selectedManagers,
-      data: dynamicData,
-      customFileFields,
-      timeline,
-      gantt,
-      ...overrides
-    };
-
-    onSave(updatedProject, { close });
-    return true;
+  const handleSave = (overrides: Partial<Project> = {}) => {
+    if (!canEdit) return;
+    const updated = buildProject(overrides);
+    if (!updated) return;
+    // Whatever was waiting is part of this write already.
+    pendingSaveRef.current = null;
+    onSave(updated, { close: false });
+    setSaveState("saved");
   };
 
-  /** Drops whatever edit mode changed and puts the card back in reading shape. */
-  const handleCancelEdit = () => {
-    if (project) {
-      setProjectName(project.name || "");
-      setDeadline(project.deadline || "");
-      setDelayReason(project.delayReason || "");
-      setStartDate(projectStartDate(project) || todayLocal());
-      setFinishedAt(project.finishedAt || "");
-      setStatus(project.status || "active");
-      setRating(ratingValue(project.rating));
-      setAssociatedLeadId(project.leadId || "");
-      setAssociatedClientId(project.clientId || "");
-      setSelectedManagers(project.managers || []);
-      setDynamicData(project.data || {});
-      setCustomFileFields(Array.isArray(project.customFileFields) ? project.customFileFields : []);
-    }
-    setPickingClient(false);
-    setIsEditing(false);
+  const commitName = () => {
+    // Escape unmounts the input, and a browser may still fire its blur.
+    if (nameCancelledRef.current) { nameCancelledRef.current = false; return; }
+    const next = nameDraft.trim();
+    setProjectName(next);
+    setNameDraft(next);
+    setIsEditingName(false);
+  };
+
+  const cancelNameEdit = () => {
+    nameCancelledRef.current = true;
+    setNameDraft(projectName);
+    setIsEditingName(false);
   };
 
   // Timeline Handlers
@@ -1272,6 +1321,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       "Naozaj chcete vymazať tento projekt?",
       "Biztosan törli ezt a projektet?",
     ))) return;
+    // An edit still waiting would otherwise write the project straight back.
+    pendingSaveRef.current = null;
     onDelete(project.id);
   };
 
@@ -1301,45 +1352,84 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   };
 
   return (
-    <div className="w-full bg-[#0f111a]/5 border border-slate-200/80 rounded-3xl flex flex-col h-[calc(100vh-11rem)] shadow-sm animate-fade-in overflow-hidden">
-      
-      {/* Header */}
-      <div className="h-16 shrink-0 bg-white border-b border-slate-200 px-6 flex items-center justify-between select-none">
-        <div className="flex items-center gap-3">
+    <div className="w-full flex flex-col h-[calc(100vh-11rem)] animate-fade-in text-left">
+
+      {/* Header — the same shape the projects list opens with: a large
+          heading with its icon, a caption under it, the actions on the right,
+          and a hairline below. No panel of its own. */}
+      <div className="shrink-0 flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-100 pb-4 select-none">
+        <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={onClose}
-            className="p-2 rounded-xl hover:bg-slate-100 text-slate-500 transition-colors mr-1 cursor-pointer"
+            className="shrink-0 p-2 rounded-xl hover:bg-slate-100 text-slate-500 hover:text-slate-900 transition-all active:scale-95 cursor-pointer"
             title={t("Back to list", "Späť na zoznam", "Vissza a listához")}
           >
             <ArrowLeft className="h-5 w-5" />
           </button>
-          <div 
-            className="p-2 rounded-xl text-white shadow-sm"
-            style={{ backgroundColor: projectType.color }}
-          >
-            {renderIcon(projectType.icon, "h-5 w-5")}
-          </div>
-          <div className="flex flex-col text-left">
-            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest leading-none">
-              {projectType.name}
-            </span>
-            <span className="font-heading font-bold text-sm text-slate-800 mt-1">
-              {projectDisplayName(
-                { name: projectName, leadId: associatedLeadId },
-                leads,
-                t("New Project", "Nový projekt", "Új projekt"),
+          <div className="flex flex-col min-w-0 flex-1">
+            <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2 min-w-0">
+              <span className="shrink-0" style={{ color: projectType.color }}>
+                {renderIcon(projectType.icon, "h-6 w-6")}
+              </span>
+              {/* Project name, edited in place. Projects used to have none and
+                  simply wore the paired lead's, which left a project paired with
+                  nobody with no name at all. Still optional: left empty, it
+                  reads as the lead. */}
+              {isEditingName ? (
+                <input
+                  value={nameDraft}
+                  onChange={e => setNameDraft(e.target.value)}
+                  onBlur={commitName}
+                  onKeyDown={e => {
+                    if (e.key === "Enter") { e.preventDefault(); commitName(); }
+                    else if (e.key === "Escape") { e.preventDefault(); cancelNameEdit(); }
+                  }}
+                  autoFocus
+                  maxLength={200}
+                  placeholder={t("e.g. Roof replacement, Kosice", "napr. Výmena strechy, Košice", "pl. Tetőcsere, Kassa")}
+                  className="select-text min-w-0 flex-1 max-w-xl px-2 py-0.5 -my-1 rounded-xl border border-indigo-300 bg-white text-2xl font-heading font-extrabold text-slate-900 tracking-tight focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                />
+              ) : (
+                <>
+                  <span className="truncate">
+                    {projectDisplayName(
+                      { name: projectName, leadId: associatedLeadId },
+                      leads,
+                      t("New Project", "Nový projekt", "Új projekt"),
+                    )}
+                  </span>
+                  {canEdit && (
+                    <button
+                      type="button"
+                      onClick={() => { nameCancelledRef.current = false; setNameDraft(projectName); setIsEditingName(true); }}
+                      className="shrink-0 p-1.5 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all active:scale-95 cursor-pointer"
+                      title={t("Rename project", "Premenovať projekt", "Projekt átnevezése")}
+                    >
+                      <Edit3 className="h-4 w-4" />
+                    </button>
+                  )}
+                </>
               )}
-            </span>
+            </h2>
+            <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1 truncate">
+              {isEditingName && !nameDraft.trim()
+                ? t(
+                    "Left empty, the project is listed under the paired lead's name",
+                    "Ak ostane prázdny, projekt sa zobrazí pod menom spárovaného leadu",
+                    "Üresen hagyva a projekt a párosított lead nevén szerepel",
+                  )
+                : projectType.name}
+            </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 self-start md:self-auto">
           {/* Deleting a project that has never been saved would delete nothing,
               so the button only appears once the project exists. */}
           {canDelete && !isNew && onDelete && (
             <button
               onClick={handleDeleteProject}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-2xl border border-rose-200 bg-white hover:bg-rose-50 text-rose-600 font-black text-xs uppercase tracking-wider transition-all cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-rose-500 font-heading font-bold text-xs uppercase tracking-wider hover:bg-rose-50 hover:text-rose-700 transition-all active:scale-95 cursor-pointer"
               title={t("Delete Project", "Vymazať projekt", "Projekt törlése")}
             >
               <Trash2 className="h-4 w-4 shrink-0" />
@@ -1347,15 +1437,33 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             </button>
           )}
           {canEdit ? (
-            <button
-              onClick={() => handleSave()}
-              className="flex items-center gap-1.5 px-4.5 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-xs uppercase tracking-wider transition-all shadow-md cursor-pointer"
+            /* No Save button: every change saves itself. This only says whether
+               the last one has gone out yet — or why it cannot. */
+            <span
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider whitespace-nowrap transition-colors duration-200 ${
+                finishBeforeStart ? "text-rose-600" : saveState === "pending" ? "text-slate-400" : "text-emerald-600"
+              }`}
+              data-testid="project-save-state"
             >
-              <Icons.Save className="h-4.5 w-4.5" />
-              <span>{t("Save Changes", "Uložiť zmeny", "Mentés")}</span>
-            </button>
+              {finishBeforeStart ? (
+                <>
+                  <CircleAlert className="h-3.5 w-3.5 shrink-0" />
+                  <span>{t("Not saved — check the dates", "Neuložené — skontrolujte dátumy", "Nincs mentve — ellenőrizze a dátumokat")}</span>
+                </>
+              ) : saveState === "pending" ? (
+                <>
+                  <Icons.Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                  <span>{t("Saving…", "Ukladá sa…", "Mentés…")}</span>
+                </>
+              ) : (
+                <>
+                  <Icons.CloudCheck className="h-3.5 w-3.5 shrink-0" />
+                  <span>{t("All changes saved", "Všetko uložené", "Minden mentve")}</span>
+                </>
+              )}
+            </span>
           ) : (
-            /* Read-only: the same pill the list wears, where the save button would be. */
+            /* Read-only: the same pill the list wears, in place of the save state. */
             <span
               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-amber-200 bg-amber-50 text-[10px] font-black uppercase tracking-wider text-amber-700 whitespace-nowrap"
               title={t(
@@ -1372,12 +1480,678 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       </div>
 
       {/* Workspace Body */}
-      <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-12 gap-6 p-6 min-h-0 bg-slate-50/50">
+      <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-12 gap-6 pt-6 min-h-0">
         
-        {/* LEFT COLUMN: the paired client on its own card, then the project's
-            own card. Both read as cards — a project is looked at far more
-            often than it is changed, so the inputs only come out on Edit. */}
+        {/* LEFT COLUMN: the project's own card, its custom attributes, then
+            the paired client at the bottom. The project card is edited in
+            place and every change saves itself; the attributes card keeps an
+            Edit mode of its own. */}
         <div className="lg:col-span-4 flex flex-col h-full min-h-0 overflow-y-auto gap-4 pr-1 scrollbar-thin text-left">
+
+
+          {/* PROJECT CARD DETAILS */}
+          <div className="shrink-0 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-2 pb-3">
+              <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-widest">
+                {t("Project Card Details", "Detaily karty projektu", "Projekt részletei")}
+              </h4>
+            </div>
+
+            {/* Pipeline strip — edge to edge under the header, in place of its
+                divider, the way the lead drawer shows the lead pipeline. Follows
+                the live status, so it moves the moment the select below does. */}
+            <PipelineStrip segments={projectPipelineSegments(status, t)} className="-mx-5 mb-4" />
+
+          <div className="space-y-4">
+            {/* Status. Each status wears its own colour, badge and dropdown row alike. */}
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Status", "Stav", "Állapot")}</label>
+              <CustomSelect
+                value={status}
+                disabled={!canEdit}
+                onChange={v => {
+                  if (!canEdit) return;
+                  setStatus(v);
+                  // Completing stamps today as the real finish, reopening clears
+                  // it — see finishedAtForStatus. Only where the field is shown.
+                  const nextFinished = projectType.hasDeadline ? finishedAtForStatus(v, finishedAt, todayLocal()) : finishedAt;
+                  setFinishedAt(nextFinished);
+                }}
+                className={`!font-black ${projectStatusBadgeClass(status)}`}
+                icon={<span className={`h-2 w-2 rounded-full shrink-0 inline-block ${projectStatusDotClass(status)}`} />}
+                options={projectStatusOptions(t).map(o => ({
+                  value: o.value,
+                  label: o.label,
+                  icon: <span className={`h-2.5 w-2.5 rounded-full shrink-0 inline-block ${projectStatusDotClass(o.value)}`} />,
+                }))}
+              />
+            </div>
+
+            {/* Star priority — the same 1-5 rating a lead carries, and the same
+                widget. Clicking the star it already wears clears the rating again. */}
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
+                {getTranslation(userLanguage, "profile.priority_rating")}
+              </label>
+              <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 w-fit">
+                <StarRating
+                  rating={rating}
+                  userLanguage={userLanguage}
+                  onChange={!canEdit ? undefined : (stars) => {
+                    const next = rating === stars ? 0 : stars;
+                    setRating(next);
+                  }}
+                />
+                {rating === 0 && (
+                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">
+                    {t("Not rated", "Bez hodnotenia", "Nincs értékelve")}
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Deadline. Only for a project type that is time-boxed — see
+                hasDeadline in Projects -> Settings -> project type. */}
+            {projectType.hasDeadline && (() => {
+              const dl = evaluateProjectDeadline({ deadline, status, finishedAt }, projectType, todayLocal());
+              const missedDeadline = projectMissedDeadline(dl);
+              const dateInputClass = "flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500";
+              return (
+                <div>
+                  {/* Planned deadline on the left, the real start and finish next
+                      to it. The real finish, once set, is what the list shows. */}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
+                    {t("Deadline", "Termín dokončenia", "Határidő")} {canEdit && projectType.deadlineRequired && <span className="text-red-500">*</span>}
+                  </label>
+                  {!canEdit ? (
+                    <p className="text-xs font-bold text-slate-800">
+                      {deadline
+                        ? formatDateLocalized(deadline, userLanguage)
+                        : <span className="text-slate-300 italic font-semibold">{t("No deadline set", "Bez termínu", "Nincs határidő")}</span>}
+                    </p>
+                  ) : (
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="date"
+                      value={deadline}
+                      onChange={e => setDeadline(e.target.value)}
+                      className={dateInputClass}
+                    />
+                    {deadline && (
+                      <button
+                        type="button"
+                        onClick={() => setDeadline("")}
+                        className="shrink-0 p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                        title={t("Clear deadline", "Zrušiť termín", "Határidő törlése")}
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+                  )}
+                  {canEdit && projectType.deadlineRequired && !deadline && (
+                    <p className="mt-1 text-[9px] font-bold text-rose-600 leading-snug">
+                      {t("A deadline is required for this project type.", "Termín je pre tento typ projektu povinný.", "Ennél a projekt típusnál a határidő kötelező.")}
+                    </p>
+                  )}
+                  </div>
+
+                  <div>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Real dates", "Skutočný termín", "Tényleges időpontok")}</label>
+                  {!canEdit ? (
+                    <p className="text-xs font-bold text-slate-800">
+                      {startDate ? formatDateLocalized(startDate, userLanguage) : "—"}
+                      {" – "}
+                      {finishedAt
+                        ? formatDateLocalized(finishedAt, userLanguage)
+                        : <span className="text-slate-300 italic font-semibold">{t("in progress", "prebieha", "folyamatban")}</span>}
+                    </p>
+                  ) : (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <span className="w-14 shrink-0 text-[9px] font-black text-slate-400 uppercase">{t("Start", "Začiatok", "Kezdés")}</span>
+                      <input
+                        type="date"
+                        value={startDate}
+                        onChange={e => setStartDate(e.target.value)}
+                        className={dateInputClass}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="w-14 shrink-0 text-[9px] font-black text-slate-400 uppercase">{t("Finish", "Koniec", "Befejezés")}</span>
+                      <input
+                        type="date"
+                        value={finishedAt}
+                        min={startDate || undefined}
+                        onChange={e => setFinishedAt(e.target.value)}
+                        className={dateInputClass}
+                      />
+                      {finishedAt && (
+                        <button
+                          type="button"
+                          onClick={() => setFinishedAt("")}
+                          className="shrink-0 p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                          title={t("Clear finish date", "Zrušiť dátum dokončenia", "Befejezés törlése")}
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      )}
+                    </div>
+                    {finishBeforeStart && (
+                      <p className="text-[9px] font-bold text-rose-600 leading-snug">
+                        {t(
+                          "The finish cannot be before the start — changes are not saved until it is fixed.",
+                          "Koniec nemôže byť pred začiatkom — zmeny sa neuložia, kým to neopravíte.",
+                          "A befejezés nem lehet a kezdés előtt — a módosítások a javításig nem mentődnek.",
+                        )}
+                      </p>
+                    )}
+                  </div>
+                  )}
+                  </div>
+                  </div>
+
+                  {dl && (
+                    <p className={`mt-1.5 text-[10px] font-black uppercase tracking-wider ${
+                      missedDeadline
+                        ? "text-rose-600"
+                        : dl.tone === "soon"
+                          ? "text-amber-600"
+                          : dl.tone === "finished"
+                            ? "text-emerald-600"
+                            : "text-slate-400"
+                    }`}>
+                      {dl.tone === "finished"
+                        ? dl.finishedLateDays > 0
+                          ? t(`Finished ${dl.finishedLateDays} days after the deadline`, `Dokončené ${dl.finishedLateDays} dní po termíne`, `${dl.finishedLateDays} nappal a határidő után befejezve`)
+                          : dl.plannedDeadline
+                            ? t("Finished on time", "Dokončené v termíne", "Határidőre befejezve")
+                            : t("Finished", "Dokončené", "Befejezve")
+                        : dl.tone === "closed"
+                        ? t("Closed — the deadline no longer applies.", "Uzavretý — termín už neplatí.", "Lezárva — a határidő már nem érvényes.")
+                        : dl.isOverdue
+                          ? t(`${dl.overdueDays} days overdue`, `${dl.overdueDays} dní po termíne`, `${dl.overdueDays} nappal késésben`)
+                          : dl.daysLeft === 0
+                            ? t("Due today", "Termín je dnes", "Ma esedékes")
+                            : t(`${dl.daysLeft} days left`, `Ostáva ${dl.daysLeft} dní`, `${dl.daysLeft} nap van hátra`)}
+                    </p>
+                  )}
+
+                  {/* The red flag. Once the project missed its date — still
+                      open and past it, or finished after it — the reason for
+                      the delay is required: until it is written down the
+                      project wears a flag everywhere it is listed. */}
+                  {missedDeadline && (
+                    <div className="mt-3 p-3 rounded-2xl border border-rose-200 bg-rose-50">
+                      <label className="flex items-center gap-1.5 text-[10px] font-black text-rose-700 uppercase tracking-wider mb-1.5">
+                        <Icons.Flag className="h-3.5 w-3.5 shrink-0 fill-current" />
+                        <span>{t("Reason for the delay", "Dôvod meškania", "A késés oka")}</span>
+                        <span className="text-rose-500">*</span>
+                      </label>
+
+                      {canEdit ? (
+                        <>
+                          <textarea
+                            value={delayReason}
+                            onChange={e => setDelayReason(e.target.value)}
+                            rows={2}
+                            maxLength={500}
+                            placeholder={t(
+                              "e.g. waiting on the client's approval of the design",
+                              "napr. čakáme na schválenie návrhu klientom",
+                              "pl. az ügyfél jóváhagyására várunk",
+                            )}
+                            className={`w-full px-3 py-2 rounded-xl border text-xs font-semibold bg-white text-slate-800 resize-y focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 ${
+                              delayReason.trim() ? "border-rose-200" : "border-rose-400"
+                            }`}
+                          />
+                          {!delayReason.trim() && (
+                            <p className="mt-1 text-[9px] font-bold text-rose-600 leading-snug">
+                              {t(
+                                "Required while the project is past its deadline — it stays flagged in the list until one is given.",
+                                "Povinné, kým je projekt po termíne — v zozname ostane označený, kým ho nedoplníte.",
+                                "Kötelező, amíg a projekt határidőn túl van — addig megjelölve marad a listában.",
+                              )}
+                            </p>
+                          )}
+                        </>
+                      ) : delayReason.trim() ? (
+                        <p className="text-xs font-semibold text-slate-700 whitespace-pre-wrap break-words">
+                          {delayReason}
+                        </p>
+                      ) : (
+                        <>
+                          <p className="text-[11px] font-bold text-rose-600 leading-snug">
+                            {t(
+                              "No reason given yet — this project is flagged in the list until one is.",
+                              "Zatiaľ bez zdôvodnenia — projekt je v zozname označený, kým ho nedoplníte.",
+                              "Még nincs indoklás — a projekt megjelölve marad a listában, amíg meg nem adja.",
+                            )}
+                          </p>
+                        </>
+                      )}
+                    </div>
+                  )}
+
+                </div>
+              );
+            })()}
+
+            {/* Project Managers, edited in place. A project can carry several,
+                so the dropdown adds one at a time and the chosen ones sit above
+                it as the same coloured chips the lead view wears for its manager;
+                each chip's cross takes that manager off again. */}
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Project Managers", "Projektoví manažéri", "Projektmenedzserek")}</label>
+              {selectedManagers.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 mb-2">
+                  {selectedManagers.map(name => {
+                    const color = users.find(u => u.name === name)?.color || "#64748b";
+                    return (
+                      <span
+                        key={name}
+                        className={`inline-flex items-center gap-1 pl-2.5 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider shadow-sm ${canEdit ? "pr-1" : "pr-2.5"}`}
+                        style={{ backgroundColor: `${color}15`, color, borderColor: `${color}30` }}
+                      >
+                        <Icons.User className="h-3 w-3 shrink-0" />
+                        <span className="truncate max-w-[10rem]">{name}</span>
+                        {canEdit && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedManagers(prev => prev.filter(m => m !== name))}
+                          className="ml-0.5 p-0.5 rounded-full hover:bg-black/10 transition-colors cursor-pointer"
+                          title={t("Remove", "Odobrať", "Eltávolítás")}
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                        )}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+              {canEdit && (() => {
+                const available = users.filter(u => !selectedManagers.includes(u.name));
+                return (
+                  <CustomSelect
+                    value=""
+                    onChange={name => {
+                      if (name && !selectedManagers.includes(name)) setSelectedManagers(prev => [...prev, name]);
+                    }}
+                    disabled={available.length === 0}
+                    placeholder={
+                      available.length === 0
+                        ? t("Everyone is assigned", "Priradení sú všetci", "Mindenki hozzá van rendelve")
+                        : selectedManagers.length > 0
+                          ? t("Add another manager...", "Pridať ďalšieho manažéra...", "További menedzser hozzáadása...")
+                          : t("Assign a manager...", "Priradiť manažéra...", "Menedzser kijelölése...")
+                    }
+                    options={available.map(u => ({
+                      value: u.name,
+                      label: u.name,
+                      icon: <span className="h-2.5 w-2.5 rounded-full shrink-0 inline-block" style={{ backgroundColor: u.color || "#64748b" }} />,
+                    }))}
+                  />
+                );
+              })()}
+              {!canEdit && selectedManagers.length === 0 && (
+                <p className="text-xs font-semibold text-slate-300 italic">
+                  {t(
+                    "Nobody is on this project yet.",
+                    "Na projekte zatiaľ nikto nie je priradený.",
+                    "Még senki sincs hozzárendelve a projekthez.",
+                  )}
+                </p>
+              )}
+            </div>
+
+          </div>
+          </div>
+
+          {/* CUSTOM ATTRIBUTES — the type's own fields, on a card of their own,
+              two to a row, edited in place like the project card above; every
+              change saves itself. Viewers without edit rights get the values in
+              reading shape. A value that needs the full width (long text, a
+              file list, the money and contact pickers while editable) takes
+              the whole row. */}
+          {(projectType.attributes || []).length > 0 && (
+          <div className="shrink-0 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
+            <div className="flex items-center justify-between gap-2 pb-3 mb-4 border-b border-slate-200">
+              <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-widest">
+                {t("Custom Attributes", "Vlastné atribúty", "Egyedi attribútumok")}
+              </h4>
+            </div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-4">
+              {(() => {
+                const attrs = projectType.attributes || [];
+                const isWide = (a: typeof attrs[number]) => a.type === "textarea" || a.type === "files"
+                  || (isEditingAttrs && (a.type === "money" || a.type === "contact"));
+                // A half-width attribute with nothing beside it — the next one is
+                // full-width, or there is no next one — takes the whole row.
+                const lone = new Set<string>();
+                let col = 0;
+                attrs.forEach((a, i) => {
+                  if (isWide(a)) { col = 0; return; }
+                  if (col === 0 && (i === attrs.length - 1 || isWide(attrs[i + 1]))) lone.add(a.id);
+                  col = col === 0 ? 1 : 0;
+                });
+                return attrs.map(attr => {
+                const val = dynamicData[attr.id] ?? "";
+                const updateVal = (newVal: any) => {
+                  setDynamicData(prev => ({ ...prev, [attr.id]: newVal }));
+                };
+                const wide = isWide(attr) || lone.has(attr.id);
+                // Nothing blocks a save any more, so an empty required value is
+                // pointed out where it sits instead.
+                const missingRequired = !!attr.required && (attr.type === "money"
+                  ? isMoneyValueEmpty(dynamicData[attr.id], defaultCurrency)
+                  : attr.type === "checkbox" && attr.options
+                    ? readChecklistValue(dynamicData[attr.id]).checked.length === 0
+                    : attr.type === "files"
+                      ? asList(dynamicData[attr.id]).length === 0
+                      : val === "" || val === null || (Array.isArray(val) && val.length === 0));
+                // Required boxes — the type's and this project's own — still unticked.
+                const missingBoxes = missingChecklistItems(attr, dynamicData[attr.id]);
+
+                return (
+                  <div key={attr.id} className={`min-w-0 break-words ${wide ? "col-span-2" : ""}`}>
+                    <label className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] font-black text-slate-400 uppercase mb-1">
+                      <span>{attr.name} {canEdit && attr.required && <span className="text-red-500">*</span>}</span>
+                      {missingBoxes.length > 0 && (
+                        <span
+                          title={missingBoxes.join(", ")}
+                          className="px-1.5 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-rose-600 text-[9px] font-black normal-case tracking-normal leading-none tabular-nums animate-fade-in"
+                        >
+                          {missingBoxes.length} {t("missing", "chýba", "hiányzik")}
+                        </span>
+                      )}
+                    </label>
+
+                    {!isEditingAttrs ? (
+                      <div className="text-xs font-bold text-slate-800">{renderAttrValue(attr, dynamicData[attr.id])}</div>
+                    ) : (
+                    <>
+                    {/* Textfield */}
+                    {attr.type === "textfield" && (
+                      <input
+                        type="text"
+                        value={val}
+                        onChange={e => updateVal(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800"
+                      />
+                    )}
+
+                    {/* Textarea */}
+                    {attr.type === "textarea" && (
+                      <textarea
+                        value={val}
+                        onChange={e => updateVal(e.target.value)}
+                        rows={3}
+                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800 resize-none"
+                      />
+                    )}
+
+                    {/* Number */}
+                    {attr.type === "number" && (
+                      <input
+                        type="number"
+                        value={val}
+                        onChange={e => updateVal(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800"
+                      />
+                    )}
+
+                    {/* Money — amount plus the currency this record is in */}
+                    {attr.type === "money" && renderMoneyInput(dynamicData[attr.id], updateVal)}
+
+                    {/* Date */}
+                    {attr.type === "date" && (
+                      <input
+                        type="date"
+                        value={val}
+                        onChange={e => updateVal(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800"
+                      />
+                    )}
+
+                    {/* Time */}
+                    {attr.type === "time" && (
+                      <input
+                        type="time"
+                        value={val}
+                        onChange={e => updateVal(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800"
+                      />
+                    )}
+
+                    {/* Datetime */}
+                    {attr.type === "datetime" && (
+                      <input
+                        type="datetime-local"
+                        value={val}
+                        onChange={e => updateVal(e.target.value)}
+                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800"
+                      />
+                    )}
+
+                    {/* Select Dropdown */}
+                    {attr.type === "select" && (
+                      <CustomSelect
+                        value={val}
+                        onChange={v => updateVal(v)}
+                        placeholder={t("Select option...", "Vybrať možnosť...", "Válasszon opciót...")}
+                        options={(attr.options || []).map(opt => ({ value: opt, label: opt }))}
+                      />
+                    )}
+
+                    {/* Checkbox (options-based or single boolean) */}
+                    {attr.type === "checkbox" && (
+                      <div className="space-y-1 py-1">
+                        {attr.options ? (() => {
+                          // The type's options, then the boxes this project added
+                          // itself — the checklist twin of the Files tab's own slots.
+                          const list = readChecklistValue(val);
+                          const save = (next: Partial<typeof list>) => updateVal(writeChecklistValue({ ...list, ...next }));
+                          const toggle = (label: string) => save({
+                            checked: list.checked.includes(label)
+                              ? list.checked.filter(o => o !== label)
+                              : [...list.checked, label],
+                          });
+                          const requiredOptions = attr.requiredOptions || [];
+                          const draft = newChecklistLabels[attr.id] || "";
+                          const addExtra = () => {
+                            const label = draft.trim();
+                            if (!label) return;
+                            const taken = [...(attr.options || []), ...list.extra.map(e => e.label)]
+                              .some(l => l.toLowerCase() === label.toLowerCase());
+                            if (!taken) save({ extra: [...list.extra, { label, required: true }] });
+                            setNewChecklistLabels(prev => ({ ...prev, [attr.id]: "" }));
+                          };
+                          return (
+                            <>
+                              {(attr.options || []).map(opt => (
+                                <label key={opt} className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-600">
+                                  <input
+                                    type="checkbox"
+                                    checked={list.checked.includes(opt)}
+                                    onChange={() => toggle(opt)}
+                                    className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                                  />
+                                  <span>{opt}</span>
+                                  {requiredOptions.includes(opt) && <span className="text-red-500">*</span>}
+                                </label>
+                              ))}
+                              {list.extra.map(extra => (
+                                <div key={extra.label} className="group flex items-start gap-2 text-xs font-semibold text-slate-600">
+                                  {/* Required reads as the same red "*" as the type's own
+                                      options; a word-sized badge here squeezed the label
+                                      to a few letters in a half-width column. */}
+                                  <label className="flex min-w-0 items-start gap-2 cursor-pointer">
+                                    <input
+                                      type="checkbox"
+                                      checked={list.checked.includes(extra.label)}
+                                      onChange={() => toggle(extra.label)}
+                                      className="h-4 w-4 shrink-0 rounded border-slate-300 text-indigo-600"
+                                    />
+                                    <span className="min-w-0 break-words">{extra.label}</span>
+                                  </label>
+                                  {(() => {
+                                    const hint = extra.required
+                                      ? t("Required — click to make optional", "Povinné — kliknutím nastavíte ako nepovinné", "Kötelező — kattintson az opcionálishoz")
+                                      : t("Optional — click to make required", "Nepovinné — kliknutím nastavíte ako povinné", "Opcionális — kattintson a kötelezőhöz");
+                                    return (
+                                      <button
+                                        type="button"
+                                        aria-pressed={extra.required}
+                                        aria-label={hint}
+                                        title={hint}
+                                        onClick={() => save({
+                                          extra: list.extra.map(e => e.label === extra.label ? { ...e, required: !e.required } : e),
+                                        })}
+                                        className={`-ml-1 shrink-0 w-4 h-4 flex items-center justify-center rounded text-sm leading-none font-black transition-all duration-150 active:scale-90 cursor-pointer ${
+                                          extra.required
+                                            ? "text-red-500 hover:bg-rose-50"
+                                            : "text-slate-300 hover:text-red-400 hover:bg-slate-100"
+                                        }`}
+                                      >
+                                        *
+                                      </button>
+                                    );
+                                  })()}
+                                  {canDelete && (
+                                    <button
+                                      type="button"
+                                      aria-label={t("Remove checkbox", "Odstrániť políčko", "Jelölőnégyzet törlése")}
+                                      onClick={() => save({
+                                        extra: list.extra.filter(e => e.label !== extra.label),
+                                        checked: list.checked.filter(o => o !== extra.label),
+                                      })}
+                                      className="shrink-0 p-0.5 rounded text-slate-300 hover:text-rose-600 hover:bg-rose-50 opacity-0 group-hover:opacity-100 focus:opacity-100 transition-all duration-150 active:scale-95 cursor-pointer"
+                                    >
+                                      <X className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              ))}
+                              <div className="flex items-center gap-1.5 pt-1">
+                                <input
+                                  type="text"
+                                  value={draft}
+                                  onChange={e => setNewChecklistLabels(prev => ({ ...prev, [attr.id]: e.target.value }))}
+                                  onKeyDown={e => {
+                                    if (e.key === "Enter") {
+                                      e.preventDefault();
+                                      addExtra();
+                                    }
+                                  }}
+                                  placeholder={t("Add checkbox…", "Pridať políčko…", "Jelölőnégyzet hozzáadása…")}
+                                  className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold bg-white text-slate-800"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={addExtra}
+                                  disabled={!draft.trim()}
+                                  aria-label={t("Add checkbox", "Pridať políčko", "Jelölőnégyzet hozzáadása")}
+                                  className="shrink-0 p-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 active:scale-95 cursor-pointer"
+                                >
+                                  <Plus className="h-3.5 w-3.5" />
+                                </button>
+                              </div>
+                            </>
+                          );
+                        })() : (
+                          <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-600">
+                            <input
+                              type="checkbox"
+                              checked={!!val}
+                              onChange={e => updateVal(e.target.checked)}
+                              className="h-4 w-4 rounded border-slate-300 text-indigo-600"
+                            />
+                            <span>{t("Yes / Enabled", "Áno / Povolené", "Igen / Engedélyezve")}</span>
+                          </label>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Radio Buttons */}
+                    {attr.type === "radio" && (
+                      <div className="space-y-1.5 py-1">
+                        {(attr.options || []).map(opt => (
+                          <label key={opt} className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-600">
+                            <input
+                              type="radio"
+                              name={attr.id}
+                              value={opt}
+                              checked={val === opt}
+                              onChange={() => updateVal(opt)}
+                              className="h-4 w-4 border-slate-300 text-indigo-600"
+                            />
+                            <span>{opt}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Multiple Files Upload */}
+                    {attr.type === "files" && renderFilesInput(attr.id, val)}
+
+                    {/* Contact Picker attribute type */}
+                    {attr.type === "contact" && (
+                      <div className="space-y-2">
+                        <ClientSelect
+                          leads={leads}
+                          value={val}
+                          onChange={v => updateVal(v)}
+                          placeholder={t("Select Contact...", "Vybrať kontakt...", "Kapcsolat választása...")}
+                        />
+                        {val && (() => {
+                          const contact = leads.find(l => l.id === val);
+                          if (!contact) return null;
+                          return (
+                            <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-[11px] font-semibold text-slate-600 animate-fade-in">
+                              <div className="flex items-center justify-between">
+                                <span className="text-slate-800 font-bold">{contact.name}</span>
+                                <a 
+                                  href={`#lead-${contact.id}`}
+                                  className="text-indigo-600 hover:text-indigo-800 text-[10px] underline"
+                                >
+                                  {t("View Profile", "Zobraziť profil", "Profil megtekintése")}
+                                </a>
+                              </div>
+                              {contact.email && (
+                                <div className="flex items-center gap-1.5 text-slate-500">
+                                  <Mail className="h-3 w-3 text-slate-400 shrink-0" />
+                                  <span>{contact.email}</span>
+                                </div>
+                              )}
+                              {contact.phone && (
+                                <div className="flex items-center gap-1.5 text-slate-500">
+                                  <Phone className="h-3 w-3 text-slate-400 shrink-0" />
+                                  <span>{contact.phone}</span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
+                      </div>
+                    )}
+                    </>
+                    )}
+
+                    {canEdit && missingRequired && (
+                      <p className="mt-1 text-[9px] font-bold text-rose-600 leading-snug">
+                        {t("Required", "Povinné", "Kötelező")}
+                      </p>
+                    )}
+                  </div>
+                );
+                });
+              })()}
+            </div>
+          </div>
+          )}
 
           {/* Lead / Client pairing — the project's half of the link. The
               same pairing is edited from the lead's "Linked projects" card,
@@ -1398,9 +2172,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             };
 
             if (!pairedLead || pickingClient) {
-              // Outside edit mode there is nothing to pick — just the note
-              // that this project hangs on nobody, and a way in.
-              if (!isEditing) {
+              // Unpaired and not picking yet: the note that this project hangs on
+              // nobody, and a way in. A read-only role only gets the note.
+              if (!canEdit || !pickingClient) {
                 return (
                   <div className="shrink-0 bg-white border border-dashed border-slate-300 rounded-3xl p-5 shadow-sm text-center">
                     <Icons.Unlink className="h-5 w-5 text-slate-300 mx-auto mb-2" />
@@ -1414,7 +2188,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     {canEdit && (
                       <button
                         type="button"
-                        onClick={() => { setIsEditing(true); setPickingClient(true); }}
+                        onClick={() => setPickingClient(true)}
                         className="mt-2.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
                       >
                         {t("Pair now", "Spárovať", "Párosítať")}
@@ -1544,7 +2318,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 </div>
 
                 <div className="flex items-center justify-between gap-2 pt-1 flex-wrap">
-                  {isEditing && (
+                  {canEdit && (
                   <div className="flex items-center gap-1">
                     <button
                       type="button"
@@ -1576,596 +2350,18 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </button>
                 </div>
 
-                {isEditing && (
+                {canEdit && (
                 <p className="text-[9px] font-semibold text-emerald-800/60 leading-snug">
                   {t(
-                    "This project shows up on the lead's card too. Saved with the project.",
-                    "Tento projekt sa zobrazí aj na karte leadu. Uloží sa spolu s projektom.",
-                    "Ez a projekt a lead kartonján is megjelenik. A projekttel együtt mentődik.",
+                    "This project shows up on the lead's card too.",
+                    "Tento projekt sa zobrazí aj na karte leadu.",
+                    "Ez a projekt a lead kartonján is megjelenik.",
                   )}
                 </p>
                 )}
               </div>
             );
           })()}
-
-          {/* PROJECT CARD DETAILS */}
-          <div className="shrink-0 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
-            <div className="flex items-center justify-between gap-2 pb-3">
-              <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-widest">
-                {t("Project Card Details", "Detaily karty projektu", "Projekt részletei")}
-              </h4>
-              {!canEdit ? null : !isEditing ? (
-                <button
-                  type="button"
-                  onClick={() => setIsEditing(true)}
-                  className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 text-[10px] font-black uppercase tracking-wider text-slate-500 hover:text-indigo-600 hover:border-indigo-200 hover:bg-indigo-50 transition-colors cursor-pointer"
-                >
-                  <Edit3 className="h-3.5 w-3.5" />
-                  {t("Edit", "Upraviť", "Szerkesztés")}
-                </button>
-              ) : (
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <button
-                    type="button"
-                    onClick={handleCancelEdit}
-                    className="px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors cursor-pointer"
-                  >
-                    {t("Cancel", "Zrušiť", "Mégse")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => { if (handleSave({}, { close: false })) setIsEditing(false); }}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black uppercase tracking-wider shadow-sm transition-all active:scale-95 cursor-pointer"
-                  >
-                    <Icons.Save className="h-3.5 w-3.5" />
-                    {t("Save", "Uložiť", "Mentés")}
-                  </button>
-                </div>
-              )}
-            </div>
-
-            {/* Pipeline strip — edge to edge under the header, in place of its
-                divider, the way the lead drawer shows the lead pipeline. Follows
-                the live status, so it moves the moment the select below does. */}
-            <PipelineStrip segments={projectPipelineSegments(status, t)} className="-mx-5 mb-4" />
-
-          <div className="space-y-4">
-            {/* Project name. Projects used to have none and simply wore the
-                paired lead's, which left a project paired with nobody with no
-                name at all. Still optional: left empty, it reads as the lead.
-                Only in edit mode — the header already carries the name. */}
-            {isEditing && (
-            <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Project Name", "Názov projektu", "Projekt neve")}</label>
-              <input
-                value={projectName}
-                onChange={e => setProjectName(e.target.value)}
-                autoFocus={isNew}
-                maxLength={200}
-                placeholder={t("e.g. Roof replacement, Kosice", "napr. Výmena strechy, Košice", "pl. Tetőcsere, Kassa")}
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-              />
-              {!projectName.trim() && (
-                <p className="mt-1 text-[9px] font-semibold text-slate-400 leading-snug">
-                  {t(
-                    "Left empty, this project is listed under the name of the lead it is paired with.",
-                    "Ak ostane prázdny, projekt sa v zozname zobrazí pod menom spárovaného leadu.",
-                    "Üresen hagyva a projekt a hozzá párosított lead nevén szerepel a listában.",
-                  )}
-                </p>
-              )}
-            </div>
-            )}
-
-            {/* Status. Stays live outside edit mode — moving a project along is
-                the one thing done from the card itself, so it saves on the spot.
-                Each status wears its own colour, badge and dropdown row alike. */}
-            <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Status", "Stav", "Állapot")}</label>
-              <CustomSelect
-                value={status}
-                disabled={!canEdit}
-                onChange={v => {
-                  if (!canEdit) return;
-                  setStatus(v);
-                  // Completing stamps today as the real finish, reopening clears
-                  // it — see finishedAtForStatus. Only where the field is shown.
-                  const nextFinished = projectType.hasDeadline ? finishedAtForStatus(v, finishedAt, todayLocal()) : finishedAt;
-                  setFinishedAt(nextFinished);
-                  if (!isEditing) handleSave({ status: v, finishedAt: nextFinished || null }, { validate: false, close: false });
-                }}
-                className={`!font-black ${projectStatusBadgeClass(status)}`}
-                icon={<span className={`h-2 w-2 rounded-full shrink-0 inline-block ${projectStatusDotClass(status)}`} />}
-                options={projectStatusOptions(t).map(o => ({
-                  value: o.value,
-                  label: o.label,
-                  icon: <span className={`h-2.5 w-2.5 rounded-full shrink-0 inline-block ${projectStatusDotClass(o.value)}`} />,
-                }))}
-              />
-            </div>
-
-            {/* Star priority — the same 1-5 rating a lead carries, and the same
-                widget. Live outside edit mode like the status above it: rating
-                something is a judgement made in passing, not a form to fill in.
-                Clicking the star it already wears clears the rating again. */}
-            <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
-                {getTranslation(userLanguage, "profile.priority_rating")}
-              </label>
-              <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 w-fit">
-                <StarRating
-                  rating={rating}
-                  userLanguage={userLanguage}
-                  onChange={!canEdit ? undefined : (stars) => {
-                    const next = rating === stars ? 0 : stars;
-                    setRating(next);
-                    if (!isEditing) handleSave({ rating: next }, { validate: false, close: false });
-                  }}
-                />
-                {rating === 0 && (
-                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">
-                    {t("Not rated", "Bez hodnotenia", "Nincs értékelve")}
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Deadline. Only for a project type that is time-boxed — see
-                hasDeadline in Projects -> Settings -> project type. */}
-            {projectType.hasDeadline && (() => {
-              const dl = evaluateProjectDeadline({ deadline, status, finishedAt }, projectType, todayLocal());
-              const missedDeadline = projectMissedDeadline(dl);
-              const dateInputClass = "flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500";
-              return (
-                <div>
-                  {/* Planned deadline on the left, the real start and finish next
-                      to it. The real finish, once set, is what the list shows. */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
-                    {t("Deadline", "Termín dokončenia", "Határidő")} {isEditing && projectType.deadlineRequired && <span className="text-red-500">*</span>}
-                  </label>
-                  {!isEditing ? (
-                    <p className="text-xs font-bold text-slate-800">
-                      {deadline
-                        ? formatDateLocalized(deadline, userLanguage)
-                        : <span className="text-slate-300 italic font-semibold">{t("No deadline set", "Bez termínu", "Nincs határidő")}</span>}
-                    </p>
-                  ) : (
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="date"
-                      value={deadline}
-                      onChange={e => setDeadline(e.target.value)}
-                      className={dateInputClass}
-                    />
-                    {deadline && (
-                      <button
-                        type="button"
-                        onClick={() => setDeadline("")}
-                        className="shrink-0 p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                        title={t("Clear deadline", "Zrušiť termín", "Határidő törlése")}
-                      >
-                        <X className="h-4 w-4" />
-                      </button>
-                    )}
-                  </div>
-                  )}
-                  </div>
-
-                  <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Real dates", "Skutočný termín", "Tényleges időpontok")}</label>
-                  {!isEditing ? (
-                    <p className="text-xs font-bold text-slate-800">
-                      {startDate ? formatDateLocalized(startDate, userLanguage) : "—"}
-                      {" – "}
-                      {finishedAt
-                        ? formatDateLocalized(finishedAt, userLanguage)
-                        : <span className="text-slate-300 italic font-semibold">{t("in progress", "prebieha", "folyamatban")}</span>}
-                    </p>
-                  ) : (
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-2">
-                      <span className="w-14 shrink-0 text-[9px] font-black text-slate-400 uppercase">{t("Start", "Začiatok", "Kezdés")}</span>
-                      <input
-                        type="date"
-                        value={startDate}
-                        onChange={e => setStartDate(e.target.value)}
-                        className={dateInputClass}
-                      />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="w-14 shrink-0 text-[9px] font-black text-slate-400 uppercase">{t("Finish", "Koniec", "Befejezés")}</span>
-                      <input
-                        type="date"
-                        value={finishedAt}
-                        min={startDate || undefined}
-                        onChange={e => setFinishedAt(e.target.value)}
-                        className={dateInputClass}
-                      />
-                      {finishedAt && (
-                        <button
-                          type="button"
-                          onClick={() => setFinishedAt("")}
-                          className="shrink-0 p-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
-                          title={t("Clear finish date", "Zrušiť dátum dokončenia", "Befejezés törlése")}
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                  )}
-                  </div>
-                  </div>
-
-                  {dl && (
-                    <p className={`mt-1.5 text-[10px] font-black uppercase tracking-wider ${
-                      missedDeadline
-                        ? "text-rose-600"
-                        : dl.tone === "soon"
-                          ? "text-amber-600"
-                          : dl.tone === "finished"
-                            ? "text-emerald-600"
-                            : "text-slate-400"
-                    }`}>
-                      {dl.tone === "finished"
-                        ? dl.finishedLateDays > 0
-                          ? t(`Finished ${dl.finishedLateDays} days after the deadline`, `Dokončené ${dl.finishedLateDays} dní po termíne`, `${dl.finishedLateDays} nappal a határidő után befejezve`)
-                          : dl.plannedDeadline
-                            ? t("Finished on time", "Dokončené v termíne", "Határidőre befejezve")
-                            : t("Finished", "Dokončené", "Befejezve")
-                        : dl.tone === "closed"
-                        ? t("Closed — the deadline no longer applies.", "Uzavretý — termín už neplatí.", "Lezárva — a határidő már nem érvényes.")
-                        : dl.isOverdue
-                          ? t(`${dl.overdueDays} days overdue`, `${dl.overdueDays} dní po termíne`, `${dl.overdueDays} nappal késésben`)
-                          : dl.daysLeft === 0
-                            ? t("Due today", "Termín je dnes", "Ma esedékes")
-                            : t(`${dl.daysLeft} days left`, `Ostáva ${dl.daysLeft} dní`, `${dl.daysLeft} nap van hátra`)}
-                    </p>
-                  )}
-
-                  {/* The red flag. Once the project missed its date — still
-                      open and past it, or finished after it — the reason for
-                      the delay is required: the card refuses to save without
-                      one, and until it is written down the project wears a
-                      flag everywhere it is listed. */}
-                  {missedDeadline && (
-                    <div className="mt-3 p-3 rounded-2xl border border-rose-200 bg-rose-50">
-                      <label className="flex items-center gap-1.5 text-[10px] font-black text-rose-700 uppercase tracking-wider mb-1.5">
-                        <Icons.Flag className="h-3.5 w-3.5 shrink-0 fill-current" />
-                        <span>{t("Reason for the delay", "Dôvod meškania", "A késés oka")}</span>
-                        <span className="text-rose-500">*</span>
-                      </label>
-
-                      {isEditing ? (
-                        <>
-                          <textarea
-                            value={delayReason}
-                            onChange={e => setDelayReason(e.target.value)}
-                            rows={2}
-                            maxLength={500}
-                            placeholder={t(
-                              "e.g. waiting on the client's approval of the design",
-                              "napr. čakáme na schválenie návrhu klientom",
-                              "pl. az ügyfél jóváhagyására várunk",
-                            )}
-                            className={`w-full px-3 py-2 rounded-xl border text-xs font-semibold bg-white text-slate-800 resize-y focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 ${
-                              delayReason.trim() ? "border-rose-200" : "border-rose-400"
-                            }`}
-                          />
-                          {!delayReason.trim() && (
-                            <p className="mt-1 text-[9px] font-bold text-rose-600 leading-snug">
-                              {t(
-                                "Required while the project is past its deadline — it cannot be saved without one.",
-                                "Povinné, kým je projekt po termíne — bez neho sa projekt nedá uložiť.",
-                                "Kötelező, amíg a projekt határidőn túl van — enélkül nem menthető.",
-                              )}
-                            </p>
-                          )}
-                        </>
-                      ) : delayReason.trim() ? (
-                        <p className="text-xs font-semibold text-slate-700 whitespace-pre-wrap break-words">
-                          {delayReason}
-                        </p>
-                      ) : (
-                        <>
-                          <p className="text-[11px] font-bold text-rose-600 leading-snug">
-                            {t(
-                              "No reason given yet — this project is flagged in the list until one is.",
-                              "Zatiaľ bez zdôvodnenia — projekt je v zozname označený, kým ho nedoplníte.",
-                              "Még nincs indoklás — a projekt megjelölve marad a listában, amíg meg nem adja.",
-                            )}
-                          </p>
-                          {canEdit && (
-                            <button
-                              type="button"
-                              onClick={() => setIsEditing(true)}
-                              className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-rose-600 text-white text-[10px] font-black uppercase tracking-wider hover:bg-rose-700 transition-colors cursor-pointer"
-                            >
-                              <Icons.Flag className="h-3 w-3 shrink-0" />
-                              <span>{t("Explain the delay", "Zdôvodniť meškanie", "Késés indoklása")}</span>
-                            </button>
-                          )}
-                        </>
-                      )}
-                    </div>
-                  )}
-
-                </div>
-              );
-            })()}
-
-            {/* Project Managers. A project can carry several, so the dropdown
-                adds one at a time and the chosen ones sit above it as the same
-                coloured chips the lead view wears for its manager. */}
-            <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Project Managers", "Projektoví manažéri", "Projektmenedzserek")}</label>
-              {selectedManagers.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 mb-2">
-                  {selectedManagers.map(name => {
-                    const color = users.find(u => u.name === name)?.color || "#64748b";
-                    return (
-                      <span
-                        key={name}
-                        className={`inline-flex items-center gap-1 pl-2.5 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider shadow-sm ${isEditing ? "pr-1" : "pr-2.5"}`}
-                        style={{ backgroundColor: `${color}15`, color, borderColor: `${color}30` }}
-                      >
-                        <Icons.User className="h-3 w-3 shrink-0" />
-                        <span className="truncate max-w-[10rem]">{name}</span>
-                        {isEditing && (
-                        <button
-                          type="button"
-                          onClick={() => setSelectedManagers(prev => prev.filter(m => m !== name))}
-                          className="ml-0.5 p-0.5 rounded-full hover:bg-black/10 transition-colors cursor-pointer"
-                          title={t("Remove", "Odobrať", "Eltávolítás")}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                        )}
-                      </span>
-                    );
-                  })}
-                </div>
-              )}
-              {isEditing && (() => {
-                const available = users.filter(u => !selectedManagers.includes(u.name));
-                return (
-                  <CustomSelect
-                    value=""
-                    onChange={name => {
-                      if (name && !selectedManagers.includes(name)) setSelectedManagers(prev => [...prev, name]);
-                    }}
-                    disabled={available.length === 0}
-                    placeholder={
-                      available.length === 0
-                        ? t("Everyone is assigned", "Priradení sú všetci", "Mindenki hozzá van rendelve")
-                        : selectedManagers.length > 0
-                          ? t("Add another manager...", "Pridať ďalšieho manažéra...", "További menedzser hozzáadása...")
-                          : t("Assign a manager...", "Priradiť manažéra...", "Menedzser kijelölése...")
-                    }
-                    options={available.map(u => ({
-                      value: u.name,
-                      label: u.name,
-                      icon: <span className="h-2.5 w-2.5 rounded-full shrink-0 inline-block" style={{ backgroundColor: u.color || "#64748b" }} />,
-                    }))}
-                  />
-                );
-              })()}
-              {selectedManagers.length === 0 && (
-                <p className="text-xs font-semibold text-slate-300 italic">
-                  {t(
-                    "Nobody is on this project yet.",
-                    "Na projekte zatiaľ nikto nie je priradený.",
-                    "Még senki sincs hozzárendelve a projekthez.",
-                  )}
-                </p>
-              )}
-            </div>
-
-            <div className="border-t border-slate-200 my-4 shrink-0" />
-
-            {/* DYNAMIC CUSTOM ATTRIBUTES FIELDS */}
-            <div className="space-y-4">
-              {(projectType.attributes || []).map(attr => {
-                const val = dynamicData[attr.id] ?? "";
-                const updateVal = (newVal: any) => {
-                  setDynamicData(prev => ({ ...prev, [attr.id]: newVal }));
-                };
-
-                return (
-                  <div key={attr.id}>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
-                      {attr.name} {isEditing && attr.required && <span className="text-red-500">*</span>}
-                    </label>
-
-                    {!isEditing ? (
-                      <div className="text-xs font-bold text-slate-800">{renderAttrValue(attr, dynamicData[attr.id])}</div>
-                    ) : (
-                    <>
-                    {/* Textfield */}
-                    {attr.type === "textfield" && (
-                      <input
-                        type="text"
-                        value={val}
-                        onChange={e => updateVal(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800"
-                      />
-                    )}
-
-                    {/* Textarea */}
-                    {attr.type === "textarea" && (
-                      <textarea
-                        value={val}
-                        onChange={e => updateVal(e.target.value)}
-                        rows={3}
-                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800 resize-none"
-                      />
-                    )}
-
-                    {/* Number */}
-                    {attr.type === "number" && (
-                      <input
-                        type="number"
-                        value={val}
-                        onChange={e => updateVal(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800"
-                      />
-                    )}
-
-                    {/* Money — amount plus the currency this record is in */}
-                    {attr.type === "money" && renderMoneyInput(dynamicData[attr.id], updateVal)}
-
-                    {/* Date */}
-                    {attr.type === "date" && (
-                      <input
-                        type="date"
-                        value={val}
-                        onChange={e => updateVal(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800"
-                      />
-                    )}
-
-                    {/* Time */}
-                    {attr.type === "time" && (
-                      <input
-                        type="time"
-                        value={val}
-                        onChange={e => updateVal(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800"
-                      />
-                    )}
-
-                    {/* Datetime */}
-                    {attr.type === "datetime" && (
-                      <input
-                        type="datetime-local"
-                        value={val}
-                        onChange={e => updateVal(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800"
-                      />
-                    )}
-
-                    {/* Select Dropdown */}
-                    {attr.type === "select" && (
-                      <CustomSelect
-                        value={val}
-                        onChange={v => updateVal(v)}
-                        placeholder={t("Select option...", "Vybrať možnosť...", "Válasszon opciót...")}
-                        options={(attr.options || []).map(opt => ({ value: opt, label: opt }))}
-                      />
-                    )}
-
-                    {/* Checkbox (options-based or single boolean) */}
-                    {attr.type === "checkbox" && (
-                      <div className="space-y-1 py-1">
-                        {attr.options ? (
-                          attr.options.map(opt => {
-                            const checkedList = asList(val);
-                            const isChecked = checkedList.includes(opt);
-                            return (
-                              <label key={opt} className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-600">
-                                <input
-                                  type="checkbox"
-                                  checked={isChecked}
-                                  onChange={() => {
-                                    const nextList = isChecked 
-                                      ? checkedList.filter(o => o !== opt)
-                                      : [...checkedList, opt];
-                                    updateVal(nextList);
-                                  }}
-                                  className="h-4 w-4 rounded border-slate-300 text-indigo-600"
-                                />
-                                <span>{opt}</span>
-                              </label>
-                            );
-                          })
-                        ) : (
-                          <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-600">
-                            <input
-                              type="checkbox"
-                              checked={!!val}
-                              onChange={e => updateVal(e.target.checked)}
-                              className="h-4 w-4 rounded border-slate-300 text-indigo-600"
-                            />
-                            <span>{t("Yes / Enabled", "Áno / Povolené", "Igen / Engedélyezve")}</span>
-                          </label>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Radio Buttons */}
-                    {attr.type === "radio" && (
-                      <div className="space-y-1.5 py-1">
-                        {(attr.options || []).map(opt => (
-                          <label key={opt} className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-600">
-                            <input
-                              type="radio"
-                              name={attr.id}
-                              value={opt}
-                              checked={val === opt}
-                              onChange={() => updateVal(opt)}
-                              className="h-4 w-4 border-slate-300 text-indigo-600"
-                            />
-                            <span>{opt}</span>
-                          </label>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Multiple Files Upload */}
-                    {attr.type === "files" && renderFilesInput(attr.id, val)}
-
-                    {/* Contact Picker attribute type */}
-                    {attr.type === "contact" && (
-                      <div className="space-y-2">
-                        <ClientSelect
-                          leads={leads}
-                          value={val}
-                          onChange={v => updateVal(v)}
-                          placeholder={t("Select Contact...", "Vybrať kontakt...", "Kapcsolat választása...")}
-                        />
-                        {val && (() => {
-                          const contact = leads.find(l => l.id === val);
-                          if (!contact) return null;
-                          return (
-                            <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-[11px] font-semibold text-slate-600 animate-fade-in">
-                              <div className="flex items-center justify-between">
-                                <span className="text-slate-800 font-bold">{contact.name}</span>
-                                <a 
-                                  href={`#lead-${contact.id}`}
-                                  className="text-indigo-600 hover:text-indigo-800 text-[10px] underline"
-                                >
-                                  {t("View Profile", "Zobraziť profil", "Profil megtekintése")}
-                                </a>
-                              </div>
-                              {contact.email && (
-                                <div className="flex items-center gap-1.5 text-slate-500">
-                                  <Mail className="h-3 w-3 text-slate-400 shrink-0" />
-                                  <span>{contact.email}</span>
-                                </div>
-                              )}
-                              {contact.phone && (
-                                <div className="flex items-center gap-1.5 text-slate-500">
-                                  <Phone className="h-3 w-3 text-slate-400 shrink-0" />
-                                  <span>{contact.phone}</span>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    )}
-                    </>
-                    )}
-
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-          </div>
         </div>
 
         {/* RIGHT COLUMN: Timeline & Gantt Tabs */}
@@ -2262,6 +2458,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               taskStateColors={taskStateColors}
               taskAccess={taskAccess}
               currentUser={currentUser}
+              mailConfigured={mailConfigured}
             />
           )}
 

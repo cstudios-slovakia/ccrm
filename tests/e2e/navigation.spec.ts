@@ -1,4 +1,4 @@
-import { test } from '@playwright/test';
+import { test, expect } from '@playwright/test';
 import { QAReport } from './helpers/reportCollector';
 import { assertNoDefectsFound } from './helpers/gate';
 import { ViewCrawler } from './helpers/uiExplorer';
@@ -255,5 +255,15 @@ test.describe('Shell navigation', () => {
       document.querySelectorAll('[data-qa-header]').forEach((el) => el.removeAttribute('data-qa-header')),
     );
     assertNoDefectsFound();
+  });
+
+  test('a settings section button switches the section', async ({ page }) => {
+    // Regression: the hash parser split "settings/managers" on "/" and "?" at
+    // once, so every sub-path was dropped and a section click did nothing.
+    await gotoView(page, '#settings/branding');
+    const usersTab = page.getByRole('button', { name: /Users & PMs|Používatelia a PM|Felhasználók és PM/ });
+    await usersTab.click();
+    await expect(page).toHaveURL(/#settings\/managers$/);
+    await expect(usersTab).toHaveClass(/bg-indigo-600/);
   });
 });

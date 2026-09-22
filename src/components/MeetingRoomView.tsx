@@ -12,6 +12,7 @@ import { todayLocal, todayLocalPlusDays, formatDateLocalized, localeCodeFor } fr
 import { CustomSelect, DropdownSearchRow } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { useQuickAddClient } from "./ui/QuickAddClient";
+import { registerPendingSave } from "../utils/pendingSaves";
 
 const parseNotesToBlocks = (notes: string): EditorBlock[] => {
   if (notes.trim().startsWith("[")) {
@@ -1244,9 +1245,14 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
     return matchesSearch && matchesLead && matchesDate;
   });
 
+  // Autosave plumbing for a new note — see the autosave effect below.
+  const pendingNoteSaveRef = React.useRef(false);
+  const saveNoteActionRef = React.useRef<(silent?: boolean, overrideAudioFile?: string) => void>(() => {});
+
   // Common action to save note data
   const saveNoteAction = (silent = false, overrideAudioFile?: string) => {
     if (!currentNoteId) return;
+    pendingNoteSaveRef.current = false;
 
     const finalTitle = newTitle.trim() || t("Untitled Note", "Nepomenovaný zápis", "Névtelen jegyzet");
     let primaryLeadId = "";
@@ -1371,16 +1377,53 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
     window.location.hash = `meetings/${targetId}`;
   };
 
-  // Autosave every 5 seconds
+  /* Autosave of a new note. This used to be a 5 s interval whose closure only
+     refreshed on title/date/blocks/attachment changes, so a tick after a
+     recording upload or a transcription wrote the note back with the audio,
+     transcript and tasks of an older render (null) — right after the toast
+     said the recording was saved. It also wrote an empty "Untitled Note" for
+     a form merely opened, and lost the last few seconds on Back or leaving
+     the module. Now: the latest save through a ref, a debounce over every
+     field the note carries, nothing for an empty note, and a pending change
+     written on the way out. */
+  saveNoteActionRef.current = saveNoteAction;
   useEffect(() => {
     if (viewState !== "new" || !currentNoteId) return;
+    const hasContent = newTitle.trim() !== ""
+      || newBlocks.some(b => b.content && b.content.trim() !== "")
+      || attachedLeads.length > 0 || attachedClients.length > 0 || attachedUsers.length > 0
+      || !!uploadedAudioFile || !!newTranscription
+      || meetingNotes.some(n => n.id === currentNoteId);
+    if (!hasContent) return;
+    pendingNoteSaveRef.current = true;
+    const timer = setTimeout(() => saveNoteActionRef.current(true), 1500);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewState, currentNoteId, newTitle, newDate, newBlocks, attachedLeads, attachedClients, attachedUsers,
+      uploadedAudioFile, newTranscription, newAutomatedNotes, newSummaryGenerated, newAiSummary, newAutomatedTasks]);
 
-    const interval = setInterval(() => {
-      saveNoteAction(true);
-    }, 5000);
-
-    return () => clearInterval(interval);
-  }, [viewState, currentNoteId, newTitle, newDate, newBlocks, attachedLeads, attachedClients, attachedUsers]);
+  // Leaving the new note (Back, another meeting) or the module writes what is
+  // pending, and the next "New note" starts from an empty form rather than
+  // re-saving this one's title under a fresh id.
+  const prevViewStateRef = React.useRef(viewState);
+  useEffect(() => {
+    const wasNew = prevViewStateRef.current === "new";
+    prevViewStateRef.current = viewState;
+    if (!wasNew || viewState === "new") return;
+    if (pendingNoteSaveRef.current) saveNoteActionRef.current(true);
+    setNewTitle("");
+    setAttachedLeads([]);
+    setAttachedClients([]);
+    setAttachedUsers([]);
+    setNewBlocks([{ id: "b-1", type: "paragraph", content: "" }]);
+  }, [viewState]);
+  useEffect(() => () => {
+    if (pendingNoteSaveRef.current) saveNoteActionRef.current(true);
+  }, []);
+  useEffect(() => registerPendingSave({
+    isPending: () => pendingNoteSaveRef.current,
+    flush: () => saveNoteActionRef.current(true),
+  }), []);
 
   const getSentimentBadge = (sentiment: "positive" | "neutral" | "negative") => {
     switch (sentiment) {

@@ -48,6 +48,12 @@ if ($email === '' || $password === '') {
 // Deliberately fail-open: any error in the throttle path must never block a
 // legitimate login.
 $clientIp = $_SERVER['REMOTE_ADDR'] ?? '';
+// Failures allowed per IP in the 15-minute window before the throttle answers
+// 429. The login screen warns when few are left, so the number lives here once.
+if (!defined('CCRM_LOGIN_MAX_ATTEMPTS')) {
+    define('CCRM_LOGIN_MAX_ATTEMPTS', 20);
+}
+$recentFailures = 0;
 $recordLoginFailure = function () use ($pdo, $clientIp, $email) {
     try {
         $pdo->prepare("INSERT INTO `login_attempts` (`ip`, `email`) VALUES (?, ?)")->execute([$clientIp, $email]);
@@ -70,9 +76,15 @@ try {
     }
     $cntStmt = $pdo->prepare("SELECT COUNT(*) FROM `login_attempts` WHERE `ip` = ? AND `created_at` > (NOW() - INTERVAL 15 MINUTE)");
     $cntStmt->execute([$clientIp]);
-    if ((int)$cntStmt->fetchColumn() >= 20) {
+    $recentFailures = (int)$cntStmt->fetchColumn();
+    if ($recentFailures >= CCRM_LOGIN_MAX_ATTEMPTS) {
         http_response_code(429);
-        echo json_encode(['success' => false, 'message' => 'Too many login attempts. Please wait a few minutes and try again.']);
+        echo json_encode([
+            'success' => false,
+            'locked' => true,
+            'lock_minutes' => 15,
+            'message' => 'Too many login attempts. Please wait a few minutes and try again.',
+        ]);
         exit;
     }
 } catch (\Throwable $e) {
@@ -83,7 +95,14 @@ $stmt = $pdo->prepare("SELECT * FROM `users` WHERE `email` = ? LIMIT 1");
 $stmt->execute([$email]);
 $row = $stmt->fetch();
 
-$genericError = ['success' => false, 'message' => 'Invalid email or password.'];
+// The message never says which half was wrong. attempts_remaining counts this
+// failure too; the login screen only mentions it once few are left.
+$genericError = [
+    'success' => false,
+    'message' => 'Invalid email or password.',
+    'attempts_remaining' => max(0, CCRM_LOGIN_MAX_ATTEMPTS - $recentFailures - 1),
+    'lock_minutes' => 15,
+];
 
 if (!$row) {
     // Constant-ish work factor to blunt user-enumeration timing.
@@ -119,6 +138,9 @@ if (!$ok) {
 try {
     $pdo->prepare("DELETE FROM `login_attempts` WHERE `ip` = ?")->execute([$clientIp]);
 } catch (\Throwable $e) { /* ignore */ }
+
+// The address this user reached the CRM at is the one mailed links should use.
+ccrm_remember_app_url($pdo);
 
 // Establish the authenticated session (extended lifetime when "remember me").
 ccrm_start_session($remember);

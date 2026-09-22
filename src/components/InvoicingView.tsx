@@ -98,6 +98,15 @@ const addDays = (isoDate: string, days: number): string => {
   return `${base.getFullYear()}-${pad(base.getMonth() + 1)}-${pad(base.getDate())}`;
 };
 
+/** Whole calendar days from one YYYY-MM-DD date to another. */
+const daysBetween = (from: string, to: string): number => {
+  const parse = (iso: string) => {
+    const [y, m, d] = iso.split("-").map(Number);
+    return Date.UTC(y, (m || 1) - 1, d || 1);
+  };
+  return Math.round((parse(to) - parse(from)) / 86_400_000);
+};
+
 /** Money that never throws on a half-populated row coming back from sync. */
 const num = (v: unknown): number => (typeof v === "number" && Number.isFinite(v) ? v : 0);
 
@@ -672,6 +681,12 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
 
   // ------------------------------------------------------------ draft assembly
   const buildDocument = (): InvoiceOffer | null => {
+    /** A stored date moved by as many days as the issue date was moved. */
+    const shiftWithIssue = (date?: string | null, storedIssuedAt?: string | null): string | null => {
+      if (!date) return null;
+      if (!storedIssuedAt || storedIssuedAt === draftIssuedAt) return date;
+      return addDays(date, daysBetween(storedIssuedAt, draftIssuedAt));
+    };
     if (!selectedLead) return null;
     const existing = editingId ? invoicesOffers.find(o => o.id === editingId) : null;
     const dueDays = num(companyBillingSettings?.defaultPaymentDueDays) || 14;
@@ -717,9 +732,13 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
       signOffTeam: signOffTeam.trim() || null,
       customTemplateId: draftMode === "custom" ? selectedTemplateId || activeTemplate?.id || null : null,
       status: existing?.status || "draft",
-      issuedAt: existing?.issuedAt || draftIssuedAt,
-      validUntil: existing?.validUntil || addDays(draftIssuedAt, 30),
-      dueDate: existing?.dueDate || addDays(draftIssuedAt, dueDays),
+      // The "Issued on" field is editable on an existing document too; it used
+      // to be ignored there (the stored date won), so a changed date looked
+      // saved and never was. Due date and valid-until move with it by the same
+      // number of days, keeping the document's own terms.
+      issuedAt: draftIssuedAt,
+      validUntil: shiftWithIssue(existing?.validUntil, existing?.issuedAt) || addDays(draftIssuedAt, 30),
+      dueDate: shiftWithIssue(existing?.dueDate, existing?.issuedAt) || addDays(draftIssuedAt, dueDays),
       createdBy: existing?.createdBy || currentUser?.name || null
     };
   };

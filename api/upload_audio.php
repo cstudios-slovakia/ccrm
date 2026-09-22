@@ -92,6 +92,12 @@ if (move_uploaded_file($file['tmp_name'], $targetPath)) {
             if ($meetingExists) {
                 $stmt = $db->prepare("UPDATE `meeting_notes` SET `audio_file` = ? WHERE `id` = ?");
                 $stmt->execute([$filePath, $meetingId]);
+            } elseif (strpos($meetingId, 'note_event_') === 0) {
+                // A voice note recorded onto a lead/client timeline entry. The
+                // recording belongs to that timeline event (the client stores the
+                // path on it and sync.php keeps it in timeline_events.audio_file);
+                // there is no meeting to file it under, and creating a stub row
+                // here left a phantom "Untitled Note" meeting after every recording.
             } else {
                 $stmt = $db->prepare("INSERT INTO `meeting_notes` (`id`, `title`, `date`, `duration`, `notes`, `audio_file`) VALUES (?, ?, ?, ?, ?, ?)");
                 $stmt->execute([

@@ -7,6 +7,7 @@ import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, Uni
 import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAssignment";
 import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils/projectAutoCreate";
 import { normalizeLeadStateSla, type LeadStateSla } from "./utils/leadSla";
+import { isSystemMailConfigured } from "./utils/taskReminders";
 import { listIdsSignature, normalizeListIds, type ListIds } from "./utils/listIds";
 import { VERSION } from "./utils/version";
 import { reconcileInvoiceMovements } from "./utils/invoiceFinanceBridge";
@@ -57,6 +58,7 @@ import {
   normalizeFinancialTrend,
   readLegacyFinancialTrend,
 } from "./utils/financialTrend";
+import { flushPendingSaves } from "./utils/pendingSaves";
 
 /**
  * Routes whose whole purpose depends on OpenAI. Visiting one without a
@@ -302,6 +304,12 @@ function App() {
   const activePushesRef = useRef(0);
   const visiblePushesRef = useRef(0);
   const lastPushTimeRef = useRef(0);
+  // Set when the server refused a record as a conflict (someone else wrote it
+  // after our last pull). Our copy of that record is stale, and re-sending it
+  // once baseSyncedAt has moved on would pass the server's guard and overwrite
+  // the newer row. The poller answers this with a full pull as soon as the
+  // post-push quiet window closes, instead of waiting for dataVersion to move.
+  const pullAfterConflictRef = useRef(false);
   // Set when a push is rejected with 401 (session expired) so the unsaved
   // change can be replayed after the user re-authenticates.
   const pendingPushRef = useRef(false);
@@ -377,8 +385,19 @@ function App() {
 
   const getTabFromHash = () => {
     const rawHash = window.location.hash.replace("#", "");
-    const [baseRaw, queryRaw] = rawHash.split(/[/?]/);
-    const hashLower = (baseRaw || "").toLowerCase();
+    // Split the query off on "?" only, and the alias-able base off on the first
+    // "/" only. Splitting on /[/?]/ at once turned "settings/managers" into
+    // "settings?managers": every sub-path (settings sections, unified edit ids,
+    // warehouse/financial sub-views) was dropped, and a settings section click
+    // did nothing. The rest of the route keeps its original case, because
+    // client-/user- routes carry names.
+    const qIdx = rawHash.indexOf("?");
+    const pathRaw = qIdx === -1 ? rawHash : rawHash.slice(0, qIdx);
+    const queryRaw = qIdx === -1 ? "" : rawHash.slice(qIdx + 1);
+    const slashIdx = pathRaw.indexOf("/");
+    const baseRaw = slashIdx === -1 ? pathRaw : pathRaw.slice(0, slashIdx);
+    const subPath = slashIdx === -1 ? "" : pathRaw.slice(slashIdx);
+    const hashLower = baseRaw.toLowerCase();
 
     // Map common synonyms & aliases directly to canonical app tabs
     const aliasMap: Record<string, string> = {
@@ -405,10 +424,14 @@ function App() {
     const resolvedBase = aliasMap[hashLower] || hashLower;
 
     if (resolvedBase.startsWith("client-") || resolvedBase.startsWith("lead-") || resolvedBase.startsWith("user-") || resolvedBase.startsWith("ue_") || resolvedBase.startsWith("dash_") || resolvedBase.startsWith("settings") || resolvedBase.startsWith("warehouse") || resolvedBase.startsWith("financial") || resolvedBase.startsWith("invoices") || resolvedBase.startsWith("sai") || resolvedBase.startsWith("automation")) {
-      return queryRaw ? `${resolvedBase}?${queryRaw}` : resolvedBase;
+      // An alias maps to its canonical tab; anything else keeps its original case.
+      const route = (aliasMap[hashLower] || baseRaw) + subPath;
+      return queryRaw ? `${route}?${queryRaw}` : route;
     }
     const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "tasks", "files", "personal-settings", "email", "rag_ai", "sai", "automation", "meetings", "projects", "updates", "warehouse", "financial", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
-    return validTabs.includes(resolvedBase) ? (queryRaw ? `${resolvedBase}?${queryRaw}` : resolvedBase) : "dashboard";
+    if (!validTabs.includes(resolvedBase)) return "dashboard";
+    const route = resolvedBase + subPath;
+    return queryRaw ? `${route}?${queryRaw}` : route;
   };
 
   const [activeTab, setActiveTab] = useState(getTabFromHash);
@@ -1305,6 +1328,10 @@ ${log.payload || ''}
             Object.assign(ueSyncedRecordsRef.current, pendingUeBaselines);
           }
           const skippedWork = [...skipped].filter((tag) => {
+            // A settings key this role may not write and that differed from
+            // what is stored (the server only tags those). It is lost work:
+            // the next full pull puts the stored value back.
+            if (tag.startsWith("settings:")) return (payload as any).settings != null;
             const base = tag.replace(/:delete$/, "");
             const payloadKey = base === "leads:clients" ? "leads" : base;
             if (tag.endsWith(":delete")) {
@@ -1315,6 +1342,7 @@ ${log.payload || ''}
             return Array.isArray(body) ? body.length > 0 : body != null && typeof body === "object";
           });
           const conflictCount = Object.values(conflicted).reduce((n, ids) => n + ids.length, 0);
+          if (conflictCount > 0) pullAfterConflictRef.current = true;
           const blockedCount = [...deleteBlockedKeys].length;
           if ((skippedWork.length || conflictCount || blockedCount) && typeof (window as any).showToast === "function") {
             (window as any).showToast(
@@ -1983,7 +2011,10 @@ ${log.payload || ''}
     const handler = (e: BeforeUnloadEvent) => {
       // A debounced settings edit has not left the browser yet, so it counts as
       // unsaved just as much as a request already in flight.
-      if (isSyncing || settingsPushTimerRef.current !== null) {
+      // An autosave still waiting inside a component (project, project type,
+      // meeting note, category colour) is handed over now and counts too.
+      const handedOver = flushPendingSaves();
+      if (handedOver || isSyncing || settingsPushTimerRef.current !== null) {
         e.preventDefault();
         e.returnValue = "";
       }
@@ -2079,6 +2110,14 @@ ${log.payload || ''}
       return serverEmail !== "" && shownEmail !== "" && serverEmail !== shownEmail;
     };
 
+    // A pull hands back the same data as a brand-new object. Keep the old
+    // identity when nothing changed: editors seed their drafts from these
+    // stores in effects keyed on them, so a fresh object every forced pull
+    // (about once a minute) re-seeded the draft and wiped what the user was
+    // still typing — a product card, the billing form, invoicing credentials.
+    const sameOr = <T,>(next: T) => (prev: T): T =>
+      JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
+
     const applyServerData = (data: any) => {
       setIsInstalled(true);
       setIsDemoMode(data.demoMode === true);
@@ -2159,46 +2198,46 @@ ${log.payload || ''}
         setUnifiedEntriesData((prev) => JSON.stringify(prev) === JSON.stringify(data.unifiedEntriesData) ? prev : data.unifiedEntriesData);
       }
       if (data.customDashboards && Array.isArray(data.customDashboards)) {
-        setCustomDashboards(data.customDashboards);
+        setCustomDashboards(sameOr(data.customDashboards));
       }
       if (data.projectTypes && Array.isArray(data.projectTypes)) {
-        setProjectTypes(data.projectTypes);
+        setProjectTypes(sameOr(data.projectTypes));
       }
       if (data.projects && Array.isArray(data.projects)) {
-        setProjects(data.projects);
+        setProjects(sameOr(data.projects));
       }
       if (data.warehouses && Array.isArray(data.warehouses)) {
-        setWarehouses(data.warehouses);
+        setWarehouses(sameOr(data.warehouses));
       }
       if (data.suppliers && Array.isArray(data.suppliers)) {
-        setSuppliers(data.suppliers);
+        setSuppliers(sameOr(data.suppliers));
       }
       if (data.warehouseItems && Array.isArray(data.warehouseItems)) {
-        setWarehouseItems(data.warehouseItems);
+        setWarehouseItems(sameOr(data.warehouseItems));
       }
       if (data.warehouseStock && Array.isArray(data.warehouseStock)) {
-        setWarehouseStock(data.warehouseStock);
+        setWarehouseStock(sameOr(data.warehouseStock));
       }
       if (data.warehouseBatches && Array.isArray(data.warehouseBatches)) {
-        setWarehouseBatches(data.warehouseBatches);
+        setWarehouseBatches(sameOr(data.warehouseBatches));
       }
       if (data.warehouseMovements && Array.isArray(data.warehouseMovements)) {
-        setWarehouseMovements(data.warehouseMovements);
+        setWarehouseMovements(sameOr(data.warehouseMovements));
       }
       if (data.financialCategories && Array.isArray(data.financialCategories)) {
-        setFinancialCategories(data.financialCategories);
+        setFinancialCategories(sameOr(data.financialCategories));
       }
       if (data.financialRecords && Array.isArray(data.financialRecords)) {
-        setFinancialRecords(data.financialRecords);
+        setFinancialRecords(sameOr(data.financialRecords));
       }
       if (data.invoicesOffers && Array.isArray(data.invoicesOffers)) {
-        setInvoicesOffers(data.invoicesOffers);
+        setInvoicesOffers(sameOr(data.invoicesOffers));
       }
       if (data.aiCustomTemplates && Array.isArray(data.aiCustomTemplates)) {
-        setAiCustomTemplates(data.aiCustomTemplates);
+        setAiCustomTemplates(sameOr(data.aiCustomTemplates));
       }
       if (data.clientCategories && Array.isArray(data.clientCategories)) {
-        setClientCategories(data.clientCategories);
+        setClientCategories(sameOr(data.clientCategories));
       }
       // Absent key = a sync.php that predates the trend anchors. Keep whatever
       // is in memory rather than blanking the chart back to the default curve.
@@ -2213,8 +2252,8 @@ ${log.payload || ''}
         if (s.systemName && s.systemName !== systemName) setSystemName(s.systemName);
         if (s.systemLanguage && s.systemLanguage !== systemLanguage) setSystemLanguage(s.systemLanguage);
         if (s.systemCurrency !== undefined && s.systemCurrency !== systemCurrency) setSystemCurrency(s.systemCurrency || "");
-        if (s.companyBillingSettings) setCompanyBillingSettings(s.companyBillingSettings);
-        if (s.invoicingIntegrations) setInvoicingIntegrations(s.invoicingIntegrations);
+        if (s.companyBillingSettings) setCompanyBillingSettings(sameOr(s.companyBillingSettings));
+        if (s.invoicingIntegrations) setInvoicingIntegrations(sameOr(s.invoicingIntegrations));
         setLeadStates((prev) => s.leadStates && JSON.stringify(s.leadStates) !== JSON.stringify(prev) ? s.leadStates : prev);
         setLeadSources((prev) => s.leadSources && JSON.stringify(s.leadSources) !== JSON.stringify(prev) ? s.leadSources : prev);
         setLeadCategories((prev) => s.leadCategories && JSON.stringify(s.leadCategories) !== JSON.stringify(prev) ? s.leadCategories : prev);
@@ -2340,6 +2379,7 @@ ${log.payload || ''}
       }
       if (data && data.installed === true) {
         applyServerData(data);
+        pullAfterConflictRef.current = false;
         if (typeof data.dataVersion !== "undefined") lastDataVersion = data.dataVersion;
       }
     };
@@ -2395,7 +2435,9 @@ ${log.payload || ''}
             return;
           }
           // Nothing changed since our last full pull — skip the heavy fetch.
-          if (lastDataVersion !== null && probe.dataVersion === lastDataVersion) {
+          // Except after a conflicted push: our copy of the refused record is
+          // stale even though the checksum has not moved since we last looked.
+          if (lastDataVersion !== null && probe.dataVersion === lastDataVersion && !pullAfterConflictRef.current) {
             return;
           }
         }
@@ -2818,6 +2860,7 @@ ${log.payload || ''}
             taskStateColors={taskStateColors}
             taskAccess={taskAccess}
             currentUser={activeUser}
+            mailConfigured={isSystemMailConfigured(integrationsConfig)}
           />
         );
       case "clients":
@@ -3081,6 +3124,7 @@ ${log.payload || ''}
             taskStates={taskStates}
             taskStateColors={taskStateColors}
             taskAccess={taskAccess}
+            mailConfigured={isSystemMailConfigured(integrationsConfig)}
             autoOpenAddTask={autoOpenAddTask}
             setAutoOpenAddTask={setAutoOpenAddTask}
           />

@@ -247,17 +247,31 @@ export const ClientCategoryManager: React.FC<{
   // --- colour: the picker fires on every pixel of a drag, so only the last value is synced ---
   const [colorDrafts, setColorDrafts] = useState<Record<string, string>>({});
   const colorTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+  // Colours still inside the debounce when the manager closes (Back, another
+  // module) are written on the way out — the swatch already showed them.
+  const pendingColors = useRef<Record<string, string>>({});
+  const setCategoriesRef = useRef(setCategories);
+  setCategoriesRef.current = setCategories;
   useEffect(() => {
     const timers = colorTimers.current;
-    return () => Object.values(timers).forEach(clearTimeout);
+    return () => {
+      Object.values(timers).forEach(clearTimeout);
+      const pending = pendingColors.current;
+      if (Object.keys(pending).length === 0) return;
+      setCategoriesRef.current((prev) =>
+        prev.map((c) => (pending[c.id] && c.color !== pending[c.id] ? { ...c, color: pending[c.id] } : c)),
+      );
+    };
   }, []);
   const shownColorOf = (cat: ClientCategory): string | null => colorDrafts[cat.id] ?? cat.color ?? null;
   const handleColorChange = (id: string, color: string) => {
     if (!editable) return;
     setColorDrafts((drafts) => ({ ...drafts, [id]: color }));
+    pendingColors.current[id] = color;
     clearTimeout(colorTimers.current[id]);
     colorTimers.current[id] = setTimeout(() => {
       delete colorTimers.current[id];
+      delete pendingColors.current[id];
       setCategories((prev) => prev.map((c) => (c.id === id && c.color !== color ? { ...c, color } : c)));
       setColorDrafts((drafts) => {
         const next = { ...drafts };

@@ -24,6 +24,13 @@ import { gotoView, startSession } from './helpers/appDriver';
 const PROJECT = 'Strecha Silvia — etapa 1';
 const NEW_NAME = 'QA Rýchly Klient';
 
+/** The pairing picker on the project card — named, because the card carries
+    several dropdowns and which one comes first has moved before. */
+const pairingPicker = (page: Page) =>
+  page.locator('label', { hasText: 'Spárovaný lead / klient' })
+    .locator('xpath=..')
+    .locator('button[aria-haspopup="listbox"]');
+
 /** The picker panel's add-new button — beside the search box, not in the list. */
 const addNewButton = (page: Page) => page.getByRole('button', { name: /Pridať nový lead \/ klienta/i });
 
@@ -33,11 +40,10 @@ test.describe('Quick-add client', () => {
     await gotoView(page, '#projects');
 
     await page.getByText(PROJECT).first().click();
-    await page.getByRole('button', { name: /^upraviť$/i }).first().click();
     await page.getByRole('button', { name: /^zmeniť$/i }).first().click();
 
     // The paired lead / client picker.
-    const trigger = page.locator('button[aria-haspopup="listbox"]').first();
+    const trigger = pairingPicker(page);
     await trigger.click();
 
     const listbox = page.locator('[role="listbox"]').last();
@@ -65,10 +71,9 @@ test.describe('Quick-add client', () => {
     await gotoView(page, '#projects');
 
     await page.getByText(PROJECT).first().click();
-    await page.getByRole('button', { name: /^upraviť$/i }).first().click();
     await page.getByRole('button', { name: /^zmeniť$/i }).first().click();
 
-    await page.locator('button[aria-haspopup="listbox"]').first().click();
+    await pairingPicker(page).click();
     await addNewButton(page).click();
 
     const form = page.locator('form').filter({ hasText: /Nový lead \/ klient/ });
@@ -78,7 +83,7 @@ test.describe('Quick-add client', () => {
 
     // Reopen the picker: the record is in the register like any other.
     await page.getByRole('button', { name: /^zmeniť$/i }).first().click();
-    await page.locator('button[aria-haspopup="listbox"]').first().click();
+    await pairingPicker(page).click();
     await expect(
       page.locator('[role="listbox"]').last().getByRole('option', { name: NEW_NAME }),
     ).toBeVisible();

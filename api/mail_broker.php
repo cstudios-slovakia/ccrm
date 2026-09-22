@@ -1139,6 +1139,15 @@ function send_smtp_email($settings, $to, $subject, $html) {
     return ['message_id' => $messageId, 'filed_to_sent' => $filed];
 }
 
+/** True when the system outbound profile has enough in it to attempt a send. */
+function ccrm_system_mail_configured(array $config): bool {
+    $provider = $config['emailProvider'] ?? ($config['provider'] ?? 'smtp');
+    if ($provider === 'exchange') {
+        return ($config['exchMailbox'] ?? '') !== '' && ($config['exchPassword'] ?? '') !== '';
+    }
+    return ($config['smtpHost'] ?? '') !== '' && intval($config['smtpPort'] ?? 0) > 0;
+}
+
 /**
  * Send a message through the SYSTEM outbound profile (INTEGRATIONS_CONFIG).
  * Unlike send_smtp_email() this validates every SMTP reply code, so a rejected

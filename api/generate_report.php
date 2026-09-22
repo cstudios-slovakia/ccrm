@@ -253,7 +253,12 @@ if (empty($aiReply)) {
 }
 
 try {
-    $updateStmt = $pdo->prepare("UPDATE `leads` SET `financial_summary` = ? WHERE `company_id` = ?");
+    // Server-owned column: writing it must not move `updated_at`, which is
+    // the conflict clock sync.php compares a client's baseSyncedAt against.
+    // This worker is spawned from the user's own save, so without the pin it
+    // ran a few seconds later, bumped the row, and the user's NEXT edit was
+    // refused as a conflict and replaced by the stored copy on the next pull.
+    $updateStmt = $pdo->prepare("UPDATE `leads` SET `financial_summary` = ?, `updated_at` = `updated_at` WHERE `company_id` = ?");
     $updateStmt->execute([$aiReply, $companyId]);
 } catch (\Exception $e) {
     // Ignore

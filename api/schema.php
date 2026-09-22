@@ -140,6 +140,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `archived` TINYINT(1) NOT NULL DEFAULT 0,
               `completed_by` VARCHAR(100) NULL COMMENT 'Name of the user who moved the task to a done state; NULL for legacy rows',
               `completed_at` VARCHAR(16) NULL COMMENT 'YYYY-MM-DD HH:MM local completion timestamp; NULL for legacy rows',
+              `email_reminders_json` TEXT NULL COMMENT 'Per-user e-mail reminder choice, JSON: user name to morning, 1h or 1d',
               `metadata_json` TEXT NULL COMMENT 'Plugin support',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -155,6 +156,20 @@ if (!function_exists('ccrm_schema_statements')) {
               `task_id` VARCHAR(50) NOT NULL,
               `user_name` VARCHAR(100) NOT NULL,
               PRIMARY KEY (`task_id`, `user_name`),
+              FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Task e-mail reminders already sent. One row per task, recipient and
+            // the moment the reminder was due, so rescheduling a task earns a new
+            // reminder while a repeated cron run never sends the same one twice.
+            "CREATE TABLE IF NOT EXISTS `task_reminder_log` (
+              `task_id` VARCHAR(50) NOT NULL,
+              `user_name` VARCHAR(100) NOT NULL,
+              `scheduled_for` VARCHAR(16) NOT NULL COMMENT 'YYYY-MM-DD HH:MM local time the reminder was due',
+              `status` VARCHAR(10) NOT NULL DEFAULT 'sent' COMMENT 'sent | failed',
+              `error` VARCHAR(500) NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (`task_id`, `user_name`, `scheduled_for`),
               FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
@@ -502,9 +517,9 @@ if (!function_exists('ccrm_schema_statements')) {
               `default_location` VARCHAR(100) NULL,
               `has_expiration` TINYINT(1) NOT NULL DEFAULT 0,
               `image_url` VARCHAR(500) NULL,
-              `default_sell_price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+              `default_sell_price` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
               `avg_purchase_price` DECIMAL(12,4) NOT NULL DEFAULT 0.0000,
-              `last_purchase_price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+              `last_purchase_price` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               INDEX `idx_item_sku` (`sku`),
               INDEX `idx_item_category` (`category`)
@@ -514,8 +529,8 @@ if (!function_exists('ccrm_schema_statements')) {
             "CREATE TABLE IF NOT EXISTS `warehouse_stock` (
               `warehouse_id` VARCHAR(50) NOT NULL,
               `item_id` VARCHAR(50) NOT NULL,
-              `quantity` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-              `reserved_quantity` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+              `quantity` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
+              `reserved_quantity` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
               `location` VARCHAR(100) NULL,
               PRIMARY KEY (`warehouse_id`, `item_id`),
               FOREIGN KEY (`warehouse_id`) REFERENCES `warehouses` (`id`) ON DELETE CASCADE,
@@ -529,8 +544,8 @@ if (!function_exists('ccrm_schema_statements')) {
               `warehouse_id` VARCHAR(50) NOT NULL,
               `batch_number` VARCHAR(100) NOT NULL,
               `expiration_date` DATE NOT NULL,
-              `initial_quantity` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-              `current_quantity` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+              `initial_quantity` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
+              `current_quantity` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
               `purchase_price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               FOREIGN KEY (`item_id`) REFERENCES `warehouse_items` (`id`) ON DELETE CASCADE,
@@ -570,9 +585,9 @@ if (!function_exists('ccrm_schema_statements')) {
               `movement_id` VARCHAR(50) NOT NULL,
               `item_id` VARCHAR(50) NOT NULL,
               `batch_id` VARCHAR(50) NULL,
-              `quantity` DECIMAL(12,2) NOT NULL,
-              `unit_purchase_price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
-              `unit_sell_price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+              `quantity` DECIMAL(15,4) NOT NULL,
+              `unit_purchase_price` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
+              `unit_sell_price` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
               `total_price` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
               `expiration_date` DATE NULL,
               `note` VARCHAR(255) NULL,
@@ -634,7 +649,11 @@ if (!function_exists('ccrm_schema_statements')) {
               `recurring_config_json` TEXT NULL,
               `recurring_start_date` DATE NULL,
               `recurring_end_date` DATE NULL,
+              `recurring_planned_end_date` DATE NULL COMMENT 'The end date a paused rule really has, restored on resume (a pause stamps recurring_end_date with today)',
               `recurring_amount_history_json` TEXT NULL COMMENT 'Superseded amounts of a recurring rule: [{until, amountPlanned, amountReal}]',
+              `recurring_skipped_dates_json` TEXT NULL COMMENT 'Scheduled days a stored movement stands in for, as a JSON list of YYYY-MM-DD days',
+              `recurring_source_id` VARCHAR(50) NULL COMMENT 'On a one-off movement: the recurring rule whose charge it replaces',
+              `recurring_occurrence_date` DATE NULL COMMENT 'On a one-off movement: the scheduled day it stands in for',
               `project_id` VARCHAR(50) NULL COMMENT 'NULL for Global company-wide record, or linked project ID',
               `client_id` VARCHAR(50) NULL COMMENT 'NULL for Global company-wide record, or linked client ID',
               `invoice_number` VARCHAR(100) NULL,
@@ -695,6 +714,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `custom_template_id` VARCHAR(50) NULL,
               `custom_template_style_json` TEXT NULL,
               `status` ENUM('draft', 'sent', 'approved', 'rejected', 'invoiced', 'cancelled') NOT NULL DEFAULT 'draft',
+              `status_changed_at` DATE NULL COMMENT 'Day the status last changed (client-stamped)',
               `issued_at` DATE NOT NULL,
               `valid_until` DATE NULL,
               `due_date` DATE NULL,
@@ -718,9 +738,9 @@ if (!function_exists('ccrm_schema_statements')) {
               `sku` VARCHAR(100) NULL,
               `name` VARCHAR(255) NOT NULL,
               `description` TEXT NULL,
-              `quantity` DECIMAL(12,2) NOT NULL DEFAULT 1.00,
+              `quantity` DECIMAL(15,4) NOT NULL DEFAULT 1.0000,
               `unit` VARCHAR(20) NOT NULL DEFAULT 'ks',
-              `unit_price` DECIMAL(12,2) NOT NULL DEFAULT 0.00,
+              `unit_price` DECIMAL(15,4) NOT NULL DEFAULT 0.0000,
               `vat_rate` DECIMAL(5,2) NOT NULL DEFAULT 20.00,
               `discount_pct` DECIMAL(5,2) NOT NULL DEFAULT 0.00,
               `total_price` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
@@ -1040,6 +1060,11 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'tasks', 'completed_at')) {
             $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `completed_at` VARCHAR(16) NULL AFTER `completed_by`");
         }
+        // "Notify me by e-mail" on a task: which users asked for a reminder and
+        // when. Sent by api/task_reminders.php through the system SMTP profile.
+        if (!ccrm_column_exists($pdo, 'tasks', 'email_reminders_json')) {
+            $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `email_reminders_json` TEXT NULL AFTER `completed_at`");
+        }
         // A recurring rule is stored as one row, so the reports derive every past
         // charge from the rule itself. Raising the price used to rewrite the months
         // already paid at the old one; the superseded amounts now travel with the
@@ -1048,9 +1073,31 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'financial_records', 'recurring_amount_history_json')) {
             $pdo->exec("ALTER TABLE `financial_records` ADD COLUMN `recurring_amount_history_json` TEXT NULL AFTER `recurring_end_date`");
         }
+        // A pause stamps `recurring_end_date` with today and remembers the end
+        // date the rule really had here, so resuming can restore it. The field
+        // existed in the app before it had a column: pausing a rule with a
+        // planned end and reloading used to make it open-ended on resume.
+        if (!ccrm_column_exists($pdo, 'financial_records', 'recurring_planned_end_date')) {
+            $pdo->exec("ALTER TABLE `financial_records` ADD COLUMN `recurring_planned_end_date` DATE NULL AFTER `recurring_end_date`");
+        }
+        // One charge of a recurring rule can be edited on its own: the edit is
+        // stored as a one-off movement pointing back at the rule and the day it
+        // stands in for, and the rule lists that day among those it no longer
+        // charges. Existing rows migrate as NULL: nothing replaced, nothing skipped.
+        if (!ccrm_column_exists($pdo, 'financial_records', 'recurring_skipped_dates_json')) {
+            $pdo->exec("ALTER TABLE `financial_records` ADD COLUMN `recurring_skipped_dates_json` TEXT NULL AFTER `recurring_amount_history_json`");
+        }
+        if (!ccrm_column_exists($pdo, 'financial_records', 'recurring_source_id')) {
+            $pdo->exec("ALTER TABLE `financial_records` ADD COLUMN `recurring_source_id` VARCHAR(50) NULL AFTER `recurring_skipped_dates_json`");
+        }
+        if (!ccrm_column_exists($pdo, 'financial_records', 'recurring_occurrence_date')) {
+            $pdo->exec("ALTER TABLE `financial_records` ADD COLUMN `recurring_occurrence_date` DATE NULL AFTER `recurring_source_id`");
+        }
         ccrm_migrate_updated_at_precision($pdo);
         ccrm_migrate_task_states($pdo);
         ccrm_migrate_list_ids($pdo);
+        ccrm_migrate_invoice_status_changed_at($pdo);
+        ccrm_migrate_quantity_precision($pdo);
         ccrm_backfill_task_completion_attribution($pdo);
         ccrm_seed_default_financial_categories($pdo);
         ccrm_migrate_user_role_varchar($pdo);
@@ -1151,6 +1198,59 @@ if (!function_exists('ccrm_schema_statements')) {
                 // precision; sync.php's guard still works, just with the wider
                 // same-second window. Never block the sync over this.
                 if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+            }
+        }
+    }
+
+    /**
+     * `invoices_offers`.`status_changed_at`: the client stamps the day a
+     * document's status changes; until 1.9.85 it had no column and was lost on
+     * the next reload. Idempotent.
+     */
+    function ccrm_migrate_invoice_status_changed_at(PDO $pdo): void {
+        try {
+            if (!ccrm_column_exists($pdo, 'invoices_offers', 'status_changed_at')) {
+                $pdo->exec("ALTER TABLE `invoices_offers` ADD COLUMN `status_changed_at` DATE NULL AFTER `status`");
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm] schema: status_changed_at migration skipped: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Quantities and unit prices are typed with any precision (`step="any"`
+     * inputs) but were stored as DECIMAL(12,2): a line of 2.345 m at 0.125 EUR
+     * came back as 2.35 × 0.13 after a reload while its total still said 0.29.
+     * Widen every such column to four decimals so what was typed is what is
+     * stored. Idempotent: a column already at scale 4 is left alone.
+     */
+    function ccrm_migrate_quantity_precision(PDO $pdo): void {
+        $columns = [
+            ['invoice_offer_items', 'quantity', 'NOT NULL DEFAULT 1.0000'],
+            ['invoice_offer_items', 'unit_price', 'NOT NULL DEFAULT 0.0000'],
+            ['warehouse_movement_items', 'quantity', 'NOT NULL'],
+            ['warehouse_movement_items', 'unit_purchase_price', 'NOT NULL DEFAULT 0.0000'],
+            ['warehouse_movement_items', 'unit_sell_price', 'NOT NULL DEFAULT 0.0000'],
+            ['warehouse_stock', 'quantity', 'NOT NULL DEFAULT 0.0000'],
+            ['warehouse_stock', 'reserved_quantity', 'NOT NULL DEFAULT 0.0000'],
+            ['warehouse_batches', 'initial_quantity', 'NOT NULL DEFAULT 0.0000'],
+            ['warehouse_batches', 'current_quantity', 'NOT NULL DEFAULT 0.0000'],
+            ['warehouse_items', 'default_sell_price', 'NOT NULL DEFAULT 0.0000'],
+            ['warehouse_items', 'last_purchase_price', 'NOT NULL DEFAULT 0.0000'],
+        ];
+        foreach ($columns as [$table, $column, $tail]) {
+            try {
+                $st = $pdo->prepare(
+                    "SELECT `NUMERIC_SCALE` FROM `information_schema`.`COLUMNS`
+                     WHERE `TABLE_SCHEMA` = DATABASE() AND `TABLE_NAME` = ? AND `COLUMN_NAME` = ?"
+                );
+                $st->execute([$table, $column]);
+                $scale = $st->fetchColumn();
+                if ($scale === false || $scale === null) continue; // table not provisioned yet
+                if ((int)$scale >= 4) continue;
+                $pdo->exec("ALTER TABLE `{$table}` MODIFY COLUMN `{$column}` DECIMAL(15,4) {$tail}");
+            } catch (\Throwable $e) {
+                error_log('[ccrm] schema: precision migration skipped for ' . $table . '.' . $column . ': ' . $e->getMessage());
             }
         }
     }
