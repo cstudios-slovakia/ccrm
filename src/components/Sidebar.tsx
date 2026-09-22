@@ -925,7 +925,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           onDragOver={(e) => e.preventDefault()}
           onDrop={(e) => handleDropOnSidebar(e)}
           className={cn(
-            "flex-1 px-3 py-3",
+            "flex-1 flex flex-col min-h-0 px-3 py-3",
             isDockMode && !isExpanded ? "overflow-visible" : "overflow-y-auto scrollbar-thin",
             widthClasses.spacing
           )}
@@ -1150,137 +1150,137 @@ export const Sidebar: React.FC<SidebarProps> = ({
           )}
 
           {/* Dynamic Dock Floating Tooltip */}
-        {hoveredItemId && hoveredItemPos && isDockMode && !isExpanded && (
-          <div
-            className="fixed z-[3000] px-3.5 py-2 rounded-xl bg-slate-900/95 text-white text-xs font-bold shadow-2xl border border-white/10 pointer-events-none -translate-y-1/2 flex items-center gap-2 animate-in fade-in zoom-in-95 duration-100 backdrop-blur-md whitespace-nowrap"
-            style={{ top: hoveredItemPos.top, left: hoveredItemPos.left }}
-          >
-            {(() => {
-              const item = allPossibleItems.find((i) => i.id === hoveredItemId);
-              if (!item) return null;
-              return (
-                <>
-                  <span
-                    className="h-2 w-2 rounded-full shrink-0"
-                    style={{ backgroundColor: (item as any).color || (item as any).customColor || "#6366f1" }}
-                  />
-                  <span>{item.label}</span>
-                </>
-              );
-            })()}
-          </div>
-        )}
-
-        {/* Bottom Actions Footer */}
-        <div className="p-3 flex flex-col gap-1.5 shrink-0 border-t border-slate-100/80 bg-slate-50/40">
-          {/* Collapse/Expand Toggle Caret Button (in place of Pin) */}
-          <button
-            type="button"
-            onClick={() => {
-              if (isPinned) setSidebarPinned(false);
-              setIsCollapsed(!isCollapsed);
-            }}
-            className="w-full flex items-center gap-3.5 px-3 py-2 rounded-xl transition-all duration-200 text-slate-400 hover:text-slate-700 hover:bg-slate-100/50 text-left cursor-pointer group"
-            aria-label={t("Toggle Navigation Sidebar", "Prepnúť navigačný panel", "Navigációs oldalsáv váltása")}
-            title={
-              !isExpanded
-                ? t("Expand navigation sidebar", "Rozbaliť bočné menu", "Oldalsáv kibontása")
-                : t("Collapse navigation sidebar", "Zbaliť bočné menu", "Oldalsáv összecsukása")
-            }
-          >
-            {!isExpanded ? (
-              <ChevronRight className="h-4.5 w-4.5 shrink-0 text-slate-400 transition-transform group-hover:scale-110 group-hover:text-slate-600" />
-            ) : (
-              <ChevronLeft className="h-4.5 w-4.5 shrink-0 text-slate-400 transition-transform group-hover:scale-110 group-hover:text-slate-600" />
-            )}
-            {isExpanded && (
-              <span className="text-xs font-semibold tracking-wide truncate min-w-0 flex-1">
-                {getTranslation(systemLanguage, "sidebar.collapse")}
-              </span>
-            )}
-          </button>
-
-          {/* Edit Navigation Button -> Opens Start Menu in Edit Mode */}
-          {canEditNav && (
-            <button
-              type="button"
-              onClick={() => {
-                setIsCollapsed(false);
-                setStartMenuEditMode(true);
-                setIsStartMenuOpen(true);
-              }}
-              className="w-full flex items-center gap-3.5 px-3 py-2 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50/50 transition-all duration-200 group text-left cursor-pointer"
-              title={t("Edit navigation layout", "Upraviť štruktúru menu", "Navigációs elrendezés szerkesztése")}
+          {hoveredItemId && hoveredItemPos && isDockMode && !isExpanded && (
+            <div
+              className="fixed z-[3000] px-3.5 py-2 rounded-xl bg-slate-900/95 text-white text-xs font-bold shadow-2xl border border-white/10 pointer-events-none -translate-y-1/2 flex items-center gap-2 animate-in fade-in zoom-in-95 duration-100 backdrop-blur-md whitespace-nowrap"
+              style={{ top: hoveredItemPos.top, left: hoveredItemPos.left }}
             >
-              <Pencil className="h-4.5 w-4.5 shrink-0 transition-transform group-hover:scale-110" />
-              {isExpanded && (
-                <span className="text-xs font-semibold tracking-wide truncate min-w-0 flex-1">
-                  {t("Edit Navigation", "Upraviť menu", "Navigáció szerkesztése")}
-                </span>
-              )}
-            </button>
-          )}
-
-          {/* Settings Button */}
-          {showSettings && (
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTab("settings");
-                if (!isPinned) setIsCollapsed(true);
-              }}
-              className={cn(
-                "w-full flex items-center gap-3.5 px-3 py-2 rounded-xl transition-all duration-200 group text-left cursor-pointer",
-                activeTab.startsWith("settings") || activeTab.startsWith("user-")
-                  ? "bg-indigo-600 text-white font-bold shadow-md shadow-indigo-600/20"
-                  : "text-slate-400 hover:text-slate-700 hover:bg-slate-100/50"
-              )}
-            >
-              <Settings
-                className={cn(
-                  "h-4.5 w-4.5 shrink-0 transition-transform",
-                  activeTab.startsWith("settings")
-                    ? "text-white"
-                    : "text-slate-400 group-hover:rotate-45"
-                )}
-              />
-              {isExpanded && (
-                <span className="text-xs font-semibold tracking-wide truncate min-w-0 flex-1">
-                  {getTranslation(systemLanguage, "sidebar.settings")}
-                </span>
-              )}
-            </button>
-          )}
-
-          {/* Logout Button */}
-          <button
-            type="button"
-            onClick={() => {
-              if (onLogout) {
-                onLogout();
-              } else {
-                (window as any).showToast(
-                  t(
-                    "Sign out simulation active. Workspace locked.",
-                    "Simulácia odhlásenia je aktívna. Pracovný priestor je uzamknutý.",
-                    "Kijelentkezési szimuláció aktív. A munkaterület zárolva."
-                  )
+              {(() => {
+                const item = allPossibleItems.find((i) => i.id === hoveredItemId);
+                if (!item) return null;
+                return (
+                  <>
+                    <span
+                      className="h-2 w-2 rounded-full shrink-0"
+                      style={{ backgroundColor: (item as any).color || (item as any).customColor || "#6366f1" }}
+                    />
+                    <span>{item.label}</span>
+                  </>
                 );
+              })()}
+            </div>
+          )}
+
+          {/* Bottom Actions Footer (Pinned at the very bottom of sidebar via mt-auto) */}
+          <div className="p-3 -mx-3 -mb-3 flex flex-col gap-1.5 shrink-0 mt-auto border-t border-slate-100/80 bg-slate-50/40">
+            {/* Collapse/Expand Toggle Caret Button (in place of Pin) */}
+            <button
+              type="button"
+              onClick={() => {
+                if (isPinned) setSidebarPinned(false);
+                setIsCollapsed(!isCollapsed);
+              }}
+              className="w-full flex items-center gap-3.5 px-3 py-2 rounded-xl transition-all duration-200 text-slate-400 hover:text-slate-700 hover:bg-slate-100/50 text-left cursor-pointer group"
+              aria-label={t("Toggle Navigation Sidebar", "Prepnúť navigačný panel", "Navigációs oldalsáv váltása")}
+              title={
+                !isExpanded
+                  ? t("Expand navigation sidebar", "Rozbaliť bočné menu", "Oldalsáv kibontása")
+                  : t("Collapse navigation sidebar", "Zbaliť bočné menu", "Oldalsáv összecsukása")
               }
-            }}
-            className="w-full flex items-center gap-3.5 px-3 py-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50/50 transition-all duration-200 text-left group cursor-pointer"
-            title={getTranslation(systemLanguage, "sidebar.logout")}
-          >
-            <LogOut className="h-4.5 w-4.5 shrink-0 text-slate-400 group-hover:text-rose-500 transition-colors" />
-            {isExpanded && (
-              <span className="text-xs font-semibold tracking-wide truncate min-w-0 flex-1">
-                {getTranslation(systemLanguage, "sidebar.logout")}
-              </span>
+            >
+              {!isExpanded ? (
+                <ChevronRight className="h-4.5 w-4.5 shrink-0 text-slate-400 transition-transform group-hover:scale-110 group-hover:text-slate-600" />
+              ) : (
+                <ChevronLeft className="h-4.5 w-4.5 shrink-0 text-slate-400 transition-transform group-hover:scale-110 group-hover:text-slate-600" />
+              )}
+              {isExpanded && (
+                <span className="text-xs font-semibold tracking-wide truncate min-w-0 flex-1">
+                  {getTranslation(systemLanguage, "sidebar.collapse")}
+                </span>
+              )}
+            </button>
+
+            {/* Edit Navigation Button -> Opens Start Menu in Edit Mode */}
+            {canEditNav && (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCollapsed(false);
+                  setStartMenuEditMode(true);
+                  setIsStartMenuOpen(true);
+                }}
+                className="w-full flex items-center gap-3.5 px-3 py-2 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50/50 transition-all duration-200 group text-left cursor-pointer"
+                title={t("Edit navigation layout", "Upraviť štruktúru menu", "Navigációs elrendezés szerkesztése")}
+              >
+                <Pencil className="h-4.5 w-4.5 shrink-0 transition-transform group-hover:scale-110" />
+                {isExpanded && (
+                  <span className="text-xs font-semibold tracking-wide truncate min-w-0 flex-1">
+                    {t("Edit Navigation", "Upraviť menu", "Navigáció szerkesztése")}
+                  </span>
+                )}
+              </button>
             )}
-          </button>
-        </div>
-      </nav>
-    </aside>
+
+            {/* Settings Button */}
+            {showSettings && (
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveTab("settings");
+                  if (!isPinned) setIsCollapsed(true);
+                }}
+                className={cn(
+                  "w-full flex items-center gap-3.5 px-3 py-2 rounded-xl transition-all duration-200 group text-left cursor-pointer",
+                  activeTab.startsWith("settings") || activeTab.startsWith("user-")
+                    ? "bg-indigo-600 text-white font-bold shadow-md shadow-indigo-600/20"
+                    : "text-slate-400 hover:text-slate-700 hover:bg-slate-100/50"
+                )}
+              >
+                <Settings
+                  className={cn(
+                    "h-4.5 w-4.5 shrink-0 transition-transform",
+                    activeTab.startsWith("settings")
+                      ? "text-white"
+                      : "text-slate-400 group-hover:rotate-45"
+                  )}
+                />
+                {isExpanded && (
+                  <span className="text-xs font-semibold tracking-wide truncate min-w-0 flex-1">
+                    {getTranslation(systemLanguage, "sidebar.settings")}
+                  </span>
+                )}
+              </button>
+            )}
+
+            {/* Logout Button */}
+            <button
+              type="button"
+              onClick={() => {
+                if (onLogout) {
+                  onLogout();
+                } else {
+                  (window as any).showToast(
+                    t(
+                      "Sign out simulation active. Workspace locked.",
+                      "Simulácia odhlásenia je aktívna. Pracovný priestor je uzamknutý.",
+                      "Kijelentkezési szimuláció aktív. A munkaterület zárolva."
+                    )
+                  );
+                }
+              }}
+              className="w-full flex items-center gap-3.5 px-3 py-2 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50/50 transition-all duration-200 text-left group cursor-pointer"
+              title={getTranslation(systemLanguage, "sidebar.logout")}
+            >
+              <LogOut className="h-4.5 w-4.5 shrink-0 text-slate-400 group-hover:text-rose-500 transition-colors" />
+              {isExpanded && (
+                <span className="text-xs font-semibold tracking-wide truncate min-w-0 flex-1">
+                  {getTranslation(systemLanguage, "sidebar.logout")}
+                </span>
+              )}
+            </button>
+          </div>
+        </nav>
+      </aside>
 
       {/* MOBILE INTEGRATED DRAWER */}
       <div
