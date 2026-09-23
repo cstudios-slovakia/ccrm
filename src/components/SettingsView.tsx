@@ -1437,6 +1437,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const handleUploadAndGenerateAiTemplate = async (file: File) => {
     setIsUploadingPdf(true);
     setPdfUploadStatus(t("Uploading and analyzing PDF with AI...", "Nahrávam a analyzujem PDF pomocou AI...", "PDF feltöltése és elemzése AI-val..."));
+    // A missing endpoint answers with the server's HTML 404 page, and a bare
+    // res.json() turns that into "Unexpected token '<' ... is not valid JSON",
+    // which tells the user nothing. Name the endpoint and the status instead.
+    const readJson = async (res: Response, endpoint: string) => {
+      const body = await res.text();
+      try {
+        return JSON.parse(body);
+      } catch {
+        throw new Error(`${endpoint} (HTTP ${res.status})`);
+      }
+    };
     try {
       const formData = new FormData();
       formData.append("file", file);
@@ -1445,9 +1456,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         method: "POST",
         body: formData
       });
-      const uploadData = await uploadRes.json();
+      const uploadData = await readJson(uploadRes, "/upload.php");
       if (!uploadData.success) {
-        throw new Error(uploadData.message || "Upload failed");
+        // upload.php reports failures under `error`, not `message`.
+        throw new Error(uploadData.error || uploadData.message || "Upload failed");
       }
 
       const genRes = await fetch("/api/generate_pdf_template.php", {
@@ -1459,7 +1471,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           pdfText: uploadData.extractedText || ""
         })
       });
-      const genData = await genRes.json();
+      const genData = await readJson(genRes, "/api/generate_pdf_template.php");
       if (genData.success && genData.template) {
         if (setAiCustomTemplates) {
           setAiCustomTemplates(prev => [genData.template, ...prev]);
