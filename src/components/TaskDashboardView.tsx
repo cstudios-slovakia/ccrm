@@ -1322,7 +1322,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     ))}
                 </div>
 
-                {cfg.scope !== "hide" && (
+                {cfg.scope !== "hide" && cfg.scope !== "timeline" && (
                     <div className="flex items-center bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
                         <button
                             onClick={() =>
@@ -3318,10 +3318,6 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 </div>
             ) : viewMode === "global" ? (
                 renderGlobalTasksView()
-            ) : calendarScope === "timeline" ? (
-                <div className="flex-1 min-h-0">
-                    {renderTimelineView()}
-                </div>
             ) : calendarScope === "hide" ? (
                 <div className="flex-1 min-h-0 overflow-y-auto">
                     {renderMyTaskListColumn(true)}
@@ -3331,27 +3327,33 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     {/* LEFT COLUMN: TASK LISTS */}
                     {renderMyTaskListColumn(false)}
 
-                    {/* RIGHT COLUMN: CALENDAR OR DAY VIEW */}
-                    <div className="flex flex-col lg:h-full h-auto bg-white rounded-3xl border border-slate-200 shadow-[0_4px_24px_rgba(0,0,0,0.02)] lg:overflow-hidden overflow-visible">
-                        {renderCalendarPanel({
-                            anchor: currentDate,
-                            scope: calendarScope,
-                            selectedDay,
-                            onSelectDay: setSelectedDay,
-                            tasksForDate: myTasksForDate,
-                            renderDayItem: renderTaskCard,
-                            emptyDayLabel: t(
-                                "No tasks scheduled.",
-                                "Žiadne úlohy.",
-                                "Nincsenek feladatok.",
-                            ),
-                            onAddTask: (dateStr) => {
-                                if (!taskAccess.create) return;
-                                resetNewTaskForm(dateStr);
-                                setIsAddDrawerOpen(true);
-                            },
-                        })}
-                    </div>
+                    {/* RIGHT COLUMN: CALENDAR OR TIMELINE VIEW */}
+                    {calendarScope === "timeline" ? (
+                        <div className="flex flex-col lg:h-full h-auto min-h-[560px] lg:min-h-0 lg:overflow-hidden overflow-visible">
+                            {renderTimelineView()}
+                        </div>
+                    ) : (
+                        <div className="flex flex-col lg:h-full h-auto bg-white rounded-3xl border border-slate-200 shadow-[0_4px_24px_rgba(0,0,0,0.02)] lg:overflow-hidden overflow-visible">
+                            {renderCalendarPanel({
+                                anchor: currentDate,
+                                scope: calendarScope,
+                                selectedDay,
+                                onSelectDay: setSelectedDay,
+                                tasksForDate: myTasksForDate,
+                                renderDayItem: renderTaskCard,
+                                emptyDayLabel: t(
+                                    "No tasks scheduled.",
+                                    "Žiadne úlohy.",
+                                    "Nincsenek feladatok.",
+                                ),
+                                onAddTask: (dateStr) => {
+                                    if (!taskAccess.create) return;
+                                    resetNewTaskForm(dateStr);
+                                    setIsAddDrawerOpen(true);
+                                },
+                            })}
+                        </div>
+                    )}
                 </div>
             )}
 
