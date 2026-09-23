@@ -472,14 +472,35 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         });
     };
 
+    // Cookie helper for calendar scope / display mode
+    const getCalendarScopeCookie = (): "month" | "week" | "timeline" | "hide" => {
+        if (typeof document === "undefined") return "month";
+        const match = document.cookie.match(/(?:^|;\s*)ccrm_task_calendar_scope=([^;]+)/);
+        const val = match ? decodeURIComponent(match[1]) : "";
+        if (val === "month" || val === "week" || val === "timeline" || val === "hide") {
+            return val;
+        }
+        return "month";
+    };
+
+    const setCalendarScopeCookie = (scope: "month" | "week" | "timeline" | "hide") => {
+        if (typeof document === "undefined") return;
+        document.cookie = `ccrm_task_calendar_scope=${encodeURIComponent(scope)}; path=/; max-age=31536000; SameSite=Lax`;
+    };
+
     const [currentDate, setCurrentDate] = useState(new Date());
     const [viewMode, setViewMode] = useState<"calendar" | "archive" | "global">(
         "calendar",
     );
-    // Calendar scope: month view, week view, timeline activity log, or hidden (centered tasks list)
-    const [calendarScope, setCalendarScope] = useState<
+    // Calendar scope: month view, week view, timeline activity log, or hidden (persisted in cookie)
+    const [calendarScope, setCalendarScopeState] = useState<
         "month" | "week" | "timeline" | "hide"
-    >("month");
+    >(() => getCalendarScopeCookie());
+
+    const setCalendarScope = (scope: "month" | "week" | "timeline" | "hide") => {
+        setCalendarScopeState(scope);
+        setCalendarScopeCookie(scope);
+    };
     const [selectedDay, setSelectedDay] = useState<Date | null>(null);
 
     // Timeline view filter states
@@ -1714,7 +1735,12 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             closeAddDrawer();
             return;
         }
-        if (!newTitle.trim()) {
+        const lines = newTitle
+            .split("\n")
+            .map((line) => line.trim())
+            .filter((line) => line.length > 0);
+
+        if (lines.length === 0) {
             (window as any).showToast(
                 t(
                     "Please enter a task title!",
@@ -1725,13 +1751,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             return;
         }
 
-        const createdTask: Task = {
-            id: `task-${Date.now()}`,
-            title: newTitle.trim(),
-            description: newDescription.trim(),
+        const now = Date.now();
+        const createdTasks: Task[] = lines.map((title, index) => ({
+            id: `task-${now}-${index}-${Math.random().toString(36).slice(2, 7)}`,
+            title,
+            description: "",
             status: taskStates[0] || "New",
             priority: newPriority,
-            startDate: newStartDate || undefined,
             deadline: newDeadline,
             deadlineTime: newDeadlineTime,
             owner: newAssignedUser,
@@ -1741,11 +1767,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             relatedProjectId: newRelatedProjectId || undefined,
             isLocking: newRelatedLeadId ? newIsLocking : false,
             emailReminders: newEmailReminders,
-        };
+        }));
 
-        setTasks((prev) => [createdTask, ...prev]);
+        setTasks((prev) => [...createdTasks, ...prev]);
 
-        // Reset Form & Close Drawer
+        // Reset Form & Close Card
         resetNewTaskForm();
         closeAddDrawer();
     };
@@ -3146,23 +3172,231 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     : "lg:h-full lg:overflow-y-auto overflow-visible h-auto pr-2 pb-6 lg:pb-0"
             }`}
         >
-            {/* Create New Task Button */}
-            <button
-                onClick={() => {
-                    if (!taskAccess.create) return;
-                    resetNewTaskForm();
-                    setIsAddDrawerOpen(true);
-                }}
-                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-indigo-600/20 transition-all active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 flex items-center justify-center gap-2 cursor-pointer border-2 border-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
-                disabled={!taskAccess.create}
-            >
-                <Plus className="h-4 w-4 stroke-[3]" />
-                {t(
-                    "Create New Task",
-                    "Vytvoriť novú úlohu",
-                    "Új feladat",
-                )}
-            </button>
+            {/* Create New Task Section: Inline card matching column width */}
+            {!isAddDrawerOpen ? (
+                <button
+                    onClick={() => {
+                        if (!taskAccess.create) return;
+                        resetNewTaskForm();
+                        setIsAddDrawerOpen(true);
+                    }}
+                    className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-indigo-600/20 transition-all active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 flex items-center justify-center gap-2 cursor-pointer border-2 border-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={!taskAccess.create}
+                >
+                    <Plus className="h-4 w-4 stroke-[3]" />
+                    {t(
+                        "Create New Task",
+                        "Vytvoriť novú úlohu",
+                        "Új feladat",
+                    )}
+                </button>
+            ) : (
+                <div className="w-full bg-white rounded-3xl border-2 border-indigo-200/90 shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-3 duration-200">
+                    <div className="p-4 bg-gradient-to-r from-indigo-50/80 via-white to-indigo-50/40 border-b border-indigo-100 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <span className="p-1.5 rounded-xl bg-indigo-600 text-white shadow-sm">
+                                <Plus className="h-4 w-4 stroke-[3]" />
+                            </span>
+                            <div>
+                                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                                    {t("Create New Task(s)", "Vytvoriť novú úlohu / úlohy", "Új feladat(ok) létrehozása")}
+                                </h3>
+                                <p className="text-[10px] font-semibold text-slate-400">
+                                    {t("Shift + Enter for new lines / multiple tasks", "Shift + Enter pre nový riadok / viac úloh", "Shift + Enter új sorhoz / több feladathoz")}
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={closeAddDrawer}
+                            className="p-1.5 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                        >
+                            <X className="h-4 w-4" />
+                        </button>
+                    </div>
+
+                    <form onSubmit={handleCreateTask} className="p-4 space-y-4 text-xs font-bold">
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-black text-slate-500 uppercase flex items-center justify-between">
+                                <span>{t("Task Title(s)", "Názov úlohy / úloh", "Feladat címe(i)")}</span>
+                                <span className="text-[9px] font-normal text-indigo-500">
+                                    {t("1 line = 1 task", "1 riadok = 1 úloha", "1 sor = 1 feladat")}
+                                </span>
+                            </label>
+                            <textarea
+                                autoFocus
+                                required
+                                rows={3}
+                                value={newTitle}
+                                onChange={(e) => setNewTitle(e.target.value)}
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter" && !e.shiftKey) {
+                                        e.preventDefault();
+                                        handleCreateTask(e);
+                                    }
+                                }}
+                                placeholder={t(
+                                    "Enter task name... (Shift+Enter for next task)",
+                                    "Zadajte názov... (Shift+Enter pre ďalšiu úlohu)",
+                                    "Adja meg a feladatot... (Shift+Enter új feladathoz)",
+                                )}
+                                className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none transition-colors text-xs font-semibold placeholder:text-slate-400 leading-relaxed resize-y min-h-[70px]"
+                            />
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-black text-slate-500 uppercase">
+                                    {t("Deadline Date", "Termín", "Határidő")}
+                                </label>
+                                <input
+                                    type="date"
+                                    required
+                                    value={newDeadline}
+                                    onChange={(e) => setNewDeadline(e.target.value)}
+                                    className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none text-xs"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-black text-slate-500 uppercase">
+                                    {t("Deadline Time", "Čas termínu", "Határidő időpontja")}
+                                </label>
+                                <DeadlineTimePicker
+                                    value={newDeadlineTime}
+                                    onChange={setNewDeadlineTime}
+                                    t={t}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">
+                                {t("Priority", "Priorita", "Prioritás")}
+                            </label>
+                            <div className="grid grid-cols-3 gap-2 bg-slate-50 p-1 rounded-xl border border-slate-200">
+                                {(["low", "medium", "high"] as const).map((prio) => (
+                                    <button
+                                        key={prio}
+                                        type="button"
+                                        onClick={() => setNewPriority(prio)}
+                                        className={`py-1.5 rounded-lg font-black text-[9px] uppercase transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
+                                            newPriority === prio
+                                                ? prio === "high"
+                                                    ? "bg-rose-600 text-white shadow-sm"
+                                                    : prio === "medium"
+                                                      ? "bg-amber-500 text-white shadow-sm"
+                                                      : "bg-slate-600 text-white shadow-sm"
+                                                : "bg-white text-slate-500 hover:bg-slate-100"
+                                        }`}
+                                    >
+                                        {renderPriorityIcon(prio, "h-3 w-3")}
+                                        <span>{priorityLabel(prio)}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-black text-slate-500 uppercase">
+                                    {t("Assignee", "Priradiť", "Felelős")}
+                                </label>
+                                <CustomSelect
+                                    value={newAssignedUser}
+                                    onChange={(v) => setNewAssignedUser(v)}
+                                    size="sm"
+                                    options={[
+                                        {
+                                            value: "",
+                                            label: t("-- Unassigned --", "-- Nepriradený --", "-- Kijelöletlen --"),
+                                        },
+                                        ...users.map((u) => ({
+                                            value: u.name,
+                                            label: `${u.name} (${u.role})`,
+                                        })),
+                                    ]}
+                                />
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-black text-slate-500 uppercase flex items-center gap-1">
+                                    <FolderKanban className="h-3 w-3" />
+                                    {t("Project", "Projekt", "Projekt")}
+                                </label>
+                                <CustomSelect
+                                    searchable
+                                    value={newRelatedProjectId}
+                                    onChange={setNewRelatedProjectId}
+                                    size="sm"
+                                    options={taskProjectOptions(projects, leads, t)}
+                                />
+                            </div>
+                        </div>
+
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-black text-slate-500 uppercase">
+                                {t("Link to Lead/Client", "Prepojiť so záujemcom", "Összekapcsolás ügyféllel")}
+                            </label>
+                            <ClientSelect
+                                leads={leads}
+                                value={newRelatedLeadId}
+                                onChange={(v) => {
+                                    setNewRelatedLeadId(v);
+                                    if (!v) setNewIsLocking(false);
+                                }}
+                                showCity={false}
+                                addKind="lead"
+                                noneLabel={t("-- None --", "-- Žiadny --", "-- Nincs --")}
+                            />
+                        </div>
+
+                        {newRelatedLeadId && (
+                            <div className="p-2.5 rounded-xl bg-violet-50/60 border border-violet-100 flex items-center justify-between">
+                                <span className="text-[10px] font-black text-violet-700 uppercase flex items-center gap-1">
+                                    <Lock className="h-3 w-3" />{" "}
+                                    {t("Block Pipeline Stage", "Zablokovať fázu pipeline", "Folyamat szakasz zárolása")}
+                                </span>
+                                <input
+                                    type="checkbox"
+                                    checked={newIsLocking}
+                                    onChange={(e) => setNewIsLocking(e.target.checked)}
+                                    className="h-4 w-4 cursor-pointer"
+                                />
+                            </div>
+                        )}
+
+                        <TaskEmailReminderField
+                            task={{
+                                deadline: newDeadline,
+                                deadlineTime: newDeadlineTime,
+                                emailReminders: newEmailReminders,
+                            }}
+                            onChange={setNewEmailReminders}
+                            currentUserName={myName}
+                            users={users}
+                            systemLanguage={systemLanguage}
+                            t={t}
+                            mailConfigured={mailConfigured}
+                        />
+
+                        <div className="flex items-center gap-2 pt-2">
+                            <button
+                                type="button"
+                                onClick={closeAddDrawer}
+                                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-black text-xs uppercase tracking-wider transition-colors cursor-pointer"
+                            >
+                                {t("Cancel", "Zrušiť", "Mégse")}
+                            </button>
+                            <button
+                                type="submit"
+                                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-xs uppercase tracking-wider shadow-lg shadow-indigo-600/20 transition-all active:scale-[0.99] cursor-pointer"
+                            >
+                                {t("Save Task(s)", "Uložiť úlohu(y)", "Mentés")}
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            )}
 
             {/* One unified card for all task sections (including delegated tasks grouped in the same divisions) */}
             <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden flex flex-col">
@@ -4157,7 +4391,6 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 </div>
             )}
 
-            {renderAddDrawer()}
             {editingTask && (
                 <TaskEditDrawer
                     key={editingTask.id}
@@ -4188,252 +4421,4 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             {renderBulkActionToolbar()}
         </div>
     );
-
-    // Helper function to render drawer
-    function renderAddDrawer() {
-        if (!isAddDrawerOpen && !isClosingDrawer) return null;
-        if (typeof document === "undefined") return null;
-        return createPortal(
-            <div className="fixed inset-0 z-[100000] flex justify-end">
-                <div
-                    onClick={closeAddDrawer}
-                    className={`absolute inset-0 bg-slate-900/40 backdrop-blur-sm ${isClosingDrawer ? "animate-fade-out" : "animate-fade-in"}`}
-                />
-                <div
-                    className={`relative w-full max-w-md bg-white shadow-2xl h-full flex flex-col p-6 overflow-y-auto ${isClosingDrawer ? "animate-slide-out-right" : "animate-slide-in-right"}`}
-                >
-                    <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-                        <h2 className="text-sm font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                            <CheckSquare className="h-5 w-5 text-indigo-600" />
-                            {t(
-                                "Create New Task",
-                                "Vytvoriť novú úlohu",
-                                "Új feladat",
-                            )}
-                        </h2>
-                        <button
-                            onClick={closeAddDrawer}
-                            className="p-1 hover:bg-slate-100 rounded-lg text-slate-400"
-                        >
-                            <X className="h-5 w-5" />
-                        </button>
-                    </div>
-
-                    <form
-                        onSubmit={handleCreateTask}
-                        className="flex-1 py-5 space-y-5 text-xs font-bold"
-                    >
-                        <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase">
-                                {t("Task Title", "Názov", "Cím")}
-                            </label>
-                            <input
-                                type="text"
-                                required
-                                value={newTitle}
-                                onChange={(e) => setNewTitle(e.target.value)}
-                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none"
-                            />
-                        </div>
-
-                        <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase">
-                                {t("Description", "Popis", "Leírás")}
-                            </label>
-                            <textarea
-                                rows={3}
-                                value={newDescription}
-                                onChange={(e) =>
-                                    setNewDescription(e.target.value)
-                                }
-                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none resize-none"
-                            />
-                        </div>
-
-                        <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase">
-                                {t(
-                                    "Start Date",
-                                    "Dátum začiatku",
-                                    "Kezdő dátum",
-                                )}
-                            </label>
-                            <input
-                                type="date"
-                                value={newStartDate}
-                                onChange={(e) =>
-                                    setNewStartDate(e.target.value)
-                                }
-                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none"
-                            />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1">
-                                <label className="text-[9px] font-black text-slate-500 uppercase">
-                                    {t("Deadline Date", "Termín", "Határidő")}
-                                </label>
-                                <input
-                                    type="date"
-                                    required
-                                    value={newDeadline}
-                                    onChange={(e) =>
-                                        setNewDeadline(e.target.value)
-                                    }
-                                    className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none"
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-[9px] font-black text-slate-500 uppercase">
-                                    {t(
-                                        "Deadline Time",
-                                        "Čas termínu",
-                                        "Határidő időpontja",
-                                    )}
-                                </label>
-                                <DeadlineTimePicker
-                                    value={newDeadlineTime}
-                                    onChange={setNewDeadlineTime}
-                                    t={t}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="space-y-1.5">
-                            <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">
-                                {t("Priority", "Priorita", "Prioritás")}
-                            </label>
-                            <div className="grid grid-cols-3 gap-2 bg-slate-50 p-1.5 rounded-xl border-2 border-slate-200">
-                                {(["low", "medium", "high"] as const).map(
-                                    (prio) => (
-                                        <button
-                                            key={prio}
-                                            type="button"
-                                            onClick={() => setNewPriority(prio)}
-                                            className={`py-2 rounded-lg font-black text-[9px] uppercase transition-all ${
-                                                newPriority === prio
-                                                    ? prio === "high"
-                                                        ? "bg-rose-600 text-white"
-                                                        : prio === "medium"
-                                                          ? "bg-amber-500 text-white"
-                                                          : "bg-slate-600 text-white"
-                                                    : "bg-white text-slate-500 hover:bg-slate-100"
-                                            }`}
-                                        >
-                                            {priorityLabel(prio)}
-                                        </button>
-                                    ),
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase">
-                                {t(
-                                    "Assign Project Manager",
-                                    "Priradiť projektového manažéra",
-                                    "Projektmenedzser kijelölése",
-                                )}
-                            </label>
-                            <CustomSelect
-                                value={newAssignedUser}
-                                onChange={(v) => setNewAssignedUser(v)}
-                                options={[
-                                    {
-                                        value: "",
-                                        label: t(
-                                            "-- Unassigned --",
-                                            "-- Nepriradený --",
-                                            "-- Kijelöletlen --",
-                                        ),
-                                    },
-                                    ...users.map((u) => ({
-                                        value: u.name,
-                                        label: `${u.name} (${u.role})`,
-                                    })),
-                                ]}
-                            />
-                        </div>
-
-                        <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase flex items-center gap-1">
-                                <FolderKanban className="h-3 w-3" />
-                                {t("Project", "Projekt", "Projekt")}
-                            </label>
-                            <CustomSelect
-                                searchable
-                                value={newRelatedProjectId}
-                                onChange={setNewRelatedProjectId}
-                                options={taskProjectOptions(projects, leads, t)}
-                            />
-                        </div>
-
-                        <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase">
-                                {t(
-                                    "Link to Lead/Client",
-                                    "Prepojiť so záujemcom",
-                                    "Összekapcsolás ügyféllel",
-                                )}
-                            </label>
-                            <ClientSelect
-                                leads={leads}
-                                value={newRelatedLeadId}
-                                onChange={(v) => {
-                                    setNewRelatedLeadId(v);
-                                    if (!v) setNewIsLocking(false);
-                                }}
-                                showCity={false}
-                                addKind="lead"
-                                noneLabel={t("-- None --", "-- Žiadny --", "-- Nincs --")}
-                            />
-                        </div>
-
-                        {newRelatedLeadId && (
-                            <div className="p-3 rounded-xl bg-violet-50/50 border border-violet-100 flex items-center justify-between">
-                                <span className="text-[10px] font-black text-violet-700 uppercase flex items-center gap-1">
-                                    <Lock className="h-3 w-3" />{" "}
-                                    {t(
-                                        "Block Pipeline Stage",
-                                        "Zablokovať fázu pipeline",
-                                        "Folyamat szakasz zárolása",
-                                    )}
-                                </span>
-                                <input
-                                    type="checkbox"
-                                    checked={newIsLocking}
-                                    onChange={(e) =>
-                                        setNewIsLocking(e.target.checked)
-                                    }
-                                    className="h-4 w-4 cursor-pointer"
-                                />
-                            </div>
-                        )}
-
-                        <TaskEmailReminderField
-                            task={{
-                                deadline: newDeadline,
-                                deadlineTime: newDeadlineTime,
-                                emailReminders: newEmailReminders,
-                            }}
-                            onChange={setNewEmailReminders}
-                            currentUserName={myName}
-                            users={users}
-                            systemLanguage={systemLanguage}
-                            t={t}
-                            mailConfigured={mailConfigured}
-                        />
-
-                        <button
-                            type="submit"
-                            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-xs uppercase shadow-lg shadow-indigo-600/20"
-                        >
-                            {t("Save Task", "Uložiť", "Mentés")}
-                        </button>
-                    </form>
-                </div>
-            </div>,
-            document.body,
-        );
-    }
 };
