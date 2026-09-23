@@ -35,7 +35,7 @@ function recordSyncedTasks(page: Page) {
 async function openProjectTasks(page: Page) {
   await gotoView(page, '#projects');
   await page.getByText(PROJECT_NAME).first().click();
-  const tab = page.getByRole('button', { name: TAB });
+  const tab = page.locator('main').getByRole('button', { name: TAB });
   await tab.first().click();
   return page.getByRole('textbox', { name: /New tasks, one per line|Nové úlohy, jedna na riadok|Új feladatok, soronként egy/ });
 }

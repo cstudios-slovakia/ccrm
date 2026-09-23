@@ -1175,15 +1175,14 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                             type="button"
                             onClick={() => setAddMenuGroupId(addMenuGroupId === group.id ? null : group.id)}
                             className={cn(
-                              "flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold transition-colors cursor-pointer",
+                              "p-1 rounded-lg transition-colors cursor-pointer shrink-0",
                               addMenuGroupId === group.id
                                 ? "bg-indigo-600 text-white shadow-xs"
-                                : "text-indigo-600 hover:bg-indigo-50 border border-indigo-200"
+                                : "text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
                             )}
                             title={t("Add module to this group", "Pridať modul do tejto skupiny", "Modul hozzáadása ehhez a csoporthoz")}
                           >
-                            <Plus className="h-3 w-3" />
-                            <span>{t("Add", "Pridať", "Hozzáadás")}</span>
+                            <Plus className="h-3.5 w-3.5" />
                           </button>
 
                           <button

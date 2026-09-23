@@ -22,6 +22,12 @@ import {
     Trash2,
     Users,
     ArrowUpRight,
+    CheckCircle2,
+    PlusCircle,
+    History,
+    Search,
+    ArrowUpDown,
+    Sparkles,
 } from "lucide-react";
 import type { Task, UserProfile, Lead, Project } from "../types";
 import type { Language } from "../utils/translations";
@@ -442,13 +448,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const [viewMode, setViewMode] = useState<"calendar" | "archive" | "global">(
         "calendar",
     );
-    // Calendar scope: the whole month, or just one week that can be paged
-    // backwards/forwards. `currentDate` anchors both — in week scope it is any
-    // day inside the displayed week.
-    const [calendarScope, setCalendarScope] = useState<"month" | "week">(
-        "month",
-    );
+    // Calendar scope: month view, week view, timeline activity log, or hidden (centered tasks list)
+    const [calendarScope, setCalendarScope] = useState<
+        "month" | "week" | "timeline" | "hide"
+    >("month");
     const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+
+    // Timeline view filter states
+    const [timelineFilter, setTimelineFilter] = useState<
+        "all" | "created" | "completed" | "due"
+    >("all");
+    const [timelineSearch, setTimelineSearch] = useState("");
+    const [timelineSort, setTimelineSort] = useState<"newest" | "oldest">(
+        "newest",
+    );
 
     // Global Tasks: the right-hand half switches between the team workload (the
     // default) and a calendar of the same filtered tasks. It keeps its own anchor,
@@ -627,6 +640,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // Helpers
     const today = new Date();
     const todayStr = toLocalDateStr(today);
+    const yesterdayStr = toLocalDateStr(new Date(today.getTime() - 86400000));
     // Steps an anchor date one month or one week in the given direction. Month
     // steps pin the day to the 1st so a 31st never overflows into the month after
     // next.
@@ -1263,98 +1277,121 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const renderCalendarNav = (cfg: {
         anchor: Date;
         onAnchorChange: (next: Date) => void;
-        scope: "month" | "week";
-        onScopeChange: (scope: "month" | "week") => void;
+        scope: "month" | "week" | "timeline" | "hide";
+        onScopeChange: (scope: "month" | "week" | "timeline" | "hide") => void;
         onSelectDay: (day: Date | null) => void;
         compact?: boolean;
-    }) => (
-        <div className="flex items-center gap-2 flex-wrap">
-            {/* Month/Week scope switch — week scope narrows the calendar to a
-                single week that can be paged. */}
-            <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-sm gap-1">
-                {(["month", "week"] as const).map((scope) => (
-                    <button
-                        key={scope}
-                        onClick={() => {
-                            cfg.onScopeChange(scope);
-                            cfg.onSelectDay(null);
-                        }}
-                        className={`px-3 py-1.5 rounded-lg font-black text-[10px] uppercase tracking-wider transition-all cursor-pointer ${
-                            cfg.scope === scope
-                                ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
-                                : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
-                        }`}
-                    >
-                        {scope === "month"
-                            ? t("Month", "Mesiac", "Hónap")
-                            : t("Week", "Týždeň", "Hét")}
-                    </button>
-                ))}
-            </div>
+        showTimelineOption?: boolean;
+        showHideOption?: boolean;
+    }) => {
+        const availableScopes = [
+            "month",
+            "week",
+            ...(cfg.showTimelineOption ? ["timeline" as const] : []),
+            ...(cfg.showHideOption ? ["hide" as const] : []),
+        ] as const;
 
-            <div className="flex items-center bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
-                <button
-                    onClick={() =>
-                        cfg.onAnchorChange(stepAnchor(cfg.anchor, cfg.scope, -1))
-                    }
-                    title={
-                        cfg.scope === "week"
-                            ? t(
-                                  "Previous week",
-                                  "Predchádzajúci týždeň",
-                                  "Előző hét",
-                              )
-                            : t(
-                                  "Previous month",
-                                  "Predchádzajúci mesiac",
-                                  "Előző hónap",
-                              )
-                    }
-                    className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 cursor-pointer transition-colors active:scale-95"
-                >
-                    <ChevronLeft className="h-5 w-5" />
-                </button>
-                <button
-                    onClick={() => cfg.onAnchorChange(new Date())}
-                    title={t(
-                        "Jump to today",
-                        "Prejsť na dnešok",
-                        "Ugrás a mai napra",
-                    )}
-                    className={`px-4 font-black text-indigo-950 text-center tracking-wider uppercase hover:text-indigo-600 cursor-pointer transition-colors ${
-                        cfg.compact
-                            ? "text-[11px] min-w-[130px]"
-                            : "text-sm min-w-[160px]"
-                    }`}
-                >
-                    {cfg.scope === "week"
-                        ? weekRangeLabelOf(cfg.anchor)
-                        : `${monthNames[cfg.anchor.getMonth()]} ${cfg.anchor.getFullYear()}`}
-                </button>
-                <button
-                    onClick={() =>
-                        cfg.onAnchorChange(stepAnchor(cfg.anchor, cfg.scope, 1))
-                    }
-                    title={
-                        cfg.scope === "week"
-                            ? t(
-                                  "Next week",
-                                  "Nasledujúci týždeň",
-                                  "Következő hét",
-                              )
-                            : t(
-                                  "Next month",
-                                  "Nasledujúci mesiac",
-                                  "Következő hónap",
-                              )
-                    }
-                    className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 cursor-pointer transition-colors active:scale-95"
-                >
-                    <ChevronRight className="h-5 w-5" />
-                </button>
+        const effectiveScopeForStep: "month" | "week" =
+            cfg.scope === "week" ? "week" : "month";
+
+        return (
+            <div className="flex items-center gap-2 flex-wrap">
+                {/* Scope switcher */}
+                <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-sm gap-1">
+                    {availableScopes.map((scope) => (
+                        <button
+                            key={scope}
+                            onClick={() => {
+                                cfg.onScopeChange(scope);
+                                cfg.onSelectDay(null);
+                            }}
+                            className={`px-3 py-1.5 rounded-lg font-black text-[10px] uppercase tracking-wider transition-all cursor-pointer ${
+                                cfg.scope === scope
+                                    ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
+                                    : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
+                            }`}
+                        >
+                            {scope === "month"
+                                ? t("Month", "Mesiac", "Hónap")
+                                : scope === "week"
+                                  ? t("Week", "Týždeň", "Hét")
+                                  : scope === "timeline"
+                                    ? t("Timeline", "Časová os", "Idővonal")
+                                    : t("Hide", "Skryť", "Elrejtés")}
+                        </button>
+                    ))}
+                </div>
+
+                {cfg.scope !== "hide" && (
+                    <div className="flex items-center bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
+                        <button
+                            onClick={() =>
+                                cfg.onAnchorChange(
+                                    stepAnchor(cfg.anchor, effectiveScopeForStep, -1),
+                                )
+                            }
+                            title={
+                                cfg.scope === "week"
+                                    ? t(
+                                          "Previous week",
+                                          "Predchádzajúci týždeň",
+                                          "Előző hét",
+                                      )
+                                    : t(
+                                          "Previous month",
+                                          "Predchádzajúci mesiac",
+                                          "Előző hónap",
+                                      )
+                            }
+                            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 cursor-pointer transition-colors active:scale-95"
+                        >
+                            <ChevronLeft className="h-5 w-5" />
+                        </button>
+                        <button
+                            onClick={() => cfg.onAnchorChange(new Date())}
+                            title={t(
+                                "Jump to today",
+                                "Prejsť na dnešok",
+                                "Ugrás a mai napra",
+                            )}
+                            className={`px-4 font-black text-indigo-950 text-center tracking-wider uppercase hover:text-indigo-600 cursor-pointer transition-colors ${
+                                cfg.compact
+                                    ? "text-[11px] min-w-[130px]"
+                                    : "text-sm min-w-[160px]"
+                            }`}
+                        >
+                            {cfg.scope === "week"
+                                ? weekRangeLabelOf(cfg.anchor)
+                                : `${monthNames[cfg.anchor.getMonth()]} ${cfg.anchor.getFullYear()}`}
+                        </button>
+                        <button
+                            onClick={() =>
+                                cfg.onAnchorChange(
+                                    stepAnchor(cfg.anchor, effectiveScopeForStep, 1),
+                                )
+                            }
+                            title={
+                                cfg.scope === "week"
+                                    ? t(
+                                          "Next week",
+                                          "Nasledujúci týždeň",
+                                          "Következő hét",
+                                      )
+                                    : t(
+                                          "Next month",
+                                          "Nasledujúci mesiac",
+                                          "Következő hónap",
+                                      )
+                            }
+                            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 cursor-pointer transition-colors active:scale-95"
+                        >
+                            <ChevronRight className="h-5 w-5" />
+                        </button>
+                    </div>
+                )}
             </div>
-        </div>
-    );
+        );
+    };
 
     // --- TASK BUCKETS ---
     const isTaskOverdue = (task: Task) => isTaskOverdueShared(task, taskStates, nowLocalStamp());
@@ -1403,6 +1440,17 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 <span className="truncate">{lead.name || "Lead"}</span>
                 <ArrowUpRight className="h-2.5 w-2.5 shrink-0 transition-transform group-hover/lead:translate-x-px group-hover/lead:-translate-y-px" />
             </a>
+        );
+    };
+
+    const renderProjectBadge = (task: Task, maxWidth: string) => {
+        const projName = projectNameFor(task);
+        if (!projName) return null;
+        return (
+            <span className={`text-[9px] font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md truncate ${maxWidth}`}>
+                <FolderKanban className="h-2.5 w-2.5 shrink-0 text-slate-400" />
+                <span className="truncate">{projName}</span>
+            </span>
         );
     };
 
@@ -2307,6 +2355,504 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         );
     };
 
+    // The left task list column for My Calendar.
+    // If isCentered is true (when calendarScope === "hide"), it expands with max-w-3xl for optimal readability.
+    const renderMyTaskListColumn = (isCentered: boolean = false) => (
+        <div
+            className={`flex flex-col space-y-6 ${
+                isCentered
+                    ? "w-full max-w-3xl mx-auto p-2"
+                    : "lg:h-full lg:overflow-y-auto overflow-visible h-auto pr-2 pb-6 lg:pb-0"
+            }`}
+        >
+            {/* Create New Task Button + Compact view toggle */}
+            <div className="flex items-center gap-2">
+                <button
+                    onClick={() => {
+                        if (!taskAccess.create) return;
+                        resetNewTaskForm();
+                        setIsAddDrawerOpen(true);
+                    }}
+                    className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-indigo-600/20 transition-all active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 flex items-center justify-center gap-2 cursor-pointer border-2 border-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    disabled={!taskAccess.create}
+                >
+                    <Plus className="h-4 w-4 stroke-[3]" />
+                    {t(
+                        "Create New Task",
+                        "Vytvoriť novú úlohu",
+                        "Új feladat",
+                    )}
+                </button>
+                <button
+                    onClick={() => setIsCompact((c) => !c)}
+                    title={t(
+                        "Toggle compact view",
+                        "Prepnúť kompaktné zobrazenie",
+                        "Kompakt nézet váltása",
+                    )}
+                    className={`shrink-0 py-2.5 px-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer border-2 ${
+                        isCompact
+                            ? "bg-indigo-600 text-white border-indigo-500 shadow-lg shadow-indigo-600/20"
+                            : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600"
+                    }`}
+                >
+                    <List className="h-4 w-4 stroke-[3]" />
+                    {t("Compact", "Kompaktné", "Kompakt")}
+                </button>
+            </div>
+
+            {/* Overdue / Missed — always visible */}
+            {renderTaskBucket({
+                tone: "rose",
+                icon: <AlertCircle className="h-5 w-5" />,
+                title: t("Overdue", "Zmeškané", "Lejárt"),
+                tasks: overdueTasks,
+                emptyLabel: t(
+                    "No overdue tasks!",
+                    "Žiadne zmeškané úlohy!",
+                    "Nincs lemaradás!",
+                ),
+            })}
+
+            {/* Today — always visible */}
+            {renderTaskBucket({
+                tone: "indigo",
+                icon: <CheckSquare className="h-5 w-5" />,
+                title: t("Today", "Dnes", "Ma"),
+                tasks: todayTasks,
+                emptyLabel: t(
+                    "All caught up!",
+                    "Všetko hotové!",
+                    "Minden kész!",
+                ),
+            })}
+
+            {/* Tomorrow */}
+            {renderTaskBucket({
+                tone: "amber",
+                icon: <CalendarIcon className="h-5 w-5" />,
+                title: t("Tomorrow", "Zajtra", "Holnap"),
+                tasks: tomorrowTasks,
+                emptyLabel: t(
+                    "No tasks for tomorrow.",
+                    "Žiadne úlohy na zajtra.",
+                    "Nincs feladat holnapra.",
+                ),
+                expanded: isTomorrowExpanded,
+                onToggle: () =>
+                    setIsTomorrowExpanded(!isTomorrowExpanded),
+            })}
+
+            {/* Future */}
+            {renderTaskBucket({
+                tone: "slate",
+                icon: <CalendarIcon className="h-5 w-5" />,
+                title: t("Upcoming", "Nadchádzajúce", "Közelgő"),
+                tasks: futureTasks,
+                emptyLabel: t(
+                    "No upcoming tasks.",
+                    "Žiadne nadchádzajúce úlohy.",
+                    "Nincsenek közelgő feladatok.",
+                ),
+                expanded: isFutureExpanded,
+                onToggle: () =>
+                    setIsFutureExpanded(!isFutureExpanded),
+            })}
+        </div>
+    );
+
+    interface TimelineEvent {
+        id: string;
+        type: "created" | "completed" | "due";
+        task: Task;
+        dateStr: string;
+        timestamp: number;
+        timeDisplay: string;
+    }
+
+    const renderTimelineView = () => {
+        // Collect relevant events from myTasks
+        const rawEvents: TimelineEvent[] = [];
+
+        myTasks.forEach((task) => {
+            // Created event
+            if (task.createdAt) {
+                const cDate = new Date(task.createdAt);
+                if (!isNaN(cDate.getTime())) {
+                    const cDateStr = toLocalDateStr(cDate);
+                    const hours = String(cDate.getHours()).padStart(2, "0");
+                    const mins = String(cDate.getMinutes()).padStart(2, "0");
+                    rawEvents.push({
+                        id: `${task.id}-created`,
+                        type: "created",
+                        task,
+                        dateStr: cDateStr,
+                        timestamp: cDate.getTime(),
+                        timeDisplay: `${hours}:${mins}`,
+                    });
+                }
+            }
+
+            // Completed event
+            if (isDoneState(task.status) && task.completedAt) {
+                const compDate = new Date(task.completedAt);
+                if (!isNaN(compDate.getTime())) {
+                    const compDateStr = toLocalDateStr(compDate);
+                    const hours = String(compDate.getHours()).padStart(2, "0");
+                    const mins = String(compDate.getMinutes()).padStart(2, "0");
+                    rawEvents.push({
+                        id: `${task.id}-completed`,
+                        type: "completed",
+                        task,
+                        dateStr: compDateStr,
+                        timestamp: compDate.getTime(),
+                        timeDisplay: `${hours}:${mins}`,
+                    });
+                }
+            }
+
+            // Due event
+            if (task.deadline) {
+                const [year, month, day] = task.deadline.split("-").map(Number);
+                const [h, m] = (task.deadlineTime || "23:59").split(":").map(Number);
+                const dueDate = new Date(year, (month || 1) - 1, day || 1, h || 23, m || 59);
+                rawEvents.push({
+                    id: `${task.id}-due`,
+                    type: "due",
+                    task,
+                    dateStr: task.deadline,
+                    timestamp: dueDate.getTime(),
+                    timeDisplay: formatTimeDisplay(task.deadlineTime || "23:59"),
+                });
+            }
+        });
+
+        // Apply type filter
+        const filtered = rawEvents.filter((ev) => {
+            if (timelineFilter !== "all" && ev.type !== timelineFilter) return false;
+            if (timelineSearch.trim()) {
+                const q = timelineSearch.toLowerCase();
+                const titleMatch = ev.task.title.toLowerCase().includes(q);
+                const descMatch = (ev.task.description || "").toLowerCase().includes(q);
+                const creatorMatch = (ev.task.assignedBy || "").toLowerCase().includes(q);
+                const assignedMatch = (ev.task.assignedUsers || []).some((u) =>
+                    u.toLowerCase().includes(q),
+                );
+                return titleMatch || descMatch || creatorMatch || assignedMatch;
+            }
+            return true;
+        });
+
+        // Sort events
+        filtered.sort((a, b) =>
+            timelineSort === "newest"
+                ? b.timestamp - a.timestamp
+                : a.timestamp - b.timestamp,
+        );
+
+        // Group by dateStr
+        const dateGroups: { dateStr: string; events: TimelineEvent[] }[] = [];
+        filtered.forEach((ev) => {
+            let grp = dateGroups.find((g) => g.dateStr === ev.dateStr);
+            if (!grp) {
+                grp = { dateStr: ev.dateStr, events: [] };
+                dateGroups.push(grp);
+            }
+            grp.events.push(ev);
+        });
+
+        const formatDateHeading = (dStr: string) => {
+            if (dStr === todayStr) {
+                return `${t("Today", "Dnes", "Ma")} • ${formatDateDisplay(dStr)}`;
+            }
+            if (dStr === yesterdayStr) {
+                return `${t("Yesterday", "Včera", "Tegnap")} • ${formatDateDisplay(dStr)}`;
+            }
+            if (dStr === tomorrowStr) {
+                return `${t("Tomorrow", "Zajtra", "Holnap")} • ${formatDateDisplay(dStr)}`;
+            }
+            return formatDateDisplay(dStr);
+        };
+
+        return (
+            <div className="flex flex-col h-full bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden animate-in fade-in duration-300">
+                {/* Header & Controls */}
+                <div className="p-4 sm:p-5 border-b border-slate-100 bg-slate-50/50 flex flex-col gap-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-2.5">
+                            <div className="h-9 w-9 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-xs">
+                                <History className="h-5 w-5" />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+                                    {t("Task Activity & Timeline", "Aktivita a časová os úloh", "Feladat aktivitás és idővonal")}
+                                    <span className="text-[10px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
+                                        {filtered.length} {t("events", "udalostí", "esemény")}
+                                    </span>
+                                </h3>
+                                <p className="text-[11px] text-slate-400 font-medium">
+                                    {t("Chronological activity log of creations, deadlines, and completions", "Chronologický prehľad vytvorenia, termínov a dokončenia úloh", "Létrehozások, határidők és befejezések időrendi naplója")}
+                                </p>
+                            </div>
+                        </div>
+
+                        {/* Filter pills */}
+                        <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-xs">
+                            {(
+                                [
+                                    { id: "all", label: t("All", "Všetko", "Mind") },
+                                    { id: "created", label: t("Created", "Vytvorené", "Létrehozva") },
+                                    { id: "due", label: t("Due", "Termíny", "Határidők") },
+                                    { id: "completed", label: t("Completed", "Dokončené", "Befejezve") },
+                                ] as const
+                            ).map((filter) => (
+                                <button
+                                    key={filter.id}
+                                    onClick={() => setTimelineFilter(filter.id)}
+                                    className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                                        timelineFilter === filter.id
+                                            ? "bg-indigo-600 text-white shadow-xs"
+                                            : "text-slate-500 hover:text-slate-800 hover:bg-slate-100"
+                                    }`}
+                                >
+                                    {filter.label}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Search & Sort Row */}
+                    <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                            <input
+                                type="text"
+                                value={timelineSearch}
+                                onChange={(e) => setTimelineSearch(e.target.value)}
+                                placeholder={t("Search timeline tasks, users...", "Hľadať v časovej osi, používateľoch...", "Keresés a feladatok, felhasználók között...")}
+                                className="w-full pl-8.5 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
+                            />
+                            {timelineSearch && (
+                                <button
+                                    onClick={() => setTimelineSearch("")}
+                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                >
+                                    <X className="h-3 w-3" />
+                                </button>
+                            )}
+                        </div>
+
+                        <button
+                            onClick={() =>
+                                setTimelineSort((s) =>
+                                    s === "newest" ? "oldest" : "newest",
+                                )
+                            }
+                            title={t("Toggle sort order", "Prepnúť radenie", "Rendezés váltása")}
+                            className="px-3 py-1.5 bg-white border border-slate-200 hover:border-slate-300 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-800 flex items-center gap-1.5 shrink-0 shadow-xs transition-all active:scale-95 cursor-pointer"
+                        >
+                            <ArrowUpDown className="h-3.5 w-3.5 text-slate-400" />
+                            <span className="text-[11px]">
+                                {timelineSort === "newest"
+                                    ? t("Newest", "Najnovšie", "Legújabb")
+                                    : t("Oldest", "Najstaršie", "Legrégebbi")}
+                            </span>
+                        </button>
+                    </div>
+                </div>
+
+                {/* Timeline scroll area */}
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+                    {dateGroups.length === 0 ? (
+                        <div className="h-64 flex flex-col items-center justify-center text-center p-6 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
+                            <History className="h-8 w-8 text-slate-300 mb-2" />
+                            <p className="text-xs font-extrabold text-slate-600">
+                                {t("No timeline events found", "Nenašli sa žiadne udalosti", "Nem találhatók idővonal események")}
+                            </p>
+                            <p className="text-[11px] text-slate-400 mt-1 max-w-xs">
+                                {t("Try adjusting your filters or search terms.", "Skúste upraviť filtre alebo hľadaný text.", "Próbálja módosítani a szűrőket vagy a keresési feltételeket.")}
+                            </p>
+                        </div>
+                    ) : (
+                        dateGroups.map((group) => (
+                            <div key={group.dateStr} className="space-y-3">
+                                {/* Date Group Header */}
+                                <div className="sticky top-0 z-10 py-1 bg-white/95 backdrop-blur-sm flex items-center gap-2">
+                                    <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg shadow-2xs">
+                                        {formatDateHeading(group.dateStr)}
+                                    </span>
+                                    <div className="flex-1 h-px bg-slate-100" />
+                                    <span className="text-[10px] font-bold text-slate-400">
+                                        {group.events.length} {t("events", "udalostí", "esemény")}
+                                    </span>
+                                </div>
+
+                                {/* Events List with vertical track */}
+                                <div className="relative pl-6 space-y-3 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
+                                    {group.events.map((ev) => {
+                                        const isDueOverdue =
+                                            ev.type === "due" &&
+                                            !isDoneState(ev.task.status) &&
+                                            isTaskOverdue(ev.task);
+
+                                        const overdueDays =
+                                            ev.type === "completed" && ev.task.completedAt
+                                                ? calculateOverdueDays(
+                                                      ev.task.deadline,
+                                                      ev.task.completedAt,
+                                                      ev.task.deadlineTime,
+                                                  )
+                                                : null;
+                                        const isLateCompleted =
+                                            overdueDays !== null && overdueDays > 0;
+
+                                        return (
+                                            <div
+                                                key={ev.id}
+                                                className="relative group transition-all"
+                                            >
+                                                {/* Circle node on vertical track */}
+                                                <div
+                                                    className={`absolute -left-6 top-3 h-5 w-5 rounded-full border-2 bg-white flex items-center justify-center z-1 transition-transform group-hover:scale-110 shadow-2xs ${
+                                                        ev.type === "created"
+                                                            ? "border-emerald-500 text-emerald-600"
+                                                            : ev.type === "completed"
+                                                              ? "border-indigo-500 text-indigo-600"
+                                                              : isDueOverdue
+                                                                ? "border-rose-500 text-rose-600"
+                                                                : "border-amber-500 text-amber-600"
+                                                    }`}
+                                                >
+                                                    {ev.type === "created" ? (
+                                                        <PlusCircle className="h-3 w-3 stroke-[2.5]" />
+                                                    ) : ev.type === "completed" ? (
+                                                        <CheckCircle2 className="h-3 w-3 stroke-[2.5]" />
+                                                    ) : (
+                                                        <Clock className="h-3 w-3 stroke-[2.5]" />
+                                                    )}
+                                                </div>
+
+                                                {/* Card Content */}
+                                                <div className="p-3.5 bg-slate-50 hover:bg-white rounded-2xl border border-slate-200/80 hover:border-slate-300 shadow-2xs hover:shadow-sm transition-all flex flex-col gap-2">
+                                                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            {/* Event Type Badge */}
+                                                            <span
+                                                                className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md flex items-center gap-1 ${
+                                                                    ev.type === "created"
+                                                                        ? "bg-emerald-100 text-emerald-700"
+                                                                        : ev.type === "completed"
+                                                                          ? "bg-indigo-100 text-indigo-700"
+                                                                          : isDueOverdue
+                                                                            ? "bg-rose-100 text-rose-700"
+                                                                            : "bg-amber-100 text-amber-800"
+                                                                }`}
+                                                            >
+                                                                {ev.type === "created"
+                                                                    ? t("Created", "Vytvorené", "Létrehozva")
+                                                                    : ev.type === "completed"
+                                                                      ? t("Completed", "Dokončené", "Befejezve")
+                                                                      : t("Deadline", "Termín", "Határidő")}
+                                                            </span>
+
+                                                            {/* Event Time */}
+                                                            <span className="text-[10px] font-bold text-slate-500 flex items-center gap-1">
+                                                                <Clock className="h-2.5 w-2.5 text-slate-400" />
+                                                                {ev.timeDisplay}
+                                                            </span>
+
+                                                            {/* Late / On-Time status for completed events */}
+                                                            {ev.type === "completed" && (
+                                                                <span
+                                                                    className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                                                                        isLateCompleted
+                                                                            ? "bg-rose-50 text-rose-600 border border-rose-200/60"
+                                                                            : "bg-emerald-50 text-emerald-700 border border-emerald-200/60"
+                                                                    }`}
+                                                                >
+                                                                    {isLateCompleted
+                                                                        ? `${t("Late", "Omeškané", "Késve")} (+${overdueDays}d)`
+                                                                        : t("On Time", "Načas", "Időben")}
+                                                                </span>
+                                                            )}
+
+                                                            {/* Overdue tag for uncompleted due events */}
+                                                            {isDueOverdue && (
+                                                                <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-50 text-rose-600 border border-rose-200/60">
+                                                                    {t("Overdue", "Zmeškané", "Lejárt")}
+                                                                </span>
+                                                            )}
+                                                        </div>
+
+                                                        {/* Priority dot + Quick edit */}
+                                                        <div className="flex items-center gap-2">
+                                                            <span
+                                                                className={`h-2 w-2 rounded-full shrink-0 ${
+                                                                    ev.task.priority === "high"
+                                                                        ? "bg-rose-500"
+                                                                        : ev.task.priority === "medium"
+                                                                          ? "bg-amber-500"
+                                                                          : "bg-slate-400"
+                                                                }`}
+                                                                title={`${t("Priority", "Priorita", "Prioritás")}: ${priorityLabel(ev.task.priority)}`}
+                                                            />
+                                                            {taskAccess.edit && (
+                                                                <button
+                                                                    onClick={() => setEditingTask(ev.task)}
+                                                                    className="p-1 hover:bg-slate-200/70 rounded-md text-slate-400 hover:text-indigo-600 transition-colors cursor-pointer"
+                                                                    title={t("Edit task", "Upraviť úlohu", "Feladat szerkesztése")}
+                                                                >
+                                                                    <Settings className="h-3 w-3" />
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Task Title */}
+                                                    <div
+                                                        onClick={() => {
+                                                            if (taskAccess.edit) setEditingTask(ev.task);
+                                                        }}
+                                                        className={`text-xs font-black text-slate-800 hover:text-indigo-600 transition-colors ${
+                                                            taskAccess.edit ? "cursor-pointer" : ""
+                                                        } ${isDoneState(ev.task.status) && ev.type !== "completed" ? "line-through text-slate-400" : ""}`}
+                                                    >
+                                                        {ev.task.title}
+                                                    </div>
+
+                                                    {/* Metadata Badges (Lead, Project, Assigned) */}
+                                                    <div className="flex items-center gap-2 flex-wrap pt-0.5">
+                                                        {renderLeadBadge(ev.task, "max-w-[140px]")}
+                                                        {renderProjectBadge(ev.task, "max-w-[140px]")}
+
+                                                        {/* Creator or Assignees */}
+                                                        {ev.type === "created" && ev.task.assignedBy && (
+                                                            <span className="text-[9px] font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md">
+                                                                <span>{t("by", "od", "által")}:</span>
+                                                                <span className="text-slate-700">{ev.task.assignedBy}</span>
+                                                            </span>
+                                                        )}
+
+                                                        {ev.task.assignedUsers && ev.task.assignedUsers.length > 0 && (
+                                                            <span className="text-[9px] font-bold text-indigo-600 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-[140px]">
+                                                                <span className="h-1 w-1 rounded-full bg-indigo-500 shrink-0" />
+                                                                <span className="truncate">{ev.task.assignedUsers.join(", ")}</span>
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </div>
+        );
+    };
+
     // --- FULL CALENDAR MONTH VIEW WITH LEFT SIDEBAR (SPLIT VIEW) ---
     if (!taskAccess.view) {
         return (
@@ -2380,6 +2926,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             scope: calendarScope,
                             onScopeChange: setCalendarScope,
                             onSelectDay: setSelectedDay,
+                            showTimelineOption: true,
+                            showHideOption: true,
                         })}
 
                     <div className="flex items-center bg-slate-100 p-1.5 rounded-xl border border-slate-200 shadow-sm gap-1">
@@ -2770,104 +3318,18 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 </div>
             ) : viewMode === "global" ? (
                 renderGlobalTasksView()
+            ) : calendarScope === "timeline" ? (
+                <div className="flex-1 min-h-0">
+                    {renderTimelineView()}
+                </div>
+            ) : calendarScope === "hide" ? (
+                <div className="flex-1 min-h-0 overflow-y-auto">
+                    {renderMyTaskListColumn(true)}
+                </div>
             ) : (
                 <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-2 gap-8">
                     {/* LEFT COLUMN: TASK LISTS */}
-                    <div className="flex flex-col lg:h-full lg:overflow-y-auto overflow-visible h-auto space-y-6 pr-2 pb-6 lg:pb-0">
-                        {/* Create New Task Button + Compact view toggle (item 10) */}
-                        <div className="flex items-center gap-2">
-                            <button
-                                onClick={() => {
-                                    if (!taskAccess.create) return;
-                                    resetNewTaskForm();
-                                    setIsAddDrawerOpen(true);
-                                }}
-                                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-indigo-600/20 transition-all active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 flex items-center justify-center gap-2 cursor-pointer border-2 border-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
-                                disabled={!taskAccess.create}
-                            >
-                                <Plus className="h-4 w-4 stroke-[3]" />
-                                {t(
-                                    "Create New Task",
-                                    "Vytvoriť novú úlohu",
-                                    "Új feladat",
-                                )}
-                            </button>
-                            <button
-                                onClick={() => setIsCompact((c) => !c)}
-                                title={t(
-                                    "Toggle compact view",
-                                    "Prepnúť kompaktné zobrazenie",
-                                    "Kompakt nézet váltása",
-                                )}
-                                className={`shrink-0 py-2.5 px-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer border-2 ${
-                                    isCompact
-                                        ? "bg-indigo-600 text-white border-indigo-500 shadow-lg shadow-indigo-600/20"
-                                        : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600"
-                                }`}
-                            >
-                                <List className="h-4 w-4 stroke-[3]" />
-                                {t("Compact", "Kompaktné", "Kompakt")}
-                            </button>
-                        </div>
-
-                        {/* Overdue / Missed — always visible, not collapsible (item 1) */}
-                        {renderTaskBucket({
-                            tone: "rose",
-                            icon: <AlertCircle className="h-5 w-5" />,
-                            title: t("Overdue", "Zmeškané", "Lejárt"),
-                            tasks: overdueTasks,
-                            emptyLabel: t(
-                                "No overdue tasks!",
-                                "Žiadne zmeškané úlohy!",
-                                "Nincs lemaradás!",
-                            ),
-                        })}
-
-                        {/* Today — always visible, not collapsible (item 1) */}
-                        {renderTaskBucket({
-                            tone: "indigo",
-                            icon: <CheckSquare className="h-5 w-5" />,
-                            title: t("Today", "Dnes", "Ma"),
-                            tasks: todayTasks,
-                            emptyLabel: t(
-                                "All caught up!",
-                                "Všetko hotové!",
-                                "Minden kész!",
-                            ),
-                        })}
-
-                        {/* Tomorrow */}
-                        {renderTaskBucket({
-                            tone: "amber",
-                            icon: <CalendarIcon className="h-5 w-5" />,
-                            title: t("Tomorrow", "Zajtra", "Holnap"),
-                            tasks: tomorrowTasks,
-                            emptyLabel: t(
-                                "No tasks for tomorrow.",
-                                "Žiadne úlohy na zajtra.",
-                                "Nincs feladat holnapra.",
-                            ),
-                            expanded: isTomorrowExpanded,
-                            onToggle: () =>
-                                setIsTomorrowExpanded(!isTomorrowExpanded),
-                        })}
-
-                        {/* Future */}
-                        {renderTaskBucket({
-                            tone: "slate",
-                            icon: <CalendarIcon className="h-5 w-5" />,
-                            title: t("Upcoming", "Nadchádzajúce", "Közelgő"),
-                            tasks: futureTasks,
-                            emptyLabel: t(
-                                "No upcoming tasks.",
-                                "Žiadne nadchádzajúce úlohy.",
-                                "Nincsenek közelgő feladatok.",
-                            ),
-                            expanded: isFutureExpanded,
-                            onToggle: () =>
-                                setIsFutureExpanded(!isFutureExpanded),
-                        })}
-                    </div>
+                    {renderMyTaskListColumn(false)}
 
                     {/* RIGHT COLUMN: CALENDAR OR DAY VIEW */}
                     <div className="flex flex-col lg:h-full h-auto bg-white rounded-3xl border border-slate-200 shadow-[0_4px_24px_rgba(0,0,0,0.02)] lg:overflow-hidden overflow-visible">

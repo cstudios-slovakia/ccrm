@@ -100,7 +100,7 @@ test.describe('Start Menu layout', () => {
     await expect(nameInput).toBeVisible();
     await nameInput.fill(RENAMED);
     await nameInput.press('Enter');
-    await expect(page.getByText(RENAMED).first()).toBeVisible();
+    await expect(page.locator('span', { hasText: RENAMED }).first()).toBeVisible();
 
     // It left the browser rather than settling into localStorage.
     await expect.poll(() => storedLayout(store), { timeout: 10_000 }).toContain(RENAMED);
@@ -118,7 +118,7 @@ test.describe('Start Menu layout', () => {
 
       // Same column name — and nothing in this browser's storage said so.
       await openStartMenu(pageB);
-      await expect(pageB.getByText(RENAMED).first()).toBeVisible();
+      await expect(pageB.locator('span', { hasText: RENAMED }).first()).toBeVisible();
       await expect(legacyKeys(pageB)).resolves.toEqual([]);
     } finally {
       await second?.close();
