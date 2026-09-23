@@ -2563,15 +2563,15 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
         const formatDateHeading = (dStr: string) => {
             if (dStr === todayStr) {
-                return `${t("Today", "Dnes", "Ma")} • ${formatDateDisplay(dStr)}`;
+                return `${t("Today", "Dnes", "Ma")} • ${formatTaskDate(dStr)}`;
             }
             if (dStr === yesterdayStr) {
-                return `${t("Yesterday", "Včera", "Tegnap")} • ${formatDateDisplay(dStr)}`;
+                return `${t("Yesterday", "Včera", "Tegnap")} • ${formatTaskDate(dStr)}`;
             }
             if (dStr === tomorrowStr) {
-                return `${t("Tomorrow", "Zajtra", "Holnap")} • ${formatDateDisplay(dStr)}`;
+                return `${t("Tomorrow", "Zajtra", "Holnap")} • ${formatTaskDate(dStr)}`;
             }
-            return formatDateDisplay(dStr);
+            return formatTaskDate(dStr);
         };
 
         return (
