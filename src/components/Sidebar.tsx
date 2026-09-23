@@ -351,7 +351,7 @@ const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
       tabIndex={0}
       draggable={true}
       onDragStart={(e) => {
-        onDragStartItem?.(e, item.id, entry.group.id);
+        onDragStartItem?.(e as any, item.id, entry.group.id);
       }}
       onDragEnd={() => {
         onDragEndItem?.();

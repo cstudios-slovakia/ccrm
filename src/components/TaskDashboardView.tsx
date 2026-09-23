@@ -21,16 +21,13 @@ import {
     Trash2,
     Users,
     ArrowUpRight,
-    ArrowRight,
     Flame,
-    ArrowDown,
     Minus,
     CheckCircle2,
     PlusCircle,
     History,
     Search,
     ArrowUpDown,
-    Sparkles,
 } from "lucide-react";
 import type { Task, UserProfile, Lead, Project } from "../types";
 import type { Language } from "../utils/translations";
@@ -522,7 +519,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     >("workload");
     const [globalCalendarDate, setGlobalCalendarDate] = useState(new Date());
     const [globalCalendarScope, setGlobalCalendarScope] = useState<
-        "month" | "week"
+        "month" | "week" | "timeline" | "hide"
     >("month");
     const [globalSelectedDay, setGlobalSelectedDay] = useState<Date | null>(
         null,
@@ -534,7 +531,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const [archiveView, setArchiveView] = useState<"list" | "calendar">("list");
     const [archiveCalendarDate, setArchiveCalendarDate] = useState(new Date());
     const [archiveCalendarScope, setArchiveCalendarScope] = useState<
-        "month" | "week"
+        "month" | "week" | "timeline" | "hide"
     >("month");
     const [archiveSelectedDay, setArchiveSelectedDay] = useState<Date | null>(
         null,
@@ -580,9 +577,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const [archiveDateStart, setArchiveDateStart] = useState<Date | null>(null);
     const [archiveDateEnd, setArchiveDateEnd] = useState<Date | null>(null);
 
-    // Add Task Drawer State
+    // Add Task Inline Card State
     const [isAddDrawerOpen, setIsAddDrawerOpen] = useState(false);
-    const [isClosingDrawer, setIsClosingDrawer] = useState(false);
 
     // Edit Task Drawer State
     const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -662,19 +658,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     }, [autoOpenAddTask, setAutoOpenAddTask]);
 
     const closeAddDrawer = () => {
-        setIsClosingDrawer(true);
-        setTimeout(() => {
-            setIsAddDrawerOpen(false);
-            setIsClosingDrawer(false);
-        }, 350);
+        setIsAddDrawerOpen(false);
     };
     const [newTitle, setNewTitle] = useState("");
-    const [newDescription, setNewDescription] = useState("");
     const [newPriority, setNewPriority] = useState<"low" | "medium" | "high">(
         "medium",
-    );
-    const [newStartDate, setNewStartDate] = useState(() =>
-        toLocalDateStr(new Date()),
     );
     const [newDeadline, setNewDeadline] = useState(() =>
         toLocalDateStr(new Date()),
@@ -686,13 +674,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const [newEmailReminders, setNewEmailReminders] = useState<Task["emailReminders"]>(undefined);
     const [newAssignedUser, setNewAssignedUser] = useState(defaultUserName);
 
-    // Resets the "New Task" form to fresh defaults; called every time the
-    // drawer is opened so it never carries over the previously used values.
+    // Resets the "New Task" form to fresh defaults
     const resetNewTaskForm = (deadlineDateStr?: string) => {
         setNewTitle("");
-        setNewDescription("");
         setNewPriority("medium");
-        setNewStartDate(toLocalDateStr(new Date()));
         setNewDeadline(deadlineDateStr || toLocalDateStr(new Date()));
         setNewDeadlineTime("16:00");
         setNewRelatedLeadId("");
@@ -959,36 +944,6 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 ),
             );
         }
-    };
-
-    const handleReopenDelegatedTask = (task: Task) => {
-        const openStatus = taskStates.find((st) => !isDoneState(st)) || "todo";
-        setTasks((prev) =>
-            prev.map((t) =>
-                t.id === task.id
-                    ? {
-                          ...t,
-                          status: openStatus,
-                          completedBy: undefined,
-                          completedAt: undefined,
-                          archived: false,
-                      }
-                    : t,
-            ),
-        );
-        if (typeof (window as any).showToast === "function") {
-            (window as any).showToast(
-                t(
-                    "Task reopened and moved back to active status.",
-                    "Úloha bola znovu otvorená a vrátená medzi aktívne.",
-                    "Feladat újranyitva és visszaállítva aktív állapotba.",
-                ),
-            );
-        }
-    };
-
-    const handleDismissDelegatedTask = (task: Task) => {
-        handleArchiveTask(task);
     };
 
     const handleDeleteTask = async (task: Task) => {
@@ -2197,9 +2152,6 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const isTaskOverdue = (task: Task) => isTaskOverdueShared(task, taskStates, nowLocalStamp());
 
     const isTaskAssignedToMe = (t: Task) => isTaskAssignedTo(t, myName);
-    const myDirectTasks = myTasks.filter((t) => isTaskAssignedToMe(t) || !isDelegatedByMe(t));
-    const delegatedTasks = myTasks.filter((t) => isDelegatedByMe(t));
-
     const tomorrowStr = toLocalDateStr(new Date(today.getTime() + 86400000));
     // All personal and delegated tasks are grouped together in the same time divisions:
     const overdueTasks = myTasks.filter((t) => isTaskOverdue(t)).sort(byDeadline);
@@ -3487,8 +3439,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
         myTasks.forEach((task) => {
             // Created event
-            if (task.createdAt) {
-                const cDate = new Date(task.createdAt);
+            const rawCreated = (task as any).createdAt || task.startDate;
+            if (rawCreated) {
+                const cDate = new Date(rawCreated);
                 if (!isNaN(cDate.getTime())) {
                     const cDateStr = toLocalDateStr(cDate);
                     const hours = String(cDate.getHours()).padStart(2, "0");
@@ -3545,7 +3498,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 const q = timelineSearch.toLowerCase();
                 const titleMatch = ev.task.title.toLowerCase().includes(q);
                 const descMatch = (ev.task.description || "").toLowerCase().includes(q);
-                const creatorMatch = (ev.task.assignedBy || "").toLowerCase().includes(q);
+                const creatorMatch = (ev.task.createdBy || "").toLowerCase().includes(q);
                 const assignedMatch = (ev.task.assignedUsers || []).some((u) =>
                     u.toLowerCase().includes(q),
                 );
@@ -3834,13 +3787,18 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                     {/* Metadata Badges (Lead, Project, Assigned) */}
                                                     <div className="flex items-center gap-2 flex-wrap pt-0.5">
                                                         {renderLeadBadge(ev.task, "max-w-[140px]")}
-                                                        {renderProjectBadge(ev.task, "max-w-[140px]")}
+                                                        {ev.task.relatedProjectId && projectNameFor(ev.task) && (
+                                                            <span className="text-[9px] font-bold text-slate-600 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md truncate max-w-[140px]">
+                                                                <FolderKanban className="h-2.5 w-2.5 text-slate-500 shrink-0" />
+                                                                <span className="truncate">{projectNameFor(ev.task)}</span>
+                                                            </span>
+                                                        )}
 
                                                         {/* Creator or Assignees */}
-                                                        {ev.type === "created" && ev.task.assignedBy && (
+                                                        {ev.type === "created" && ev.task.createdBy && (
                                                             <span className="text-[9px] font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md">
                                                                 <span>{t("by", "od", "által")}:</span>
-                                                                <span className="text-slate-700">{ev.task.assignedBy}</span>
+                                                                <span className="text-slate-700">{ev.task.createdBy}</span>
                                                             </span>
                                                         )}
 

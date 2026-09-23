@@ -614,12 +614,6 @@ function App() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const lastKnownTasksRef = useRef<Task[] | null>(null);
 
-  // Request browser notification permission once user is logged in
-  useEffect(() => {
-    if (currentUser) {
-      requestBrowserNotificationPermission();
-    }
-  }, [currentUser?.email]);
   const [unifiedEntries, setUnifiedEntries] = useState<UnifiedEntryRegistry[]>([]);
   const [unifiedEntriesData, setUnifiedEntriesData] = useState<Record<string, UnifiedEntryRow[]>>({});
   const [customDashboards, setCustomDashboards] = useState<CustomDashboard[]>([]);
@@ -770,6 +764,13 @@ function App() {
       sessionStorage.removeItem("crm_current_user_rbac");
     }
   }, [currentUser]);
+
+  // Request browser notification permission once user is logged in
+  useEffect(() => {
+    if (currentUser) {
+      requestBrowserNotificationPermission();
+    }
+  }, [currentUser?.email]);
 
   // Licence for this installation. Fetched once per session and re-checked on a
   // slow timer — it changes about once a year, and api/license.php throttles the
