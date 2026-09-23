@@ -558,6 +558,23 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const [editingTask, setEditingTask] = useState<Task | null>(null);
     const [deletingTaskIds, setDeletingTaskIds] = useState<Set<string>>(new Set());
 
+    // Multi-select & Bulk Actions State
+    const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
+    const [activeBulkMenu, setActiveBulkMenu] = useState<"status" | "priority" | "assignee" | "reschedule" | null>(null);
+    const bulkToolbarRef = React.useRef<HTMLDivElement>(null);
+
+    React.useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (bulkToolbarRef.current && !bulkToolbarRef.current.contains(e.target as Node)) {
+                setActiveBulkMenu(null);
+            }
+        };
+        if (activeBulkMenu) {
+            document.addEventListener("mousedown", handler);
+        }
+        return () => document.removeEventListener("mousedown", handler);
+    }, [activeBulkMenu]);
+
     // Global view filters & user list memo
     const [globalPriorityFilter, setGlobalPriorityFilter] = useState("all");
     const [globalStateFilter, setGlobalStateFilter] = useState("all");
@@ -981,6 +998,707 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 return next;
             });
         }
+    };
+
+    // --- Bulk Selection & Operations ---
+    const isSingleUserView = canSeeAllTasks && globalUserFilter !== "all";
+
+    const matchesGlobalFilters = React.useCallback(
+        (task: Task) => {
+            if (
+                globalPriorityFilter !== "all" &&
+                task.priority !== globalPriorityFilter
+            )
+                return false;
+            if (globalStateFilter !== "all" && task.status !== globalStateFilter)
+                return false;
+            if (
+                isSingleUserView &&
+                !task.assignedUsers?.includes(globalUserFilter)
+            )
+                return false;
+            if (!dateInRange(task.deadline, globalDateStart, globalDateEnd))
+                return false;
+            return true;
+        },
+        [globalPriorityFilter, globalStateFilter, isSingleUserView, globalUserFilter, globalDateStart, globalDateEnd]
+    );
+
+    const filteredGlobalTasks = useMemo(() => {
+        const activeTasks = (canSeeAllTasks ? tasks : myTasks).filter((task) =>
+            isActiveTask(task, isDoneState)
+        );
+        return activeTasks.filter(matchesGlobalFilters);
+    }, [canSeeAllTasks, tasks, myTasks, matchesGlobalFilters]);
+
+    const visibleTasksInCurrentView = useMemo(() => {
+        if (viewMode === "calendar") {
+            return myTasks;
+        }
+        if (viewMode === "global") {
+            return filteredGlobalTasks;
+        }
+        if (viewMode === "archive") {
+            const manualArchived = tasks.filter((t) => t.archived);
+            const map = new Map<string, Task>();
+            filteredArchivedTasks.forEach((t) => map.set(t.id, t));
+            manualArchived.forEach((t) => map.set(t.id, t));
+            return Array.from(map.values());
+        }
+        return [];
+    }, [viewMode, myTasks, filteredGlobalTasks, filteredArchivedTasks, tasks]);
+
+    const areAllVisibleSelected = useMemo(() => {
+        if (visibleTasksInCurrentView.length === 0) return false;
+        return visibleTasksInCurrentView.every((t) => selectedTaskIds.has(t.id));
+    }, [visibleTasksInCurrentView, selectedTaskIds]);
+
+    const handleToggleSelect = (taskId: string) => {
+        setSelectedTaskIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(taskId)) {
+                next.delete(taskId);
+            } else {
+                next.add(taskId);
+            }
+            return next;
+        });
+    };
+
+    const handleSelectAllVisible = () => {
+        setSelectedTaskIds((prev) => {
+            const next = new Set(prev);
+            if (areAllVisibleSelected) {
+                visibleTasksInCurrentView.forEach((t) => next.delete(t.id));
+            } else {
+                visibleTasksInCurrentView.forEach((t) => next.add(t.id));
+            }
+            return next;
+        });
+    };
+
+    const handleClearSelection = () => {
+        setSelectedTaskIds(new Set());
+    };
+
+    const selectedTasks = useMemo(() => {
+        return tasks.filter((t) => selectedTaskIds.has(t.id));
+    }, [tasks, selectedTaskIds]);
+
+    const hasActiveSelected = useMemo(() => {
+        return selectedTasks.some((t) => !t.archived);
+    }, [selectedTasks]);
+
+    const hasArchivedSelected = useMemo(() => {
+        return selectedTasks.some((t) => t.archived);
+    }, [selectedTasks]);
+
+    const handleBulkStatusChange = (newStatus: string) => {
+        const now = new Date();
+        const completedAtStr = isDoneState(newStatus)
+            ? toLocalDateStr(now) + " " + now.toTimeString().split(" ")[0].substring(0, 5)
+            : undefined;
+        const completedByName = isDoneState(newStatus)
+            ? currentUser?.name || defaultUserName
+            : undefined;
+
+        let modifiedCount = 0;
+        let skippedCount = 0;
+
+        setTasks((prev) =>
+            prev.map((t) => {
+                if (selectedTaskIds.has(t.id)) {
+                    if (mayEditTask(t)) {
+                        modifiedCount++;
+                        return {
+                            ...t,
+                            status: newStatus,
+                            completedBy: completedByName,
+                            completedAt: completedAtStr,
+                        };
+                    } else {
+                        skippedCount++;
+                    }
+                }
+                return t;
+            })
+        );
+        setActiveBulkMenu(null);
+
+        if (typeof (window as any).showToast === "function") {
+            if (modifiedCount > 0) {
+                (window as any).showToast(
+                    t(
+                        `${modifiedCount} tasks updated to "${stateLabel(newStatus)}"${skippedCount > 0 ? ` (${skippedCount} skipped)` : ""}`,
+                        `${modifiedCount} úloh zmenených na "${stateLabel(newStatus)}"${skippedCount > 0 ? ` (${skippedCount} vynechaných)` : ""}`,
+                        `${modifiedCount} feladat módosítva "${stateLabel(newStatus)}" állapotra${skippedCount > 0 ? ` (${skippedCount} kihagyva)` : ""}`
+                    )
+                );
+            } else if (skippedCount > 0) {
+                (window as any).showToast(
+                    t(
+                        "No tasks could be modified due to permissions.",
+                        "Žiadne úlohy nebolo možné upraviť z dôvodu oprávnení.",
+                        "A jogosultságok miatt egyetlen feladat sem módosítható."
+                    )
+                );
+            }
+        }
+    };
+
+    const handleBulkPriorityChange = (newPriority: "low" | "medium" | "high") => {
+        let modifiedCount = 0;
+        let skippedCount = 0;
+
+        setTasks((prev) =>
+            prev.map((t) => {
+                if (selectedTaskIds.has(t.id)) {
+                    if (mayEditTask(t)) {
+                        modifiedCount++;
+                        return { ...t, priority: newPriority };
+                    } else {
+                        skippedCount++;
+                    }
+                }
+                return t;
+            })
+        );
+        setActiveBulkMenu(null);
+
+        if (typeof (window as any).showToast === "function") {
+            if (modifiedCount > 0) {
+                (window as any).showToast(
+                    t(
+                        `${modifiedCount} tasks updated to ${priorityLabel(newPriority)} priority${skippedCount > 0 ? ` (${skippedCount} skipped)` : ""}`,
+                        `${modifiedCount} úloh aktualizovaných na prioritu ${priorityLabel(newPriority)}${skippedCount > 0 ? ` (${skippedCount} vynechaných)` : ""}`,
+                        `${modifiedCount} feladat prioritása módosítva: ${priorityLabel(newPriority)}${skippedCount > 0 ? ` (${skippedCount} kihagyva)` : ""}`
+                    )
+                );
+            } else if (skippedCount > 0) {
+                (window as any).showToast(
+                    t(
+                        "No tasks could be modified due to permissions.",
+                        "Žiadne úlohy nebolo možné upraviť z dôvodu oprávnení.",
+                        "A jogosultságok miatt egyetlen feladat sem módosítható."
+                    )
+                );
+            }
+        }
+    };
+
+    const handleBulkAssigneeChange = (assignedUser: string) => {
+        let modifiedCount = 0;
+        let skippedCount = 0;
+
+        setTasks((prev) =>
+            prev.map((t) => {
+                if (selectedTaskIds.has(t.id)) {
+                    if (mayEditTask(t)) {
+                        modifiedCount++;
+                        return {
+                            ...t,
+                            owner: assignedUser,
+                            assignedUsers: assignedUser ? [assignedUser] : [],
+                        };
+                    } else {
+                        skippedCount++;
+                    }
+                }
+                return t;
+            })
+        );
+        setActiveBulkMenu(null);
+
+        if (typeof (window as any).showToast === "function") {
+            if (modifiedCount > 0) {
+                (window as any).showToast(
+                    t(
+                        `${modifiedCount} tasks assigned to ${assignedUser || "unassigned"}${skippedCount > 0 ? ` (${skippedCount} skipped)` : ""}`,
+                        `${modifiedCount} úloh priradených používateľovi ${assignedUser || "nepriradené"}${skippedCount > 0 ? ` (${skippedCount} vynechaných)` : ""}`,
+                        `${modifiedCount} feladat hozzárendelve: ${assignedUser || "nincs felelős"}${skippedCount > 0 ? ` (${skippedCount} kihagyva)` : ""}`
+                    )
+                );
+            } else if (skippedCount > 0) {
+                (window as any).showToast(
+                    t(
+                        "No tasks could be modified due to permissions.",
+                        "Žiadne úlohy nebolo možné upraviť z dôvodu oprávnení.",
+                        "A jogosultságok miatt egyetlen feladat sem módosítható."
+                    )
+                );
+            }
+        }
+    };
+
+    const handleBulkReschedule = (newDateStr: string) => {
+        if (!newDateStr) return;
+        let modifiedCount = 0;
+        let skippedCount = 0;
+
+        setTasks((prev) =>
+            prev.map((t) => {
+                if (selectedTaskIds.has(t.id)) {
+                    if (mayEditTask(t)) {
+                        modifiedCount++;
+                        return { ...t, deadline: newDateStr };
+                    } else {
+                        skippedCount++;
+                    }
+                }
+                return t;
+            })
+        );
+        setActiveBulkMenu(null);
+
+        if (typeof (window as any).showToast === "function") {
+            if (modifiedCount > 0) {
+                (window as any).showToast(
+                    t(
+                        `${modifiedCount} tasks rescheduled to ${formatTaskDate(newDateStr)}${skippedCount > 0 ? ` (${skippedCount} skipped)` : ""}`,
+                        `${modifiedCount} úloh preplánovaných na ${formatTaskDate(newDateStr)}${skippedCount > 0 ? ` (${skippedCount} vynechaných)` : ""}`,
+                        `${modifiedCount} feladat átütemezve: ${formatTaskDate(newDateStr)}${skippedCount > 0 ? ` (${skippedCount} kihagyva)` : ""}`
+                    )
+                );
+            } else if (skippedCount > 0) {
+                (window as any).showToast(
+                    t(
+                        "No tasks could be modified due to permissions.",
+                        "Žiadne úlohy nebolo možné upraviť z dôvodu oprávnení.",
+                        "A jogosultságok miatt egyetlen feladat sem módosítható."
+                    )
+                );
+            }
+        }
+    };
+
+    const handleBulkArchive = () => {
+        let modifiedCount = 0;
+        let skippedCount = 0;
+
+        setTasks((prev) =>
+            prev.map((t) => {
+                if (selectedTaskIds.has(t.id) && !t.archived) {
+                    if (mayArchiveTask(t)) {
+                        modifiedCount++;
+                        return { ...t, archived: true };
+                    } else {
+                        skippedCount++;
+                    }
+                }
+                return t;
+            })
+        );
+        handleClearSelection();
+
+        if (typeof (window as any).showToast === "function") {
+            if (modifiedCount > 0) {
+                (window as any).showToast(
+                    t(
+                        `${modifiedCount} tasks archived`,
+                        `${modifiedCount} úloh archivovaných`,
+                        `${modifiedCount} feladat archiválva`
+                    )
+                );
+            } else if (skippedCount > 0) {
+                (window as any).showToast(
+                    t(
+                        "No tasks could be archived due to permissions.",
+                        "Žiadne úlohy nebolo možné archivovať z dôvodu oprávnení.",
+                        "A jogosultságok miatt egyetlen feladat sem archiválható."
+                    )
+                );
+            }
+        }
+    };
+
+    const handleBulkRestore = () => {
+        let modifiedCount = 0;
+        let skippedCount = 0;
+
+        setTasks((prev) =>
+            prev.map((t) => {
+                if (selectedTaskIds.has(t.id) && t.archived) {
+                    if (mayArchiveTask(t)) {
+                        modifiedCount++;
+                        return {
+                            ...t,
+                            archived: false,
+                            status: taskStates[0] || "New",
+                            completedAt: undefined,
+                            completedBy: undefined,
+                        };
+                    } else {
+                        skippedCount++;
+                    }
+                }
+                return t;
+            })
+        );
+        handleClearSelection();
+
+        if (typeof (window as any).showToast === "function") {
+            if (modifiedCount > 0) {
+                (window as any).showToast(
+                    t(
+                        `${modifiedCount} tasks restored`,
+                        `${modifiedCount} úloh obnovených z archívu`,
+                        `${modifiedCount} feladat visszaállítva az archívumból`
+                    )
+                );
+            } else if (skippedCount > 0) {
+                (window as any).showToast(
+                    t(
+                        "No tasks could be restored due to permissions.",
+                        "Žiadne úlohy nebolo možné obnoviť z dôvodu oprávnení.",
+                        "A jogosultságok miatt egyetlen feladat sem állítható vissza."
+                    )
+                );
+            }
+        }
+    };
+
+    const handleBulkDelete = async () => {
+        const deletableTasks = tasks.filter(
+            (t) => selectedTaskIds.has(t.id) && mayDeleteTask(t)
+        );
+        if (deletableTasks.length === 0) {
+            if (typeof (window as any).showToast === "function") {
+                (window as any).showToast(
+                    t(
+                        "You do not have permission to delete the selected tasks.",
+                        "Nemáte oprávnenie vymazať vybrané úlohy.",
+                        "Nincs jogosultsága a kiválasztott feladatok törlésére."
+                    )
+                );
+            }
+            return;
+        }
+
+        const count = deletableTasks.length;
+        const confirmed = window.confirm(
+            t(
+                `Permanently delete ${count} selected task${count > 1 ? "s" : ""}? This cannot be undone.`,
+                `Natrvalo odstrániť ${count} vybraných úloh? Túto akciu nemožno vrátiť späť.`,
+                `Véglegesen törli a(z) ${count} kiválasztott feladatot? Ez nem vonható vissza.`
+            )
+        );
+        if (!confirmed) return;
+
+        const idsToDelete = new Set(deletableTasks.map((t) => t.id));
+        setDeletingTaskIds((prev) => new Set([...prev, ...idsToDelete]));
+
+        try {
+            await Promise.all(
+                deletableTasks.map((t) =>
+                    requestTaskDeletion(t.id).catch((err) => {
+                        console.error(`Failed to delete task ${t.id}`, err);
+                        return null;
+                    })
+                )
+            );
+
+            setTasks((prev) => prev.filter((item) => !idsToDelete.has(item.id)));
+            setSelectedTaskIds((prev) => {
+                const next = new Set(prev);
+                idsToDelete.forEach((id) => next.delete(id));
+                return next;
+            });
+
+            if (typeof (window as any).showToast === "function") {
+                (window as any).showToast(
+                    t(
+                        `${count} tasks deleted`,
+                        `${count} úloh odstránených`,
+                        `${count} feladat törölve`
+                    )
+                );
+            }
+        } finally {
+            setDeletingTaskIds((prev) => {
+                const next = new Set(prev);
+                idsToDelete.forEach((id) => next.delete(id));
+                return next;
+            });
+        }
+    };
+
+    const renderBulkActionToolbar = () => {
+        if (selectedTaskIds.size === 0) return null;
+        if (typeof document === "undefined") return null;
+
+        const selectedCount = selectedTaskIds.size;
+        const countLabel =
+            systemLanguage === "sk"
+                ? selectedCount === 1
+                    ? "1 vybraná"
+                    : selectedCount >= 2 && selectedCount <= 4
+                      ? `${selectedCount} vybrané`
+                      : `${selectedCount} vybraných`
+                : systemLanguage === "hu"
+                  ? `${selectedCount} kiválasztva`
+                  : `${selectedCount} selected`;
+
+        return createPortal(
+            <div
+                ref={bulkToolbarRef}
+                className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100000] max-w-[95vw] sm:max-w-3xl lg:max-w-4xl bg-slate-900/95 text-white backdrop-blur-xl px-4 py-2.5 rounded-2xl shadow-2xl border border-slate-700/70 flex flex-wrap items-center justify-between gap-2.5 animate-in fade-in slide-in-from-bottom-5 duration-200"
+            >
+                {/* Left: Count and selection management */}
+                <div className="flex items-center gap-2">
+                    <span className="bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-xs font-black px-2.5 py-1 rounded-xl">
+                        {countLabel}
+                    </span>
+                    <button
+                        type="button"
+                        onClick={handleSelectAllVisible}
+                        className="text-[11px] font-bold text-slate-300 hover:text-white px-2 py-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                    >
+                        {areAllVisibleSelected
+                            ? t("Deselect visible", "Zrušiť výber zobrazených", "Láthatók kijelölésének törlése")
+                            : t(
+                                  `Select all visible (${visibleTasksInCurrentView.length})`,
+                                  `Vybrať všetky zobrazené (${visibleTasksInCurrentView.length})`,
+                                  `Összes látható kijelölése (${visibleTasksInCurrentView.length})`
+                              )}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleClearSelection}
+                        title={t("Clear selection", "Zrušiť výber", "Kijelölés törlése")}
+                        className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                    >
+                        <X className="h-4 w-4" />
+                    </button>
+                </div>
+
+                <div className="h-5 w-px bg-slate-700/80 hidden sm:block" />
+
+                {/* Right: Actions */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                    {/* Status Dropdown */}
+                    <div className="relative">
+                        <button
+                            type="button"
+                            onClick={() =>
+                                setActiveBulkMenu(
+                                    activeBulkMenu === "status" ? null : "status"
+                                )
+                            }
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-xs font-black transition-colors border border-slate-700/50 cursor-pointer"
+                        >
+                            <CheckSquare className="h-3.5 w-3.5 text-indigo-400" />
+                            <span>{t("Status", "Stav", "Státusz")}</span>
+                            <ChevronDown className="h-3 w-3 text-slate-400" />
+                        </button>
+                        {activeBulkMenu === "status" && (
+                            <div className="absolute bottom-full mb-2 left-0 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl p-1.5 min-w-[160px] space-y-0.5 animate-in fade-in zoom-in-95 duration-100 z-50">
+                                {taskStates.map((st) => (
+                                    <button
+                                        key={st}
+                                        type="button"
+                                        onClick={() => handleBulkStatusChange(st)}
+                                        className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:bg-indigo-600 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
+                                    >
+                                        <span
+                                            className="h-2 w-2 rounded-full shrink-0"
+                                            style={{
+                                                backgroundColor:
+                                                    taskStateColors[st] || "#94a3b8",
+                                            }}
+                                        />
+                                        <span>{stateLabel(st)}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Priority Dropdown */}
+                    <div className="relative">
+                        <button
+                            type="button"
+                            onClick={() =>
+                                setActiveBulkMenu(
+                                    activeBulkMenu === "priority" ? null : "priority"
+                                )
+                            }
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-xs font-black transition-colors border border-slate-700/50 cursor-pointer"
+                        >
+                            <Flame className="h-3.5 w-3.5 text-amber-400" />
+                            <span>{t("Priority", "Priorita", "Prioritás")}</span>
+                            <ChevronDown className="h-3 w-3 text-slate-400" />
+                        </button>
+                        {activeBulkMenu === "priority" && (
+                            <div className="absolute bottom-full mb-2 left-0 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl p-1.5 min-w-[140px] space-y-0.5 animate-in fade-in zoom-in-95 duration-100 z-50">
+                                {(["low", "medium", "high"] as const).map((prio) => (
+                                    <button
+                                        key={prio}
+                                        type="button"
+                                        onClick={() => handleBulkPriorityChange(prio)}
+                                        className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:bg-indigo-600 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
+                                    >
+                                        <span
+                                            className={`h-2 w-2 rounded-full shrink-0 ${
+                                                prio === "high"
+                                                    ? "bg-rose-500"
+                                                    : prio === "medium"
+                                                      ? "bg-amber-500"
+                                                      : "bg-slate-400"
+                                            }`}
+                                        />
+                                        <span>{priorityLabel(prio)}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Assignee Dropdown */}
+                    <div className="relative">
+                        <button
+                            type="button"
+                            onClick={() =>
+                                setActiveBulkMenu(
+                                    activeBulkMenu === "assignee" ? null : "assignee"
+                                )
+                            }
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-xs font-black transition-colors border border-slate-700/50 cursor-pointer"
+                        >
+                            <Users className="h-3.5 w-3.5 text-sky-400" />
+                            <span>{t("Assignee", "Riešiteľ", "Felelős")}</span>
+                            <ChevronDown className="h-3 w-3 text-slate-400" />
+                        </button>
+                        {activeBulkMenu === "assignee" && (
+                            <div className="absolute bottom-full mb-2 left-0 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl p-1.5 min-w-[170px] max-h-56 overflow-y-auto space-y-0.5 animate-in fade-in zoom-in-95 duration-100 z-50">
+                                {allUsersList.map((uName) => (
+                                    <button
+                                        key={uName}
+                                        type="button"
+                                        onClick={() => handleBulkAssigneeChange(uName)}
+                                        className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:bg-indigo-600 hover:text-white transition-colors flex items-center justify-between gap-2 cursor-pointer"
+                                    >
+                                        <span className="truncate">{uName}</span>
+                                        {uName === myName && (
+                                            <span className="text-[9px] bg-slate-800 px-1 py-0.5 rounded text-indigo-300">
+                                                {t("You", "Vy", "Ön")}
+                                            </span>
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Reschedule Popover */}
+                    <div className="relative">
+                        <button
+                            type="button"
+                            onClick={() =>
+                                setActiveBulkMenu(
+                                    activeBulkMenu === "reschedule" ? null : "reschedule"
+                                )
+                            }
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-xs font-black transition-colors border border-slate-700/50 cursor-pointer"
+                        >
+                            <CalendarIcon className="h-3.5 w-3.5 text-indigo-400" />
+                            <span>{t("Reschedule", "Termín", "Átütemezés")}</span>
+                            <ChevronDown className="h-3 w-3 text-slate-400" />
+                        </button>
+                        {activeBulkMenu === "reschedule" && (
+                            <div className="absolute bottom-full mb-2 left-0 sm:right-0 sm:left-auto bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl p-3 min-w-[220px] space-y-2 animate-in fade-in zoom-in-95 duration-100 z-50">
+                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                                    {t("Set Due Date", "Nastaviť termín", "Határidő beállítása")}
+                                </span>
+                                <div className="grid grid-cols-3 gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            handleBulkReschedule(toLocalDateStr(new Date()))
+                                        }
+                                        className="px-2 py-1 rounded bg-slate-800 hover:bg-indigo-600 text-[10px] font-bold text-center transition-colors cursor-pointer"
+                                    >
+                                        {t("Today", "Dnes", "Ma")}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            handleBulkReschedule(
+                                                toLocalDateStr(
+                                                    new Date(Date.now() + 86400000)
+                                                )
+                                            )
+                                        }
+                                        className="px-2 py-1 rounded bg-slate-800 hover:bg-indigo-600 text-[10px] font-bold text-center transition-colors cursor-pointer"
+                                    >
+                                        {t("Tomorrow", "Zajtra", "Holnap")}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            handleBulkReschedule(
+                                                toLocalDateStr(
+                                                    new Date(Date.now() + 7 * 86400000)
+                                                )
+                                            )
+                                        }
+                                        className="px-2 py-1 rounded bg-slate-800 hover:bg-indigo-600 text-[10px] font-bold text-center transition-colors cursor-pointer"
+                                    >
+                                        {t("+1 Week", "+1 týždeň", "+1 hét")}
+                                    </button>
+                                </div>
+                                <div className="pt-1 border-t border-slate-800">
+                                    <input
+                                        type="date"
+                                        onChange={(e) => {
+                                            if (e.target.value) {
+                                                handleBulkReschedule(e.target.value);
+                                            }
+                                        }}
+                                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
+                                    />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Archive / Restore Button */}
+                    {hasActiveSelected && (
+                        <button
+                            type="button"
+                            onClick={handleBulkArchive}
+                            title={t("Archive selected tasks", "Archivovať vybrané úlohy", "Kiválasztott feladatok archiválása")}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-amber-900/40 text-amber-300 hover:text-amber-100 text-xs font-black transition-colors border border-slate-700/50 hover:border-amber-700/50 cursor-pointer"
+                        >
+                            <ArchiveIcon className="h-3.5 w-3.5 text-amber-400" />
+                            <span>{t("Archive", "Archivovať", "Archiválás")}</span>
+                        </button>
+                    )}
+                    {hasArchivedSelected && (
+                        <button
+                            type="button"
+                            onClick={handleBulkRestore}
+                            title={t("Restore selected tasks", "Obnoviť vybrané úlohy", "Kiválasztott feladatok visszaállítása")}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-indigo-900/40 text-indigo-300 hover:text-indigo-100 text-xs font-black transition-colors border border-slate-700/50 hover:border-indigo-700/50 cursor-pointer"
+                        >
+                            <RotateCcw className="h-3.5 w-3.5 text-indigo-400" />
+                            <span>{t("Restore", "Obnoviť", "Visszaállítás")}</span>
+                        </button>
+                    )}
+
+                    {/* Delete Button */}
+                    <button
+                        type="button"
+                        onClick={handleBulkDelete}
+                        title={t("Delete selected tasks", "Odstrániť vybrané úlohy", "Kiválasztott feladatok törlése")}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 hover:text-rose-100 text-xs font-black transition-colors border border-rose-800/60 cursor-pointer ml-1"
+                    >
+                        <Trash2 className="h-3.5 w-3.5 text-rose-400" />
+                        <span className="hidden sm:inline">{t("Delete", "Vymazať", "Törlés")}</span>
+                    </button>
+                </div>
+            </div>,
+            document.body
+        );
     };
 
     const handleCreateTask = (e: React.FormEvent) => {
@@ -1508,17 +2226,36 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         );
     };
 
-    const renderTaskCard = (task: Task) => (
-        <div
-            key={task.id}
-            className={`${isCompact ? "p-2.5" : "p-4"} rounded-2xl bg-white border border-slate-200/80 shadow-sm flex gap-3 transition-all relative overflow-hidden hover:border-slate-300`}
-        >
-            {task.isLocking && (
-                <div className="absolute top-0 right-0 w-1.5 h-full bg-rose-500" />
-            )}
-
+    const renderTaskCard = (task: Task) => {
+        const isSelected = selectedTaskIds.has(task.id);
+        return (
             <div
-                className="max-w-[110px]"
+                key={task.id}
+                className={`${isCompact ? "p-2.5" : "p-3.5"} rounded-2xl ${
+                    isSelected
+                        ? "bg-indigo-50/50 ring-1 ring-indigo-300/80 border-indigo-300"
+                        : "bg-white border-slate-200/80 hover:bg-slate-50/70 hover:border-slate-300"
+                } border shadow-sm flex gap-3 transition-all relative overflow-hidden`}
+            >
+                {task.isLocking && (
+                    <div className="absolute top-0 right-0 w-1.5 h-full bg-rose-500" />
+                )}
+
+                <div className="flex items-center pt-0.5 shrink-0">
+                    <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => {
+                            e.stopPropagation();
+                            handleToggleSelect(task.id);
+                        }}
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600"
+                        aria-label={`Select ${task.title}`}
+                    />
+                </div>
+
+                <div
+                    className="max-w-[110px]"
                 style={
                     {
                         "--task-status-bg": `${taskStateColors[task.status] || "#64748b"}15`,
@@ -1696,7 +2433,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 </div>
             </div>
         </div>
-    );
+        );
+    };
 
     // One row of the completed-task archive. Shared by the grouped archive
     // list and the archive calendar's day view, so a completed task reads the
@@ -1711,12 +2449,27 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         const isOverdue =
             overdueDays !== null &&
             overdueDays > 0;
+        const isSelected = selectedTaskIds.has(task.id);
         return (
             <div
                 key={task.id}
-                className="p-2.5 rounded-xl border border-slate-200 bg-white hover:border-slate-300 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-sm hover:shadow"
+                className={`p-2.5 rounded-xl border ${
+                    isSelected
+                        ? "bg-indigo-50/50 ring-1 ring-indigo-300/80 border-indigo-300"
+                        : "bg-white border-slate-200 hover:border-slate-300"
+                } transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-sm hover:shadow`}
             >
                 <div className="flex-1 min-w-0 flex items-center gap-3">
+                    <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => {
+                            e.stopPropagation();
+                            handleToggleSelect(task.id);
+                        }}
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600 shrink-0"
+                        aria-label={`Select ${task.title}`}
+                    />
                     {/* Priority dot indicator */}
                     <span
                         className={`h-2.5 w-2.5 rounded-full shrink-0 ${
@@ -1921,39 +2674,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const renderGlobalTasksView = () => {
         // Team-wide by default; a role whose `tasks.view_all` is revoked keeps the
         // old single-column board of its own work (see resolveTaskViewAll).
-        const activeTasks = (canSeeAllTasks ? tasks : myTasks).filter((task) => isActiveTask(task, isDoneState));
-        // Picking one manager collapses the right-hand stack to their card
-        // alone, so the board reads as "this person's workload" end to end.
-        const isSingleUserView = canSeeAllTasks && globalUserFilter !== "all";
         const columnUsers = !canSeeAllTasks
             ? [myName]
             : isSingleUserView
               ? [globalUserFilter]
               : allUsersList;
 
-        // The filter bar drives both halves of the split view, so the time
-        // buckets on the left and the per-member cards on the right always
-        // describe exactly the same set of tasks.
-        const matchesGlobalFilters = (task: Task) => {
-            if (
-                globalPriorityFilter !== "all" &&
-                task.priority !== globalPriorityFilter
-            )
-                return false;
-            if (globalStateFilter !== "all" && task.status !== globalStateFilter)
-                return false;
-            // Same test the member cards use, so a filtered bucket and that
-            // manager's card always hold exactly the same tasks.
-            if (
-                isSingleUserView &&
-                !task.assignedUsers?.includes(globalUserFilter)
-            )
-                return false;
-            if (!dateInRange(task.deadline, globalDateStart, globalDateEnd))
-                return false;
-            return true;
-        };
-        const filteredTasks = activeTasks.filter(matchesGlobalFilters);
+        const filteredTasks = filteredGlobalTasks;
 
         // Same separation as My Calendar, with Tomorrow folded into Upcoming:
         // the team board answers "what is late / due now / still coming",
@@ -2209,6 +2936,25 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 t={t}
                             />
                         </div>
+
+                        {/* Select All Visible */}
+                        <button
+                            type="button"
+                            onClick={handleSelectAllVisible}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border-2 text-xs font-extrabold cursor-pointer transition-all ${
+                                areAllVisibleSelected
+                                    ? "bg-indigo-50 border-indigo-200 text-indigo-700"
+                                    : "bg-slate-50 border-slate-200 text-slate-600 hover:border-indigo-400"
+                            }`}
+                            title={t("Select all visible tasks", "Vybrať všetky zobrazené úlohy", "Összes látható feladat kijelölése")}
+                        >
+                            <CheckSquare className="h-3.5 w-3.5 stroke-[2.5]" />
+                            <span>
+                                {areAllVisibleSelected
+                                    ? t("Deselect all", "Zrušiť výber", "Kijelölés törlése")
+                                    : t("Select all", "Vybrať všetky", "Összes kijelölése")}
+                            </span>
+                        </button>
                     </div>
                 </div>
 
@@ -2436,6 +3182,23 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         "Vytvoriť novú úlohu",
                         "Új feladat",
                     )}
+                </button>
+                <button
+                    type="button"
+                    onClick={handleSelectAllVisible}
+                    title={t("Select all visible tasks", "Vybrať všetky zobrazené úlohy", "Összes látható feladat kijelölése")}
+                    className={`shrink-0 py-2.5 px-3.5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-[0.99] flex items-center justify-center gap-1.5 cursor-pointer border-2 ${
+                        areAllVisibleSelected
+                            ? "bg-indigo-50 text-indigo-700 border-indigo-200 shadow-sm"
+                            : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600"
+                    }`}
+                >
+                    <CheckSquare className="h-4 w-4 stroke-[2.5]" />
+                    <span>
+                        {areAllVisibleSelected
+                            ? t("Deselect all", "Zrušiť výber", "Kijelölés törlése")
+                            : t("Select all", "Vybrať všetky", "Összes kijelölése")}
+                    </span>
                 </button>
                 <button
                     onClick={() => setIsCompact((c) => !c)}
@@ -3096,6 +3859,23 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     onSelectDay: setArchiveSelectedDay,
                                     compact: true,
                                 })}
+                            <button
+                                type="button"
+                                onClick={handleSelectAllVisible}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                                    areAllVisibleSelected
+                                        ? "bg-indigo-50 border-indigo-200 text-indigo-700"
+                                        : "bg-slate-50 border-slate-200 text-slate-600 hover:border-indigo-400"
+                                }`}
+                                title={t("Select all visible tasks", "Vybrať všetky zobrazené úlohy", "Összes látható feladat kijelölése")}
+                            >
+                                <CheckSquare className="h-3.5 w-3.5 stroke-[2.5]" />
+                                <span>
+                                    {areAllVisibleSelected
+                                        ? t("Deselect all", "Zrušiť výber", "Kijelölés törlése")
+                                        : t("Select all", "Vybrať všetky", "Összes kijelölése")}
+                                </span>
+                            </button>
                             <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-sm gap-1">
                                 {(["list", "calendar"] as const).map((mode) => (
                                     <button
@@ -3326,91 +4106,108 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     </span>
                                 </div>
                                 <div className="space-y-2">
-                                    {archivedList.map((task) => (
-                                        <div
-                                            key={task.id}
-                                            className="p-2.5 rounded-xl border border-slate-200 bg-slate-50/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
-                                        >
-                                            <div className="flex-1 min-w-0 flex items-center gap-3">
-                                                <span
-                                                    className={`h-2.5 w-2.5 rounded-full shrink-0 ${
-                                                        task.priority ===
-                                                        "high"
-                                                            ? "bg-rose-500"
-                                                            : task.priority ===
-                                                                "medium"
-                                                              ? "bg-amber-500"
-                                                              : "bg-slate-400"
-                                                    }`}
-                                                />
-                                                <div className="min-w-0 flex-1">
-                                                    <div className="flex items-center gap-2 flex-wrap">
-                                                        <span className="font-extrabold text-slate-700 truncate">
-                                                            {task.title}
-                                                        </span>
-                                                        {task.assignedUsers &&
-                                                            task.assignedUsers
-                                                                .length > 0 && (
-                                                                <span className="text-[9px] font-bold text-indigo-600 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-[120px]">
-                                                                    <span className="h-1 w-1 rounded-full bg-indigo-500 shrink-0" />
-                                                                    <span className="truncate">
-                                                                        {task.assignedUsers.join(
-                                                                            ", ",
-                                                                        )}
+                                    {archivedList.map((task) => {
+                                        const isSelected = selectedTaskIds.has(task.id);
+                                        return (
+                                            <div
+                                                key={task.id}
+                                                className={`p-2.5 rounded-xl border ${
+                                                    isSelected
+                                                        ? "bg-indigo-50/50 ring-1 ring-indigo-300/80 border-indigo-300"
+                                                        : "border-slate-200 bg-slate-50/60"
+                                                } flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs`}
+                                            >
+                                                <div className="flex-1 min-w-0 flex items-center gap-3">
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isSelected}
+                                                        onChange={(e) => {
+                                                            e.stopPropagation();
+                                                            handleToggleSelect(task.id);
+                                                        }}
+                                                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600 shrink-0"
+                                                        aria-label={`Select ${task.title}`}
+                                                    />
+                                                    <span
+                                                        className={`h-2.5 w-2.5 rounded-full shrink-0 ${
+                                                            task.priority ===
+                                                            "high"
+                                                                ? "bg-rose-500"
+                                                                : task.priority ===
+                                                                    "medium"
+                                                                  ? "bg-amber-500"
+                                                                  : "bg-slate-400"
+                                                        }`}
+                                                    />
+                                                    <div className="min-w-0 flex-1">
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            <span className="font-extrabold text-slate-700 truncate">
+                                                                {task.title}
+                                                            </span>
+                                                            {task.assignedUsers &&
+                                                                task.assignedUsers
+                                                                    .length > 0 && (
+                                                                    <span className="text-[9px] font-bold text-indigo-600 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-[120px]">
+                                                                        <span className="h-1 w-1 rounded-full bg-indigo-500 shrink-0" />
+                                                                        <span className="truncate">
+                                                                            {task.assignedUsers.join(
+                                                                                ", ",
+                                                                            )}
+                                                                        </span>
                                                                     </span>
-                                                                </span>
+                                                                )}
+                                                        </div>
+                                                        <div className="text-[9px] font-bold text-slate-400 mt-0.5">
+                                                            {t(
+                                                                "Due",
+                                                                "Termín",
+                                                                "Határidő",
                                                             )}
-                                                    </div>
-                                                    <div className="text-[9px] font-bold text-slate-400 mt-0.5">
-                                                        {t(
-                                                            "Due",
-                                                            "Termín",
-                                                            "Határidő",
-                                                        )}
-                                                        : {formatTaskDate(task.deadline)}
+                                                            : {formatTaskDate(task.deadline)}
+                                                        </div>
                                                     </div>
                                                 </div>
-                                            </div>
-                                            <div className="flex items-center gap-1.5 shrink-0">
-                                                <button
-                                                    onClick={() =>
-                                                        handleUnarchiveTask(
-                                                            task,
-                                                        )
-                                                    }
-                                                    disabled={!mayArchiveTask(task)}
-                                                    title={
-                                                        mayArchiveTask(task)
-                                                            ? undefined
-                                                            : archiveDeniedHint()
-                                                    }
-                                                    className="px-2.5 py-1.5 border border-indigo-200 hover:bg-indigo-50 text-indigo-600 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:active:scale-100"
-                                                >
-                                                    <RotateCcw className="h-3 w-3 stroke-[2.5]" />
-                                                    {t(
-                                                        "Unarchive",
-                                                        "Zrušiť archiváciu",
-                                                        "Archiválás visszavonása",
-                                                    )}
-                                                </button>
-                                                {mayDeleteTask(task) && (
+                                                <div className="flex items-center gap-1.5 shrink-0">
                                                     <button
                                                         onClick={() =>
-                                                            handleDeleteTask(task)
+                                                            handleUnarchiveTask(
+                                                                task,
+                                                            )
                                                         }
-                                                        title={t(
-                                                            "Delete permanently",
-                                                            "Natrvalo odstrániť",
-                                                            "Végleges törlés",
-                                                        )}
-                                                        className="px-2 py-1.5 border border-rose-200 hover:bg-rose-50 text-rose-600 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+                                                        disabled={!mayArchiveTask(task)}
+                                                        title={
+                                                            mayArchiveTask(task)
+                                                                ? undefined
+                                                                : archiveDeniedHint()
+                                                        }
+                                                        className="px-2.5 py-1.5 border border-indigo-200 hover:bg-indigo-50 text-indigo-600 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:active:scale-100"
                                                     >
-                                                        <Trash2 className="h-3 w-3 stroke-[2.5]" />
+                                                        <RotateCcw className="h-3 w-3 stroke-[2.5]" />
+                                                        {t(
+                                                            "Unarchive",
+                                                            "Zrušiť archiváciu",
+                                                            "Archiválás visszavonása",
+                                                        )}
                                                     </button>
-                                                )}
+                                                    {mayDeleteTask(task) && (
+                                                        <button
+                                                            onClick={() =>
+                                                                handleDeleteTask(task)
+                                                            }
+                                                            title={t(
+                                                                "Delete permanently",
+                                                                "Natrvalo odstrániť",
+                                                                "Végleges törlés",
+                                                            )}
+                                                            className="px-2 py-1.5 border border-rose-200 hover:bg-rose-50 text-rose-600 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+                                                        >
+                                                            <Trash2 className="h-3 w-3 stroke-[2.5]" />
+                                                        </button>
+                                                    )}
+                                                </div>
                                             </div>
-                                        </div>
-                                    ))}
+                                        );
+                                    })}
                                 </div>
                             </div>
                         );
@@ -3485,6 +4282,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     onClose={() => setEditingTask(null)}
                 />
             )}
+            {renderBulkActionToolbar()}
         </div>
     );
 
