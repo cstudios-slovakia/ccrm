@@ -24,6 +24,8 @@ import {
     ArrowUpRight,
     ArrowRight,
     Flame,
+    ArrowDown,
+    Minus,
     CheckCircle2,
     PlusCircle,
     History,
@@ -2222,14 +2224,39 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         );
     };
 
+    const renderPriorityIcon = (priority: Task["priority"], className: string = "h-3.5 w-3.5") => {
+        if (priority === "high") {
+            return (
+                <span
+                    title={`${t("Priority", "Priorita", "Prioritás")}: ${priorityLabel("high")}`}
+                    className="shrink-0 flex items-center text-rose-500"
+                >
+                    <Flame className={`${className} fill-rose-500/20`} />
+                </span>
+            );
+        }
+        if (priority === "medium") {
+            return (
+                <span
+                    title={`${t("Priority", "Priorita", "Prioritás")}: ${priorityLabel("medium")}`}
+                    className="shrink-0 flex items-center text-amber-500"
+                >
+                    <ArrowUpDown className={`${className} stroke-[2.5]`} />
+                </span>
+            );
+        }
+        return (
+            <span
+                title={`${t("Priority", "Priorita", "Prioritás")}: ${priorityLabel("low")}`}
+                className="shrink-0 flex items-center text-slate-400"
+            >
+                <Minus className={`${className} stroke-[3]`} />
+            </span>
+        );
+    };
+
     const renderTaskCard = (task: Task) => {
         const isSelected = selectedTaskIds.has(task.id);
-        const priorityColor =
-            task.priority === "high"
-                ? "text-rose-500 fill-rose-500/20"
-                : task.priority === "medium"
-                  ? "text-amber-500 fill-amber-500/20"
-                  : "text-slate-400";
 
         return (
             <div
@@ -2300,13 +2327,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         />
                     </div>
 
-                    {/* Priority Flame Icon right before task title */}
-                    <span
-                        title={`${t("Priority", "Priorita", "Prioritás")}: ${priorityLabel(task.priority)}`}
-                        className="shrink-0 flex items-center"
-                    >
-                        <Flame className={`h-3.5 w-3.5 ${priorityColor}`} />
-                    </span>
+                    {/* Priority Icon right before task title: distinct icon per level */}
+                    {renderPriorityIcon(task.priority, "h-3.5 w-3.5")}
 
                     {/* Task Title & optional badges */}
                     <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -2450,19 +2472,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600 shrink-0"
                         aria-label={`Select ${task.title}`}
                     />
-                    {/* Priority dot indicator */}
-                    <span
-                        className={`h-2.5 w-2.5 rounded-full shrink-0 ${
-                            task.priority ===
-                            "high"
-                                ? "bg-rose-500"
-                                : task.priority ===
-                                    "medium"
-                                  ? "bg-amber-500"
-                                  : "bg-slate-400"
-                        }`}
-                        title={`${t("Priority", "Priorita", "Prioritás")}: ${priorityLabel(task.priority)}`}
-                    />
+                    {/* Priority indicator: distinct icon per level */}
+                    {renderPriorityIcon(task.priority, "h-3.5 w-3.5")}
 
                     <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
