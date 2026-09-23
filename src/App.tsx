@@ -8,6 +8,7 @@ import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAs
 import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils/projectAutoCreate";
 import { normalizeLeadStateSla, type LeadStateSla } from "./utils/leadSla";
 import { isSystemMailConfigured } from "./utils/taskReminders";
+import { requestBrowserNotificationPermission, sendBrowserNotification } from "./utils/browserNotifications";
 import { listIdsSignature, normalizeListIds, type ListIds } from "./utils/listIds";
 import { VERSION } from "./utils/version";
 import { reconcileInvoiceMovements } from "./utils/invoiceFinanceBridge";
@@ -611,6 +612,14 @@ function App() {
   // Initial states set to empty / defaults without localStorage or mockData loaders
   const [leads, setLeads] = useState<Lead[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const lastKnownTasksRef = useRef<Task[] | null>(null);
+
+  // Request browser notification permission once user is logged in
+  useEffect(() => {
+    if (currentUser) {
+      requestBrowserNotificationPermission();
+    }
+  }, [currentUser?.email]);
   const [unifiedEntries, setUnifiedEntries] = useState<UnifiedEntryRegistry[]>([]);
   const [unifiedEntriesData, setUnifiedEntriesData] = useState<Record<string, UnifiedEntryRow[]>>({});
   const [customDashboards, setCustomDashboards] = useState<CustomDashboard[]>([]);
@@ -2188,6 +2197,55 @@ ${log.payload || ''}
         setLeads((prev) => JSON.stringify(prev) === JSON.stringify(data.leads) ? prev : data.leads);
       }
       if (data.tasks && Array.isArray(data.tasks)) {
+        const incomingTasks = data.tasks as Task[];
+        const prevTasks = lastKnownTasksRef.current;
+        const myName = currentUser?.name;
+
+        if (prevTasks !== null && myName) {
+          const prevMap = new Map<string, Task>(prevTasks.map((t) => [t.id, t]));
+
+          incomingTasks.forEach((task) => {
+            const old = prevMap.get(task.id);
+
+            // 1. Newly created or reassigned task assigned to current user (and not created by me)
+            const isAssignedToMe =
+              task.owner === myName ||
+              (Array.isArray(task.assignedUsers) && task.assignedUsers.includes(myName));
+            const wasAssignedToMe =
+              old &&
+              (old.owner === myName ||
+                (Array.isArray(old.assignedUsers) && old.assignedUsers.includes(myName)));
+
+            if (isAssignedToMe && (!old || !wasAssignedToMe)) {
+              if (task.createdBy !== myName) {
+                sendBrowserNotification(
+                  t("New Task Assigned", "Priradená nová úloha", "Új feladat kijelölve"),
+                  {
+                    body: `${task.title} (${task.createdBy || t("System", "Systém", "Rendszer")})`,
+                    onClickUrl: "tasks",
+                  }
+                );
+              }
+            }
+
+            // 2. Task created by me has been marked as completed/done
+            const isDone = String(task.status || "").toLowerCase() === "done";
+            const wasDone = old ? String(old.status || "").toLowerCase() === "done" : false;
+
+            if (old && !wasDone && isDone && task.createdBy === myName) {
+              const completer = task.completedBy || task.owner || task.assignedUsers?.[0] || t("Team member", "Člen tímu", "Csapattag");
+              sendBrowserNotification(
+                t("Task Completed", "Úloha dokončená", "Feladat befejezve"),
+                {
+                  body: `${task.title} · ${t("Completed by", "Dokončil", "Befejezte")}: ${completer}`,
+                  onClickUrl: "tasks",
+                }
+              );
+            }
+          });
+        }
+
+        lastKnownTasksRef.current = incomingTasks;
         setTasks((prev) => JSON.stringify(prev) === JSON.stringify(data.tasks) ? prev : data.tasks);
       }
       if (data.users && Array.isArray(data.users)) {
