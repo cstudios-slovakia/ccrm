@@ -229,50 +229,61 @@ type CalendarPanelConfig = {
 };
 
 // Colour scheme of one time bucket in the left-hand task panel. My Calendar and
-// Global Tasks render the same bucket card through renderTaskBucket, so the two
-// panels stay identical instead of drifting apart in two copies of the markup.
+// Global Tasks render the same bucket sections through renderTaskBucket.
 const BUCKET_TONES = {
     rose: {
         shell: "bg-rose-50/50 border border-rose-100",
+        headerBg: "bg-rose-50/60 hover:bg-rose-50/90",
         title: "text-rose-600",
         chevron: "text-rose-500 group-hover/btn:text-rose-700",
         emptyBorder: "border-rose-200/50",
         emptyText: "text-rose-500",
+        border: "border-rose-100",
     },
     indigo: {
         shell: "bg-indigo-50/30 border border-indigo-100",
+        headerBg: "bg-indigo-50/40 hover:bg-indigo-50/70",
         title: "text-indigo-600",
         chevron: "text-indigo-500 group-hover/btn:text-indigo-700",
         emptyBorder: "border-indigo-200/50",
         emptyText: "text-indigo-400",
+        border: "border-indigo-100",
     },
     amber: {
         shell: "bg-amber-50/30 border border-amber-100",
+        headerBg: "bg-amber-50/40 hover:bg-amber-50/70",
         title: "text-amber-600",
         chevron: "text-amber-500 group-hover/btn:text-amber-700",
         emptyBorder: "border-amber-200/50",
         emptyText: "text-amber-500",
+        border: "border-amber-100",
     },
     slate: {
         shell: "bg-slate-50/50 border border-slate-200",
+        headerBg: "bg-slate-50 hover:bg-slate-100/70",
         title: "text-slate-600",
         chevron: "text-slate-500 group-hover/btn:text-slate-700",
         emptyBorder: "border-slate-200",
         emptyText: "text-slate-400",
+        border: "border-slate-200",
     },
     emerald: {
         shell: "bg-emerald-50/40 border border-emerald-200/80",
+        headerBg: "bg-emerald-50/50 hover:bg-emerald-50/80",
         title: "text-emerald-700",
         chevron: "text-emerald-500 group-hover/btn:text-emerald-700",
         emptyBorder: "border-emerald-200/50",
         emptyText: "text-emerald-600",
+        border: "border-emerald-100",
     },
     sky: {
         shell: "bg-sky-50/40 border border-sky-100",
+        headerBg: "bg-sky-50/50 hover:bg-sky-50/80",
         title: "text-sky-700",
         chevron: "text-sky-500 group-hover/btn:text-sky-700",
         emptyBorder: "border-sky-200/50",
         emptyText: "text-sky-500",
+        border: "border-sky-100",
     },
 } as const;
 
@@ -2215,33 +2226,30 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         );
     };
 
-    const renderProjectBadge = (task: Task, maxWidth: string) => {
-        const projName = projectNameFor(task);
-        if (!projName) return null;
-        return (
-            <span className={`text-[9px] font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md truncate ${maxWidth}`}>
-                <FolderKanban className="h-2.5 w-2.5 shrink-0 text-slate-400" />
-                <span className="truncate">{projName}</span>
-            </span>
-        );
-    };
-
     const renderTaskCard = (task: Task) => {
         const isSelected = selectedTaskIds.has(task.id);
+        const priorityColor =
+            task.priority === "high"
+                ? "text-rose-500 fill-rose-500/20"
+                : task.priority === "medium"
+                  ? "text-amber-500 fill-amber-500/20"
+                  : "text-slate-400";
+
         return (
             <div
                 key={task.id}
-                className={`${isCompact ? "p-2.5" : "p-3.5"} rounded-2xl ${
+                className={`group px-3.5 py-2.5 transition-colors border-b border-slate-100 last:border-b-0 flex items-center justify-between gap-3 text-xs ${
                     isSelected
-                        ? "bg-indigo-50/50 ring-1 ring-indigo-300/80 border-indigo-300"
-                        : "bg-white border-slate-200/80 hover:bg-slate-50/70 hover:border-slate-300"
-                } border shadow-sm flex gap-3 transition-all relative overflow-hidden`}
+                        ? "bg-indigo-50/70"
+                        : "bg-white hover:bg-slate-50/90"
+                } relative`}
             >
                 {task.isLocking && (
-                    <div className="absolute top-0 right-0 w-1.5 h-full bg-rose-500" />
+                    <div className="absolute top-0 right-0 w-1 h-full bg-rose-500" />
                 )}
 
-                <div className="flex items-center pt-0.5 shrink-0">
+                {/* Left side: checkbox, status select, priority icon, title, description, lead */}
+                <div className="flex items-center gap-2.5 min-w-0 flex-1">
                     <input
                         type="checkbox"
                         checked={isSelected}
@@ -2249,66 +2257,124 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             e.stopPropagation();
                             handleToggleSelect(task.id);
                         }}
-                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600"
+                        className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600 shrink-0"
                         aria-label={`Select ${task.title}`}
                     />
+
+                    <div
+                        className="w-[96px] shrink-0"
+                        style={
+                            {
+                                "--task-status-bg": `${taskStateColors[task.status] || "#64748b"}15`,
+                                "--task-status-color": taskStateColors[task.status] || "#64748b",
+                                "--task-status-border": `${taskStateColors[task.status] || "#64748b"}35`,
+                            } as React.CSSProperties
+                        }
+                    >
+                        <CustomSelect
+                            value={task.status}
+                            disabled={!mayEditTask(task)}
+                            size="sm"
+                            onChange={(newStatus) => {
+                                const now = new Date();
+                                const completedAtStr = isDoneState(newStatus)
+                                    ? toLocalDateStr(now) +
+                                      " " +
+                                      now.toTimeString().split(" ")[0].substring(0, 5)
+                                    : undefined;
+                                const completedByName = isDoneState(newStatus)
+                                    ? currentUser?.name || defaultUserName
+                                    : undefined;
+
+                                setTasks((prev) =>
+                                    prev.map((t) =>
+                                        t.id === task.id
+                                            ? {
+                                                  ...t,
+                                                  status: newStatus,
+                                                  completedBy: completedByName,
+                                                  completedAt: completedAtStr,
+                                              }
+                                            : t,
+                                    ),
+                                );
+                            }}
+                            className="!bg-[var(--task-status-bg)] !text-[var(--task-status-color)] !border-[var(--task-status-border)] !text-[10px] !py-0.5 !px-2 font-black uppercase tracking-wider truncate"
+                            options={taskStates.map((st) => ({ value: st, label: stateLabel(st) }))}
+                        />
+                    </div>
+
+                    {/* Priority Flame Icon right before task title */}
+                    <span
+                        title={`${t("Priority", "Priorita", "Prioritás")}: ${priorityLabel(task.priority)}`}
+                        className="shrink-0 flex items-center"
+                    >
+                        <Flame className={`h-3.5 w-3.5 ${priorityColor}`} />
+                    </span>
+
+                    {/* Task Title & optional badges */}
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <span
+                            onClick={() => setEditingTask(task)}
+                            className="font-bold text-slate-800 truncate cursor-pointer hover:text-indigo-600 transition-colors"
+                            title={task.title}
+                        >
+                            {task.title}
+                        </span>
+
+                        {isDelegatedByMe(task) && (
+                            <span
+                                title={t(
+                                    "You created this task for someone else. It stays on your calendar so you can follow it up.",
+                                    "Túto úlohu ste vytvorili pre niekoho iného. Vo vašom kalendári zostáva, aby ste ju mohli sledovať.",
+                                    "Ezt a feladatot másnak hozta létre. A naptárában marad, hogy nyomon követhesse.",
+                                )}
+                                className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded border bg-violet-50 text-violet-600 border-violet-200 cursor-help shrink-0"
+                            >
+                                {t("Delegated", "Delegované", "Delegálva")}
+                                {task.assignedUsers?.[0]
+                                    ? ` · ${task.assignedUsers[0]}`
+                                    : ""}
+                            </span>
+                        )}
+
+                        {renderLeadBadge(task, "max-w-[120px]")}
+
+                        {projectNameFor(task) && (
+                            <span className="text-[9px] font-bold text-purple-700 flex items-center gap-1 bg-purple-50 px-1.5 py-0.5 rounded-md truncate max-w-[120px] shrink-0">
+                                <FolderKanban className="h-2.5 w-2.5 shrink-0 text-purple-500" />
+                                <span className="truncate">{projectNameFor(task)}</span>
+                            </span>
+                        )}
+                    </div>
                 </div>
 
-                <div
-                    className="max-w-[110px]"
-                style={
-                    {
-                        "--task-status-bg": `${taskStateColors[task.status] || "#64748b"}15`,
-                        "--task-status-color": taskStateColors[task.status] || "#64748b",
-                        "--task-status-border": `${taskStateColors[task.status] || "#64748b"}35`,
-                    } as React.CSSProperties
-                }
-            >
-                <CustomSelect
-                    value={task.status}
-                    disabled={!mayEditTask(task)}
-                    size="sm"
-                    onChange={(newStatus) => {
-                        const now = new Date();
-                        const completedAtStr = isDoneState(newStatus)
-                            ? toLocalDateStr(now) +
-                              " " +
-                              now.toTimeString().split(" ")[0].substring(0, 5)
-                            : undefined;
-                        const completedByName = isDoneState(newStatus)
-                            ? currentUser?.name || defaultUserName
-                            : undefined;
+                {/* Right side: Due badge, Assignee, Actions */}
+                <div className="flex items-center gap-2 shrink-0">
+                    <span className="inline-flex items-center gap-1 bg-indigo-50/80 px-2 py-0.5 rounded-md border border-indigo-100/70 text-indigo-700 text-[10px] font-bold tabular-nums">
+                        <Clock className="h-2.5 w-2.5 shrink-0 text-indigo-500" />
+                        <span>
+                            {formatTaskDate(task.deadline)} ·{" "}
+                            {formatTimeDisplay(task.deadlineTime || "23:59")}
+                        </span>
+                    </span>
 
-                        setTasks((prev) =>
-                            prev.map((t) =>
-                                t.id === task.id
-                                    ? {
-                                          ...t,
-                                          status: newStatus,
-                                          completedBy: completedByName,
-                                          completedAt: completedAtStr,
-                                      }
-                                    : t,
-                            ),
-                        );
-                    }}
-                    className="!bg-[var(--task-status-bg)] !text-[var(--task-status-color)] !border-[var(--task-status-border)] font-black uppercase tracking-wider truncate"
-                    options={taskStates.map((st) => ({ value: st, label: stateLabel(st) }))}
-                />
-            </div>
+                    {task.assignedUsers && task.assignedUsers.length > 0 && (
+                        <span className="text-[9px] font-bold text-slate-600 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md truncate max-w-[100px]">
+                            <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 shrink-0" />
+                            <span className="truncate">
+                                {task.assignedUsers.join(", ")}
+                            </span>
+                        </span>
+                    )}
 
-            <div className="flex-1 space-y-1.5 min-w-0">
-                <div className="flex items-start justify-between gap-1.5">
-                    <h4 className="text-sm font-black text-slate-800 truncate">
-                        {task.title}
-                    </h4>
-                    <div className="flex items-center gap-0.5 shrink-0">
+                    <div className="flex items-center gap-0.5">
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
                                 handleArchiveTask(task);
                             }}
-                            className="p-1 hover:bg-slate-100 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 rounded-lg text-slate-400 hover:text-slate-600 transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-35"
+                            className="p-1 hover:bg-slate-100 active:scale-95 rounded-md text-slate-400 hover:text-slate-600 transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-35"
                             disabled={!mayArchiveTask(task)}
                             title={
                                 mayArchiveTask(task)
@@ -2322,14 +2388,12 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         >
                             <ArchiveIcon className="h-3.5 w-3.5" />
                         </button>
-                        {/* The drawer opens for everyone who can see the
-                            task; without edit rights it renders read-only. */}
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
                                 setEditingTask(task);
                             }}
-                            className="p-1 hover:bg-slate-100 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 rounded-lg text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+                            className="p-1 hover:bg-slate-100 active:scale-95 rounded-md text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
                             title={
                                 mayEditTask(task)
                                     ? t(
@@ -2352,87 +2416,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         </button>
                     </div>
                 </div>
-                {!isCompact && task.description && (
-                    <p className="text-xs font-semibold text-slate-500 line-clamp-1">
-                        {task.description}
-                    </p>
-                )}
-                <div className="flex flex-wrap items-center gap-2">
-                    <span
-                        className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border ${
-                            task.priority === "high"
-                                ? "bg-rose-50 text-rose-600 border-rose-200"
-                                : task.priority === "medium"
-                                  ? "bg-amber-50 text-amber-600 border-amber-200"
-                                  : "bg-slate-50 text-slate-600 border-slate-200"
-                        }`}
-                    >
-                        {priorityLabel(task.priority)}
-                    </span>
-
-                    {/* On your calendar because you created it, not because it is
-                        yours to do — say so, and name who is on the hook. */}
-                    {isDelegatedByMe(task) && (
-                        <span
-                            title={t(
-                                "You created this task for someone else. It stays on your calendar so you can follow it up.",
-                                "Túto úlohu ste vytvorili pre niekoho iného. Vo vašom kalendári zostáva, aby ste ju mohli sledovať.",
-                                "Ezt a feladatot másnak hozta létre. A naptárában marad, hogy nyomon követhesse.",
-                            )}
-                            className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md border bg-violet-50 text-violet-600 border-violet-200 cursor-help"
-                        >
-                            {t("Delegated", "Delegované", "Delegálva")}
-                            {task.assignedUsers?.[0]
-                                ? ` · ${task.assignedUsers[0]}`
-                                : ""}
-                        </span>
-                    )}
-
-                    {!isCompact && task.startDate && (
-                        <span className="text-[9px] font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-2 py-1 rounded-lg transition-colors hover:bg-slate-200/70">
-                            <CalendarIcon className="h-2.5 w-2.5 shrink-0 stroke-[2.5]" />
-                            <span className="uppercase tracking-wider text-slate-400">
-                                {t("Start", "Začiatok", "Kezdés")}
-                            </span>
-                            <span className="text-slate-700">
-                                {formatTaskDate(task.startDate)}
-                            </span>
-                        </span>
-                    )}
-
-                    <span className="inline-flex max-w-full items-start gap-1.5 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100 text-indigo-600 transition-colors hover:bg-indigo-100/70">
-                        <Clock className="h-2.5 w-2.5 shrink-0 mt-px stroke-[2.5]" />
-                        <span className="flex min-w-0 flex-col leading-tight">
-                            <span className="text-[8px] font-bold uppercase tracking-wider text-indigo-400">
-                                {t("Due", "Termín", "Határidő")}
-                            </span>
-                            <span className="text-[9px] font-black tabular-nums break-words">
-                                {formatTaskDate(task.deadline)} ·{" "}
-                                {formatTimeDisplay(task.deadlineTime || "23:59")}
-                            </span>
-                        </span>
-                    </span>
-
-                    {renderLeadBadge(task, "max-w-[140px]")}
-
-                    {projectNameFor(task) && (
-                        <span className="text-[9px] font-bold text-purple-700 flex items-center gap-1 bg-purple-50 px-1.5 py-0.5 rounded-md truncate max-w-[140px]">
-                            <FolderKanban className="h-2.5 w-2.5 shrink-0" />
-                            <span className="truncate">{projectNameFor(task)}</span>
-                        </span>
-                    )}
-
-                    {task.assignedUsers && task.assignedUsers.length > 0 && (
-                        <span className="text-[9px] font-bold text-indigo-600 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-[120px]">
-                            <span className="h-1 w-1 rounded-full bg-indigo-500 shrink-0" />
-                            <span className="truncate">
-                                {task.assignedUsers.join(", ")}
-                            </span>
-                        </span>
-                    )}
-                </div>
             </div>
-        </div>
         );
     };
 
@@ -2624,44 +2608,36 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         );
 
         return (
-            <div
-                className={`${tone.shell} rounded-3xl p-5 shadow-sm transition-all`}
-            >
+            <div className="border-b border-slate-200 last:border-b-0">
                 {collapsible ? (
                     <button
                         onClick={opts.onToggle}
-                        className="w-full flex items-center justify-between text-left focus:outline-none group/btn cursor-pointer"
+                        className={`w-full px-4 py-2.5 flex items-center justify-between text-left focus:outline-none cursor-pointer transition-colors ${tone.headerBg}`}
                     >
                         {heading}
                         <span className={`transition-colors ${tone.chevron}`}>
                             {isOpen ? (
-                                <ChevronUp className="h-5 w-5" />
+                                <ChevronUp className="h-4 w-4" />
                             ) : (
-                                <ChevronDown className="h-5 w-5" />
+                                <ChevronDown className="h-4 w-4" />
                             )}
                         </span>
                     </button>
                 ) : (
-                    <div className="w-full flex items-center justify-between text-left">
+                    <div className={`w-full px-4 py-2.5 flex items-center justify-between text-left ${tone.headerBg}`}>
                         {heading}
                     </div>
                 )}
                 {isOpen && (
-                    <div
-                        className={`mt-4 ${collapsible ? "animate-in fade-in slide-in-from-top-2 duration-200" : ""}`}
-                    >
+                    <div className={collapsible ? "animate-in fade-in slide-in-from-top-1 duration-150" : ""}>
                         {opts.tasks.length === 0 ? (
-                            <div
-                                className={`p-4 border-2 border-dashed bg-white/50 rounded-2xl text-center ${tone.emptyBorder}`}
-                            >
-                                <span
-                                    className={`text-xs font-bold ${tone.emptyText}`}
-                                >
+                            <div className="px-4 py-2.5 bg-slate-50/40 text-center">
+                                <span className="text-[11px] font-semibold text-slate-400 italic">
                                     {opts.emptyLabel}
                                 </span>
                             </div>
                         ) : (
-                            <div className="space-y-3">
+                            <div className="divide-y divide-slate-100 bg-white">
                                 {opts.tasks.map(renderTaskCard)}
                             </div>
                         )}
@@ -2963,43 +2939,45 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     right. Below lg the two stack into a single column. */}
                 <div className="flex-1 min-h-0 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,480px)_minmax(0,1fr)]">
                     {/* LEFT: MISSED / TODAY / UPCOMING */}
-                    <div className="flex flex-col min-w-0 min-h-0 h-auto space-y-6 overflow-visible lg:h-full lg:overflow-y-auto lg:pr-2 pb-2 lg:pb-0">
-                        {renderTaskBucket({
-                            tone: "rose",
-                            icon: <AlertCircle className="h-5 w-5" />,
-                            title: t("Missed", "Zmeškané", "Lejárt"),
-                            tasks: globalOverdue,
-                            emptyLabel: t(
-                                "No missed tasks!",
-                                "Žiadne zmeškané úlohy!",
-                                "Nincs lemaradás!",
-                            ),
-                        })}
-                        {renderTaskBucket({
-                            tone: "indigo",
-                            icon: <CheckSquare className="h-5 w-5" />,
-                            title: t("Today", "Dnes", "Ma"),
-                            tasks: globalToday,
-                            emptyLabel: t(
-                                "Nothing due today.",
-                                "Dnes nie je nič v termíne.",
-                                "Ma nincs esedékes feladat.",
-                            ),
-                        })}
-                        {renderTaskBucket({
-                            tone: "slate",
-                            icon: <CalendarIcon className="h-5 w-5" />,
-                            title: t("Upcoming", "Nadchádzajúce", "Közelgő"),
-                            tasks: globalUpcoming,
-                            emptyLabel: t(
-                                "No upcoming tasks.",
-                                "Žiadne nadchádzajúce úlohy.",
-                                "Nincsenek közelgő feladatok.",
-                            ),
-                            expanded: isGlobalUpcomingExpanded,
-                            onToggle: () =>
-                                setIsGlobalUpcomingExpanded((open) => !open),
-                        })}
+                    <div className="flex flex-col min-w-0 min-h-0 h-auto overflow-visible lg:h-full lg:overflow-y-auto lg:pr-2 pb-2 lg:pb-0">
+                        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden flex flex-col">
+                            {renderTaskBucket({
+                                tone: "rose",
+                                icon: <AlertCircle className="h-4 w-4" />,
+                                title: t("Missed", "Zmeškané", "Lejárt"),
+                                tasks: globalOverdue,
+                                emptyLabel: t(
+                                    "No missed tasks!",
+                                    "Žiadne zmeškané úlohy!",
+                                    "Nincs lemaradás!",
+                                ),
+                            })}
+                            {renderTaskBucket({
+                                tone: "indigo",
+                                icon: <CheckSquare className="h-4 w-4" />,
+                                title: t("Today", "Dnes", "Ma"),
+                                tasks: globalToday,
+                                emptyLabel: t(
+                                    "Nothing due today.",
+                                    "Dnes nie je nič v termíne.",
+                                    "Ma nincs esedékes feladat.",
+                                ),
+                            })}
+                            {renderTaskBucket({
+                                tone: "slate",
+                                icon: <CalendarIcon className="h-4 w-4" />,
+                                title: t("Upcoming", "Nadchádzajúce", "Közelgő"),
+                                tasks: globalUpcoming,
+                                emptyLabel: t(
+                                    "No upcoming tasks.",
+                                    "Žiadne nadchádzajúce úlohy.",
+                                    "Nincsenek közelgő feladatok.",
+                                ),
+                                expanded: isGlobalUpcomingExpanded,
+                                onToggle: () =>
+                                    setIsGlobalUpcomingExpanded((open) => !open),
+                            })}
+                        </div>
                     </div>
 
                     {/* RIGHT: THE TEAM WORKLOAD STACKED ONE MEMBER PER ROW,
@@ -3218,109 +3196,112 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 </button>
             </div>
 
-            {/* Delegated & Completed by Assignee — top priority review section */}
-            {delegatedCompletedTasks.length > 0 &&
-                renderTaskBucket({
-                    tone: "emerald",
-                    icon: <CheckCircle2 className="h-5 w-5" />,
-                    title: t(
-                        "Delegated Completed",
-                        "Dokončené delegované úlohy",
-                        "Elvégzett delegált feladatok",
-                    ),
-                    tasks: delegatedCompletedTasks,
-                    emptyLabel: t(
-                        "No completed delegated tasks.",
-                        "Žiadne dokončené delegované úlohy.",
-                        "Nincs befejezett delegált feladat.",
-                    ),
-                    expanded: isDelegatedCompletedExpanded,
-                    onToggle: () =>
-                        setIsDelegatedCompletedExpanded(
-                            !isDelegatedCompletedExpanded,
+            {/* One unified card for all task sections */}
+            <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden flex flex-col">
+                {/* Delegated & Completed by Assignee — top priority review section */}
+                {delegatedCompletedTasks.length > 0 &&
+                    renderTaskBucket({
+                        tone: "emerald",
+                        icon: <CheckCircle2 className="h-4 w-4" />,
+                        title: t(
+                            "Delegated Completed",
+                            "Dokončené delegované úlohy",
+                            "Elvégzett delegált feladatok",
                         ),
+                        tasks: delegatedCompletedTasks,
+                        emptyLabel: t(
+                            "No completed delegated tasks.",
+                            "Žiadne dokončené delegované úlohy.",
+                            "Nincs befejezett delegált feladat.",
+                        ),
+                        expanded: isDelegatedCompletedExpanded,
+                        onToggle: () =>
+                            setIsDelegatedCompletedExpanded(
+                                !isDelegatedCompletedExpanded,
+                            ),
+                    })}
+
+                {/* Overdue / Missed — always visible */}
+                {renderTaskBucket({
+                    tone: "rose",
+                    icon: <AlertCircle className="h-4 w-4" />,
+                    title: t("Overdue", "Zmeškané", "Lejárt"),
+                    tasks: overdueTasks,
+                    emptyLabel: t(
+                        "No overdue tasks!",
+                        "Žiadne zmeškané úlohy!",
+                        "Nincs lemaradás!",
+                    ),
                 })}
 
-            {/* Overdue / Missed — always visible */}
-            {renderTaskBucket({
-                tone: "rose",
-                icon: <AlertCircle className="h-5 w-5" />,
-                title: t("Overdue", "Zmeškané", "Lejárt"),
-                tasks: overdueTasks,
-                emptyLabel: t(
-                    "No overdue tasks!",
-                    "Žiadne zmeškané úlohy!",
-                    "Nincs lemaradás!",
-                ),
-            })}
-
-            {/* Today — always visible */}
-            {renderTaskBucket({
-                tone: "indigo",
-                icon: <CheckSquare className="h-5 w-5" />,
-                title: t("Today", "Dnes", "Ma"),
-                tasks: todayTasks,
-                emptyLabel: t(
-                    "All caught up!",
-                    "Všetko hotové!",
-                    "Minden kész!",
-                ),
-            })}
-
-            {/* Tomorrow */}
-            {renderTaskBucket({
-                tone: "amber",
-                icon: <CalendarIcon className="h-5 w-5" />,
-                title: t("Tomorrow", "Zajtra", "Holnap"),
-                tasks: tomorrowTasks,
-                emptyLabel: t(
-                    "No tasks for tomorrow.",
-                    "Žiadne úlohy na zajtra.",
-                    "Nincs feladat holnapra.",
-                ),
-                expanded: isTomorrowExpanded,
-                onToggle: () =>
-                    setIsTomorrowExpanded(!isTomorrowExpanded),
-            })}
-
-            {/* Future */}
-            {renderTaskBucket({
-                tone: "slate",
-                icon: <CalendarIcon className="h-5 w-5" />,
-                title: t("Upcoming", "Nadchádzajúce", "Közelgő"),
-                tasks: futureTasks,
-                emptyLabel: t(
-                    "No upcoming tasks.",
-                    "Žiadne nadchádzajúce úlohy.",
-                    "Nincsenek közelgő feladatok.",
-                ),
-                expanded: isFutureExpanded,
-                onToggle: () =>
-                    setIsFutureExpanded(!isFutureExpanded),
-            })}
-
-            {/* Delegated Active to Others */}
-            {delegatedActiveTasks.length > 0 &&
-                renderTaskBucket({
-                    tone: "sky",
-                    icon: <Users className="h-5 w-5" />,
-                    title: t(
-                        "Delegated to Others",
-                        "Delegované na kolegov",
-                        "Kollégáknak delegálva",
-                    ),
-                    tasks: delegatedActiveTasks,
+                {/* Today — always visible */}
+                {renderTaskBucket({
+                    tone: "indigo",
+                    icon: <CheckSquare className="h-4 w-4" />,
+                    title: t("Today", "Dnes", "Ma"),
+                    tasks: todayTasks,
                     emptyLabel: t(
-                        "No active delegated tasks.",
-                        "Žiadne aktívne delegované úlohy.",
-                        "Nincs aktív delegált feladat.",
+                        "All caught up!",
+                        "Všetko hotové!",
+                        "Minden kész!",
                     ),
-                    expanded: isDelegatedActiveExpanded,
-                    onToggle: () =>
-                        setIsDelegatedActiveExpanded(
-                            !isDelegatedActiveExpanded,
-                        ),
                 })}
+
+                {/* Tomorrow */}
+                {renderTaskBucket({
+                    tone: "amber",
+                    icon: <CalendarIcon className="h-4 w-4" />,
+                    title: t("Tomorrow", "Zajtra", "Holnap"),
+                    tasks: tomorrowTasks,
+                    emptyLabel: t(
+                        "No tasks for tomorrow.",
+                        "Žiadne úlohy na zajtra.",
+                        "Nincs feladat holnapra.",
+                    ),
+                    expanded: isTomorrowExpanded,
+                    onToggle: () =>
+                        setIsTomorrowExpanded(!isTomorrowExpanded),
+                })}
+
+                {/* Future */}
+                {renderTaskBucket({
+                    tone: "slate",
+                    icon: <CalendarIcon className="h-4 w-4" />,
+                    title: t("Future", "Budúce", "Jövőbeli"),
+                    tasks: futureTasks,
+                    emptyLabel: t(
+                        "No future tasks.",
+                        "Žiadne budúce úlohy.",
+                        "Nincsenek jövőbeli feladatok.",
+                    ),
+                    expanded: isFutureExpanded,
+                    onToggle: () =>
+                        setIsFutureExpanded(!isFutureExpanded),
+                })}
+
+                {/* Delegated Active to Others */}
+                {delegatedActiveTasks.length > 0 &&
+                    renderTaskBucket({
+                        tone: "sky",
+                        icon: <Users className="h-4 w-4" />,
+                        title: t(
+                            "Delegated to Others",
+                            "Delegované na kolegov",
+                            "Kollégáknak delegálva",
+                        ),
+                        tasks: delegatedActiveTasks,
+                        emptyLabel: t(
+                            "No active delegated tasks.",
+                            "Žiadne aktívne delegované úlohy.",
+                            "Nincs aktív delegált feladat.",
+                        ),
+                        expanded: isDelegatedActiveExpanded,
+                        onToggle: () =>
+                            setIsDelegatedActiveExpanded(
+                                !isDelegatedActiveExpanded,
+                            ),
+                    })}
+            </div>
         </div>
     );
 
