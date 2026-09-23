@@ -22,6 +22,8 @@ import {
     Trash2,
     Users,
     ArrowUpRight,
+    ArrowRight,
+    Flame,
     CheckCircle2,
     PlusCircle,
     History,
@@ -257,6 +259,20 @@ const BUCKET_TONES = {
         chevron: "text-slate-500 group-hover/btn:text-slate-700",
         emptyBorder: "border-slate-200",
         emptyText: "text-slate-400",
+    },
+    emerald: {
+        shell: "bg-emerald-50/40 border border-emerald-200/80",
+        title: "text-emerald-700",
+        chevron: "text-emerald-500 group-hover/btn:text-emerald-700",
+        emptyBorder: "border-emerald-200/50",
+        emptyText: "text-emerald-600",
+    },
+    sky: {
+        shell: "bg-sky-50/40 border border-sky-100",
+        title: "text-sky-700",
+        chevron: "text-sky-500 group-hover/btn:text-sky-700",
+        emptyBorder: "border-sky-200/50",
+        emptyText: "text-sky-500",
     },
 } as const;
 
@@ -500,6 +516,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // Upcoming stay collapsible.
     const [isTomorrowExpanded, setIsTomorrowExpanded] = useState(false);
     const [isFutureExpanded, setIsFutureExpanded] = useState(false);
+    const [isDelegatedCompletedExpanded, setIsDelegatedCompletedExpanded] = useState(true);
+    const [isDelegatedActiveExpanded, setIsDelegatedActiveExpanded] = useState(false);
 
     // Global Tasks: the left panel keeps the same convention — Missed and Today
     // are always open, Upcoming (tomorrow and later) folds away.
@@ -894,6 +912,36 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 ),
             );
         }
+    };
+
+    const handleReopenDelegatedTask = (task: Task) => {
+        const openStatus = taskStates.find((st) => !isDoneState(st)) || "todo";
+        setTasks((prev) =>
+            prev.map((t) =>
+                t.id === task.id
+                    ? {
+                          ...t,
+                          status: openStatus,
+                          completedBy: undefined,
+                          completedAt: undefined,
+                          archived: false,
+                      }
+                    : t,
+            ),
+        );
+        if (typeof (window as any).showToast === "function") {
+            (window as any).showToast(
+                t(
+                    "Task reopened and moved back to active status.",
+                    "Úloha bola znovu otvorená a vrátená medzi aktívne.",
+                    "Feladat újranyitva és visszaállítva aktív állapotba.",
+                ),
+            );
+        }
+    };
+
+    const handleDismissDelegatedTask = (task: Task) => {
+        handleArchiveTask(task);
     };
 
     const handleDeleteTask = async (task: Task) => {
@@ -1393,12 +1441,18 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         );
     };
 
-    // --- TASK BUCKETS ---
     const isTaskOverdue = (task: Task) => isTaskOverdueShared(task, taskStates, nowLocalStamp());
 
+    const isTaskAssignedToMe = (t: Task) => isTaskAssignedTo(t, myName);
+    const myDirectTasks = myTasks.filter((t) => isTaskAssignedToMe(t) || !isDelegatedByMe(t));
+    const delegatedTasks = myTasks.filter((t) => isDelegatedByMe(t));
+
+    const delegatedCompletedTasks = delegatedTasks.filter((t) => isDoneState(t.status)).sort(byDeadline);
+    const delegatedActiveTasks = delegatedTasks.filter((t) => !isDoneState(t.status)).sort(byDeadline);
+
     const tomorrowStr = toLocalDateStr(new Date(today.getTime() + 86400000));
-    const overdueTasks = myTasks.filter((t) => isTaskOverdue(t)).sort(byDeadline);
-    const todayTasks = myTasks
+    const overdueTasks = myDirectTasks.filter((t) => isTaskOverdue(t)).sort(byDeadline);
+    const todayTasks = myDirectTasks
         .filter(
             (t) =>
                 t.deadline === todayStr &&
@@ -1406,10 +1460,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 !isDoneState(t.status),
         )
         .sort(byDeadlineTime);
-    const tomorrowTasks = myTasks
+    const tomorrowTasks = myDirectTasks
         .filter((t) => t.deadline === tomorrowStr && !isDoneState(t.status))
         .sort(byDeadlineTime);
-    const futureTasks = myTasks
+    const futureTasks = myDirectTasks
         .filter((t) => t.deadline > tomorrowStr && !isDoneState(t.status))
         .sort(byDeadline);
 
@@ -2401,6 +2455,29 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 </button>
             </div>
 
+            {/* Delegated & Completed by Assignee — top priority review section */}
+            {delegatedCompletedTasks.length > 0 &&
+                renderTaskBucket({
+                    tone: "emerald",
+                    icon: <CheckCircle2 className="h-5 w-5" />,
+                    title: t(
+                        "Delegated Completed",
+                        "Dokončené delegované úlohy",
+                        "Elvégzett delegált feladatok",
+                    ),
+                    tasks: delegatedCompletedTasks,
+                    emptyLabel: t(
+                        "No completed delegated tasks.",
+                        "Žiadne dokončené delegované úlohy.",
+                        "Nincs befejezett delegált feladat.",
+                    ),
+                    expanded: isDelegatedCompletedExpanded,
+                    onToggle: () =>
+                        setIsDelegatedCompletedExpanded(
+                            !isDelegatedCompletedExpanded,
+                        ),
+                })}
+
             {/* Overdue / Missed — always visible */}
             {renderTaskBucket({
                 tone: "rose",
@@ -2458,6 +2535,29 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 onToggle: () =>
                     setIsFutureExpanded(!isFutureExpanded),
             })}
+
+            {/* Delegated Active to Others */}
+            {delegatedActiveTasks.length > 0 &&
+                renderTaskBucket({
+                    tone: "sky",
+                    icon: <Users className="h-5 w-5" />,
+                    title: t(
+                        "Delegated to Others",
+                        "Delegované na kolegov",
+                        "Kollégáknak delegálva",
+                    ),
+                    tasks: delegatedActiveTasks,
+                    emptyLabel: t(
+                        "No active delegated tasks.",
+                        "Žiadne aktívne delegované úlohy.",
+                        "Nincs aktív delegált feladat.",
+                    ),
+                    expanded: isDelegatedActiveExpanded,
+                    onToggle: () =>
+                        setIsDelegatedActiveExpanded(
+                            !isDelegatedActiveExpanded,
+                        ),
+                })}
         </div>
     );
 
@@ -2881,9 +2981,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         <CalendarIcon className="h-6 w-6 text-indigo-600" />
                         {viewMode === "calendar"
                             ? t(
-                                  "My Calendar",
-                                  "Môj kalendár",
-                                  "Saját naptár",
+                                  "My Tasks",
+                                  "Moje úlohy",
+                                  "Saját feladatok",
                               )
                             : viewMode === "global"
                               ? t(
@@ -2939,7 +3039,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
                             }`}
                         >
-                            {t("My Calendar", "Môj kalendár", "Saját naptár")}
+                            {t("My Tasks", "Moje úlohy", "Saját feladatok")}
                         </button>
                         <button
                             onClick={() => setViewMode("global")}
