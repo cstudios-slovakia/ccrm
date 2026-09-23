@@ -55,6 +55,33 @@ import {
     type TaskAccess,
 } from "../utils/taskSelectors";
 
+// Format a Date as a LOCAL calendar date (YYYY-MM-DD). Task deadlines are stored
+// as plain local date strings, so we must NOT go through toISOString() (which
+// converts to UTC and, in timezones ahead of UTC, shifts the day back by one —
+// making tasks appear on the wrong calendar cell and breaking day-click matching).
+const toLocalDateStr = (d: Date): string => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+};
+
+// Cookie helper for calendar scope / display mode
+const getCalendarScopeCookie = (): "month" | "week" | "timeline" | "hide" => {
+    if (typeof document === "undefined") return "month";
+    const match = document.cookie.match(/(?:^|;\s*)ccrm_task_calendar_scope=([^;]+)/);
+    const val = match ? decodeURIComponent(match[1]) : "";
+    if (val === "month" || val === "week" || val === "timeline" || val === "hide") {
+        return val;
+    }
+    return "month";
+};
+
+const setCalendarScopeCookie = (scope: "month" | "week" | "timeline" | "hide") => {
+    if (typeof document === "undefined") return;
+    document.cookie = `ccrm_task_calendar_scope=${encodeURIComponent(scope)}; path=/; max-age=31536000; SameSite=Lax`;
+};
+
 // Reusable calendar date-range filter (item 9) — reuses the overview CalendarPane range picker
 // inside a compact popover with month navigation. Used by the Global Tasks and Archive views.
 const DateRangeCalendarFilter: React.FC<{
@@ -169,16 +196,6 @@ const DateRangeCalendarFilter: React.FC<{
     );
 };
 
-// Format a Date as a LOCAL calendar date (YYYY-MM-DD). Task deadlines are stored
-// as plain local date strings, so we must NOT go through toISOString() (which
-// converts to UTC and, in timezones ahead of UTC, shifts the day back by one —
-// making tasks appear on the wrong calendar cell and breaking day-click matching).
-const toLocalDateStr = (d: Date): string => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-};
 
 // Calendar geometry, shared by every tab that draws a calendar (My Calendar,
 // Global Tasks, Archive). Kept as plain functions of an anchor date so each tab
@@ -472,21 +489,6 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         });
     };
 
-    // Cookie helper for calendar scope / display mode
-    const getCalendarScopeCookie = (): "month" | "week" | "timeline" | "hide" => {
-        if (typeof document === "undefined") return "month";
-        const match = document.cookie.match(/(?:^|;\s*)ccrm_task_calendar_scope=([^;]+)/);
-        const val = match ? decodeURIComponent(match[1]) : "";
-        if (val === "month" || val === "week" || val === "timeline" || val === "hide") {
-            return val;
-        }
-        return "month";
-    };
-
-    const setCalendarScopeCookie = (scope: "month" | "week" | "timeline" | "hide") => {
-        if (typeof document === "undefined") return;
-        document.cookie = `ccrm_task_calendar_scope=${encodeURIComponent(scope)}; path=/; max-age=31536000; SameSite=Lax`;
-    };
 
     const [currentDate, setCurrentDate] = useState(new Date());
     const [viewMode, setViewMode] = useState<"calendar" | "archive" | "global">(
