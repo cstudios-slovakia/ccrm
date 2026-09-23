@@ -15,7 +15,6 @@ import {
     ChevronUp,
     Settings,
     RotateCcw,
-    List,
     Archive as ArchiveIcon,
     Clock,
     FolderKanban,
@@ -551,9 +550,6 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             }
             return next;
         });
-
-    // Compact view toggle (item 10) — denser task cards for large lists
-    const [isCompact, setIsCompact] = useState(false);
 
     // Calendar-based date-range filters for Global tasks & Archive (item 9)
     const [globalDateStart, setGlobalDateStart] = useState<Date | null>(null);
@@ -3150,58 +3146,23 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     : "lg:h-full lg:overflow-y-auto overflow-visible h-auto pr-2 pb-6 lg:pb-0"
             }`}
         >
-            {/* Create New Task Button + Compact view toggle */}
-            <div className="flex items-center gap-2">
-                <button
-                    onClick={() => {
-                        if (!taskAccess.create) return;
-                        resetNewTaskForm();
-                        setIsAddDrawerOpen(true);
-                    }}
-                    className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-indigo-600/20 transition-all active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 flex items-center justify-center gap-2 cursor-pointer border-2 border-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={!taskAccess.create}
-                >
-                    <Plus className="h-4 w-4 stroke-[3]" />
-                    {t(
-                        "Create New Task",
-                        "Vytvoriť novú úlohu",
-                        "Új feladat",
-                    )}
-                </button>
-                <button
-                    type="button"
-                    onClick={handleSelectAllVisible}
-                    title={t("Select all visible tasks", "Vybrať všetky zobrazené úlohy", "Összes látható feladat kijelölése")}
-                    className={`shrink-0 py-2.5 px-3.5 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-[0.99] flex items-center justify-center gap-1.5 cursor-pointer border-2 ${
-                        areAllVisibleSelected
-                            ? "bg-indigo-50 text-indigo-700 border-indigo-200 shadow-sm"
-                            : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600"
-                    }`}
-                >
-                    <CheckSquare className="h-4 w-4 stroke-[2.5]" />
-                    <span>
-                        {areAllVisibleSelected
-                            ? t("Deselect all", "Zrušiť výber", "Kijelölés törlése")
-                            : t("Select all", "Vybrať všetky", "Összes kijelölése")}
-                    </span>
-                </button>
-                <button
-                    onClick={() => setIsCompact((c) => !c)}
-                    title={t(
-                        "Toggle compact view",
-                        "Prepnúť kompaktné zobrazenie",
-                        "Kompakt nézet váltása",
-                    )}
-                    className={`shrink-0 py-2.5 px-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer border-2 ${
-                        isCompact
-                            ? "bg-indigo-600 text-white border-indigo-500 shadow-lg shadow-indigo-600/20"
-                            : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600"
-                    }`}
-                >
-                    <List className="h-4 w-4 stroke-[3]" />
-                    {t("Compact", "Kompaktné", "Kompakt")}
-                </button>
-            </div>
+            {/* Create New Task Button */}
+            <button
+                onClick={() => {
+                    if (!taskAccess.create) return;
+                    resetNewTaskForm();
+                    setIsAddDrawerOpen(true);
+                }}
+                className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-indigo-600/20 transition-all active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 flex items-center justify-center gap-2 cursor-pointer border-2 border-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                disabled={!taskAccess.create}
+            >
+                <Plus className="h-4 w-4 stroke-[3]" />
+                {t(
+                    "Create New Task",
+                    "Vytvoriť novú úlohu",
+                    "Új feladat",
+                )}
+            </button>
 
             {/* One unified card for all task sections (including delegated tasks grouped in the same divisions) */}
             <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden flex flex-col">
