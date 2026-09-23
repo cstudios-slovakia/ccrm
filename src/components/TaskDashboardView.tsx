@@ -504,7 +504,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     // Timeline view filter states
     const [timelineFilter, setTimelineFilter] = useState<
-        "all" | "created" | "completed" | "due"
+        "all" | "created" | "completed"
     >("all");
     const [timelineSearch, setTimelineSearch] = useState("");
     const [timelineSort, setTimelineSort] = useState<"newest" | "oldest">(
@@ -3426,68 +3426,87 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     interface TimelineEvent {
         id: string;
-        type: "created" | "completed" | "due";
+        type: "created" | "completed";
         task: Task;
         dateStr: string;
         timestamp: number;
         timeDisplay: string;
+        actor: string;
     }
 
     const renderTimelineView = () => {
-        // Collect relevant events from myTasks
+        // Collect audit log events from tasks assigned to me or created by me
         const rawEvents: TimelineEvent[] = [];
+        const now = Date.now();
 
-        myTasks.forEach((task) => {
-            // Created event
-            const rawCreated = (task as any).createdAt || task.startDate;
+        // Only include tasks which I assigned or I was assigned to
+        const relevantTasks = tasks.filter((task) => {
+            const createdByMe = isTaskCreatedBy(task, myName);
+            const assignedToMe = isTaskAssignedTo(task, myName);
+            return createdByMe || assignedToMe;
+        });
+
+        relevantTasks.forEach((task) => {
+            // 1. Task Created event (strictly past or present, never in future)
+            let createdTimestamp: number | null = null;
+            const rawCreated = (task as any).createdAt || (task as any).created_at;
             if (rawCreated) {
-                const cDate = new Date(rawCreated);
-                if (!isNaN(cDate.getTime())) {
-                    const cDateStr = toLocalDateStr(cDate);
-                    const hours = String(cDate.getHours()).padStart(2, "0");
-                    const mins = String(cDate.getMinutes()).padStart(2, "0");
-                    rawEvents.push({
-                        id: `${task.id}-created`,
-                        type: "created",
-                        task,
-                        dateStr: cDateStr,
-                        timestamp: cDate.getTime(),
-                        timeDisplay: `${hours}:${mins}`,
-                    });
+                const d = new Date(rawCreated);
+                if (!isNaN(d.getTime())) createdTimestamp = d.getTime();
+            } else if (task.id.startsWith("task-")) {
+                const parts = task.id.split("-");
+                const ts = Number(parts[1]);
+                if (!isNaN(ts) && ts > 1600000000000 && ts <= now) {
+                    createdTimestamp = ts;
+                }
+            }
+            if (!createdTimestamp && task.startDate) {
+                const d = new Date(task.startDate);
+                if (!isNaN(d.getTime()) && d.getTime() <= now) {
+                    createdTimestamp = d.getTime();
+                }
+            }
+            if (!createdTimestamp && task.deadline) {
+                const d = new Date(task.deadline);
+                if (!isNaN(d.getTime()) && d.getTime() <= now) {
+                    createdTimestamp = d.getTime();
                 }
             }
 
-            // Completed event
+            if (createdTimestamp && createdTimestamp <= now) {
+                const cDate = new Date(createdTimestamp);
+                const cDateStr = toLocalDateStr(cDate);
+                const hours = String(cDate.getHours()).padStart(2, "0");
+                const mins = String(cDate.getMinutes()).padStart(2, "0");
+                rawEvents.push({
+                    id: `${task.id}-created`,
+                    type: "created",
+                    task,
+                    dateStr: cDateStr,
+                    timestamp: createdTimestamp,
+                    timeDisplay: `${hours}:${mins}`,
+                    actor: task.createdBy || task.owner || unknownCompletedBy,
+                });
+            }
+
+            // 2. Task Completed event
             if (isDoneState(task.status) && task.completedAt) {
-                const compDate = new Date(task.completedAt);
-                if (!isNaN(compDate.getTime())) {
-                    const compDateStr = toLocalDateStr(compDate);
-                    const hours = String(compDate.getHours()).padStart(2, "0");
-                    const mins = String(compDate.getMinutes()).padStart(2, "0");
+                const compDate = new Date(task.completedAt.replace(" ", "T"));
+                const validDate = !isNaN(compDate.getTime()) ? compDate : new Date(task.completedAt);
+                if (!isNaN(validDate.getTime()) && validDate.getTime() <= now) {
+                    const compDateStr = toLocalDateStr(validDate);
+                    const hours = String(validDate.getHours()).padStart(2, "0");
+                    const mins = String(validDate.getMinutes()).padStart(2, "0");
                     rawEvents.push({
                         id: `${task.id}-completed`,
                         type: "completed",
                         task,
                         dateStr: compDateStr,
-                        timestamp: compDate.getTime(),
+                        timestamp: validDate.getTime(),
                         timeDisplay: `${hours}:${mins}`,
+                        actor: task.completedBy || task.owner || myName,
                     });
                 }
-            }
-
-            // Due event
-            if (task.deadline) {
-                const [year, month, day] = task.deadline.split("-").map(Number);
-                const [h, m] = (task.deadlineTime || "23:59").split(":").map(Number);
-                const dueDate = new Date(year, (month || 1) - 1, day || 1, h || 23, m || 59);
-                rawEvents.push({
-                    id: `${task.id}-due`,
-                    type: "due",
-                    task,
-                    dateStr: task.deadline,
-                    timestamp: dueDate.getTime(),
-                    timeDisplay: formatTimeDisplay(task.deadlineTime || "23:59"),
-                });
             }
         });
 
@@ -3499,15 +3518,16 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 const titleMatch = ev.task.title.toLowerCase().includes(q);
                 const descMatch = (ev.task.description || "").toLowerCase().includes(q);
                 const creatorMatch = (ev.task.createdBy || "").toLowerCase().includes(q);
+                const actorMatch = ev.actor.toLowerCase().includes(q);
                 const assignedMatch = (ev.task.assignedUsers || []).some((u) =>
                     u.toLowerCase().includes(q),
                 );
-                return titleMatch || descMatch || creatorMatch || assignedMatch;
+                return titleMatch || descMatch || creatorMatch || actorMatch || assignedMatch;
             }
             return true;
         });
 
-        // Sort events
+        // Sort events by timestamp
         filtered.sort((a, b) =>
             timelineSort === "newest"
                 ? b.timestamp - a.timestamp
@@ -3549,13 +3569,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             </div>
                             <div>
                                 <h3 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
-                                    {t("Task Activity & Timeline", "Aktivita a časová os úloh", "Feladat aktivitás és idővonal")}
+                                    {t("Task Activity Log", "Záznam aktivity úloh", "Feladat aktivitási napló")}
                                     <span className="text-[10px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
-                                        {filtered.length} {t("events", "udalostí", "esemény")}
+                                        {filtered.length} {t("events", "záznamov", "bejegyzés")}
                                     </span>
                                 </h3>
                                 <p className="text-[11px] text-slate-400 font-medium">
-                                    {t("Chronological activity log of creations, deadlines, and completions", "Chronologický prehľad vytvorenia, termínov a dokončenia úloh", "Létrehozások, határidők és befejezések időrendi naplója")}
+                                    {t("Audit log of task creations and completions for tasks you assigned or are assigned to", "Záznam vytvorených a dokončených úloh, ktoré ste zadali alebo vám boli pridelené", "A létrehozott és befejezett feladatok naplója, amelyeket Ön adott ki vagy Önre bíztak")}
                                 </p>
                             </div>
                         </div>
@@ -3566,7 +3586,6 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 [
                                     { id: "all", label: t("All", "Všetko", "Mind") },
                                     { id: "created", label: t("Created", "Vytvorené", "Létrehozva") },
-                                    { id: "due", label: t("Due", "Termíny", "Határidők") },
                                     { id: "completed", label: t("Completed", "Dokončené", "Befejezve") },
                                 ] as const
                             ).map((filter) => (
@@ -3593,7 +3612,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 type="text"
                                 value={timelineSearch}
                                 onChange={(e) => setTimelineSearch(e.target.value)}
-                                placeholder={t("Search timeline tasks, users...", "Hľadať v časovej osi, používateľoch...", "Keresés a feladatok, felhasználók között...")}
+                                placeholder={t("Search timeline activity, users...", "Hľadať v záznamoch aktivity, používateľoch...", "Keresés a naplóban, felhasználók között...")}
                                 className="w-full pl-8.5 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
                             />
                             {timelineSearch && (
@@ -3631,7 +3650,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         <div className="h-64 flex flex-col items-center justify-center text-center p-6 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
                             <History className="h-8 w-8 text-slate-300 mb-2" />
                             <p className="text-xs font-extrabold text-slate-600">
-                                {t("No timeline events found", "Nenašli sa žiadne udalosti", "Nem találhatók idővonal események")}
+                                {t("No activity events found", "Nenašli sa žiadne záznamy aktivity", "Nem találhatók aktivitási bejegyzések")}
                             </p>
                             <p className="text-[11px] text-slate-400 mt-1 max-w-xs">
                                 {t("Try adjusting your filters or search terms.", "Skúste upraviť filtre alebo hľadaný text.", "Próbálja módosítani a szűrőket vagy a keresési feltételeket.")}
@@ -3647,18 +3666,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     </span>
                                     <div className="flex-1 h-px bg-slate-100" />
                                     <span className="text-[10px] font-bold text-slate-400">
-                                        {group.events.length} {t("events", "udalostí", "esemény")}
+                                        {group.events.length} {t("events", "záznamov", "bejegyzés")}
                                     </span>
                                 </div>
 
                                 {/* Events List with vertical track */}
                                 <div className="relative pl-6 space-y-3 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
                                     {group.events.map((ev) => {
-                                        const isDueOverdue =
-                                            ev.type === "due" &&
-                                            !isDoneState(ev.task.status) &&
-                                            isTaskOverdue(ev.task);
-
                                         const overdueDays =
                                             ev.type === "completed" && ev.task.completedAt
                                                 ? calculateOverdueDays(
@@ -3680,19 +3694,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                     className={`absolute -left-6 top-3 h-5 w-5 rounded-full border-2 bg-white flex items-center justify-center z-1 transition-transform group-hover:scale-110 shadow-2xs ${
                                                         ev.type === "created"
                                                             ? "border-emerald-500 text-emerald-600"
-                                                            : ev.type === "completed"
-                                                              ? "border-indigo-500 text-indigo-600"
-                                                              : isDueOverdue
-                                                                ? "border-rose-500 text-rose-600"
-                                                                : "border-amber-500 text-amber-600"
+                                                            : "border-indigo-500 text-indigo-600"
                                                     }`}
                                                 >
                                                     {ev.type === "created" ? (
                                                         <PlusCircle className="h-3 w-3 stroke-[2.5]" />
-                                                    ) : ev.type === "completed" ? (
-                                                        <CheckCircle2 className="h-3 w-3 stroke-[2.5]" />
                                                     ) : (
-                                                        <Clock className="h-3 w-3 stroke-[2.5]" />
+                                                        <CheckCircle2 className="h-3 w-3 stroke-[2.5]" />
                                                     )}
                                                 </div>
 
@@ -3705,18 +3713,12 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                                 className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md flex items-center gap-1 ${
                                                                     ev.type === "created"
                                                                         ? "bg-emerald-100 text-emerald-700"
-                                                                        : ev.type === "completed"
-                                                                          ? "bg-indigo-100 text-indigo-700"
-                                                                          : isDueOverdue
-                                                                            ? "bg-rose-100 text-rose-700"
-                                                                            : "bg-amber-100 text-amber-800"
+                                                                        : "bg-indigo-100 text-indigo-700"
                                                                 }`}
                                                             >
                                                                 {ev.type === "created"
                                                                     ? t("Created", "Vytvorené", "Létrehozva")
-                                                                    : ev.type === "completed"
-                                                                      ? t("Completed", "Dokončené", "Befejezve")
-                                                                      : t("Deadline", "Termín", "Határidő")}
+                                                                    : t("Completed", "Dokončené", "Befejezve")}
                                                             </span>
 
                                                             {/* Event Time */}
@@ -3737,13 +3739,6 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                                     {isLateCompleted
                                                                         ? `${t("Late", "Omeškané", "Késve")} (+${overdueDays}d)`
                                                                         : t("On Time", "Načas", "Időben")}
-                                                                </span>
-                                                            )}
-
-                                                            {/* Overdue tag for uncompleted due events */}
-                                                            {isDueOverdue && (
-                                                                <span className="text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded bg-rose-50 text-rose-600 border border-rose-200/60">
-                                                                    {t("Overdue", "Zmeškané", "Lejárt")}
                                                                 </span>
                                                             )}
                                                         </div>
@@ -3775,37 +3770,44 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                     {/* Task Title */}
                                                     <div
                                                         onClick={() => {
-                                                            if (taskAccess.edit) setEditingTask(ev.task);
+                                                             if (taskAccess.edit) setEditingTask(ev.task);
                                                         }}
                                                         className={`text-xs font-black text-slate-800 hover:text-indigo-600 transition-colors ${
                                                             taskAccess.edit ? "cursor-pointer" : ""
-                                                        } ${isDoneState(ev.task.status) && ev.type !== "completed" ? "line-through text-slate-400" : ""}`}
+                                                        } ${isDoneState(ev.task.status) ? "text-slate-600" : ""}`}
                                                     >
                                                         {ev.task.title}
                                                     </div>
 
-                                                    {/* Metadata Badges (Lead, Project, Assigned) */}
+                                                    {/* What changed & By Who + Metadata Badges */}
                                                     <div className="flex items-center gap-2 flex-wrap pt-0.5">
+                                                        {/* By Who Attribution */}
+                                                        {ev.type === "created" ? (
+                                                            <>
+                                                                <span className="text-[9.5px] font-bold text-slate-700 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md">
+                                                                    <Users className="h-2.5 w-2.5 text-slate-400" />
+                                                                    <span>{t("By", "Od", "Által")}: <strong className="text-slate-800">{ev.actor}</strong></span>
+                                                                </span>
+                                                                {ev.task.assignedUsers && ev.task.assignedUsers.length > 0 && (
+                                                                    <span className="text-[9.5px] font-bold text-indigo-700 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-[150px]">
+                                                                        <span className="h-1 w-1 rounded-full bg-indigo-500 shrink-0" />
+                                                                        <span className="truncate">{t("Assigned to", "Priradené", "Felelős")}: <strong className="text-indigo-900">{ev.task.assignedUsers.join(", ")}</strong></span>
+                                                                    </span>
+                                                                )}
+                                                            </>
+                                                        ) : (
+                                                            <span className="text-[9.5px] font-bold text-emerald-800 flex items-center gap-1 bg-emerald-50 border border-emerald-200/60 px-1.5 py-0.5 rounded-md">
+                                                                <CheckCircle2 className="h-2.5 w-2.5 text-emerald-600" />
+                                                                <span>{t("Completed by", "Dokončil", "Befejezte")}: <strong className="text-emerald-950">{ev.actor}</strong></span>
+                                                            </span>
+                                                        )}
+
+                                                        {/* Lead & Project Badges */}
                                                         {renderLeadBadge(ev.task, "max-w-[140px]")}
                                                         {ev.task.relatedProjectId && projectNameFor(ev.task) && (
                                                             <span className="text-[9px] font-bold text-slate-600 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md truncate max-w-[140px]">
                                                                 <FolderKanban className="h-2.5 w-2.5 text-slate-500 shrink-0" />
                                                                 <span className="truncate">{projectNameFor(ev.task)}</span>
-                                                            </span>
-                                                        )}
-
-                                                        {/* Creator or Assignees */}
-                                                        {ev.type === "created" && ev.task.createdBy && (
-                                                            <span className="text-[9px] font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md">
-                                                                <span>{t("by", "od", "által")}:</span>
-                                                                <span className="text-slate-700">{ev.task.createdBy}</span>
-                                                            </span>
-                                                        )}
-
-                                                        {ev.task.assignedUsers && ev.task.assignedUsers.length > 0 && (
-                                                            <span className="text-[9px] font-bold text-indigo-600 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-[140px]">
-                                                                <span className="h-1 w-1 rounded-full bg-indigo-500 shrink-0" />
-                                                                <span className="truncate">{ev.task.assignedUsers.join(", ")}</span>
                                                             </span>
                                                         )}
                                                     </div>
