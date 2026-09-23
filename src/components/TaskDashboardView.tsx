@@ -523,12 +523,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const [archiveTimingFilter, setArchiveTimingFilter] = useState("all");
 
     // Expand/collapse states for task buckets.
-    // Item 1: Missed (Overdue) and Today are always visible (no collapse) — only Tomorrow and
-    // Upcoming stay collapsible.
+    // Missed (Overdue) and Today are always visible (no collapse) — only Tomorrow and
+    // Future stay collapsible.
     const [isTomorrowExpanded, setIsTomorrowExpanded] = useState(false);
     const [isFutureExpanded, setIsFutureExpanded] = useState(false);
-    const [isDelegatedCompletedExpanded, setIsDelegatedCompletedExpanded] = useState(true);
-    const [isDelegatedActiveExpanded, setIsDelegatedActiveExpanded] = useState(false);
 
     // Global Tasks: the left panel keeps the same convention — Missed and Today
     // are always open, Upcoming (tomorrow and later) folds away.
@@ -2176,12 +2174,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const myDirectTasks = myTasks.filter((t) => isTaskAssignedToMe(t) || !isDelegatedByMe(t));
     const delegatedTasks = myTasks.filter((t) => isDelegatedByMe(t));
 
-    const delegatedCompletedTasks = delegatedTasks.filter((t) => isDoneState(t.status)).sort(byDeadline);
-    const delegatedActiveTasks = delegatedTasks.filter((t) => !isDoneState(t.status)).sort(byDeadline);
-
     const tomorrowStr = toLocalDateStr(new Date(today.getTime() + 86400000));
-    const overdueTasks = myDirectTasks.filter((t) => isTaskOverdue(t)).sort(byDeadline);
-    const todayTasks = myDirectTasks
+    // All personal and delegated tasks are grouped together in the same time divisions:
+    const overdueTasks = myTasks.filter((t) => isTaskOverdue(t)).sort(byDeadline);
+    const todayTasks = myTasks
         .filter(
             (t) =>
                 t.deadline === todayStr &&
@@ -2189,10 +2185,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 !isDoneState(t.status),
         )
         .sort(byDeadlineTime);
-    const tomorrowTasks = myDirectTasks
+    const tomorrowTasks = myTasks
         .filter((t) => t.deadline === tomorrowStr && !isDoneState(t.status))
         .sort(byDeadlineTime);
-    const futureTasks = myDirectTasks
+    const futureTasks = myTasks
         .filter((t) => t.deadline > tomorrowStr && !isDoneState(t.status))
         .sort(byDeadline);
 
@@ -3196,31 +3192,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 </button>
             </div>
 
-            {/* One unified card for all task sections */}
+            {/* One unified card for all task sections (including delegated tasks grouped in the same divisions) */}
             <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden flex flex-col">
-                {/* Delegated & Completed by Assignee — top priority review section */}
-                {delegatedCompletedTasks.length > 0 &&
-                    renderTaskBucket({
-                        tone: "emerald",
-                        icon: <CheckCircle2 className="h-4 w-4" />,
-                        title: t(
-                            "Delegated Completed",
-                            "Dokončené delegované úlohy",
-                            "Elvégzett delegált feladatok",
-                        ),
-                        tasks: delegatedCompletedTasks,
-                        emptyLabel: t(
-                            "No completed delegated tasks.",
-                            "Žiadne dokončené delegované úlohy.",
-                            "Nincs befejezett delegált feladat.",
-                        ),
-                        expanded: isDelegatedCompletedExpanded,
-                        onToggle: () =>
-                            setIsDelegatedCompletedExpanded(
-                                !isDelegatedCompletedExpanded,
-                            ),
-                    })}
-
                 {/* Overdue / Missed — always visible */}
                 {renderTaskBucket({
                     tone: "rose",
@@ -3278,29 +3251,6 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     onToggle: () =>
                         setIsFutureExpanded(!isFutureExpanded),
                 })}
-
-                {/* Delegated Active to Others */}
-                {delegatedActiveTasks.length > 0 &&
-                    renderTaskBucket({
-                        tone: "sky",
-                        icon: <Users className="h-4 w-4" />,
-                        title: t(
-                            "Delegated to Others",
-                            "Delegované na kolegov",
-                            "Kollégáknak delegálva",
-                        ),
-                        tasks: delegatedActiveTasks,
-                        emptyLabel: t(
-                            "No active delegated tasks.",
-                            "Žiadne aktívne delegované úlohy.",
-                            "Nincs aktív delegált feladat.",
-                        ),
-                        expanded: isDelegatedActiveExpanded,
-                        onToggle: () =>
-                            setIsDelegatedActiveExpanded(
-                                !isDelegatedActiveExpanded,
-                            ),
-                    })}
             </div>
         </div>
     );
