@@ -59,6 +59,7 @@ Main table representing potential deals, customers, and client accounts.
 * `status` VARCHAR(50) (e.g. new, contacted, offer sent, accepted, rejected)
 * `source` VARCHAR(50) (e.g. showroom, website, referral)
 * `owner` VARCHAR(100) (assigned project manager)
+* `division` VARCHAR(100) (assigned business division, e.g. Cstudios, Cstudios Budapest)
 * `rating` INT (1-5 star score)
 * `value` DECIMAL(15, 2) (financial deal value)
 * `notes` TEXT
@@ -212,6 +213,7 @@ Individual instances of active project lifecycles.
 * `project_type_id` VARCHAR(50)
 * `lead_id` VARCHAR(50)
 * `client_id` VARCHAR(50)
+* `division` VARCHAR(100) (assigned business division)
 * `status` VARCHAR(50) (active, completed, archived)
 * `created_at` TIMESTAMP
 * `updated_at` TIMESTAMP

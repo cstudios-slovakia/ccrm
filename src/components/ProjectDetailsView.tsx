@@ -98,6 +98,8 @@ interface ProjectDetailsViewProps {
   currentUser?: UserProfile;
   /** False when no outgoing mail server is set up; task e-mail reminders then warn. */
   mailConfigured?: boolean;
+  divisions?: string[];
+  divisionColors?: Record<string, string>;
 }
 
 /**
@@ -138,7 +140,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   taskStateColors,
   taskAccess = FULL_TASK_ACCESS,
   currentUser,
-  mailConfigured
+  mailConfigured,
+  divisions = ["Cstudios", "Cstudios Budapest"],
+  divisionColors = {},
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
   // Removing something is a change, so the delete flag never outranks edit.
@@ -297,6 +301,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const [startDate, setStartDate] = useState("");
   const [finishedAt, setFinishedAt] = useState("");
   const [status, setStatus] = useState("active");
+  const [division, setDivision] = useState("");
   /* Star priority, 1-5, 0 while nobody has rated it. Like the status below it,
      a click saves on the spot. */
   const [rating, setRating] = useState(0);
@@ -416,6 +421,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     startDate: projectStartDate(p) || todayLocal(),
     finishedAt: p.finishedAt || "",
     status: p.status || "active",
+    division: p.division || "",
     rating: ratingValue(p.rating),
     leadId: p.leadId || "",
     clientId: p.clientId || "",
@@ -443,6 +449,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       startDate: startDate || null,
       finishedAt: finishedAt || null,
       status,
+      division: division || null,
       rating,
       leadId: associatedLeadId || null,
       clientId: associatedClientId || null,
@@ -520,6 +527,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     setStartDate(s.startDate);
     setFinishedAt(s.finishedAt);
     setStatus(s.status);
+    setDivision(s.division);
     setRating(s.rating);
     setAssociatedLeadId(s.leadId);
     setAssociatedClientId(s.clientId);
@@ -542,6 +550,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     startDate,
     finishedAt,
     status,
+    division,
     rating,
     leadId: associatedLeadId,
     clientId: associatedClientId,
@@ -1525,6 +1534,46 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   icon: <span className={`h-2.5 w-2.5 rounded-full shrink-0 inline-block ${projectStatusDotClass(o.value)}`} />,
                 }))}
               />
+            </div>
+
+            {/* Division */}
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
+                {getTranslation(userLanguage, "profile.division")}
+              </label>
+              {!canEdit ? (
+                division ? (
+                  <span
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-black uppercase tracking-wider shadow-sm"
+                    style={{
+                      backgroundColor: `${divisionColors[division] || "#3b82f6"}15`,
+                      color: divisionColors[division] || "#3b82f6",
+                      borderColor: `${divisionColors[division] || "#3b82f6"}30`,
+                    }}
+                  >
+                    <Icons.Building2 className="h-3.5 w-3.5 shrink-0" />
+                    {division}
+                  </span>
+                ) : (
+                  <span className="text-slate-300 italic font-semibold text-xs">
+                    {t("No division", "Bez divízie", "Divízió nélkül")}
+                  </span>
+                )
+              ) : (
+                <CustomSelect
+                  value={division}
+                  disabled={!canEdit}
+                  onChange={v => {
+                    if (!canEdit) return;
+                    setDivision(v);
+                  }}
+                  icon={<Icons.Building2 className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
+                  options={[
+                    { value: "", label: t("No division", "Bez divízie", "Divízió nélkül") },
+                    ...divisions.map(d => ({ value: d, label: d })),
+                  ]}
+                />
+              )}
             </div>
 
             {/* Star priority — the same 1-5 rating a lead carries, and the same

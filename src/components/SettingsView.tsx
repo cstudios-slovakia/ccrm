@@ -482,6 +482,10 @@ interface SettingsViewProps {
   setLeadSources: React.Dispatch<React.SetStateAction<string[]>>;
   leadCategories: string[];
   setLeadCategories: React.Dispatch<React.SetStateAction<string[]>>;
+  divisions?: string[];
+  setDivisions?: React.Dispatch<React.SetStateAction<string[]>>;
+  divisionColors?: Record<string, string>;
+  setDivisionColors?: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   /**
    * Only so a renamed or deleted category takes its automatic-project rule with
    * it (Projects -> Settings). The rules themselves are edited over there.
@@ -612,6 +616,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setLeadSources,
   leadCategories,
   setLeadCategories,
+  divisions = ["Cstudios", "Cstudios Budapest"],
+  setDivisions,
+  divisionColors = {},
+  setDivisionColors,
   setProjectAutoCreate,
   leadSourceIds,
   setLeadSourceIds,
@@ -919,6 +927,93 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     const [draggedItem] = items.splice(draggedItemIdx, 1);
     items.splice(targetIdx, 0, draggedItem);
     setLeadCategories(items);
+  };
+
+  // Drag and drop states for divisions
+  const [newDivision, setNewDivision] = React.useState("");
+  const [draggedDivision, setDraggedDivision] = React.useState<string | null>(null);
+  const [dragOverDivisionIndex, setDragOverDivisionIndex] = React.useState<number | null>(null);
+
+  const handleMoveDivisionToIndex = (divName: string, targetIdx: number) => {
+    if (getPermission("traffic_sources") !== "edit" || !setDivisions) return;
+    const items = [...divisions];
+    const draggedItemIdx = items.indexOf(divName);
+    if (draggedItemIdx === -1) return;
+    const [draggedItem] = items.splice(draggedItemIdx, 1);
+    items.splice(targetIdx, 0, draggedItem);
+    setDivisions(items);
+  };
+
+  const handleRenameDivision = (oldName: string, nextName: string) => {
+    if (getPermission("traffic_sources") !== "edit" || !setDivisions) return;
+    const trimmed = nextName.trim();
+    if (!trimmed || trimmed === oldName) return;
+    if (divisions.some(d => d.toLowerCase() === trimmed.toLowerCase())) {
+      (window as any).showToast(
+        userLanguage === "sk" ? "Táto divízia už existuje!" : userLanguage === "hu" ? "Ez a divízió már létezik!" : "This division already exists!"
+      );
+      return;
+    }
+    setDivisions(divisions.map(d => d === oldName ? trimmed : d));
+    setDivisionColors?.(prev => {
+      const next = { ...prev };
+      if (oldName in next) {
+        next[trimmed] = next[oldName];
+        delete next[oldName];
+      }
+      return next;
+    });
+  };
+
+  const handleAddDivision = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (getPermission("traffic_sources") !== "edit" || !setDivisions) return;
+    const val = newDivision.trim();
+    if (!val) return;
+    if (divisions.some(d => d.toLowerCase() === val.toLowerCase())) {
+      (window as any).showToast(
+        userLanguage === "sk" 
+          ? "Táto divízia už existuje!" 
+          : userLanguage === "hu" 
+            ? "Ez a divízió már létezik!" 
+            : "This division already exists!"
+      );
+      return;
+    }
+    setDivisions([...divisions, val]);
+    setDivisionColors?.(prev => ({
+      ...prev,
+      [val]: "#3b82f6"
+    }));
+    setNewDivision("");
+  };
+
+  const handleRemoveDivision = (div: string) => {
+    if (getPermission("traffic_sources") !== "edit" || !setDivisions) return;
+    if (divisions.length <= 1) {
+      (window as any).showToast(
+        userLanguage === "sk" 
+          ? "Vyžaduje sa aspoň jedna divízia!" 
+          : userLanguage === "hu" 
+            ? "Legalább egy divízió megadása szükséges!" 
+            : "At least one division is required!"
+      );
+      return;
+    }
+    if (confirm(
+      userLanguage === "sk" 
+        ? `Naozaj chcete odstrániť divíziu "${div}"?` 
+        : userLanguage === "hu" 
+          ? `Biztosan el szeretné távolítani a(z) "${div}" divíziót?` 
+          : `Are you sure you want to remove the division "${div}"?`
+    )) {
+      setDivisions(divisions.filter((d) => d !== div));
+      setDivisionColors?.(prev => {
+        const next = { ...prev };
+        delete next[div];
+        return next;
+      });
+    }
   };
 
   const handleMoveStatusToIndex = (statusName: string, targetIdx: number) => {
@@ -5439,6 +5534,154 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-indigo-600/10 flex items-center gap-1 shrink-0"
                   >
                     <Plus className="h-3.5 w-3.5" /> {getTranslation(userLanguage, "settings.sources.btn_add_category")}
+                  </button>
+                </form>
+              )}
+            </div>
+
+            {/* Company Divisions configuration card */}
+            <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass mt-6 animate-fade-in">
+              <h3 className="text-sm font-heading font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2 border-b border-slate-200 pb-3">
+                <Building2 className="h-4.5 w-4.5 text-blue-600" /> {getTranslation(userLanguage, "settings.sources.divisions_title")}
+              </h3>
+              
+              <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider text-left">
+                {getTranslation(userLanguage, "settings.sources.divisions_desc")}
+              </p>
+
+              <div className="border border-slate-200/80 rounded-2xl overflow-hidden shadow-inner bg-white/50">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-200/60 select-none">
+                      <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-12 text-center">{getTranslation(userLanguage, "settings.states.th_drag")}</th>
+                      <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-44">{getTranslation(userLanguage, "settings.states.th_color")}</th>
+                      <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">{getTranslation(userLanguage, "settings.sources.th_division_name")}</th>
+                      <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-16 text-center">{getTranslation(userLanguage, "settings.states.th_delete")}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {divisions.map((div, idx) => {
+                      const color = divisionColors[div] || "#3b82f6";
+                      const isDragOver = dragOverDivisionIndex === idx;
+
+                      return (
+                        <tr
+                          key={`div-${div}`}
+                          draggable={getPermission("traffic_sources") === "edit" ? "true" : "false"}
+                          onDragStart={() => {
+                            if (getPermission("traffic_sources") === "edit") {
+                              setDraggedDivision(div);
+                            }
+                          }}
+                          onDragEnd={() => {
+                            setDraggedDivision(null);
+                            setDragOverDivisionIndex(null);
+                          }}
+                          onDragOver={(e) => {
+                            e.preventDefault();
+                            if (getPermission("traffic_sources") === "edit" && draggedDivision && draggedDivision !== div) {
+                              setDragOverDivisionIndex(idx);
+                            }
+                          }}
+                          onDragLeave={() => setDragOverDivisionIndex(null)}
+                          onDrop={(e) => {
+                            e.preventDefault();
+                            setDragOverDivisionIndex(null);
+                            if (draggedDivision) {
+                              handleMoveDivisionToIndex(draggedDivision, idx);
+                              setDraggedDivision(null);
+                            }
+                          }}
+                          className={`border-b border-slate-200/60 hover:bg-slate-50/50 transition-all duration-200 ${
+                            isDragOver ? "bg-blue-50/50 scale-[0.99] border-y-2 border-dashed border-blue-300" : ""
+                          }`}
+                        >
+                          {/* 1. GRIP HANDLE */}
+                          <td className="py-3 px-4 text-center align-middle">
+                            {getPermission("traffic_sources") === "edit" ? (
+                              <GripVertical className="h-4 w-4 text-slate-300 hover:text-slate-500 cursor-grab active:cursor-grabbing inline-block" />
+                            ) : (
+                              <Lock className="h-3 w-3 text-slate-300 inline-block" />
+                            )}
+                          </td>
+
+                          {/* 2. COLOR PICKER */}
+                          <td className="py-3 px-4 align-middle">
+                            <div className="flex items-center gap-2">
+                              {getPermission("traffic_sources") === "edit" ? (
+                                <ColorPicker
+                                  variant="ring"
+                                  value={color}
+                                  onChange={(next) => setDivisionColors?.(prev => ({ ...prev, [div]: next }))}
+                                  title={t("Click to edit color", "Kliknutím upravíte farbu", "Kattintson a szín szerkesztéséhez")}
+                                />
+                              ) : (
+                                <span className="h-3 w-3 rounded-full border border-slate-200 inline-block" style={{ backgroundColor: color }} />
+                              )}
+                              <span className="text-[9px] font-black uppercase text-slate-400">{color}</span>
+                            </div>
+                          </td>
+
+                          {/* 3. DIVISION NAME */}
+                          <td className="py-3 px-4 align-middle">
+                            <InlineRenameName
+                              value={div}
+                              canEdit={getPermission("traffic_sources") === "edit"}
+                              onCommit={(next: string) => handleRenameDivision(div, next)}
+                              renameTitle={t("Rename", "Premenovať", "Átnevezés")}
+                            >
+                              <span
+                                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase border"
+                                style={{
+                                  backgroundColor: `${color}15`,
+                                  color: color,
+                                  borderColor: `${color}35`,
+                                }}
+                              >
+                                <Building2 className="h-3.5 w-3.5 shrink-0" />
+                                {div}
+                              </span>
+                            </InlineRenameName>
+                          </td>
+
+                          {/* 4. DELETE BUTTON */}
+                          <td className="py-3 px-4 text-center align-middle">
+                            {getPermission("traffic_sources") === "edit" && divisions.length > 1 ? (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveDivision(div)}
+                                className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
+                                title={t("Delete division", "Odstrániť divíziu", "Divízió törlése")}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            ) : (
+                              <span className="text-[10px] text-slate-300">—</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Add New Division Form */}
+              {getPermission("traffic_sources") === "edit" && (
+                <form onSubmit={handleAddDivision} className="flex items-center gap-3 pt-2">
+                  <input
+                    type="text"
+                    required
+                    value={newDivision}
+                    onChange={(e) => setNewDivision(e.target.value)}
+                    placeholder={getTranslation(userLanguage, "settings.sources.placeholder_division")}
+                    className="flex-1 px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-blue-500"
+                  />
+                  <button
+                    type="submit"
+                    className="px-4 py-2.5 bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-blue-600/10 flex items-center gap-1 shrink-0"
+                  >
+                    <Plus className="h-3.5 w-3.5" /> {getTranslation(userLanguage, "settings.sources.btn_add_division")}
                   </button>
                 </form>
               )}

@@ -270,6 +270,7 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
         'status' => $inc['status'] ?? 'new',
         'source' => $inc['source'] ?? 'website',
         'owner' => $inc['owner'] ?? $defaultOwner,
+        'division' => $inc['division'] ?? null,
         'value' => isset($inc['value']) ? floatval($inc['value']) : 0.00,
         'rating' => isset($inc['rating']) ? intval($inc['rating']) : 3,
         'phone' => $inc['phone'] ?? null,
@@ -842,6 +843,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'trafficOrigin' => $row['traffic_origin'] ?? '',
             'trafficOriginDetail' => $row['traffic_origin_detail'] ?? '',
             'owner' => $row['owner'],
+            'division' => $row['division'] ?? null,
             'value' => floatval($row['value']),
             'rating' => intval($row['rating']),
             'phone' => $row['phone'] ?? '',
@@ -963,6 +965,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $leadStates = isset($settings['LEAD_STATES']) ? json_decode($settings['LEAD_STATES'], true) : $defaultLists['leadStates'];
     $leadSources = isset($settings['LEAD_SOURCES']) ? json_decode($settings['LEAD_SOURCES'], true) : $defaultLists['leadSources'];
     $leadCategories = isset($settings['LEAD_CATEGORIES']) ? json_decode($settings['LEAD_CATEGORIES'], true) : $defaultLists['leadCategories'];
+    $divisions = isset($settings['DIVISIONS']) ? json_decode($settings['DIVISIONS'], true) : ($defaultLists['divisions'] ?? ['Cstudios', 'Cstudios Budapest']);
+    $divisionColors = (isset($settings['DIVISION_COLORS']) ? json_decode($settings['DIVISION_COLORS'], true) : ['Cstudios' => '#3b82f6', 'Cstudios Budapest' => '#8b5cf6']) ?: (object)[];
     // Every one of these is a map keyed by name on the client. A map the
     // client saved empty ({}) decodes to an empty PHP array here and would be
     // re-encoded as a JSON list ([]), landing in a Record<string,...> state as
@@ -1279,6 +1283,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'leadId' => $pRow['lead_id'] ?? null,
                 'clientId' => $pRow['client_id'] ?? null,
                 'status' => $pRow['status'],
+                'division' => $pRow['division'] ?? null,
                 // Star priority. NULL in the column means nobody ever rated this
                 // project; the client draws 0 and 'never rated' the same way, so
                 // both travel as 0 rather than as a null it would have to guard.
@@ -1784,6 +1789,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'leadStates' => $leadStates,
             'leadSources' => $leadSources,
             'leadCategories' => $leadCategories,
+            'divisions' => $divisions,
+            'divisionColors' => $divisionColors,
             // Empty has to travel as {} for the same reason leadStateSla does.
             'leadSourceIds' => $leadSourceIds ?: (object)[],
             'leadCategoryIds' => $leadCategoryIds ?: (object)[],
@@ -2260,6 +2267,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'LEAD_STATES' => json_encode($s['leadStates'] ?? []),
                 'LEAD_SOURCES' => json_encode($s['leadSources'] ?? []),
                 'LEAD_CATEGORIES' => json_encode($s['leadCategories'] ?? []),
+                'DIVISIONS' => json_encode($s['divisions'] ?? []),
+                'DIVISION_COLORS' => json_encode($s['divisionColors'] ?? []),
                 // Omitted (or empty) means unchanged, the same contract as the
                 // SLA and auto-assignment blobs below: a client that predates
                 // permanent ids must not be able to wipe the map and send every
@@ -2715,7 +2724,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingProjIds = $pdo->query("SELECT `id` FROM `projects`")->fetchAll(PDO::FETCH_COLUMN);
             $processedProjIds = [];
 
-            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `rating`, `deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`, `custom_files_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `rating`=COALESCE(VALUES(`rating`), `rating`), `deadline`=VALUES(`deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`), `custom_files_json`=COALESCE(VALUES(`custom_files_json`), `custom_files_json`)");
+            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `division`, `rating`, `deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`, `custom_files_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `division`=VALUES(`division`), `rating`=COALESCE(VALUES(`rating`), `rating`), `deadline`=VALUES(`deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`), `custom_files_json`=COALESCE(VALUES(`custom_files_json`), `custom_files_json`)");
 
             // Manager assignments are replaced per project, never globally. The old
             // unconditional `DELETE FROM project_managers` assumed every push carried
@@ -2792,6 +2801,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     empty($p['leadId']) ? null : $p['leadId'],
                     empty($p['clientId']) ? null : $p['clientId'],
                     $p['status'] ?? 'active',
+                    !empty($p['division']) ? trim((string)$p['division']) : null,
                     $projRating,
                     $projDeadline,
                     $projDelayReason,
@@ -2964,7 +2974,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $seenTimelineIds = [];
 
             $insLead = $pdo->prepare("INSERT INTO `leads` (
-              `id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `value`, `rating`, `phone`, `email`, 
+              `id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `division`, `value`, `rating`, `phone`, `email`, 
               `company_id`, `tax_id`, `vat_id`, `contact_person`, `website`, `street`, `postal_code`, `country`, 
               `ai_summary`, `ai_summary_fingerprint`, `interest_note`, `referral_lead_id`,
               `establishment_date`, `legal_form`, `sk_nace`, `organization_size`, `ownership_type`, `data_source`, `dissolution_date`, `region`, `district`, `financial_summary`,
@@ -2972,9 +2982,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               `created_at`,
               `follow_ups`,
               `client_category_id`, `archived`
-            ) VALUES (?, ?, ?, ?,?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
-              `name` = VALUES(`name`), `city` = VALUES(`city`), `client_type` = VALUES(`client_type`), `status` = VALUES(`status`), `source` = VALUES(`source`), `owner` = VALUES(`owner`), `value` = VALUES(`value`), `rating` = VALUES(`rating`), `phone` = VALUES(`phone`), `email` = VALUES(`email`), `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`), `contact_person` = VALUES(`contact_person`), `website` = VALUES(`website`), `street` = VALUES(`street`), `postal_code` = VALUES(`postal_code`), `country` = VALUES(`country`), `ai_summary` = VALUES(`ai_summary`), `ai_summary_fingerprint` = VALUES(`ai_summary_fingerprint`), `interest_note` = VALUES(`interest_note`), `referral_lead_id` = VALUES(`referral_lead_id`),
+              `name` = VALUES(`name`), `city` = VALUES(`city`), `client_type` = VALUES(`client_type`), `status` = VALUES(`status`), `source` = VALUES(`source`), `owner` = VALUES(`owner`), `division` = VALUES(`division`), `value` = VALUES(`value`), `rating` = VALUES(`rating`), `phone` = VALUES(`phone`), `email` = VALUES(`email`), `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`), `contact_person` = VALUES(`contact_person`), `website` = VALUES(`website`), `street` = VALUES(`street`), `postal_code` = VALUES(`postal_code`), `country` = VALUES(`country`), `ai_summary` = VALUES(`ai_summary`), `ai_summary_fingerprint` = VALUES(`ai_summary_fingerprint`), `interest_note` = VALUES(`interest_note`), `referral_lead_id` = VALUES(`referral_lead_id`),
               `establishment_date` = VALUES(`establishment_date`), `legal_form` = VALUES(`legal_form`), `sk_nace` = VALUES(`sk_nace`), `organization_size` = VALUES(`organization_size`), `ownership_type` = VALUES(`ownership_type`), `data_source` = VALUES(`data_source`), `dissolution_date` = VALUES(`dissolution_date`), `region` = VALUES(`region`), `district` = VALUES(`district`),
               `vat_validation_result` = VALUES(`vat_validation_result`),
               `follow_ups` = VALUES(`follow_ups`),
@@ -3062,6 +3072,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $l['status'] ?? 'new',
                     $l['source'] ?? 'website',
                     $l['owner'],
+                    !empty($l['division']) ? trim((string)$l['division']) : null,
                     $l['value'] ?? 0.00,
                     $l['rating'] ?? 3,
                     $l['phone'] ?? null,

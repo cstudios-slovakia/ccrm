@@ -133,6 +133,7 @@ export interface Lead {
   status: string;           // Lead state
   source: string;           // Lead source
   owner: string;            // Project manager
+  division?: string | null; // Assigned business division (e.g. Cstudios, Cstudios Budapest)
   value: number;            // Lead value
   createdAt: string;
   rating?: number;          // Star rating (1-5)
@@ -622,6 +623,7 @@ export interface Project {
   leadId?: string | null;
   clientId?: string | null;
   status: string; // one of PROJECT_STATUSES
+  division?: string | null; // Assigned business division (e.g. Cstudios, Cstudios Budapest)
   /**
    * How important this project is, 1-5 stars — the same hand-set priority a
    * lead carries (see {@link Lead.rating}), and filtered and sorted by the same

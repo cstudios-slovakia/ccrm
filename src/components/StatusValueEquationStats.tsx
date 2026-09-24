@@ -383,8 +383,9 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
                           ? "bg-slate-200 text-slate-400"
                           : isLightFg
                             ? "bg-white/25 text-white"
-                            : "bg-black/15 text-slate-900"
+                            : "bg-black/15 text-slate-950"
                       }`}
+                      style={!isDisabled ? { color: textColor } : undefined}
                     >
                       {item.count}
                     </span>

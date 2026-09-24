@@ -56,6 +56,7 @@ import {
     Unlink,
     AlarmClock,
     AlertTriangle,
+    Building2,
 } from "lucide-react";
 import type {
     Lead,
@@ -853,6 +854,8 @@ interface LeadsDatagridProps {
      * collection this view's own permission does not cover.
      */
     taskAccess?: TaskAccess;
+    divisions?: string[];
+    divisionColors?: Record<string, string>;
 }
 
 export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
@@ -892,6 +895,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     currencyCode,
     access = FULL_MODULE_ACCESS,
     taskAccess,
+    divisions = ["Cstudios", "Cstudios Budapest"],
+    divisionColors = {},
 }) => {
     const t = (en: string, sk: string, hu: string) =>
         systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
@@ -1532,6 +1537,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedState, setSelectedState] = useState("all");
     const [selectedSource, setSelectedSource] = useState("all");
+    const [selectedDivision, setSelectedDivision] = useState("all");
     const [selectedType, setSelectedType] = useState("all");
 
     // Offer date filter states
@@ -1629,6 +1635,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             selectedOwner !== "all" ||
             selectedCity !== "all" ||
             selectedSource !== "all" ||
+            selectedDivision !== "all" ||
             selectedType !== "all" ||
             selectedState !== "all" ||
             selectedRating !== "all" ||
@@ -1638,6 +1645,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         selectedOwner,
         selectedCity,
         selectedSource,
+        selectedDivision,
         selectedType,
         selectedState,
         selectedRating,
@@ -1654,6 +1662,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const [newLeadValue, setNewLeadValue] = useState("");
     const [newLeadStatus, setNewLeadStatus] = useState("");
     const [newLeadSource, setNewLeadSource] = useState("");
+    const [newLeadDivision, setNewLeadDivision] = useState("");
     const [newLeadOwner, setNewLeadOwner] = useState("");
     const [newLeadRating, setNewLeadRating] = useState(3);
     const [newLeadCategories, setNewLeadCategories] = useState<string[]>([]);
@@ -1883,6 +1892,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const [leadOwner, setLeadOwner] = useState("");
     const [leadStatus, setLeadStatus] = useState("");
     const [leadSource, setLeadSource] = useState("");
+    const [leadDivision, setLeadDivision] = useState("");
     const [leadRating, setLeadRating] = useState(3);
     const [leadCity, setLeadCity] = useState("");
     const [leadClientType, setLeadClientType] = useState<
@@ -2025,6 +2035,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             setLeadOwner(activeLead.owner);
             setLeadStatus(activeLead.status);
             setLeadSource(activeLead.source);
+            setLeadDivision(activeLead.division || "");
             setLeadRating(activeLead.rating || 3);
             setLeadCity(activeLead.city || "");
             setLeadClientType(activeLead.clientType || "person");
@@ -2817,6 +2828,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         // names, and lower-casing one with capitals on every edit
                         // rewrote the stored value so its colour/label lookups missed.
                         source: leadSource,
+                        division: leadDivision || undefined,
                         rating: leadRating,
                         categories: leadSelectedCategories,
                         referralLeadId: leadReferralId || undefined,
@@ -3840,6 +3852,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             clientType: newLeadType,
             status: newLeadStatus || leadStates[0] || "new",
             source: newLeadSource || leadSources[0] || "website",
+            division: newLeadDivision || undefined,
             owner: newLeadOwner || "",
             value: valNum,
             // Date-only and in LOCAL time: `leads.created_at` is a DATE column, and a
@@ -3862,6 +3875,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         setNewLeadValue("");
         setNewLeadStatus("");
         setNewLeadSource("");
+        setNewLeadDivision("");
         setNewLeadOwner("");
         setNewLeadRating(3);
         setNewLeadCategories([]);
@@ -3912,6 +3926,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     selectedSource === "all" ||
                     (lead.source || "").toLowerCase() ===
                         selectedSource.toLowerCase();
+                const matchesDivision =
+                    selectedDivision === "all" ||
+                    (selectedDivision === "none" && !lead.division) ||
+                    (lead.division || "").toLowerCase() ===
+                        selectedDivision.toLowerCase();
                 const matchesType =
                     selectedType === "all" ||
                     (lead.clientType || "").toLowerCase() ===
@@ -3994,6 +4013,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     matchesSearch &&
                     matchesState &&
                     matchesSource &&
+                    matchesDivision &&
                     matchesType &&
                     matchesOwner &&
                     matchesCity &&
@@ -4007,6 +4027,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         searchQuery,
         selectedState,
         selectedSource,
+        selectedDivision,
         selectedType,
         selectedOwner,
         selectedCity,
@@ -4889,6 +4910,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             setLeadOwner(activeLead.owner);
                                             setLeadStatus(activeLead.status);
                                             setLeadSource(activeLead.source);
+                                            setLeadDivision(activeLead.division || "");
                                             setLeadRating(
                                                 activeLead.rating || 3,
                                             );
@@ -5237,6 +5259,58 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             </div>
                                         )}
                                     </div>
+                                    {/* Division */}
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">
+                                            {getTranslation(
+                                                systemLanguage,
+                                                "profile.division",
+                                            )}
+                                        </label>
+                                        {isEditingLead ? (
+                                            <CustomSelect
+                                                value={leadDivision}
+                                                onChange={(v) =>
+                                                    setLeadDivision(v)
+                                                }
+                                                options={[
+                                                    {
+                                                        value: "",
+                                                        label: t(
+                                                            "No Division",
+                                                            "Bez divízie",
+                                                            "Divízió nélkül",
+                                                        ),
+                                                    },
+                                                    ...divisions.map((d) => ({
+                                                        value: d,
+                                                        label: d,
+                                                    })),
+                                                ]}
+                                            />
+                                        ) : (
+                                            <div className="pt-2 px-3 flex items-center">
+                                                {leadDivision ? (
+                                                    <span
+                                                        className="px-2.5 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all shadow-sm"
+                                                        style={{
+                                                            backgroundColor: `${divisionColors[leadDivision] || "#3b82f6"}15`,
+                                                            color: divisionColors[leadDivision] || "#3b82f6",
+                                                            borderColor: `${divisionColors[leadDivision] || "#3b82f6"}30`,
+                                                        }}
+                                                    >
+                                                        <Building2 className="h-3 w-3 shrink-0" />
+                                                        {leadDivision}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">
+                                                        —
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+
                                     <div className="space-y-1">
                                         <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">
                                             {getTranslation(
@@ -8354,6 +8428,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     setSelectedOwner("all");
                                     setSelectedCity("all");
                                     setSelectedSource("all");
+                                    setSelectedDivision("all");
                                     setSelectedType("all");
                                     setSelectedState("all");
                                     setSelectedRating("all");
@@ -8509,6 +8584,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             onClick={() => {
                                 setNewLeadStatus(leadStates[0] || "");
                                 setNewLeadSource(leadSources[0] || "");
+                                setNewLeadDivision("");
                                 setNewLeadOwner(
                                     autoAssignActive
                                         ? ""
@@ -8623,6 +8699,46 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         ...leadSources.map((src) => ({
                                             value: src.toLowerCase(),
                                             label: src,
+                                        })),
+                                    ]}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Filter: Division */}
+                        <div className="flex flex-col gap-1">
+                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider pl-1">
+                                {getTranslation(
+                                    systemLanguage,
+                                    "profile.division",
+                                )}
+                            </span>
+                            <div className="flex items-center gap-1.5 bg-white border border-slate-200/70 rounded-xl px-2.5 py-1.5">
+                                <Building2 className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                                <CustomSelect
+                                    value={selectedDivision}
+                                    onChange={(v) => setSelectedDivision(v)}
+                                    size="sm"
+                                    unstyled
+                                    className="text-[11px] font-bold text-slate-700 uppercase tracking-wider w-full justify-between gap-2"
+                                    options={[
+                                        {
+                                            value: "all",
+                                            label: getTranslation(
+                                                systemLanguage,
+                                                "filters.all_divisions",
+                                            ),
+                                        },
+                                        {
+                                            value: "none",
+                                            label: getTranslation(
+                                                systemLanguage,
+                                                "filters.no_division",
+                                            ),
+                                        },
+                                        ...divisions.map((d) => ({
+                                            value: d.toLowerCase(),
+                                            label: d,
                                         })),
                                     ]}
                                 />
@@ -11547,6 +11663,36 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             value: source.toLowerCase(),
                                             label: source,
                                         }))}
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                                        <Building2 className="h-3.5 w-3.5 text-blue-500" />{" "}
+                                        {getTranslation(
+                                            systemLanguage,
+                                            "profile.division",
+                                        )}
+                                    </label>
+                                    <CustomSelect
+                                        value={newLeadDivision}
+                                        onChange={(v) =>
+                                            setNewLeadDivision(v)
+                                        }
+                                        className="font-bold"
+                                        options={[
+                                            {
+                                                value: "",
+                                                label: t(
+                                                    "No Division",
+                                                    "Bez divízie",
+                                                    "Divízió nélkül",
+                                                ),
+                                            },
+                                            ...divisions.map((d) => ({
+                                                value: d,
+                                                label: d,
+                                            })),
+                                        ]}
                                     />
                                 </div>
                             </div>

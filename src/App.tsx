@@ -181,6 +181,7 @@ const computeSettingsSig = (s: any): string => {
     s.leadStates ?? [],
     s.leadSources ?? [],
     s.leadCategories ?? [],
+    s.divisions ?? [],
     // Normalized on both sides so an install that has never stored an id map
     // compares equal to the one the server derives. Reduced to a sorted array
     // of pairs because two equal maps with their keys written in a different
@@ -190,6 +191,7 @@ const computeSettingsSig = (s: any): string => {
     s.leadStateColors && Object.keys(s.leadStateColors).length ? s.leadStateColors : null,
     s.leadSourceColors && Object.keys(s.leadSourceColors).length ? s.leadSourceColors : null,
     s.leadCategoryColors && Object.keys(s.leadCategoryColors).length ? s.leadCategoryColors : null,
+    s.divisionColors && Object.keys(s.divisionColors).length ? s.divisionColors : null,
     s.leadStageGroups && Object.keys(s.leadStageGroups).length ? s.leadStageGroups : null,
     s.leadStateParents && Object.keys(s.leadStateParents).length ? s.leadStateParents : null,
     s.leadStateFollowUp && Object.keys(s.leadStateFollowUp).length ? s.leadStateFollowUp : null,
@@ -643,6 +645,15 @@ function App() {
   const [leadCategories, setLeadCategories] = useState<string[]>([
     "Products", "Services"
   ]);
+
+  const [divisions, setDivisions] = useState<string[]>([
+    "Cstudios", "Cstudios Budapest"
+  ]);
+
+  const [divisionColors, setDivisionColors] = useState<Record<string, string>>({
+    "Cstudios": "#3b82f6",
+    "Cstudios Budapest": "#8b5cf6"
+  });
 
   // The permanent id each source / category answers to when a website form
   // names it (`source_id` / `category_id` in the /api/pipeline.php payload).
@@ -1176,6 +1187,8 @@ ${log.payload || ''}
         leadStates,
         leadSources,
         leadCategories,
+        divisions,
+        divisionColors,
         leadSourceIds,
         leadCategoryIds,
         leadStateColors,
@@ -2068,7 +2081,7 @@ ${log.payload || ''}
   useEffect(() => {
     if (!isInstalled || !isInitialSyncResolved) return;
     const currentSig = computeSettingsSig({
-      leadStates, leadSources, leadCategories, leadSourceIds, leadCategoryIds,
+      leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds,
       systemName, systemLanguage, systemCurrency,
       leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups,
       leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors,
@@ -2099,7 +2112,7 @@ ${log.payload || ''}
       // newest values.
       pushStateToServer();
     }, 700);
-  }, [leadStates, leadSources, leadCategories, leadSourceIds, leadCategoryIds, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, isInitialSyncResolved]);
+  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, isInitialSyncResolved]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -2347,6 +2360,8 @@ ${log.payload || ''}
         setLeadStates((prev) => s.leadStates && JSON.stringify(s.leadStates) !== JSON.stringify(prev) ? s.leadStates : prev);
         setLeadSources((prev) => s.leadSources && JSON.stringify(s.leadSources) !== JSON.stringify(prev) ? s.leadSources : prev);
         setLeadCategories((prev) => s.leadCategories && JSON.stringify(s.leadCategories) !== JSON.stringify(prev) ? s.leadCategories : prev);
+        setDivisions((prev) => s.divisions && JSON.stringify(s.divisions) !== JSON.stringify(prev) ? s.divisions : prev);
+        setDivisionColors((prev) => s.divisionColors && JSON.stringify(s.divisionColors) !== JSON.stringify(prev) ? s.divisionColors : prev);
         setLeadStateColors((prev) => s.leadStateColors && JSON.stringify(s.leadStateColors) !== JSON.stringify(prev) ? s.leadStateColors : prev);
         setLeadSourceColors((prev) => s.leadSourceColors && JSON.stringify(s.leadSourceColors) !== JSON.stringify(prev) ? s.leadSourceColors : prev);
         setLeadCategoryColors((prev) => s.leadCategoryColors && JSON.stringify(s.leadCategoryColors) !== JSON.stringify(prev) ? s.leadCategoryColors : prev);
@@ -2654,6 +2669,10 @@ ${log.payload || ''}
           setLeadStateColors={setLeadStateColors}
           leadCategories={leadCategories}
           setLeadCategories={setLeadCategories}
+          divisions={divisions}
+          setDivisions={setDivisions}
+          divisionColors={divisionColors}
+          setDivisionColors={setDivisionColors}
           leadSourceIds={leadSourceIds}
           setLeadSourceIds={setLeadSourceIds}
           leadCategoryIds={leadCategoryIds}
@@ -2831,6 +2850,10 @@ ${log.payload || ''}
           setLeadStateColors={setLeadStateColors}
           leadCategories={leadCategories}
           setLeadCategories={setLeadCategories}
+          divisions={divisions}
+          setDivisions={setDivisions}
+          divisionColors={divisionColors}
+          setDivisionColors={setDivisionColors}
           leadSourceIds={leadSourceIds}
           setLeadSourceIds={setLeadSourceIds}
           leadCategoryIds={leadCategoryIds}
@@ -2902,6 +2925,8 @@ ${log.payload || ''}
             leadStateParents={leadStateParents}
             projectManagerColors={projectManagerColors}
             leadCategories={leadCategories}
+            divisions={divisions}
+            divisionColors={divisionColors}
             leadSourceColors={leadSourceColors}
             leadCategoryColors={leadCategoryColors}
             systemLanguage={userLanguage}
@@ -2939,6 +2964,8 @@ ${log.payload || ''}
             projectAutoCreate={projectAutoCreate}
             setProjectAutoCreate={setProjectAutoCreate}
             leadCategories={leadCategories}
+            divisions={divisions}
+            divisionColors={divisionColors}
             financialRecords={financialRecords}
             setFinancialRecords={updateFinancialRecordsAndSync}
             financialCategories={financialCategories}

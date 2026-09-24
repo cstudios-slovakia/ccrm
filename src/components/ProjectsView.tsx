@@ -9,7 +9,7 @@ import { ProjectSettings } from "./ProjectSettings";
 import { ProjectListViewMenu } from "./ProjectListViewMenu";
 import { CustomSelect } from "./ui/CustomSelect";
 import { StarRating } from "./ui/StarRating";
-import type { Language } from "../utils/translations";
+import { getTranslation, type Language } from "../utils/translations";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import type { ModuleAccess } from "../utils/permissions";
 import { readableOn } from "../utils/accentColor";
@@ -157,6 +157,8 @@ interface ProjectsViewProps {
   currentUser?: UserProfile;
   /** False when no outgoing mail server is set up; task e-mail reminders then warn. */
   mailConfigured?: boolean;
+  divisions?: string[];
+  divisionColors?: Record<string, string>;
 }
 
 export const ProjectsView: React.FC<ProjectsViewProps> = ({
@@ -184,7 +186,9 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   taskStateColors,
   taskAccess,
   currentUser,
-  mailConfigured
+  mailConfigured,
+  divisions = ["Cstudios", "Cstudios Budapest"],
+  divisionColors = {},
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
 
@@ -196,6 +200,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedStatusFilter, setSelectedStatusFilter] = useState("all");
   const [selectedTypeFilter, setSelectedTypeFilter] = useState("all");
+  const [selectedDivisionFilter, setSelectedDivisionFilter] = useState("all");
   const [selectedManagerFilter, setSelectedManagerFilter] = useState("all");
   /* Star priority, same options as the leads list — see utils/rating.ts. */
   const [selectedRatingFilter, setSelectedRatingFilter] = useState("all");
@@ -296,6 +301,10 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       
       const matchesStatus = selectedStatusFilter === "all" || p.status === selectedStatusFilter;
       const matchesType = selectedTypeFilter === "all" || p.projectTypeId === selectedTypeFilter;
+      const matchesDivision =
+        selectedDivisionFilter === "all" ||
+        (selectedDivisionFilter === "none" && !p.division) ||
+        (p.division || "").toLowerCase() === selectedDivisionFilter.toLowerCase();
       const matchesManager =
         selectedManagerFilter === "all" ||
         (selectedManagerFilter === UNASSIGNED_MANAGER
@@ -304,9 +313,9 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       const matchesOverdue = !overdueOnly || overdueIds.has(p.id);
       const matchesRating = matchesRatingFilter(p.rating, selectedRatingFilter);
 
-      return matchesSearch && matchesStatus && matchesType && matchesManager && matchesOverdue && matchesRating;
+      return matchesSearch && matchesStatus && matchesType && matchesDivision && matchesManager && matchesOverdue && matchesRating;
     });
-  }, [projects, projectTypes, leads, searchQuery, selectedStatusFilter, selectedTypeFilter, selectedManagerFilter, selectedRatingFilter, overdueOnly, overdueIds]);
+  }, [projects, projectTypes, leads, searchQuery, selectedStatusFilter, selectedTypeFilter, selectedDivisionFilter, selectedManagerFilter, selectedRatingFilter, overdueOnly, overdueIds]);
 
   /* Deep link: `#projects?edit=<projectId>` opens that project directly.
      "Convert to Project" on a lead has always navigated here with that query,
@@ -487,6 +496,10 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
         const matchesType =
           selectedTypeFilter === "all" || p.projectTypeId === selectedTypeFilter;
+        const matchesDivision =
+          selectedDivisionFilter === "all" ||
+          (selectedDivisionFilter === "none" && !p.division) ||
+          (p.division || "").toLowerCase() === selectedDivisionFilter.toLowerCase();
         const matchesManager =
           selectedManagerFilter === "all" ||
           (selectedManagerFilter === UNASSIGNED_MANAGER
@@ -501,6 +514,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         return (
           matchesSearch &&
           matchesType &&
+          matchesDivision &&
           matchesManager &&
           matchesOverdue &&
           matchesRating
@@ -551,6 +565,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     leads,
     searchQuery,
     selectedTypeFilter,
+    selectedDivisionFilter,
     selectedManagerFilter,
     selectedRatingFilter,
     overdueOnly,
@@ -1068,6 +1083,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         taskAccess={taskAccess}
         currentUser={currentUser}
         mailConfigured={mailConfigured}
+        divisions={divisions}
+        divisionColors={divisionColors}
         onClose={() => {
           setEditingProject(null);
           setEditingProjectType(null);
@@ -1325,6 +1342,21 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 options={[
                   { value: "all", label: t("All Types", "Všetky typy", "Minden típus") },
                   ...projectTypes.map(pt => ({ value: pt.id, label: pt.name })),
+                ]}
+              />
+            </div>
+
+            {/* Division */}
+            <div className="w-full sm:w-auto sm:min-w-[140px] flex-1 sm:flex-initial shrink-0">
+              <CustomSelect
+                className="h-10"
+                icon={<Icons.Building2 className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
+                value={selectedDivisionFilter}
+                onChange={(v) => setSelectedDivisionFilter(v)}
+                options={[
+                  { value: "all", label: getTranslation(userLanguage, "filters.all_divisions") },
+                  { value: "none", label: getTranslation(userLanguage, "filters.no_division") },
+                  ...divisions.map(d => ({ value: d.toLowerCase(), label: d })),
                 ]}
               />
             </div>
@@ -1646,6 +1678,23 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                       <div className="flex items-center gap-1 text-[11px] text-slate-400 font-bold mt-2">
                         <Users className="h-3.5 w-3.5 text-slate-400 shrink-0" />
                         <span className="truncate">{p.managers.join(", ")}</span>
+                      </div>
+                    )}
+
+                    {/* Division */}
+                    {p.division && (
+                      <div className="flex items-center gap-1 text-[11px] font-bold mt-2">
+                        <span
+                          className="px-2 py-0.5 rounded-full border text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-sm"
+                          style={{
+                            backgroundColor: `${divisionColors[p.division] || "#3b82f6"}15`,
+                            color: divisionColors[p.division] || "#3b82f6",
+                            borderColor: `${divisionColors[p.division] || "#3b82f6"}30`,
+                          }}
+                        >
+                          <Icons.Building2 className="h-3 w-3 shrink-0" />
+                          <span>{p.division}</span>
+                        </span>
                       </div>
                     )}
 
