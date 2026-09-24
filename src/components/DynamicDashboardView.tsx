@@ -1330,7 +1330,8 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
             <button
               type="button"
               onClick={() => setIsAddOpen(true)}
-              className={cn(headerButton, "bg-indigo-600 text-white border border-indigo-600 shadow-md shadow-indigo-600/30 hover:bg-indigo-700")}
+              style={dashboard.color ? { backgroundColor: dashboard.color, borderColor: dashboard.color } : undefined}
+              className={cn(headerButton, "bg-indigo-600 text-white border border-indigo-600 shadow-md shadow-indigo-600/30 hover:opacity-90 transition-opacity")}
             >
               <Plus className="h-4 w-4" strokeWidth={2.25} />
               {t("Add widget", "Pridať modul", "Modul hozzáadása")}

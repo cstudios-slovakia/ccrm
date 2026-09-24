@@ -233,7 +233,7 @@ const getWeekDays = (anchor: Date): Date[] => {
 // days independently while sharing one implementation.
 type CalendarPanelConfig = {
     anchor: Date;
-    scope: "month" | "week";
+    scope: "month" | "week" | "timeline" | "hide";
     selectedDay: Date | null;
     onSelectDay: (day: Date | null) => void;
     tasksForDate: (dateStr: string) => Task[];
@@ -2151,7 +2151,6 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     const isTaskOverdue = (task: Task) => isTaskOverdueShared(task, taskStates, nowLocalStamp());
 
-    const isTaskAssignedToMe = (t: Task) => isTaskAssignedTo(t, myName);
     const tomorrowStr = toLocalDateStr(new Date(today.getTime() + 86400000));
     // All personal and delegated tasks are grouped together in the same time divisions:
     const overdueTasks = myTasks.filter((t) => isTaskOverdue(t)).sort(byDeadline);
@@ -3143,7 +3142,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         resetNewTaskForm();
                         setIsAddDrawerOpen(true);
                     }}
-                    className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-indigo-600/20 transition-all active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 flex items-center justify-center gap-2 cursor-pointer border-2 border-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
+                    className="w-full py-2.5 bg-[#ff5d00] hover:bg-[#e05200] text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-orange-500/25 transition-all active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 flex items-center justify-center gap-2 cursor-pointer border-2 border-[#ff701e] disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={!taskAccess.create}
                 >
                     <Plus className="h-4 w-4 stroke-[3]" />
@@ -3154,10 +3153,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     )}
                 </button>
             ) : (
-                <div className="w-full bg-white rounded-3xl border-2 border-indigo-200/90 shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-3 duration-200">
-                    <div className="p-4 bg-gradient-to-r from-indigo-50/80 via-white to-indigo-50/40 border-b border-indigo-100 flex items-center justify-between">
+                <div className="w-full bg-white rounded-3xl border-2 border-orange-200/90 shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-3 duration-200">
+                    <div className="p-4 bg-gradient-to-r from-orange-50/80 via-white to-orange-50/40 border-b border-orange-100 flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                            <span className="p-1.5 rounded-xl bg-indigo-600 text-white shadow-sm">
+                            <span className="p-1.5 rounded-xl bg-[#ff5d00] text-white shadow-sm">
                                 <Plus className="h-4 w-4 stroke-[3]" />
                             </span>
                             <div>
@@ -3182,7 +3181,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         <div className="space-y-1">
                             <label className="text-[9px] font-black text-slate-500 uppercase flex items-center justify-between">
                                 <span>{t("Task Title(s)", "Názov úlohy / úloh", "Feladat címe(i)")}</span>
-                                <span className="text-[9px] font-normal text-indigo-500">
+                                <span className="text-[9px] font-normal text-[#ff5d00]">
                                     {t("1 line = 1 task", "1 riadok = 1 úloha", "1 sor = 1 feladat")}
                                 </span>
                             </label>
@@ -3203,7 +3202,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     "Zadajte názov... (Shift+Enter pre ďalšiu úlohu)",
                                     "Adja meg a feladatot... (Shift+Enter új feladathoz)",
                                 )}
-                                className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none transition-colors text-xs font-semibold placeholder:text-slate-400 leading-relaxed resize-y min-h-[70px]"
+                                className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-200 focus:border-[#ff5d00] focus:outline-none transition-colors text-xs font-semibold placeholder:text-slate-400 leading-relaxed resize-y min-h-[70px]"
                             />
                         </div>
 
@@ -3217,7 +3216,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     required
                                     value={newDeadline}
                                     onChange={(e) => setNewDeadline(e.target.value)}
-                                    className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none text-xs"
+                                    className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-[#ff5d00] focus:outline-none text-xs"
                                 />
                             </div>
                             <div className="space-y-1">
@@ -3352,7 +3351,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             </button>
                             <button
                                 type="submit"
-                                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-xs uppercase tracking-wider shadow-lg shadow-indigo-600/20 transition-all active:scale-[0.99] cursor-pointer"
+                                className="flex-1 py-2.5 bg-[#ff5d00] hover:bg-[#e05200] text-white rounded-xl font-black text-xs uppercase tracking-wider shadow-lg shadow-orange-500/25 transition-all active:scale-[0.99] cursor-pointer"
                             >
                                 {t("Save Task(s)", "Uložiť úlohu(y)", "Mentés")}
                             </button>

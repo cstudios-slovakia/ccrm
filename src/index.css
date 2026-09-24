@@ -926,3 +926,43 @@ dialog[open]::backdrop {
     margin: 0;
   }
 }
+
+/* Aurora Ambient Floating Keyframes */
+@keyframes aurora-pulse-1 {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(30px, 20px, 0) scale(1.08);
+  }
+}
+
+@keyframes aurora-pulse-2 {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(-35px, -25px, 0) scale(1.1);
+  }
+}
+
+@keyframes aurora-pulse-3 {
+  0%, 100% {
+    transform: translate3d(0, 0, 0) scale(1);
+  }
+  50% {
+    transform: translate3d(20px, -30px, 0) scale(1.06);
+  }
+}
+
+.animate-aurora-pulse-1 {
+  animation: aurora-pulse-1 18s ease-in-out infinite;
+}
+
+.animate-aurora-pulse-2 {
+  animation: aurora-pulse-2 22s ease-in-out infinite;
+}
+
+.animate-aurora-pulse-3 {
+  animation: aurora-pulse-3 20s ease-in-out infinite;
+}

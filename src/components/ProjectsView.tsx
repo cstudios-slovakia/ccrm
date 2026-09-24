@@ -898,7 +898,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     <div className="relative select-none" ref={createDropdownRef}>
       <button
         onClick={() => setIsCreateDropdownOpen(!isCreateDropdownOpen)}
-        className="flex items-center gap-1.5 px-5 py-2.5 rounded-2xl bg-indigo-600 text-white font-black text-xs uppercase tracking-wider hover:bg-indigo-700 shadow-md shadow-indigo-600/10 cursor-pointer"
+        className="flex items-center gap-1.5 px-5 py-2.5 rounded-2xl bg-purple-600 text-white font-black text-xs uppercase tracking-wider hover:bg-purple-700 shadow-md shadow-purple-600/20 cursor-pointer"
       >
         <Plus className="h-4.5 w-4.5" />
         <span>{t("New Project", "Nový projekt", "Új projekt")}</span>
@@ -919,7 +919,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               <button
                 key={type.id}
                 onClick={() => handleStartCreateProject(type)}
-                className="w-full text-left px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors flex items-center gap-2 cursor-pointer"
+                className="w-full text-left px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-purple-50 hover:text-purple-600 transition-colors flex items-center gap-2 cursor-pointer"
               >
                 <span className="h-2 w-2 rounded-full" style={{ backgroundColor: type.color }} />
                 <span>{type.name}</span>
@@ -931,7 +931,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               another type without hunting through the settings tab. */}
           <button
             onClick={handleStartCreateProjectType}
-            className="w-full text-left px-4 py-2 mt-1.5 border-t border-slate-100 pt-2.5 text-xs font-bold text-indigo-600 hover:bg-indigo-50 transition-colors flex items-center gap-2 cursor-pointer"
+            className="w-full text-left px-4 py-2 mt-1.5 border-t border-slate-100 pt-2.5 text-xs font-bold text-purple-600 hover:bg-purple-50 transition-colors flex items-center gap-2 cursor-pointer"
           >
             <Plus className="h-3.5 w-3.5 shrink-0" />
             <span>{t("New project type", "Nový typ projektu", "Új projekt típus")}</span>
@@ -1297,7 +1297,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     <button
                       type="button"
                       onClick={handleStartCreateProjectType}
-                      className="inline-flex items-center gap-1.5 mt-4 px-5 py-2.5 rounded-2xl bg-indigo-600 text-white font-black text-xs uppercase tracking-wider hover:bg-indigo-700 shadow-md shadow-indigo-600/10 cursor-pointer"
+                      className="inline-flex items-center gap-1.5 mt-4 px-5 py-2.5 rounded-2xl bg-purple-600 text-white font-black text-xs uppercase tracking-wider hover:bg-purple-700 shadow-md shadow-purple-600/20 cursor-pointer"
                     >
                       <Plus className="h-4.5 w-4.5" />
                       <span>{t("New project type", "Nový typ projektu", "Új projekt típus")}</span>

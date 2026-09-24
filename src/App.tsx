@@ -27,6 +27,7 @@ import { QuickAddClientProvider } from "./components/ui/QuickAddClient";
 import FilePreviewPane from "./components/FilePreviewPane";
 import { FloatingCopilotOrb, type CopilotCorner } from "./components/executive/FloatingCopilotOrb";
 import { CopilotSidebar } from "./components/executive/CopilotSidebar";
+import { AuroraBackground } from "./components/ui/AuroraBackground";
 import { useCurrentScreenContext } from "./hooks/useCurrentScreenContext";
 import { RefreshCw, AlertOctagon, Trash2, Copy } from "lucide-react";
 import { ShaderGradient } from "shadergradient";
@@ -3416,9 +3417,15 @@ ${log.payload || ''}
       canCreate={access.canEdit("leads") || access.canEdit("clients")}
     >
     <div className="flex h-screen overflow-hidden relative font-sans antialiased text-slate-800 bg-slate-50/50">
+      {/* Dynamic Aurora Ambient Background Blobs (Themed per active view) */}
+      <AuroraBackground
+        activeTab={activeTab}
+        customDashboards={customDashboards}
+        unifiedEntries={unifiedEntries}
+      />
 
       {/* Blurred application background layout if not logged in */}
-      <div className={`flex flex-1 overflow-hidden transition-all duration-500 ${!currentUser ? "filter blur-md pointer-events-none select-none" : ""}`}>
+      <div className={`flex flex-1 overflow-hidden transition-all duration-500 relative z-10 ${!currentUser ? "filter blur-md pointer-events-none select-none" : ""}`}>
         {/* Sidebar navigation with role-gated settings visibility */}
         <Sidebar 
           activeTab={activeTab} 

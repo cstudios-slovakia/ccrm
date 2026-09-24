@@ -1832,7 +1832,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
               <button
                 type="button"
                 onClick={() => handleNewWorkflow()}
-                className="px-5 py-3 rounded-2xl bg-[#0b1329] text-white hover:bg-slate-900 shadow-md shadow-[#0b1329]/20 transition-all font-heading font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95 shrink-0"
+                className="px-5 py-3 rounded-2xl bg-purple-800 text-white hover:bg-purple-900 shadow-md shadow-purple-900/20 transition-all font-heading font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95 shrink-0"
               >
                 <Plus className="h-4.5 w-4.5" />
                 {t("Create Workflow", "Vytvoriť workflow", "Új munkafolyamat")}
@@ -1879,7 +1879,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                 <button
                   type="button"
                   onClick={() => handleNewWorkflow()}
-                  className="px-5 py-3 rounded-2xl bg-[#0b1329] text-white hover:bg-slate-900 shadow-md shadow-[#0b1329]/20 transition-all font-heading font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95"
+                  className="px-5 py-3 rounded-2xl bg-purple-800 text-white hover:bg-purple-900 shadow-md shadow-purple-900/20 transition-all font-heading font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95"
                 >
                   <Plus className="h-4.5 w-4.5" />
                   {t("Create Workflow", "Vytvoriť workflow", "Új munkafolyamat")}

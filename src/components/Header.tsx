@@ -774,7 +774,7 @@ export const Header: React.FC<HeaderProps> = ({
                                       : "Create New Task"
                             }
                         >
-                            <CheckSquare className="h-4 w-4 sm:h-5 sm:w-5 text-indigo-600" />
+                            <CheckSquare className="h-4 w-4 sm:h-5 sm:w-5 text-[#ff5d00]" />
                         </button>
                         )}
 
