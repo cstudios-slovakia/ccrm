@@ -3177,7 +3177,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         </button>
                     </div>
 
-                    <form onSubmit={handleCreateTask} className="p-4 space-y-4 text-xs font-bold">
+                    <form onSubmit={handleCreateTask} className="p-3.5 space-y-3 text-xs font-bold">
                         <div className="space-y-1">
                             <label className="text-[9px] font-black text-slate-500 uppercase flex items-center justify-between">
                                 <span>{t("Task Title(s)", "Názov úlohy / úloh", "Feladat címe(i)")}</span>
@@ -3188,7 +3188,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             <textarea
                                 autoFocus
                                 required
-                                rows={3}
+                                rows={2}
                                 value={newTitle}
                                 onChange={(e) => setNewTitle(e.target.value)}
                                 onKeyDown={(e) => {
@@ -3202,11 +3202,12 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     "Zadajte názov... (Shift+Enter pre ďalšiu úlohu)",
                                     "Adja meg a feladatot... (Shift+Enter új feladathoz)",
                                 )}
-                                className="w-full px-3 py-2.5 rounded-xl border-2 border-slate-200 focus:border-[#ff5d00] focus:outline-none transition-colors text-xs font-semibold placeholder:text-slate-400 leading-relaxed resize-y min-h-[70px]"
+                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-[#ff5d00] focus:outline-none transition-colors text-xs font-semibold placeholder:text-slate-400 leading-relaxed resize-y min-h-[50px]"
                             />
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {/* Row 1: Date, Time & Priority */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                             <div className="space-y-1">
                                 <label className="text-[9px] font-black text-slate-500 uppercase">
                                     {t("Deadline Date", "Termín", "Határidő")}
@@ -3216,7 +3217,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     required
                                     value={newDeadline}
                                     onChange={(e) => setNewDeadline(e.target.value)}
-                                    className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-[#ff5d00] focus:outline-none text-xs"
+                                    className="w-full px-2.5 py-1.5 rounded-xl border-2 border-slate-200 focus:border-[#ff5d00] focus:outline-none text-xs h-[34px]"
                                 />
                             </div>
                             <div className="space-y-1">
@@ -3229,36 +3230,36 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     t={t}
                                 />
                             </div>
-                        </div>
-
-                        <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">
-                                {t("Priority", "Priorita", "Prioritás")}
-                            </label>
-                            <div className="grid grid-cols-3 gap-2 bg-slate-50 p-1 rounded-xl border border-slate-200">
-                                {(["low", "medium", "high"] as const).map((prio) => (
-                                    <button
-                                        key={prio}
-                                        type="button"
-                                        onClick={() => setNewPriority(prio)}
-                                        className={`py-1.5 rounded-lg font-black text-[9px] uppercase transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
-                                            newPriority === prio
-                                                ? prio === "high"
-                                                    ? "bg-rose-600 text-white shadow-sm"
-                                                    : prio === "medium"
-                                                      ? "bg-amber-500 text-white shadow-sm"
-                                                      : "bg-slate-600 text-white shadow-sm"
-                                                : "bg-white text-slate-500 hover:bg-slate-100"
-                                        }`}
-                                    >
-                                        {renderPriorityIcon(prio, "h-3 w-3")}
-                                        <span>{priorityLabel(prio)}</span>
-                                    </button>
-                                ))}
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">
+                                    {t("Priority", "Priorita", "Prioritás")}
+                                </label>
+                                <div className="grid grid-cols-3 gap-1 bg-slate-50 p-0.5 rounded-xl border border-slate-200 h-[34px] items-center">
+                                    {(["low", "medium", "high"] as const).map((prio) => (
+                                        <button
+                                            key={prio}
+                                            type="button"
+                                            onClick={() => setNewPriority(prio)}
+                                            className={`py-1 rounded-lg font-black text-[9px] uppercase transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                                                newPriority === prio
+                                                    ? prio === "high"
+                                                        ? "bg-rose-600 text-white shadow-xs"
+                                                        : prio === "medium"
+                                                          ? "bg-amber-500 text-white shadow-xs"
+                                                          : "bg-slate-600 text-white shadow-xs"
+                                                    : "bg-white text-slate-500 hover:bg-slate-100"
+                                            }`}
+                                        >
+                                            {renderPriorityIcon(prio, "h-2.5 w-2.5")}
+                                            <span className="hidden xl:inline">{priorityLabel(prio)}</span>
+                                        </button>
+                                    ))}
+                                </div>
                             </div>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        {/* Row 2: Assignee, Lead/Client, Project (All on 1 row) */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                             <div className="space-y-1">
                                 <label className="text-[9px] font-black text-slate-500 uppercase">
                                     {t("Assignee", "Priradiť", "Felelős")}
@@ -3281,6 +3282,23 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             </div>
 
                             <div className="space-y-1">
+                                <label className="text-[9px] font-black text-slate-500 uppercase">
+                                    {t("Link to Lead/Client", "Záujemca / Klient", "Ügyfél / Lead")}
+                                </label>
+                                <ClientSelect
+                                    leads={leads}
+                                    value={newRelatedLeadId}
+                                    onChange={(v) => {
+                                        setNewRelatedLeadId(v);
+                                        if (!v) setNewIsLocking(false);
+                                    }}
+                                    showCity={false}
+                                    addKind="lead"
+                                    noneLabel={t("-- None --", "-- Žiadny --", "-- Nincs --")}
+                                />
+                            </div>
+
+                            <div className="space-y-1">
                                 <label className="text-[9px] font-black text-slate-500 uppercase flex items-center gap-1">
                                     <FolderKanban className="h-3 w-3" />
                                     {t("Project", "Projekt", "Projekt")}
@@ -3295,26 +3313,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             </div>
                         </div>
 
-                        <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase">
-                                {t("Link to Lead/Client", "Prepojiť so záujemcom", "Összekapcsolás ügyféllel")}
-                            </label>
-                            <ClientSelect
-                                leads={leads}
-                                value={newRelatedLeadId}
-                                onChange={(v) => {
-                                    setNewRelatedLeadId(v);
-                                    if (!v) setNewIsLocking(false);
-                                }}
-                                showCity={false}
-                                addKind="lead"
-                                noneLabel={t("-- None --", "-- Žiadny --", "-- Nincs --")}
-                            />
-                        </div>
-
                         {newRelatedLeadId && (
-                            <div className="p-2.5 rounded-xl bg-violet-50/60 border border-violet-100 flex items-center justify-between">
-                                <span className="text-[10px] font-black text-violet-700 uppercase flex items-center gap-1">
+                            <div className="p-2 rounded-xl bg-violet-50/60 border border-violet-100 flex items-center justify-between">
+                                <span className="text-[9px] font-black text-violet-700 uppercase flex items-center gap-1">
                                     <Lock className="h-3 w-3" />{" "}
                                     {t("Block Pipeline Stage", "Zablokovať fázu pipeline", "Folyamat szakasz zárolása")}
                                 </span>
@@ -3322,7 +3323,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     type="checkbox"
                                     checked={newIsLocking}
                                     onChange={(e) => setNewIsLocking(e.target.checked)}
-                                    className="h-4 w-4 cursor-pointer"
+                                    className="h-3.5 w-3.5 cursor-pointer accent-violet-600"
                                 />
                             </div>
                         )}
@@ -3341,17 +3342,17 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             mailConfigured={mailConfigured}
                         />
 
-                        <div className="flex items-center gap-2 pt-2">
+                        <div className="flex items-center gap-2 pt-1">
                             <button
                                 type="button"
                                 onClick={closeAddDrawer}
-                                className="flex-1 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-black text-xs uppercase tracking-wider transition-colors cursor-pointer"
+                                className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-black text-xs uppercase tracking-wider transition-colors cursor-pointer"
                             >
                                 {t("Cancel", "Zrušiť", "Mégse")}
                             </button>
                             <button
                                 type="submit"
-                                className="flex-1 py-2.5 bg-[#ff5d00] hover:bg-[#e05200] text-white rounded-xl font-black text-xs uppercase tracking-wider shadow-lg shadow-orange-500/25 transition-all active:scale-[0.99] cursor-pointer"
+                                className="flex-1 py-2 bg-[#ff5d00] hover:bg-[#e05200] text-white rounded-xl font-black text-xs uppercase tracking-wider shadow-lg shadow-orange-500/25 transition-all active:scale-[0.99] cursor-pointer"
                             >
                                 {t("Save Task(s)", "Uložiť úlohu(y)", "Mentés")}
                             </button>
@@ -3579,27 +3580,43 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             </div>
                         </div>
 
-                        {/* Filter pills */}
-                        <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-xs">
-                            {(
-                                [
-                                    { id: "all", label: t("All", "Všetko", "Mind") },
-                                    { id: "created", label: t("Created", "Vytvorené", "Létrehozva") },
-                                    { id: "completed", label: t("Completed", "Dokončené", "Befejezve") },
-                                ] as const
-                            ).map((filter) => (
+                        <div className="flex items-center gap-2 flex-wrap">
+                            {/* Filter pills */}
+                            <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-xs">
+                                {(
+                                    [
+                                        { id: "all", label: t("All", "Všetko", "Mind") },
+                                        { id: "created", label: t("Created", "Vytvorené", "Létrehozva") },
+                                        { id: "completed", label: t("Completed", "Dokončené", "Befejezve") },
+                                    ] as const
+                                ).map((filter) => (
+                                    <button
+                                        key={filter.id}
+                                        onClick={() => setTimelineFilter(filter.id)}
+                                        className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                                            timelineFilter === filter.id
+                                                ? "bg-indigo-600 text-white shadow-xs"
+                                                : "text-slate-500 hover:text-slate-800 hover:bg-slate-100"
+                                        }`}
+                                    >
+                                        {filter.label}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {taskAccess.create && (
                                 <button
-                                    key={filter.id}
-                                    onClick={() => setTimelineFilter(filter.id)}
-                                    className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
-                                        timelineFilter === filter.id
-                                            ? "bg-indigo-600 text-white shadow-xs"
-                                            : "text-slate-500 hover:text-slate-800 hover:bg-slate-100"
-                                    }`}
+                                    onClick={() => {
+                                        resetNewTaskForm();
+                                        setIsAddDrawerOpen(true);
+                                    }}
+                                    className="px-3.5 py-1.5 bg-[#ff5d00] hover:bg-[#e05200] text-white rounded-xl font-black text-xs uppercase tracking-wider shadow-sm shadow-orange-500/25 transition-all active:scale-[0.98] flex items-center gap-1.5 cursor-pointer shrink-0"
+                                    title={t("Create New Task", "Vytvoriť novú úlohu", "Új feladat")}
                                 >
-                                    {filter.label}
+                                    <Plus className="h-3.5 w-3.5 stroke-[3]" />
+                                    <span>{t("New Task", "Nová úloha", "Új feladat")}</span>
                                 </button>
-                            ))}
+                            )}
                         </div>
                     </div>
 
