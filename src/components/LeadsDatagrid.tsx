@@ -76,7 +76,9 @@ import {
   projectStatusBadgeClass,
   projectStatusLabel,
 } from "../utils/projects";
-import { evaluateLeadSla, type LeadSlaStatus, type LeadStateSla } from "../utils/leadSla";
+import { evaluateLeadSla, type LeadSlaStatus, type LeadStateSla, isClosedLeadState } from "../utils/leadSla";
+import { orderLeadStates } from "../utils/leadStates";
+import { StatusValueEquationStats, type StatusStatItem } from "./StatusValueEquationStats";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 
 // Named preset deadline times offered in the gate quick-add picker, mirroring the
@@ -4037,6 +4039,51 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 leads: groups[state.toLowerCase()] || [],
             }));
     }, [processedLeads, leadStates, leadStateParents]);
+
+    // Active lead status items calculation for the expandable equation statistics
+    const activeLeadStatusItems = useMemo<StatusStatItem[]>(() => {
+        const ordered = orderLeadStates(
+            leadStates,
+            leadStageGroups,
+            leadStateParents,
+        );
+        // Only active (non-closed) top-level/major states
+        const activeStates = ordered.filter(
+            (s) =>
+                !leadStateParents[s.toLowerCase()] &&
+                !isClosedLeadState(s, leadStageGroups, leadStateParents),
+        );
+
+        return activeStates.map((state) => {
+            const stateLower = state.toLowerCase();
+            const leadsInState = processedLeads.filter((l) => {
+                const sKey = (l.status || "").toLowerCase();
+                const parent = leadStateParents[sKey];
+                const target = parent ? parent.toLowerCase() : sKey;
+                return target === stateLower;
+            });
+
+            const val = leadsInState.reduce(
+                (sum, l) => sum + (Number(l.value) || 0),
+                0,
+            );
+            const col = getSafeStateColor(state);
+
+            return {
+                key: stateLower,
+                name: state.toUpperCase(),
+                value: val,
+                count: leadsInState.length,
+                color: col,
+            };
+        });
+    }, [
+        leadStates,
+        leadStageGroups,
+        leadStateParents,
+        processedLeads,
+        leadStateColors,
+    ]);
 
     // Dynamic consistent manager colors
     const getPMColor = (pmName: string) => {
@@ -8144,6 +8191,36 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     {getTranslation(systemLanguage, "leads.subtitle")}
                 </p>
             </div>
+
+            {/* Active Leads Value Equation Statistics */}
+            <StatusValueEquationStats
+                items={activeLeadStatusItems}
+                currency={currencyCode}
+                language={systemLanguage}
+                title={
+                    systemLanguage === "sk"
+                        ? "Prehľad hodnôt aktívnych fáz"
+                        : systemLanguage === "hu"
+                          ? "Aktív fázisok értékének összesítése"
+                          : "Active Pipeline Value Breakdown"
+                }
+                subtitle={
+                    systemLanguage === "sk"
+                        ? "Kliknutím na fázu ju zahrniete alebo vylúčite zo súčtu"
+                        : systemLanguage === "hu"
+                          ? "Kattintson egy fázisra a végösszegből való kizáráshoz/hozzáadáshoz"
+                          : "Click any status pill to toggle its inclusion in the equation total"
+                }
+                unitLabel={
+                    systemLanguage === "sk"
+                        ? "leadov"
+                        : systemLanguage === "hu"
+                          ? "lead"
+                          : "leads"
+                }
+                storageKey="ccrm_leads_equation_stats"
+                themeColor="blue"
+            />
 
             {/* 1. Sleek Minimalist Stage Counter Statistics Strip */}
             <div className="glass-panel px-6 py-4 rounded-[26px] border border-blue-50 bg-white/85 shadow-glass flex flex-col lg:flex-row lg:items-center justify-between gap-4 select-none">

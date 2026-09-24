@@ -339,7 +339,7 @@ export const projectStatusDotClass = (status: string | undefined | null): string
 */
 
 /** The statuses a project ends in — folded into the strip's last segment. */
-const CLOSED_PROJECT_STATUSES: readonly string[] = ["completed", "cancelled"];
+export const CLOSED_PROJECT_STATUSES: readonly string[] = ["completed", "cancelled"];
 
 /** A step not yet reached. */
 const PIPELINE_UNREACHED_CLASS = "bg-slate-300";

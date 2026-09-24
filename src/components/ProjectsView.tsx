@@ -16,6 +16,7 @@ import { readableOn } from "../utils/accentColor";
 import { parseAppHash } from "../utils/hash";
 import {
   DEFAULT_PROJECT_STATUS,
+  CLOSED_PROJECT_STATUSES,
   evaluateProjectDeadline,
   projectDisplayName,
   projectDelayReason,
@@ -26,6 +27,7 @@ import {
   projectStatusOptions,
   projectStatusOrder,
 } from "../utils/projects";
+import { StatusValueEquationStats, type StatusStatItem } from "./StatusValueEquationStats";
 import type { ProjectDeadlineStatus } from "../utils/projects";
 import { todayLocal, formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
 import { useUserPref } from "../utils/userPrefs";
@@ -455,6 +457,107 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   /* The currency a money attribute falls back to when it carries none of its
      own — the workspace default, or the one the language implies. */
   const defaultCurrency = currencyCode || currencyForRegion(userLanguage);
+
+  /* Active project status items calculation for the expandable equation statistics */
+  const activeProjectStatusItems = useMemo<StatusStatItem[]>(() => {
+    const activeStatuses = (projectStatusOrder() as ProjectStatus[]).filter(
+      (s) => !CLOSED_PROJECT_STATUSES.includes(s)
+    );
+
+    const statusColors: Record<string, string> = {
+      new: "#0284c7",
+      active: "#9333ea",
+      on_hold: "#d97706",
+    };
+
+    return activeStatuses.map((status) => {
+      // Collect projects in this status matching other non-status filters
+      const projectsInStatus = projects.filter((p) => {
+        if (p.status !== status) return false;
+        const pType = projectTypes.find((t) => t.id === p.projectTypeId);
+        const lead = leads.find((l) => l.id === p.leadId);
+        const leadName = lead?.name || "";
+        const needle = searchQuery.toLowerCase();
+        const matchesSearch =
+          !needle ||
+          (p.name || "").toLowerCase().includes(needle) ||
+          leadName.toLowerCase().includes(needle) ||
+          p.id.toLowerCase().includes(needle) ||
+          (pType?.name || "").toLowerCase().includes(needle);
+
+        const matchesType =
+          selectedTypeFilter === "all" || p.projectTypeId === selectedTypeFilter;
+        const matchesManager =
+          selectedManagerFilter === "all" ||
+          (selectedManagerFilter === UNASSIGNED_MANAGER
+            ? !(p.managers && p.managers.length > 0)
+            : (p.managers || []).includes(selectedManagerFilter));
+        const matchesOverdue = !overdueOnly || overdueIds.has(p.id);
+        const matchesRating = matchesRatingFilter(
+          p.rating,
+          selectedRatingFilter
+        );
+
+        return (
+          matchesSearch &&
+          matchesType &&
+          matchesManager &&
+          matchesOverdue &&
+          matchesRating
+        );
+      });
+
+      let totalVal = 0;
+      projectsInStatus.forEach((p) => {
+        const pType = projectTypes.find((t) => t.id === p.projectTypeId);
+        const moneyAttrs =
+          pType?.attributes?.filter((a) => a.type === "money") || [];
+        let pVal = 0;
+        let hasMoneyVal = false;
+        for (const attr of moneyAttrs) {
+          const raw = p.data?.[attr.id];
+          if (
+            raw !== undefined &&
+            raw !== null &&
+            !isMoneyValueEmpty(raw, defaultCurrency)
+          ) {
+            const parsed = parseMoneyValue(raw, defaultCurrency);
+            if (parsed.amount) {
+              pVal += parsed.amount;
+              hasMoneyVal = true;
+            }
+          }
+        }
+        if (!hasMoneyVal && p.leadId) {
+          const pairedLead = leads.find((l) => l.id === p.leadId);
+          if (pairedLead?.value) {
+            pVal = pairedLead.value;
+          }
+        }
+        totalVal += pVal;
+      });
+
+      return {
+        key: status,
+        name: projectStatusLabel(status, t),
+        value: totalVal,
+        count: projectsInStatus.length,
+        color: statusColors[status] || "#6366f1",
+      };
+    });
+  }, [
+    projects,
+    projectTypes,
+    leads,
+    searchQuery,
+    selectedTypeFilter,
+    selectedManagerFilter,
+    selectedRatingFilter,
+    overdueOnly,
+    overdueIds,
+    defaultCurrency,
+    t,
+  ]);
 
   /* Which project type's column layout the table follows.
 
@@ -1063,7 +1166,37 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           />
         </div>
       ) : (
-        <>
+        <div className="space-y-4">
+          {/* Active Projects Value Equation Statistics */}
+          <StatusValueEquationStats
+            items={activeProjectStatusItems}
+            currency={defaultCurrency}
+            language={userLanguage}
+            title={
+              userLanguage === "sk"
+                ? "Prehľad rozpočtov aktívnych fáz"
+                : userLanguage === "hu"
+                  ? "Aktív fázisok összegének összesítése"
+                  : "Active Projects Budget Breakdown"
+            }
+            subtitle={
+              userLanguage === "sk"
+                ? "Kliknutím na stav ho zahrniete alebo vylúčite zo súčtu"
+                : userLanguage === "hu"
+                  ? "Kattintson egy állapotra a végösszegből való kizáráshoz/hozzáadáshoz"
+                  : "Click any status pill to toggle its inclusion in the equation total"
+            }
+            unitLabel={
+              userLanguage === "sk"
+                ? "projektov"
+                : userLanguage === "hu"
+                  ? "projekt"
+                  : "projects"
+            }
+            storageKey="ccrm_projects_equation_stats"
+            themeColor="purple"
+          />
+
           {/* Summary strip — and the status filter itself. It used to show four
               hand-picked chips next to a dropdown carrying the real list, so
               two controls filtered the same thing and disagreed about what the
@@ -1580,7 +1713,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             </div>
           )}
 
-        </>
+        </div>
       )}
 
     </div>
