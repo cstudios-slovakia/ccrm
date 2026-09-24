@@ -2053,7 +2053,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         return (
             <div className="flex items-center gap-2 flex-wrap">
                 {/* Scope switcher */}
-                <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-sm gap-1">
+                <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-sm gap-1 max-w-full overflow-x-auto">
                     {availableScopes.map((scope) => (
                         <button
                             key={scope}
@@ -2061,7 +2061,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 cfg.onScopeChange(scope);
                                 cfg.onSelectDay(null);
                             }}
-                            className={`px-3 py-1.5 rounded-lg font-black text-[10px] uppercase tracking-wider transition-all cursor-pointer ${
+                            className={`px-2.5 sm:px-3 py-1.5 rounded-lg font-black text-[10px] uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
                                 cfg.scope === scope
                                     ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
                                     : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
@@ -3905,22 +3905,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     </p>
                 </div>
 
-                <div className="flex items-center gap-4">
-                    {viewMode === "calendar" &&
-                        renderCalendarNav({
-                            anchor: currentDate,
-                            onAnchorChange: setCurrentDate,
-                            scope: calendarScope,
-                            onScopeChange: setCalendarScope,
-                            onSelectDay: setSelectedDay,
-                            showTimelineOption: true,
-                            showHideOption: true,
-                        })}
-
-                    <div className="flex items-center bg-slate-100 p-1.5 rounded-xl border border-slate-200 shadow-sm gap-1">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 flex-wrap">
+                    <div className="flex items-center bg-slate-100 p-1.5 rounded-xl border border-slate-200 shadow-sm gap-1 self-start sm:self-auto overflow-x-auto max-w-full">
                         <button
                             onClick={() => setViewMode("calendar")}
-                            className={`px-4 py-2 rounded-lg font-black text-xs uppercase tracking-wider transition-all cursor-pointer ${
+                            className={`px-3 sm:px-4 py-2 rounded-lg font-black text-xs uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
                                 viewMode === "calendar"
                                     ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
                                     : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
@@ -3930,7 +3919,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         </button>
                         <button
                             onClick={() => setViewMode("global")}
-                            className={`px-4 py-2 rounded-lg font-black text-xs uppercase tracking-wider transition-all cursor-pointer ${
+                            className={`px-3 sm:px-4 py-2 rounded-lg font-black text-xs uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
                                 viewMode === "global"
                                     ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
                                     : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
@@ -3944,7 +3933,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         </button>
                         <button
                             onClick={() => setViewMode("archive")}
-                            className={`px-4 py-2 rounded-lg font-black text-xs uppercase tracking-wider transition-all cursor-pointer ${
+                            className={`px-3 sm:px-4 py-2 rounded-lg font-black text-xs uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
                                 viewMode === "archive"
                                     ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
                                     : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
@@ -3953,6 +3942,17 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             {t("Archive", "Archív", "Archívum")}
                         </button>
                     </div>
+
+                    {viewMode === "calendar" &&
+                        renderCalendarNav({
+                            anchor: currentDate,
+                            onAnchorChange: setCurrentDate,
+                            scope: calendarScope,
+                            onScopeChange: setCalendarScope,
+                            onSelectDay: setSelectedDay,
+                            showTimelineOption: true,
+                            showHideOption: true,
+                        })}
                 </div>
             </div>
 
