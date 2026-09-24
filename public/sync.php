@@ -2049,15 +2049,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         // Project Types dynamic table generation
         if (isset($payload['projectTypes']) && is_array($payload['projectTypes']) && !$ccrm_skip_writes('general_config', 'projectTypes')) {
             require_once __DIR__ . '/api/agent_utils.php';
-            // Extract integrations config from existing settings to instantiate RAG connection
-            $intConfigRaw = '';
-            if (isset($payload['settings']['integrationsConfig'])) {
-                $intConfigRaw = is_array($payload['settings']['integrationsConfig']) ? json_encode($payload['settings']['integrationsConfig']) : $payload['settings']['integrationsConfig'];
-            } else {
-                $stmt = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'INTEGRATIONS_CONFIG'");
-                $intConfigRaw = $stmt->fetchColumn() ?: '{}';
-            }
-            $ragPdo = get_rag_db_connection(json_decode($intConfigRaw, true));
+            // The stored, decrypted config: the pushed copy carries the masked
+            // password and the raw row the encrypted one, so neither could connect.
+            $ragPdo = get_rag_db_connection(ccrm_load_integrations_config($pdo));
 
             foreach ($payload['projectTypes'] as $pt) {
                 if (!isset($pt['id'])) continue;

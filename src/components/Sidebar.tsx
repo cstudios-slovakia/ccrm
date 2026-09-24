@@ -73,8 +73,6 @@ interface SidebarProps {
   showSettings?: boolean;
   onLogout?: () => void;
   systemLanguage: Language;
-  showMailIcon?: boolean;
-  integrationsConfig?: any;
   showRagAi?: boolean;
   currentUser: UserProfile | null;
   roles: RolePermission[];
@@ -494,8 +492,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   showSettings = true,
   onLogout,
   systemLanguage,
-  showMailIcon = false,
-  integrationsConfig,
   showRagAi = false,
   currentUser,
   roles,
@@ -666,16 +662,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const isItemVisibleInSystem = (id: string) => {
     if (!canOpenRoute(id)) return false;
+    // RAG AI and Mail used to vanish until their setup was done, which left no
+    // hint that the module exists or what it needs. They stay listed; the view
+    // itself says what is missing (ModuleSetupRequired in App).
     if (id === "rag_ai") {
-      return (
-        showRagAi &&
-        integrationsConfig?.vectorDbValidated === true &&
-        integrationsConfig?.vectorDb &&
-        integrationsConfig?.vectorDb !== "none"
-      );
-    }
-    if (id === "email") {
-      return showMailIcon;
+      return showRagAi;
     }
     if (id === "social_media") {
       return SOCIAL_MEDIA_ENABLED;
@@ -685,7 +676,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const activeVisibleLayout = useMemo(() => {
     return resolvedLayout.filter(isItemVisibleInSystem);
-  }, [resolvedLayout, canOpenRoute, showRagAi, integrationsConfig, showMailIcon]);
+  }, [resolvedLayout, canOpenRoute, showRagAi]);
 
   // Normalized Groups
   const sidebarGroups = useMemo(() => {
@@ -1957,7 +1948,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         currentUser={currentUser}
         roles={roles}
         showSettings={showSettings}
-        showMailIcon={showMailIcon}
         showRagAi={showRagAi}
         canOpenRoute={canOpenRoute}
         customDashboards={customDashboards}
