@@ -6,6 +6,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { formatMoney } from "../utils/currency";
+import { readableOn } from "../utils/accentColor";
 import type { Language } from "../utils/translations";
 
 export interface StatusStatItem {
@@ -301,7 +302,9 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
           <div className="p-3.5 bg-white/90 backdrop-blur-md rounded-2xl border border-slate-200/90 shadow-sm flex flex-wrap items-center gap-2 sm:gap-2.5">
             {items.map((item, index) => {
               const isDisabled = disabledKeys.has(item.key);
-              const customColor = item.color || "#6366f1";
+              const customColor = item.color || "#3b82f6";
+              const textColor = !isDisabled ? readableOn(customColor) : undefined;
+              const isLightFg = textColor === "#ffffff";
 
               return (
                 <React.Fragment key={item.key}>
@@ -327,44 +330,45 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
                             `Kattintson a(z) ${item.name} kizárásához a végösszegből`
                           )
                     }
-                    className={`group relative flex items-center gap-2 px-3.5 py-2 rounded-xl border text-xs font-black uppercase tracking-wider transition-all duration-150 cursor-pointer active:scale-95 shadow-2xs ${
+                    className={`group relative flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-150 cursor-pointer active:scale-95 ${
                       isDisabled
-                        ? "bg-slate-100/90 border-dashed border-slate-300 text-slate-400 opacity-55 hover:opacity-80"
-                        : "bg-white hover:bg-slate-50/90 text-slate-800 border-slate-200 hover:border-slate-300 hover:shadow-xs"
+                        ? "bg-slate-100/90 border border-dashed border-slate-300 text-slate-400 opacity-50 hover:opacity-75 shadow-2xs"
+                        : "shadow-sm hover:shadow-md hover:brightness-105 border border-transparent"
                     }`}
                     style={
-                      !isDisabled && item.color
+                      !isDisabled
                         ? {
-                            borderLeftColor: item.color,
-                            borderLeftWidth: "4px",
+                            backgroundColor: customColor,
+                            color: textColor,
+                            boxShadow: `0 4px 12px -2px ${customColor}45`,
                           }
                         : undefined
                     }
                   >
-                    {/* Status Dot / Indicator */}
-                    <span
-                      className={`h-2 w-2 rounded-full shrink-0 transition-transform ${
-                        isDisabled ? "bg-slate-300 scale-90" : "scale-100"
-                      }`}
-                      style={!isDisabled ? { backgroundColor: customColor } : undefined}
-                    />
-
                     {/* Status Name */}
                     <span
                       className={`text-[10px] font-black uppercase tracking-wider ${
-                        isDisabled ? "line-through text-slate-400" : "text-slate-700"
+                        isDisabled ? "line-through text-slate-400" : ""
                       }`}
+                      style={
+                        !isDisabled
+                          ? {
+                              color: isLightFg
+                                ? "rgba(255, 255, 255, 0.95)"
+                                : "rgba(11, 18, 32, 0.9)",
+                            }
+                          : undefined
+                      }
                     >
                       {item.name}
                     </span>
 
                     {/* Monetary Value */}
                     <span
-                      className={`font-mono font-bold tabular-nums text-xs ml-0.5 ${
-                        isDisabled
-                          ? "line-through text-slate-400"
-                          : "text-slate-950 font-black"
+                      className={`font-mono font-black tabular-nums text-xs ml-0.5 ${
+                        isDisabled ? "line-through text-slate-400" : ""
                       }`}
+                      style={!isDisabled ? { color: textColor } : undefined}
                     >
                       {formatMoney(item.value || 0, resolvedCurrency, language, {
                         minimumFractionDigits: 0,
@@ -374,10 +378,12 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
 
                     {/* Count Badge */}
                     <span
-                      className={`px-1.5 py-0.5 rounded-md text-[9px] font-extrabold tabular-nums leading-none ${
+                      className={`px-1.5 py-0.5 rounded-md text-[9px] font-extrabold tabular-nums leading-none transition-colors ${
                         isDisabled
                           ? "bg-slate-200 text-slate-400"
-                          : "bg-slate-100 text-slate-600 group-hover:bg-slate-200"
+                          : isLightFg
+                            ? "bg-white/25 text-white"
+                            : "bg-black/15 text-slate-900"
                       }`}
                     >
                       {item.count}
