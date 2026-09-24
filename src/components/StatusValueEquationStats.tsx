@@ -27,6 +27,7 @@ export interface StatusValueEquationStatsProps {
   storageKey?: string;
   defaultExpanded?: boolean;
   themeColor?: "blue" | "purple" | "indigo" | "emerald";
+  totalColor?: "blue" | "purple" | "indigo" | "emerald" | "green";
 }
 
 export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> = ({
@@ -39,6 +40,7 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
   storageKey,
   defaultExpanded = true,
   themeColor = "blue",
+  totalColor,
 }) => {
   const resolvedCurrency = currency || "EUR";
 
@@ -188,6 +190,29 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
       toggleActive: "text-emerald-600 hover:bg-emerald-50",
     },
   }[themeColor];
+
+  const totalClasses = {
+    blue: {
+      totalBg: "bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-lg shadow-blue-600/25",
+      totalBadgeBg: "bg-white/20 text-white",
+    },
+    purple: {
+      totalBg: "bg-gradient-to-br from-purple-600 to-indigo-700 text-white shadow-lg shadow-purple-600/25",
+      totalBadgeBg: "bg-white/20 text-white",
+    },
+    indigo: {
+      totalBg: "bg-gradient-to-br from-indigo-600 to-purple-700 text-white shadow-lg shadow-indigo-600/25",
+      totalBadgeBg: "bg-white/20 text-white",
+    },
+    emerald: {
+      totalBg: "bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-lg shadow-emerald-600/25",
+      totalBadgeBg: "bg-white/20 text-white",
+    },
+    green: {
+      totalBg: "bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-lg shadow-emerald-600/25",
+      totalBadgeBg: "bg-white/20 text-white",
+    },
+  }[totalColor || themeColor];
 
   if (items.length === 0) {
     return null;
@@ -408,7 +433,7 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
 
             {/* Total Pill */}
             <div
-              className={`flex items-center gap-2.5 px-4 py-2 rounded-xl ${themeClasses.totalBg} transition-all duration-200 shrink-0`}
+              className={`flex items-center gap-2.5 px-4 py-2 rounded-xl ${totalClasses.totalBg} transition-all duration-200 shrink-0`}
             >
               <div className="flex flex-col">
                 <span className="text-[8px] font-black uppercase tracking-widest leading-none text-white/80">
@@ -423,7 +448,7 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
               </div>
 
               <div
-                className={`px-2 py-0.5 rounded-lg ${themeClasses.totalBadgeBg} text-[10px] font-black uppercase tracking-wider leading-none ml-1`}
+                className={`px-2 py-0.5 rounded-lg ${totalClasses.totalBadgeBg} text-[10px] font-black uppercase tracking-wider leading-none ml-1`}
               >
                 {totalCount} {resolvedUnitLabel}
               </div>
