@@ -359,7 +359,7 @@ function ccrm_update() {
     if (!empty($toRestore)) {
         foreach ($toRestore as $file) {
             echo "Restoring $file to avoid conflict...\n";
-            passthru("git checkout — " . escapeshellarg($file));
+            passthru("git checkout -- " . escapeshellarg($file));
         }
     }
 
@@ -462,7 +462,7 @@ function ccrm_update() {
             // frontend is always exactly the one we just pulled. (Extra untracked
             // old bundles left in dist/assets are harmless — index.html points at
             // the correct hash.)
-            passthru("git checkout — dist/index.html dist/assets");
+            passthru("git checkout -- dist/index.html dist/assets");
         }
         \CCRM\Installer::copyDir(__DIR__ . '/dist', __DIR__, ['config.php']);
     }
