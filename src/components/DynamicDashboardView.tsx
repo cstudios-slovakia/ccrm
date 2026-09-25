@@ -53,7 +53,8 @@ import {
 import {
   GroupedStatusValueEquationStats,
   type StatusStatGroup,
-  type StatusStatItem
+  type StatusStatItem,
+  type StatusStatDetailRow,
 } from "./GroupedStatusValueEquationStats";
 import { localeCodeFor } from "../utils/localTime";
 import { chartTheme, useAppearance } from "../utils/theme";
@@ -446,12 +447,30 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
       const col =
         leadStateColors?.[stateLower] || leadStateColors?.[state] || "#3b82f6";
 
+      const rows: StatusStatDetailRow[] = leadsInState.map((l) => {
+        const lVal = Number(l.value) || 0;
+        return {
+          id: l.id,
+          name: l.name || `Lead #${l.id}`,
+          clientName: l.contactPerson || l.name,
+          manager: l.owner,
+          division: l.division,
+          date: l.createdAt ? new Date(l.createdAt).toLocaleDateString() : undefined,
+          totalBudget: lVal,
+          invoiced: 0,
+          invoicable: lVal,
+          type: "lead",
+          url: `#leads?lead=${encodeURIComponent(l.id)}`,
+        };
+      });
+
       return {
         key: stateLower,
         name: state.toUpperCase(),
         value: val,
         count: leadsInState.length,
         color: col,
+        rows,
       };
     });
   }, [leads, pipelineStages, leadStageGroups, leadStateParents, leadStateColors]);
@@ -487,7 +506,10 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
 
     const projectGroupItems: StatusStatItem[] = activeStatuses.map((status) => {
       const projectsInStatus = projects.filter((p) => p.status === status);
-      let statusVal = 0;
+      let statusInvoicableVal = 0;
+      let statusTotalBudgetValue = 0;
+      let statusTotalInvoicedValue = 0;
+      const statusRows: StatusStatDetailRow[] = [];
 
       projectsInStatus.forEach((p) => {
         const pType = (projectTypes || []).find((t) => t.id === p.projectTypeId);
@@ -520,20 +542,17 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
           pVal = Number(p.budget) || 0;
         }
 
-        statusVal += pVal;
-        totalProjectBudgetValue += pVal;
-
         // Calculate invoiced on this project
+        let pInvoiced = 0;
         if (financialRecords && financialRecords.length > 0) {
           const pFinRecords = financialRecords.filter(
             (r) => r.projectId === p.id && r.type === "income"
           );
-          const pFinInvoiced = pFinRecords.reduce(
+          pInvoiced = pFinRecords.reduce(
             (sum, r) =>
               sum + (Number(r.amountReal) || Number(r.amountPlanned) || 0),
             0
           );
-          totalInvoicedValue += pFinInvoiced;
         } else if (invoicesOffers && invoicesOffers.length > 0) {
           const pInvoices = invoicesOffers.filter(
             (io) =>
@@ -542,20 +561,48 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
               io.type === "invoice" &&
               io.status !== "cancelled"
           );
-          const pInvSum = pInvoices.reduce(
+          pInvoiced = pInvoices.reduce(
             (sum, io) => sum + (Number(io.totalPrice) || 0),
             0
           );
-          totalInvoicedValue += pInvSum;
         }
+
+        const pInvoicable = Math.max(0, pVal - pInvoiced);
+
+        statusInvoicableVal += pInvoicable;
+        statusTotalBudgetValue += pVal;
+        statusTotalInvoicedValue += pInvoiced;
+
+        totalProjectBudgetValue += pVal;
+        totalInvoicedValue += pInvoiced;
+
+        const leadName =
+          p.leadId && leads ? leads.find((l) => l.id === p.leadId)?.name : undefined;
+
+        statusRows.push({
+          id: p.id,
+          name: p.name || `Project #${p.id}`,
+          clientName: leadName || p.name || `Project #${p.id}`,
+          manager: p.managers?.[0],
+          division: p.division,
+          date: p.createdAt ? new Date(p.createdAt).toLocaleDateString() : undefined,
+          totalBudget: pVal,
+          invoiced: pInvoiced,
+          invoicable: pInvoicable,
+          type: "project",
+          url: `#projects?edit=${encodeURIComponent(p.id)}`,
+        });
       });
 
       return {
         key: status,
         name: projectStatusLabel(status, t).toUpperCase(),
-        value: statusVal,
+        value: statusInvoicableVal,
         count: projectsInStatus.length,
         color: statusColors[status] || "#9333ea",
+        totalBudget: statusTotalBudgetValue,
+        invoiced: statusTotalInvoicedValue,
+        rows: statusRows,
       };
     });
 

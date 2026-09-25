@@ -27,7 +27,7 @@ import {
   projectStatusOptions,
   projectStatusOrder,
 } from "../utils/projects";
-import { StatusValueEquationStats, type StatusStatItem } from "./StatusValueEquationStats";
+import { StatusValueEquationStats, type StatusStatItem, type StatusStatDetailRow } from "./StatusValueEquationStats";
 import type { ProjectDeadlineStatus } from "../utils/projects";
 import { todayLocal, formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
 import { useUserPref } from "../utils/userPrefs";
@@ -521,7 +521,11 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         );
       });
 
-      let totalVal = 0;
+      let statusInvoicableVal = 0;
+      let statusTotalBudgetValue = 0;
+      let statusTotalInvoicedValue = 0;
+      const statusRows: StatusStatDetailRow[] = [];
+
       projectsInStatus.forEach((p) => {
         const pType = projectTypes.find((t) => t.id === p.projectTypeId);
         const moneyAttrs =
@@ -548,21 +552,59 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             pVal = pairedLead.value;
           }
         }
-        totalVal += pVal;
+
+        // Calculate invoiced for this project from financialRecords
+        let pInvoiced = 0;
+        if (financialRecords && financialRecords.length > 0) {
+          const pFinRecords = financialRecords.filter(
+            (r) => r.projectId === p.id && r.type === "income"
+          );
+          pInvoiced = pFinRecords.reduce(
+            (sum, r) =>
+              sum + (Number(r.amountReal) || Number(r.amountPlanned) || 0),
+            0
+          );
+        }
+
+        const pInvoicable = Math.max(0, pVal - pInvoiced);
+
+        statusInvoicableVal += pInvoicable;
+        statusTotalBudgetValue += pVal;
+        statusTotalInvoicedValue += pInvoiced;
+
+        const pairedLead = p.leadId ? leads.find((l) => l.id === p.leadId) : undefined;
+
+        statusRows.push({
+          id: p.id,
+          name: p.name || `Project #${p.id}`,
+          clientName: pairedLead?.name || p.name || `Project #${p.id}`,
+          manager: p.managers?.[0],
+          division: p.division,
+          date: p.createdAt ? new Date(p.createdAt).toLocaleDateString() : undefined,
+          totalBudget: pVal,
+          invoiced: pInvoiced,
+          invoicable: pInvoicable,
+          type: "project",
+          url: `#projects?edit=${encodeURIComponent(p.id)}`,
+        });
       });
 
       return {
         key: status,
         name: projectStatusLabel(status, t),
-        value: totalVal,
+        value: statusInvoicableVal,
         count: projectsInStatus.length,
         color: statusColors[status] || "#6366f1",
+        totalBudget: statusTotalBudgetValue,
+        invoiced: statusTotalInvoicedValue,
+        rows: statusRows,
       };
     });
   }, [
     projects,
     projectTypes,
     leads,
+    financialRecords,
     searchQuery,
     selectedTypeFilter,
     selectedDivisionFilter,

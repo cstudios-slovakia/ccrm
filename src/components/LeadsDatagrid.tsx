@@ -79,7 +79,7 @@ import {
 } from "../utils/projects";
 import { evaluateLeadSla, type LeadSlaStatus, type LeadStateSla, isClosedLeadState } from "../utils/leadSla";
 import { orderLeadStates } from "../utils/leadStates";
-import { StatusValueEquationStats, type StatusStatItem } from "./StatusValueEquationStats";
+import { StatusValueEquationStats, type StatusStatItem, type StatusStatDetailRow } from "./StatusValueEquationStats";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 
 // Named preset deadline times offered in the gate quick-add picker, mirroring the
@@ -4090,12 +4090,30 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             );
             const col = getSafeStateColor(state);
 
+            const rows: StatusStatDetailRow[] = leadsInState.map((l) => {
+                const lVal = Number(l.value) || 0;
+                return {
+                    id: l.id,
+                    name: l.name || `Lead #${l.id}`,
+                    clientName: l.contactPerson || l.name,
+                    manager: l.owner,
+                    division: l.division,
+                    date: l.createdAt ? new Date(l.createdAt).toLocaleDateString() : undefined,
+                    totalBudget: lVal,
+                    invoiced: 0,
+                    invoicable: lVal,
+                    type: "lead",
+                    url: `#leads?lead=${encodeURIComponent(l.id)}`,
+                };
+            });
+
             return {
                 key: stateLower,
                 name: state.toUpperCase(),
                 value: val,
                 count: leadsInState.length,
                 color: col,
+                rows,
             };
         });
     }, [
