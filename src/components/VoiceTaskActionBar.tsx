@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Mic, Plus, X, Check, Loader2, Volume2 } from "lucide-react";
+import { Mic, Plus, X, Check, Loader2, Volume2, Play, Pause } from "lucide-react";
 import type { Task, UserProfile } from "../types";
 import type { Language } from "../utils/translations";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
@@ -8,8 +8,9 @@ const toLocalDateStr = (d: Date): string =>
     `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
 const formatVoiceDuration = (sec: number) => {
-    const mins = Math.floor(sec / 60);
-    const s = sec % 60;
+    const total = Number.isFinite(sec) && sec > 0 ? Math.floor(sec) : 0;
+    const mins = Math.floor(total / 60);
+    const s = total % 60;
     return `${mins}:${String(s).padStart(2, "0")}`;
 };
 
@@ -73,15 +74,21 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
     const [lastAudioUrl, setLastAudioUrl] = useState<string | null>(null);
     const [lastAudioBlobSize, setLastAudioBlobSize] = useState<number>(0);
     const [lastAudioMimeType, setLastAudioMimeType] = useState<string>("audio/webm");
+    const [lastAudioDuration, setLastAudioDuration] = useState<number>(0);
+    const [isPlayingDebug, setIsPlayingDebug] = useState(false);
+    const [debugCurrentTime, setDebugCurrentTime] = useState(0);
 
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
     const voiceTimerRef = useRef<any>(null);
+    const recordStartTimeRef = useRef<number>(0);
     const audioStreamRef = useRef<MediaStream | null>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
     const analyserRef = useRef<AnalyserNode | null>(null);
     const animFrameRef = useRef<number | null>(null);
     const lastPushTimeRef = useRef<number>(0);
+    const debugAudioRef = useRef<HTMLAudioElement | null>(null);
+    const durationProbeRef = useRef(false);
 
     const cleanupAudio = () => {
         if (voiceTimerRef.current) {
@@ -109,6 +116,9 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
     useEffect(() => {
         return () => {
             cleanupAudio();
+            if (lastAudioUrl) {
+                URL.revokeObjectURL(lastAudioUrl);
+            }
         };
     }, []);
 
@@ -127,18 +137,24 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                 );
             }
 
+            const audioConstraints: MediaStreamConstraints = {
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true,
+                },
+            };
+
             let stream: MediaStream;
             try {
-                stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                stream = await navigator.mediaDevices.getUserMedia(audioConstraints);
             } catch (err) {
-                console.warn("Retrying getUserMedia with basic fallback:", err);
+                console.warn("Retrying getUserMedia with basic audio:true fallback:", err);
                 stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             }
             audioStreamRef.current = stream;
 
-            let recordStream = stream;
-
-            // Set up Web Audio API with 3.0x GainNode boost for crystal-clear microphone audio
+            // Real-time audio waveform meter via Web Audio API (strictly visualizer)
             try {
                 const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
                 if (AudioCtx) {
@@ -149,43 +165,37 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                     }
 
                     const source = ctx.createMediaStreamSource(stream);
-
-                    // 3x volume boost to prevent quiet/inaudible mobile recordings
-                    const gainNode = ctx.createGain();
-                    gainNode.gain.value = 3.0;
-
                     const analyser = ctx.createAnalyser();
                     analyser.fftSize = 128;
-                    analyser.smoothingTimeConstant = 0.35;
-
-                    const destination = ctx.createMediaStreamDestination();
-
-                    source.connect(gainNode);
-                    gainNode.connect(analyser);
-                    gainNode.connect(destination);
-
+                    analyser.smoothingTimeConstant = 0.3;
+                    source.connect(analyser);
                     analyserRef.current = analyser;
 
-                    if (destination.stream && destination.stream.getAudioTracks().length > 0) {
-                        recordStream = destination.stream;
-                    }
-
-                    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                    const timeData = new Uint8Array(analyser.fftSize);
+                    const freqData = new Uint8Array(analyser.frequencyBinCount);
 
                     const updateMeter = (timestamp: number) => {
                         if (analyserRef.current) {
-                            analyserRef.current.getByteFrequencyData(dataArray);
-                            let sum = 0;
-                            let max = 0;
-                            for (let i = 0; i < dataArray.length; i++) {
-                                const val = dataArray[i];
-                                sum += val;
-                                if (val > max) max = val;
+                            analyserRef.current.getByteTimeDomainData(timeData);
+                            analyserRef.current.getByteFrequencyData(freqData);
+
+                            let maxDev = 0;
+                            for (let i = 0; i < timeData.length; i++) {
+                                const dev = Math.abs(timeData[i] - 128);
+                                if (dev > maxDev) maxDev = dev;
                             }
-                            const avg = sum / (dataArray.length || 1);
-                            // Highly responsive voice wave scaling
-                            const rawLevel = (avg * 1.6 + max * 0.4) / 110;
-                            const instantLevel = Math.max(12, Math.min(100, Math.round(rawLevel * 100)));
+
+                            let freqSum = 0;
+                            for (let i = 0; i < freqData.length; i++) {
+                                freqSum += freqData[i];
+                            }
+                            const freqAvg = freqSum / (freqData.length || 1);
+
+                            // High sensitivity response for mobile microphones
+                            const timeLevel = (maxDev / 35) * 100;
+                            const freqLevel = (freqAvg / 30) * 100;
+                            const combined = Math.max(timeLevel, freqLevel);
+                            const instantLevel = Math.max(12, Math.min(100, Math.round(combined)));
 
                             if (!lastPushTimeRef.current || timestamp - lastPushTimeRef.current > 40) {
                                 lastPushTimeRef.current = timestamp;
@@ -203,12 +213,17 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                 console.warn("AudioContext setup warning:", err);
             }
 
+            // Determine best supported MIME type
             let mimeType = "audio/webm";
             if (typeof MediaRecorder !== "undefined") {
-                if (MediaRecorder.isTypeSupported("audio/webm")) {
+                if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+                    mimeType = "audio/webm;codecs=opus";
+                } else if (MediaRecorder.isTypeSupported("audio/webm")) {
                     mimeType = "audio/webm";
                 } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
                     mimeType = "audio/mp4";
+                } else if (MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")) {
+                    mimeType = "audio/ogg;codecs=opus";
                 } else if (MediaRecorder.isTypeSupported("audio/ogg")) {
                     mimeType = "audio/ogg";
                 } else if (MediaRecorder.isTypeSupported("audio/wav")) {
@@ -222,7 +237,8 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                 ...(mimeType ? { mimeType } : {}),
             };
 
-            const recorder = new MediaRecorder(recordStream, recorderOptions);
+            // CRITICAL FOR ANDROID/MOBILE: MediaRecorder must record directly from the physical stream
+            const recorder = new MediaRecorder(stream, recorderOptions);
             mediaRecorderRef.current = recorder;
 
             recorder.ondataavailable = (event) => {
@@ -231,14 +247,17 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                 }
             };
 
-            recorder.start(250);
+            // Record in 100ms slices so audio chunks are buffered reliably
+            recorder.start(100);
+            recordStartTimeRef.current = Date.now();
             setIsVoiceRecording(true);
             setVoiceRecordDuration(0);
 
             if (voiceTimerRef.current) clearInterval(voiceTimerRef.current);
             voiceTimerRef.current = setInterval(() => {
-                setVoiceRecordDuration((prev) => prev + 1);
-            }, 1000);
+                const elapsed = Math.round((Date.now() - recordStartTimeRef.current) / 1000);
+                setVoiceRecordDuration(elapsed);
+            }, 250);
         } catch (err: any) {
             console.error("Mic access error:", err);
             if (typeof (window as any).showToast === "function") {
@@ -257,7 +276,13 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
     const handleStopAndProcessVoiceRecording = async () => {
         if (!isVoiceRecording && !mediaRecorderRef.current) return;
 
-        // Stop duration timer and animation frame first
+        const finalDuration = Math.max(
+            1,
+            Math.round((Date.now() - (recordStartTimeRef.current || Date.now())) / 1000),
+        );
+        setLastAudioDuration(finalDuration);
+
+        // Stop duration timer and animation frame
         if (voiceTimerRef.current) {
             clearInterval(voiceTimerRef.current);
             voiceTimerRef.current = null;
@@ -284,6 +309,9 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
             };
             try {
                 if (recorder.state === "recording") {
+                    try {
+                        recorder.requestData();
+                    } catch (_) {}
                     recorder.stop();
                 }
             } catch (_) {
@@ -309,6 +337,9 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
             setLastAudioUrl(url);
             setLastAudioBlobSize(audioBlob.size);
             setLastAudioMimeType(audioBlob.type || "audio/webm");
+            setIsPlayingDebug(false);
+            setDebugCurrentTime(0);
+            durationProbeRef.current = false;
             (window as any).lastRecordedAudioBlob = audioBlob;
             (window as any).lastRecordedAudioUrl = url;
         }
@@ -459,8 +490,113 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
         setVoiceRecordDuration(0);
     };
 
+    const togglePlayDebugAudio = () => {
+        const el = debugAudioRef.current;
+        if (!el) return;
+        if (isPlayingDebug) {
+            el.pause();
+            setIsPlayingDebug(false);
+        } else {
+            el.play()
+                .then(() => {
+                    setIsPlayingDebug(true);
+                })
+                .catch((err) => {
+                    console.error("Audio playback failed:", err);
+                });
+        }
+    };
+
+    const handleDebugAudioDurationChange = () => {
+        const el = debugAudioRef.current;
+        if (!el) return;
+        if (!Number.isFinite(el.duration)) {
+            if (!durationProbeRef.current) {
+                durationProbeRef.current = true;
+                try {
+                    el.currentTime = 1e101;
+                } catch {
+                    durationProbeRef.current = false;
+                }
+            }
+            return;
+        }
+        if (durationProbeRef.current) {
+            durationProbeRef.current = false;
+            el.currentTime = 0;
+            setDebugCurrentTime(0);
+        }
+    };
+
     const defaultManualText = t("Create New Task", "Vytvoriť novú úlohu", "Új feladat");
     const labelText = manualButtonText || defaultManualText;
+
+    const renderDebugPlayer = () => {
+        if (!lastAudioUrl || isVoiceRecording || isVoiceTranscribing) return null;
+        return (
+            <div className="w-full flex flex-wrap items-center justify-between gap-2.5 px-3.5 py-2.5 bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 dark:from-amber-950/60 dark:via-orange-950/60 dark:to-amber-950/60 text-amber-950 dark:text-amber-100 rounded-2xl text-xs font-semibold shadow-md border-2 border-amber-300 dark:border-amber-700/80 animate-in fade-in slide-in-from-top-1 duration-200">
+                <div className="flex items-center gap-2 min-w-0">
+                    <button
+                        type="button"
+                        onClick={togglePlayDebugAudio}
+                        className="p-2 bg-amber-500 hover:bg-amber-600 active:bg-amber-700 text-white rounded-xl shadow-md transition-all active:scale-95 cursor-pointer shrink-0 flex items-center justify-center"
+                        title={isPlayingDebug ? t("Pause", "Pozastaviť", "Szünet") : t("Play", "Prehrať", "Lejátszás")}
+                    >
+                        {isPlayingDebug ? (
+                            <Pause className="h-4 w-4 fill-white stroke-white" />
+                        ) : (
+                            <Play className="h-4 w-4 fill-white stroke-white ml-0.5" />
+                        )}
+                    </button>
+                    <div className="flex flex-col min-w-0">
+                        <div className="flex items-center gap-1.5">
+                            <Volume2 className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                            <span className="text-xs font-black text-amber-900 dark:text-amber-200 truncate">
+                                {t("Recorded Audio Check", "Kontrola nahraného zvuku", "Hangellenőrző")}
+                            </span>
+                        </div>
+                        <span className="text-[10px] font-mono text-amber-700 dark:text-amber-400">
+                            {(lastAudioBlobSize / 1024).toFixed(1)} KB • {isPlayingDebug ? `${formatVoiceDuration(debugCurrentTime)} / ` : ""}{formatVoiceDuration(lastAudioDuration)} ({lastAudioMimeType.split(";")[0]})
+                        </span>
+                    </div>
+                </div>
+
+                <div className="flex items-center gap-2 flex-1 justify-end min-w-[200px]">
+                    <audio
+                        ref={debugAudioRef}
+                        controls
+                        playsInline
+                        preload="auto"
+                        src={lastAudioUrl}
+                        onPlay={() => setIsPlayingDebug(true)}
+                        onPause={() => setIsPlayingDebug(false)}
+                        onEnded={() => {
+                            setIsPlayingDebug(false);
+                            setDebugCurrentTime(0);
+                        }}
+                        onTimeUpdate={() => setDebugCurrentTime(debugAudioRef.current?.currentTime || 0)}
+                        onDurationChange={handleDebugAudioDurationChange}
+                        onLoadedMetadata={handleDebugAudioDurationChange}
+                        className="h-8 max-w-[200px] sm:max-w-[230px] rounded-lg accent-amber-600"
+                    />
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (lastAudioUrl) {
+                                URL.revokeObjectURL(lastAudioUrl);
+                            }
+                            setLastAudioUrl(null);
+                            setIsPlayingDebug(false);
+                        }}
+                        className="p-1.5 text-amber-600 dark:text-amber-400 hover:text-amber-900 dark:hover:text-white hover:bg-amber-200/60 dark:hover:bg-amber-800/60 rounded-xl transition-all cursor-pointer shrink-0"
+                        title={t("Dismiss", "Zatvoriť", "Bezárás")}
+                    >
+                        <X className="h-4 w-4 stroke-[2.5]" />
+                    </button>
+                </div>
+            </div>
+        );
+    };
 
     if (hideManualButton) {
         return (
@@ -559,45 +695,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                     )}
                 </div>
 
-                {/* Debug Audio Player Pill */}
-                {lastAudioUrl && !isVoiceRecording && !isVoiceTranscribing && (
-                    <div className="w-full flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/50 dark:to-orange-950/50 text-amber-950 dark:text-amber-100 rounded-2xl text-xs font-semibold shadow-md border-2 border-amber-300 dark:border-amber-700/80 animate-in fade-in slide-in-from-top-1 duration-200">
-                        <div className="flex items-center gap-2 min-w-0">
-                            <Volume2 className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                            <div className="flex flex-col">
-                                <span className="text-xs font-black text-amber-900 dark:text-amber-200">
-                                    {t("Debug Audio Player", "Kontrola nahraného zvuku", "Hangellenőrző")}
-                                </span>
-                                <span className="text-[10px] font-mono text-amber-700 dark:text-amber-400">
-                                    {(lastAudioBlobSize / 1024).toFixed(1)} KB ({lastAudioMimeType})
-                                </span>
-                            </div>
-                        </div>
-
-                        <div className="flex items-center gap-2 flex-1 justify-end min-w-[200px]">
-                            <audio
-                                controls
-                                playsInline
-                                preload="auto"
-                                src={lastAudioUrl}
-                                className="h-8 max-w-[220px] rounded-lg accent-amber-600"
-                            />
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    if (lastAudioUrl) {
-                                        URL.revokeObjectURL(lastAudioUrl);
-                                    }
-                                    setLastAudioUrl(null);
-                                }}
-                                className="p-1.5 text-amber-600 dark:text-amber-400 hover:text-amber-900 dark:hover:text-white hover:bg-amber-200/60 dark:hover:bg-amber-800/60 rounded-xl transition-all cursor-pointer shrink-0"
-                                title={t("Dismiss", "Zatvoriť", "Bezárás")}
-                            >
-                                <X className="h-4 w-4 stroke-[2.5]" />
-                            </button>
-                        </div>
-                    </div>
-                )}
+                {renderDebugPlayer()}
             </div>
         );
     }
@@ -750,45 +848,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                 )}
             </div>
 
-            {/* Debug Audio Player Pill */}
-            {lastAudioUrl && !isVoiceRecording && !isVoiceTranscribing && (
-                <div className="w-full flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 dark:from-amber-950/50 dark:via-orange-950/50 dark:to-amber-950/50 text-amber-950 dark:text-amber-100 rounded-2xl text-xs font-semibold shadow-md border-2 border-amber-300/90 dark:border-amber-700/80 animate-in fade-in slide-in-from-top-1 duration-200">
-                    <div className="flex items-center gap-2 min-w-0">
-                        <Volume2 className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                        <div className="flex flex-col">
-                            <span className="text-xs font-black text-amber-900 dark:text-amber-200">
-                                {t("Debug Audio Player", "Kontrola nahraného zvuku", "Hangellenőrző")}
-                            </span>
-                            <span className="text-[10px] font-mono text-amber-700 dark:text-amber-400">
-                                {(lastAudioBlobSize / 1024).toFixed(1)} KB ({lastAudioMimeType})
-                            </span>
-                        </div>
-                    </div>
-
-                    <div className="flex items-center gap-2 flex-1 justify-end min-w-[200px]">
-                        <audio
-                            controls
-                            playsInline
-                            preload="auto"
-                            src={lastAudioUrl}
-                            className="h-8 max-w-[220px] rounded-lg accent-amber-600"
-                        />
-                        <button
-                            type="button"
-                            onClick={() => {
-                                if (lastAudioUrl) {
-                                    URL.revokeObjectURL(lastAudioUrl);
-                                }
-                                setLastAudioUrl(null);
-                            }}
-                            className="p-1.5 text-amber-600 dark:text-amber-400 hover:text-amber-900 dark:hover:text-white hover:bg-amber-200/60 dark:hover:bg-amber-800/60 rounded-xl transition-all cursor-pointer shrink-0"
-                            title={t("Dismiss", "Zatvoriť", "Bezárás")}
-                        >
-                            <X className="h-4 w-4 stroke-[2.5]" />
-                        </button>
-                    </div>
-                </div>
-            )}
+            {renderDebugPlayer()}
         </div>
     );
 };
