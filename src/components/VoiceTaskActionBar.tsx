@@ -109,14 +109,30 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
         if (!canCreate || isVoiceTranscribing || isVoiceRecording) return;
         try {
             audioChunksRef.current = [];
-            const stream = await navigator.mediaDevices.getUserMedia({
-                audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true,
-                    channelCount: 1,
-                },
-            });
+
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                throw new Error(
+                    t(
+                        "Microphone requires HTTPS or localhost. If on Android over HTTP, please open via HTTPS tunnel or enable chrome://flags/#unsafely-treat-insecure-origin-as-secure.",
+                        "Mikrofón vyžaduje HTTPS alebo localhost. Na mobile cez HTTP otvorte zabezpečený HTTPS tunel alebo povoľte chrome://flags.",
+                        "A mikrofonhoz HTTPS vagy localhost kapcsolat szükséges. Mobilon nyissa meg HTTPS alagúton keresztül.",
+                    ),
+                );
+            }
+
+            let stream: MediaStream;
+            try {
+                stream = await navigator.mediaDevices.getUserMedia({
+                    audio: {
+                        echoCancellation: true,
+                        noiseSuppression: true,
+                        autoGainControl: true,
+                    },
+                });
+            } catch (err) {
+                console.warn("Retrying with basic audio constraints:", err);
+                stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            }
             audioStreamRef.current = stream;
 
             let mimeType = "audio/webm;codecs=opus";
@@ -137,7 +153,6 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
             }
 
             const recorderOptions: MediaRecorderOptions = {
-                audioBitsPerSecond: 128000,
                 ...(mimeType ? { mimeType } : {}),
             };
 
