@@ -24,8 +24,7 @@ import {
   Trash2,
   Check,
   Pencil,
-  Briefcase,
-  Receipt
+  Briefcase
 } from "lucide-react";
 import type {
   CustomDashboard,
@@ -475,20 +474,10 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     });
   }, [leads, pipelineStages, leadStageGroups, leadStateParents, leadStateColors]);
 
-  // Projects group items calculation + Remaining Invoicable Calculation
-  const {
-    projectGroupItems,
-    remainingInvoicableValue,
-    totalProjectBudgetValue,
-    totalInvoicedValue,
-  } = useMemo(() => {
+  // Projects group items calculation
+  const projectGroupItems = useMemo<StatusStatItem[]>(() => {
     if (!projects || projects.length === 0) {
-      return {
-        projectGroupItems: [],
-        remainingInvoicableValue: 0,
-        totalProjectBudgetValue: 0,
-        totalInvoicedValue: 0,
-      };
+      return [];
     }
 
     const activeStatuses: ProjectStatus[] = (
@@ -504,7 +493,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     let totalProjectBudgetValue = 0;
     let totalInvoicedValue = 0;
 
-    const projectGroupItems: StatusStatItem[] = activeStatuses.map((status) => {
+    return activeStatuses.map((status) => {
       const projectsInStatus = projects.filter((p) => p.status === status);
       let statusInvoicableVal = 0;
       let statusTotalBudgetValue = 0;
@@ -605,18 +594,6 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
         rows: statusRows,
       };
     });
-
-    const remainingInvoicableValue = Math.max(
-      0,
-      totalProjectBudgetValue - totalInvoicedValue
-    );
-
-    return {
-      projectGroupItems,
-      remainingInvoicableValue,
-      totalProjectBudgetValue,
-      totalInvoicedValue,
-    };
   }, [
     projects,
     projectTypes,
@@ -659,30 +636,6 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
         colorTheme: "purple",
         items: projectGroupItems,
         unitLabel: t("projects", "projektov", "projekt"),
-        extraHighlight: {
-          label: t(
-            "Remaining Invoicable",
-            "Zostáva vyfakturovať",
-            "Hátralévő számlázható összeg"
-          ),
-          value: remainingInvoicableValue,
-          subtext: `${t(
-            "Total Project Budgets:",
-            "Rozpočet projektov:",
-            "Projektek büdzséje:"
-          )} ${formatMoney(
-            totalProjectBudgetValue,
-            defaultCurrency,
-            (systemLanguage as Language) || "en",
-            { minimumFractionDigits: 0, maximumFractionDigits: 0 }
-          )} · ${t("Invoiced so far:", "Vyfakturované:", "Számlázva:")} ${formatMoney(
-            totalInvoicedValue,
-            defaultCurrency,
-            (systemLanguage as Language) || "en",
-            { minimumFractionDigits: 0, maximumFractionDigits: 0 }
-          )}`,
-          icon: Receipt,
-        },
       });
     }
 
@@ -690,11 +643,6 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   }, [
     leadGroupItems,
     projectGroupItems,
-    remainingInvoicableValue,
-    totalProjectBudgetValue,
-    totalInvoicedValue,
-    defaultCurrency,
-    systemLanguage,
     t,
   ]);
   // AI-generated widget titles/column labels come back either as a plain

@@ -2,7 +2,7 @@ import React, { useState, useMemo } from "react";
 import { 
   Award, Compass, TrendingUp, Users, Target, PieChart, 
   BarChart3, MapPin, Coins, Globe, Crown, Medal, Flame, Trophy, Briefcase, X, Maximize2,
-  Layers, Receipt
+  Layers
 } from "lucide-react";
 import type { Lead, Project, ProjectType, FinancialRecord, InvoiceOffer, ProjectStatus } from "../types";
 import { getTranslation } from "../utils/translations";
@@ -317,15 +317,10 @@ export const Dashboard: React.FC<DashboardProps> = ({
     });
   }, [leads, leadStates, leadStageGroups, leadStateParents, leadStateColors]);
 
-  // Projects group items + Remaining Invoicable Calculation
-  const { projectGroupItems, remainingInvoicableValue, totalProjectBudgetValue, totalInvoicedValue } = useMemo(() => {
+  // Projects group items calculation
+  const projectGroupItems: StatusStatItem[] = useMemo(() => {
     if (!projects || projects.length === 0) {
-      return {
-        projectGroupItems: [],
-        remainingInvoicableValue: 0,
-        totalProjectBudgetValue: 0,
-        totalInvoicedValue: 0,
-      };
+      return [];
     }
 
     const activeStatuses: ProjectStatus[] = (projectStatusOrder() as ProjectStatus[]).filter(
@@ -341,7 +336,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     let totalProjectBudgetValue = 0;
     let totalInvoicedValue = 0;
 
-    const projectGroupItems: StatusStatItem[] = activeStatuses.map((status) => {
+    return activeStatuses.map((status) => {
       const projectsInStatus = projects.filter((p) => p.status === status);
       let statusInvoicableVal = 0;
       let statusTotalBudgetValue = 0;
@@ -427,15 +422,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
         rows: statusRows,
       };
     });
-
-    const remainingInvoicableValue = Math.max(0, totalProjectBudgetValue - totalInvoicedValue);
-
-    return {
-      projectGroupItems,
-      remainingInvoicableValue,
-      totalProjectBudgetValue,
-      totalInvoicedValue,
-    };
   }, [projects, projectTypes, leads, financialRecords, invoicesOffers, defaultCurrency, t]);
 
   const dashboardEquationGroups: StatusStatGroup[] = useMemo(() => {
@@ -462,17 +448,11 @@ export const Dashboard: React.FC<DashboardProps> = ({
         colorTheme: "purple",
         items: projectGroupItems,
         unitLabel: t("projects", "projektov", "projekt"),
-        extraHighlight: {
-          label: t("Remaining Invoicable", "Zostáva vyfakturovať", "Hátralévő számlázható összeg"),
-          value: remainingInvoicableValue,
-          subtext: `${t("Total Project Budgets:", "Rozpočet projektov:", "Projektek büdzséje:")} ${formatMoney(totalProjectBudgetValue, defaultCurrency, systemLanguage, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} · ${t("Invoiced so far:", "Vyfakturované:", "Számlázva:")} ${formatMoney(totalInvoicedValue, defaultCurrency, systemLanguage, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}`,
-          icon: Receipt,
-        },
       });
     }
 
     return list;
-  }, [leadGroupItems, projectGroupItems, remainingInvoicableValue, totalProjectBudgetValue, totalInvoicedValue, defaultCurrency, systemLanguage, t]);
+  }, [leadGroupItems, projectGroupItems, t]);
 
   // Sub-tabs active status inside Dashboard
   const [activeTab, setActiveTab] = useState<"overview" | "campaigns" | "crm" | "clients">("overview");
