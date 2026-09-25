@@ -109,16 +109,39 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
         if (!canCreate || isVoiceTranscribing || isVoiceRecording) return;
         try {
             audioChunksRef.current = [];
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            const stream = await navigator.mediaDevices.getUserMedia({
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true,
+                    channelCount: 1,
+                },
+            });
             audioStreamRef.current = stream;
 
-            const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-                ? "audio/webm;codecs=opus"
-                : MediaRecorder.isTypeSupported("audio/mp4")
-                  ? "audio/mp4"
-                  : "";
+            let mimeType = "audio/webm;codecs=opus";
+            if (typeof MediaRecorder !== "undefined") {
+                if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+                    mimeType = "audio/webm;codecs=opus";
+                } else if (MediaRecorder.isTypeSupported("audio/webm")) {
+                    mimeType = "audio/webm";
+                } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
+                    mimeType = "audio/mp4";
+                } else if (MediaRecorder.isTypeSupported("audio/ogg")) {
+                    mimeType = "audio/ogg";
+                } else if (MediaRecorder.isTypeSupported("audio/wav")) {
+                    mimeType = "audio/wav";
+                } else {
+                    mimeType = "";
+                }
+            }
 
-            const recorder = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream);
+            const recorderOptions: MediaRecorderOptions = {
+                audioBitsPerSecond: 128000,
+                ...(mimeType ? { mimeType } : {}),
+            };
+
+            const recorder = new MediaRecorder(stream, recorderOptions);
             mediaRecorderRef.current = recorder;
 
             recorder.ondataavailable = (event) => {
@@ -133,10 +156,13 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                 if (AudioCtx) {
                     const ctx = new AudioCtx();
                     audioContextRef.current = ctx;
+                    if (ctx.state === "suspended") {
+                        await ctx.resume();
+                    }
                     const source = ctx.createMediaStreamSource(stream);
                     const analyser = ctx.createAnalyser();
                     analyser.fftSize = 64;
-                    analyser.smoothingTimeConstant = 0.65;
+                    analyser.smoothingTimeConstant = 0.55;
                     source.connect(analyser);
                     analyserRef.current = analyser;
 
@@ -151,7 +177,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                                 sum += dataArray[i];
                             }
                             const avg = sum / usefulBins;
-                            const instantLevel = Math.max(12, Math.min(100, Math.round((avg / 175) * 100)));
+                            const instantLevel = Math.max(12, Math.min(100, Math.round((avg / 160) * 100)));
 
                             // Push new audio sample on the right, shifting wave history from right to left
                             if (!lastPushTimeRef.current || timestamp - lastPushTimeRef.current > 40) {
@@ -170,7 +196,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                 console.warn("AudioContext setup warning:", err);
             }
 
-            recorder.start(250);
+            recorder.start(100);
             setIsVoiceRecording(true);
             setVoiceRecordDuration(0);
 
@@ -196,7 +222,15 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
     const handleStopAndProcessVoiceRecording = async () => {
         if (!isVoiceRecording && !mediaRecorderRef.current) return;
 
-        cleanupAudio();
+        // Stop duration timer and animation frame first
+        if (voiceTimerRef.current) {
+            clearInterval(voiceTimerRef.current);
+            voiceTimerRef.current = null;
+        }
+        if (animFrameRef.current) {
+            cancelAnimationFrame(animFrameRef.current);
+            animFrameRef.current = null;
+        }
 
         const recorder = mediaRecorderRef.current;
         setIsVoiceRecording(false);
@@ -204,7 +238,8 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
 
         const stopPromise = new Promise<Blob>((resolve) => {
             if (!recorder || recorder.state === "inactive") {
-                resolve(new Blob(audioChunksRef.current, { type: "audio/webm" }));
+                const mime = recorder?.mimeType || "audio/webm";
+                resolve(new Blob(audioChunksRef.current, { type: mime }));
                 return;
             }
             recorder.onstop = () => {
@@ -212,14 +247,28 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                 const blob = new Blob(audioChunksRef.current, { type: mime });
                 resolve(blob);
             };
-            recorder.stop();
+            try {
+                if (recorder.state === "recording") {
+                    recorder.requestData();
+                }
+                recorder.stop();
+            } catch (_) {
+                const mime = recorder?.mimeType || "audio/webm";
+                resolve(new Blob(audioChunksRef.current, { type: mime }));
+            }
         });
 
-        mediaRecorderRef.current = null;
+        let audioBlob: Blob | null = null;
+        try {
+            audioBlob = await stopPromise;
+        } finally {
+            // Safely cleanup audio stream tracks and context AFTER recorder has assembled the blob
+            cleanupAudio();
+            mediaRecorderRef.current = null;
+        }
 
         try {
-            const audioBlob = await stopPromise;
-            if (audioBlob.size < 400) {
+            if (!audioBlob || audioBlob.size < 200) {
                 throw new Error(
                     t(
                         "Recording too short or empty. Please speak clearly.",
@@ -239,6 +288,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
             const formData = new FormData();
             formData.append("audio", audioBlob, `voice_task.${ext}`);
             formData.append("today", toLocalDateStr(new Date()));
+            formData.append("language", systemLanguage);
             formData.append("users", JSON.stringify(users.map((u) => u.name)));
 
             const res = await fetchWithTimeout(
@@ -322,11 +372,12 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
 
             if (typeof (window as any).showToast === "function") {
                 const titles = createdTasks.map((tk) => `"${tk.title}"`).join(", ");
+                const heardSnippet = data.transcription ? ` (🎤 "${data.transcription}")` : "";
                 (window as any).showToast(
                     t(
-                        `Voice task created: ${titles}`,
-                        `Úloha vytvorená z hlasu: ${titles}`,
-                        `Hangfeladat létrehozva: ${titles}`,
+                        `Voice task created: ${titles}${heardSnippet}`,
+                        `Úloha vytvorená: ${titles}${heardSnippet}`,
+                        `Hangfeladat létrehozva: ${titles}${heardSnippet}`,
                     ),
                     "success",
                 );

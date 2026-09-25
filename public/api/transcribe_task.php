@@ -87,6 +87,31 @@ if (!empty($rawText)) {
         exit;
     }
 
+    // Prepare vocabulary hints for Whisper
+    $knownUsers = [];
+    try {
+        $uStmt = $pdo->query("SELECT `name` FROM `users` WHERE `status` = 'active'");
+        $knownUsers = $uStmt->fetchAll(PDO::FETCH_COLUMN);
+    } catch (\Throwable $e) {}
+
+    $userContextList = !empty($_POST['users']) ? json_decode($_POST['users'], true) : $knownUsers;
+    if (!is_array($userContextList)) $userContextList = $knownUsers;
+
+    $promptWords = [
+        "Úloha", "úlohy", "pripomienka", "stretnutie", "zavolať", "poslať", "email", "ponuka", "cenová ponuka",
+        "zajtra", "dnes", "v piatok", "v pondelok", "v utorok", "v stredu", "vo štvrtok", "budúci týždeň", "termín",
+        "Feladat", "emlékeztető", "megbeszélés", "hívás", "küldés", "holnap", "ma", "pénteken", "határidő",
+        "Task", "reminder", "meeting", "call", "send", "tomorrow", "today", "deadline"
+    ];
+    if (!empty($userContextList)) {
+        foreach ($userContextList as $uName) {
+            if (is_string($uName) && strlen(trim($uName)) > 1) {
+                $promptWords[] = trim($uName);
+            }
+        }
+    }
+    $whisperPrompt = implode(', ', array_unique($promptWords));
+
     // Step 1: Whisper transcription
     $mimeType = 'audio/webm';
     if ($ext === 'mp3') $mimeType = 'audio/mp3';
@@ -98,8 +123,15 @@ if (!empty($rawText)) {
     $cFile = new CURLFile($targetPath, $mimeType, basename($targetPath));
     $whisperPayload = [
         'file' => $cFile,
-        'model' => 'whisper-1'
+        'model' => 'whisper-1',
+        'prompt' => $whisperPrompt,
+        'temperature' => '0',
     ];
+
+    $clientLang = strtolower(trim((string)($_POST['language'] ?? '')));
+    if (in_array($clientLang, ['sk', 'hu', 'en', 'cs', 'de', 'pl'], true)) {
+        $whisperPayload['language'] = $clientLang;
+    }
 
     $ch = curl_init('https://api.openai.com/v1/audio/transcriptions');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
