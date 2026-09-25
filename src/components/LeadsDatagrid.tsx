@@ -58,6 +58,7 @@ import {
     AlertTriangle,
     Building2,
 } from "lucide-react";
+import { VoiceTaskActionBar } from "./VoiceTaskActionBar";
 import type {
     Lead,
     TimelineEvent,
@@ -6279,17 +6280,32 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     </div>
                                 </div>
 
-                                <button
-                                    type="submit"
-                                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-black text-[10px] uppercase tracking-wider shadow hover:shadow-violet-600/10 hover:scale-[1.01] transition-all cursor-pointer border border-violet-500/20 flex items-center justify-center gap-1.5"
-                                >
-                                    <Plus className="h-3.5 w-3.5" />
-                                    {systemLanguage === "sk"
-                                        ? "Pridať úlohu fázovej brány"
-                                        : systemLanguage === "hu"
-                                          ? "Kapu feladat hozzáadása"
-                                          : "Add Pipeline Gate Task"}
-                                </button>
+                                <VoiceTaskActionBar
+                                    canCreate={Boolean(canCreateTask && canEdit)}
+                                    systemLanguage={systemLanguage}
+                                    currentUser={currentUser}
+                                    users={_users || []}
+                                    defaultAssignee={resolveTaskAssignee(inlineTaskAssignee)}
+                                    defaultStatus={taskStates[0] || "New"}
+                                    relatedLeadId={activeLead.id}
+                                    isLocking={inlineTaskIsLocking}
+                                    manualButtonText={
+                                        systemLanguage === "sk"
+                                            ? "Pridať úlohu fázovej brány"
+                                            : systemLanguage === "hu"
+                                              ? "Kapu feladat hozzáadása"
+                                              : "Add Pipeline Gate Task"
+                                    }
+                                    manualButtonClassName="py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white font-black text-[10px] uppercase tracking-wider shadow hover:shadow-violet-600/10 hover:scale-[1.01] transition-all duration-300 ease-in-out cursor-pointer border border-violet-500/20 flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    voiceButtonClassName="w-[20%] py-2.5 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 text-white rounded-xl font-black text-[10px] uppercase tracking-wider shadow hover:scale-[1.01] transition-all duration-300 ease-in-out cursor-pointer border border-rose-400/30 flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                                    onManualCreateClick={(e) => {
+                                        if (e) e.preventDefault();
+                                        handleAddInlineLockingTask(e as any);
+                                    }}
+                                    onTasksCreated={(newTasks) => {
+                                        setTasks((prev) => [...newTasks, ...prev]);
+                                    }}
+                                />
                             </form>
                         </div>
                     </div>

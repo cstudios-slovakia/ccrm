@@ -16,6 +16,7 @@ import type { Lead, Project, Task, UserProfile } from "../types";
 import type { Language } from "../utils/translations";
 import { CustomSelect } from "./ui/CustomSelect";
 import { TaskEditDrawer } from "./TaskEditDrawer";
+import { VoiceTaskActionBar } from "./VoiceTaskActionBar";
 import {
   buildProjectTasks,
   isDoneTaskState,
@@ -355,17 +356,6 @@ export const ProjectTasksPanel: React.FC<ProjectTasksPanelProps> = ({
                   )}
                   className="flex-1 min-w-0 resize-none bg-transparent py-2 text-sm font-semibold text-slate-800 placeholder:text-slate-400 focus:outline-none"
                 />
-                <button
-                  type="button"
-                  onClick={addTasks}
-                  disabled={pendingTitles.length === 0}
-                  className="mt-1 shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-[10px] font-black uppercase tracking-wider shadow-sm shadow-indigo-600/20 transition-all hover:bg-indigo-700 active:scale-95 cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:scale-100"
-                >
-                  <CornerDownLeft className="h-3.5 w-3.5" />
-                  {pendingTitles.length > 1
-                    ? t(`Add ${pendingTitles.length}`, `Pridať ${pendingTitles.length}`, `${pendingTitles.length} hozzáadása`)
-                    : t("Add", "Pridať", "Hozzáadás")}
-                </button>
               </div>
               <div className="mt-2 pt-2 border-t border-slate-200/70 flex flex-wrap items-center gap-x-4 gap-y-2 text-[10px] font-bold text-slate-500">
                 <label className="flex items-center gap-1.5">
@@ -398,6 +388,31 @@ export const ProjectTasksPanel: React.FC<ProjectTasksPanelProps> = ({
                     "Soronként egy feladat · Shift+Enter új sor",
                   )}
                 </span>
+              </div>
+              <div className="mt-2.5 pt-2.5 border-t border-slate-200/70">
+                <VoiceTaskActionBar
+                  canCreate={canCreate}
+                  systemLanguage={userLanguage}
+                  currentUser={currentUser}
+                  users={users}
+                  defaultAssignee={assignee}
+                  defaultStatus={taskStates[0] || "New"}
+                  relatedProjectId={project.id}
+                  relatedLeadId={project.leadId || undefined}
+                  manualButtonText={
+                    pendingTitles.length > 1
+                      ? t(`Add ${pendingTitles.length} Tasks`, `Pridať ${pendingTitles.length} úloh`, `${pendingTitles.length} feladat hozzáadása`)
+                      : t("Add Task", "Pridať úlohu", "Feladat hozzáadása")
+                  }
+                  manualButtonIcon={<CornerDownLeft className="h-3.5 w-3.5" />}
+                  manualButtonClassName="py-2 px-3 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black uppercase tracking-wider shadow-sm shadow-indigo-600/20 transition-all duration-300 ease-in-out hover:scale-[1.01] cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+                  voiceButtonClassName="w-[20%] py-2 px-3 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 text-white rounded-xl font-black text-[10px] uppercase tracking-wider shadow-sm hover:scale-[1.01] transition-all duration-300 ease-in-out cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                  onManualCreateClick={addTasks}
+                  onTasksCreated={(createdTasks) => {
+                    setTasks((prev) => [...createdTasks, ...prev]);
+                    setRecentIds(new Set(createdTasks.map((tk) => tk.id)));
+                  }}
+                />
               </div>
             </>
           )}

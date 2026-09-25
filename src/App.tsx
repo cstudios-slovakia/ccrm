@@ -2800,9 +2800,12 @@ ${log.payload || ''}
           leads={leads}
           setLeads={updateLeadsAndSync}
           projectManagers={projectManagers}
+          projectManagerColors={projectManagerColors}
           leadSources={leadSources}
           initialSelectedClient={clientName}
           access={access.module("clients")}
+          financeAccess={access.module("financial")}
+          taskAccess={taskAccess}
           clientCategories={clientCategories}
           setClientCategories={updateClientCategoriesAndSync}
           systemLanguage={userLanguage}
@@ -2813,6 +2816,14 @@ ${log.payload || ''}
           taskStates={taskStates}
           systemName={systemName}
           currencyCode={currencyCode}
+          financialRecords={financialRecords}
+          setFinancialRecords={updateFinancialRecordsAndSync}
+          financialCategories={financialCategories}
+          setFinancialCategories={updateFinancialCategoriesAndSync}
+          currentUser={currentUser}
+          users={users}
+          projects={projects}
+          taskStateColors={taskStateColors}
         />
       );
     }
@@ -3032,6 +3043,10 @@ ${log.payload || ''}
             setFinancialCategories={updateFinancialCategoriesAndSync}
             clientCategories={clientCategories}
             setClientCategories={updateClientCategoriesAndSync}
+            currentUser={currentUser}
+            users={users}
+            projects={projects}
+            taskStateColors={taskStateColors}
           />
         );
       case "financial":
