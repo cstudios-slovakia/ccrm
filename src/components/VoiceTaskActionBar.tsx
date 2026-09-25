@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Mic, Plus, X, Check, Loader2, Play, Pause, Volume2 } from "lucide-react";
+import { Mic, Plus, X, Check, Loader2, Volume2 } from "lucide-react";
 import type { Task, UserProfile } from "../types";
 import type { Language } from "../utils/translations";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
@@ -72,15 +72,12 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
     // Debug audio playback state
     const [lastAudioUrl, setLastAudioUrl] = useState<string | null>(null);
     const [lastAudioBlobSize, setLastAudioBlobSize] = useState<number>(0);
-    const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
-    const [audioPlayTime, setAudioPlayTime] = useState<number>(0);
-    const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+    const [lastAudioMimeType, setLastAudioMimeType] = useState<string>("audio/webm");
 
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
     const voiceTimerRef = useRef<any>(null);
     const audioStreamRef = useRef<MediaStream | null>(null);
-    const analyserStreamRef = useRef<MediaStream | null>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
     const analyserRef = useRef<AnalyserNode | null>(null);
     const animFrameRef = useRef<number | null>(null);
@@ -101,12 +98,6 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
             } catch (_) {}
             audioContextRef.current = null;
         }
-        if (analyserStreamRef.current) {
-            try {
-                analyserStreamRef.current.getTracks().forEach((track) => track.stop());
-            } catch (_) {}
-            analyserStreamRef.current = null;
-        }
         if (audioStreamRef.current) {
             try {
                 audioStreamRef.current.getTracks().forEach((track) => track.stop());
@@ -115,46 +106,9 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
         }
     };
 
-    const handleTogglePlayLastAudio = () => {
-        if (!lastAudioUrl) return;
-
-        if (isPlayingAudio && audioPlayerRef.current) {
-            audioPlayerRef.current.pause();
-            audioPlayerRef.current.currentTime = 0;
-            setIsPlayingAudio(false);
-            setAudioPlayTime(0);
-            return;
-        }
-
-        if (!audioPlayerRef.current) {
-            const audio = new Audio();
-            audioPlayerRef.current = audio;
-        }
-
-        const player = audioPlayerRef.current;
-        player.src = lastAudioUrl;
-        player.onended = () => {
-            setIsPlayingAudio(false);
-            setAudioPlayTime(0);
-        };
-        player.ontimeupdate = () => {
-            setAudioPlayTime(player.currentTime);
-        };
-        player.play().then(() => {
-            setIsPlayingAudio(true);
-        }).catch((err) => {
-            console.error("Audio playback error:", err);
-            setIsPlayingAudio(false);
-        });
-    };
-
     useEffect(() => {
         return () => {
             cleanupAudio();
-            if (audioPlayerRef.current) {
-                audioPlayerRef.current.pause();
-                audioPlayerRef.current = null;
-            }
         };
     }, []);
 
@@ -182,6 +136,73 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
             }
             audioStreamRef.current = stream;
 
+            let recordStream = stream;
+
+            // Set up Web Audio API with 3.0x GainNode boost for crystal-clear microphone audio
+            try {
+                const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+                if (AudioCtx) {
+                    const ctx = new AudioCtx();
+                    audioContextRef.current = ctx;
+                    if (ctx.state === "suspended") {
+                        await ctx.resume();
+                    }
+
+                    const source = ctx.createMediaStreamSource(stream);
+
+                    // 3x volume boost to prevent quiet/inaudible mobile recordings
+                    const gainNode = ctx.createGain();
+                    gainNode.gain.value = 3.0;
+
+                    const analyser = ctx.createAnalyser();
+                    analyser.fftSize = 128;
+                    analyser.smoothingTimeConstant = 0.35;
+
+                    const destination = ctx.createMediaStreamDestination();
+
+                    source.connect(gainNode);
+                    gainNode.connect(analyser);
+                    gainNode.connect(destination);
+
+                    analyserRef.current = analyser;
+
+                    if (destination.stream && destination.stream.getAudioTracks().length > 0) {
+                        recordStream = destination.stream;
+                    }
+
+                    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+                    const updateMeter = (timestamp: number) => {
+                        if (analyserRef.current) {
+                            analyserRef.current.getByteFrequencyData(dataArray);
+                            let sum = 0;
+                            let max = 0;
+                            for (let i = 0; i < dataArray.length; i++) {
+                                const val = dataArray[i];
+                                sum += val;
+                                if (val > max) max = val;
+                            }
+                            const avg = sum / (dataArray.length || 1);
+                            // Highly responsive voice wave scaling
+                            const rawLevel = (avg * 1.6 + max * 0.4) / 110;
+                            const instantLevel = Math.max(12, Math.min(100, Math.round(rawLevel * 100)));
+
+                            if (!lastPushTimeRef.current || timestamp - lastPushTimeRef.current > 40) {
+                                lastPushTimeRef.current = timestamp;
+                                setAudioVolumeBars((prev) => {
+                                    const next = [...prev.slice(1), instantLevel];
+                                    return next;
+                                });
+                            }
+                        }
+                        animFrameRef.current = requestAnimationFrame(updateMeter);
+                    };
+                    animFrameRef.current = requestAnimationFrame(updateMeter);
+                }
+            } catch (err) {
+                console.warn("AudioContext setup warning:", err);
+            }
+
             let mimeType = "audio/webm";
             if (typeof MediaRecorder !== "undefined") {
                 if (MediaRecorder.isTypeSupported("audio/webm")) {
@@ -201,7 +222,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                 ...(mimeType ? { mimeType } : {}),
             };
 
-            const recorder = new MediaRecorder(stream, recorderOptions);
+            const recorder = new MediaRecorder(recordStream, recorderOptions);
             mediaRecorderRef.current = recorder;
 
             recorder.ondataavailable = (event) => {
@@ -209,54 +230,6 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                     audioChunksRef.current.push(event.data);
                 }
             };
-
-            // Set up Web Audio API Analyser on a cloned stream for real-time waveform
-            try {
-                const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
-                if (AudioCtx) {
-                    const ctx = new AudioCtx();
-                    audioContextRef.current = ctx;
-                    if (ctx.state === "suspended") {
-                        await ctx.resume();
-                    }
-                    const analyserStream = stream.clone();
-                    analyserStreamRef.current = analyserStream;
-                    const source = ctx.createMediaStreamSource(analyserStream);
-                    const analyser = ctx.createAnalyser();
-                    analyser.fftSize = 64;
-                    analyser.smoothingTimeConstant = 0.55;
-                    source.connect(analyser);
-                    analyserRef.current = analyser;
-
-                    const dataArray = new Uint8Array(analyser.frequencyBinCount);
-
-                    const updateMeter = (timestamp: number) => {
-                        if (analyserRef.current) {
-                            analyserRef.current.getByteFrequencyData(dataArray);
-                            let sum = 0;
-                            const usefulBins = Math.min(dataArray.length, 12);
-                            for (let i = 0; i < usefulBins; i++) {
-                                sum += dataArray[i];
-                            }
-                            const avg = sum / usefulBins;
-                            const instantLevel = Math.max(12, Math.min(100, Math.round((avg / 160) * 100)));
-
-                            // Push new audio sample on the right, shifting wave history from right to left
-                            if (!lastPushTimeRef.current || timestamp - lastPushTimeRef.current > 40) {
-                                lastPushTimeRef.current = timestamp;
-                                setAudioVolumeBars((prev) => {
-                                    const next = [...prev.slice(1), instantLevel];
-                                    return next;
-                                });
-                            }
-                        }
-                        animFrameRef.current = requestAnimationFrame(updateMeter);
-                    };
-                    animFrameRef.current = requestAnimationFrame(updateMeter);
-                }
-            } catch (err) {
-                console.warn("AudioContext setup warning:", err);
-            }
 
             recorder.start(250);
             setIsVoiceRecording(true);
@@ -335,8 +308,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
             const url = URL.createObjectURL(audioBlob);
             setLastAudioUrl(url);
             setLastAudioBlobSize(audioBlob.size);
-            setIsPlayingAudio(false);
-            setAudioPlayTime(0);
+            setLastAudioMimeType(audioBlob.type || "audio/webm");
             (window as any).lastRecordedAudioBlob = audioBlob;
             (window as any).lastRecordedAudioUrl = url;
         }
@@ -589,56 +561,39 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
 
                 {/* Debug Audio Player Pill */}
                 {lastAudioUrl && !isVoiceRecording && !isVoiceTranscribing && (
-                    <div className="w-full flex items-center justify-between gap-2 px-3 py-1.5 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 text-amber-900 dark:text-amber-200 rounded-xl text-xs font-semibold shadow-sm border border-amber-300 dark:border-amber-700/60 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <div className="w-full flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/50 dark:to-orange-950/50 text-amber-950 dark:text-amber-100 rounded-2xl text-xs font-semibold shadow-md border-2 border-amber-300 dark:border-amber-700/80 animate-in fade-in slide-in-from-top-1 duration-200">
                         <div className="flex items-center gap-2 min-w-0">
                             <Volume2 className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                            <span className="text-[11px] font-bold truncate">
-                                {t("Recorded Audio:", "Nahraný zvuk:", "Rögzített hang:")}{" "}
-                                <span className="font-mono text-amber-700 dark:text-amber-400 font-normal">
-                                    ({(lastAudioBlobSize / 1024).toFixed(1)} KB)
+                            <div className="flex flex-col">
+                                <span className="text-xs font-black text-amber-900 dark:text-amber-200">
+                                    {t("Debug Audio Player", "Kontrola nahraného zvuku", "Hangellenőrző")}
                                 </span>
-                            </span>
+                                <span className="text-[10px] font-mono text-amber-700 dark:text-amber-400">
+                                    {(lastAudioBlobSize / 1024).toFixed(1)} KB ({lastAudioMimeType})
+                                </span>
+                            </div>
                         </div>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                            <button
-                                type="button"
-                                onClick={handleTogglePlayLastAudio}
-                                className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white rounded-lg text-xs font-black uppercase tracking-wider shadow-xs transition-all active:scale-95 cursor-pointer"
-                                title={
-                                    isPlayingAudio
-                                        ? t("Stop playback", "Zastaviť prehrávanie", "Lejátszás leállítása")
-                                        : t("Play recorded audio", "Prehrať nahraný hlas", "Hang lejátszása")
-                                }
-                            >
-                                {isPlayingAudio ? (
-                                    <>
-                                        <Pause className="h-3.5 w-3.5 fill-white" />
-                                        <span>{formatVoiceDuration(Math.floor(audioPlayTime))}</span>
-                                    </>
-                                ) : (
-                                    <>
-                                        <Play className="h-3.5 w-3.5 fill-white" />
-                                        <span>{t("Play", "Prehrať", "Lejátszás")}</span>
-                                    </>
-                                )}
-                            </button>
+
+                        <div className="flex items-center gap-2 flex-1 justify-end min-w-[200px]">
+                            <audio
+                                controls
+                                playsInline
+                                preload="auto"
+                                src={lastAudioUrl}
+                                className="h-8 max-w-[220px] rounded-lg accent-amber-600"
+                            />
                             <button
                                 type="button"
                                 onClick={() => {
-                                    if (audioPlayerRef.current) {
-                                        audioPlayerRef.current.pause();
-                                        audioPlayerRef.current = null;
-                                    }
                                     if (lastAudioUrl) {
                                         URL.revokeObjectURL(lastAudioUrl);
                                     }
                                     setLastAudioUrl(null);
-                                    setIsPlayingAudio(false);
                                 }}
-                                className="p-1 text-amber-600 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-100 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 rounded-md transition-all cursor-pointer"
+                                className="p-1.5 text-amber-600 dark:text-amber-400 hover:text-amber-900 dark:hover:text-white hover:bg-amber-200/60 dark:hover:bg-amber-800/60 rounded-xl transition-all cursor-pointer shrink-0"
                                 title={t("Dismiss", "Zatvoriť", "Bezárás")}
                             >
-                                <X className="h-3.5 w-3.5" />
+                                <X className="h-4 w-4 stroke-[2.5]" />
                             </button>
                         </div>
                     </div>
@@ -797,56 +752,39 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
 
             {/* Debug Audio Player Pill */}
             {lastAudioUrl && !isVoiceRecording && !isVoiceTranscribing && (
-                <div className="w-full flex items-center justify-between gap-2 px-3 py-1.5 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 text-amber-900 dark:text-amber-200 rounded-xl text-xs font-semibold shadow-sm border border-amber-300 dark:border-amber-700/60 animate-in fade-in slide-in-from-top-1 duration-200">
+                <div className="w-full flex flex-wrap items-center justify-between gap-2 px-3 py-2 bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 dark:from-amber-950/50 dark:via-orange-950/50 dark:to-amber-950/50 text-amber-950 dark:text-amber-100 rounded-2xl text-xs font-semibold shadow-md border-2 border-amber-300/90 dark:border-amber-700/80 animate-in fade-in slide-in-from-top-1 duration-200">
                     <div className="flex items-center gap-2 min-w-0">
                         <Volume2 className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                        <span className="text-[11px] font-bold truncate">
-                            {t("Recorded Audio:", "Nahraný zvuk:", "Rögzített hang:")}{" "}
-                            <span className="font-mono text-amber-700 dark:text-amber-400 font-normal">
-                                ({(lastAudioBlobSize / 1024).toFixed(1)} KB)
+                        <div className="flex flex-col">
+                            <span className="text-xs font-black text-amber-900 dark:text-amber-200">
+                                {t("Debug Audio Player", "Kontrola nahraného zvuku", "Hangellenőrző")}
                             </span>
-                        </span>
+                            <span className="text-[10px] font-mono text-amber-700 dark:text-amber-400">
+                                {(lastAudioBlobSize / 1024).toFixed(1)} KB ({lastAudioMimeType})
+                            </span>
+                        </div>
                     </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                        <button
-                            type="button"
-                            onClick={handleTogglePlayLastAudio}
-                            className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white rounded-lg text-xs font-black uppercase tracking-wider shadow-xs transition-all active:scale-95 cursor-pointer"
-                            title={
-                                isPlayingAudio
-                                    ? t("Stop playback", "Zastaviť prehrávanie", "Lejátszás leállítása")
-                                    : t("Play recorded audio", "Prehrať nahraný hlas", "Hang lejátszása")
-                            }
-                        >
-                            {isPlayingAudio ? (
-                                <>
-                                    <Pause className="h-3.5 w-3.5 fill-white" />
-                                    <span>{formatVoiceDuration(Math.floor(audioPlayTime))}</span>
-                                </>
-                            ) : (
-                                <>
-                                    <Play className="h-3.5 w-3.5 fill-white" />
-                                    <span>{t("Play", "Prehrať", "Lejátszás")}</span>
-                                </>
-                            )}
-                        </button>
+
+                    <div className="flex items-center gap-2 flex-1 justify-end min-w-[200px]">
+                        <audio
+                            controls
+                            playsInline
+                            preload="auto"
+                            src={lastAudioUrl}
+                            className="h-8 max-w-[220px] rounded-lg accent-amber-600"
+                        />
                         <button
                             type="button"
                             onClick={() => {
-                                if (audioPlayerRef.current) {
-                                    audioPlayerRef.current.pause();
-                                    audioPlayerRef.current = null;
-                                }
                                 if (lastAudioUrl) {
                                     URL.revokeObjectURL(lastAudioUrl);
                                 }
                                 setLastAudioUrl(null);
-                                setIsPlayingAudio(false);
                             }}
-                            className="p-1 text-amber-600 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-100 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 rounded-md transition-all cursor-pointer"
+                            className="p-1.5 text-amber-600 dark:text-amber-400 hover:text-amber-900 dark:hover:text-white hover:bg-amber-200/60 dark:hover:bg-amber-800/60 rounded-xl transition-all cursor-pointer shrink-0"
                             title={t("Dismiss", "Zatvoriť", "Bezárás")}
                         >
-                            <X className="h-3.5 w-3.5" />
+                            <X className="h-4 w-4 stroke-[2.5]" />
                         </button>
                     </div>
                 </div>
