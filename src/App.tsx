@@ -2740,6 +2740,13 @@ ${log.payload || ''}
             taskStateColors={taskStateColors}
             currentUserName={currentUser?.name || ""}
             onNavigate={(route) => { window.location.hash = route; }}
+            leads={leads}
+            projects={projects}
+            projectTypes={projectTypes}
+            financialRecords={financialRecords}
+            invoicesOffers={invoicesOffers}
+            leadStageGroups={leadStageGroups}
+            leadStateParents={leadStateParents}
           />
         );
       }
@@ -3127,6 +3134,13 @@ ${log.payload || ''}
             taskStateColors={taskStateColors}
             currentUserName={currentUser?.name || ""}
             onNavigate={(route) => { window.location.hash = route; }}
+            leads={leads}
+            projects={projects}
+            projectTypes={projectTypes}
+            financialRecords={financialRecords}
+            invoicesOffers={invoicesOffers}
+            leadStageGroups={leadStageGroups}
+            leadStateParents={leadStateParents}
           />
         );
       case "overview":
@@ -3143,6 +3157,10 @@ ${log.payload || ''}
             leadStateParents={leadStateParents}
             campaigns={integrationsConfig.campaigns}
             currencyCode={currencyCode}
+            projects={projects}
+            projectTypes={projectTypes}
+            financialRecords={financialRecords}
+            invoicesOffers={invoicesOffers}
           />
         );
       case "rag_ai":

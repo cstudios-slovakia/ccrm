@@ -1,4 +1,4 @@
-export const VERSION = "1.11.36-Lemon";
+export const VERSION = "1.11.37-Lemon";
 // Release codename ("Lemon"), used to name the RAG assistant. Kept as its own
 // export because RagAiView reads it at module scope — dropping it silently named
 // the assistant `undefined`.

@@ -26,8 +26,8 @@ export interface StatusValueEquationStatsProps {
   unitLabel?: string;
   storageKey?: string;
   defaultExpanded?: boolean;
-  themeColor?: "blue" | "purple" | "indigo" | "emerald";
-  totalColor?: "blue" | "purple" | "indigo" | "emerald" | "green";
+  themeColor?: "blue" | "purple" | "indigo" | "emerald" | "amber" | "yellow" | "cyan";
+  totalColor?: "blue" | "purple" | "indigo" | "emerald" | "green" | "amber" | "yellow" | "cyan";
 }
 
 export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> = ({
@@ -189,6 +189,33 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
       totalBadgeBg: "bg-white/20 text-white",
       toggleActive: "text-emerald-600 hover:bg-emerald-50",
     },
+    amber: {
+      border: "border-amber-100/90",
+      bg: "bg-gradient-to-r from-amber-50/50 via-white/80 to-yellow-50/40",
+      iconBg: "bg-amber-600 text-white shadow-amber-600/20",
+      pillBorder: "border-amber-200",
+      totalBg: "bg-gradient-to-br from-amber-500 to-yellow-500 text-white shadow-lg shadow-amber-500/25",
+      totalBadgeBg: "bg-white/20 text-white",
+      toggleActive: "text-amber-600 hover:bg-amber-50",
+    },
+    yellow: {
+      border: "border-yellow-100/90",
+      bg: "bg-gradient-to-r from-yellow-50/50 via-white/80 to-amber-50/40",
+      iconBg: "bg-amber-500 text-white shadow-amber-500/20",
+      pillBorder: "border-yellow-200",
+      totalBg: "bg-gradient-to-br from-amber-500 to-yellow-500 text-white shadow-lg shadow-amber-500/25",
+      totalBadgeBg: "bg-white/20 text-white",
+      toggleActive: "text-amber-600 hover:bg-amber-50",
+    },
+    cyan: {
+      border: "border-cyan-100/90",
+      bg: "bg-gradient-to-r from-cyan-50/50 via-white/80 to-blue-50/40",
+      iconBg: "bg-cyan-600 text-white shadow-cyan-600/20",
+      pillBorder: "border-cyan-200",
+      totalBg: "bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/25",
+      totalBadgeBg: "bg-white/20 text-white",
+      toggleActive: "text-cyan-600 hover:bg-cyan-50",
+    },
   }[themeColor];
 
   const totalClasses = {
@@ -210,6 +237,18 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
     },
     green: {
       totalBg: "bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-lg shadow-emerald-600/25",
+      totalBadgeBg: "bg-white/20 text-white",
+    },
+    amber: {
+      totalBg: "bg-gradient-to-br from-amber-500 to-yellow-500 text-white shadow-lg shadow-amber-500/25",
+      totalBadgeBg: "bg-white/20 text-white",
+    },
+    yellow: {
+      totalBg: "bg-gradient-to-br from-amber-500 to-yellow-500 text-white shadow-lg shadow-amber-500/25",
+      totalBadgeBg: "bg-white/20 text-white",
+    },
+    cyan: {
+      totalBg: "bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/25",
       totalBadgeBg: "bg-white/20 text-white",
     },
   }[totalColor || themeColor];
