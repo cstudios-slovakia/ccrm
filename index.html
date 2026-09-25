@@ -4,8 +4,13 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="./favicon.svg" />
     <link rel="apple-touch-icon" href="./favicon.svg" />
-    <link rel="manifest" href="./manifest.json" />
+    <link rel="manifest" href="/manifest.json" id="app-manifest" />
     <meta name="theme-color" content="#4f46e5" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="CCRM" />
+    <meta name="application-name" content="CCRM" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>CCRM | Advanced Sales & Operations Control</title>
     <meta name="description" content="Next-generation client relationship and operations management dashboard for modern sales pipelines, document flows, and team alignment." />
@@ -27,6 +32,13 @@
       (function () {
         try {
           var read = function (key) { try { return localStorage.getItem(key); } catch (e) { return null; } };
+          var sysName = read("crm_system_name");
+          if (sysName) {
+            var metaApple = document.querySelector('meta[name="apple-mobile-web-app-title"]');
+            if (metaApple) metaApple.setAttribute("content", sysName);
+            var metaApp = document.querySelector('meta[name="application-name"]');
+            if (metaApp) metaApp.setAttribute("content", sysName);
+          }
           var mode = read("ccrm_theme_mode") || "system";
           var palette = read("crm_user_theme") || "basic";
           var dark =

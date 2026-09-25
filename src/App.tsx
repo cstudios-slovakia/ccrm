@@ -65,6 +65,7 @@ import {
   readLegacyFinancialTrend,
 } from "./utils/financialTrend";
 import { flushPendingSaves } from "./utils/pendingSaves";
+import { updatePwaManifest } from "./utils/pwaManifest";
 
 /**
  * Routes whose whole purpose depends on OpenAI. Visiting one without a
@@ -548,7 +549,15 @@ function App() {
       displayToast(next);
     };
   }, []);
-  const [systemName, setSystemName] = useState("CCRM");
+  const [systemName, setSystemName] = useState(() => {
+    const stored = typeof window !== 'undefined' ? localStorage.getItem("crm_system_name") : null;
+    return stored || "CCRM";
+  });
+
+  // Synchronize PWA manifest & mobile app title with systemName
+  useEffect(() => {
+    updatePwaManifest(systemName);
+  }, [systemName]);
   const [systemLanguage, setSystemLanguage] = useState<"en" | "sk" | "hu">(() => {
     const stored = typeof window !== 'undefined' ? localStorage.getItem("crm_language") : null;
     return (stored === "en" || stored === "sk" || stored === "hu") ? stored : "sk";

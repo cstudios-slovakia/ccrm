@@ -31,6 +31,8 @@ DirectoryIndex index.html index.php
 <IfModule mod_rewrite.c>
     RewriteEngine On
     RewriteRule ^uploads/.*\.(php|phtml|php[0-9]|phps|pht|phar|cgi|pl|py|rb|asp|aspx|jsp|sh|shtml|htaccess|user\.ini)$ - [F,L,NC]
+    # Route manifest.json dynamically to api/manifest.php so PWA installation uses configured system name
+    RewriteRule ^manifest\.json$ api/manifest.php [L,QSA]
 </IfModule>
 
 # Block direct access to sensitive directories that must never be web-served:
