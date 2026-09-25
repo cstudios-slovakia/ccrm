@@ -29,7 +29,6 @@ interface StartMenuProps {
   currentUser: UserProfile | null;
   roles: RolePermission[];
   showSettings?: boolean;
-  showMailIcon?: boolean;
   showRagAi?: boolean;
   /** Route gate from the permission resolver; tiles for closed routes are not offered. */
   canOpenRoute: (routeId: string) => boolean;
@@ -70,7 +69,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   currentUser,
   roles: _roles,
   showSettings = true,
-  showMailIcon = false,
   showRagAi = false,
   canOpenRoute,
   customDashboards = [],
@@ -423,17 +421,16 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       }
     ];
 
-    if (showMailIcon) {
-      items.push({
-        id: "email",
-        label: t("Mail Client", "Pošta", "Levelezés"),
-        description: t("Integrated IMAP/SMTP corporate email client", "Integrovaná firemná pošta a schránka", "Integrált vállalati levelezőkliens"),
-        icon: Mail,
-        color: "var(--color-pink-600)",
-        bgColor: "rgba(219, 39, 119, 0.12)",
-        defaultSection: "collaboration"
-      });
-    }
+    // Listed even before the mailbox is connected — the view explains the setup.
+    items.push({
+      id: "email",
+      label: t("Mail Client", "Pošta", "Levelezés"),
+      description: t("Integrated IMAP/SMTP corporate email client", "Integrovaná firemná pošta a schránka", "Integrált vállalati levelezőkliens"),
+      icon: Mail,
+      color: "var(--color-pink-600)",
+      bgColor: "rgba(219, 39, 119, 0.12)",
+      defaultSection: "collaboration"
+    });
 
     if (showRagAi) {
       items.push({
@@ -519,7 +516,6 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     systemLanguage,
     customDashboards,
     unifiedEntries,
-    showMailIcon,
     showRagAi,
     showSettings,
     canOpenRoute,

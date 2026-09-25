@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 140 40" fill="none">
+  <rect x="2" y="4" width="32" height="32" rx="8" fill="#e11d48" />
+  <path d="M11 23 C11 17 14.5 14 18 14 C21.5 14 25 17 25 23" stroke="#ffffff" stroke-width="3" stroke-linecap="round" fill="none"/>
+  <circle cx="18" cy="9.5" r="2.5" fill="#ffffff"/>
+  <text x="44" y="28" font-family="'Plus Jakarta Sans', sans-serif" font-weight="900" font-size="25" fill="#0b0b0b" letter-spacing="-0.04em">minit</text>
+</svg>

@@ -261,11 +261,23 @@ export const LoginView: React.FC<LoginViewProps> = ({
       {/* Dynamic Animated Background: Universal Feral WebGL Gradient Shader with smooth real-time color morphing */}
       {!isModal && <FeralGradientBackground phaseId={activeTheme.id} />}
 
-      {/* LEFT AREA: Atmospheric Executive Time-of-Day Hero Panel */}
+      {/* LEFT AREA: Atmospheric Executive Time-of-Day Hero Panel.
+          It sits on the time-of-day shader, not an app surface, so its ink follows
+          activeTheme.isLight; `force-light` keeps the app's dark mode from
+          inverting the palette underneath it. */}
       {!isModal && (
-        <div className="flex-1 hidden lg:flex flex-col justify-center items-start relative z-10 pr-12 xl:pr-20 py-8 min-h-[580px] max-w-2xl animate-in fade-in duration-700 select-none">
-          {/* Middle Body: Digital Clock & Executive Localized Greeting */}
-          <div className="space-y-6">
+        <div className="force-light flex-1 hidden lg:flex flex-col justify-center items-start relative z-10 pr-12 xl:pr-20 py-8 min-h-[580px] max-w-2xl animate-in fade-in duration-700 select-none">
+          {/* Middle Body: Digital Clock & Executive Localized Greeting.
+              The shader runs from pale sky to deep colour behind this block, so
+              bare text lost contrast somewhere in every phase; a soft glass pane
+              gives it one steady backdrop, matching the login card. */}
+          <div
+            className={`space-y-6 rounded-[32px] border backdrop-blur-md p-8 xl:p-10 shadow-xl transition-colors duration-700 ${
+              activeTheme.isLight
+                ? "bg-white/40 border-white/50 shadow-slate-900/5"
+                : "bg-slate-950/35 border-white/10 shadow-black/20"
+            }`}
+          >
             {/* Live Digital Clock */}
             <div className="space-y-1">
               <div
@@ -276,7 +288,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 <span className="text-5xl xl:text-7xl">{clock.hoursStr}</span>
                 <span
                   className={`text-4xl xl:text-6xl mx-1 animate-pulse ${
-                    activeTheme.isLight ? "text-blue-600/70" : "text-white/40"
+                    activeTheme.isLight ? "text-slate-900/45" : "text-white/40"
                   }`}
                 >
                   :
@@ -313,7 +325,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
               </p>
               <p
                 className={`text-xs xl:text-sm font-medium leading-relaxed ${
-                  activeTheme.isLight ? "text-slate-700" : "text-white/65"
+                  activeTheme.isLight ? "text-slate-800" : "text-white/65"
                 }`}
               >
                 {phaseQuoteText}
@@ -332,20 +344,20 @@ export const LoginView: React.FC<LoginViewProps> = ({
         }
       >
         <div
-          className={`w-full bg-white/85 dark:bg-slate-900/85 border border-white/40 rounded-[32px] shadow-2xl backdrop-blur-2xl p-6 sm:p-8 md:p-10 transition-all duration-500 ${activeTheme.cardGlowClass}`}
+          className={`w-full bg-white/85 border border-white/40 rounded-[32px] shadow-2xl backdrop-blur-2xl p-6 sm:p-8 md:p-10 transition-all duration-500 ${activeTheme.cardGlowClass}`}
         >
           {/* Mobile-Only Time Greeting Header */}
           {!isModal && (
-            <div className="flex lg:hidden items-center justify-between gap-2 mb-6 pb-4 border-b border-slate-200/60 dark:border-slate-800">
+            <div className="flex lg:hidden items-center justify-between gap-2 mb-6 pb-4 border-b border-slate-200/60">
               <div className="flex items-center gap-2">
                 <div className={`p-1.5 rounded-lg border ${activeTheme.badgeClass}`}>
                   {renderPhaseIcon(activeTheme.icon, "h-3.5 w-3.5")}
                 </div>
                 <div className="flex flex-col">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                     {phaseBadgeText}
                   </span>
-                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                  <span className="text-xs font-bold text-slate-800">
                     {phaseGreetingText}
                   </span>
                 </div>
@@ -362,10 +374,10 @@ export const LoginView: React.FC<LoginViewProps> = ({
               <Terminal className="h-6 w-6 text-white animate-pulse" />
             </div>
             <div>
-              <h2 className="text-2xl font-heading font-black text-slate-900 dark:text-white tracking-tight uppercase">
+              <h2 className="text-2xl font-heading font-black text-slate-900 tracking-tight uppercase">
                 {systemName}
               </h2>
-              <p className="text-[10px] text-slate-500 dark:text-slate-400 font-extrabold uppercase tracking-widest mt-1">
+              <p className="text-[10px] text-slate-500 font-extrabold uppercase tracking-widest mt-1">
                 {getTranslation(systemLanguage, "login.subtitle")}
               </p>
             </div>
@@ -394,7 +406,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
             
             {/* Email Input */}
             <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider block pl-0.5">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block pl-0.5">
                 {getTranslation(systemLanguage, "login.email")}
               </label>
               <div className="relative">
@@ -405,14 +417,14 @@ export const LoginView: React.FC<LoginViewProps> = ({
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder={tr("e.g. alex@crm.com", "napr. alex@crm.com", "pl. alex@crm.com")}
-                  className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-semibold"
+                  className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-semibold"
                 />
               </div>
             </div>
 
             {/* Password Input */}
             <div className="space-y-1.5">
-              <label className="text-[10px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-wider block pl-0.5">
+              <label className="text-[10px] font-black text-slate-500 uppercase tracking-wider block pl-0.5">
                 {getTranslation(systemLanguage, "login.password")}
               </label>
               <div className="relative">
@@ -422,7 +434,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="w-full pl-11 pr-11 py-3 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-white placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-semibold"
+                  className="w-full pl-11 pr-11 py-3 rounded-2xl bg-white border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 transition-all font-semibold"
                 />
               </div>
             </div>
@@ -439,12 +451,12 @@ export const LoginView: React.FC<LoginViewProps> = ({
                 className={`h-4 w-4 rounded-md border-2 transition-all duration-150 group-active:scale-90 flex items-center justify-center ${
                   rememberMe
                     ? "bg-indigo-600 border-indigo-600"
-                    : "border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 group-hover:border-slate-400"
+                    : "border-slate-300 bg-white group-hover:border-slate-400"
                 }`}
               >
                 {rememberMe && <CheckCircle className="h-3 w-3 text-white" />}
               </span>
-              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 group-hover:text-slate-700 dark:group-hover:text-slate-200 transition-colors">
+              <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 group-hover:text-slate-700 transition-colors">
                 {systemLanguage === "sk" ? "Zapamätať prihlásenie" : systemLanguage === "hu" ? "Bejelentkezés megjegyzése" : "Remember me"}
               </span>
             </label>
@@ -470,13 +482,15 @@ export const LoginView: React.FC<LoginViewProps> = ({
           {isDemoMode ? (
             <>
               {/* Divider */}
-              <div className="relative my-6 text-center">
-                <div className="absolute inset-0 flex items-center">
-                  <div className="w-full border-t border-slate-200 dark:border-slate-700" />
-                </div>
-                <span className="relative px-3 bg-white/80 dark:bg-slate-900 text-[9px] font-black text-slate-400 uppercase tracking-widest">
+              {/* Two hairlines either side of the label rather than one line
+                  behind it: the card is translucent, so a patch masking the line
+                  showed up as a box. */}
+              <div className="flex items-center gap-3 my-6">
+                <div className="flex-1 border-t border-slate-200" />
+                <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest">
                   {getTranslation(systemLanguage, "login.quick_presets")}
                 </span>
+                <div className="flex-1 border-t border-slate-200" />
               </div>
 
               {/* Quick Swapper Cards */}
@@ -488,7 +502,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                       key={user.email}
                       type="button"
                       onClick={() => handleQuickLogin(user)}
-                      className="w-full p-2.5 rounded-2xl bg-white dark:bg-slate-800/80 hover:bg-slate-50 dark:hover:bg-slate-800 border border-slate-200/80 dark:border-slate-700 text-left transition-all flex items-center justify-between group active:scale-95 shadow-sm"
+                      className="w-full p-2.5 rounded-2xl bg-white hover:bg-slate-50 border border-slate-200/80 text-left transition-all flex items-center justify-between group active:scale-95 shadow-sm"
                     >
                       <div className="flex items-center gap-2.5">
                         <div
@@ -502,7 +516,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                           {user.name.substring(0, 2).toUpperCase()}
                         </div>
                         <div className="flex flex-col">
-                          <span className="text-xs font-bold text-slate-700 dark:text-slate-200 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">{user.name}</span>
+                          <span className="text-xs font-bold text-slate-700 group-hover:text-slate-900 transition-colors">{user.name}</span>
                           <span className="text-[10px] text-slate-400 font-medium">{user.email}</span>
                         </div>
                       </div>
@@ -537,12 +551,12 @@ export const LoginView: React.FC<LoginViewProps> = ({
               )}
 
               {(showResetInfo || resetToken) && (
-                <div className="mt-3 p-4 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-100/80 dark:border-indigo-900/50 text-left leading-normal animate-in fade-in slide-in-from-top-4 duration-300">
+                <div className="mt-3 p-4 rounded-2xl bg-indigo-50/50 border border-indigo-100/80 text-left leading-normal animate-in fade-in slide-in-from-top-4 duration-300">
                   {resetToken ? (
                     resetDone ? (
                       <div className="space-y-3 text-center">
                         <CheckCircle className="h-7 w-7 text-emerald-500 mx-auto" />
-                        <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                        <p className="text-[11px] font-semibold text-slate-600">
                           {resetSignedInUser
                             ? tr("Your password has been changed and you are signed in.", "Vaše heslo bolo zmenené a ste prihlásení.", "A jelszava megváltozott, és be van jelentkezve.")
                             : tr("Your password has been updated. You can now sign in.", "Vaše heslo bolo zmenené. Teraz sa môžete prihlásiť.", "A jelszava frissült. Most már bejelentkezhet.")}
@@ -568,7 +582,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                     ) : resetTokenInvalid ? (
                       <div className="space-y-3 text-center">
                         <AlertCircle className="h-7 w-7 text-rose-500 mx-auto" />
-                        <p className="text-[11px] font-semibold text-slate-600 dark:text-slate-300">
+                        <p className="text-[11px] font-semibold text-slate-600">
                           {tr("This reset link is invalid or has expired. Request a new one.", "Tento odkaz na obnovenie je neplatný alebo vypršal. Vyžiadajte si nový.", "Ez a visszaállítási link érvénytelen vagy lejárt. Kérjen újat.")}
                         </p>
                         <button
@@ -586,7 +600,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                       </div>
                     ) : (
                       <form onSubmit={(e) => { e.preventDefault(); submitNewPassword(); }} className="space-y-2.5">
-                        <p className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                        <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">
                           {tr("Set a new password", "Nastavte nové heslo", "Új jelszó beállítása")}
                         </p>
                         {resetTokenEmail && (
@@ -599,14 +613,14 @@ export const LoginView: React.FC<LoginViewProps> = ({
                           value={newPassword}
                           onChange={(e) => setNewPassword(e.target.value)}
                           placeholder={tr("New password", "Nové heslo", "Új jelszó")}
-                          className="w-full pl-3 pr-10 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-white focus:outline-none focus:border-indigo-500 font-semibold"
+                          className="w-full pl-3 pr-10 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 focus:outline-none focus:border-indigo-500 font-semibold"
                         />
                         <PasswordInput
                           required
                           value={confirmPassword}
                           onChange={(e) => setConfirmPassword(e.target.value)}
                           placeholder={tr("Confirm new password", "Potvrďte nové heslo", "Új jelszó megerősítése")}
-                          className="w-full pl-3 pr-10 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-white focus:outline-none focus:border-indigo-500 font-semibold"
+                          className="w-full pl-3 pr-10 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 focus:outline-none focus:border-indigo-500 font-semibold"
                         />
                         <ul className="space-y-1" aria-label={tr("Password rules", "Pravidlá hesla", "Jelszószabályok")}>
                           {([
@@ -640,13 +654,13 @@ export const LoginView: React.FC<LoginViewProps> = ({
                     </div>
                   ) : resetAvailable ? (
                     resetRequested ? (
-                      <div className="flex items-start gap-2 text-[10px] font-semibold text-slate-600 dark:text-slate-300">
+                      <div className="flex items-start gap-2 text-[10px] font-semibold text-slate-600">
                         <CheckCircle className="h-4 w-4 text-emerald-500 shrink-0 mt-px" />
                         <span>{tr("If an account exists for that email, a reset link has been sent. Please check your inbox.", "Ak pre danú e-mailovú adresu existuje účet, odkaz na obnovenie hesla bol odoslaný. Skontrolujte si prosím svoju schránku.", "Ha létezik fiók ehhez az e-mail-címhez, a visszaállítási linket elküldtük. Kérjük, ellenőrizze a postaládáját.")}</span>
                       </div>
                     ) : (
                       <form onSubmit={(e) => { e.preventDefault(); requestPasswordReset(); }} className="space-y-2.5">
-                        <p className="text-[10px] font-semibold text-slate-600 dark:text-slate-300">
+                        <p className="text-[10px] font-semibold text-slate-600">
                           {tr("Enter your email and we'll send you a password reset link.", "Zadajte svoj e-mail a pošleme vám odkaz na obnovenie hesla.", "Adja meg az e-mail-címét, és küldünk egy jelszó-visszaállítási linket.")}
                         </p>
                         <input
@@ -655,7 +669,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                           value={resetEmail}
                           onChange={(e) => setResetEmail(e.target.value)}
                           placeholder={tr("Your email", "Váš e-mail", "Az Ön e-mail-címe")}
-                          className="w-full px-3 py-2.5 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs text-slate-800 dark:text-white focus:outline-none focus:border-indigo-500 font-semibold"
+                          className="w-full px-3 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 focus:outline-none focus:border-indigo-500 font-semibold"
                         />
                         <button
                           type="submit"
@@ -668,7 +682,7 @@ export const LoginView: React.FC<LoginViewProps> = ({
                       </form>
                     )
                   ) : (
-                    <span className="block text-[10px] font-semibold text-slate-600 dark:text-slate-300 leading-normal">
+                    <span className="block text-[10px] font-semibold text-slate-600 leading-normal">
                       {tr("To restore access, please contact your CCRM database administrator.", "Pre obnovenie prístupu kontaktujte prosím správcu databázy CCRM.", "A hozzáférés visszaállításához forduljon a CCRM adatbázis-adminisztrátorához.")}
                     </span>
                   )}

@@ -1,0 +1,1797 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Koperniq Pitch Deck | Software Solutions</title>
+  
+  <!-- Fonts from softwaresolutions.sk -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&family=Ubuntu+Sans+Mono:ital,wght@0,400..700;1,400..700&display=swap" rel="stylesheet">
+  
+  <style>
+    :root {
+      --primary: #eaed06;
+      --primary-hover: #d4d705;
+      --secondary: #faf8f8;
+      --foreground: #0b0b0b;
+      --foreground-muted: #6b7280;
+      --background: #ffffff;
+      --dark-card: #141414;
+      --dark-border: rgba(255, 255, 255, 0.1);
+      --light-border: #e5e7eb;
+      --font-mono: 'Ubuntu Sans Mono', monospace;
+      --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --slide-width: 1920px;
+      --slide-height: 1080px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background-color: #080808;
+      color: var(--foreground);
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+
+    /* Floating Navigation Controls */
+    .deck-nav-bar {
+      position: fixed;
+      top: 1rem;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 9999;
+      background: rgba(18, 18, 18, 0.9);
+      backdrop-filter: blur(12px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 999px;
+      padding: 0.45rem 1.15rem;
+      display: flex;
+      align-items: center;
+      gap: 0.85rem;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+      color: #fff;
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+    }
+
+    .deck-nav-bar button {
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: #fff;
+      padding: 0.35rem 0.85rem;
+      border-radius: 999px;
+      cursor: pointer;
+      font-family: inherit;
+      font-size: 0.8rem;
+      font-weight: 600;
+      transition: all 0.2s ease;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .deck-nav-bar button:hover {
+      background: var(--primary);
+      color: #0b0b0b;
+      border-color: var(--primary);
+    }
+
+    .deck-nav-bar .btn-primary-action {
+      background: var(--primary);
+      color: #0b0b0b;
+      font-weight: 700;
+    }
+
+    .deck-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 2rem;
+      padding: 4.5rem 1rem 3rem;
+    }
+
+    /* Fixed 16:9 Presentation Slide Canvas */
+    .slide {
+      width: 1920px;
+      height: 1080px;
+      min-width: 1920px;
+      min-height: 1080px;
+      max-width: 1920px;
+      max-height: 1080px;
+      border-radius: 1.25rem;
+      position: relative;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      padding: 2.75rem 3.75rem 2.25rem;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.02), 0 4px 6px -4px rgba(0, 0, 0, 0.01);
+      page-break-after: always;
+      break-after: page;
+    }
+
+    /* Color Themes */
+    .slide-dark {
+      background: #0b0b0b;
+      color: #ffffff;
+      border: 1px solid var(--dark-border);
+    }
+
+    .slide-light {
+      background: #faf8f8;
+      color: var(--foreground);
+      border: 1px solid var(--light-border);
+    }
+
+    /* Background Grids */
+    .slide-dark::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image: radial-gradient(rgba(234, 237, 6, 0.04) 1px, transparent 1px);
+      background-size: 32px 32px;
+      pointer-events: none;
+    }
+
+    .slide-light::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image: radial-gradient(rgba(0, 0, 0, 0.03) 1px, transparent 1px);
+      background-size: 32px 32px;
+      pointer-events: none;
+    }
+
+    /* Header component */
+    .slide-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 10;
+      position: relative;
+      height: 3.25rem;
+    }
+
+    .slide-logo-brand {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .slide-logo-brand img {
+      height: 2.25rem;
+      width: auto;
+    }
+
+    .slide-badge {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      padding: 0.4rem 0.95rem;
+      border-radius: 999px;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .badge-primary {
+      background: var(--primary);
+      color: #0b0b0b;
+    }
+
+    .badge-dark {
+      background: rgba(255, 255, 255, 0.08);
+      color: #eaed06;
+      border: 1px solid rgba(234, 237, 6, 0.3);
+    }
+
+    .badge-light {
+      background: #0b0b0b;
+      color: var(--primary);
+    }
+
+    /* Main Slide Content */
+    .slide-body {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      z-index: 10;
+      position: relative;
+      padding: 0.5rem 0;
+    }
+
+    /* Single Screenshot Split Layout */
+    .slide-grid-split {
+      display: grid;
+      grid-template-columns: 1fr 1.35fr;
+      gap: 3.5rem;
+      align-items: center;
+      height: 100%;
+    }
+
+    .slide-grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.75rem;
+      align-items: stretch;
+    }
+
+    .slide-grid-6 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      grid-template-rows: repeat(2, 1fr);
+      gap: 1.25rem;
+    }
+
+    /* Typography */
+    .slide-title-hero {
+      font-size: 3.25rem;
+      font-weight: 900;
+      line-height: 1.1;
+      letter-spacing: -0.035em;
+      margin-bottom: 1rem;
+    }
+
+    .slide-title-section {
+      font-size: 2.35rem;
+      font-weight: 800;
+      line-height: 1.18;
+      letter-spacing: -0.025em;
+      margin-bottom: 0.75rem;
+    }
+
+    .slide-subtitle {
+      font-size: 1.1rem;
+      line-height: 1.5;
+      margin-bottom: 1.5rem;
+    }
+
+    .slide-dark .slide-subtitle { color: rgba(255, 255, 255, 0.75); }
+    .slide-light .slide-subtitle { color: var(--foreground-muted); }
+
+    .highlight-yellow { color: var(--primary); }
+
+    /* Clean Eyebrow Section Label */
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .eyebrow::before {
+      content: '//';
+      font-weight: 800;
+    }
+
+    .slide-dark .eyebrow {
+      color: var(--primary);
+    }
+
+    .slide-light .eyebrow {
+      color: #0b0b0b;
+    }
+
+    .slide-dark .eyebrow::before {
+      color: rgba(234, 237, 6, 0.6);
+    }
+
+    .slide-light .eyebrow::before {
+      color: var(--foreground-muted);
+    }
+
+    /* Infographic Blocks & Feature Lists */
+    .feature-list {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .feature-item {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      padding-left: 1.15rem;
+      position: relative;
+    }
+
+    .slide-dark .feature-item {
+      border-left: 3px solid var(--primary);
+    }
+
+    .slide-light .feature-item {
+      border-left: 3px solid #0b0b0b;
+    }
+
+    .feature-content h4 {
+      font-size: 1.1rem;
+      font-weight: 700;
+      line-height: 1.25;
+      margin-bottom: 0.2rem;
+    }
+
+    .feature-content p {
+      font-size: 0.95rem;
+      line-height: 1.45;
+    }
+
+    .slide-dark .feature-content p { color: rgba(255, 255, 255, 0.7); }
+    .slide-light .feature-content p { color: var(--foreground-muted); }
+
+    /* Visual Media & Screenshots (Natural proportions, zero letterboxing) */
+    .screenshot-frame {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+    }
+
+    .screenshot-frame img {
+      max-width: 100%;
+      max-height: 560px;
+      width: auto;
+      height: auto;
+      border-radius: 0.75rem;
+      display: block;
+    }
+
+    .slide-dark .screenshot-frame img {
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 15px 25px -5px rgba(0, 0, 0, 0.15), 0 6px 10px -6px rgba(0, 0, 0, 0.08);
+    }
+
+    .slide-light .screenshot-frame img {
+      border: 1px solid rgba(0, 0, 0, 0.05);
+      box-shadow: 0 15px 25px -5px rgba(0, 0, 0, 0.018), 0 6px 10px -6px rgba(0, 0, 0, 0.008);
+    }
+
+    /* Cards */
+    .card-box {
+      border-radius: 0.85rem;
+      padding: 1.35rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+    }
+
+    .slide-dark .card-box {
+      background: var(--dark-card);
+      border: 1px solid var(--dark-border);
+    }
+
+    .slide-light .card-box {
+      background: #ffffff;
+      border: 1px solid rgba(0, 0, 0, 0.06);
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.012), 0 4px 6px -4px rgba(0, 0, 0, 0.006);
+    }
+
+    .card-number {
+      font-family: var(--font-mono);
+      font-size: 2rem;
+      font-weight: 800;
+      line-height: 1;
+      margin-bottom: 0.5rem;
+    }
+
+    .card-title {
+      font-size: 1.1rem;
+      font-weight: 700;
+      margin-bottom: 0.4rem;
+    }
+
+    .card-desc {
+      font-size: 0.9rem;
+      line-height: 1.42;
+    }
+
+    .slide-dark .card-desc { color: rgba(255, 255, 255, 0.65); }
+    .slide-light .card-desc { color: var(--foreground-muted); }
+
+    /* Client Logo Strip */
+    .logo-strip {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1.5rem;
+      padding: 1.15rem 1.75rem;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 0.75rem;
+      margin-top: 1.25rem;
+    }
+
+    .logo-item {
+      font-family: var(--font-mono);
+      font-weight: 800;
+      font-size: 1.1rem;
+      color: rgba(255, 255, 255, 0.75);
+      letter-spacing: 0.06em;
+    }
+
+    /* Contacts Grid */
+    .contact-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 1.5rem;
+      margin-top: 1.5rem;
+    }
+
+    .contact-card {
+      background: #141414;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 1rem;
+      padding: 1.65rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.03);
+      transition: all 0.2s ease;
+    }
+
+    .contact-card:hover {
+      border-color: var(--primary);
+    }
+
+    .contact-name {
+      font-size: 1.3rem;
+      font-weight: 800;
+      margin-bottom: 0.2rem;
+    }
+
+    .contact-role {
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      color: var(--primary);
+      margin-bottom: 1.35rem;
+      font-weight: 700;
+    }
+
+    .contact-item {
+      color: rgba(255, 255, 255, 0.85);
+      text-decoration: none;
+      font-size: 0.925rem;
+      display: flex;
+      align-items: center;
+      gap: 0.55rem;
+      margin-bottom: 0.45rem;
+      transition: color 0.2s;
+    }
+
+    .contact-item:hover { color: var(--primary); }
+
+    /* Footer */
+    .slide-footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 10;
+      position: relative;
+      padding-top: 0.75rem;
+      border-top: 1px solid;
+    }
+
+    .slide-dark .slide-footer {
+      border-color: rgba(255, 255, 255, 0.08);
+      color: rgba(255, 255, 255, 0.4);
+    }
+
+    .slide-light .slide-footer {
+      border-color: #e5e7eb;
+      color: var(--foreground-muted);
+    }
+
+    .slide-footer-text { font-family: var(--font-mono); font-size: 0.85rem; }
+    .slide-footer-page { font-family: var(--font-mono); font-size: 0.9rem; font-weight: 700; }
+
+    /* Print / PDF Styles */
+    @media print {
+      body { background: #000; }
+      .deck-nav-bar { display: none !important; }
+      .deck-container { padding: 0 !important; gap: 0 !important; }
+      .slide {
+        width: 1920px !important;
+        height: 1080px !important;
+        min-width: 1920px !important;
+        min-height: 1080px !important;
+        max-width: 1920px !important;
+        max-height: 1080px !important;
+        border-radius: 0 !important;
+        border: none !important;
+        margin: 0 !important;
+        padding: 2.75rem 3.75rem 2.25rem !important;
+        page-break-after: always !important;
+        break-after: page !important;
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+        box-shadow: none !important;
+      }
+      .slide-light .screenshot-frame img {
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.01) !important;
+      }
+      .slide-dark .screenshot-frame img {
+        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1) !important;
+      }
+      @page {
+        size: 1920px 1080px;
+        margin: 0;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Floating Navigation Controls -->
+  <div class="deck-nav-bar">
+    <div style="display: flex; align-items: center; gap: 0.5rem; font-weight: 700;">
+      <span style="color: var(--primary);">●</span>
+      <span>KOPERNIQ PITCH DECK</span>
+    </div>
+    <div style="color: rgba(255,255,255,0.4);">|</div>
+    <button onclick="prevSlide()">← Predchádzajúci</button>
+    <span id="slideCounter">1 / 22</span>
+    <button onclick="nextSlide()">Nasledujúci →</button>
+    <div style="color: rgba(255,255,255,0.4);">|</div>
+    <button onclick="toggleFullscreen()">⛶ Na celú obrazovku</button>
+    <button class="btn-primary-action" onclick="window.print()">Exportovať PDF</button>
+  </div>
+
+  <div class="deck-container">
+
+    <!-- ==========================================
+         SLIDE 1: PREHĽAD & EKOSYSTÉM KOPERNIQ (Dark)
+         ========================================== -->
+    <section class="slide slide-dark" id="slide-1">
+      <div class="slide-header">
+        <div class="slide-logo-brand">
+          <img src="./cstudios_logo.svg" alt="Software Solutions">
+        </div>
+        <div class="slide-badge badge-primary">AGENTIC SOFTWARE ENGINEERING</div>
+      </div>
+
+      <div class="slide-body">
+        <div class="slide-grid-split">
+          <div>
+            <div class="eyebrow">PREHĽAD & EKOSYSTÉM KOPERNIQ</div>
+            <h1 class="slide-title-hero">
+              Kompletný <span class="highlight-yellow">operačný systém</span> pre moderné firmy.
+            </h1>
+            <p class="slide-subtitle">
+              Všetky firemné procesy prepojené v jednom prehľadnom centre. Preklenujeme priepasť medzi drahým vývojom od nuly a nepružnými krabicovými systémami.
+            </p>
+            
+            <div class="feature-list">
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>4 Integrované piliere v jednom menu</h4>
+                  <p>Operácie & CRM, Finančné riadenie so skladom, Spolupráca s AI a systémové nástroje na mieru.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>AI inteligencia & automatizácia v jadre</h4>
+                  <p>Vstavaný RAG asistent, hlasové zápisnice zo stretnutí a autonómne workflowy šetria hodiny operatívy.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Okamžitý prístup k modulom</h4>
+                  <p>Intuitívny Start Menu hub, globálne vyhľadávanie a rýchle prepínanie medzi agendami.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="screenshot-frame">
+            <img src="./screenshots/01_ccrm_start_menu_overview.png" alt="Koperniq Start Menu a prehľad systému">
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-footer">
+        <div class="slide-footer-text">Cstudios Software Solutions s. r. o. | https://softwaresolutions.sk</div>
+        <div class="slide-footer-page">01 / 22</div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 2: PROBLÉM VS. RIEŠENIE (Light)
+         ========================================== -->
+    <section class="slide slide-light" id="slide-2">
+      <div class="slide-header">
+        <div class="slide-logo-brand">
+          <img src="./cstudios_logo.svg" alt="Software Solutions">
+        </div>
+        <div class="slide-badge badge-light">BOD ZLOMU</div>
+      </div>
+
+      <div class="slide-body">
+        <div class="slide-grid-split">
+          <div>
+            <div class="eyebrow">BEŽNÁ REALITA VS. RIEŠENIE</div>
+            <h2 class="slide-title-section">Prečo tabuľky zlyhávajú a ako to rieši Koperniq</h2>
+            <p class="slide-subtitle">Firmy strácajú až 30% ziskovosti kvôli roztrúseným Excelom, chýbajúcim skladovým cenám a nezaplateným faktúram.</p>
+            
+            <div class="feature-list">
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Chaos v Exceloch & Zápisníkoch</h4>
+                  <p>Informácie v telefónoch zamestnancov, cenové ponuky v mailoch a termíny v hlave.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Jeden centrálny kalendár & rozvrh úloh</h4>
+                  <p>Presné deadliny na minútu, blokujúce úlohy a synchronizovaný tímový rozvrh.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Okamžitá zastupiteľnosť</h4>
+                  <p>Kolegovia vedia kedykoľvek nadviazať na prácu bez výpadku v procesoch.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="screenshot-frame">
+            <img src="./screenshots/02_task_calendar.png" alt="Môj kalendár a rozvrh úloh">
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-footer">
+        <div class="slide-footer-text">Koperniq – Od chaosu k riadenému zisku</div>
+        <div class="slide-footer-page">02 / 22</div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 3: 01. OBCHODNÁ PIPELINE & DATAGRID (Dark)
+         ========================================== -->
+    <section class="slide slide-dark" id="slide-3">
+      <div class="slide-header">
+        <div class="slide-logo-brand">
+          <img src="./cstudios_logo.svg" alt="Software Solutions">
+        </div>
+        <div class="slide-badge badge-primary">01. PREDAJNÝ LIEVIK</div>
+      </div>
+
+      <div class="slide-body">
+        <div class="slide-grid-split">
+          <div>
+            <div class="eyebrow">OBCHOD & PREDAJNÝ LIEVIK</div>
+            <h2 class="slide-title-section">Vysokovýkonná DataGrid pipeline pre obchodný tím.</h2>
+            <p class="slide-subtitle">Prehľadná tabuľka s bleskovým vyhľadávaním, dynamickým radením a okamžitým prehľadom hodnoty rozpracovaných zákaziek.</p>
+            
+            <div class="feature-list">
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Vlastné fázy & Sumáre obratu</h4>
+                  <p>Prehľad počtu leadov a celkového objemu vo fázach <em>New, Contacted, Offer Sent, Accepted</em>.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Zobrazenie Zoznam aj Kanban</h4>
+                  <p>Flexibilné prepínanie medzi hustou tabuľkou a vizuálnym Kanban pohľadom jedným klikom.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Priradenie projektových manažérov</h4>
+                  <p>Okamžitý prehľad zodpovedných osôb, zdroja leadu a lokality záujemcu.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="screenshot-frame">
+            <img src="./screenshots/05_leads_datagrid.png" alt="Obchodná pipeline a leady DataGrid">
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-footer">
+        <div class="slide-footer-text">Koperniq | Predajný lievik & Obchodná pipeline</div>
+        <div class="slide-footer-page">03 / 22</div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 4: 02. KARTA KLIENTA & 360° ČASOVÁ OS (Light)
+         ========================================== -->
+    <section class="slide slide-light" id="slide-4">
+      <div class="slide-header">
+        <div class="slide-logo-brand">
+          <img src="./cstudios_logo.svg" alt="Software Solutions">
+        </div>
+        <div class="slide-badge badge-light">02. KARTA VZŤAHU</div>
+      </div>
+
+      <div class="slide-body">
+        <div class="slide-grid-split">
+          <div>
+            <div class="eyebrow">360° ČASOVÁ OS AKTIVÍT</div>
+            <h2 class="slide-title-section">Kompletná história každého kontaktu na jednom mieste.</h2>
+            <p class="slide-subtitle">Zabudnite na dohľadávanie detailov v odoslanej pošte. Každý telefonát, cenová ponuka a stretnutie sú zaznamenané v čase.</p>
+            
+            <div class="feature-list">
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Multimediálny záznam udalostí</h4>
+                  <p>Evidencia hovorov, e-mailov, poznámok, cenových ponúk a stretnutí s presným časom a autorom.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Väzba na obchodné doklady</h4>
+                  <p>Priamy prístup k objednávkam, zálohovým faktúram a dodacím listom v detaile kontaktu.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Konverzia na projekt 1-klikom</h4>
+                  <p>Okamžitý prevod úspešného obchodu priamo do realizačného modulu Zákazky s prenosom dát.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="screenshot-frame">
+            <img src="./screenshots/06_lead_detail_drawer.png" alt="Detail leadu a 360 časová os">
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-footer">
+        <div class="slide-footer-text">Koperniq | Karta klientskeho vzťahu & Časová os</div>
+        <div class="slide-footer-page">04 / 22</div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 5: 03. REGISTER A ADRESÁR KLIENTOV (Dark)
+         ========================================== -->
+    <section class="slide slide-dark" id="slide-5">
+      <div class="slide-header">
+        <div class="slide-logo-brand">
+          <img src="./cstudios_logo.svg" alt="Software Solutions">
+        </div>
+        <div class="slide-badge badge-primary">03. ADRESÁR KLIENTOV</div>
+      </div>
+
+      <div class="slide-body">
+        <div class="slide-grid-split">
+          <div>
+            <div class="eyebrow">FIREMNÝ REGISTER & KONTAKTY</div>
+            <h2 class="slide-title-section">Centrálny register obchodných partnerov a firiem.</h2>
+            <p class="slide-subtitle">Jednotný zoznam klientov, dodávateľov a partnerov s bleskovou filtráciou, kontaktnými osobami a celkovým obratom.</p>
+            
+            <div class="feature-list">
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Zjednotená databáza subjektov</h4>
+                  <p>Prehľadné rozlíšenie právnych foriem (Firma, Fyzická osoba, Partner) so sídlom a kontaktmi.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Prepojenie na aktívne zákazky</h4>
+                  <p>Pri každom klientovi okamžite vidíte počet prebiehajúcich projektov, leadov a celkovú fakturáciu.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Segmentácia a rýchly export</h4>
+                  <p>Filtrovanie podľa mesta, typu klienta a zodpovedného manažéra pre cielenú komunikáciu.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="screenshot-frame">
+            <img src="./screenshots/07_clients_directory.png" alt="Register a adresár klientov">
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-footer">
+        <div class="slide-footer-text">Koperniq | Register a adresár klientov</div>
+        <div class="slide-footer-page">05 / 22</div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 6: 04. INTELIGENTNÁ REGISTRÁCIA & ŠTÁTNE REGISTRE (Light)
+         ========================================== -->
+    <section class="slide slide-light" id="slide-6">
+      <div class="slide-header">
+        <div class="slide-logo-brand">
+          <img src="./cstudios_logo.svg" alt="Software Solutions">
+        </div>
+        <div class="slide-badge badge-light">04. FIREMNÁ INTELIGENCIA</div>
+      </div>
+
+      <div class="slide-body">
+        <div class="slide-grid-split">
+          <div>
+            <div class="eyebrow">AUTOMATIZÁCIA & FINANČNÁ ANALÝZA</div>
+            <h2 class="slide-title-section">Zadajte IČO a systém doplní firmu a jej analýzu.</h2>
+            <p class="slide-subtitle">Priame prepojenie na oficiálne štátne registre RegisterUZ, ARES CZ a systém VIES DPH šetrí čas a chráni pred neplatičmi.</p>
+            
+            <div class="feature-list">
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Dotiahnutie údajov za 1 sekundu</h4>
+                  <p>Automatické vyplnenie sídla, PSČ, DIČ, IČ DPH, štatutárov a SK NACE klasifikácie.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Plná finančná analýza</h4>
+                  <p>Okamžitý prehľad o tržbách, zisku, zadlženosti a platobnej disciplíne z verejných registrov.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Nulová chybovosť faktúr</h4>
+                  <p>Odstránenie preklepov v názvoch a neplatných fakturačných údajoch.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="screenshot-frame">
+            <img src="./screenshots/08_register_client_autocomplete.png" alt="Register firiem a IČO Autocomplete">
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-footer">
+        <div class="slide-footer-text">Koperniq | Registrácia firiem & Štátne registre (RegisterUZ / ARES)</div>
+        <div class="slide-footer-page">06 / 22</div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 7: 05. SKLADOVÝ KATALÓG & WAP (Dark)
+         ========================================== -->
+    <section class="slide slide-dark" id="slide-7">
+      <div class="slide-header">
+        <div class="slide-logo-brand">
+          <img src="./cstudios_logo.svg" alt="Software Solutions">
+        </div>
+        <div class="slide-badge badge-primary">05. SKLAD & WAP</div>
+      </div>
+
+      <div class="slide-body">
+        <div class="slide-grid-split">
+          <div>
+            <div class="eyebrow">SKLADOVÉ HOSPODÁRSTVO & WAP</div>
+            <h2 class="slide-title-section">Presná kontrola nákupných cien a hrubých marží.</h2>
+            <p class="slide-subtitle">Viacskladové riadenie s váženou nákupnou cenou (WAP) pre reálne vyčíslenie hodnoty skladových zásob v každom okamihu.</p>
+            
+            <div class="feature-list">
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Vážená nákupná cena (WAP)</h4>
+                  <p>Automatický prepočet priemernej obstarávacej ceny materiálu pri každom naskladnení.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Sledovanie marží v reálnom čase</h4>
+                  <p>Prehľad hrubej marže na položkách (napr. 48.6% pri doskách) pre optimalizáciu predajných cien.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Kategórie a skladové KPI</h4>
+                  <p>Okamžitý súčet celkovej hodnoty skladu a počtu naskladnených položiek.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="screenshot-frame">
+            <img src="./screenshots/09_warehouse_catalog.png" alt="Skladový katalóg a WAP zásoby">
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-footer">
+        <div class="slide-footer-text">Koperniq | Skladové hospodárstvo & WAP oceňovanie</div>
+        <div class="slide-footer-page">07 / 22</div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 8: 06. KARTA PRODUKTU & POHYBY (Light)
+         ========================================== -->
+    <section class="slide slide-light" id="slide-8">
+      <div class="slide-header">
+        <div class="slide-logo-brand">
+          <img src="./cstudios_logo.svg" alt="Software Solutions">
+        </div>
+        <div class="slide-badge badge-light">06. POHYBY TOVARU</div>
+      </div>
+
+      <div class="slide-body">
+        <div class="slide-grid-split">
+          <div>
+            <div class="eyebrow">DETAIL MATERIÁLU & ŠARŽE</div>
+            <h2 class="slide-title-section">Kompletná stopovateľnosť každej položky na sklade.</h2>
+            <p class="slide-subtitle">Detailný prehľad o pohyboch, dodávateľoch a šaržiach s metódou FEFO pre zabezpečenie bezchybnej logistiky.</p>
+            
+            <div class="feature-list">
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>História príjmov a výdajov (PRI / VYD)</h4>
+                  <p>Presný auditný záznam kedy, kto a na akú zákazku daný materiál vyskladnil.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Merné jednotky & Fixné parametre</h4>
+                  <p>Evidencia v m², kg, litroch či kusoch s prepočtovými koeficientmi pre presné kalkulácie.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Minimálne hladiny zásob</h4>
+                  <p>Automatické upozornenia na nutnosť doobjednania materiálu pred vyčerpaním zásob.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="screenshot-frame">
+            <img src="./screenshots/10_warehouse_product_detail.png" alt="Detail produktu a pohyby">
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-footer">
+        <div class="slide-footer-text">Koperniq | Karta produktu & Pohyby materiálu</div>
+        <div class="slide-footer-page">08 / 22</div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 9: 07. PRÍJEM TOVARU & DOKLADY (Dark)
+         ========================================== -->
+    <section class="slide slide-dark" id="slide-9">
+      <div class="slide-header">
+        <div class="slide-logo-brand">
+          <img src="./cstudios_logo.svg" alt="Software Solutions">
+        </div>
+        <div class="slide-badge badge-primary">07. DOKLADY & LOGISTIKA</div>
+      </div>
+
+      <div class="slide-body">
+        <div class="slide-grid-split">
+          <div>
+            <div class="eyebrow">DOKLADY & LOGISTIKA</div>
+            <h2 class="slide-title-section">Bezchybný príjem od dodávateľov a tlač dokladov.</h2>
+            <p class="slide-subtitle">Rýchle naskladnenie s automatickým prepočtom WAP, evidencia dodacích listov a formálne skladové doklady.</p>
+            
+            <div class="feature-list">
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Príjemka (PRI)</h4>
+                  <p>Výber dodávateľa z adresára, zadanie dodacieho listu/faktúry a okamžitý zápis na sklad.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Výdajka (VYD) & Predaj</h4>
+                  <p>Kontrola skladovej dostupnosti, zľavové presety a automatický zápis predaja do CRM klienta.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Generovanie PDF dokladov</h4>
+                  <p>Export a tlač formálnych príjemiek, výdajok, prevodiek (PRE) a inventúr (INV).</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="screenshot-frame">
+            <img src="./screenshots/11_warehouse_goods_receipt_pri.png" alt="Príjem tovaru a materiálu">
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-footer">
+        <div class="slide-footer-text">Koperniq | Príjemka, Výdajka & Skladové doklady</div>
+        <div class="slide-footer-page">09 / 22</div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 10: 08. 3-MESAČNÁ PROGNÓZA CASH FLOW (Light)
+         ========================================== -->
+    <section class="slide slide-light" id="slide-10">
+      <div class="slide-header">
+        <div class="slide-logo-brand">
+          <img src="./cstudios_logo.svg" alt="Software Solutions">
+        </div>
+        <div class="slide-badge badge-light">08. FINANCIE & PROGNÓZA</div>
+      </div>
+
+      <div class="slide-body">
+        <div class="slide-grid-split">
+          <div>
+            <div class="eyebrow">FINANČNÝ PREHĽAD & PROGNÓZA</div>
+            <h2 class="slide-title-section">3-mesačná prognóza a plánovanie cash flow.</h2>
+            <p class="slide-subtitle">Prediktívna krivka disponibilných financií na bankových účtoch odhaľuje výpadky likvidity mesiace vopred.</p>
+            
+            <div class="feature-list">
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Prediktívny kumulatívny stav</h4>
+                  <p>Krivka zostatku predikuje financie z plánovaných príjmov a fixných výdavkov.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Týždenné toky financií</h4>
+                  <p>Presný rozpis očakávaných prítokov a odtokov po týždňoch pre bezpečné plánovanie investícií.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Upozornenia na splatnosť</h4>
+                  <p>Automatické varovania pri meškajúcich úhradách od zákazníkov.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="screenshot-frame">
+            <img src="./screenshots/12_financial_management_cashflow.png" alt="3-Mesačná prognóza cash flow">
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-footer">
+        <div class="slide-footer-text">Koperniq | Finančný manažment & 3-mesačná prognóza</div>
+        <div class="slide-footer-page">10 / 22</div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 11: 09. FINANČNÁ MATICA & KATEGÓRIE (Dark)
+         ========================================== -->
+    <section class="slide slide-dark" id="slide-11">
+      <div class="slide-header">
+        <div class="slide-logo-brand">
+          <img src="./cstudios_logo.svg" alt="Software Solutions">
+        </div>
+        <div class="slide-badge badge-primary">09. MATICA KATEGÓRIÍ</div>
+      </div>
+
+      <div class="slide-body">
+        <div class="slide-grid-split">
+          <div>
+            <div class="eyebrow">MESAČNÁ PREHĽADOVÁ MATICA</div>
+            <h2 class="slide-title-section">Mesačný rozpad príjmov a výdavkov po kategóriách.</h2>
+            <p class="slide-subtitle">Kompletná celoročná matica (Jan – Dec) s 3-úrovňovým stromom kategórií pre okamžitú manažérsku kontrolu rozpočtov.</p>
+            
+            <div class="feature-list">
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>3-úrovňový strom kategórií</h4>
+                  <p>Prehľadné členenie nákladov na prevádzku, materiál, subdodávky, marketing a personál.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Porovnanie reality vs. plánu</h4>
+                  <p>Okamžité zvýraznenie kategórií, kde došlo k prekročeniu plánovaného rozpočtu.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Manažérske exporty</h4>
+                  <p>1-klikový export podkladov pre účtovníctvo a finančné riadenie spoločnosti.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="screenshot-frame">
+            <img src="./screenshots/13_financial_matrix_table.png" alt="Prehľadová matica kategórií">
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-footer">
+        <div class="slide-footer-text">Koperniq | Finančná matica & Mesačné plánovanie</div>
+        <div class="slide-footer-page">11 / 22</div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 12: 10. REGISTER FINANČNÝCH POHYBOV (Light)
+         ========================================== -->
+    <section class="slide slide-light" id="slide-12">
+      <div class="slide-header">
+        <div class="slide-logo-brand">
+          <img src="./cstudios_logo.svg" alt="Software Solutions">
+        </div>
+        <div class="slide-badge badge-light">10. POHYBY & NÁKLADY</div>
+      </div>
+
+      <div class="slide-body">
+        <div class="slide-grid-split">
+          <div>
+            <div class="eyebrow">ALOKÁCIA NÁKLADOV NA ZÁKAZKY</div>
+            <h2 class="slide-title-section">Presný zisk na každom projekte a transakčný audit.</h2>
+            <p class="slide-subtitle">Každý výdavok a príjem je priradený ku konkrétnemu klientovi a zákazke. Okamžite viete, ktoré projekty tvoria skutočný zisk.</p>
+            
+            <div class="feature-list">
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Register finančných pohybov</h4>
+                  <p>Evidencia bankových transakcií aj hotovosti s väzbou na faktúru a kategóriu.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Projektové párovanie</h4>
+                  <p>Automatické pripisovanie materiálu a prác k nákladom zákazky v reálnom čase.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Prílohy a skeny dokladov</h4>
+                  <p>Bločky, faktúry a zmluvy bezpečne uložené priamo pri transakčnom zázname.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="screenshot-frame">
+            <img src="./screenshots/13_financial_movements_ledger.png" alt="Register finančných pohybov">
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-footer">
+        <div class="slide-footer-text">Koperniq | Register pohybov & Zákazkové náklady</div>
+        <div class="slide-footer-page">12 / 22</div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 13: 11. PRAVIDELNÉ PLATBY & PREDPLATNÉ (Dark)
+         ========================================== -->
+    <section class="slide slide-dark" id="slide-13">
+      <div class="slide-header">
+        <div class="slide-logo-brand">
+          <img src="./cstudios_logo.svg" alt="Software Solutions">
+        </div>
+        <div class="slide-badge badge-primary">11. PRAVIDELNÉ PLATBY</div>
+      </div>
+
+      <div class="slide-body">
+        <div class="slide-grid-split">
+          <div>
+            <div class="eyebrow">AUTOMATIZÁCIA FIXNÝCH VÝDAVKOV</div>
+            <h2 class="slide-title-section">Automatické generovanie opakovaných platieb.</h2>
+            <p class="slide-subtitle">Nastavte si trvalé príkazy a opakované firemné náklady raz. Systém ich automaticky premieta do kalendára a prognózy cash flow.</p>
+            
+            <div class="feature-list">
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Flexibilná periodicita</h4>
+                  <p>Nastavenie frekvencie (týždenne, mesačne, kvartálne, ročne) s presným dňom splatnosti.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Plánovanie fixných nákladov</h4>
+                  <p>Bezstarostná evidencia lízingov, nájmov, energií, miezd a softvérových predplatných.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Automatický zápis do prognózy</h4>
+                  <p>Budúce záväzky sú okamžite započítané do disponibilného zostatku na účtoch.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="screenshot-frame">
+            <img src="./screenshots/13_financial_recurring_modal.png" alt="Pravidelný výdavok modal">
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-footer">
+        <div class="slide-footer-text">Koperniq | Pravidelné platby & Predplatné</div>
+        <div class="slide-footer-page">13 / 22</div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 14: 12. HLASOVÁ INTELIGENCIA & ZASADAČKA (Light)
+         ========================================== -->
+    <section class="slide slide-light" id="slide-14">
+      <div class="slide-header">
+        <div class="slide-logo-brand">
+          <img src="./cstudios_logo.svg" alt="Software Solutions">
+        </div>
+        <div class="slide-badge badge-light">12. HLASOVÁ INTELIGENCIA</div>
+      </div>
+
+      <div class="slide-body">
+        <div class="slide-grid-split">
+          <div>
+            <div class="eyebrow">ZASADAČKA & HLASOVÝ PREPIS</div>
+            <h2 class="slide-title-section">Z nahrávky porady automaticky vytvorí zápisnicu a úlohy.</h2>
+            <p class="slide-subtitle">Zabudnite na ručné spisovanie poznámok. Whisper a Gemini prepíšu reč, zhodnotia sentiment a navrhnú akčné úlohy.</p>
+            
+            <div class="feature-list">
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Záznamník priamo v prehliadači</h4>
+                  <p>Nahrajte poradu v zasadačke alebo hlasový odkaz po stretnutí s klientom v teréne.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Automatické AI zhrnutie & Témy</h4>
+                  <p>Štruktúrovaná zápisnica s hlavnými bodmi a závermi bez prácneho prepisovania.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Extrakcia úloh jedným klikom</h4>
+                  <p>AI sama navrhne úlohy pre zodpovedné osoby a zaradí ich priamo do systému.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="screenshot-frame">
+            <img src="./screenshots/16_meeting_room_voice.png" alt="Zasadačka a AI zápisnica">
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-footer">
+        <div class="slide-footer-text">Koperniq | Zasadačka, Hlasový prepis & AI úlohy</div>
+        <div class="slide-footer-page">14 / 22</div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 15: 13. PROJEKTY & GANTT HARMONOGRAM (Dark)
+         ========================================== -->
+    <section class="slide slide-dark" id="slide-15">
+      <div class="slide-header">
+        <div class="slide-logo-brand">
+          <img src="./cstudios_logo.svg" alt="Software Solutions">
+        </div>
+        <div class="slide-badge badge-primary">13. PROJEKTY & GANTT</div>
+      </div>
+
+      <div class="slide-body">
+        <div class="slide-grid-split">
+          <div>
+            <div class="eyebrow">PROJEKTY & GANTT HARMONOGRAM</div>
+            <h2 class="slide-title-section">Komplexné zákazky, montáže a výroba pod kontrolou.</h2>
+            <p class="slide-subtitle">Dynamické šablóny projektov s vlastnými SQL tabuľkami, interaktívny Ganttov diagram a etapové plánovanie.</p>
+            
+            <div class="feature-list">
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Interaktívny Ganttov diagram</h4>
+                  <p>Vizuálne plánovanie etáp (Nameranie, Výroba, Inštalácia) s dátumami a časovým rozvrhom.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Tímová správa & Manažéri</h4>
+                  <p>Priraďovanie zodpovedných projektových manažérov a montážnych tímov k zákazkám.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Prepojenie na financie a ziskovosť</h4>
+                  <p>Priame prepojenie na rozpočet projektu a ziskovosť v reálnom čase.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="screenshot-frame">
+            <img src="./screenshots/15_project_gantt.png" alt="Interaktívny Ganttov diagram">
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-footer">
+        <div class="slide-footer-text">Koperniq | Projekty & Interaktívny Ganttov diagram</div>
+        <div class="slide-footer-page">15 / 22</div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 16: 14. FIREMNÝ RAG AI ASISTENT (Light)
+         ========================================== -->
+    <section class="slide slide-light" id="slide-16">
+      <div class="slide-header">
+        <div class="slide-logo-brand">
+          <img src="./cstudios_logo.svg" alt="Software Solutions">
+        </div>
+        <div class="slide-badge badge-light">14. RAG AI ASISTENT</div>
+      </div>
+
+      <div class="slide-body">
+        <div class="slide-grid-split">
+          <div>
+            <div class="eyebrow">FIREMNÝ RAG AI ASISTENT</div>
+            <h2 class="slide-title-section">Osobný dátový analytik nad celou databázou CRM.</h2>
+            <p class="slide-subtitle">Vlastná MariaDB vektorová databáza sémanticky indexuje celé CRM pre bleskové vyhľadávanie v kontexte firmy.</p>
+            
+            <div class="feature-list">
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Firemný kontext v reálnom čase</h4>
+                  <p>AI má prístup k dopytom, klientom, skladu, financiám aj úlohám.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Odpovede za 3 sekundy</h4>
+                  <p><em>„Ktoré faktúry sú po splatnosti?“</em> – okamžitá manažérska analýza bez ručného hľadania.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Bezpečný lokálny model</h4>
+                  <p>Dáta neopúšťajú váš server a prístup k informáciám rešpektuje firemné RBAC oprávnenia.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="screenshot-frame">
+            <img src="./screenshots/17_rag_ai_assistant.png" alt="RAG AI Asistent Imbe">
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-footer">
+        <div class="slide-footer-text">Koperniq | RAG AI Asistent Imbe</div>
+        <div class="slide-footer-page">16 / 22</div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 17: 15. AUTONÓMNI AI AGENTI SO SKILL.MD (Dark)
+         ========================================== -->
+    <section class="slide slide-dark" id="slide-17">
+      <div class="slide-header">
+        <div class="slide-logo-brand">
+          <img src="./cstudios_logo.svg" alt="Software Solutions">
+        </div>
+        <div class="slide-badge badge-primary">15. AUTONÓMNI AGENTI</div>
+      </div>
+
+      <div class="slide-body">
+        <div class="slide-grid-split">
+          <div>
+            <div class="eyebrow">AUTONÓMNI AGENTI SO SKILL.MD</div>
+            <h2 class="slide-title-section">Vytvorte si vlastných digitálnych zamestnancov.</h2>
+            <p class="slide-subtitle">Jednoduché vytváranie špecializovaných AI agentov s presne definovanou rolou, systémovými inštrukciami a plánovačom spúšťania.</p>
+            
+            <div class="feature-list">
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Zručnosti agentov (SKILL.MD)</h4>
+                  <p>Vlastné inštrukcie v štruktúrovanom Markdown formáte definujú presné správanie a pravidlá.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Priradenie rolí a oprávnení</h4>
+                  <p>Agent má prístup len k agendám, ktoré potrebuje pre svoju prácu (napr. Skladový analytik).</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Automatické spúšťanie cez cron</h4>
+                  <p>Pravidelné nočné audity, ranné manažérske zhrnutia a kontrola neplatičov na pozadí.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="screenshot-frame">
+            <img src="./screenshots/17_create_ai_agent_modal.png" alt="Tvorba AI Agenta so SKILL.MD">
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-footer">
+        <div class="slide-footer-text">Koperniq | Tvorba autonómnych AI agentov</div>
+        <div class="slide-footer-page">17 / 22</div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 18: 16. VIZUÁLNY EDITOR AUTOMATIZÁCIÍ (Light)
+         ========================================== -->
+    <section class="slide slide-light" id="slide-18">
+      <div class="slide-header">
+        <div class="slide-logo-brand">
+          <img src="./cstudios_logo.svg" alt="Software Solutions">
+        </div>
+        <div class="slide-badge badge-light">16. WORKFLOW AUTOMATIZÁCIA</div>
+      </div>
+
+      <div class="slide-body">
+        <div class="slide-grid-split">
+          <div>
+            <div class="eyebrow">NODE-BASED WORKFLOW CANVAS</div>
+            <h2 class="slide-title-section">Vizuálny editor procesov a automatických pravidiel.</h2>
+            <p class="slide-subtitle">Automatizujte rutinné kroky bez programovania. Prepájajte spúšťače, vetvy If/Else a akcie na intuitívnom plátne uzlov.</p>
+            
+            <div class="feature-list">
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Vizuálne plátno procesov</h4>
+                  <p>Drag & drop tvorba logiky: Keď sa zmení stav zákazky → odošli email a vytvor montážnu úlohu.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Webhooky a integrácie</h4>
+                  <p>Bezproblémové napojenie na externé formuláre, eshopy, ERP či platobné brány.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Audit a história behov</h4>
+                  <p>Kompletný prehľad o každom automatickom kroku s detailným stavom úspešnosti.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="screenshot-frame">
+            <img src="./screenshots/20_workflow_automation.png" alt="Automatizácie a workflow editor">
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-footer">
+        <div class="slide-footer-text">Koperniq | Workflow automatizácia & Editor procesov</div>
+        <div class="slide-footer-page">18 / 22</div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 19: 17. SPRÁVA SOCIÁLNYCH SIETÍ (Dark)
+         ========================================== -->
+    <section class="slide slide-dark" id="slide-19">
+      <div class="slide-header">
+        <div class="slide-logo-brand">
+          <img src="./cstudios_logo.svg" alt="Software Solutions">
+        </div>
+        <div class="slide-badge badge-primary">17. SOCIÁLNE SIETE</div>
+      </div>
+
+      <div class="slide-body">
+        <div class="slide-grid-split">
+          <div>
+            <div class="eyebrow">MULTI-KANÁLOVÝ MARKETING</div>
+            <h2 class="slide-title-section">Plánovanie a publikovanie na 7+ sociálnych sietí.</h2>
+            <p class="slide-subtitle">Riaďte firemné profily na Facebooku, Instagrame, LinkedIn, YouTube, TikToku, X aj Threads z jedného centrálneho rozhrania.</p>
+            
+            <div class="feature-list">
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Jednotný publikačný kalendár</h4>
+                  <p>Plánovanie príspevkov v predstihu s náhľadmi pre konkrétne platformy a schvaľovaním.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Automatický zber leadov</h4>
+                  <p>Komentáre a záujemcovia zo sociálnych sietí sa automaticky preklápajú do obchodnej pipeline.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>AI asistent pre copywriting</h4>
+                  <p>Generovanie pútavých popisov, hashtagov a formátovanie textov na mieru každej sieti.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="screenshot-frame">
+            <img src="./screenshots/21_social_media_hub.png" alt="Správa sociálnych sietí">
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-footer">
+        <div class="slide-footer-text">Koperniq | Multi-kanálová správa sociálnych sietí</div>
+        <div class="slide-footer-page">19 / 22</div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 20: 18. GENERATÍVNE AI NÁSTENKY (Light)
+         ========================================== -->
+    <section class="slide slide-light" id="slide-20">
+      <div class="slide-header">
+        <div class="slide-logo-brand">
+          <img src="./cstudios_logo.svg" alt="Software Solutions">
+        </div>
+        <div class="slide-badge badge-light">18. GENERATÍVNE AI NÁSTENKY</div>
+      </div>
+
+      <div class="slide-body">
+        <div class="slide-grid-split">
+          <div>
+            <div class="eyebrow">VLASTNÝ PANEL VLASTNÝMI SLOVAMI</div>
+            <h2 class="slide-title-section">Vytvorte si vlastný analytický panel jednoducho, vlastnými slovami.</h2>
+            <p class="slide-subtitle">Zadajte prirodzenou rečou, čo presne chcete analyzovať. AI agent okamžite načíta živé databázové záznamy a zostaví grafy a metriky.</p>
+            
+            <div class="feature-list">
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Tvorba nástenky z bežného textu</h4>
+                  <p>Napr. <em>„Zobrazte celkový počet leadov, koláčový graf zdrojov a tabuľku 5 najnovších úloh...“</em></p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Živé prepojenie na databázu</h4>
+                  <p>Žiadne statické obrázky – grafy a tabuľky sa aktualizujú v reálnom čase podľa reality firmy.</p>
+                </div>
+              </div>
+              <div class="feature-item">
+                <div class="feature-content">
+                  <h4>Nulové náklady na vývoj</h4>
+                  <p>Vlastný manažérsky report zostavený za 10 sekúnd bez drahého programovania.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="screenshot-frame">
+            <img src="./screenshots/22_custom_ai_dashboard.png" alt="Generatívny AI Dashboard Builder">
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-footer">
+        <div class="slide-footer-text">Koperniq | Generatívne AI nástenky na mieru</div>
+        <div class="slide-footer-page">20 / 22</div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 21: DOPLNKOVÉ FUNKCIE (Dark)
+         ========================================== -->
+    <section class="slide slide-dark" id="slide-21">
+      <div class="slide-header">
+        <div class="slide-logo-brand">
+          <img src="./cstudios_logo.svg" alt="Software Solutions">
+        </div>
+        <div class="slide-badge badge-primary">DOPLNKOVÝ EKOSYSTÉM</div>
+      </div>
+
+      <div class="slide-body">
+        <div style="margin-bottom: 1.25rem;">
+          <h2 class="slide-title-section">Ďalšie integrované moduly a funkcie systému Koperniq</h2>
+          <p class="slide-subtitle">Všetko, čo moderný podnik potrebuje pre bezproblémový každodenný chod v jednom robustnom balíku.</p>
+        </div>
+
+        <div class="slide-grid-6">
+          <div class="card-box">
+            <div class="card-title">Vlastné evidencie (Unified Entries)</div>
+            <p class="card-desc">No-Code tvorba vlastných registrov (Vozový park, STK, revízie strojov, certifikáty, licencie) s vizuálnym odpočtom platností.</p>
+          </div>
+
+          <div class="card-box">
+            <div class="card-title">Emailový klient & AI Digest</div>
+            <p class="card-desc">Obojsmerná IMAP/SMTP synchronizácia pošty s automatickým párovaním správ k časovej osi zákazníka a AI zhrnutím vlákien.</p>
+          </div>
+
+          <div class="card-box">
+            <div class="card-title">Centrálny Asset Hub & Náhľady</div>
+            <p class="card-desc">Okamžité in-browser prezeranie PDF výkresov, fotografií a tabuliek priamo v okne CRM bez nutnosti sťahovania.</p>
+          </div>
+
+          <div class="card-box">
+            <div class="card-title">Granulárny RBAC & Bezpečnosť</div>
+            <p class="card-desc">Používateľské roly s detailnými právami (zobraziť, upraviť, zmazať) na úrovni modulov a kompletný bezpečnostný Audit Log.</p>
+          </div>
+
+          <div class="card-box">
+            <div class="card-title">Start Menu & Úprava lišty</div>
+            <p class="card-desc">Windows-style app launcher, drag & drop organizácia modulov a pripínanie/odpínanie (Pin/Unpin) na bočný panel.</p>
+          </div>
+
+          <div class="card-box">
+            <div class="card-title">Viacjazyčnosť & Bleskové hľadanie</div>
+            <p class="card-desc">Plná podpora slovenčiny, angličtiny a maďarčiny. Globálne fuzzy vyhľadávanie naprieč celým systémom cez <code>Cmd/Ctrl + K</code>.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-footer">
+        <div class="slide-footer-text">Koperniq | Robustný ekosystém funkcií pripravený na škálovanie</div>
+        <div class="slide-footer-page">21 / 22</div>
+      </div>
+    </section>
+
+    <!-- ==========================================
+         SLIDE 22: SALES PITCH CLOSING & KONTAKT (Dark)
+         ========================================== -->
+    <section class="slide slide-dark" id="slide-22" style="justify-content: space-between;">
+      <div class="slide-header">
+        <div class="slide-logo-brand">
+          <img src="./cstudios_logo.svg" alt="Software Solutions">
+        </div>
+        <div class="slide-badge badge-primary">KONTAKTUJTE NÁS</div>
+      </div>
+
+      <div class="slide-body" style="margin: 0;">
+        <div style="text-align: center; max-width: 1050px; margin: 0 auto 1.5rem;">
+          <div class="eyebrow">PRVÁ KONZULTÁCIA JE ZDARMA</div>
+          <h2 class="slide-title-hero" style="margin-bottom: 0.85rem;">
+            Máte záujem? <span class="highlight-yellow">Zrealizujme to spoločne!</span>
+          </h2>
+          <p class="slide-subtitle" style="margin: 0 auto; font-size: 1.25rem;">
+            Ozvite sa nám a pripravíme nezáväzný návrh digitálnej transformácie a CRM riešenia presne pre potreby vášho podnikania.
+          </p>
+        </div>
+
+        <div class="contact-grid">
+          <div class="contact-card">
+            <div>
+              <div class="contact-name">Attila Tánczos</div>
+              <div class="contact-role">VEDÚCI PREVÁDZKY</div>
+            </div>
+            <div>
+              <a href="tel:+421918362403" class="contact-item">+421 918 362 403</a>
+              <a href="mailto:attila.tanczos@softwaresolutions.sk" class="contact-item">attila.tanczos@softwaresolutions.sk</a>
+            </div>
+          </div>
+
+          <div class="contact-card" style="border-color: var(--primary);">
+            <div>
+              <div class="contact-name">Ing. Erik Putz</div>
+              <div class="contact-role">OBCHODNÝ ANALYTIK / SPOLUMAJITEĽ</div>
+            </div>
+            <div>
+              <a href="tel:+421918362403" class="contact-item">+421 918 362 403</a>
+              <a href="mailto:erik.putz@softwaresolutions.sk" class="contact-item">erik.putz@softwaresolutions.sk</a>
+            </div>
+          </div>
+
+          <div class="contact-card">
+            <div>
+              <div class="contact-name">Ing. Roland Vanyek</div>
+              <div class="contact-role">CFO / SPOLUMAJITEĽ</div>
+            </div>
+            <div>
+              <a href="tel:+421918760065" class="contact-item">+421 918 760 065</a>
+              <a href="mailto:roland.vanyek@softwaresolutions.sk" class="contact-item">roland.vanyek@softwaresolutions.sk</a>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="slide-footer">
+        <div class="slide-footer-text">
+          Cstudios Software Solutions s. r. o. | IČO: 53948793 | DIČ: 2121558505 | IČ DPH: SK2121558505
+        </div>
+        <div class="slide-footer-page">
+          <a href="https://softwaresolutions.sk/kontakt" target="_blank" style="color: var(--primary); text-decoration: none;">softwaresolutions.sk/kontakt ↗</a>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <script>
+    let currentSlideIndex = 0;
+    const slides = document.querySelectorAll('.slide');
+    const counter = document.getElementById('slideCounter');
+
+    function updateCounter() {
+      if (counter) {
+        counter.textContent = `${currentSlideIndex + 1} / ${slides.length}`;
+      }
+    }
+
+    function scrollToSlide(index) {
+      if (index >= 0 && index < slides.length) {
+        currentSlideIndex = index;
+        slides[currentSlideIndex].scrollIntoView({ behavior: 'smooth' });
+        updateCounter();
+      }
+    }
+
+    function nextSlide() {
+      if (currentSlideIndex < slides.length - 1) {
+        scrollToSlide(currentSlideIndex + 1);
+      }
+    }
+
+    function prevSlide() {
+      if (currentSlideIndex > 0) {
+        scrollToSlide(currentSlideIndex - 1);
+      }
+    }
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen();
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        }
+      }
+    }
+
+    // Keyboard shortcuts
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') {
+        e.preventDefault();
+        nextSlide();
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        e.preventDefault();
+        prevSlide();
+      } else if (e.key.toLowerCase() === 'f') {
+        toggleFullscreen();
+      }
+    });
+
+    // Observer to update counter on manual scroll
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          const index = Array.from(slides).indexOf(entry.target);
+          if (index !== -1) {
+            currentSlideIndex = index;
+            updateCounter();
+          }
+        }
+      });
+    }, { threshold: 0.6 });
+
+    slides.forEach(slide => observer.observe(slide));
+  </script>
+</body>
+</html>

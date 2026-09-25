@@ -1,0 +1,2388 @@
+<!DOCTYPE html>
+<html lang="sk">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Koperniq | Podnikový operačný systém s integrovanou AI | Software Solutions</title>
+  
+  <!-- Typography from softwaresolutions.sk -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800;900&family=Ubuntu+Sans+Mono:ital,wght@0,400..700;1,400..700&display=swap" rel="stylesheet">
+
+  <style>
+    /* ==========================================================================
+       DESIGN SYSTEM & TOKENS (softwaresolutions.sk)
+       ========================================================================== */
+    :root {
+      --primary: #eaed06;               /* Cyber neon yellow/lime accent */
+      --primary-hover: #d8db04;
+      --primary-glow: rgba(234, 237, 6, 0.18);
+      --bg-dark: #080808;              /* Base dark background */
+      --bg-dark-elevated: #111111;     /* Surface dark cards */
+      --bg-dark-card: #151515;
+      --bg-light: #faf8f8;             /* Clean warm contrast background */
+      --bg-light-card: #ffffff;
+      --text-dark: #ffffff;
+      --text-dark-muted: #9ca3af;
+      --text-light: #0b0b0b;
+      --text-light-muted: #4b5563;
+      --border-dark: rgba(255, 255, 255, 0.1);
+      --border-dark-subtle: rgba(255, 255, 255, 0.05);
+      --border-light: #e5e7eb;
+      --font-sans: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'Ubuntu Sans Mono', monospace;
+      
+      /* Subtle 30% Ethereal Elevation Shadows */
+      --shadow-subtle: 0 10px 25px -5px rgba(0, 0, 0, 0.02), 0 4px 6px -4px rgba(0, 0, 0, 0.01);
+      --shadow-card: 0 15px 30px -5px rgba(0, 0, 0, 0.025), 0 6px 10px -6px rgba(0, 0, 0, 0.01);
+      --shadow-dark-card: 0 20px 30px -10px rgba(0, 0, 0, 0.35);
+      
+      --radius-sm: 0.5rem;
+      --radius-md: 0.85rem;
+      --radius-lg: 1.25rem;
+      --radius-full: 9999px;
+      
+      --container-max: 1280px;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      scroll-behavior: smooth;
+      font-size: 16px;
+    }
+
+    body {
+      font-family: var(--font-sans);
+      background-color: var(--bg-dark);
+      color: var(--text-dark);
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    /* Subtle background grid pattern */
+    .bg-grid-pattern {
+      background-image: radial-gradient(rgba(234, 237, 6, 0.04) 1px, transparent 1px);
+      background-size: 36px 36px;
+    }
+
+    .bg-grid-light {
+      background-image: radial-gradient(rgba(0, 0, 0, 0.035) 1px, transparent 1px);
+      background-size: 36px 36px;
+    }
+
+    .container {
+      width: 100%;
+      max-width: var(--container-max);
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    /* ==========================================================================
+       TYPOGRAPHY & UTILITIES
+       ========================================================================== */
+    h1, h2, h3, h4 {
+      font-weight: 800;
+      line-height: 1.15;
+      letter-spacing: -0.025em;
+    }
+
+    .eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--primary);
+      margin-bottom: 0.75rem;
+    }
+
+    .eyebrow::before {
+      content: '//';
+      font-weight: 800;
+      color: rgba(234, 237, 6, 0.7);
+    }
+
+    .eyebrow-dark {
+      color: #0b0b0b;
+    }
+
+    .eyebrow-dark::before {
+      color: #4b5563;
+    }
+
+    .highlight {
+      color: var(--primary);
+    }
+
+    .designer-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      background: rgba(234, 237, 6, 0.1);
+      border: 1px dashed rgba(234, 237, 6, 0.4);
+      color: var(--primary);
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 700;
+      padding: 0.25rem 0.6rem;
+      border-radius: var(--radius-sm);
+      margin-bottom: 0.5rem;
+    }
+
+    /* Buttons */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.6rem;
+      font-family: var(--font-sans);
+      font-size: 0.95rem;
+      font-weight: 700;
+      padding: 0.85rem 1.65rem;
+      border-radius: var(--radius-full);
+      text-decoration: none;
+      cursor: pointer;
+      transition: all 0.25s ease;
+      border: 1px solid transparent;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: #0b0b0b;
+      box-shadow: 0 4px 18px rgba(234, 237, 6, 0.25);
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-hover);
+      transform: translateY(-2px);
+      box-shadow: 0 6px 24px rgba(234, 237, 6, 0.35);
+    }
+
+    .btn-outline {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: rgba(255, 255, 255, 0.15);
+      color: #ffffff;
+    }
+
+    .btn-outline:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: var(--primary);
+      color: var(--primary);
+      transform: translateY(-2px);
+    }
+
+    /* ==========================================================================
+       HEADER & NAVIGATION BAR
+       ========================================================================== */
+    .site-header {
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      background: rgba(8, 8, 8, 0.85);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border-bottom: 1px solid var(--border-dark);
+      padding: 1rem 0;
+    }
+
+    .nav-container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .brand-logo-group {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .brand-logo-group img {
+      height: 2.25rem;
+      width: auto;
+    }
+
+    .product-tag {
+      background: rgba(234, 237, 6, 0.12);
+      border: 1px solid rgba(234, 237, 6, 0.35);
+      color: var(--primary);
+      font-family: var(--font-mono);
+      font-size: 0.8rem;
+      font-weight: 700;
+      padding: 0.2rem 0.65rem;
+      border-radius: var(--radius-full);
+      letter-spacing: 0.05em;
+    }
+
+    .nav-menu {
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+      list-style: none;
+    }
+
+    .nav-menu a {
+      color: var(--text-dark-muted);
+      text-decoration: none;
+      font-size: 0.925rem;
+      font-weight: 600;
+      transition: color 0.2s;
+    }
+
+    .nav-menu a:hover {
+      color: var(--primary);
+    }
+
+    /* ==========================================================================
+       HERO SECTION
+       ========================================================================== */
+    .hero-section {
+      padding: 5.5rem 0 4rem;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 3.5rem;
+      align-items: center;
+    }
+
+    .hero-title {
+      font-size: 3.5rem;
+      font-weight: 900;
+      line-height: 1.08;
+      letter-spacing: -0.035em;
+      margin-bottom: 1.25rem;
+    }
+
+    .hero-subtitle {
+      font-size: 1.2rem;
+      line-height: 1.6;
+      color: var(--text-dark-muted);
+      margin-bottom: 2rem;
+    }
+
+    .hero-cta-group {
+      display: flex;
+      align-items: center;
+      gap: 1.25rem;
+      margin-bottom: 2.5rem;
+      flex-wrap: wrap;
+    }
+
+    .hero-update-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.65rem;
+      background: rgba(234, 237, 6, 0.08);
+      border: 1px solid rgba(234, 237, 6, 0.3);
+      border-radius: var(--radius-full);
+      padding: 0.6rem 1.15rem;
+      font-size: 0.875rem;
+      color: rgba(255, 255, 255, 0.95);
+      margin-top: 0.5rem;
+    }
+
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--primary);
+      box-shadow: 0 0 10px var(--primary);
+      display: inline-block;
+      animation: pulseGlow 2s infinite;
+      flex-shrink: 0;
+    }
+
+    @keyframes pulseGlow {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(234, 237, 6, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(234, 237, 6, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(234, 237, 6, 0); }
+    }
+
+    .hero-visual-wrapper {
+      position: relative;
+    }
+
+    .hero-image-frame {
+      border-radius: var(--radius-lg);
+      border: 1px solid var(--border-dark);
+      background: var(--bg-dark-card);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+      overflow: hidden;
+      transition: transform 0.3s ease;
+    }
+
+    .hero-image-frame:hover {
+      transform: scale(1.015);
+      border-color: rgba(234, 237, 6, 0.4);
+    }
+
+    .hero-image-frame img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+
+    .floating-pill {
+      position: absolute;
+      background: rgba(18, 18, 18, 0.92);
+      backdrop-filter: blur(12px);
+      border: 1px solid var(--border-dark);
+      border-radius: var(--radius-md);
+      padding: 0.75rem 1.15rem;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      box-shadow: 0 15px 30px rgba(0, 0, 0, 0.4);
+      z-index: 10;
+      animation: floatSlow 4s ease-in-out infinite alternate;
+    }
+
+    .floating-pill-1 {
+      top: -1.25rem;
+      right: -1rem;
+    }
+
+    .floating-pill-2 {
+      bottom: -1.5rem;
+      left: -1rem;
+      animation-delay: 2s;
+    }
+
+    @keyframes floatSlow {
+      from { transform: translateY(0); }
+      to { transform: translateY(-8px); }
+    }
+
+    /* ==========================================================================
+       QUOTE BANNER (JUST BELOW THE FOLD)
+       ========================================================================== */
+    .quote-banner-section {
+      padding: 4.75rem 0 4.25rem;
+      background: radial-gradient(circle at 50% 50%, rgba(234, 237, 6, 0.05) 0%, transparent 70%), #0c0c0c;
+      border-top: 1px solid var(--border-dark);
+      border-bottom: 1px solid var(--border-dark);
+      text-align: center;
+    }
+
+    .quote-card {
+      max-width: 980px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+    }
+
+    .quote-eyebrow {
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--primary);
+      letter-spacing: 0.12em;
+    }
+
+    .quote-text {
+      font-size: 2.5rem;
+      font-weight: 900;
+      line-height: 1.18;
+      color: #ffffff;
+      letter-spacing: -0.03em;
+    }
+
+    .quote-subtext {
+      font-size: 1.15rem;
+      color: var(--text-dark-muted);
+      max-width: 780px;
+      line-height: 1.6;
+    }
+
+    @media (max-width: 768px) {
+      .quote-text {
+        font-size: 1.75rem;
+      }
+    }
+
+    /* ==========================================================================
+       SECTION: OUR STRONGEST ATTRIBUTES (BELOW HERO)
+       ========================================================================== */
+    .attributes-section {
+      padding: 4rem 0;
+      background: #090909;
+      border-bottom: 1px solid var(--border-dark);
+    }
+
+    .attributes-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1.5rem;
+      margin-top: 2rem;
+    }
+
+    .attribute-card {
+      background: #141414;
+      border: 1px solid var(--border-dark);
+      border-radius: var(--radius-md);
+      padding: 1.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      transition: all 0.25s ease;
+      position: relative;
+    }
+
+    .attribute-card:hover {
+      border-color: var(--primary);
+      transform: translateY(-3px);
+      box-shadow: 0 15px 30px -5px rgba(0, 0, 0, 0.4);
+    }
+
+    .attribute-icon {
+      font-size: 2rem;
+      line-height: 1;
+      margin-bottom: 0.25rem;
+    }
+
+    .attribute-title {
+      font-size: 1.15rem;
+      font-weight: 800;
+      color: #ffffff;
+    }
+
+    .attribute-desc {
+      font-size: 0.9rem;
+      color: var(--text-dark-muted);
+      line-height: 1.5;
+    }
+
+    /* ==========================================================================
+       SECTION: 7+ THINGS WHAT OUR AI SOLUTION SOLVES FOR YOU
+       ========================================================================== */
+    .ai-solves-section {
+      padding: 6rem 0 5rem;
+      background: #090909;
+      border-bottom: 1px solid var(--border-dark);
+      position: relative;
+    }
+
+    .ai-solves-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1.75rem;
+    }
+
+    .ai-solves-card {
+      background: #141414;
+      border: 1px solid var(--border-dark);
+      border-radius: var(--radius-lg);
+      padding: 2.25rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 1.25rem;
+      box-shadow: 0 15px 25px -5px rgba(0, 0, 0, 0.25);
+      transition: all 0.25s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .ai-solves-card:hover {
+      border-color: rgba(234, 237, 6, 0.4);
+      transform: translateY(-3px);
+      box-shadow: 0 20px 35px -5px rgba(0, 0, 0, 0.4);
+    }
+
+    .ai-solves-card-top {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+
+    .ai-solves-icon {
+      width: 3rem;
+      height: 3rem;
+      border-radius: var(--radius-md);
+      background: rgba(234, 237, 6, 0.1);
+      border: 1px solid rgba(234, 237, 6, 0.25);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 1.5rem;
+      flex-shrink: 0;
+    }
+
+    .ai-solves-module-tag {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 700;
+      color: var(--primary);
+      background: rgba(234, 237, 6, 0.08);
+      border: 1px solid rgba(234, 237, 6, 0.2);
+      padding: 0.2rem 0.6rem;
+      border-radius: var(--radius-full);
+      letter-spacing: 0.05em;
+    }
+
+    .ai-solves-title {
+      font-size: 1.3rem;
+      font-weight: 800;
+      line-height: 1.25;
+      color: #ffffff;
+    }
+
+    .ai-solves-comparison {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .ai-solves-row {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.65rem;
+      font-size: 0.925rem;
+      line-height: 1.45;
+    }
+
+    .ai-solves-badge-bad {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 800;
+      color: #ef4444;
+      background: rgba(239, 68, 68, 0.12);
+      padding: 0.15rem 0.45rem;
+      border-radius: var(--radius-sm);
+      flex-shrink: 0;
+      margin-top: 0.15rem;
+    }
+
+    .ai-solves-badge-good {
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 800;
+      color: #ffffff;
+      background: #9333ea;
+      border: 1px solid #c084fc;
+      box-shadow: 0 0 10px rgba(168, 85, 247, 0.35);
+      padding: 0.15rem 0.5rem;
+      border-radius: var(--radius-sm);
+      flex-shrink: 0;
+      margin-top: 0.15rem;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+
+    .ai-solves-text-bad {
+      color: var(--text-dark-muted);
+    }
+
+    .ai-solves-text-good {
+      color: #f3e8ff;
+    }
+
+    .ai-solves-text-good strong {
+      color: #c084fc;
+    }
+
+    /* ==========================================================================
+       SECTION: COMPARISON (Koperniq vs. Krabicové CRM vs. Vývoj od nuly)
+       ========================================================================== */
+    .section-light {
+      background-color: var(--bg-light);
+      color: var(--text-light);
+      padding: 6rem 0;
+      border-top: 1px solid var(--border-light);
+      border-bottom: 1px solid var(--border-light);
+    }
+
+    .section-dark {
+      background-color: var(--bg-dark);
+      color: var(--text-dark);
+      padding: 6rem 0;
+    }
+
+    .section-header-center {
+      text-align: center;
+      max-width: 850px;
+      margin: 0 auto 3.5rem;
+    }
+
+    .section-title {
+      font-size: 2.5rem;
+      margin-bottom: 1rem;
+    }
+
+    .section-description {
+      font-size: 1.15rem;
+      color: var(--text-light-muted);
+      line-height: 1.6;
+    }
+
+    .section-dark .section-description {
+      color: var(--text-dark-muted);
+    }
+
+    .comparison-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1.2fr;
+      gap: 1.5rem;
+      align-items: stretch;
+    }
+
+    .compare-card {
+      background: var(--bg-light-card);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-lg);
+      padding: 2.25rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      box-shadow: var(--shadow-card);
+    }
+
+    .compare-card-featured {
+      background: #0b0b0b;
+      color: #ffffff;
+      border: 2px solid var(--primary);
+      box-shadow: 0 20px 40px -10px rgba(234, 237, 6, 0.15);
+      position: relative;
+      transform: scale(1.03);
+    }
+
+    .featured-ribbon {
+      position: absolute;
+      top: -0.85rem;
+      left: 50%;
+      transform: translateX(-50%);
+      background: var(--primary);
+      color: #0b0b0b;
+      font-family: var(--font-mono);
+      font-weight: 800;
+      font-size: 0.75rem;
+      padding: 0.35rem 1rem;
+      border-radius: var(--radius-full);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    .compare-card-header {
+      margin-bottom: 1.5rem;
+      padding-bottom: 1.25rem;
+      border-bottom: 1px solid var(--border-light);
+    }
+
+    .compare-card-featured .compare-card-header {
+      border-bottom-color: var(--border-dark);
+    }
+
+    .compare-title {
+      font-size: 1.4rem;
+      font-weight: 800;
+      margin-bottom: 0.4rem;
+    }
+
+    .compare-subtitle {
+      font-size: 0.9rem;
+      color: var(--text-light-muted);
+    }
+
+    .compare-card-featured .compare-subtitle {
+      color: var(--text-dark-muted);
+    }
+
+    .compare-features-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 0.9rem;
+      margin-bottom: 2rem;
+    }
+
+    .compare-feature-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      font-size: 0.925rem;
+      line-height: 1.45;
+    }
+
+    .compare-icon-cross {
+      color: #ef4444;
+      font-weight: 800;
+      flex-shrink: 0;
+    }
+
+    .compare-icon-check {
+      color: #10b981;
+      font-weight: 800;
+      flex-shrink: 0;
+    }
+
+    .compare-card-featured .compare-icon-check {
+      color: var(--primary);
+    }
+
+    /* ==========================================================================
+       SECTION: AI-FIRST CRM (Kde všade AI reálne pomáha)
+       ========================================================================== */
+    .modules-nav-bar {
+      display: flex;
+      justify-content: center;
+      gap: 0.6rem;
+      margin-bottom: 3.5rem;
+      flex-wrap: wrap;
+    }
+
+    .module-nav-btn {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-dark);
+      color: var(--text-dark-muted);
+      font-family: var(--font-mono);
+      font-size: 0.85rem;
+      font-weight: 700;
+      padding: 0.55rem 1.15rem;
+      border-radius: var(--radius-full);
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .module-nav-btn:hover {
+      color: #ffffff;
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+
+    .module-nav-btn.active {
+      background: var(--primary);
+      color: #0b0b0b;
+      border-color: var(--primary);
+      font-weight: 800;
+    }
+
+    /* Module Showcase Card */
+    .module-card {
+      display: none;
+      grid-template-columns: 1fr 1.25fr;
+      gap: 3.5rem;
+      align-items: center;
+      background: var(--bg-dark-elevated);
+      border: 1px solid var(--border-dark);
+      border-radius: var(--radius-lg);
+      padding: 3.5rem;
+      box-shadow: var(--shadow-dark-card);
+      animation: fadeIn 0.35s ease forwards;
+    }
+
+    .module-card.active {
+      display: grid;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .module-info {
+      display: flex;
+      flex-direction: column;
+      gap: 1.25rem;
+    }
+
+    .module-title {
+      font-size: 2.15rem;
+      line-height: 1.15;
+    }
+
+    .module-desc {
+      color: var(--text-dark-muted);
+      font-size: 1.05rem;
+      line-height: 1.55;
+    }
+
+    /* Two distinct callouts: What it solves + AI Edge */
+    .module-callout-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 1.15rem;
+      margin-top: 0.75rem;
+    }
+
+    .callout-box {
+      border-radius: var(--radius-md);
+      padding: 1.25rem 1.45rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.45rem;
+      transition: all 0.2s ease;
+    }
+
+    .callout-problem {
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.02) 100%);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-left: 4px solid #38bdf8;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.25);
+    }
+
+    .callout-ai {
+      background: rgba(234, 237, 6, 0.07);
+      border: 1px solid rgba(234, 237, 6, 0.35);
+      border-left: 4px solid var(--primary);
+      box-shadow: 0 4px 20px rgba(234, 237, 6, 0.05);
+    }
+
+    .callout-title {
+      font-family: var(--font-mono);
+      font-size: 0.825rem;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+
+    .callout-problem .callout-title {
+      color: #7dd3fc;
+    }
+
+    .callout-ai .callout-title {
+      color: var(--primary);
+    }
+
+    .callout-text {
+      font-size: 0.95rem;
+      line-height: 1.55;
+      color: rgba(255, 255, 255, 0.92);
+    }
+
+    .callout-text strong {
+      color: #ffffff;
+      font-weight: 800;
+    }
+
+    .robot-avatar-icon {
+      width: 30px;
+      height: 30px;
+      border-radius: 4px;
+      object-fit: contain;
+      border: none;
+      box-shadow: none;
+      flex-shrink: 0;
+    }
+
+    .module-visual-column {
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    .module-screenshot-container {
+      position: relative;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      border: 1px solid var(--border-dark);
+      background: #000;
+      cursor: zoom-in;
+    }
+
+    .module-screenshot-container img {
+      width: 100%;
+      height: auto;
+      display: block;
+      transition: transform 0.3s ease;
+    }
+
+    .module-screenshot-container:hover img {
+      transform: scale(1.015);
+    }
+
+    /* Hanging AI Badge with Purple Theme & Glow */
+    .screenshot-ai-overlay {
+      position: relative;
+      margin-top: -22px;
+      margin-left: 1.25rem;
+      margin-right: 1.25rem;
+      background: rgba(18, 12, 28, 0.95);
+      backdrop-filter: blur(14px);
+      -webkit-backdrop-filter: blur(14px);
+      border: 1px solid rgba(168, 85, 247, 0.45);
+      border-left: 4px solid #a855f7;
+      border-radius: var(--radius-sm);
+      padding: 0.85rem 1.15rem;
+      box-shadow: 0 15px 30px rgba(0, 0, 0, 0.85), 0 0 20px rgba(168, 85, 247, 0.15);
+      z-index: 5;
+      transition: transform 0.2s ease;
+    }
+
+    .ai-overlay-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      font-weight: 800;
+      color: #c084fc;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-bottom: 0.25rem;
+    }
+
+    .ai-overlay-text {
+      font-size: 0.85rem;
+      line-height: 1.45;
+      color: #f3e8ff;
+      margin: 0;
+    }
+
+    .ai-overlay-text strong {
+      color: #e9d5ff;
+      font-weight: 800;
+    }
+
+    .zoom-hint {
+      position: absolute;
+      top: 0.75rem;
+      right: 0.75rem;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(6px);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: #fff;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      padding: 0.3rem 0.65rem;
+      border-radius: var(--radius-sm);
+      pointer-events: none;
+      z-index: 6;
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    /* ==========================================================================
+       INFOGRAPHIC: HITL ARCHITECTURE (Human-in-the-loop)
+       ========================================================================== */
+    .process-flow-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 1.5rem;
+      margin-top: 3.5rem;
+      position: relative;
+    }
+
+    .process-step-card {
+      background: var(--bg-light-card);
+      border: 1px solid var(--border-light);
+      border-radius: var(--radius-lg);
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-start;
+      position: relative;
+      box-shadow: var(--shadow-card);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .process-step-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 20px 35px -10px rgba(0, 0, 0, 0.12);
+    }
+
+    .step-image-container {
+      width: 100%;
+      height: 190px;
+      margin-bottom: 1.25rem;
+      border-radius: var(--radius-md);
+      overflow: hidden;
+      background: #f1f3f5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border: 1px solid rgba(0, 0, 0, 0.06);
+    }
+
+    .step-robot-img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transition: transform 0.35s ease;
+    }
+
+    .process-step-card:hover .step-robot-img {
+      transform: scale(1.06);
+    }
+
+    .step-number {
+      font-family: var(--font-mono);
+      font-size: 2rem;
+      font-weight: 800;
+      color: #0b0b0b;
+      margin-bottom: 0.35rem;
+      line-height: 1;
+    }
+
+    .step-title {
+      font-size: 1.15rem;
+      font-weight: 800;
+      margin-bottom: 0.5rem;
+      color: #0b0b0b;
+      line-height: 1.3;
+    }
+
+    .step-desc {
+      font-size: 0.9rem;
+      color: var(--text-light-muted);
+      line-height: 1.5;
+    }
+
+    /* ==========================================================================
+       CONTACT & LEAD GENERATION FORM
+       ========================================================================== */
+    .contact-form-card {
+      background: #111111;
+      border: 1px solid var(--border-dark);
+      border-radius: var(--radius-lg);
+      padding: 3rem;
+      text-align: left;
+      margin-top: 2.5rem;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+    }
+
+    .form-grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1.5rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .form-label {
+      font-size: 0.875rem;
+      font-weight: 700;
+      color: rgba(255, 255, 255, 0.9);
+      display: flex;
+      align-items: center;
+      gap: 0.35rem;
+    }
+
+    .form-label-required {
+      color: var(--primary);
+    }
+
+    .form-input,
+    .form-select {
+      background: #181818;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: var(--radius-sm);
+      padding: 0.85rem 1.15rem;
+      font-family: var(--font-sans);
+      font-size: 0.95rem;
+      color: #ffffff;
+      transition: all 0.2s ease;
+      width: 100%;
+    }
+
+    .form-input:focus,
+    .form-select:focus {
+      outline: none;
+      border-color: var(--primary);
+      box-shadow: 0 0 0 3px rgba(234, 237, 6, 0.15);
+      background: #1c1c1c;
+    }
+
+    .form-select option {
+      background: #181818;
+      color: #ffffff;
+    }
+
+    /* Checkbox Group */
+    .checkbox-group-wrapper {
+      margin-top: 0.5rem;
+      margin-bottom: 2rem;
+    }
+
+    .checkbox-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.85rem;
+      margin-top: 0.75rem;
+    }
+
+    .checkbox-item {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      background: #181818;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: var(--radius-sm);
+      padding: 0.75rem 1rem;
+      cursor: pointer;
+      transition: all 0.2s;
+      font-size: 0.9rem;
+      user-select: none;
+    }
+
+    .checkbox-item:hover {
+      border-color: rgba(234, 237, 6, 0.4);
+      background: #1e1e1e;
+    }
+
+    .checkbox-item input[type="checkbox"] {
+      width: 1.15rem;
+      height: 1.15rem;
+      accent-color: var(--primary);
+      cursor: pointer;
+    }
+
+    .form-submit-btn {
+      width: 100%;
+      padding: 1.15rem;
+      font-size: 1.05rem;
+      font-weight: 800;
+      letter-spacing: 0.02em;
+    }
+
+    .form-privacy-note {
+      font-size: 0.8rem;
+      color: var(--text-dark-muted);
+      text-align: center;
+      margin-top: 1rem;
+    }
+
+    .form-success-message {
+      display: none;
+      background: rgba(16, 185, 129, 0.15);
+      border: 1px solid #10b981;
+      border-radius: var(--radius-md);
+      padding: 1.5rem;
+      text-align: center;
+      color: #ffffff;
+      margin-top: 1.5rem;
+    }
+
+    /* Form Trust Banner */
+    .form-trust-banner {
+      display: flex;
+      justify-content: center;
+      gap: 1.25rem;
+      flex-wrap: wrap;
+      margin-top: 1.75rem;
+      margin-bottom: 0.5rem;
+    }
+
+    .trust-pill-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: var(--radius-full);
+      padding: 0.5rem 1.15rem;
+      font-size: 0.875rem;
+      color: rgba(255, 255, 255, 0.95);
+    }
+
+    @media (max-width: 768px) {
+      .form-grid-2,
+      .checkbox-grid {
+        grid-template-columns: 1fr;
+      }
+      .contact-form-card {
+        padding: 1.75rem;
+      }
+      .form-trust-banner {
+        flex-direction: column;
+        align-items: stretch;
+      }
+    }
+
+    /* ==========================================================================
+       FOOTER
+       ========================================================================== */
+    .site-footer {
+      border-top: 1px solid var(--border-dark);
+      padding: 2.5rem 0;
+      background: #050505;
+      font-size: 0.875rem;
+      color: var(--text-dark-muted);
+    }
+
+    .footer-container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+
+    /* ==========================================================================
+       IMAGE LIGHTBOX MODAL
+       ========================================================================== */
+    .lightbox-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 9999;
+      background: rgba(0, 0, 0, 0.92);
+      backdrop-filter: blur(10px);
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+    }
+
+    .lightbox-modal.active {
+      display: flex;
+    }
+
+    .lightbox-img-wrapper {
+      max-width: 90vw;
+      max-height: 90vh;
+      position: relative;
+    }
+
+    .lightbox-img-wrapper img {
+      max-width: 100%;
+      max-height: 88vh;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border-dark);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
+      display: block;
+    }
+
+    .lightbox-close-btn {
+      position: absolute;
+      top: -2.5rem;
+      right: 0;
+      color: #fff;
+      font-size: 1.5rem;
+      background: transparent;
+      border: none;
+      cursor: pointer;
+      font-family: var(--font-mono);
+    }
+
+    /* Responsive Breakpoints */
+    @media (max-width: 1024px) {
+      .hero-grid,
+      .module-card {
+        grid-template-columns: 1fr;
+        gap: 2.5rem;
+      }
+
+      .attributes-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+
+      .ai-solves-grid,
+      .comparison-grid,
+      .process-flow-grid,
+      .contacts-row {
+        grid-template-columns: 1fr;
+      }
+
+      .compare-card-featured {
+        transform: none;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .attributes-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body class="bg-grid-pattern">
+
+  <!-- ==========================================================================
+       STICKY HEADER / NAVIGATION
+       ========================================================================== -->
+  <header class="site-header">
+    <div class="container nav-container">
+      <a href="https://softwaresolutions.sk/" class="brand-logo-group" target="_blank">
+        <img src="./cstudios_logo.svg" alt="Software Solutions">
+        <span class="product-tag">KOPERNIQ OS</span>
+      </a>
+
+      <nav>
+        <ul class="nav-menu">
+          <li><a href="#prehlad">Prehľad</a></li>
+          <li><a href="#ai-solves">7+ AI Riešení</a></li>
+          <li><a href="#porovnanie">Porovnanie CRM</a></li>
+          <li><a href="#moduly">AI-First Moduly</a></li>
+          <li><a href="#architektura">Architektúra</a></li>
+          <li><a href="#kontakt">Kontakt</a></li>
+        </ul>
+      </nav>
+
+      <a href="#kontakt" class="btn btn-primary">Dohodnúť demo zdarma</a>
+    </div>
+  </header>
+
+  <!-- ==========================================================================
+       HERO SECTION: THE BUSINESS OPERATING SYSTEM
+       ========================================================================== -->
+  <section class="hero-section" id="prehlad">
+    <div class="container">
+      <div class="hero-grid">
+        <div>
+          <!-- DESIGNER NOTE: Simplified & clean value proposition -->
+          <div class="designer-badge">DESIGN WIREFRAME // HERO SECTION</div>
+          <br>
+          <div class="eyebrow">PODNIKOVÝ OPERAČNÝ SYSTÉM NOVEJ GENERÁCIE</div>
+          <h1 class="hero-title">
+            Koperniq: Váš firemný <span class="highlight">operačný systém</span> s integrovanou AI.
+          </h1>
+          <p class="hero-subtitle">
+            Zjednoťte obchod, skladové hospodárstvo s reálnymi maržami, prediktívne financie, zákazky a AI asistentov do jedného systému so <strong>100% vlastníctvom zdrojového kódu</strong>.
+          </p>
+
+          <div class="hero-cta-group">
+            <a href="#kontakt" class="btn btn-primary">Požiadať o ukážku na mieru</a>
+            <a href="#moduly" class="btn btn-outline">Pozrieť interaktívne moduly ↓</a>
+          </div>
+        </div>
+
+        <div class="hero-visual-wrapper">
+          <div class="hero-image-frame" onclick="openLightbox('./screenshots/01_ccrm_start_menu_overview.png')">
+            <img src="./screenshots/01_ccrm_start_menu_overview.png" alt="Koperniq Start Menu Hub a architektúra">
+          </div>
+
+          <div class="floating-pill floating-pill-1">
+            <img src="./robot_ai.jpg" alt="AI Robot" class="robot-avatar-icon" style="width: 32px; height: 32px;">
+            <div>
+              <div style="font-weight: 800; font-size: 0.85rem;">Autonómny AI Agent</div>
+              <div style="font-size: 0.75rem; color: var(--text-dark-muted);">Skenuje neplatičov a skladové marže</div>
+            </div>
+          </div>
+
+          <div class="floating-pill floating-pill-2">
+            <span style="color: #10b981; font-size: 1.25rem;">✓</span>
+            <div>
+              <div style="font-weight: 800; font-size: 0.85rem;">Dohľad Expertov</div>
+              <div style="font-size: 0.75rem; color: var(--text-dark-muted);">20 rokov biznis & CX/UX skúseností</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==========================================================================
+       QUOTE BANNER (JUST BELOW THE FOLD)
+       ========================================================================== -->
+  <section class="quote-banner-section">
+    <div class="container">
+      <div class="quote-card">
+        <div class="quote-eyebrow">// NÁŠ PRÍSTUP K VAŠIM PROCESOM</div>
+        <blockquote class="quote-text">
+          „Riešime skutočné problémy vo vašej firme – <span class="highlight">a vieme presne ako.</span>“
+        </blockquote>
+        <p class="quote-subtext">
+          Nechceme vám len predať ďalší softvér. Spájame <strong>20 rokov skúseností v biznis architektúre a CX/UX dizajne</strong> s najmodernejším AI inžinierstvom, aby váš tím pracoval s ľahkosťou, prehľadom a bez chaosu.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==========================================================================
+       SECTION: OUR STRONGEST ATTRIBUTES (Directly Below Hero)
+       ========================================================================== -->
+  <section class="attributes-section" id="piliere">
+    <div class="container">
+      <div class="section-header-center" style="margin-bottom: 2rem;">
+        <!-- DESIGNER NOTE: 4 core value proposition pillars showcasing deep experience, bi-weekly agility, pragmatism and code ownership -->
+        <div class="designer-badge">DESIGN WIREFRAME // CORE ATTRIBUTES</div>
+        <br>
+        <div class="eyebrow">PREČO PRÁVE SOFTWARE SOLUTIONS</div>
+        <h2 class="section-title" style="font-size: 2.15rem;">Piliere, na ktorých staviame vaše riešenie</h2>
+        <p class="section-description">
+          Dve desaťročia praxe v biznise pretavené do moderného, agilného podnikového systému, ktorý reálne rieši vaše problémy.
+        </p>
+      </div>
+
+      <div class="attributes-grid">
+        <!-- 1. Skúsenosti -->
+        <div class="attribute-card">
+          <div class="attribute-icon">🏆</div>
+          <h3 class="attribute-title">20+ Rokov v Biznise a CX/UX</h3>
+          <p class="attribute-desc">Dve dekády praxe v priemysle a obchode. Vieme, čo funguje na papieri, no predovšetkým čo funguje v realite každodennej práce ľudí.</p>
+        </div>
+
+        <!-- 2. Bi-Weekly Inovácie -->
+        <div class="attribute-card">
+          <div class="attribute-icon">🔄</div>
+          <h3 class="attribute-title">Bi-Weekly Inovačný Cyklus</h3>
+          <p class="attribute-desc">Nič u nás nezamrzne. Každé 2 týždne nasadzujeme nové funkcie, optimalizácie a AI vylepšenia, takže systém neustále rastie s vami.</p>
+        </div>
+
+        <!-- 3. Pragmatizmus & KISS -->
+        <div class="attribute-card">
+          <div class="attribute-icon">🎯</div>
+          <h3 class="attribute-title">Zdravý Pragmatizmus & KISS</h3>
+          <p class="attribute-desc">Žiadne zbytočné teórie ani experimenty. Staviame čistú a priamočiaru architektúru, ktorá odstraňuje trenie a okamžite šetrí čas.</p>
+        </div>
+
+        <!-- 4. Vlastníctvo a Sloboda -->
+        <div class="attribute-card">
+          <div class="attribute-icon">🛡️</div>
+          <h3 class="attribute-title">100% Vlastníctvo Kódu a Dát</h3>
+          <p class="attribute-desc">Princíp „čo je vyvinuté, to je vaše“. Žiadna závislosť na cudzom poskytovateľovi, žiadne mesačné poplatky za používateľov a plná suverenita nad vašimi firemnými dátami.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==========================================================================
+       SECTION: 7+ THINGS WHAT OUR AI SOLUTION SOLVES FOR YOU
+       ========================================================================== -->
+  <section class="ai-solves-section" id="ai-solves">
+    <div class="container">
+      <div class="section-header-center">
+        <!-- DESIGNER NOTE: High-impact 2x4 feature grid showing 8 concrete business pains solved by Koperniq AI -->
+        <div class="designer-badge">DESIGN WIREFRAME // 7+ AI SOLUTIONS</div>
+        <br>
+        <div class="eyebrow">ROZUMIEME VAŠIM VÝZVAM & VIEME ICH VYRIEŠIŤ</div>
+        <h2 class="section-title">7+ vecí, ktoré naše AI riešenie vyrieši za vás</h2>
+        <p class="section-description">
+          Vieme, kde firmy najčastejšie strácajú čas a energiu. Za 20 rokov v biznise sme videli stovky neprehľadných tabuliek a frustrovaných tímov. Pozrite sa na 8 konkrétnych oblastí, v ktorých vám Koperniq AI okamžite pomôže.
+        </p>
+      </div>
+
+      <div class="ai-solves-grid">
+        <!-- 1. Hlasové zápisnice -->
+        <div class="ai-solves-card">
+          <div class="ai-solves-card-top">
+            <div class="ai-solves-icon">🎙️</div>
+            <span class="ai-solves-module-tag">// HLASOVÁ ZASADAČKA</span>
+          </div>
+          <h3 class="ai-solves-title">1. Koniec ručným zápisniciam a strateným úlohám z porád</h3>
+          <div class="ai-solves-comparison">
+            <div class="ai-solves-row">
+              <span class="ai-solves-badge-bad">PROBLÉM</span>
+              <p class="ai-solves-text-bad">Po hodinovej porade nikto nenapíše zápisnicu, dohodnuté úlohy zapadnú v mailoch a nikto nenesie zodpovednosť.</p>
+            </div>
+            <div class="ai-solves-row">
+              <span class="ai-solves-badge-good">✨ AI RIEŠENIE</span>
+              <p class="ai-solves-text-good">Whisper a Gemini prepíšu slovenskú reč z mikrofónu, vygenerujú štruktúrovaný sumár a automaticky vytvoria úlohy v kalendári s priradením kolegom.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 2. RAG AI Manažérske odpovede -->
+        <div class="ai-solves-card">
+          <div class="ai-solves-card-top">
+            <div class="ai-solves-icon">⚡</div>
+            <span class="ai-solves-module-tag">// RAG AI ASISTENT</span>
+          </div>
+          <h3 class="ai-solves-title">2. Manažérske odpovede za 3 sekundy bez klikania v reportoch</h3>
+          <div class="ai-solves-comparison">
+            <div class="ai-solves-row">
+              <span class="ai-solves-badge-bad">PROBLÉM</span>
+              <p class="ai-solves-text-bad">Vedenie potrebuje zoznam nezaplatených faktúr po splatnosti alebo stav zásob – asistentka trávi pol dňa filtrovaním v Exceli.</p>
+            </div>
+            <div class="ai-solves-row">
+              <span class="ai-solves-badge-good">✨ AI RIEŠENIE</span>
+              <p class="ai-solves-text-good">Vlastná MariaDB vektorová databáza sémanticky indexuje celé CRM. Spýtate sa bežnou rečou a do 3 sekúnd máte presné čísla aj prepojené karty klientov.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. Lead Scoring & Odporúčaný krok -->
+        <div class="ai-solves-card">
+          <div class="ai-solves-card-top">
+            <div class="ai-solves-icon">🎯</div>
+            <span class="ai-solves-module-tag">// OBCHOD & PREDAJNÝ LIEVIK</span>
+          </div>
+          <h3 class="ai-solves-title">3. Automatický scoring dopytov a odporúčanie ďalšieho kroku</h3>
+          <div class="ai-solves-comparison">
+            <div class="ai-solves-row">
+              <span class="ai-solves-badge-bad">PROBLÉM</span>
+              <p class="ai-solves-text-bad">Obchodníci strácajú čas nekvalifikovanými leadmi, zabúdajú na follow-up a nevedia, ktorému klientovi sa venovať prednostne.</p>
+            </div>
+            <div class="ai-solves-row">
+              <span class="ai-solves-badge-good">✨ AI RIEŠENIE</span>
+              <p class="ai-solves-text-good">AI zhrnie dlhé e-mailové vlákna do 3 viet, vyhodnotí nákupný zámer dopytu a navrhne predajcovi presný ďalší krok pre úspešný predaj vrátane návrhu správy.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 4. Firemné registre & Analýza rizika -->
+        <div class="ai-solves-card">
+          <div class="ai-solves-card-top">
+            <div class="ai-solves-icon">🛡️</div>
+            <span class="ai-solves-module-tag">// ADRESÁR & REGISTRE</span>
+          </div>
+          <h3 class="ai-solves-title">4. Okamžité overenie firiem cez registre a ochrana pred neplatičmi</h3>
+          <div class="ai-solves-comparison">
+            <div class="ai-solves-row">
+              <span class="ai-solves-badge-bad">PROBLÉM</span>
+              <p class="ai-solves-text-bad">Zdĺhavé prepisovanie firemných údajov a riziko spolupráce s nespoľahlivým partnerom alebo neplatcom DPH.</p>
+            </div>
+            <div class="ai-solves-row">
+              <span class="ai-solves-badge-good">✨ AI RIEŠENIE</span>
+              <p class="ai-solves-text-good">Zadáte IČO, systém za 1 sekundu načíta údaje z oficiálnych registrov (RegisterUZ, ARES, VIES) a AI vyhodnotí hospodárske výsledky, tržby a platnosť IČ DPH.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 5. Prediktívne Cash Flow -->
+        <div class="ai-solves-card">
+          <div class="ai-solves-card-top">
+            <div class="ai-solves-icon">📈</div>
+            <span class="ai-solves-module-tag">// FINANČNÝ MANAŽMENT</span>
+          </div>
+          <h3 class="ai-solves-title">5. Prediktívne 90-dňové Cash Flow bez nečakaných výpadkov peňazí</h3>
+          <div class="ai-solves-comparison">
+            <div class="ai-solves-row">
+              <span class="ai-solves-badge-bad">PROBLÉM</span>
+              <p class="ai-solves-text-bad">Konateľ vidí len aktuálny zostatok na účte a netuší, aká bude likvidita o 6 týždňov, keď prídu na rad daňové odvody a nákup materiálu.</p>
+            </div>
+            <div class="ai-solves-row">
+              <span class="ai-solves-badge-good">✨ AI RIEŠENIE</span>
+              <p class="ai-solves-text-good">AI model prepája splatnosti vystavených a prijatých faktúr, pravidelné platby a rozpočty projektov do dynamickej 3-mesačnej krivky likvidity.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 6. Smart Sklad & Hospodárstvo -->
+        <div class="ai-solves-card">
+          <div class="ai-solves-card-top">
+            <div class="ai-solves-icon">📦</div>
+            <span class="ai-solves-module-tag">// SKLAD & HOSPODÁRSTVO</span>
+          </div>
+          <h3 class="ai-solves-title">6. Predikcia spotreby materiálu a inteligentné objednávanie zásob</h3>
+          <div class="ai-solves-comparison">
+            <div class="ai-solves-row">
+              <span class="ai-solves-badge-bad">PROBLÉM</span>
+              <p class="ai-solves-text-bad">Materiál sa nečakane minie uprostred montáže, alebo leží v nadzásobách na sklade, čím viaže zbytočné finančné prostriedky.</p>
+            </div>
+            <div class="ai-solves-row">
+              <span class="ai-solves-badge-good">✨ AI RIEŠENIE</span>
+              <p class="ai-solves-text-good">AI monitoruje tempo spotreby, dodacie lehoty dodávateľov, automaticky prepočítava optimálny čas doobjednania a stráži skutočnú nákupnú cenu, marže aj expiráciu šarží tovaru.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 7. Prompt-to-Dashboard -->
+        <div class="ai-solves-card">
+          <div class="ai-solves-card-top">
+            <div class="ai-solves-icon">📊</div>
+            <span class="ai-solves-module-tag">// VLASTNÝMI SLOVAMI</span>
+          </div>
+          <h3 class="ai-solves-title">7. Tvorba reportov a násteniek za 10 sekúnd vlastnými slovami</h3>
+          <div class="ai-solves-comparison">
+            <div class="ai-solves-row">
+              <span class="ai-solves-badge-bad">PROBLÉM</span>
+              <p class="ai-solves-text-bad">Každá nová manažérska štatistika vyžaduje platenie externého programátora alebo hodiny ručného skladania grafov v Exceli.</p>
+            </div>
+            <div class="ai-solves-row">
+              <span class="ai-solves-badge-good">✨ AI RIEŠENIE</span>
+              <p class="ai-solves-text-good">Napíšete bežnou rečou, čo presne chcete analyzovať. AI vygeneruje bezpečný SQL dotaz a okamžite zobrazí živý interaktívny panel s metrikami.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 8. Autonómni Agenti so SKILL.MD -->
+        <div class="ai-solves-card">
+          <div class="ai-solves-card-top">
+            <div class="ai-solves-icon">🤖</div>
+            <span class="ai-solves-module-tag">// AUTONÓMNI AGENTI</span>
+          </div>
+          <h3 class="ai-solves-title">8. Autonómne nočné audity a rutinné kontroly bez personálu</h3>
+          <div class="ai-solves-comparison">
+            <div class="ai-solves-row">
+              <span class="ai-solves-badge-bad">PROBLÉM</span>
+              <p class="ai-solves-text-bad">Personál trávi hodiny manuálnym odosielaním upomienok, kontrolou expirácií zmlúv a strážením minimálnych zásob.</p>
+            </div>
+            <div class="ai-solves-row">
+              <span class="ai-solves-badge-good">✨ AI RIEŠENIE</span>
+              <p class="ai-solves-text-good">Autonómni cron agenti so zručnosťami v SKILL.MD v noci skenujú celú databázu, strážia termíny a pripravujú ranný brífing pre manažment.</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==========================================================================
+       SECTION: COMPARISON (Koperniq vs. Krabicové CRM vs. Tradičný vývoj)
+       ========================================================================== -->
+  <section class="section-light bg-grid-light" id="porovnanie">
+    <div class="container">
+      <div class="section-header-center">
+        <!-- DESIGNER NOTE: Clear 3-way comparative matrix highlighting Koperniq's unfair advantages -->
+        <div class="designer-badge" style="background: rgba(0,0,0,0.06); border-color: rgba(0,0,0,0.2); color: #0b0b0b;">DESIGN WIREFRAME // COMPARISON MATRIX</div>
+        <br>
+        <div class="eyebrow eyebrow-dark">PREČO TRADIČNÉ CRM ZLYHÁVAJÚ</div>
+        <h2 class="section-title">Koperniq vs. Bežné alternatívy na trhu</h2>
+        <p class="section-description">
+          Väčšina firiem stojí pred voľbou medzi nepružným krabicovým systémom s mesačným výpalným za každého zamestnanca a drahým vývojom od nuly, ktorý trvá roky. Koperniq prináša tretiu, najvýhodnejšiu cestu.
+        </p>
+      </div>
+
+      <div class="comparison-grid">
+        <!-- 1. Krabicový softvér na prenájom -->
+        <div class="compare-card">
+          <div class="compare-card-header">
+            <h3 class="compare-title">Krabicový softvér na prenájom</h3>
+            <p class="compare-subtitle">HubSpot, Salesforce, Pipedrive...</p>
+          </div>
+          <ul class="compare-features-list">
+            <li class="compare-feature-item">
+              <span class="compare-icon-cross">✕</span>
+              <span><strong>Mesačné poplatky za používateľov:</strong> Každý nový zamestnanec zvyšuje licenčné náklady za každú pridanú licenciu.</span>
+            </li>
+            <li class="compare-feature-item">
+              <span class="compare-icon-cross">✕</span>
+              <span><strong>Závislosť na dodávateľovi:</strong> Vaše dáta a firemné procesy sú uzamknuté u cudzieho poskytovateľa bez možnosti vlastných úprav.</span>
+            </li>
+            <li class="compare-feature-item">
+              <span class="compare-icon-cross">✕</span>
+              <span><strong>Chýbajúci sklad & cash flow:</strong> Zamerané iba na predaj, nutnosť platiť ďalšie separátne systémy.</span>
+            </li>
+            <li class="compare-feature-item">
+              <span class="compare-icon-cross">✕</span>
+              <span><strong>AI ako obmedzený add-on:</strong> Základné šablóny bez hlbokého prepojenia na vašu databázu.</span>
+            </li>
+          </ul>
+          <div style="font-size: 0.85rem; color: var(--text-light-muted); border-top: 1px dashed var(--border-light); padding-top: 1rem;">
+            Vhodné len pre jednoduché tímy bez vlastných špecifických procesov.
+          </div>
+        </div>
+
+        <!-- 2. Vývoj od nuly -->
+        <div class="compare-card">
+          <div class="compare-card-header">
+            <h3 class="compare-title">Vývoj na zákazku od nuly</h3>
+            <p class="compare-subtitle">Klasické softvérové agentúry</p>
+          </div>
+          <ul class="compare-features-list">
+            <li class="compare-feature-item">
+              <span class="compare-icon-cross">✕</span>
+              <span><strong>Nekontrolovaný rozpočet:</strong> Rozpočet neustále narastá pri každej zmene špecifikácie a doobjednávke prác.</span>
+            </li>
+            <li class="compare-feature-item">
+              <span class="compare-icon-cross">✕</span>
+              <span><strong>Pomalé nasadenie:</strong> Vývoj trvá 12 až 24 mesiacov, kým uvidíte prvú funkčnú verziu.</span>
+            </li>
+            <li class="compare-feature-item">
+              <span class="compare-icon-cross">✕</span>
+              <span><strong>Vysoké architektonické riziko:</strong> Časté prečerpanie termínov a detské chyby v kóde.</span>
+            </li>
+            <li class="compare-feature-item">
+              <span class="compare-icon-cross">✕</span>
+              <span><strong>Závislosť na pôvodných programátoroch:</strong> Zložitá údržba pri odchode vývojárov.</span>
+            </li>
+          </ul>
+          <div style="font-size: 0.85rem; color: var(--text-light-muted); border-top: 1px dashed var(--border-light); padding-top: 1rem;">
+            Vysoké riziko a neúmerná časová investícia pre stredné firmy.
+          </div>
+        </div>
+
+        <!-- 3. KOPERNIQ OS (FEATURED) -->
+        <div class="compare-card compare-card-featured">
+          <div class="featured-ribbon">ODPORÚČANÝ MODEL // KOPERNIQ OS</div>
+          <div class="compare-card-header">
+            <h3 class="compare-title" style="color: var(--primary);">Koperniq Podnikový OS</h3>
+            <p class="compare-subtitle">20 rokov biznis & CX/UX expertízy (Software Solutions)</p>
+          </div>
+          <ul class="compare-features-list">
+            <li class="compare-feature-item">
+              <span class="compare-icon-check">✓</span>
+              <span><strong>Partner, ktorý skutočne rieši vaše problémy:</strong> Nekupujete anonymný softvér. Náš tím s 20 rokmi praxe v CX/UX a biznise navrhne rozhranie tak, aby ho vaši ľudia radi používali.</span>
+            </li>
+            <li class="compare-feature-item">
+              <span class="compare-icon-check">✓</span>
+              <span><strong>100% Vlastníctvo zdrojového kódu:</strong> Princíp <em>„čo je vyvinuté, to je vaše“</em>. Žiadne licenčné obmedzenia počtu používateľov.</span>
+            </li>
+            <li class="compare-feature-item">
+              <span class="compare-icon-check">✓</span>
+              <span><strong>Bleskové nasadenie v týždňoch:</strong> Vychádzame z robustného, v praxi overeného modulárneho jadra.</span>
+            </li>
+            <li class="compare-feature-item">
+              <span class="compare-icon-check">✓</span>
+              <span><strong>AI-First v celom systéme:</strong> Whisper prepisy porád, MariaDB RAG asistent, prediktívne cash flow a autonómni agenti v jadre.</span>
+            </li>
+            <li class="compare-feature-item">
+              <span class="compare-icon-check">✓</span>
+              <span><strong>Bi-Weekly Feature Updates:</strong> Každé 2 týždne nasadzujeme nové funkcie a optimalizácie, takže systém neustále rastie s vaším podnikom.</span>
+            </li>
+          </ul>
+          <a href="#kontakt" class="btn btn-primary" style="width: 100%;">Nezáväzne konzultovať projekt</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==========================================================================
+       SECTION: AI-FIRST CRM MODULES (Kde všade AI reálne pomáha)
+       ========================================================================== -->
+  <section class="section-dark" id="moduly">
+    <div class="container">
+      <div class="section-header-center">
+        <!-- DESIGNER NOTE: Interactive tab switcher exploring all 10 core modules with Problem vs AI Solution callouts -->
+        <div class="designer-badge">DESIGN WIREFRAME // AI-FIRST FEATURE HUB</div>
+        <br>
+        <div class="eyebrow">AI-FIRST ARCHITEKTÚRA</div>
+        <h2 class="section-title">Kde všade umelá inteligencia reálne pomáha</h2>
+        <p class="section-description">
+          AI v systéme Koperniq nie je len marketingové pozlátko. Je to aktívny digitálny asistent integrovaný do každého jedného modulu, ktorý odbremeňuje váš tím od ručnej administratívy.
+        </p>
+      </div>
+
+      <!-- Tab Navigation Switcher -->
+      <div class="modules-nav-bar">
+        <button class="module-nav-btn active" onclick="switchModule(0)">01. Obchod & Zákazky</button>
+        <button class="module-nav-btn" onclick="switchModule(1)">02. Adresár & Registre</button>
+        <button class="module-nav-btn" onclick="switchModule(2)">03. Sklad & Hospodárstvo</button>
+        <button class="module-nav-btn" onclick="switchModule(3)">04. Financie & Cash Flow</button>
+        <button class="module-nav-btn" onclick="switchModule(4)">05. Hlasová Zasadačka</button>
+        <button class="module-nav-btn" onclick="switchModule(5)">06. Projekty & Gantt</button>
+        <button class="module-nav-btn" onclick="switchModule(6)">07. RAG AI & Agenti</button>
+        <button class="module-nav-btn" onclick="switchModule(7)">08. Automatizácie & Siete</button>
+        <button class="module-nav-btn" onclick="switchModule(8)">09. Nástenky vlastnými slovami</button>
+        <button class="module-nav-btn" onclick="switchModule(9)">10. Vlastné evidencie na mieru</button>
+      </div>
+
+      <!-- MODULE 1: Obchodná Pipeline -->
+      <div class="module-card active" id="module-0">
+        <div class="module-info">
+          <div class="eyebrow">PREDAJNÝ LIEVIK & ZÁKAZKY NA MIERU</div>
+          <h3 class="module-title">Prispôsobiteľná Obchodná Pipeline & 360° Zákaznícka os</h3>
+          <p class="module-desc">Prehľadná interaktívna tabuľka a časová os aktivít, vďaka ktorej má obchodný riaditeľ aj predajcovia okamžitý prehľad o každom dopyte.</p>
+
+          <div class="module-callout-grid">
+            <div class="callout-box callout-problem">
+              <span class="callout-title">💡 ČO TO RIEŠI V PODNIKU</span>
+              <p class="callout-text"><strong>Koniec zabudnutým dopytom a chaosu v e-mailoch:</strong> Vytvorte si vlastné obchodné fázy a pipeline presne podľa procesov vašej firmy, sledujte rozpracovaný obrat v reálnom čase a preklopte schválenú ponuku do realizačného projektu na 1 klik.</p>
+            </div>
+          </div>
+        </div>
+        <div class="module-visual-column">
+          <div class="module-screenshot-container" onclick="openLightbox('./screenshots/05_leads_datagrid.png')">
+            <img src="./screenshots/05_leads_datagrid.png" alt="Obchodná pipeline DataGrid">
+            <div class="zoom-hint">🔍 Kliknite pre plné zobrazenie</div>
+          </div>
+          <div class="screenshot-ai-overlay">
+            <div class="ai-overlay-header">
+              <img src="./robot_ai.jpg" alt="AI Robot" class="robot-avatar-icon">
+              <span>✨ KDE POMÁHA AI ✨</span>
+            </div>
+            <p class="ai-overlay-text">
+              <strong>Automatický Lead Scoring a sumár komunikácie:</strong> AI asistent analyzuje komunikáciu, generuje zhrnutie e-mailových vlákien, hodnotí pravdepodobnosť uzavretia a navrhuje predajcovi okamžitý ďalší krok pre úspešný predaj.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODULE 2: Adresár & Registre -->
+      <div class="module-card" id="module-1">
+        <div class="module-info">
+          <div class="eyebrow">FIREMNÁ INTELIGENCIA & REGISTRE</div>
+          <h3 class="module-title">Adresár klientov & Automatizácia z Registrov (RegisterUZ / ARES)</h3>
+          <p class="module-desc">Zadajte IČO a systém za 1 sekundu načíta kompletný profil firmy z oficiálnych registrov vrátane účtovných výkazov a overenia IČ DPH.</p>
+
+          <div class="module-callout-grid">
+            <div class="callout-box callout-problem">
+              <span class="callout-title">💡 ČO TO RIEŠI V PODNIKU</span>
+              <p class="callout-text"><strong>Nulová chybovosť fakturačných údajov a bleskové overenie:</strong> Žiadne ručné prepisovanie adries, DIČ alebo IČ DPH. 1-sekundové načítanie údajov z oficiálnych registrov a okamžitý prehľad o prepojených zákazkách a zmluvách.</p>
+            </div>
+          </div>
+        </div>
+        <div class="module-visual-column">
+          <div class="module-screenshot-container" onclick="openLightbox('./screenshots/08_register_client_autocomplete.png')">
+            <img src="./screenshots/08_register_client_autocomplete.png" alt="Register firiem a IČO Autocomplete">
+            <div class="zoom-hint">🔍 Kliknite pre plné zobrazenie</div>
+          </div>
+          <div class="screenshot-ai-overlay">
+            <div class="ai-overlay-header">
+              <img src="./robot_ai.jpg" alt="AI Robot" class="robot-avatar-icon">
+              <span>✨ KDE POMÁHA AI ✨</span>
+            </div>
+            <p class="ai-overlay-text">
+              <strong>Prediktívne hodnotenie bonity a rizík:</strong> AI automaticky analyzuje finančnú minulosť a výkazy z RegisterUZ, overí platnosť DPH v európskom VIES systéme a včas upozorní na rizikové subjekty.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODULE 3: Sklad & Hospodárstvo -->
+      <div class="module-card" id="module-2">
+        <div class="module-info">
+          <div class="eyebrow">SKLAD & REÁLNE MARŽE</div>
+          <h3 class="module-title">Skladové hospodárstvo, reálne marže & doklady</h3>
+          <p class="module-desc">Kompletná stopovateľnosť materiálu, presný výpočet marží, stráženie expirácií tovaru a formálne skladové doklady (príjemky, výdajky, prevodky, inventúry).</p>
+
+          <div class="module-callout-grid">
+            <div class="callout-box callout-problem">
+              <span class="callout-title">💡 ČO TO RIEŠI V PODNIKU</span>
+              <p class="callout-text"><strong>Koniec skresleným maržiam a stratám na zásobách:</strong> Presné sledovanie skutočnej hodnoty skladu a hrubých marží v reálnom čase bez skreslenia spôsobeného kolísaním nákupných cien materiálu.</p>
+            </div>
+          </div>
+        </div>
+        <div class="module-visual-column">
+          <div class="module-screenshot-container" onclick="openLightbox('./screenshots/09_warehouse_catalog.png')">
+            <img src="./screenshots/09_warehouse_catalog.png" alt="Skladový katalóg a WAP zásoby">
+            <div class="zoom-hint">🔍 Kliknite pre plné zobrazenie</div>
+          </div>
+          <div class="screenshot-ai-overlay">
+            <div class="ai-overlay-header">
+              <img src="./robot_ai.jpg" alt="AI Robot" class="robot-avatar-icon">
+              <span>✨ KDE POMÁHA AI ✨</span>
+            </div>
+            <p class="ai-overlay-text">
+              <strong>Automatické doobjednávanie & stráženie expirácií:</strong> AI predikuje optimálny čas doobjednania zásob, odhaľuje neobvyklé výkyvy v cenách dodávateľov a stráži expiráciu šarží materiálu.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODULE 4: Financie & Cash Flow -->
+      <div class="module-card" id="module-3">
+        <div class="module-info">
+          <div class="eyebrow">FINANČNÝ PREHĽAD & PROGNÓZA</div>
+          <h3 class="module-title">Finančný manažment & 3-Mesačná prognóza Cash Flow</h3>
+          <p class="module-desc">Prediktívna krivka zostatku na účtoch, 3-úrovňová prehľadová matica kategórií (Jan – Dec) a párovanie nákladov na zákazky.</p>
+
+          <div class="module-callout-grid">
+            <div class="callout-box callout-problem">
+              <span class="callout-title">💡 ČO TO RIEŠI V PODNIKU</span>
+              <p class="callout-text"><strong>Ochrana pred nečakaným výpadkom likvidity:</strong> Vidíte výpadky peňazí mesiace vopred. Máte okamžitý prehľad o tom, ktoré zákazky generujú čistý zisk a kde presne vám unikajú firemné financie.</p>
+            </div>
+          </div>
+        </div>
+        <div class="module-visual-column">
+          <div class="module-screenshot-container" onclick="openLightbox('./screenshots/12_financial_management_cashflow.png')">
+            <img src="./screenshots/12_financial_management_cashflow.png" alt="3-Mesačná prognóza Cash Flow">
+            <div class="zoom-hint">🔍 Kliknite pre plné zobrazenie</div>
+          </div>
+          <div class="screenshot-ai-overlay">
+            <div class="ai-overlay-header">
+              <img src="./robot_ai.jpg" alt="AI Robot" class="robot-avatar-icon">
+              <span>✨ KDE POMÁHA AI ✨</span>
+            </div>
+            <p class="ai-overlay-text">
+              <strong>Prediktívny finančný model:</strong> AI na základe splatností faktúr a opakovaných výdavkov simuluje budúce stavy účtov a automaticky priraďuje transakcie k správnym kategóriám.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODULE 5: Hlasová Zasadačka -->
+      <div class="module-card" id="module-4">
+        <div class="module-info">
+          <div class="eyebrow">HLASOVÁ INTELIGENCIA</div>
+          <h3 class="module-title">Hlasová Zasadačka & Whisper Zápisnica</h3>
+          <p class="module-desc">Nahrajte poradu v zasadačke alebo hlasovú správu z auta po stretnutí s klientom. AI sa postará o zvyšok.</p>
+
+          <div class="module-callout-grid">
+            <div class="callout-box callout-problem">
+              <span class="callout-title">💡 ČO TO RIEŠI V PODNIKU</span>
+              <p class="callout-text"><strong>Koniec zdĺhavým ručným zápisniciam a strateným úlohám:</strong> Všetci účastníci majú štruktúrovanú zápisnicu s jasne pridelenými úlohami v kalendári do 30 sekúnd od skončenia stretnutia.</p>
+            </div>
+          </div>
+        </div>
+        <div class="module-visual-column">
+          <div class="module-screenshot-container" onclick="openLightbox('./screenshots/16_meeting_room_voice.png')">
+            <img src="./screenshots/16_meeting_room_voice.png" alt="Zasadačka a AI zápisnica">
+            <div class="zoom-hint">🔍 Kliknite pre plné zobrazenie</div>
+          </div>
+          <div class="screenshot-ai-overlay">
+            <div class="ai-overlay-header">
+              <img src="./robot_ai.jpg" alt="AI Robot" class="robot-avatar-icon">
+              <span>✨ KDE POMÁHA AI ✨</span>
+            </div>
+            <p class="ai-overlay-text">
+              <strong>Whisper & Gemini prepis slovenčiny:</strong> AI prepíše reč, vytvorí štruktúrovaný sumár s hlavnými rozhodnutiami, zhodnotí sentiment a automaticky vygeneruje úlohy v kalendári.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODULE 6: Projekty & Gantt -->
+      <div class="module-card" id="module-5">
+        <div class="module-info">
+          <div class="eyebrow">REALIZÁCIA & ETAPY</div>
+          <h3 class="module-title">Projekty & Interaktívny Ganttov diagram</h3>
+          <p class="module-desc">Vizuálne etapové plánovanie (Nameranie, Výroba, Montáž), koordinácia tímov a priame prepojenie na zákazkový rozpočet.</p>
+
+          <div class="module-callout-grid">
+            <div class="callout-box callout-problem">
+              <span class="callout-title">💡 ČO TO RIEŠI V PODNIKU</span>
+              <p class="callout-text"><strong>Odstránenie prestojov a chaosu na montážach:</strong> Manažér presne vidí, kto na čom pracuje, aké sú deadliny a či zákazka neprekračuje alokovaný rozpočet a maržu.</p>
+            </div>
+          </div>
+        </div>
+        <div class="module-visual-column">
+          <div class="module-screenshot-container" onclick="openLightbox('./screenshots/15_project_gantt.png')">
+            <img src="./screenshots/15_project_gantt.png" alt="Interaktívny Ganttov diagram">
+            <div class="zoom-hint">🔍 Kliknite pre plné zobrazenie</div>
+          </div>
+          <div class="screenshot-ai-overlay">
+            <div class="ai-overlay-header">
+              <img src="./robot_ai.jpg" alt="AI Robot" class="robot-avatar-icon">
+              <span>✨ KDE POMÁHA AI ✨</span>
+            </div>
+            <p class="ai-overlay-text">
+              <strong>AI Strážca harmonogramu:</strong> Automaticky deteguje kolízie v termínoch montážnych partií a v reálnom čase prepočítava dopad meškania na celkový rozpočet projektu.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODULE 7: RAG AI & Agenti -->
+      <div class="module-card" id="module-6">
+        <div class="module-info">
+          <div class="eyebrow">FIREMNÝ MOZOG & AGENTI</div>
+          <h3 class="module-title">RAG AI Asistent (Imbe) & Autonómni Agenti</h3>
+          <p class="module-desc">Vlastná MariaDB vektorová databáza sémanticky indexuje celé vaše CRM a umožňuje spúšťať autonómnych agentov so zručnosťami v SKILL.MD.</p>
+
+          <div class="module-callout-grid">
+            <div class="callout-box callout-problem">
+              <span class="callout-title">💡 ČO TO RIEŠI V PODNIKU</span>
+              <p class="callout-text"><strong>Manažérske odpovede do 3 sekúnd bez klikania v reportoch:</strong> Okamžité odpovede na komplexné otázky vedenia (<em>„Ktorí klienti meškajú s platbou nad rámec splatnosti?“</em>) bez nutnosti filtrovať zložité tabuľky.</p>
+            </div>
+          </div>
+        </div>
+        <div class="module-visual-column">
+          <div class="module-screenshot-container" onclick="openLightbox('./screenshots/17_rag_ai_assistant.png')">
+            <img src="./screenshots/17_rag_ai_assistant.png" alt="RAG AI Asistent Imbe">
+            <div class="zoom-hint">🔍 Kliknite pre plné zobrazenie</div>
+          </div>
+          <div class="screenshot-ai-overlay">
+            <div class="ai-overlay-header">
+              <img src="./robot_ai.jpg" alt="AI Robot" class="robot-avatar-icon">
+              <span>✨ KDE POMÁHA AI ✨</span>
+            </div>
+            <p class="ai-overlay-text">
+              <strong>RAG AI Asistent & Autonómni noční agenti:</strong> Vyhľadávanie v reálnych firemných dátach a nočné autonómne audity skladu, pohľadávok a termínov riadené súbormi SKILL.MD.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODULE 8: Automatizácia & Siete -->
+      <div class="module-card" id="module-7">
+        <div class="module-info">
+          <div class="eyebrow">VIZUÁLNY EDITOR & MARKETING</div>
+          <h3 class="module-title">Workflow Automatizácia & Sociálne siete</h3>
+          <p class="module-desc">Vizuálny editor procesov (triggery, IF/ELSE, prepojenia) spojený s centrálnym publikačným hubom pre 7+ sociálnych platforiem.</p>
+
+          <div class="module-callout-grid">
+            <div class="callout-box callout-problem">
+              <span class="callout-title">💡 ČO TO RIEŠI V PODNIKU</span>
+              <p class="callout-text"><strong>Eliminácia stoviek hodín repetitívnej administratívy:</strong> Automatické odosielanie uvítacích správ, zmeny stavov a jednotná správa marketingu na sociálnych sieťach z jedného kalendára.</p>
+            </div>
+          </div>
+        </div>
+        <div class="module-visual-column">
+          <div class="module-screenshot-container" onclick="openLightbox('./screenshots/20_workflow_automation.png')">
+            <img src="./screenshots/20_workflow_automation.png" alt="Automatizácie a workflow editor">
+            <div class="zoom-hint">🔍 Kliknite pre plné zobrazenie</div>
+          </div>
+          <div class="screenshot-ai-overlay">
+            <div class="ai-overlay-header">
+              <img src="./robot_ai.jpg" alt="AI Robot" class="robot-avatar-icon">
+              <span>✨ KDE POMÁHA AI ✨</span>
+            </div>
+            <p class="ai-overlay-text">
+              <strong>Generatívny copywriting & Zber leadov z komentárov:</strong> Tvorba príspevkov na mieru každej sieti a automatické ukladanie dopytov z komentárov priamo do CRM pipeline.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODULE 9: Generatívne Nástenky -->
+      <div class="module-card" id="module-8">
+        <div class="module-info">
+          <div class="eyebrow">VLASTNÝMI SLOVAMI</div>
+          <h3 class="module-title">Generatívne AI Nástenky na mieru</h3>
+          <p class="module-desc">Vytvorte si vlastný analytický report jednoducho tým, že napíšete, čo presne chcete vidieť. AI zostaví grafy a tabuľky za 10 sekúnd.</p>
+
+          <div class="module-callout-grid">
+            <div class="callout-box callout-problem">
+              <span class="callout-title">💡 ČO TO RIEŠI V PODNIKU</span>
+              <p class="callout-text"><strong>Nulové náklady na externých BI analytikov a IT programátorov:</strong> Každý vedúci oddelenia si vytvorí presne tie reporty a KPI metriky, ktoré potrebuje pre riadenie, do 10 sekúnd.</p>
+            </div>
+          </div>
+        </div>
+        <div class="module-visual-column">
+          <div class="module-screenshot-container" onclick="openLightbox('./screenshots/22_custom_ai_dashboard.png')">
+            <img src="./screenshots/22_custom_ai_dashboard.png" alt="Generatívny AI Dashboard Builder">
+            <div class="zoom-hint">🔍 Kliknite pre plné zobrazenie</div>
+          </div>
+          <div class="screenshot-ai-overlay">
+            <div class="ai-overlay-header">
+              <img src="./robot_ai.jpg" alt="AI Robot" class="robot-avatar-icon">
+              <span>✨ KDE POMÁHA AI ✨</span>
+            </div>
+            <p class="ai-overlay-text">
+              <strong>Tvorba reportov bežnou rečou:</strong> AI transformuje prirodzenú reč (<em>„Ukáž mi koláčový graf zdrojov leadov a 5 najnovších úloh“</em>) na bezpečné SQL dotazy a interaktívne živé grafy.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <!-- MODULE 10: Vlastné Evidencie -->
+      <div class="module-card" id="module-9">
+        <div class="module-info">
+          <div class="eyebrow">FIREMNÝ EKOSYSTÉM NA MIERU</div>
+          <h3 class="module-title">Vlastné firemné evidencie & registre na mieru</h3>
+          <p class="module-desc">Vytvárajte ľubovoľné firemné registre bez programovania – vozový park, STK, revízie strojov, certifikáty, licencie či digitálny archív súborov.</p>
+
+          <div class="module-callout-grid">
+            <div class="callout-box callout-problem">
+              <span class="callout-title">💡 ČO TO RIEŠI V PODNIKU</span>
+              <p class="callout-text"><strong>Jednotný ekosystém bez roztrieštených Excel tabuliek:</strong> Zjednotenie všetkých firemných evidencií pod jednu strechu s vizuálnym odpočtom platností a presne nastavenými prístupovými úrovňami pre zamestnancov.</p>
+            </div>
+          </div>
+        </div>
+        <div class="module-visual-column">
+          <div class="module-screenshot-container" onclick="openLightbox('./screenshots/02_task_calendar.png')">
+            <img src="./screenshots/02_task_calendar.png" alt="Môj kalendár a rozvrh úloh">
+            <div class="zoom-hint">🔍 Kliknite pre plné zobrazenie</div>
+          </div>
+          <div class="screenshot-ai-overlay">
+            <div class="ai-overlay-header">
+              <img src="./robot_ai.jpg" alt="AI Robot" class="robot-avatar-icon">
+              <span>✨ KDE POMÁHA AI ✨</span>
+            </div>
+            <p class="ai-overlay-text">
+              <strong>AI Strážca expirácií & AI Digest:</strong> AI stráži termíny technických kontrol a certifikátov, generuje AI Digest z pripojených e-mailov a umožňuje okamžité vyhľadávanie cez <code>Cmd+K</code>.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==========================================================================
+       INFOGRAPHIC: HITL ARCHITECTURE (Human-in-the-loop Engineering)
+       ========================================================================== -->
+  <section class="section-light bg-grid-light" id="architektura">
+    <div class="container">
+      <div class="section-header-center">
+        <!-- DESIGNER NOTE: 4-step deployment workflow explaining the Software Solutions partnership model -->
+        <div class="designer-badge" style="background: rgba(0,0,0,0.06); border-color: rgba(0,0,0,0.2); color: #0b0b0b;">DESIGN WIREFRAME // PROCESS FLOW</div>
+        <br>
+        <div class="eyebrow eyebrow-dark">20 ROKOV SKÚSENOSTÍ V PRAXI</div>
+        <h2 class="section-title">Ako spoločne vyriešime vaše procesné výzvy</h2>
+        <p class="section-description">
+          Vieme, že najlepší systém je ten, ktorý ľudia radi a jednoducho používajú. Preto nestaviame len kód – spájame 20 rokov skúseností v biznise a CX/UX dizajne s precíznym vývojom a osobným dohľadom skúsených biznis architektov.
+        </p>
+      </div>
+
+      <div class="process-flow-grid">
+        <div class="process-step-card">
+          <div class="step-image-container">
+            <img src="./robot_step1.jpg" alt="Biznis & CX/UX Analýza Robot" class="step-robot-img">
+          </div>
+          <div class="step-number">01</div>
+          <h3 class="step-title">Biznis & CX/UX Analýza</h3>
+          <p class="step-desc">Počúvame vaše bolesti a zmapujeme reálne toky práce. Navrhneme ergonómiu a moduly tak, aby tím ušetril hodiny týždenne hneď od začiatku.</p>
+        </div>
+
+        <div class="process-step-card">
+          <div class="step-image-container">
+            <img src="./robot_step2.jpg" alt="Konfigurácia & Úpravy Robot" class="step-robot-img">
+          </div>
+          <div class="step-number">02</div>
+          <h3 class="step-title">Konfigurácia & Úpravy</h3>
+          <p class="step-desc">Aktivujeme potrebné moduly z jadra Koperniq a prispôsobíme polia, šablóny a workflowy presne na mieru vášho tímu.</p>
+        </div>
+
+        <div class="process-step-card">
+          <div class="step-image-container">
+            <img src="./robot_step3.jpg" alt="Bezpečné Nasadenie Robot" class="step-robot-img">
+          </div>
+          <div class="step-number">03</div>
+          <h3 class="step-title">Bezpečné Nasadenie</h3>
+          <p class="step-desc">Systém nasadíme na váš vlastný server (On-Premise alebo privátny cloud). Vaše firemné dáta nikdy neopúšťajú vaše prostredie.</p>
+        </div>
+
+        <div class="process-step-card">
+          <div class="step-image-container">
+            <img src="./robot_step4.jpg" alt="Pravidelný 2-týždňový vývoj Robot" class="step-robot-img">
+          </div>
+          <div class="step-number">04</div>
+          <h3 class="step-title">Pravidelný 2-týždňový vývoj & Starostlivosť</h3>
+          <p class="step-desc">Odovzdáme vám kompletný zdrojový kód s prístupom „čo je vyvinuté, to je vaše“, zaškolíme tím a každé 2 týždne nasadzujeme nové funkcie, vylepšenia a AI moduly.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==========================================================================
+       SECTION: CLOSING CTA & INTERACTIVE CONTACT FORM
+       ========================================================================== -->
+  <section class="cta-section" id="kontakt">
+    <div class="container cta-container">
+      <!-- DESIGNER NOTE: Direct lead generation form replacing static person cards -->
+      <div class="designer-badge">DESIGN WIREFRAME // LEAD GENERATION FORM</div>
+      <br>
+      <div class="eyebrow">SME TU, ABY SME VÁM POMOHLI</div>
+      <h2 class="hero-title" style="font-size: 2.85rem; margin-bottom: 1rem;">
+        Máte procesné výzvy? <span class="highlight">Radi ich vyriešime spoločne.</span>
+      </h2>
+      <p class="hero-subtitle" style="margin: 0 auto; max-width: 780px;">
+        Sme partner, ktorému záleží na úspechu vašej firmy. Vďaka <strong>20 rokom skúseností v biznise a CX/UX</strong> presne vieme, ako odstrániť chaos, zjednodušiť prácu vášho tímu a dodať autonómny systém ušitý na mieru.
+      </p>
+
+      <div class="form-trust-banner">
+        <div class="trust-pill-item">🏆 <strong>20+ rokov skúseností</strong> v biznise a CX/UX</div>
+        <div class="trust-pill-item">🤝 <strong>Chceme vám pomôcť</strong> a vieme presne ako</div>
+        <div class="trust-pill-item">⚡ <strong>100% Vlastníctvo kódu</strong> & Bi-weekly aktualizácie</div>
+      </div>
+
+      <!-- Contact / Lead Generation Form -->
+      <div class="contact-form-card">
+        <form id="koperniqLeadForm" onsubmit="handleFormSubmit(event)">
+          
+          <!-- Row 1: Meno & Názov firmy -->
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label for="formName" class="form-label">
+                Meno a priezvisko <span class="form-label-required">*</span>
+              </label>
+              <input type="text" id="formName" class="form-input" placeholder="Napr. Ján Novák" required>
+            </div>
+
+            <div class="form-group">
+              <label for="formCompany" class="form-label">
+                Názov firmy <span class="form-label-required">*</span>
+              </label>
+              <input type="text" id="formCompany" class="form-input" placeholder="Napr. Vaša Spoločnosť, s.r.o." required>
+            </div>
+          </div>
+
+          <!-- Row 2: E-mail & Telefón -->
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label for="formEmail" class="form-label">
+                Pracovný E-mail <span class="form-label-required">*</span>
+              </label>
+              <input type="email" id="formEmail" class="form-input" placeholder="jan.novak@firma.sk" required>
+            </div>
+
+            <div class="form-group">
+              <label for="formPhone" class="form-label">
+                Telefónne číslo <span class="form-label-required">*</span>
+              </label>
+              <input type="tel" id="formPhone" class="form-input" placeholder="+421 900 000 000" required>
+            </div>
+          </div>
+
+          <!-- Row 3: Mesačný počet leadov & Množstvo zákazníkov -->
+          <div class="form-grid-2">
+            <div class="form-group">
+              <label for="formLeads" class="form-label">
+                Mesačný počet dopytov / leadov
+              </label>
+              <select id="formLeads" class="form-select">
+                <option value="">Vyberte počet dopytov...</option>
+                <option value="do-20">Do 20 dopytov / mesiac</option>
+                <option value="20-100">20 – 100 dopytov / mesiac</option>
+                <option value="100-500">100 – 500 dopytov / mesiac</option>
+                <option value="500+">500+ dopytov / mesiac</option>
+              </select>
+            </div>
+
+            <div class="form-group">
+              <label for="formClients" class="form-label">
+                Množstvo evidovaných zákazníkov
+              </label>
+              <select id="formClients" class="form-select">
+                <option value="">Vyberte veľkosť klientskej bázy...</option>
+                <option value="do-100">Do 100 aktívnych zákazníkov</option>
+                <option value="100-500">100 – 500 zákazníkov</option>
+                <option value="500-2500">500 – 2 500 zákazníkov</option>
+                <option value="2500+">2 500+ zákazníkov</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Row 4: Ktoré funkcie vás zaujali (Checkbox group) -->
+          <div class="checkbox-group-wrapper">
+            <label class="form-label" style="margin-bottom: 0.25rem;">
+              Ktoré funkcie vás zaujali? <span style="font-weight: 400; color: var(--text-dark-muted);">(Označte všetky, ktoré hľadáte)</span>
+            </label>
+
+            <div class="checkbox-grid">
+              <label class="checkbox-item">
+                <input type="checkbox" name="features" value="Obchodná Pipeline & 360° Časová os">
+                <span>Obchodná Pipeline & 360° Časová os</span>
+              </label>
+
+              <label class="checkbox-item">
+                <input type="checkbox" name="features" value="Hlasová Zasadačka & Whisper Zápisnice">
+                <span>Hlasová Zasadačka & Whisper Zápisnice</span>
+              </label>
+
+              <label class="checkbox-item">
+                <input type="checkbox" name="features" value="Skladové hospodárstvo, presné marže & šarže">
+                <span>Skladové hospodárstvo, presné marže & šarže</span>
+              </label>
+
+              <label class="checkbox-item">
+                <input type="checkbox" name="features" value="Finančný manažment & 3-Mesačná prognóza Cash Flow">
+                <span>Finančný manažment & 3-Mesačné Cash Flow</span>
+              </label>
+
+              <label class="checkbox-item">
+                <input type="checkbox" name="features" value="Firemný RAG AI Asistent (Imbe)">
+                <span>Firemný AI Asistent s pamäťou (Imbe)</span>
+              </label>
+
+              <label class="checkbox-item">
+                <input type="checkbox" name="features" value="Autonómni AI Agenti so zručnosťami">
+                <span>Autonómni noční AI agenti</span>
+              </label>
+
+              <label class="checkbox-item">
+                <input type="checkbox" name="features" value="Inteligentná registrácia & Firemné registre (RegisterUZ/ARES)">
+                <span>Inteligentná registrácia & Firemné registre (RegisterUZ / ARES)</span>
+              </label>
+
+              <label class="checkbox-item">
+                <input type="checkbox" name="features" value="Projekty & Interaktívny Gantt">
+                <span>Projekty & Etapové plánovanie</span>
+              </label>
+
+              <label class="checkbox-item">
+                <input type="checkbox" name="features" value="Workflow Automatizácie & Sociálne siete">
+                <span>Workflow Automatizácie & Sociálne siete</span>
+              </label>
+
+              <label class="checkbox-item">
+                <input type="checkbox" name="features" value="Generatívne Nástenky vlastnými slovami">
+                <span>Generatívne Nástenky (Vlastnými slovami)</span>
+              </label>
+
+              <label class="checkbox-item">
+                <input type="checkbox" name="features" value="Vlastné firemné evidencie & registre na mieru">
+                <span>Vlastné firemné evidencie & registre na mieru</span>
+              </label>
+
+              <label class="checkbox-item">
+                <input type="checkbox" name="features" value="Pravidelné 2-týždňové aktualizácie & Podpora">
+                <span>Pravidelné 2-týždňové vylepšenia & Technická podpora</span>
+              </label>
+            </div>
+          </div>
+
+          <!-- Submit Button -->
+          <button type="submit" class="btn btn-primary form-submit-btn">
+            Odoslať nezáväzný dopyt // Dohodnúť ukážku zdarma →
+          </button>
+
+          <p class="form-privacy-note">
+            🔒 Odpovedáme do 24 hodín. Vaše údaje sú v bezpečí a nebudú poskytnuté tretím stranám.
+          </p>
+
+          <div class="form-success-message" id="formSuccessMessage">
+            <h4 style="color: var(--primary); margin-bottom: 0.5rem;">✓ Ďakujeme za váš záujem!</h4>
+            <p>Váš dopyt sme úspešne prijali. Náš tím vás bude kontaktovať v priebehu nasledujúcich 24 hodín s návrhom termínu ukážky systému Koperniq.</p>
+          </div>
+        </form>
+      </div>
+    </div>
+  </section>
+
+  <!-- ==========================================================================
+       FOOTER
+       ========================================================================== -->
+  <footer class="site-footer">
+    <div class="container footer-container">
+      <div>
+        <strong>Cstudios Software Solutions s. r. o.</strong> | IČO: 53948793 | DIČ: 2121558505 | IČ DPH: SK2121558505
+      </div>
+      <div>
+        <a href="https://softwaresolutions.sk/kontakt" target="_blank" style="color: var(--primary); text-decoration: none; font-weight: 700;">
+          softwaresolutions.sk/kontakt ↗
+        </a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- ==========================================================================
+       IMAGE LIGHTBOX MODAL
+       ========================================================================== -->
+  <div class="lightbox-modal" id="lightboxModal" onclick="closeLightbox()">
+    <div class="lightbox-img-wrapper" onclick="event.stopPropagation()">
+      <button class="lightbox-close-btn" onclick="closeLightbox()">✕ Zavrieť</button>
+      <img id="lightboxImg" src="" alt="Detail náhľadu">
+    </div>
+  </div>
+
+  <!-- ==========================================================================
+       INTERACTIVE CLIENT-SIDE JAVASCRIPT
+       ========================================================================== -->
+  <script>
+    // Module Tab Switcher
+    function switchModule(index) {
+      const buttons = document.querySelectorAll('.module-nav-btn');
+      const cards = document.querySelectorAll('.module-card');
+      
+      buttons.forEach((btn, idx) => {
+        if (idx === index) {
+          btn.classList.add('active');
+        } else {
+          btn.classList.remove('active');
+        }
+      });
+
+      cards.forEach((card, idx) => {
+        if (idx === index) {
+          card.classList.add('active');
+        } else {
+          card.classList.remove('active');
+        }
+      });
+    }
+
+    // Lightbox handlers
+    function openLightbox(src) {
+      const modal = document.getElementById('lightboxModal');
+      const img = document.getElementById('lightboxImg');
+      img.src = src;
+      modal.classList.add('active');
+    }
+
+    function closeLightbox() {
+      const modal = document.getElementById('lightboxModal');
+      modal.classList.remove('active');
+    }
+
+    // Form Submission Handler
+    function handleFormSubmit(e) {
+      e.preventDefault();
+      const successMsg = document.getElementById('formSuccessMessage');
+      if (successMsg) {
+        successMsg.style.display = 'block';
+        successMsg.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    }
+  </script>
+</body>
+</html>

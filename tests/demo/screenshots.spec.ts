@@ -316,3 +316,59 @@ test('10 — Vlastné evidencie na mieru', async ({ page }) => {
   await open(page, '#ue_ue-technika');
   await shot(page, '10-evidencie-technika');
 });
+
+/* -------------------------------------------------------------------------- */
+/* 1.10 (Kiwi) additions — captured for the update-notes post covering        */
+/* everything since v1.8.43. Same demo backend, no new fixture data needed.   */
+
+test('11 — Prihlásenie', async ({ page }) => {
+  /* The only shot in the file that must NOT start authenticated: clear what
+     installDemoBackend's addInitScript just wrote, added init scripts run in
+     the order they were registered, so this one runs after it and wins. */
+  await page.addInitScript(() => {
+    try {
+      window.sessionStorage.clear();
+    } catch {
+      /* private mode */
+    }
+  });
+  await page.goto('/?shot=login', { waitUntil: 'domcontentloaded' });
+  await page.waitForTimeout(2500); // WebGL gradient + clock mount
+  await shot(page, '11-prihlasenie');
+});
+
+test('12 — Executive Copilot', async ({ page }) => {
+  await open(page, '#dashboard');
+  const orb = page.locator('[aria-label="Open AI Executive Copilot"]').first();
+  await orb.waitFor({ state: 'visible', timeout: 10_000 });
+  await orb.click({ force: true });
+  await page.waitForTimeout(1800); // sidebar slide-in + welcome message
+  await shot(page, '12-copilot-sidebar');
+});
+
+test('13 — Strategická simulácia (SAI)', async ({ page }) => {
+  await open(page, '#sai');
+  await shot(page, '13-sai-zoznam');
+
+  if (await clickText(page, ['Nová simulácia', 'New Simulation'])) {
+    await page.waitForTimeout(1500);
+    await shot(page, '13-sai-nova-simulacia');
+  }
+});
+
+test('14 — Projekty: Štruktúra', async ({ page }) => {
+  await open(page, '#projects');
+  const structureToggle = page.locator('button[aria-label="Zobrazenie štruktúry"]').first();
+  if (await structureToggle.isVisible({ timeout: 3000 }).catch(() => false)) {
+    await structureToggle.click({ force: true });
+    await page.waitForTimeout(1000);
+    await shot(page, '14-projekty-struktura');
+  }
+});
+
+test('15 — Tmavý režim', async ({ page }) => {
+  await open(page, '#dashboard');
+  await page.evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
+  await page.waitForTimeout(600);
+  await shot(page, '15-tmavy-rezim');
+});

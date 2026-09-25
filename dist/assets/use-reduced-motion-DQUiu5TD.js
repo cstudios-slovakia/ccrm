@@ -1,0 +1,1 @@
+import{Mo as e,an as t,in as n,jo as r,on as i}from"./index-DsKo2rmz.js";var a=e(r(),1);function o(){!t.current&&n();let[e]=(0,a.useState)(i.current);return e}export{o as t};
