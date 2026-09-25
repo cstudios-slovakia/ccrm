@@ -594,7 +594,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const voiceTimerRef = useRef<any>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
     const analyserRef = useRef<AnalyserNode | null>(null);
-    const [audioVolumeBars, setAudioVolumeBars] = useState<number[]>([20, 45, 70, 40, 85, 55, 90, 30]);
+    const lastPushTimeRef = useRef<number>(0);
+    const [audioVolumeBars, setAudioVolumeBars] = useState<number[]>(() =>
+        new Array(24).fill(15)
+    );
     const animFrameRef = useRef<number | null>(null);
 
     useEffect(() => {
@@ -1811,19 +1814,32 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     analyserRef.current = analyser;
 
                     const dataArray = new Uint8Array(analyser.frequencyBinCount);
-                    const updateMeter = () => {
+                    lastPushTimeRef.current = 0;
+                    setAudioVolumeBars(new Array(24).fill(15));
+
+                    const updateMeter = (timestamp: number) => {
                         if (analyserRef.current) {
                             analyserRef.current.getByteFrequencyData(dataArray);
-                            const bars: number[] = [];
-                            for (let i = 0; i < 8; i++) {
-                                const val = dataArray[i * 2] || 0;
-                                bars.push(Math.max(15, Math.min(100, Math.round((val / 255) * 100))));
+                            let sum = 0;
+                            const usefulBins = Math.min(dataArray.length, 12);
+                            for (let i = 0; i < usefulBins; i++) {
+                                sum += dataArray[i];
                             }
-                            setAudioVolumeBars(bars);
+                            const avg = sum / usefulBins;
+                            const instantLevel = Math.max(12, Math.min(100, Math.round((avg / 175) * 100)));
+
+                            // Push new audio sample on the right, shifting wave history from right to left
+                            if (!lastPushTimeRef.current || timestamp - lastPushTimeRef.current > 40) {
+                                lastPushTimeRef.current = timestamp;
+                                setAudioVolumeBars((prev) => {
+                                    const next = [...prev.slice(1), instantLevel];
+                                    return next;
+                                });
+                            }
                         }
                         animFrameRef.current = requestAnimationFrame(updateMeter);
                     };
-                    updateMeter();
+                    animFrameRef.current = requestAnimationFrame(updateMeter);
                 }
             } catch (err) {
                 console.warn("AudioContext setup warning:", err);
@@ -3407,94 +3423,117 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         >
             {/* Create New Task Section: Inline card matching column width */}
             {!isAddDrawerOpen ? (
-                isVoiceRecording ? (
-                    /* Active Voice Recording Indicator Bar */
-                    <div className="w-full py-2 px-3 bg-gradient-to-r from-rose-500 via-rose-600 to-rose-700 text-white rounded-2xl shadow-lg shadow-rose-500/30 flex items-center justify-between gap-2 border-2 border-rose-400 animate-in fade-in duration-200">
-                        {/* Recording status & live wave/timer */}
-                        <div className="flex items-center gap-2.5 min-w-0">
-                            <div className="relative flex items-center justify-center shrink-0">
-                                <span className="absolute h-3 w-3 rounded-full bg-white opacity-75 animate-ping" />
-                                <span className="relative h-2.5 w-2.5 rounded-full bg-white shadow-xs" />
-                            </div>
-                            <div className="flex items-center gap-2 min-w-0">
-                                <span className="font-mono font-black text-xs tracking-wider bg-black/20 px-2 py-0.5 rounded-md shrink-0">
+                <div className="flex items-center gap-2 w-full">
+                    {/* Left Button: Create New Task (80% default, squeezed to 20% during recording/transcribing) */}
+                    <button
+                        type="button"
+                        onClick={() => {
+                            if (isVoiceRecording) {
+                                handleCancelVoiceRecording();
+                            }
+                            if (!taskAccess.create || isVoiceTranscribing) return;
+                            resetNewTaskForm();
+                            setIsAddDrawerOpen(true);
+                        }}
+                        disabled={!taskAccess.create || isVoiceTranscribing}
+                        title={
+                            isVoiceRecording
+                                ? t("Cancel recording & create task manually", "Zrušiť nahrávanie a vytvoriť úlohu ručne", "Hangfelvétel megszakítása és kézi létrehozás")
+                                : t("Create New Task", "Vytvoriť novú úlohu", "Új feladat")
+                        }
+                        className={`py-2.5 bg-[#ff5d00] hover:bg-[#e05200] text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-orange-500/25 transition-all duration-300 ease-in-out active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 flex items-center justify-center gap-1.5 cursor-pointer border-2 border-[#ff701e] disabled:cursor-not-allowed disabled:opacity-50 shrink-0 ${
+                            isVoiceRecording || isVoiceTranscribing ? "w-[20%]" : "w-[80%]"
+                        }`}
+                    >
+                        <Plus className="h-4 w-4 stroke-[3] shrink-0" />
+                        <span className={`truncate transition-opacity duration-200 ${
+                            isVoiceRecording || isVoiceTranscribing ? "hidden" : "inline"
+                        }`}>
+                            {t(
+                                "Create New Task",
+                                "Vytvoriť novú úlohu",
+                                "Új feladat",
+                            )}
+                        </span>
+                    </button>
+
+                    {/* Right Button: Record Task (20% default, grows to 80% during recording/transcribing) */}
+                    {isVoiceTranscribing ? (
+                        <div
+                            className="w-[80%] py-2.5 px-3 bg-gradient-to-r from-orange-50 via-amber-50 to-orange-50 rounded-2xl border-2 border-orange-200/90 shadow-md flex items-center justify-center gap-2 text-orange-700 text-xs font-black uppercase tracking-wider animate-pulse transition-all duration-300 ease-in-out shrink-0"
+                        >
+                            <Loader2 className="h-4 w-4 animate-spin text-[#ff5d00] shrink-0" />
+                            <span className="truncate">
+                                {t("Transcribing voice & creating task…", "Prepisujem hlas a vytváram úlohu…", "Hang átírása és feladat készítése…")}
+                            </span>
+                        </div>
+                    ) : isVoiceRecording ? (
+                        /* Whole button sends the task on click, with cancel on the right */
+                        <div
+                            onClick={handleStopAndProcessVoiceRecording}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault();
+                                    handleStopAndProcessVoiceRecording();
+                                }
+                            }}
+                            title={t("Click anywhere to send & create task", "Kliknutím odošlite a vytvorte úlohu", "Kattintson a küldéshez és létrehozáshoz")}
+                            className="w-[80%] py-2 px-3 bg-gradient-to-r from-rose-500 via-rose-600 to-rose-700 hover:from-rose-600 hover:to-rose-800 text-white rounded-2xl shadow-lg shadow-rose-500/30 flex items-center justify-between gap-2 border-2 border-rose-400 transition-all duration-300 ease-in-out cursor-pointer active:scale-[0.99] select-none shrink-0 group"
+                        >
+                            {/* Left: Pulsing status orb & live timer */}
+                            <div className="flex items-center gap-2 shrink-0">
+                                <div className="relative flex items-center justify-center shrink-0">
+                                    <span className="absolute h-3 w-3 rounded-full bg-white opacity-75 animate-ping" />
+                                    <span className="relative h-2.5 w-2.5 rounded-full bg-white shadow-xs" />
+                                </div>
+                                <span className="font-mono font-black text-xs tracking-wider bg-black/25 px-2 py-0.5 rounded-md shadow-inner shrink-0">
                                     {formatVoiceDuration(voiceRecordDuration)}
                                 </span>
-                                {/* Mini dynamic equalizer bars */}
-                                <div className="hidden sm:flex items-center gap-0.5 h-4 shrink-0">
+                            </div>
+
+                            {/* Center: Live Sound Waves flowing from RIGHT to LEFT */}
+                            <div className="flex-1 flex items-center justify-center overflow-hidden px-1">
+                                <div className="flex items-center gap-[2px] h-5 overflow-hidden">
                                     {audioVolumeBars.map((height, i) => (
                                         <span
                                             key={i}
-                                            className="w-0.5 bg-white/90 rounded-full transition-all duration-75"
-                                            style={{ height: `${Math.max(4, (height / 100) * 16)}px` }}
+                                            className="w-[2.5px] bg-white/95 rounded-full transition-all duration-75 shrink-0 shadow-xs"
+                                            style={{
+                                                height: `${Math.max(4, (height / 100) * 20)}px`,
+                                                opacity: Math.max(0.4, height / 100),
+                                            }}
                                         />
                                     ))}
                                 </div>
-                                <span className="text-[11px] font-bold text-rose-100 truncate">
-                                    {t("Recording voice task…", "Nahráva sa úloha…", "Hangfeladat rögzítése…")}
-                                </span>
+                            </div>
+
+                            {/* Right: Send badge indicator + Cancel X Button */}
+                            <div className="flex items-center gap-1.5 shrink-0">
+                                <div className="hidden xs:flex items-center gap-1 px-2 py-1 bg-emerald-500 group-hover:bg-emerald-600 text-white rounded-xl font-black text-[10px] uppercase tracking-wider shadow-sm transition-all border border-emerald-400/80 shrink-0">
+                                    <Check className="h-3 w-3 stroke-[3]" />
+                                    <span>{t("Send", "Odoslať", "Küldés")}</span>
+                                </div>
+
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleCancelVoiceRecording();
+                                    }}
+                                    className="p-1.5 bg-black/20 hover:bg-black/40 active:bg-black/50 text-white/90 hover:text-white rounded-xl transition-all active:scale-95 cursor-pointer border border-white/20 shrink-0"
+                                    title={t("Cancel recording", "Zrušiť nahrávanie", "Felvétel megszakítása")}
+                                >
+                                    <X className="h-4 w-4 stroke-[2.5]" />
+                                </button>
                             </div>
                         </div>
-
-                        {/* Actions: Stop & Send / Create Task, and Cancel */}
-                        <div className="flex items-center gap-1.5 shrink-0">
-                            <button
-                                type="button"
-                                onClick={handleStopAndProcessVoiceRecording}
-                                className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 text-white rounded-xl font-black text-[11px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer border border-emerald-400"
-                                title={t("Stop & Create Task", "Ukončiť a vytvoriť úlohu", "Leállítás és feladat létrehozása")}
-                            >
-                                <Check className="h-3.5 w-3.5 stroke-[3]" />
-                                <span className="hidden xs:inline">{t("Create", "Vytvoriť", "Kész")}</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={handleCancelVoiceRecording}
-                                className="p-1.5 bg-white/10 hover:bg-white/20 active:bg-white/30 text-white/90 hover:text-white rounded-xl transition-all active:scale-95 cursor-pointer border border-white/20"
-                                title={t("Cancel recording", "Zrušiť nahrávanie", "Felvétel megszakítása")}
-                            >
-                                <X className="h-4 w-4 stroke-[2.5]" />
-                            </button>
-                        </div>
-                    </div>
-                ) : isVoiceTranscribing ? (
-                    /* Transcribing & Processing State */
-                    <div className="w-full py-2.5 px-4 bg-gradient-to-r from-orange-50 via-amber-50 to-orange-50 rounded-2xl border-2 border-orange-200/90 shadow-md flex items-center justify-center gap-2.5 text-orange-700 text-xs font-black uppercase tracking-wider animate-pulse">
-                        <Loader2 className="h-4 w-4 animate-spin text-[#ff5d00]" />
-                        <span className="truncate">
-                            {t(
-                                "Transcribing voice & creating task…",
-                                "Prepisujem hlas a vytváram úlohu…",
-                                "Hang átírása és feladat készítése…",
-                            )}
-                        </span>
-                    </div>
-                ) : (
-                    /* 80% Create New Task Button & 20% Record Task Button */
-                    <div className="flex items-center gap-2 w-full">
-                        <button
-                            type="button"
-                            onClick={() => {
-                                if (!taskAccess.create) return;
-                                resetNewTaskForm();
-                                setIsAddDrawerOpen(true);
-                            }}
-                            className="w-[80%] py-2.5 bg-[#ff5d00] hover:bg-[#e05200] text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-orange-500/25 transition-all active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 flex items-center justify-center gap-2 cursor-pointer border-2 border-[#ff701e] disabled:cursor-not-allowed disabled:opacity-50"
-                            disabled={!taskAccess.create}
-                        >
-                            <Plus className="h-4 w-4 stroke-[3]" />
-                            <span className="truncate">
-                                {t(
-                                    "Create New Task",
-                                    "Vytvoriť novú úlohu",
-                                    "Új feladat",
-                                )}
-                            </span>
-                        </button>
+                    ) : (
                         <button
                             type="button"
                             onClick={handleStartVoiceRecording}
-                            className="w-[20%] py-2.5 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 active:from-rose-700 active:to-rose-800 text-white rounded-2xl font-black text-xs uppercase tracking-wider shadow-lg shadow-rose-500/25 transition-all active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer border-2 border-rose-400 disabled:cursor-not-allowed disabled:opacity-50"
+                            className="w-[20%] py-2.5 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 active:from-rose-700 active:to-rose-800 text-white rounded-2xl font-black text-xs uppercase tracking-wider shadow-lg shadow-rose-500/25 transition-all duration-300 ease-in-out active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer border-2 border-rose-400 disabled:cursor-not-allowed disabled:opacity-50 shrink-0"
                             disabled={!taskAccess.create}
                             title={t(
                                 "Record Voice Task (Auto-transcribes and creates task)",
@@ -3507,8 +3546,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 {t("Record", "Hlasom", "Hanggal")}
                             </span>
                         </button>
-                    </div>
-                )
+                    )}
+                </div>
             ) : (
                 <div className="w-full bg-white rounded-3xl border-2 border-orange-200/90 shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-3 duration-200">
                     <div className="p-4 bg-gradient-to-r from-orange-50/80 via-white to-orange-50/40 border-b border-orange-100 flex items-center justify-between">
