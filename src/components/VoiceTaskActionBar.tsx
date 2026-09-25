@@ -131,24 +131,16 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
 
             let stream: MediaStream;
             try {
-                stream = await navigator.mediaDevices.getUserMedia({
-                    audio: {
-                        echoCancellation: true,
-                        noiseSuppression: true,
-                        autoGainControl: true,
-                    },
-                });
+                stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             } catch (err) {
-                console.warn("Retrying with basic audio constraints:", err);
+                console.warn("Retrying getUserMedia with basic fallback:", err);
                 stream = await navigator.mediaDevices.getUserMedia({ audio: true });
             }
             audioStreamRef.current = stream;
 
-            let mimeType = "audio/webm;codecs=opus";
+            let mimeType = "audio/webm";
             if (typeof MediaRecorder !== "undefined") {
-                if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
-                    mimeType = "audio/webm;codecs=opus";
-                } else if (MediaRecorder.isTypeSupported("audio/webm")) {
+                if (MediaRecorder.isTypeSupported("audio/webm")) {
                     mimeType = "audio/webm";
                 } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
                     mimeType = "audio/mp4";

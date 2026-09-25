@@ -101,6 +101,23 @@ if (!empty($rawText)) {
         'model' => 'whisper-1'
     ];
 
+    $clientLang = strtolower(trim((string)($_POST['language'] ?? '')));
+    if (in_array($clientLang, ['sk', 'hu', 'en', 'cs', 'de', 'pl'], true)) {
+        $whisperPayload['language'] = $clientLang;
+
+        if ($clientLang === 'sk') {
+            $whisperPayload['prompt'] = 'Záznam hlasovej úlohy a pripomienky v CRM systéme.';
+        } elseif ($clientLang === 'hu') {
+            $whisperPayload['prompt'] = 'Hangfeladat és emlékeztető rögzítése a CRM rendszerben.';
+        } elseif ($clientLang === 'cs') {
+            $whisperPayload['prompt'] = 'Záznam hlasového úkolu a připomínky v CRM systému.';
+        } elseif ($clientLang === 'en') {
+            $whisperPayload['prompt'] = 'Voice task recording and reminder in CRM system.';
+        } elseif ($clientLang === 'de') {
+            $whisperPayload['prompt'] = 'Aufzeichnung einer CRM-Aufgabe und Erinnerung.';
+        }
+    }
+
     $ch = curl_init('https://api.openai.com/v1/audio/transcriptions');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
     curl_setopt($ch, CURLOPT_POST, true);
