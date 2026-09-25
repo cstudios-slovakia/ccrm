@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Mic, Plus, X, Check, Loader2 } from "lucide-react";
+import { Mic, Plus, X, Check, Loader2, Play, Pause, Volume2 } from "lucide-react";
 import type { Task, UserProfile } from "../types";
 import type { Language } from "../utils/translations";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
@@ -69,6 +69,13 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
         12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12, 12,
     ]);
 
+    // Debug audio playback state
+    const [lastAudioUrl, setLastAudioUrl] = useState<string | null>(null);
+    const [lastAudioBlobSize, setLastAudioBlobSize] = useState<number>(0);
+    const [isPlayingAudio, setIsPlayingAudio] = useState<boolean>(false);
+    const [audioPlayTime, setAudioPlayTime] = useState<number>(0);
+    const audioPlayerRef = useRef<HTMLAudioElement | null>(null);
+
     const mediaRecorderRef = useRef<MediaRecorder | null>(null);
     const audioChunksRef = useRef<Blob[]>([]);
     const voiceTimerRef = useRef<any>(null);
@@ -108,9 +115,46 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
         }
     };
 
+    const handleTogglePlayLastAudio = () => {
+        if (!lastAudioUrl) return;
+
+        if (isPlayingAudio && audioPlayerRef.current) {
+            audioPlayerRef.current.pause();
+            audioPlayerRef.current.currentTime = 0;
+            setIsPlayingAudio(false);
+            setAudioPlayTime(0);
+            return;
+        }
+
+        if (!audioPlayerRef.current) {
+            const audio = new Audio();
+            audioPlayerRef.current = audio;
+        }
+
+        const player = audioPlayerRef.current;
+        player.src = lastAudioUrl;
+        player.onended = () => {
+            setIsPlayingAudio(false);
+            setAudioPlayTime(0);
+        };
+        player.ontimeupdate = () => {
+            setAudioPlayTime(player.currentTime);
+        };
+        player.play().then(() => {
+            setIsPlayingAudio(true);
+        }).catch((err) => {
+            console.error("Audio playback error:", err);
+            setIsPlayingAudio(false);
+        });
+    };
+
     useEffect(() => {
         return () => {
             cleanupAudio();
+            if (audioPlayerRef.current) {
+                audioPlayerRef.current.pause();
+                audioPlayerRef.current = null;
+            }
         };
     }, []);
 
@@ -284,6 +328,19 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
             mediaRecorderRef.current = null;
         }
 
+        if (audioBlob && audioBlob.size > 0) {
+            if (lastAudioUrl) {
+                URL.revokeObjectURL(lastAudioUrl);
+            }
+            const url = URL.createObjectURL(audioBlob);
+            setLastAudioUrl(url);
+            setLastAudioBlobSize(audioBlob.size);
+            setIsPlayingAudio(false);
+            setAudioPlayTime(0);
+            (window as any).lastRecordedAudioBlob = audioBlob;
+            (window as any).lastRecordedAudioUrl = url;
+        }
+
         try {
             if (!audioBlob || audioBlob.size < 200) {
                 throw new Error(
@@ -435,9 +492,211 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
 
     if (hideManualButton) {
         return (
-            <div className={`flex items-center gap-2 ${containerClassName}`}>
+            <div className={`w-full flex flex-col gap-1.5 ${containerClassName}`}>
+                <div className="w-full flex items-center gap-2">
+                    {isVoiceTranscribing ? (
+                        <div className="w-full py-2.5 px-3 bg-gradient-to-r from-orange-50 via-amber-50 to-orange-50 rounded-2xl border-2 border-orange-200/90 shadow-md flex items-center justify-center gap-2 text-orange-700 text-xs font-black uppercase tracking-wider animate-pulse transition-all duration-300 ease-in-out shrink-0">
+                            <Loader2 className="h-4 w-4 animate-spin text-[#ff5d00] shrink-0" />
+                            <span className="truncate">
+                                {t(
+                                    "Transcribing voice & creating task…",
+                                    "Prepisujem hlas a vytváram úlohu…",
+                                    "Hang átírása és feladat készítése…",
+                                )}
+                            </span>
+                        </div>
+                    ) : isVoiceRecording ? (
+                        <div
+                            onClick={handleStopAndProcessVoiceRecording}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault();
+                                    handleStopAndProcessVoiceRecording();
+                                }
+                            }}
+                            title={t(
+                                "Click anywhere to send & create task",
+                                "Kliknutím odošlite a vytvorte úlohu",
+                                "Kattintson a küldéshez és létrehozáshoz",
+                            )}
+                            className="w-full py-2 px-3 bg-gradient-to-r from-rose-500 via-rose-600 to-rose-700 hover:from-rose-600 hover:to-rose-800 text-white rounded-2xl shadow-lg shadow-rose-500/30 flex items-center justify-between gap-2 border-2 border-rose-400 transition-all duration-300 ease-in-out cursor-pointer active:scale-[0.99] select-none shrink-0 group"
+                        >
+                            <div className="flex items-center gap-2 shrink-0">
+                                <div className="relative flex items-center justify-center shrink-0">
+                                    <span className="absolute h-3 w-3 rounded-full bg-white opacity-75 animate-ping" />
+                                    <span className="relative h-2.5 w-2.5 rounded-full bg-white shadow-xs" />
+                                </div>
+                                <span className="font-mono font-black text-xs tracking-wider bg-black/25 px-2 py-0.5 rounded-md shadow-inner shrink-0">
+                                    {formatVoiceDuration(voiceRecordDuration)}
+                                </span>
+                            </div>
+                            <div className="flex-1 flex items-center justify-center overflow-hidden px-1">
+                                <div className="flex items-center gap-[2px] h-5 overflow-hidden">
+                                    {audioVolumeBars.map((height, i) => (
+                                        <span
+                                            key={i}
+                                            className="w-[2.5px] bg-white/95 rounded-full transition-all duration-75 shrink-0 shadow-xs"
+                                            style={{
+                                                height: `${Math.max(4, (height / 100) * 20)}px`,
+                                                opacity: Math.max(0.4, height / 100),
+                                            }}
+                                        />
+                                    ))}
+                                </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                                <div className="flex items-center gap-1 px-2 py-1 bg-emerald-500 group-hover:bg-emerald-600 text-white rounded-xl font-black text-[10px] uppercase tracking-wider shadow-sm transition-all border border-emerald-400/80 shrink-0">
+                                    <Check className="h-3 w-3 stroke-[3]" />
+                                    <span>{t("Send", "Odoslať", "Küldés")}</span>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleCancelVoiceRecording();
+                                    }}
+                                    className="p-1.5 bg-black/20 hover:bg-black/40 active:bg-black/50 text-white/90 hover:text-white rounded-xl transition-all active:scale-95 cursor-pointer border border-white/20 shrink-0"
+                                    title={t("Cancel recording", "Zrušiť nahrávanie", "Felvétel megszakítása")}
+                                >
+                                    <X className="h-4 w-4 stroke-[2.5]" />
+                                </button>
+                            </div>
+                        </div>
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={handleStartVoiceRecording}
+                            className={
+                                voiceButtonClassName ||
+                                "w-full py-2.5 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 active:from-rose-700 active:to-rose-800 text-white rounded-2xl font-black text-xs uppercase tracking-wider shadow-lg shadow-rose-500/25 transition-all duration-300 ease-in-out active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer border-2 border-rose-400 disabled:cursor-not-allowed disabled:opacity-50 shrink-0"
+                            }
+                            disabled={!canCreate}
+                            title={t(
+                                "Record Voice Task (Auto-transcribes and creates task)",
+                                "Nahrať úlohu hlasom (Automaticky prepíše a vytvorí úlohu)",
+                                "Hangfeladat rögzítése (Automatikusan átírja és létrehozza)",
+                            )}
+                        >
+                            <Mic className="h-4 w-4 shrink-0 stroke-[2.5]" />
+                            <span className="text-[11px] truncate">
+                                {t("Record Voice Task", "Nahrať hlasovú úlohu", "Hangfeladat felvétele")}
+                            </span>
+                        </button>
+                    )}
+                </div>
+
+                {/* Debug Audio Player Pill */}
+                {lastAudioUrl && !isVoiceRecording && !isVoiceTranscribing && (
+                    <div className="w-full flex items-center justify-between gap-2 px-3 py-1.5 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 text-amber-900 dark:text-amber-200 rounded-xl text-xs font-semibold shadow-sm border border-amber-300 dark:border-amber-700/60 animate-in fade-in slide-in-from-top-1 duration-200">
+                        <div className="flex items-center gap-2 min-w-0">
+                            <Volume2 className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                            <span className="text-[11px] font-bold truncate">
+                                {t("Recorded Audio:", "Nahraný zvuk:", "Rögzített hang:")}{" "}
+                                <span className="font-mono text-amber-700 dark:text-amber-400 font-normal">
+                                    ({(lastAudioBlobSize / 1024).toFixed(1)} KB)
+                                </span>
+                            </span>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                                type="button"
+                                onClick={handleTogglePlayLastAudio}
+                                className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white rounded-lg text-xs font-black uppercase tracking-wider shadow-xs transition-all active:scale-95 cursor-pointer"
+                                title={
+                                    isPlayingAudio
+                                        ? t("Stop playback", "Zastaviť prehrávanie", "Lejátszás leállítása")
+                                        : t("Play recorded audio", "Prehrať nahraný hlas", "Hang lejátszása")
+                                }
+                            >
+                                {isPlayingAudio ? (
+                                    <>
+                                        <Pause className="h-3.5 w-3.5 fill-white" />
+                                        <span>{formatVoiceDuration(Math.floor(audioPlayTime))}</span>
+                                    </>
+                                ) : (
+                                    <>
+                                        <Play className="h-3.5 w-3.5 fill-white" />
+                                        <span>{t("Play", "Prehrať", "Lejátszás")}</span>
+                                    </>
+                                )}
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    if (audioPlayerRef.current) {
+                                        audioPlayerRef.current.pause();
+                                        audioPlayerRef.current = null;
+                                    }
+                                    if (lastAudioUrl) {
+                                        URL.revokeObjectURL(lastAudioUrl);
+                                    }
+                                    setLastAudioUrl(null);
+                                    setIsPlayingAudio(false);
+                                }}
+                                className="p-1 text-amber-600 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-100 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 rounded-md transition-all cursor-pointer"
+                                title={t("Dismiss", "Zatvoriť", "Bezárás")}
+                            >
+                                <X className="h-3.5 w-3.5" />
+                            </button>
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+    }
+
+    return (
+        <div className={`w-full flex flex-col gap-1.5 transition-all duration-300 ease-in-out ${containerClassName}`}>
+            <div className="w-full flex items-center gap-2">
+                {/* Left Button: Manual Task Creation (80% default, squeezes to 20% during recording) */}
+                <button
+                    type="button"
+                    onClick={(e) => {
+                        if (isVoiceRecording) {
+                            handleCancelVoiceRecording();
+                        }
+                        if (!canCreate || isVoiceTranscribing || isSubmittingManual) return;
+                        onManualCreateClick?.(e);
+                    }}
+                    disabled={!canCreate || isVoiceTranscribing || isSubmittingManual}
+                    title={
+                        isVoiceRecording
+                            ? t(
+                                  "Cancel recording & create task manually",
+                                  "Zrušiť nahrávanie a vytvoriť úlohu ručne",
+                                  "Hangfelvétel megszakítása és kézi létrehozás",
+                              )
+                            : labelText
+                    }
+                    className={
+                        manualButtonClassName
+                            ? `${manualButtonClassName} ${
+                                  isVoiceRecording || isVoiceTranscribing ? "!w-[20%]" : "!w-[80%]"
+                              }`
+                            : `py-2.5 bg-[#ff5d00] hover:bg-[#e05200] text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-orange-500/25 transition-all duration-300 ease-in-out active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 flex items-center justify-center gap-1.5 cursor-pointer border-2 border-[#ff701e] disabled:cursor-not-allowed disabled:opacity-50 shrink-0 ${
+                                  isVoiceRecording || isVoiceTranscribing ? "w-[20%]" : "w-[80%]"
+                              }`
+                    }
+                >
+                    {isSubmittingManual ? (
+                        <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                    ) : (
+                        manualButtonIcon || <Plus className="h-4 w-4 stroke-[3] shrink-0" />
+                    )}
+                    <span
+                        className={`truncate transition-opacity duration-200 ${
+                            isVoiceRecording || isVoiceTranscribing ? "hidden" : "inline"
+                        }`}
+                    >
+                        {labelText}
+                    </span>
+                </button>
+
+                {/* Right Button: Record Voice Task (20% default, expands to 80% during recording) */}
                 {isVoiceTranscribing ? (
-                    <div className="w-full py-2.5 px-3 bg-gradient-to-r from-orange-50 via-amber-50 to-orange-50 rounded-2xl border-2 border-orange-200/90 shadow-md flex items-center justify-center gap-2 text-orange-700 text-xs font-black uppercase tracking-wider animate-pulse transition-all duration-300 ease-in-out shrink-0">
+                    <div className="w-[80%] py-2.5 px-3 bg-gradient-to-r from-orange-50 via-amber-50 to-orange-50 rounded-2xl border-2 border-orange-200/90 shadow-md flex items-center justify-center gap-2 text-orange-700 text-xs font-black uppercase tracking-wider animate-pulse transition-all duration-300 ease-in-out shrink-0">
                         <Loader2 className="h-4 w-4 animate-spin text-[#ff5d00] shrink-0" />
                         <span className="truncate">
                             {t(
@@ -448,6 +707,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                         </span>
                     </div>
                 ) : isVoiceRecording ? (
+                    /* Whole button sends the task on click, with cancel on the right */
                     <div
                         onClick={handleStopAndProcessVoiceRecording}
                         role="button"
@@ -463,8 +723,9 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                             "Kliknutím odošlite a vytvorte úlohu",
                             "Kattintson a küldéshez és létrehozáshoz",
                         )}
-                        className="w-full py-2 px-3 bg-gradient-to-r from-rose-500 via-rose-600 to-rose-700 hover:from-rose-600 hover:to-rose-800 text-white rounded-2xl shadow-lg shadow-rose-500/30 flex items-center justify-between gap-2 border-2 border-rose-400 transition-all duration-300 ease-in-out cursor-pointer active:scale-[0.99] select-none shrink-0 group"
+                        className="w-[80%] py-2 px-3 bg-gradient-to-r from-rose-500 via-rose-600 to-rose-700 hover:from-rose-600 hover:to-rose-800 text-white rounded-2xl shadow-lg shadow-rose-500/30 flex items-center justify-between gap-2 border-2 border-rose-400 transition-all duration-300 ease-in-out cursor-pointer active:scale-[0.99] select-none shrink-0 group"
                     >
+                        {/* Left: Pulsing status orb & live timer */}
                         <div className="flex items-center gap-2 shrink-0">
                             <div className="relative flex items-center justify-center shrink-0">
                                 <span className="absolute h-3 w-3 rounded-full bg-white opacity-75 animate-ping" />
@@ -474,6 +735,8 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                                 {formatVoiceDuration(voiceRecordDuration)}
                             </span>
                         </div>
+
+                        {/* Center: Live Sound Waves flowing from RIGHT to LEFT */}
                         <div className="flex-1 flex items-center justify-center overflow-hidden px-1">
                             <div className="flex items-center gap-[2px] h-5 overflow-hidden">
                                 {audioVolumeBars.map((height, i) => (
@@ -488,11 +751,14 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                                 ))}
                             </div>
                         </div>
+
+                        {/* Right: Send badge indicator + Cancel X Button */}
                         <div className="flex items-center gap-1.5 shrink-0">
-                            <div className="flex items-center gap-1 px-2 py-1 bg-emerald-500 group-hover:bg-emerald-600 text-white rounded-xl font-black text-[10px] uppercase tracking-wider shadow-sm transition-all border border-emerald-400/80 shrink-0">
+                            <div className="hidden xs:flex items-center gap-1 px-2 py-1 bg-emerald-500 group-hover:bg-emerald-600 text-white rounded-xl font-black text-[10px] uppercase tracking-wider shadow-sm transition-all border border-emerald-400/80 shrink-0">
                                 <Check className="h-3 w-3 stroke-[3]" />
                                 <span>{t("Send", "Odoslať", "Küldés")}</span>
                             </div>
+
                             <button
                                 type="button"
                                 onClick={(e) => {
@@ -512,7 +778,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                         onClick={handleStartVoiceRecording}
                         className={
                             voiceButtonClassName ||
-                            "w-full py-2.5 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 active:from-rose-700 active:to-rose-800 text-white rounded-2xl font-black text-xs uppercase tracking-wider shadow-lg shadow-rose-500/25 transition-all duration-300 ease-in-out active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer border-2 border-rose-400 disabled:cursor-not-allowed disabled:opacity-50 shrink-0"
+                            "w-[20%] py-2.5 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 active:from-rose-700 active:to-rose-800 text-white rounded-2xl font-black text-xs uppercase tracking-wider shadow-lg shadow-rose-500/25 transition-all duration-300 ease-in-out active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer border-2 border-rose-400 disabled:cursor-not-allowed disabled:opacity-50 shrink-0"
                         }
                         disabled={!canCreate}
                         title={t(
@@ -522,159 +788,68 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                         )}
                     >
                         <Mic className="h-4 w-4 shrink-0 stroke-[2.5]" />
-                        <span className="text-[11px] truncate">
-                            {t("Record Voice Task", "Nahrať hlasovú úlohu", "Hangfeladat felvétele")}
+                        <span className="hidden xl:inline text-[11px] truncate">
+                            {t("Record", "Hlasom", "Hanggal")}
                         </span>
                     </button>
                 )}
             </div>
-        );
-    }
 
-    return (
-        <div className={`w-full flex items-center gap-2 transition-all duration-300 ease-in-out ${containerClassName}`}>
-            {/* Left Button: Manual Task Creation (80% default, squeezes to 20% during recording) */}
-            <button
-                type="button"
-                onClick={(e) => {
-                    if (isVoiceRecording) {
-                        handleCancelVoiceRecording();
-                    }
-                    if (!canCreate || isVoiceTranscribing || isSubmittingManual) return;
-                    onManualCreateClick?.(e);
-                }}
-                disabled={!canCreate || isVoiceTranscribing || isSubmittingManual}
-                title={
-                    isVoiceRecording
-                        ? t(
-                              "Cancel recording & create task manually",
-                              "Zrušiť nahrávanie a vytvoriť úlohu ručne",
-                              "Hangfelvétel megszakítása és kézi létrehozás",
-                          )
-                        : labelText
-                }
-                className={
-                    manualButtonClassName
-                        ? `${manualButtonClassName} ${
-                              isVoiceRecording || isVoiceTranscribing ? "!w-[20%]" : "!w-[80%]"
-                          }`
-                        : `py-2.5 bg-[#ff5d00] hover:bg-[#e05200] text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-orange-500/25 transition-all duration-300 ease-in-out active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 flex items-center justify-center gap-1.5 cursor-pointer border-2 border-[#ff701e] disabled:cursor-not-allowed disabled:opacity-50 shrink-0 ${
-                              isVoiceRecording || isVoiceTranscribing ? "w-[20%]" : "w-[80%]"
-                          }`
-                }
-            >
-                {isSubmittingManual ? (
-                    <Loader2 className="h-4 w-4 animate-spin shrink-0" />
-                ) : (
-                    manualButtonIcon || <Plus className="h-4 w-4 stroke-[3] shrink-0" />
-                )}
-                <span
-                    className={`truncate transition-opacity duration-200 ${
-                        isVoiceRecording || isVoiceTranscribing ? "hidden" : "inline"
-                    }`}
-                >
-                    {labelText}
-                </span>
-            </button>
-
-            {/* Right Button: Record Voice Task (20% default, expands to 80% during recording) */}
-            {isVoiceTranscribing ? (
-                <div className="w-[80%] py-2.5 px-3 bg-gradient-to-r from-orange-50 via-amber-50 to-orange-50 rounded-2xl border-2 border-orange-200/90 shadow-md flex items-center justify-center gap-2 text-orange-700 text-xs font-black uppercase tracking-wider animate-pulse transition-all duration-300 ease-in-out shrink-0">
-                    <Loader2 className="h-4 w-4 animate-spin text-[#ff5d00] shrink-0" />
-                    <span className="truncate">
-                        {t(
-                            "Transcribing voice & creating task…",
-                            "Prepisujem hlas a vytváram úlohu…",
-                            "Hang átírása és feladat készítése…",
-                        )}
-                    </span>
-                </div>
-            ) : isVoiceRecording ? (
-                /* Whole button sends the task on click, with cancel on the right */
-                <div
-                    onClick={handleStopAndProcessVoiceRecording}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault();
-                            handleStopAndProcessVoiceRecording();
-                        }
-                    }}
-                    title={t(
-                        "Click anywhere to send & create task",
-                        "Kliknutím odošlite a vytvorte úlohu",
-                        "Kattintson a küldéshez és létrehozáshoz",
-                    )}
-                    className="w-[80%] py-2 px-3 bg-gradient-to-r from-rose-500 via-rose-600 to-rose-700 hover:from-rose-600 hover:to-rose-800 text-white rounded-2xl shadow-lg shadow-rose-500/30 flex items-center justify-between gap-2 border-2 border-rose-400 transition-all duration-300 ease-in-out cursor-pointer active:scale-[0.99] select-none shrink-0 group"
-                >
-                    {/* Left: Pulsing status orb & live timer */}
-                    <div className="flex items-center gap-2 shrink-0">
-                        <div className="relative flex items-center justify-center shrink-0">
-                            <span className="absolute h-3 w-3 rounded-full bg-white opacity-75 animate-ping" />
-                            <span className="relative h-2.5 w-2.5 rounded-full bg-white shadow-xs" />
-                        </div>
-                        <span className="font-mono font-black text-xs tracking-wider bg-black/25 px-2 py-0.5 rounded-md shadow-inner shrink-0">
-                            {formatVoiceDuration(voiceRecordDuration)}
+            {/* Debug Audio Player Pill */}
+            {lastAudioUrl && !isVoiceRecording && !isVoiceTranscribing && (
+                <div className="w-full flex items-center justify-between gap-2 px-3 py-1.5 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 text-amber-900 dark:text-amber-200 rounded-xl text-xs font-semibold shadow-sm border border-amber-300 dark:border-amber-700/60 animate-in fade-in slide-in-from-top-1 duration-200">
+                    <div className="flex items-center gap-2 min-w-0">
+                        <Volume2 className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                        <span className="text-[11px] font-bold truncate">
+                            {t("Recorded Audio:", "Nahraný zvuk:", "Rögzített hang:")}{" "}
+                            <span className="font-mono text-amber-700 dark:text-amber-400 font-normal">
+                                ({(lastAudioBlobSize / 1024).toFixed(1)} KB)
+                            </span>
                         </span>
                     </div>
-
-                    {/* Center: Live Sound Waves flowing from RIGHT to LEFT */}
-                    <div className="flex-1 flex items-center justify-center overflow-hidden px-1">
-                        <div className="flex items-center gap-[2px] h-5 overflow-hidden">
-                            {audioVolumeBars.map((height, i) => (
-                                <span
-                                    key={i}
-                                    className="w-[2.5px] bg-white/95 rounded-full transition-all duration-75 shrink-0 shadow-xs"
-                                    style={{
-                                        height: `${Math.max(4, (height / 100) * 20)}px`,
-                                        opacity: Math.max(0.4, height / 100),
-                                    }}
-                                />
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Right: Send badge indicator + Cancel X Button */}
                     <div className="flex items-center gap-1.5 shrink-0">
-                        <div className="hidden xs:flex items-center gap-1 px-2 py-1 bg-emerald-500 group-hover:bg-emerald-600 text-white rounded-xl font-black text-[10px] uppercase tracking-wider shadow-sm transition-all border border-emerald-400/80 shrink-0">
-                            <Check className="h-3 w-3 stroke-[3]" />
-                            <span>{t("Send", "Odoslať", "Küldés")}</span>
-                        </div>
-
                         <button
                             type="button"
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                handleCancelVoiceRecording();
-                            }}
-                            className="p-1.5 bg-black/20 hover:bg-black/40 active:bg-black/50 text-white/90 hover:text-white rounded-xl transition-all active:scale-95 cursor-pointer border border-white/20 shrink-0"
-                            title={t("Cancel recording", "Zrušiť nahrávanie", "Felvétel megszakítása")}
+                            onClick={handleTogglePlayLastAudio}
+                            className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white rounded-lg text-xs font-black uppercase tracking-wider shadow-xs transition-all active:scale-95 cursor-pointer"
+                            title={
+                                isPlayingAudio
+                                    ? t("Stop playback", "Zastaviť prehrávanie", "Lejátszás leállítása")
+                                    : t("Play recorded audio", "Prehrať nahraný hlas", "Hang lejátszása")
+                            }
                         >
-                            <X className="h-4 w-4 stroke-[2.5]" />
+                            {isPlayingAudio ? (
+                                <>
+                                    <Pause className="h-3.5 w-3.5 fill-white" />
+                                    <span>{formatVoiceDuration(Math.floor(audioPlayTime))}</span>
+                                </>
+                            ) : (
+                                <>
+                                    <Play className="h-3.5 w-3.5 fill-white" />
+                                    <span>{t("Play", "Prehrať", "Lejátszás")}</span>
+                                </>
+                            )}
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (audioPlayerRef.current) {
+                                    audioPlayerRef.current.pause();
+                                    audioPlayerRef.current = null;
+                                }
+                                if (lastAudioUrl) {
+                                    URL.revokeObjectURL(lastAudioUrl);
+                                }
+                                setLastAudioUrl(null);
+                                setIsPlayingAudio(false);
+                            }}
+                            className="p-1 text-amber-600 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-100 hover:bg-amber-200/50 dark:hover:bg-amber-800/50 rounded-md transition-all cursor-pointer"
+                            title={t("Dismiss", "Zatvoriť", "Bezárás")}
+                        >
+                            <X className="h-3.5 w-3.5" />
                         </button>
                     </div>
                 </div>
-            ) : (
-                <button
-                    type="button"
-                    onClick={handleStartVoiceRecording}
-                    className={
-                        voiceButtonClassName ||
-                        "w-[20%] py-2.5 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 active:from-rose-700 active:to-rose-800 text-white rounded-2xl font-black text-xs uppercase tracking-wider shadow-lg shadow-rose-500/25 transition-all duration-300 ease-in-out active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer border-2 border-rose-400 disabled:cursor-not-allowed disabled:opacity-50 shrink-0"
-                    }
-                    disabled={!canCreate}
-                    title={t(
-                        "Record Voice Task (Auto-transcribes and creates task)",
-                        "Nahrať úlohu hlasom (Automaticky prepíše a vytvorí úlohu)",
-                        "Hangfeladat rögzítése (Automatikusan átírja és létrehozza)",
-                    )}
-                >
-                    <Mic className="h-4 w-4 shrink-0 stroke-[2.5]" />
-                    <span className="hidden xl:inline text-[11px] truncate">
-                        {t("Record", "Hlasom", "Hanggal")}
-                    </span>
-                </button>
             )}
         </div>
     );
