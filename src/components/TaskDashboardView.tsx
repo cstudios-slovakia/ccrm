@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef, useEffect } from "react";
 import { createPortal } from "react-dom";
 import {
     CheckSquare,
@@ -28,9 +28,13 @@ import {
     History,
     Search,
     ArrowUpDown,
+    Mic,
+    Check,
+    Loader2,
 } from "lucide-react";
 import type { Task, UserProfile, Lead, Project } from "../types";
 import type { Language } from "../utils/translations";
+import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { CalendarPane } from "./Dashboard";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
@@ -579,6 +583,32 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     // Add Task Inline Card State
     const [isAddDrawerOpen, setIsAddDrawerOpen] = useState(false);
+
+    // Voice Task Recording State
+    const [isVoiceRecording, setIsVoiceRecording] = useState(false);
+    const [isVoiceTranscribing, setIsVoiceTranscribing] = useState(false);
+    const [voiceRecordDuration, setVoiceRecordDuration] = useState(0);
+    const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+    const audioStreamRef = useRef<MediaStream | null>(null);
+    const audioChunksRef = useRef<Blob[]>([]);
+    const voiceTimerRef = useRef<any>(null);
+    const audioContextRef = useRef<AudioContext | null>(null);
+    const analyserRef = useRef<AnalyserNode | null>(null);
+    const [audioVolumeBars, setAudioVolumeBars] = useState<number[]>([20, 45, 70, 40, 85, 55, 90, 30]);
+    const animFrameRef = useRef<number | null>(null);
+
+    useEffect(() => {
+        return () => {
+            if (voiceTimerRef.current) clearInterval(voiceTimerRef.current);
+            if (animFrameRef.current) cancelAnimationFrame(animFrameRef.current);
+            if (audioContextRef.current && audioContextRef.current.state !== "closed") {
+                try { audioContextRef.current.close(); } catch (_) {}
+            }
+            if (audioStreamRef.current) {
+                audioStreamRef.current.getTracks().forEach((t) => t.stop());
+            }
+        };
+    }, []);
 
     // Edit Task Drawer State
     const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -1731,6 +1761,247 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         // Reset Form & Close Card
         resetNewTaskForm();
         closeAddDrawer();
+    };
+
+    const formatVoiceDuration = (secs: number) => {
+        const m = Math.floor(secs / 60);
+        const s = secs % 60;
+        return `${m}:${s < 10 ? "0" : ""}${s}`;
+    };
+
+    const handleStartVoiceRecording = async () => {
+        if (!taskAccess.create || isVoiceRecording || isVoiceTranscribing) return;
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            audioStreamRef.current = stream;
+
+            let mimeType = "audio/webm";
+            if (typeof MediaRecorder !== "undefined") {
+                if (MediaRecorder.isTypeSupported("audio/webm")) {
+                    mimeType = "audio/webm";
+                } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
+                    mimeType = "audio/mp4";
+                } else if (MediaRecorder.isTypeSupported("audio/ogg")) {
+                    mimeType = "audio/ogg";
+                } else if (MediaRecorder.isTypeSupported("audio/wav")) {
+                    mimeType = "audio/wav";
+                }
+            }
+
+            const recorder = new MediaRecorder(stream, { mimeType });
+            mediaRecorderRef.current = recorder;
+            audioChunksRef.current = [];
+
+            recorder.ondataavailable = (e) => {
+                if (e.data && e.data.size > 0) {
+                    audioChunksRef.current.push(e.data);
+                }
+            };
+
+            // Audio Analyser for dynamic meter bars
+            try {
+                const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+                if (AudioCtx) {
+                    const ctx = new AudioCtx();
+                    audioContextRef.current = ctx;
+                    const src = ctx.createMediaStreamSource(stream);
+                    const analyser = ctx.createAnalyser();
+                    analyser.fftSize = 32;
+                    src.connect(analyser);
+                    analyserRef.current = analyser;
+
+                    const dataArray = new Uint8Array(analyser.frequencyBinCount);
+                    const updateMeter = () => {
+                        if (analyserRef.current) {
+                            analyserRef.current.getByteFrequencyData(dataArray);
+                            const bars: number[] = [];
+                            for (let i = 0; i < 8; i++) {
+                                const val = dataArray[i * 2] || 0;
+                                bars.push(Math.max(15, Math.min(100, Math.round((val / 255) * 100))));
+                            }
+                            setAudioVolumeBars(bars);
+                        }
+                        animFrameRef.current = requestAnimationFrame(updateMeter);
+                    };
+                    updateMeter();
+                }
+            } catch (err) {
+                console.warn("AudioContext setup warning:", err);
+            }
+
+            recorder.start(250);
+            setIsVoiceRecording(true);
+            setVoiceRecordDuration(0);
+
+            if (voiceTimerRef.current) clearInterval(voiceTimerRef.current);
+            voiceTimerRef.current = setInterval(() => {
+                setVoiceRecordDuration((prev) => prev + 1);
+            }, 1000);
+        } catch (err: any) {
+            console.error("Mic access error:", err);
+            if (typeof (window as any).showToast === "function") {
+                (window as any).showToast(
+                    t(
+                        "Microphone access error: " + (err?.message || "Permission denied"),
+                        "Chyba prístupu k mikrofónu: " + (err?.message || "Prístup odmietnutý"),
+                        "Mikrofon hozzáférési hiba: " + (err?.message || "Hozzáférés megtagadva"),
+                    ),
+                    "error",
+                );
+            }
+        }
+    };
+
+    const handleStopAndProcessVoiceRecording = async () => {
+        if (!isVoiceRecording && !mediaRecorderRef.current) return;
+
+        if (voiceTimerRef.current) {
+            clearInterval(voiceTimerRef.current);
+            voiceTimerRef.current = null;
+        }
+        if (animFrameRef.current) {
+            cancelAnimationFrame(animFrameRef.current);
+            animFrameRef.current = null;
+        }
+        if (audioContextRef.current && audioContextRef.current.state !== "closed") {
+            try { audioContextRef.current.close(); } catch (_) {}
+            audioContextRef.current = null;
+        }
+
+        const recorder = mediaRecorderRef.current;
+        setIsVoiceRecording(false);
+        setIsVoiceTranscribing(true);
+
+        const stopPromise = new Promise<Blob>((resolve) => {
+            if (!recorder || recorder.state === "inactive") {
+                resolve(new Blob(audioChunksRef.current, { type: "audio/webm" }));
+                return;
+            }
+            recorder.onstop = () => {
+                const mime = recorder.mimeType || "audio/webm";
+                const blob = new Blob(audioChunksRef.current, { type: mime });
+                resolve(blob);
+            };
+            recorder.stop();
+        });
+
+        if (audioStreamRef.current) {
+            audioStreamRef.current.getTracks().forEach((track) => track.stop());
+            audioStreamRef.current = null;
+        }
+        mediaRecorderRef.current = null;
+
+        try {
+            const audioBlob = await stopPromise;
+            if (audioBlob.size < 400) {
+                throw new Error(
+                    t(
+                        "Recording too short or empty. Please speak clearly.",
+                        "Nahrávka je príliš krátka alebo prázdna. Prosím hovorte zreteľne.",
+                        "A felvétel túl rövid vagy üres. Kérjük, beszéljen érthetően.",
+                    ),
+                );
+            }
+
+            const ext = audioBlob.type.includes("mp4") ? "mp4" : audioBlob.type.includes("ogg") ? "ogg" : audioBlob.type.includes("wav") ? "wav" : "webm";
+            const formData = new FormData();
+            formData.append("audio", audioBlob, `voice_task.${ext}`);
+            formData.append("today", toLocalDateStr(new Date()));
+            formData.append("users", JSON.stringify(users.map((u) => u.name)));
+
+            const res = await fetchWithTimeout("/api/transcribe_task.php", {
+                method: "POST",
+                body: formData,
+            }, 60000);
+
+            const data = await res.json();
+            if (!res.ok || !data.success) {
+                throw new Error(data?.message || t("Failed to transcribe voice task", "Nepodarilo sa prepísať hlasovú úlohu", "Nem sikerült átírni a hangfeladatot"));
+            }
+
+            const rawTasks: any[] = data.tasks || [];
+            if (rawTasks.length === 0) {
+                throw new Error(t("No tasks could be identified from the voice memo.", "Z hlasového záznamu sa nepodarilo rozpoznať žiadne úlohy.", "A hangjegyzetből nem sikerült feladatot azonosítani."));
+            }
+
+            const now = Date.now();
+            const todayDateStr = toLocalDateStr(new Date());
+
+            const createdTasks: Task[] = rawTasks.map((tItem: any, idx: number) => {
+                const matchedUser = tItem.assignedTo && users.some((u) => u.name.toLowerCase() === String(tItem.assignedTo).toLowerCase())
+                    ? users.find((u) => u.name.toLowerCase() === String(tItem.assignedTo).toLowerCase())?.name || tItem.assignedTo
+                    : (newAssignedUser || myName);
+
+                const priorityVal = (tItem.priority === "high" || tItem.priority === "urgent") ? "high" : (tItem.priority === "low" ? "low" : "medium");
+
+                return {
+                    id: `task-${now}-${idx}-${Math.random().toString(36).slice(2, 7)}`,
+                    title: String(tItem.title || data.transcription || "Voice Task").trim(),
+                    description: tItem.description ? String(tItem.description).trim() : (data.transcription ? `Voice memo: ${data.transcription}` : ""),
+                    status: taskStates[0] || "New",
+                    priority: priorityVal,
+                    deadline: tItem.deadline || todayDateStr,
+                    deadlineTime: tItem.deadlineTime || undefined,
+                    owner: matchedUser,
+                    createdBy: myName,
+                    assignedUsers: matchedUser ? [matchedUser] : [],
+                    isAiGenerated: true,
+                };
+            });
+
+            setTasks((prev) => [...createdTasks, ...prev]);
+
+            if (typeof (window as any).showToast === "function") {
+                const titles = createdTasks.map((tk) => `"${tk.title}"`).join(", ");
+                (window as any).showToast(
+                    t(
+                        `Voice task created: ${titles}`,
+                        `Úloha vytvorená z hlasu: ${titles}`,
+                        `Hangfeladat létrehozva: ${titles}`,
+                    ),
+                    "success",
+                );
+            }
+        } catch (err: any) {
+            console.error("Voice task creation failed:", err);
+            if (typeof (window as any).showToast === "function") {
+                (window as any).showToast(
+                    err?.message || t("Error creating voice task", "Chyba pri vytváraní hlasovej úlohy", "Hiba a hangfeladat létrehozásakor"),
+                    "error",
+                );
+            }
+        } finally {
+            setIsVoiceTranscribing(false);
+            setVoiceRecordDuration(0);
+        }
+    };
+
+    const handleCancelVoiceRecording = () => {
+        if (voiceTimerRef.current) {
+            clearInterval(voiceTimerRef.current);
+            voiceTimerRef.current = null;
+        }
+        if (animFrameRef.current) {
+            cancelAnimationFrame(animFrameRef.current);
+            animFrameRef.current = null;
+        }
+        if (audioContextRef.current && audioContextRef.current.state !== "closed") {
+            try { audioContextRef.current.close(); } catch (_) {}
+            audioContextRef.current = null;
+        }
+        if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+            mediaRecorderRef.current.onstop = null;
+            mediaRecorderRef.current.stop();
+        }
+        if (audioStreamRef.current) {
+            audioStreamRef.current.getTracks().forEach((t) => t.stop());
+            audioStreamRef.current = null;
+        }
+        mediaRecorderRef.current = null;
+        audioChunksRef.current = [];
+        setIsVoiceRecording(false);
+        setIsVoiceTranscribing(false);
+        setVoiceRecordDuration(0);
     };
 
     // --- RENDERING ---
@@ -3136,22 +3407,108 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         >
             {/* Create New Task Section: Inline card matching column width */}
             {!isAddDrawerOpen ? (
-                <button
-                    onClick={() => {
-                        if (!taskAccess.create) return;
-                        resetNewTaskForm();
-                        setIsAddDrawerOpen(true);
-                    }}
-                    className="w-full py-2.5 bg-[#ff5d00] hover:bg-[#e05200] text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-orange-500/25 transition-all active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 flex items-center justify-center gap-2 cursor-pointer border-2 border-[#ff701e] disabled:cursor-not-allowed disabled:opacity-50"
-                    disabled={!taskAccess.create}
-                >
-                    <Plus className="h-4 w-4 stroke-[3]" />
-                    {t(
-                        "Create New Task",
-                        "Vytvoriť novú úlohu",
-                        "Új feladat",
-                    )}
-                </button>
+                isVoiceRecording ? (
+                    /* Active Voice Recording Indicator Bar */
+                    <div className="w-full py-2 px-3 bg-gradient-to-r from-rose-500 via-rose-600 to-rose-700 text-white rounded-2xl shadow-lg shadow-rose-500/30 flex items-center justify-between gap-2 border-2 border-rose-400 animate-in fade-in duration-200">
+                        {/* Recording status & live wave/timer */}
+                        <div className="flex items-center gap-2.5 min-w-0">
+                            <div className="relative flex items-center justify-center shrink-0">
+                                <span className="absolute h-3 w-3 rounded-full bg-white opacity-75 animate-ping" />
+                                <span className="relative h-2.5 w-2.5 rounded-full bg-white shadow-xs" />
+                            </div>
+                            <div className="flex items-center gap-2 min-w-0">
+                                <span className="font-mono font-black text-xs tracking-wider bg-black/20 px-2 py-0.5 rounded-md shrink-0">
+                                    {formatVoiceDuration(voiceRecordDuration)}
+                                </span>
+                                {/* Mini dynamic equalizer bars */}
+                                <div className="hidden sm:flex items-center gap-0.5 h-4 shrink-0">
+                                    {audioVolumeBars.map((height, i) => (
+                                        <span
+                                            key={i}
+                                            className="w-0.5 bg-white/90 rounded-full transition-all duration-75"
+                                            style={{ height: `${Math.max(4, (height / 100) * 16)}px` }}
+                                        />
+                                    ))}
+                                </div>
+                                <span className="text-[11px] font-bold text-rose-100 truncate">
+                                    {t("Recording voice task…", "Nahráva sa úloha…", "Hangfeladat rögzítése…")}
+                                </span>
+                            </div>
+                        </div>
+
+                        {/* Actions: Stop & Send / Create Task, and Cancel */}
+                        <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                                type="button"
+                                onClick={handleStopAndProcessVoiceRecording}
+                                className="px-3 py-1.5 bg-emerald-500 hover:bg-emerald-600 active:bg-emerald-700 text-white rounded-xl font-black text-[11px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer border border-emerald-400"
+                                title={t("Stop & Create Task", "Ukončiť a vytvoriť úlohu", "Leállítás és feladat létrehozása")}
+                            >
+                                <Check className="h-3.5 w-3.5 stroke-[3]" />
+                                <span className="hidden xs:inline">{t("Create", "Vytvoriť", "Kész")}</span>
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleCancelVoiceRecording}
+                                className="p-1.5 bg-white/10 hover:bg-white/20 active:bg-white/30 text-white/90 hover:text-white rounded-xl transition-all active:scale-95 cursor-pointer border border-white/20"
+                                title={t("Cancel recording", "Zrušiť nahrávanie", "Felvétel megszakítása")}
+                            >
+                                <X className="h-4 w-4 stroke-[2.5]" />
+                            </button>
+                        </div>
+                    </div>
+                ) : isVoiceTranscribing ? (
+                    /* Transcribing & Processing State */
+                    <div className="w-full py-2.5 px-4 bg-gradient-to-r from-orange-50 via-amber-50 to-orange-50 rounded-2xl border-2 border-orange-200/90 shadow-md flex items-center justify-center gap-2.5 text-orange-700 text-xs font-black uppercase tracking-wider animate-pulse">
+                        <Loader2 className="h-4 w-4 animate-spin text-[#ff5d00]" />
+                        <span className="truncate">
+                            {t(
+                                "Transcribing voice & creating task…",
+                                "Prepisujem hlas a vytváram úlohu…",
+                                "Hang átírása és feladat készítése…",
+                            )}
+                        </span>
+                    </div>
+                ) : (
+                    /* 80% Create New Task Button & 20% Record Task Button */
+                    <div className="flex items-center gap-2 w-full">
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (!taskAccess.create) return;
+                                resetNewTaskForm();
+                                setIsAddDrawerOpen(true);
+                            }}
+                            className="w-[80%] py-2.5 bg-[#ff5d00] hover:bg-[#e05200] text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-orange-500/25 transition-all active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 flex items-center justify-center gap-2 cursor-pointer border-2 border-[#ff701e] disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={!taskAccess.create}
+                        >
+                            <Plus className="h-4 w-4 stroke-[3]" />
+                            <span className="truncate">
+                                {t(
+                                    "Create New Task",
+                                    "Vytvoriť novú úlohu",
+                                    "Új feladat",
+                                )}
+                            </span>
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleStartVoiceRecording}
+                            className="w-[20%] py-2.5 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 active:from-rose-700 active:to-rose-800 text-white rounded-2xl font-black text-xs uppercase tracking-wider shadow-lg shadow-rose-500/25 transition-all active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer border-2 border-rose-400 disabled:cursor-not-allowed disabled:opacity-50"
+                            disabled={!taskAccess.create}
+                            title={t(
+                                "Record Voice Task (Auto-transcribes and creates task)",
+                                "Nahrať úlohu hlasom (Automaticky prepíše a vytvorí úlohu)",
+                                "Hangfeladat rögzítése (Automatikusan átírja és létrehozza)",
+                            )}
+                        >
+                            <Mic className="h-4 w-4 shrink-0 stroke-[2.5]" />
+                            <span className="hidden xl:inline text-[11px] truncate">
+                                {t("Record", "Hlasom", "Hanggal")}
+                            </span>
+                        </button>
+                    </div>
+                )
             ) : (
                 <div className="w-full bg-white rounded-3xl border-2 border-orange-200/90 shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-3 duration-200">
                     <div className="p-4 bg-gradient-to-r from-orange-50/80 via-white to-orange-50/40 border-b border-orange-100 flex items-center justify-between">
