@@ -73,6 +73,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
     const audioChunksRef = useRef<Blob[]>([]);
     const voiceTimerRef = useRef<any>(null);
     const audioStreamRef = useRef<MediaStream | null>(null);
+    const analyserStreamRef = useRef<MediaStream | null>(null);
     const audioContextRef = useRef<AudioContext | null>(null);
     const analyserRef = useRef<AnalyserNode | null>(null);
     const animFrameRef = useRef<number | null>(null);
@@ -93,8 +94,16 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
             } catch (_) {}
             audioContextRef.current = null;
         }
+        if (analyserStreamRef.current) {
+            try {
+                analyserStreamRef.current.getTracks().forEach((track) => track.stop());
+            } catch (_) {}
+            analyserStreamRef.current = null;
+        }
         if (audioStreamRef.current) {
-            audioStreamRef.current.getTracks().forEach((track) => track.stop());
+            try {
+                audioStreamRef.current.getTracks().forEach((track) => track.stop());
+            } catch (_) {}
             audioStreamRef.current = null;
         }
     };
@@ -165,7 +174,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                 }
             };
 
-            // Set up Web Audio API Analyser for real-time waveform
+            // Set up Web Audio API Analyser on a cloned stream for real-time waveform
             try {
                 const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
                 if (AudioCtx) {
@@ -174,7 +183,9 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                     if (ctx.state === "suspended") {
                         await ctx.resume();
                     }
-                    const source = ctx.createMediaStreamSource(stream);
+                    const analyserStream = stream.clone();
+                    analyserStreamRef.current = analyserStream;
+                    const source = ctx.createMediaStreamSource(analyserStream);
                     const analyser = ctx.createAnalyser();
                     analyser.fftSize = 64;
                     analyser.smoothingTimeConstant = 0.55;
@@ -211,7 +222,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                 console.warn("AudioContext setup warning:", err);
             }
 
-            recorder.start(100);
+            recorder.start(250);
             setIsVoiceRecording(true);
             setVoiceRecordDuration(0);
 
@@ -264,9 +275,8 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
             };
             try {
                 if (recorder.state === "recording") {
-                    recorder.requestData();
+                    recorder.stop();
                 }
-                recorder.stop();
             } catch (_) {
                 const mime = recorder?.mimeType || "audio/webm";
                 resolve(new Blob(audioChunksRef.current, { type: mime }));
