@@ -87,7 +87,7 @@ if (!empty($rawText)) {
         exit;
     }
 
-    // Step 1: Whisper transcription
+    // Step 1: Whisper transcription with multilingual CRM vocabulary prompt
     $mimeType = 'audio/webm';
     if ($ext === 'mp3') $mimeType = 'audio/mp3';
     elseif ($ext === 'wav') $mimeType = 'audio/wav';
@@ -98,25 +98,9 @@ if (!empty($rawText)) {
     $cFile = new CURLFile($targetPath, $mimeType, basename($targetPath));
     $whisperPayload = [
         'file' => $cFile,
-        'model' => 'whisper-1'
+        'model' => 'whisper-1',
+        'prompt' => 'Hlasové CRM úlohy, pripomienky a termíny. Hangfeladatok, határidők és emlékeztetők a CRM-ben. Voice tasks, deadlines and reminders.'
     ];
-
-    $clientLang = strtolower(trim((string)($_POST['language'] ?? '')));
-    if (in_array($clientLang, ['sk', 'hu', 'en', 'cs', 'de', 'pl'], true)) {
-        $whisperPayload['language'] = $clientLang;
-
-        if ($clientLang === 'sk') {
-            $whisperPayload['prompt'] = 'Záznam hlasovej úlohy a pripomienky v CRM systéme.';
-        } elseif ($clientLang === 'hu') {
-            $whisperPayload['prompt'] = 'Hangfeladat és emlékeztető rögzítése a CRM rendszerben.';
-        } elseif ($clientLang === 'cs') {
-            $whisperPayload['prompt'] = 'Záznam hlasového úkolu a připomínky v CRM systému.';
-        } elseif ($clientLang === 'en') {
-            $whisperPayload['prompt'] = 'Voice task recording and reminder in CRM system.';
-        } elseif ($clientLang === 'de') {
-            $whisperPayload['prompt'] = 'Aufzeichnung einer CRM-Aufgabe und Erinnerung.';
-        }
-    }
 
     $ch = curl_init('https://api.openai.com/v1/audio/transcriptions');
     curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
@@ -184,10 +168,14 @@ Analyze the transcribed voice recording and extract the structured task(s).
 Current Date Reference: {$todayDate} ({$todayDayOfWeek}).
 Available Team Members in CRM: {$usersString}.
 
+CRITICAL LANGUAGE REQUIREMENT:
+- You MUST write the task 'title' and 'description' in the EXACT SAME LANGUAGE that the user spoke in the voice memo (e.g. Slovak, Hungarian, English, Czech, German, etc.).
+- NEVER translate the task title or description into another language. If spoken in Slovak, output in Slovak. If spoken in Hungarian, output in Hungarian. If spoken in English, output in English. If spoken in Czech, output in Czech.
+
 Instructions:
-1. Detect the language of the voice memo (e.g. Slovak, Hungarian, English, Czech, etc.).
+1. Detect the spoken language of the voice memo.
 2. The task 'title' must be a clean, concise, actionable task title in the SAME language spoken by the user.
-3. If the user mentions notes or extra details, put them in 'description' (in the same language).
+3. If the user mentions notes or extra details, put them in 'description' in the same language.
 4. 'priority' must be one of: 'low', 'medium', 'high'. (If user mentions words like 'súrne', 'dôležité', 'urgent', 'nagyon fontos', 'urgentné', set to 'high'. Default to 'medium').
 5. 'deadline': Calculate the date in 'YYYY-MM-DD' format relative to today ({$todayDate}).
    - If user says 'dnes' / 'today' / 'ma' -> '{$todayDate}'
@@ -195,15 +183,15 @@ Instructions:
    - If user mentions a specific day (e.g. 'v piatok', 'on Friday', 'pénteken', 'do konca týždňa', '30-eho') calculate the upcoming date.
    - If no date is mentioned, default to '{$todayDate}'.
 6. 'deadlineTime': If user mentions a specific time ('o 14:00', 'at 3pm', '15:30-kor', 'ráno o deviatej'), format as 'HH:MM' (24-hour format like '14:00'). Otherwise set to null.
-7. 'assignedTo': If user mentions assigning to a team member (e.g. 'priraď Petrovi', 'assign to John', 'add to Roland'), match the name to the closest member in the Available Team Members list. Otherwise null.
+7. 'assignedTo': If user mentions assigning to a team member (e.g. 'priraď Petrovi', 'assign to John', 'add to Roland', 'küldd Attilának'), match the name to the closest member in the Available Team Members list. Otherwise null.
 8. If the voice memo contains multiple distinct tasks, output multiple objects in the 'tasks' array. Otherwise output 1 task object.
 
 Respond ONLY with valid JSON in this exact structure:
 {
   \"tasks\": [
     {
-      \"title\": \"Task Title\",
-      \"description\": \"Optional notes or details\",
+      \"title\": \"Task Title in the Spoken Language\",
+      \"description\": \"Optional notes or details in the Spoken Language\",
       \"priority\": \"low\" | \"medium\" | \"high\",
       \"deadline\": \"YYYY-MM-DD\",
       \"deadlineTime\": \"HH:MM\" or null,
