@@ -9836,7 +9836,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                         onClick={() => {
                                                                                             window.location.hash = `lead-${lead.id}`;
                                                                                         }}
-                                                                                        className="py-3 px-3.5 sm:px-4 border-b border-slate-200/60 dark:border-slate-800/80 hover:bg-slate-500/5 dark:hover:bg-slate-500/10 transition-colors cursor-pointer space-y-1.5"
+                                                                                        className="py-3 px-3.5 sm:px-4 border-b border-slate-200/70 hover:bg-slate-500/5 transition-colors cursor-pointer space-y-1.5"
                                                                                         style={{
                                                                                             borderLeft: `3px solid ${leadColor}`,
                                                                                         }}
@@ -9870,7 +9870,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                                     onClick={() => {
                                                                                                         window.location.hash = `lead-${lead.id}`;
                                                                                                     }}
-                                                                                                    className="h-6 w-6 rounded-md text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-200/60 dark:hover:bg-slate-800 flex items-center justify-center transition-colors"
+                                                                                                    className="h-6 w-6 rounded-md text-slate-400 hover:text-blue-600 hover:bg-slate-200/60 flex items-center justify-center transition-colors"
                                                                                                     title={t("Open Edit Slideout", "Otvoriť panel úprav", "Szerkesztő panel megnyitása")}
                                                                                                 >
                                                                                                     <Edit3 className="h-3.5 w-3.5" />
@@ -9879,7 +9879,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                                     onClick={() => {
                                                                                                         handleDeleteLead(lead.id, lead.name);
                                                                                                     }}
-                                                                                                    className="h-6 w-6 rounded-md text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center justify-center transition-colors"
+                                                                                                    className="h-6 w-6 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center transition-colors"
                                                                                                     title={t("Delete Lead", "Odstrániť lead", "Lead törlése")}
                                                                                                 >
                                                                                                     <Trash2 className="h-3.5 w-3.5" />
@@ -9887,40 +9887,31 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                             </div>
                                                                                         </div>
 
-                                                                                        {/* FULL-WIDTH NAME ROW: Avatar + Name (Its Own Line) + Rating */}
-                                                                                        <div className="flex items-center gap-2.5 min-w-0">
-                                                                                            <div
-                                                                                                className={`rounded-lg bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 font-heading font-black flex items-center justify-center shrink-0 border border-blue-200/60 dark:border-blue-800/50 ${
-                                                                                                    compactMode ? "h-6 w-6 text-[9px]" : "h-7 w-7 text-[10px]"
-                                                                                                }`}
-                                                                                            >
-                                                                                                {getInitials(lead.name)}
-                                                                                            </div>
-                                                                                            <div className="flex items-center gap-2 min-w-0 flex-1">
-                                                                                                <span className="font-bold text-slate-900 dark:text-slate-100 text-sm leading-snug break-words">
-                                                                                                    {lead.name}
-                                                                                                </span>
-                                                                                                {!compactMode && lead.rating ? (
-                                                                                                    <div
-                                                                                                        className="scale-75 origin-left shrink-0"
-                                                                                                        onClick={(e) => e.stopPropagation()}
-                                                                                                    >
-                                                                                                        {renderStars(lead.rating || 0, (newRating) => {
-                                                                                                            setLeads((prev) =>
-                                                                                                                prev.map((l) =>
-                                                                                                                    l.id === lead.id ? { ...l, rating: newRating } : l
-                                                                                                                )
-                                                                                                            );
-                                                                                                        })}
-                                                                                                    </div>
-                                                                                                ) : null}
-                                                                                            </div>
+                                                                                        {/* FULL-WIDTH NAME ROW: Name (Its Own Line) + Rating */}
+                                                                                        <div className="flex items-center gap-2 min-w-0 py-0.5">
+                                                                                            <span className="font-bold text-slate-900 text-sm sm:text-base leading-snug break-words">
+                                                                                                {lead.name}
+                                                                                            </span>
+                                                                                            {!compactMode && lead.rating ? (
+                                                                                                <div
+                                                                                                    className="scale-75 origin-left shrink-0"
+                                                                                                    onClick={(e) => e.stopPropagation()}
+                                                                                                >
+                                                                                                    {renderStars(lead.rating || 0, (newRating) => {
+                                                                                                        setLeads((prev) =>
+                                                                                                            prev.map((l) =>
+                                                                                                                l.id === lead.id ? { ...l, rating: newRating } : l
+                                                                                                            )
+                                                                                                        );
+                                                                                                    })}
+                                                                                                </div>
+                                                                                            ) : null}
                                                                                         </div>
 
                                                                                         {/* METADATA & VALUE ROW: Value, Source, PM, Date, City (No Person/Type Tag) */}
                                                                                         <div className="flex flex-wrap items-center gap-1.5 pt-0.5 text-xs">
                                                                                             {/* Value Badge */}
-                                                                                            <span className="font-heading font-black text-xs text-blue-700 dark:text-blue-300 bg-blue-50/90 dark:bg-blue-950/60 px-2 py-0.5 rounded-md border border-blue-200/70 dark:border-blue-800/60 whitespace-nowrap shadow-2xs">
+                                                                                            <span className="font-heading font-black text-xs text-blue-700 bg-blue-50/90 px-2 py-0.5 rounded-md border border-blue-200/70 whitespace-nowrap shadow-2xs">
                                                                                                 {money(lead.value, { minimumFractionDigits: 2 })}
                                                                                             </span>
 
@@ -9940,7 +9931,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                                                                                             {/* Project Manager */}
                                                                                             {!lead.owner || lead.owner.toLowerCase() === "unassigned" ? (
-                                                                                                <span className="px-2 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-wider flex items-center gap-1 bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-900/60 text-rose-600 dark:text-rose-400">
+                                                                                                <span className="px-2 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-wider flex items-center gap-1 bg-rose-50 border-rose-300 text-rose-600">
                                                                                                     <User className="h-2.5 w-2.5 shrink-0" />
                                                                                                     {systemLanguage === "sk" ? "Nepriradený" : systemLanguage === "hu" ? "Nincs" : "Unassigned"}
                                                                                                 </span>
@@ -9960,8 +9951,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                                                                                             {/* Date */}
                                                                                             {lead.createdAt && (
-                                                                                                <div className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 font-medium ml-1">
-                                                                                                    <Calendar className="h-3 w-3 text-slate-400 dark:text-slate-500 shrink-0" />
+                                                                                                <div className="flex items-center gap-1 text-[11px] text-slate-500 font-medium ml-1">
+                                                                                                    <Calendar className="h-3 w-3 text-slate-400 shrink-0" />
                                                                                                     <span>
                                                                                                         {(() => {
                                                                                                             const dateMatch = lead.createdAt.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -9977,8 +9968,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                                                                                             {/* City */}
                                                                                             {lead.city && (
-                                                                                                <div className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 font-medium ml-1">
-                                                                                                    <MapPin className="h-3 w-3 text-slate-400 dark:text-slate-500 shrink-0" />
+                                                                                                <div className="flex items-center gap-1 text-[11px] text-slate-500 font-medium ml-1">
+                                                                                                    <MapPin className="h-3 w-3 text-slate-400 shrink-0" />
                                                                                                     <span className="truncate max-w-[140px]">{lead.city}</span>
                                                                                                 </div>
                                                                                             )}
