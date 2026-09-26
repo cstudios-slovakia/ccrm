@@ -594,7 +594,7 @@ function App() {
   const [systemCurrency, setSystemCurrency] = useState<string>("");
 
   // Meeting Room state
-  const [meetingsAction, setMeetingsAction] = useState<"list" | "new">("list");
+  const [meetingsAction, setMeetingsAction] = useState<"list" | "new" | "record">("list");
   const [autoOpenAddTask, setAutoOpenAddTask] = useState(false);
   // Server-backed state. The real rows arrive with the first sync GET (see
   // meeting_notes / project_types / projects in sync.php) and every edit is
@@ -3604,7 +3604,13 @@ ${log.payload || ''}
             onNavigateMeetings={(action) => {
               setMeetingsAction(action);
               setActiveTab("meetings");
-              window.location.hash = "meetings";
+              if (action === "record") {
+                window.location.hash = "meetings/new?record=true";
+              } else if (action === "new") {
+                window.location.hash = "meetings/new";
+              } else {
+                window.location.hash = "meetings";
+              }
             }}
             onAddTask={() => {
               const route = parseAppHash(activeTab).route;

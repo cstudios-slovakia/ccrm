@@ -38,7 +38,7 @@ interface HeaderProps {
     setSystemLanguage: (lang: Language) => void;
     isDemoMode?: boolean;
     onOpenPersonalSettings: () => void;
-    onNavigateMeetings?: (action: "list" | "new") => void;
+    onNavigateMeetings?: (action: "list" | "new" | "record") => void;
     onAddTask?: () => void;
     onNavigateUpdates?: () => void;
     /** Route gate from the permission resolver; search hits and shortcuts into closed modules are dropped. */
@@ -74,9 +74,27 @@ export const Header: React.FC<HeaderProps> = ({
     const [isMeetingsOpen, setIsMeetingsOpen] = React.useState(false);
     const [isMobileSearchOpen, setIsMobileSearchOpen] = React.useState(false);
     const [isMobileSliderOpen, setIsMobileSliderOpen] = React.useState(false);
+    const [isMobileSliderClosing, setIsMobileSliderClosing] = React.useState(false);
     const dropdownRef = React.useRef<HTMLDivElement>(null);
     const meetingsDropdownRef = React.useRef<HTMLDivElement>(null);
     const mobileSliderRef = React.useRef<HTMLDivElement>(null);
+
+    const handleCloseMobileSlider = React.useCallback(() => {
+        if (!isMobileSliderOpen || isMobileSliderClosing) return;
+        setIsMobileSliderClosing(true);
+        setTimeout(() => {
+            setIsMobileSliderOpen(false);
+            setIsMobileSliderClosing(false);
+        }, 320);
+    }, [isMobileSliderOpen, isMobileSliderClosing]);
+
+    const handleToggleMobileSlider = React.useCallback(() => {
+        if (isMobileSliderOpen) {
+            handleCloseMobileSlider();
+        } else {
+            setIsMobileSliderOpen(true);
+        }
+    }, [isMobileSliderOpen, handleCloseMobileSlider]);
 
     // Automation Toolbox States
     const [manualWorkflows, setManualWorkflows] = React.useState<any[]>([]);
@@ -126,13 +144,13 @@ export const Header: React.FC<HeaderProps> = ({
                 !mobileSliderRef.current.contains(event.target as Node) &&
                 !(event.target as HTMLElement).closest("[data-mobile-slider-trigger]")
             ) {
-                setIsMobileSliderOpen(false);
+                handleCloseMobileSlider();
             }
         };
         document.addEventListener("mousedown", handleClickOutside);
         return () =>
             document.removeEventListener("mousedown", handleClickOutside);
-    }, []);
+    }, [handleCloseMobileSlider]);
 
     // Update notes states
     const [updatesList, setUpdatesList] = useState<UpdateEntry[]>([]);
@@ -787,7 +805,7 @@ export const Header: React.FC<HeaderProps> = ({
                         <button
                             type="button"
                             data-mobile-slider-trigger="true"
-                            onClick={() => setIsMobileSliderOpen(!isMobileSliderOpen)}
+                            onClick={handleToggleMobileSlider}
                             className={`h-8.5 w-8.5 xs:h-9 xs:w-9 sm:hidden rounded-xl border flex items-center justify-center transition-all shadow-sm cursor-pointer relative shrink-0 ${
                                 isMobileSliderOpen
                                     ? "bg-[#0b1329] border-[#0b1329] text-white"
@@ -879,22 +897,13 @@ export const Header: React.FC<HeaderProps> = ({
                                     <button
                                         onClick={() => {
                                             setIsMeetingsOpen(false);
-                                            if (
-                                                typeof (window as any).showToast ===
-                                                "function"
-                                            ) {
-                                                (window as any).showToast(
-                                                    systemLanguage === "sk"
-                                                        ? "Nahrávanie stretnutia: Audio nahrávanie bude k dispozícii v ďalšej aktualizácii."
-                                                        : systemLanguage === "hu"
-                                                          ? "Megbeszélés rögzítése: A hangfelvétel a következő frissítésben érhető el."
-                                                          : "Record Meeting: Audio recording feature will be implemented in the next update.",
-                                                );
+                                            if (onNavigateMeetings) {
+                                                onNavigateMeetings("record");
                                             }
                                         }}
-                                        className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-all cursor-pointer group"
+                                        className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50/80 transition-all cursor-pointer group"
                                     >
-                                        <Mic className="h-4 w-4 text-slate-400 group-hover:text-slate-500" />
+                                        <Mic className="h-4 w-4 text-rose-500 group-hover:scale-110 transition-transform" />
                                         <div className="flex flex-col">
                                             <span>
                                                 {systemLanguage === "sk"
@@ -903,12 +912,12 @@ export const Header: React.FC<HeaderProps> = ({
                                                       ? "Megbeszélés rögzítése"
                                                       : "Record Meeting"}
                                             </span>
-                                            <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">
+                                            <span className="text-[9px] text-rose-400 font-normal">
                                                 {systemLanguage === "sk"
-                                                    ? "Pripravuje sa"
+                                                    ? "Rýchly hlasový záznam"
                                                     : systemLanguage === "hu"
-                                                      ? "Fejlesztés alatt"
-                                                      : "Coming soon"}
+                                                      ? "Gyors hangfelvétel"
+                                                      : "Quick audio recording"}
                                             </span>
                                         </div>
                                     </button>
@@ -1125,12 +1134,14 @@ export const Header: React.FC<HeaderProps> = ({
             )}
 
             {/* Mobile Top Slider Dropdown Drawer */}
-            {isMobileSliderOpen && typeof document !== "undefined" && (
+            {(isMobileSliderOpen || isMobileSliderClosing) && typeof document !== "undefined" && (
                 <>
                     {createPortal(
                         <div
-                            className="fixed inset-0 top-20 bg-slate-950/40 backdrop-blur-xs z-[9990] sm:hidden animate-in fade-in duration-200"
-                            onClick={() => setIsMobileSliderOpen(false)}
+                            className={`fixed inset-0 top-20 bg-slate-950/40 backdrop-blur-xs z-30 sm:hidden ${
+                                isMobileSliderClosing ? "animate-fade-out" : "animate-fade-in"
+                            }`}
+                            onClick={handleCloseMobileSlider}
                             aria-hidden="true"
                         />,
                         document.body,
@@ -1139,7 +1150,11 @@ export const Header: React.FC<HeaderProps> = ({
                     {createPortal(
                         <div
                             ref={mobileSliderRef}
-                            className="fixed top-20 left-0 right-0 z-[9995] sm:hidden bg-white/95 backdrop-blur-xl border-b border-slate-200/90 shadow-[0_20px_50px_rgba(0,0,0,0.2)] p-4 max-h-[80vh] overflow-y-auto flex flex-col gap-3.5 select-none animate-in slide-in-from-top duration-300 ease-out"
+                            className={`fixed top-20 left-0 right-0 z-40 sm:hidden bg-white/95 backdrop-blur-xl border-b border-slate-200/90 shadow-[0_20px_50px_rgba(0,0,0,0.2)] p-4 max-h-[80vh] overflow-y-auto flex flex-col gap-3.5 select-none ${
+                                isMobileSliderClosing
+                                    ? "animate-slide-out-top"
+                                    : "animate-slide-in-top"
+                            }`}
                         >
                             {/* Top Quick Action Buttons Row */}
                             <div className="flex items-center gap-2 w-full">
@@ -1147,7 +1162,7 @@ export const Header: React.FC<HeaderProps> = ({
                                     <button
                                         type="button"
                                         onClick={() => {
-                                            setIsMobileSliderOpen(false);
+                                            handleCloseMobileSlider();
                                             onAddTask?.();
                                         }}
                                         className="flex-1 flex items-center justify-center gap-2 py-3 px-3.5 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 text-white text-xs font-bold shadow-md shadow-orange-500/20 active:scale-98 transition-all cursor-pointer"
@@ -1161,7 +1176,7 @@ export const Header: React.FC<HeaderProps> = ({
                                     <button
                                         type="button"
                                         onClick={() => {
-                                            setIsMobileSliderOpen(false);
+                                            handleCloseMobileSlider();
                                             handleOpenUpdates();
                                         }}
                                         className="flex items-center justify-center gap-1.5 py-3 px-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold active:scale-98 transition-all cursor-pointer relative shrink-0"
@@ -1177,7 +1192,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 <button
                                     type="button"
                                     onClick={() => {
-                                        setIsMobileSliderOpen(false);
+                                        handleCloseMobileSlider();
                                         setIsProfileOpen(true);
                                     }}
                                     className="flex items-center justify-center gap-1.5 py-3 px-3 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-900 text-xs font-bold active:scale-98 transition-all cursor-pointer shrink-0"
@@ -1206,7 +1221,7 @@ export const Header: React.FC<HeaderProps> = ({
                                             <button
                                                 type="button"
                                                 onClick={() => {
-                                                    setIsMobileSliderOpen(false);
+                                                    handleCloseMobileSlider();
                                                     if (onNavigateMeetings) onNavigateMeetings("new");
                                                 }}
                                                 className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-white border border-slate-200 text-slate-800 text-xs font-bold shadow-2xs hover:bg-slate-50 active:scale-98 transition-all cursor-pointer"
@@ -1219,7 +1234,7 @@ export const Header: React.FC<HeaderProps> = ({
                                         <button
                                             type="button"
                                             onClick={() => {
-                                                setIsMobileSliderOpen(false);
+                                                handleCloseMobileSlider();
                                                 if (onNavigateMeetings) onNavigateMeetings("list");
                                             }}
                                             className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-white border border-slate-200 text-slate-800 text-xs font-bold shadow-2xs hover:bg-slate-50 active:scale-98 transition-all cursor-pointer ${
@@ -1235,25 +1250,17 @@ export const Header: React.FC<HeaderProps> = ({
                                     <button
                                         type="button"
                                         onClick={() => {
-                                            setIsMobileSliderOpen(false);
-                                            if (typeof (window as any).showToast === "function") {
-                                                (window as any).showToast(
-                                                    systemLanguage === "sk"
-                                                        ? "Nahrávanie stretnutia: Audio nahrávanie bude k dispozícii v ďalšej aktualizácii."
-                                                        : systemLanguage === "hu"
-                                                          ? "Megbeszélés rögzítése: A hangfelvétel a következő frissítésben érhető el."
-                                                          : "Record Meeting: Audio recording feature will be implemented in the next update."
-                                                );
-                                            }
+                                            handleCloseMobileSlider();
+                                            if (onNavigateMeetings) onNavigateMeetings("record");
                                         }}
-                                        className="flex items-center justify-between py-2 px-3 rounded-xl bg-white/70 border border-slate-200/70 text-slate-500 text-xs font-semibold hover:bg-white active:scale-98 transition-all cursor-pointer"
+                                        className="flex items-center justify-between py-2.5 px-3 rounded-xl bg-rose-50 border border-rose-200/80 text-rose-700 text-xs font-bold hover:bg-rose-100/80 active:scale-98 transition-all cursor-pointer"
                                     >
                                         <div className="flex items-center gap-2">
-                                            <Mic className="h-3.5 w-3.5 text-slate-400" />
+                                            <Mic className="h-4 w-4 text-rose-600 fill-rose-600/20" />
                                             <span>{t("Record Meeting", "Nahrať stretnutie", "Megbeszélés rögzítése")}</span>
                                         </div>
-                                        <span className="text-[8px] font-bold text-slate-400 uppercase tracking-wider bg-slate-100 px-1.5 py-0.5 rounded">
-                                            {t("Coming soon", "Pripravuje sa", "Hamarosan")}
+                                        <span className="text-[9px] font-black text-rose-600 uppercase tracking-wider bg-rose-200/60 px-2 py-0.5 rounded-md">
+                                            {t("Record", "Nahrať", "Rögzítés")}
                                         </span>
                                     </button>
                                 </div>
@@ -1311,6 +1318,7 @@ export const Header: React.FC<HeaderProps> = ({
                                                     key={wf.id}
                                                     onClick={() => {
                                                         handleRunWorkflow(wf);
+                                                        handleCloseMobileSlider();
                                                     }}
                                                     disabled={runningWfId === wf.id}
                                                     className={buttonClass}
