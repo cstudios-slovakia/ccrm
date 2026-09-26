@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import * as Icons from "lucide-react";
-import { Plus, Trash2, Settings, Search, Users, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, ListTree, Move, CalendarClock, Flag, ArrowUp, ArrowDown, ArrowUpDown, Lock, Star, Check, Minus, Paperclip, GripVertical, GripHorizontal } from "lucide-react";
+import { Plus, Trash2, Settings, Search, Users, User, Edit3, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, ListTree, Move, CalendarClock, Flag, ArrowUp, ArrowDown, ArrowUpDown, Lock, Star, Check, Minus, Paperclip, GripVertical, GripHorizontal } from "lucide-react";
 import type { Project, ProjectAttribute, ProjectAutoCreateSettings, ProjectStatus, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory } from "../types";
 import { ProjectDetailsView } from "./ProjectDetailsView";
 import type { Task } from "../types";
@@ -1265,7 +1265,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               "Overdue" is deliberately not among them: it is not a status — a
               project can be late in any of them — so it sits apart, as the red
               flag it is. */}
-          <div className="flex flex-wrap items-center gap-2 select-none">
+          {/* Summary strip — and the status filter itself. It used to show four
+              hand-picked chips next to a dropdown carrying the real list, so
+              two controls filtered the same thing and disagreed about what the
+              statuses were. The chips are now the whole list, straight from
+              PROJECT_STATUSES, and the dropdown below is hidden.
+
+              "Overdue" is deliberately not among them: it is not a status — a
+              project can be late in any of them — so it sits apart, as the red
+              flag it is. */}
+          <div className="w-full flex items-center gap-2 overflow-x-auto scrollbar-none flex-nowrap sm:flex-wrap select-none pb-1 sm:pb-0">
             {([
               { key: "all", label: t("All", "Všetky", "Összes"), count: totalProjects, tone: STAT_CHIP_TONES.slate },
               ...projectStatusOrder().map(value => ({
@@ -1287,7 +1296,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     // clears the filter, rather than being a no-op.
                     setSelectedStatusFilter(prev => (prev === key ? "all" : key));
                   }}
-                  className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl border shadow-sm transition-all cursor-pointer active:scale-[0.98] ${
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl border shadow-sm transition-all cursor-pointer active:scale-[0.98] shrink-0 ${
                     active ? tone.active : `bg-white/95 ${tone.idle}`
                   }`}
                 >
@@ -1303,7 +1312,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
             {/* The red flag, on its own side of a divider: late projects, and
                 how many of them still owe an explanation. */}
-            <span className="h-6 w-px bg-slate-200 mx-0.5 hidden sm:block" />
+            <span className="h-6 w-px bg-slate-200 mx-0.5 hidden sm:block shrink-0" />
             <button
               type="button"
               aria-pressed={overdueOnly}
@@ -1313,7 +1322,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 "Projekty po termíne",
                 "Határidőn túli projektek",
               )}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl border shadow-sm transition-all cursor-pointer active:scale-[0.98] ${
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl border shadow-sm transition-all cursor-pointer active:scale-[0.98] shrink-0 ${
                 overdueOnly ? STAT_CHIP_TONES.rose.active : `bg-white/95 ${STAT_CHIP_TONES.rose.idle}`
               }`}
             >
@@ -1341,99 +1350,146 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             </button>
           </div>
 
-          {/* One filter bar, one row. The three dropdowns used to be full-width
-              blocks stacked under the search box — a "bar" three rows tall —
-              because CustomSelect's trigger is w-100%; each now sits in a fixed
-              track of its own. The view switcher is parked on the right, away
-              from the filters it is not one of. */}
-          <div className="glass-panel relative z-20 flex flex-wrap items-center gap-2 sm:gap-2.5 p-2 sm:p-2.5 rounded-3xl border border-white/60 bg-white/95 shadow-glass">
-            {/* Search */}
-            <div className="relative flex-1 min-w-[10rem] sm:max-w-xs">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <input
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                placeholder={t("Search projects...", "Vyhľadať projekty...", "Projekt keresése...")}
-                className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-xs font-semibold text-slate-800 bg-white"
-              />
+          {/* One filter bar, one row. On mobile, search and switcher are on top, and dropdown filters are side scrollable. */}
+          <div className="glass-panel relative z-20 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-2.5 p-2 sm:p-2.5 rounded-3xl border border-white/60 bg-white/95 shadow-glass">
+            {/* Search + Action Menus Row on Mobile / Inline on Desktop */}
+            <div className="flex items-center gap-2 w-full sm:w-auto sm:flex-1 sm:max-w-xs">
+              {/* Search */}
+              <div className="relative flex-1 min-w-0">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <input
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder={t("Search projects...", "Vyhľadať projekty...", "Projekt keresése...")}
+                  className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-xs font-semibold text-slate-800 bg-white"
+                />
+              </div>
+
+              {/* Mobile Only: project list view menu & view switcher inline with search */}
+              <div className="flex sm:hidden items-center gap-1.5 shrink-0">
+                <ProjectListViewMenu
+                  t={t}
+                  sort={effectiveSort}
+                  sortOptions={sortOptions}
+                  onSortChange={setSort}
+                  sortNote={isStructure
+                    ? t("The structure is always in its own order. Drag rows to rearrange it.", "Štruktúra má vždy vlastné poradie. Zmeníte ho potiahnutím riadkov.", "A struktúra mindig a saját sorrendjében van. Sorok húzásával rendezheti át.")
+                    : undefined}
+                  columns={allColumns}
+                  onColumnsChange={saveColumns}
+                  columnLabel={columnLabel}
+                  canEditColumns={canEditColumns}
+                  columnsScope={layoutType
+                    ? (settingsAccess.edit
+                      ? t(`Columns of the "${layoutType.name}" type — the same for everyone.`, `Stĺpce typu „${layoutType.name}“ — rovnaké pre všetkých.`, `A(z) „${layoutType.name}” típus oszlopai — mindenkinek ugyanazok.`)
+                      : t(`Columns of the "${layoutType.name}" type. Only someone who can edit project types can change them.`, `Stĺpce typu „${layoutType.name}“. Zmeniť ich môže len ten, kto smie upravovať typy projektov.`, `A(z) „${layoutType.name}” típus oszlopai. Csak projekt típusokat szerkeszteni jogosult felhasználó módosíthatja őket.`))
+                    : t("All types: built-in columns only. Filter the list by one type to show its own attributes as columns.", "Všetky typy: len vstavané stĺpce. Vyfiltrujte zoznam podľa typu a zobrazíte aj jeho atribúty.", "Minden típus: csak beépített oszlopok. Szűrjön egy típusra, hogy az attribútumai is oszlopként megjelenjenek.")}
+                  onReset={() => {
+                    setSort({ key: "default", direction: "asc" });
+                    if (canEditColumns) saveColumns(null);
+                  }}
+                />
+
+                <div className="flex items-center gap-0.5 p-1 rounded-xl bg-slate-100 border border-slate-200 select-none shrink-0">
+                  {([
+                    { mode: "structure" as const, Icon: ListTree, label: t("Structure view", "Zobrazenie štruktúry", "Struktúra nézet") },
+                    { mode: "list" as const, Icon: Rows3, label: t("List view", "Zobrazenie zoznamu", "Lista nézet") },
+                    { mode: "grid" as const, Icon: LayoutGrid, label: t("Grid view", "Zobrazenie kariet", "Kártyás nézet") },
+                  ]).map(({ mode, Icon, label }) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setViewMode(mode)}
+                      title={label}
+                      aria-label={label}
+                      aria-pressed={viewMode === mode}
+                      className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                        viewMode === mode
+                          ? "bg-white text-indigo-600 shadow-sm"
+                          : "text-slate-400 hover:text-slate-600"
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" />
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
-            {/* Status — hidden. The chips above are the status filter now;
-                this is kept wired to the same state so it can be brought back
-                by flipping SHOW_STATUS_DROPDOWN. */}
-            {SHOW_STATUS_DROPDOWN && (
-            <div className="w-full sm:w-auto sm:min-w-[130px] flex-1 sm:flex-initial shrink-0">
-              <CustomSelect
-                className="h-10"
-                value={selectedStatusFilter}
-                onChange={(v) => setSelectedStatusFilter(v)}
-                options={[
-                  { value: "all", label: t("All Statuses", "Všetky stavy", "Minden állapot") },
-                  ...projectStatusOptions(t),
-                ]}
-              />
-            </div>
-            )}
+            {/* Filter Dropdowns — side scrollable on mobile (< sm), inline flex on desktop (sm:) */}
+            <div className="w-full sm:w-auto flex items-center gap-2 overflow-x-auto scrollbar-none flex-nowrap sm:flex-wrap pb-0.5 sm:pb-0">
+              {/* Status — hidden by default */}
+              {SHOW_STATUS_DROPDOWN && (
+                <div className="w-[130px] shrink-0">
+                  <CustomSelect
+                    className="h-10"
+                    value={selectedStatusFilter}
+                    onChange={(v) => setSelectedStatusFilter(v)}
+                    options={[
+                      { value: "all", label: t("All Statuses", "Všetky stavy", "Minden állapot") },
+                      ...projectStatusOptions(t),
+                    ]}
+                  />
+                </div>
+              )}
 
-            {/* Type */}
-            <div className="w-full sm:w-auto sm:min-w-[130px] flex-1 sm:flex-initial shrink-0">
-              <CustomSelect
-                className="h-10"
-                value={selectedTypeFilter}
-                onChange={(v) => setSelectedTypeFilter(v)}
-                options={[
-                  { value: "all", label: t("All Types", "Všetky typy", "Minden típus") },
-                  ...projectTypes.map(pt => ({ value: pt.id, label: pt.name })),
-                ]}
-              />
+              {/* Type */}
+              <div className="w-[130px] shrink-0">
+                <CustomSelect
+                  className="h-10"
+                  value={selectedTypeFilter}
+                  onChange={(v) => setSelectedTypeFilter(v)}
+                  options={[
+                    { value: "all", label: t("All Types", "Všetky typy", "Minden típus") },
+                    ...projectTypes.map(pt => ({ value: pt.id, label: pt.name })),
+                  ]}
+                />
+              </div>
+
+              {/* Division */}
+              <div className="w-[140px] shrink-0">
+                <CustomSelect
+                  className="h-10"
+                  icon={<Icons.Building2 className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
+                  value={selectedDivisionFilter}
+                  onChange={(v) => setSelectedDivisionFilter(v)}
+                  options={[
+                    { value: "all", label: getTranslation(userLanguage, "filters.all_divisions") },
+                    { value: "none", label: getTranslation(userLanguage, "filters.no_division") },
+                    ...divisions.map(d => ({ value: d.toLowerCase(), label: d })),
+                  ]}
+                />
+              </div>
+
+              {/* Manager */}
+              <div className="w-[145px] shrink-0">
+                <CustomSelect
+                  className="h-10"
+                  icon={<Users className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
+                  value={selectedManagerFilter}
+                  onChange={(v) => setSelectedManagerFilter(v)}
+                  options={[
+                    { value: "all", label: t("All managers", "Všetci manažéri", "Minden menedzser") },
+                    ...managerOptions.map(name => ({ value: name, label: name })),
+                    { value: UNASSIGNED_MANAGER, label: t("Unassigned", "Bez manažéra", "Nincs menedzser") },
+                  ]}
+                />
+              </div>
+
+              {/* Star priority */}
+              <div className="w-[135px] shrink-0">
+                <CustomSelect
+                  className="h-10"
+                  icon={<Star className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
+                  value={selectedRatingFilter}
+                  onChange={(v) => setSelectedRatingFilter(v)}
+                  options={ratingFilterOptions(t)}
+                />
+              </div>
             </div>
 
-            {/* Division */}
-            <div className="w-full sm:w-auto sm:min-w-[140px] flex-1 sm:flex-initial shrink-0">
-              <CustomSelect
-                className="h-10"
-                icon={<Icons.Building2 className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
-                value={selectedDivisionFilter}
-                onChange={(v) => setSelectedDivisionFilter(v)}
-                options={[
-                  { value: "all", label: getTranslation(userLanguage, "filters.all_divisions") },
-                  { value: "none", label: getTranslation(userLanguage, "filters.no_division") },
-                  ...divisions.map(d => ({ value: d.toLowerCase(), label: d })),
-                ]}
-              />
-            </div>
-
-            {/* Manager. "Who is on this?" was the one question the bar could not
-                answer — the column was there to read but not to filter by. */}
-            <div className="w-full sm:w-auto sm:min-w-[145px] flex-1 sm:flex-initial shrink-0">
-              <CustomSelect
-                className="h-10"
-                icon={<Users className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
-                value={selectedManagerFilter}
-                onChange={(v) => setSelectedManagerFilter(v)}
-                options={[
-                  { value: "all", label: t("All managers", "Všetci manažéri", "Minden menedzser") },
-                  ...managerOptions.map(name => ({ value: name, label: name })),
-                  { value: UNASSIGNED_MANAGER, label: t("Unassigned", "Bez manažéra", "Nincs menedzser") },
-                ]}
-              />
-            </div>
-
-            {/* Star priority. The same dropdown, and the same meanings, as the
-                one over the leads list — both read utils/rating.ts. */}
-            <div className="w-full sm:w-auto sm:min-w-[135px] flex-1 sm:flex-initial shrink-0">
-              <CustomSelect
-                className="h-10"
-                icon={<Star className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
-                value={selectedRatingFilter}
-                onChange={(v) => setSelectedRatingFilter(v)}
-                options={ratingFilterOptions(t)}
-              />
-            </div>
-
-            {/* Order and columns — the only way to sort the cards; the table
-                headers write the same sort preference. */}
-            <div className="sm:ml-auto shrink-0 flex items-center gap-2">
+            {/* Order and columns — Desktop only (sm:flex) */}
+            <div className="hidden sm:flex sm:ml-auto shrink-0 items-center gap-2">
               <ProjectListViewMenu
                 t={t}
                 sort={effectiveSort}
@@ -1518,12 +1574,12 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           ) : viewMode === "list" || isStructure ? (
             <div ref={resultsRef} className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass mt-6 overflow-hidden">
               <div className="overflow-x-auto scrollbar-thin">
-                <table className="w-full text-left border-collapse min-w-[840px]">
+                <table className="w-full text-left border-collapse min-w-0 lg:min-w-[840px]">
                   {/* The head is drawn from the layout the project type set —
                       built-in columns and its own attributes alike — so what a
                       column is, and whether it is here at all, is decided in one
                       place. See utils/projectColumns.ts. */}
-                  <thead>
+                  <thead className="hidden lg:table-header-group">
                     <tr className="border-b border-slate-200 bg-slate-50/70">
                       {activeColumns.map(col => {
                         const key = col.key as ProjectSortKey;
@@ -1587,7 +1643,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                             setEditingProjectType(pType);
                             setEditingProject(p);
                           }}
-                          className={`border-b border-slate-100 last:border-0 hover:bg-indigo-50/40 transition-[background-color,opacity] duration-150 cursor-pointer group ${
+                          className={`border-b border-slate-200/70 lg:border-slate-100 last:border-0 hover:bg-indigo-50/40 transition-[background-color,opacity] duration-150 cursor-pointer group block lg:table-row ${
                             projectDrag.draggedId === p.id ? "opacity-40" : ""
                           } ${
                             // A table row cannot hold a positioned marker, so the drop line is an inset edge on its cells.
@@ -1595,8 +1651,160 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                               : drop === "after" ? "[&>td]:shadow-[inset_0_-2px_0_0_var(--color-indigo-500)]" : ""
                           }`}
                         >
+                          {/* ============================================================ */}
+                          {/* --- MOBILE DEDICATED LIST VIEW (< lg) --- */}
+                          {/* ============================================================ */}
+                          <td
+                            colSpan={activeColumns.length + 1}
+                            className="block lg:hidden p-0 border-none bg-transparent w-full"
+                          >
+                            <div
+                              className="py-3 px-3.5 sm:px-4 border-b border-slate-200/70 hover:bg-slate-500/5 transition-colors cursor-pointer space-y-1.5"
+                              style={{
+                                borderLeft: `3px solid ${pType.color || "#6366f1"}`,
+                              }}
+                            >
+                              {/* TOP ROW: Status badge + Deadlines / Delay (Left) | Quick Actions (Right) */}
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${projectStatusBadgeClass(p.status)}`}>
+                                    {projectStatusLabel(p.status, t)}
+                                  </span>
+                                  {dl && (
+                                    <div className="shrink-0 flex items-center gap-1">
+                                      {renderDeadlineBadge(dl)}
+                                      {renderDelayFlag(p, dl)}
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Right side: Quick Action Buttons */}
+                                <div
+                                  className="flex items-center gap-1 shrink-0"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingProjectType(pType);
+                                      setEditingProject(p);
+                                    }}
+                                    className="h-6 w-6 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-slate-200/60 flex items-center justify-center transition-colors cursor-pointer"
+                                    title={t("Edit project", "Upraviť projekt", "Projekt szerkesztése")}
+                                  >
+                                    <Edit3 className="h-3.5 w-3.5" />
+                                  </button>
+                                  {canDelete && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => handleDeleteProject(p.id, e)}
+                                      className="h-6 w-6 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center transition-colors cursor-pointer"
+                                      title={t("Delete Project", "Vymazať projekt", "Projekt törlése")}
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* FULL-WIDTH NAME ROW: Name (Its Own Line) + Rating */}
+                              <div className="flex items-center gap-2 min-w-0 py-0.5">
+                                <span className="font-bold text-slate-900 text-sm sm:text-base leading-snug break-words">
+                                  {title}
+                                </span>
+                                {ratingValue(p.rating) > 0 && (
+                                  <div
+                                    className="scale-75 origin-left shrink-0"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <StarRating
+                                      rating={ratingValue(p.rating)}
+                                      onChange={canEdit ? (stars) => handleRateProject(p.id, stars) : undefined}
+                                      userLanguage={userLanguage}
+                                    />
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* METADATA ROW: Type, Client, Manager, Division */}
+                              <div className="flex flex-wrap items-center gap-1.5 pt-0.5 text-xs">
+                                {/* Project Type Badge */}
+                                <span
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold shadow-2xs shrink-0"
+                                  style={{ backgroundColor: pType.color, color: readableOn(pType.color) }}
+                                >
+                                  {renderIcon(pType.icon, "h-3 w-3")}
+                                  <span>{pType.name}</span>
+                                </span>
+
+                                {/* Client Name */}
+                                {lead && lead.name !== title && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200/80 shrink-0">
+                                    <Briefcase className="h-3 w-3 text-slate-400 shrink-0" />
+                                    <span className="truncate max-w-[140px]">{lead.name}</span>
+                                  </span>
+                                )}
+                                {!lead && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium text-slate-400 bg-slate-50 border border-slate-200/50 shrink-0">
+                                    {t("Unassigned", "Nepriradený", "Nincs")}
+                                  </span>
+                                )}
+
+                                {/* Managers */}
+                                {p.managers && p.managers.length > 0 ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-slate-200 text-[10px] font-bold text-slate-700 bg-slate-50 shrink-0">
+                                    <Users className="h-3 w-3 text-slate-400 shrink-0" />
+                                    <span className="truncate max-w-[140px]">{p.managers.join(", ")}</span>
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-rose-200 text-[10px] font-semibold text-rose-600 bg-rose-50 shrink-0">
+                                    <User className="h-3 w-3 shrink-0" />
+                                    <span>{t("No manager", "Bez manažéra", "Nincs menedzser")}</span>
+                                  </span>
+                                )}
+
+                                {/* Division */}
+                                {p.division && (
+                                  <span
+                                    className="px-2 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-wider inline-flex items-center gap-1 shadow-2xs shrink-0"
+                                    style={{
+                                      backgroundColor: `${divisionColors[p.division] || "#3b82f6"}15`,
+                                      color: divisionColors[p.division] || "#3b82f6",
+                                      borderColor: `${divisionColors[p.division] || "#3b82f6"}30`,
+                                    }}
+                                  >
+                                    <Icons.Building2 className="h-2.5 w-2.5 shrink-0" />
+                                    <span>{p.division}</span>
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Roadmap Progress Bar */}
+                              {pType.hasGantt && p.gantt && p.gantt.length > 0 && (
+                                <div className="pt-1 select-none space-y-1">
+                                  <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase">
+                                    <span>{t("Progress", "Postup", "Haladás")}</span>
+                                    <span className="text-slate-700 font-bold">{progress}%</span>
+                                  </div>
+                                  <div className="h-1.5 rounded-full bg-slate-100 relative overflow-hidden border border-slate-200/50">
+                                    <div
+                                      className="h-full rounded-full transition-all duration-300"
+                                      style={{
+                                        width: `${progress}%`,
+                                        backgroundColor: pType.color,
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+
+                          {/* ============================================================ */}
+                          {/* --- DESKTOP TABLE CELLS (lg:table-cell) --- */}
+                          {/* ============================================================ */}
                           {activeColumns.map((col, colIndex) => (
-                            <td key={col.key} className={`px-4 py-3 ${colIndex === 0 ? "relative" : ""}`}>
+                            <td key={col.key} className={`hidden lg:table-cell px-4 py-3 ${colIndex === 0 ? "relative" : ""}`}>
                               {colIndex === 0 && isStructure ? (
                                 /* The structure's move handle sits in front of the
                                    first cell and is always shown, as in a CMS
@@ -1623,7 +1831,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                               )}
                             </td>
                           ))}
-                          <td className="px-4 py-3">
+                          <td className="hidden lg:table-cell px-4 py-3">
                             {canDelete && (
                               <button
                                 type="button"
