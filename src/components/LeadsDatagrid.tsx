@@ -9716,7 +9716,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                     null,
                                                                                 )
                                                                             }
-                                                                            className={`block lg:table-row border-b-[3px] border-slate-200/90 lg:border-b-0 p-4 lg:p-0 transition-colors duration-150 group`}
+                                                                            className={`block lg:table-row border-none lg:border-b lg:border-slate-100 p-1.5 sm:p-2 lg:p-0 transition-colors duration-150 group`}
                                                                             style={{
                                                                                 backgroundColor:
                                                                                     isInlineEditing
@@ -9727,6 +9727,321 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                           : `${leadColor}06`,
                                                                             }}
                                                                         >
+                                                                            {/* ============================================================ */}
+                                                                            {/* --- MOBILE DEDICATED CARD VIEW (< lg) --- */}
+                                                                            {/* ============================================================ */}
+                                                                            <td
+                                                                                colSpan={9}
+                                                                                className="block lg:hidden p-0 border-none bg-transparent w-full"
+                                                                            >
+                                                                                {isInlineEditing ? (
+                                                                                    <div
+                                                                                        className="p-3.5 rounded-2xl border border-blue-400/80 bg-blue-50/50 dark:bg-slate-900/90 shadow-md space-y-3"
+                                                                                        onClick={(e) => e.stopPropagation()}
+                                                                                    >
+                                                                                        <div className="flex items-center justify-between gap-2">
+                                                                                            <span className="text-xs font-black text-blue-700 dark:text-blue-400 uppercase tracking-wider">
+                                                                                                {t("Edit Lead", "Upraviť lead", "Lead szerkesztése")}
+                                                                                            </span>
+                                                                                            <div className="flex items-center gap-1.5">
+                                                                                                <button
+                                                                                                    onClick={() => saveInlineEdit(lead.id)}
+                                                                                                    className="h-7 px-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white flex items-center gap-1 text-xs font-bold shadow-xs transition-colors"
+                                                                                                >
+                                                                                                    <Check className="h-3.5 w-3.5" /> {t("Save", "Uložiť", "Mentés")}
+                                                                                                </button>
+                                                                                                <button
+                                                                                                    onClick={() => setEditingRowId(null)}
+                                                                                                    className="h-7 px-2 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-300 flex items-center text-xs font-medium transition-colors"
+                                                                                                >
+                                                                                                    <X className="h-3.5 w-3.5" />
+                                                                                                </button>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                        <div className="grid grid-cols-2 gap-2">
+                                                                                            <div className="col-span-2">
+                                                                                                <label className="text-[9px] font-bold text-slate-400 uppercase">
+                                                                                                    {t("Name", "Meno", "Név")}
+                                                                                                </label>
+                                                                                                <input
+                                                                                                    type="text"
+                                                                                                    value={inlineName}
+                                                                                                    onChange={(e) => setInlineName(e.target.value)}
+                                                                                                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                                                                />
+                                                                                            </div>
+                                                                                            <div>
+                                                                                                <label className="text-[9px] font-bold text-slate-400 uppercase">
+                                                                                                    {t("City", "Mesto", "Város")}
+                                                                                                </label>
+                                                                                                <input
+                                                                                                    type="text"
+                                                                                                    value={inlineCity}
+                                                                                                    onChange={(e) => setInlineCity(e.target.value)}
+                                                                                                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                                                                />
+                                                                                            </div>
+                                                                                            <div>
+                                                                                                <label className="text-[9px] font-bold text-slate-400 uppercase">
+                                                                                                    {t("Value", "Hodnota", "Érték")}
+                                                                                                </label>
+                                                                                                <input
+                                                                                                    type="number"
+                                                                                                    value={inlineValue}
+                                                                                                    onChange={(e) => setInlineValue(e.target.value)}
+                                                                                                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                                                                />
+                                                                                            </div>
+                                                                                            <div>
+                                                                                                <label className="text-[9px] font-bold text-slate-400 uppercase">
+                                                                                                    {t("Type", "Typ", "Típus")}
+                                                                                                </label>
+                                                                                                <CustomSelect
+                                                                                                    value={inlineType}
+                                                                                                    onChange={(v) => setInlineType(v as any)}
+                                                                                                    size="sm"
+                                                                                                    options={[
+                                                                                                        { value: "person", label: t("Person", "Osoba", "Személy") },
+                                                                                                        { value: "business", label: t("Business", "Firma", "Cég") },
+                                                                                                        { value: "partner", label: t("Partner", "Partner", "Partner") },
+                                                                                                    ]}
+                                                                                                />
+                                                                                            </div>
+                                                                                            <div>
+                                                                                                <label className="text-[9px] font-bold text-slate-400 uppercase">
+                                                                                                    {t("Source", "Zdroj", "Forrás")}
+                                                                                                </label>
+                                                                                                <CustomSelect
+                                                                                                    value={inlineSource}
+                                                                                                    onChange={(v) => setInlineSource(v)}
+                                                                                                    size="sm"
+                                                                                                    options={leadSources.map((src) => ({ value: src, label: src }))}
+                                                                                                />
+                                                                                            </div>
+                                                                                            <div className="col-span-2">
+                                                                                                <label className="text-[9px] font-bold text-slate-400 uppercase">
+                                                                                                    {t("Manager", "Manažér", "Menedzser")}
+                                                                                                </label>
+                                                                                                <CustomSelect
+                                                                                                    value={inlineOwner}
+                                                                                                    onChange={(v) => setInlineOwner(v)}
+                                                                                                    size="sm"
+                                                                                                    options={projectManagers.map((pm) => ({ value: pm, label: pm }))}
+                                                                                                />
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                ) : (
+                                                                                    <div
+                                                                                        onClick={() => {
+                                                                                            window.location.hash = `lead-${lead.id}`;
+                                                                                        }}
+                                                                                        className="relative p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-800/90 bg-white/95 dark:bg-slate-900/90 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer space-y-2.5 overflow-hidden"
+                                                                                        style={{
+                                                                                            borderLeftWidth: "4px",
+                                                                                            borderLeftColor: leadColor,
+                                                                                        }}
+                                                                                    >
+                                                                                        {/* TOP ROW: Avatar + Name & Rating (Left) | Value + Actions (Right) */}
+                                                                                        <div className="flex items-start justify-between gap-2">
+                                                                                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                                                                                                <div
+                                                                                                    className={`rounded-xl bg-blue-100 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 font-heading font-black flex items-center justify-center shrink-0 shadow-inner border border-blue-200/50 dark:border-blue-800/40 ${
+                                                                                                        compactMode ? "h-7 w-7 text-[9px]" : "h-8.5 w-8.5 text-[11px]"
+                                                                                                    }`}
+                                                                                                >
+                                                                                                    {getInitials(lead.name)}
+                                                                                                </div>
+                                                                                                <div className="flex flex-col min-w-0 flex-1">
+                                                                                                    <span className="font-bold text-slate-900 dark:text-slate-100 text-sm leading-snug truncate">
+                                                                                                        {lead.name}
+                                                                                                    </span>
+                                                                                                    {!compactMode && (
+                                                                                                        <div
+                                                                                                            className="scale-85 origin-left mt-0.5"
+                                                                                                            onClick={(e) => e.stopPropagation()}
+                                                                                                        >
+                                                                                                            {renderStars(lead.rating || 0, (newRating) => {
+                                                                                                                setLeads((prev) =>
+                                                                                                                    prev.map((l) =>
+                                                                                                                        l.id === lead.id ? { ...l, rating: newRating } : l
+                                                                                                                    )
+                                                                                                                );
+                                                                                                            })}
+                                                                                                        </div>
+                                                                                                    )}
+                                                                                                </div>
+                                                                                            </div>
+
+                                                                                            {/* Right side: Value Badge + Action Icons */}
+                                                                                            <div className="flex items-center gap-1.5 shrink-0">
+                                                                                                <span className="font-heading font-black text-xs sm:text-sm text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded-lg border border-blue-200/70 dark:border-blue-800/60 whitespace-nowrap shadow-xs">
+                                                                                                    {money(lead.value, { minimumFractionDigits: 2 })}
+                                                                                                </span>
+                                                                                                <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
+                                                                                                    <button
+                                                                                                        onClick={() => {
+                                                                                                            window.location.hash = `lead-${lead.id}`;
+                                                                                                        }}
+                                                                                                        className="h-7 w-7 rounded-lg text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-800 flex items-center justify-center transition-colors"
+                                                                                                        title={t("Open Edit Slideout", "Otvoriť panel úprav", "Szerkesztő panel megnyitása")}
+                                                                                                    >
+                                                                                                        <Edit3 className="h-3.5 w-3.5" />
+                                                                                                    </button>
+                                                                                                    <button
+                                                                                                        onClick={() => {
+                                                                                                            handleDeleteLead(lead.id, lead.name);
+                                                                                                        }}
+                                                                                                        className="h-7 w-7 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-slate-800 flex items-center justify-center transition-colors"
+                                                                                                        title={t("Delete Lead", "Odstrániť lead", "Lead törlése")}
+                                                                                                    >
+                                                                                                        <Trash2 className="h-3.5 w-3.5" />
+                                                                                                    </button>
+                                                                                                </div>
+                                                                                            </div>
+                                                                                        </div>
+
+                                                                                        {/* META INFO ROW: Date + Location */}
+                                                                                        <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 font-medium">
+                                                                                            <div className="flex items-center gap-1.5">
+                                                                                                <Calendar className="h-3.5 w-3.5 text-blue-500/80 dark:text-blue-400 shrink-0" />
+                                                                                                <span>
+                                                                                                    {(() => {
+                                                                                                        if (!lead.createdAt) return "N/A";
+                                                                                                        const dateMatch = lead.createdAt.match(/^(\d{4})-(\d{2})-(\d{2})/);
+                                                                                                        if (!dateMatch) return lead.createdAt;
+                                                                                                        const [, yyyy, mm, dd] = dateMatch;
+                                                                                                        if (systemLanguage === "sk") return `${dd}.${mm}.${yyyy}`;
+                                                                                                        if (systemLanguage === "hu") return `${yyyy}.${mm}.${dd}.`;
+                                                                                                        return `${mm}/${dd}/${yyyy}`;
+                                                                                                    })()}
+                                                                                                </span>
+                                                                                            </div>
+                                                                                            {lead.city && (
+                                                                                                <div className="flex items-center gap-1.5 min-w-0">
+                                                                                                    <MapPin className="h-3.5 w-3.5 text-blue-500/80 dark:text-blue-400 shrink-0" />
+                                                                                                    <span className="truncate max-w-[180px]">{lead.city}</span>
+                                                                                                </div>
+                                                                                            )}
+                                                                                        </div>
+
+                                                                                        {/* BADGES ROW: Client Type + Lead Source + PM Assignee */}
+                                                                                        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                                                                                            {/* Client Type */}
+                                                                                            {lead.clientType === "business" && (
+                                                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60">
+                                                                                                    <Briefcase className="h-2.5 w-2.5" /> {t("Business", "Firma", "Cég")}
+                                                                                                </span>
+                                                                                            )}
+                                                                                            {lead.clientType === "partner" && (
+                                                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60">
+                                                                                                    <Handshake className="h-2.5 w-2.5" /> {t("Partner", "Partner", "Partner")}
+                                                                                                </span>
+                                                                                            )}
+                                                                                            {lead.clientType === "person" && (
+                                                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800/60">
+                                                                                                    <User className="h-2.5 w-2.5" /> {t("Person", "Osoba", "Személy")}
+                                                                                                </span>
+                                                                                            )}
+
+                                                                                            {/* Lead Source */}
+                                                                                            {lead.source && (
+                                                                                                <span
+                                                                                                    className="px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase border select-none transition-colors whitespace-nowrap"
+                                                                                                    style={{
+                                                                                                        backgroundColor: `${getSafeSourceColor(lead.source)}18`,
+                                                                                                        color: liftAccent(getSafeSourceColor(lead.source)),
+                                                                                                        borderColor: `${getSafeSourceColor(lead.source)}35`,
+                                                                                                    }}
+                                                                                                >
+                                                                                                    {lead.source}
+                                                                                                </span>
+                                                                                            )}
+
+                                                                                            {/* Project Manager */}
+                                                                                            {!lead.owner || lead.owner.toLowerCase() === "unassigned" ? (
+                                                                                                <span className="px-2 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-wider flex items-center gap-1 bg-rose-50 dark:bg-rose-950/40 border-rose-300 dark:border-rose-900/60 text-rose-600 dark:text-rose-400">
+                                                                                                    <User className="h-2.5 w-2.5 shrink-0" />
+                                                                                                    {systemLanguage === "sk" ? "Nepriradený" : systemLanguage === "hu" ? "Nincs" : "Unassigned"}
+                                                                                                </span>
+                                                                                            ) : (
+                                                                                                <span
+                                                                                                    className="px-2 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-wider flex items-center gap-1 shadow-xs"
+                                                                                                    style={{
+                                                                                                        backgroundColor: `${getSafePMColor(lead.owner)}18`,
+                                                                                                        color: liftAccent(getSafePMColor(lead.owner)),
+                                                                                                        borderColor: `${getSafePMColor(lead.owner)}30`,
+                                                                                                    }}
+                                                                                                >
+                                                                                                    <User className="h-2.5 w-2.5 shrink-0" />
+                                                                                                    {lead.owner}
+                                                                                                </span>
+                                                                                            )}
+                                                                                        </div>
+
+                                                                                        {/* WORKFLOW BAR: Stage Selector (Left) & Next Up (Right) */}
+                                                                                        <div
+                                                                                            className="p-2.5 rounded-xl bg-slate-50/90 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 flex items-center justify-between gap-2"
+                                                                                            onClick={(e) => e.stopPropagation()}
+                                                                                        >
+                                                                                            {/* Stage */}
+                                                                                            <div className="flex flex-col gap-1 min-w-0">
+                                                                                                <span className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">
+                                                                                                    {t("Stage", "Fáza", "Fázis")}
+                                                                                                </span>
+                                                                                                <div className="flex items-center gap-1.5 flex-wrap">
+                                                                                                    <StatusSelector
+                                                                                                        status={lead.status}
+                                                                                                        onChange={(newStatus) => handleUpdateLeadState(lead.id, newStatus)}
+                                                                                                    />
+                                                                                                    {breachedSlaById[lead.id] && (
+                                                                                                        <SlaBreachBadge
+                                                                                                            sla={breachedSlaById[lead.id]}
+                                                                                                            lang={systemLanguage}
+                                                                                                        />
+                                                                                                    )}
+                                                                                                </div>
+                                                                                            </div>
+
+                                                                                            {/* Next Up */}
+                                                                                            <div className="flex flex-col text-right min-w-0 max-w-[50%] shrink-0 pl-2 border-l border-slate-200/80 dark:border-slate-700/60">
+                                                                                                <span className="text-[8px] font-black text-purple-600 dark:text-purple-400 uppercase tracking-wider">
+                                                                                                    {systemLanguage === "sk" ? "Nasleduje" : systemLanguage === "hu" ? "Következik" : "Next Up"}
+                                                                                                </span>
+                                                                                                {(() => {
+                                                                                                    const nextTask = getNextTaskForLead(lead.id);
+                                                                                                    if (nextTask) {
+                                                                                                        return (
+                                                                                                            <span
+                                                                                                                className="text-[10px] font-bold text-slate-700 dark:text-slate-300 truncate flex items-center justify-end gap-1 mt-0.5"
+                                                                                                                title={nextTask.title}
+                                                                                                            >
+                                                                                                                {nextTask.isAiGenerated && (
+                                                                                                                    <Brain className="h-3 w-3 text-purple-600 dark:text-purple-400 shrink-0" />
+                                                                                                                )}
+                                                                                                                <span className="truncate">{nextTask.title}</span>
+                                                                                                            </span>
+                                                                                                        );
+                                                                                                    }
+                                                                                                    const nextState = getNextState(lead.status);
+                                                                                                    return (
+                                                                                                        <span
+                                                                                                            className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide truncate mt-0.5"
+                                                                                                            title={nextState || ""}
+                                                                                                        >
+                                                                                                            {nextState || (systemLanguage === "sk" ? "Koniec" : systemLanguage === "hu" ? "Vége" : "Done")}
+                                                                                                        </span>
+                                                                                                    );
+                                                                                                })()}
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                )}
+                                                                            </td>
+
+                                                                            {/* ============================================================ */}
+                                                                            {/* --- DESKTOP TABLE CELLS (>= lg) --- */}
+                                                                            {/* ============================================================ */}
                                                                             {/* --- COLUMN 1: CLIENT NAME --- */}
                                                                             <td
                                                                                 onClick={() => {
@@ -9736,7 +10051,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                         window.location.hash = `lead-${lead.id}`;
                                                                                     }
                                                                                 }}
-                                                                                className={`block lg:table-cell px-0 lg:px-6 font-bold text-slate-900 cursor-pointer mb-2 lg:mb-0 w-full lg:w-auto ${nameCellPy}`}
+                                                                                className={`hidden lg:table-cell px-0 lg:px-6 font-bold text-slate-900 cursor-pointer mb-2 lg:mb-0 w-full lg:w-auto ${nameCellPy}`}
                                                                             >
                                                                                 {isInlineEditing ? (
                                                                                     <input
@@ -9821,7 +10136,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                         lead,
                                                                                     )
                                                                                 }
-                                                                                className={`inline-flex items-center lg:table-cell px-0 lg:px-4 text-slate-500 font-semibold cursor-pointer mr-3.5 ${cellPy}`}
+                                                                                className={`hidden lg:table-cell px-0 lg:px-4 text-slate-500 font-semibold cursor-pointer ${cellPy}`}
                                                                             >
                                                                                 <div className="flex items-center gap-1.5 text-slate-600">
                                                                                     <Calendar className="h-3.5 w-3.5 text-blue-400 shrink-0" />
@@ -9847,9 +10162,6 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                             ] =
                                                                                                 dateMatch;
 
-                                                                                            // EN: MM/DD/YYYY
-                                                                                            // SK: DD.MM.YYYY
-                                                                                            // HU: YYYY.MM.DD.
                                                                                             if (
                                                                                                 systemLanguage ===
                                                                                                 "sk"
@@ -9876,7 +10188,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                         lead,
                                                                                     )
                                                                                 }
-                                                                                className={`inline-flex items-center lg:table-cell px-0 lg:px-4 text-slate-500 font-semibold cursor-pointer mr-3.5 ${cellPy}`}
+                                                                                className={`hidden lg:table-cell px-0 lg:px-4 text-slate-500 font-semibold cursor-pointer ${cellPy}`}
                                                                             >
                                                                                 {isInlineEditing ? (
                                                                                     <input
@@ -9920,7 +10232,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                         lead,
                                                                                     )
                                                                                 }
-                                                                                className={`inline-flex items-center lg:table-cell px-0 lg:px-4 cursor-pointer mr-3.5 ${cellPy}`}
+                                                                                className={`hidden lg:table-cell px-0 lg:px-4 cursor-pointer ${cellPy}`}
                                                                             >
                                                                                 {isInlineEditing ? (
                                                                                     <div
@@ -10017,7 +10329,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                         lead,
                                                                                     )
                                                                                 }
-                                                                                className={`inline-flex items-center lg:table-cell px-0 lg:px-4 cursor-pointer mr-3.5 ${cellPy}`}
+                                                                                className={`hidden lg:table-cell px-0 lg:px-4 cursor-pointer ${cellPy}`}
                                                                             >
                                                                                 {isInlineEditing ? (
                                                                                     <div
@@ -10076,7 +10388,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                         lead,
                                                                                     )
                                                                                 }
-                                                                                className={`inline-flex items-center lg:table-cell px-0 lg:px-4 text-slate-500 font-medium cursor-pointer mr-3.5 ${cellPy}`}
+                                                                                className={`hidden lg:table-cell px-0 lg:px-4 text-slate-500 font-medium cursor-pointer ${cellPy}`}
                                                                             >
                                                                                 {isInlineEditing ? (
                                                                                     <div
@@ -10110,9 +10422,6 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                     </div>
                                                                                 ) : (
                                                                                     <div className="flex items-center gap-1.5">
-                                                                                        <span className="text-[9px] font-black text-slate-400 lg:hidden uppercase tracking-wider">
-                                                                                            PM:
-                                                                                        </span>
                                                                                         {!lead.owner ||
                                                                                         lead.owner.toLowerCase() ===
                                                                                             "unassigned" ? (
@@ -10155,7 +10464,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                         lead,
                                                                                     )
                                                                                 }
-                                                                                className={`inline-flex items-center lg:table-cell px-0 lg:px-4 font-heading font-black text-blue-700 cursor-pointer mr-3.5 ${cellPy}`}
+                                                                                className={`hidden lg:table-cell px-0 lg:px-4 font-heading font-black text-blue-700 cursor-pointer ${cellPy}`}
                                                                             >
                                                                                 {isInlineEditing ? (
                                                                                     <input
@@ -10181,13 +10490,6 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                     />
                                                                                 ) : (
                                                                                     <div className="flex items-center gap-1">
-                                                                                        <span className="text-[9px] font-black text-slate-400 lg:hidden uppercase tracking-wider">
-                                                                                            {t(
-                                                                                                "Val:",
-                                                                                                "Hodn.:",
-                                                                                                "Érték:",
-                                                                                            )}
-                                                                                        </span>
                                                                                         <span className="border-b border-transparent hover:border-blue-400/50 transition-all font-black text-blue-700 whitespace-nowrap">
                                                                                             {money(
                                                                                                 lead.value,
@@ -10202,17 +10504,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                                                                             {/* --- COLUMN 7: LEAD STATE (Dropdown) --- */}
                                                                             <td
-                                                                                className={`inline-flex items-center lg:table-cell px-0 lg:px-4 mr-3.5 border-b border-slate-100 lg:border-b-0 ${cellPy}`}
+                                                                                className={`hidden lg:table-cell px-0 lg:px-4 ${cellPy}`}
                                                                             >
                                                                                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 w-full">
                                                                                     <div className="flex items-center gap-1 shrink-0">
-                                                                                        <span className="text-[9px] font-black text-slate-400 lg:hidden uppercase tracking-wider mr-1">
-                                                                                            {t(
-                                                                                                "Stage:",
-                                                                                                "Fáza:",
-                                                                                                "Fázis:",
-                                                                                            )}
-                                                                                        </span>
                                                                                         <StatusSelector
                                                                                             status={
                                                                                                 lead.status
@@ -10320,7 +10615,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                                                                             {/* --- COLUMN 8: ACTIONS --- */}
                                                                             <td
-                                                                                className={`block lg:table-cell px-0 lg:px-6 text-center border-t border-slate-100 lg:border-t-0 mt-2.5 lg:mt-0 pt-2.5 lg:pt-3 ${cellPy}`}
+                                                                                className={`hidden lg:table-cell px-0 lg:px-6 text-center pt-2.5 lg:pt-3 ${cellPy}`}
                                                                             >
                                                                                 {isInlineEditing ? (
                                                                                     <div className="flex items-center justify-center gap-2">
@@ -10417,7 +10712,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                         null,
                                                                                     )
                                                                                 }
-                                                                                className="block lg:table-row border-none hover:bg-transparent"
+                                                                                className="hidden lg:table-row border-none hover:bg-transparent"
                                                                             >
                                                                                 <td
                                                                                     colSpan={
