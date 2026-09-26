@@ -2260,58 +2260,124 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     />
                 </div>
 
-                {/* Main 2-line task body */}
-                <div className="flex-1 min-w-0 flex flex-col gap-1">
-                    {/* Line 1: Status dropdown + Priority Icon + Task Name */}
-                    <div className="flex items-center gap-2 min-w-0">
-                        <div
-                            className="w-[96px] shrink-0"
-                            style={
-                                {
-                                    "--task-status-bg": `${taskStateColors[task.status] || "#64748b"}15`,
-                                    "--task-status-color": taskStateColors[task.status] || "#64748b",
-                                    "--task-status-border": `${taskStateColors[task.status] || "#64748b"}35`,
-                                } as React.CSSProperties
-                            }
-                        >
-                            <CustomSelect
-                                value={task.status}
-                                disabled={!mayEditTask(task)}
-                                size="sm"
-                                onChange={(newStatus) => {
-                                    const now = new Date();
-                                    const completedAtStr = isDoneState(newStatus)
-                                        ? toLocalDateStr(now) +
-                                          " " +
-                                          now.toTimeString().split(" ")[0].substring(0, 5)
-                                        : undefined;
-                                    const completedByName = isDoneState(newStatus)
-                                        ? currentUser?.name || defaultUserName
-                                        : undefined;
+                {/* Main task body */}
+                <div className="flex-1 min-w-0 flex flex-col gap-1.5 sm:gap-1">
+                    {/* Top Row:
+                        - On mobile (<sm): Status dropdown + Priority Icon on Left, Quick action buttons on Right
+                        - On desktop (sm+): Status dropdown + Priority Icon + Title inline
+                    */}
+                    <div className="flex items-center justify-between sm:justify-start gap-2 min-w-0">
+                        <div className="flex items-center gap-2 min-w-0 flex-1 sm:flex-initial">
+                            <div
+                                className="w-[96px] shrink-0"
+                                style={
+                                    {
+                                        "--task-status-bg": `${taskStateColors[task.status] || "#64748b"}15`,
+                                        "--task-status-color": taskStateColors[task.status] || "#64748b",
+                                        "--task-status-border": `${taskStateColors[task.status] || "#64748b"}35`,
+                                    } as React.CSSProperties
+                                }
+                            >
+                                <CustomSelect
+                                    value={task.status}
+                                    disabled={!mayEditTask(task)}
+                                    size="sm"
+                                    onChange={(newStatus) => {
+                                        const now = new Date();
+                                        const completedAtStr = isDoneState(newStatus)
+                                            ? toLocalDateStr(now) +
+                                              " " +
+                                              now.toTimeString().split(" ")[0].substring(0, 5)
+                                            : undefined;
+                                        const completedByName = isDoneState(newStatus)
+                                            ? currentUser?.name || defaultUserName
+                                            : undefined;
 
-                                    setTasks((prev) =>
-                                        prev.map((t) =>
-                                            t.id === task.id
-                                                ? {
-                                                      ...t,
-                                                      status: newStatus,
-                                                      completedBy: completedByName,
-                                                      completedAt: completedAtStr,
-                                                  }
-                                                : t,
-                                        ),
-                                    );
-                                }}
-                                className="!bg-[var(--task-status-bg)] !text-[var(--task-status-color)] !border-[var(--task-status-border)] !text-[10px] !py-0.5 !px-2 font-black uppercase tracking-wider truncate"
-                                options={taskStates.map((st) => ({ value: st, label: stateLabel(st) }))}
-                            />
+                                        setTasks((prev) =>
+                                            prev.map((t) =>
+                                                t.id === task.id
+                                                    ? {
+                                                          ...t,
+                                                          status: newStatus,
+                                                          completedBy: completedByName,
+                                                          completedAt: completedAtStr,
+                                                      }
+                                                    : t,
+                                            ),
+                                        );
+                                    }}
+                                    className="!bg-[var(--task-status-bg)] !text-[var(--task-status-color)] !border-[var(--task-status-border)] !text-[10px] !py-0.5 !px-2 font-black uppercase tracking-wider truncate"
+                                    options={taskStates.map((st) => ({ value: st, label: stateLabel(st) }))}
+                                />
+                            </div>
+
+                            {renderPriorityIcon(task.priority, "h-3.5 w-3.5 shrink-0")}
+
+                            {/* Desktop-only Title: inline with status dropdown */}
+                            <span
+                                onClick={() => setEditingTask(task)}
+                                className="hidden sm:inline font-bold text-slate-800 truncate cursor-pointer hover:text-indigo-600 transition-colors"
+                                title={task.title}
+                            >
+                                {task.title}
+                            </span>
                         </div>
 
-                        {renderPriorityIcon(task.priority, "h-3.5 w-3.5 shrink-0")}
+                        {/* Mobile-only Quick Action Buttons placed at top right next to status */}
+                        <div className="flex sm:hidden items-center gap-0.5 shrink-0">
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleArchiveTask(task);
+                                }}
+                                className="p-1 hover:bg-slate-100 active:scale-95 rounded-md text-slate-400 hover:text-slate-600 transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-35"
+                                disabled={!mayArchiveTask(task)}
+                                title={
+                                    mayArchiveTask(task)
+                                        ? t(
+                                              "Archive Task",
+                                              "Archivovať úlohu",
+                                              "Feladat archiválása",
+                                          )
+                                        : archiveDeniedHint()
+                                }
+                            >
+                                <ArchiveIcon className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingTask(task);
+                                }}
+                                className="p-1 hover:bg-slate-100 active:scale-95 rounded-md text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+                                title={
+                                    mayEditTask(task)
+                                        ? t(
+                                              "Edit Task",
+                                              "Upraviť úlohu",
+                                              "Feladat szerkesztése",
+                                          )
+                                        : t(
+                                              "View Task",
+                                              "Zobraziť úlohu",
+                                              "Feladat megtekintése",
+                                          )
+                                }
+                            >
+                                {mayEditTask(task) ? (
+                                    <Settings className="h-3.5 w-3.5" />
+                                ) : (
+                                    <Eye className="h-3.5 w-3.5" />
+                                )}
+                            </button>
+                        </div>
+                    </div>
 
+                    {/* Mobile-only Dedicated Title Row (Full width, maximum visibility, no truncation pressure) */}
+                    <div className="sm:hidden w-full">
                         <span
                             onClick={() => setEditingTask(task)}
-                            className="font-bold text-slate-800 truncate cursor-pointer hover:text-indigo-600 transition-colors"
+                            className="font-bold text-slate-900 text-xs leading-snug cursor-pointer hover:text-indigo-600 transition-colors break-words line-clamp-3 block"
                             title={task.title}
                         >
                             {task.title}
@@ -2319,7 +2385,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     </div>
 
                     {/* Line 2: Everything else (delegated badge, lead/client, project, due date/time, assignee) */}
-                    <div className="flex items-center gap-2 flex-wrap min-w-0 text-[10px]">
+                    <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0 text-[10px]">
                         {isDelegatedByMe(task) && (
                             <span
                                 title={t(
@@ -2363,15 +2429,15 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         )}
 
                         {task.description && (
-                            <span className="text-slate-400 font-medium truncate max-w-[180px]" title={task.description}>
+                            <span className="text-slate-400 font-medium truncate max-w-[240px] sm:max-w-[180px]" title={task.description}>
                                 {task.description}
                             </span>
                         )}
                     </div>
                 </div>
 
-                {/* Right side quick action buttons */}
-                <div className="flex items-center gap-0.5 shrink-0 pt-0.5">
+                {/* Desktop-only right side quick action buttons */}
+                <div className="hidden sm:flex items-center gap-0.5 shrink-0 pt-0.5">
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
