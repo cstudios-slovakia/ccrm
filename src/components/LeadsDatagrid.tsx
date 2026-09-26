@@ -9716,7 +9716,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                     null,
                                                                                 )
                                                                             }
-                                                                            className={`block lg:table-row border-none lg:border-b lg:border-slate-100 p-1.5 sm:p-2 lg:p-0 transition-colors duration-150 group`}
+                                                                            className={`block lg:table-row border-none lg:border-b lg:border-slate-100 p-0 lg:p-0 transition-colors duration-150 group`}
                                                                             style={{
                                                                                 backgroundColor:
                                                                                     isInlineEditing
@@ -9728,7 +9728,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                             }}
                                                                         >
                                                                             {/* ============================================================ */}
-                                                                            {/* --- MOBILE DEDICATED CARD VIEW (< lg) --- */}
+                                                                            {/* --- MOBILE DEDICATED LIST VIEW (< lg) --- */}
                                                                             {/* ============================================================ */}
                                                                             <td
                                                                                 colSpan={9}
@@ -9736,7 +9736,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                             >
                                                                                 {isInlineEditing ? (
                                                                                     <div
-                                                                                        className="p-3.5 rounded-2xl border border-blue-400/80 bg-blue-50/50 dark:bg-slate-900/90 shadow-md space-y-3"
+                                                                                        className="p-3.5 border-b border-blue-400/80 bg-blue-50/40 dark:bg-slate-900/80 space-y-3"
                                                                                         onClick={(e) => e.stopPropagation()}
                                                                                     >
                                                                                         <div className="flex items-center justify-between gap-2">
@@ -9767,7 +9767,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                                     type="text"
                                                                                                     value={inlineName}
                                                                                                     onChange={(e) => setInlineName(e.target.value)}
-                                                                                                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                                                                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-900 dark:text-slate-100"
                                                                                                 />
                                                                                             </div>
                                                                                             <div>
@@ -9778,7 +9778,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                                     type="text"
                                                                                                     value={inlineCity}
                                                                                                     onChange={(e) => setInlineCity(e.target.value)}
-                                                                                                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                                                                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-900 dark:text-slate-100"
                                                                                                 />
                                                                                             </div>
                                                                                             <div>
@@ -9789,7 +9789,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                                     type="number"
                                                                                                     value={inlineValue}
                                                                                                     onChange={(e) => setInlineValue(e.target.value)}
-                                                                                                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500"
+                                                                                                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-900 dark:text-slate-100"
                                                                                                 />
                                                                                             </div>
                                                                                             <div>
@@ -9836,113 +9836,93 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                         onClick={() => {
                                                                                             window.location.hash = `lead-${lead.id}`;
                                                                                         }}
-                                                                                        className="relative p-3.5 rounded-2xl border border-slate-200/80 dark:border-slate-800/90 bg-white/95 dark:bg-slate-900/90 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer space-y-2.5 overflow-hidden"
+                                                                                        className="py-3 px-3.5 sm:px-4 border-b border-slate-200/60 dark:border-slate-800/80 hover:bg-slate-500/5 dark:hover:bg-slate-500/10 transition-colors cursor-pointer space-y-1.5"
                                                                                         style={{
-                                                                                            borderLeftWidth: "4px",
-                                                                                            borderLeftColor: leadColor,
+                                                                                            borderLeft: `3px solid ${leadColor}`,
                                                                                         }}
                                                                                     >
-                                                                                        {/* TOP ROW: Avatar + Name & Rating (Left) | Value + Actions (Right) */}
-                                                                                        <div className="flex items-start justify-between gap-2">
-                                                                                            <div className="flex items-center gap-2.5 min-w-0 flex-1">
-                                                                                                <div
-                                                                                                    className={`rounded-xl bg-blue-100 dark:bg-blue-950/70 text-blue-700 dark:text-blue-300 font-heading font-black flex items-center justify-center shrink-0 shadow-inner border border-blue-200/50 dark:border-blue-800/40 ${
-                                                                                                        compactMode ? "h-7 w-7 text-[9px]" : "h-8.5 w-8.5 text-[11px]"
-                                                                                                    }`}
+                                                                                        {/* TOP ROW: Small Status Selector (Left) | Quick Actions (Right) */}
+                                                                                        <div className="flex items-center justify-between gap-2">
+                                                                                            <div
+                                                                                                className="flex items-center gap-1.5 flex-wrap min-w-0"
+                                                                                                onClick={(e) => e.stopPropagation()}
+                                                                                            >
+                                                                                                <div className="scale-85 origin-left">
+                                                                                                    <StatusSelector
+                                                                                                        status={lead.status}
+                                                                                                        onChange={(newStatus) => handleUpdateLeadState(lead.id, newStatus)}
+                                                                                                    />
+                                                                                                </div>
+                                                                                                {breachedSlaById[lead.id] && (
+                                                                                                    <SlaBreachBadge
+                                                                                                        sla={breachedSlaById[lead.id]}
+                                                                                                        lang={systemLanguage}
+                                                                                                    />
+                                                                                                )}
+                                                                                            </div>
+
+                                                                                            {/* Right side: Quick Action Buttons */}
+                                                                                            <div
+                                                                                                className="flex items-center gap-1 shrink-0"
+                                                                                                onClick={(e) => e.stopPropagation()}
+                                                                                            >
+                                                                                                <button
+                                                                                                    onClick={() => {
+                                                                                                        window.location.hash = `lead-${lead.id}`;
+                                                                                                    }}
+                                                                                                    className="h-6 w-6 rounded-md text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-200/60 dark:hover:bg-slate-800 flex items-center justify-center transition-colors"
+                                                                                                    title={t("Open Edit Slideout", "Otvoriť panel úprav", "Szerkesztő panel megnyitása")}
                                                                                                 >
-                                                                                                    {getInitials(lead.name)}
-                                                                                                </div>
-                                                                                                <div className="flex flex-col min-w-0 flex-1">
-                                                                                                    <span className="font-bold text-slate-900 dark:text-slate-100 text-sm leading-snug truncate">
-                                                                                                        {lead.name}
-                                                                                                    </span>
-                                                                                                    {!compactMode && (
-                                                                                                        <div
-                                                                                                            className="scale-85 origin-left mt-0.5"
-                                                                                                            onClick={(e) => e.stopPropagation()}
-                                                                                                        >
-                                                                                                            {renderStars(lead.rating || 0, (newRating) => {
-                                                                                                                setLeads((prev) =>
-                                                                                                                    prev.map((l) =>
-                                                                                                                        l.id === lead.id ? { ...l, rating: newRating } : l
-                                                                                                                    )
-                                                                                                                );
-                                                                                                            })}
-                                                                                                        </div>
-                                                                                                    )}
-                                                                                                </div>
-                                                                                            </div>
-
-                                                                                            {/* Right side: Value Badge + Action Icons */}
-                                                                                            <div className="flex items-center gap-1.5 shrink-0">
-                                                                                                <span className="font-heading font-black text-xs sm:text-sm text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/60 px-2 py-0.5 rounded-lg border border-blue-200/70 dark:border-blue-800/60 whitespace-nowrap shadow-xs">
-                                                                                                    {money(lead.value, { minimumFractionDigits: 2 })}
-                                                                                                </span>
-                                                                                                <div className="flex items-center gap-0.5" onClick={(e) => e.stopPropagation()}>
-                                                                                                    <button
-                                                                                                        onClick={() => {
-                                                                                                            window.location.hash = `lead-${lead.id}`;
-                                                                                                        }}
-                                                                                                        className="h-7 w-7 rounded-lg text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-slate-800 flex items-center justify-center transition-colors"
-                                                                                                        title={t("Open Edit Slideout", "Otvoriť panel úprav", "Szerkesztő panel megnyitása")}
-                                                                                                    >
-                                                                                                        <Edit3 className="h-3.5 w-3.5" />
-                                                                                                    </button>
-                                                                                                    <button
-                                                                                                        onClick={() => {
-                                                                                                            handleDeleteLead(lead.id, lead.name);
-                                                                                                        }}
-                                                                                                        className="h-7 w-7 rounded-lg text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-slate-800 flex items-center justify-center transition-colors"
-                                                                                                        title={t("Delete Lead", "Odstrániť lead", "Lead törlése")}
-                                                                                                    >
-                                                                                                        <Trash2 className="h-3.5 w-3.5" />
-                                                                                                    </button>
-                                                                                                </div>
+                                                                                                    <Edit3 className="h-3.5 w-3.5" />
+                                                                                                </button>
+                                                                                                <button
+                                                                                                    onClick={() => {
+                                                                                                        handleDeleteLead(lead.id, lead.name);
+                                                                                                    }}
+                                                                                                    className="h-6 w-6 rounded-md text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 flex items-center justify-center transition-colors"
+                                                                                                    title={t("Delete Lead", "Odstrániť lead", "Lead törlése")}
+                                                                                                >
+                                                                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                                                                </button>
                                                                                             </div>
                                                                                         </div>
 
-                                                                                        {/* META INFO ROW: Date + Location */}
-                                                                                        <div className="flex items-center gap-3 text-xs text-slate-500 dark:text-slate-400 font-medium">
-                                                                                            <div className="flex items-center gap-1.5">
-                                                                                                <Calendar className="h-3.5 w-3.5 text-blue-500/80 dark:text-blue-400 shrink-0" />
-                                                                                                <span>
-                                                                                                    {(() => {
-                                                                                                        if (!lead.createdAt) return "N/A";
-                                                                                                        const dateMatch = lead.createdAt.match(/^(\d{4})-(\d{2})-(\d{2})/);
-                                                                                                        if (!dateMatch) return lead.createdAt;
-                                                                                                        const [, yyyy, mm, dd] = dateMatch;
-                                                                                                        if (systemLanguage === "sk") return `${dd}.${mm}.${yyyy}`;
-                                                                                                        if (systemLanguage === "hu") return `${yyyy}.${mm}.${dd}.`;
-                                                                                                        return `${mm}/${dd}/${yyyy}`;
-                                                                                                    })()}
-                                                                                                </span>
+                                                                                        {/* FULL-WIDTH NAME ROW: Avatar + Name (Its Own Line) + Rating */}
+                                                                                        <div className="flex items-center gap-2.5 min-w-0">
+                                                                                            <div
+                                                                                                className={`rounded-lg bg-blue-100 dark:bg-blue-950/80 text-blue-700 dark:text-blue-300 font-heading font-black flex items-center justify-center shrink-0 border border-blue-200/60 dark:border-blue-800/50 ${
+                                                                                                    compactMode ? "h-6 w-6 text-[9px]" : "h-7 w-7 text-[10px]"
+                                                                                                }`}
+                                                                                            >
+                                                                                                {getInitials(lead.name)}
                                                                                             </div>
-                                                                                            {lead.city && (
-                                                                                                <div className="flex items-center gap-1.5 min-w-0">
-                                                                                                    <MapPin className="h-3.5 w-3.5 text-blue-500/80 dark:text-blue-400 shrink-0" />
-                                                                                                    <span className="truncate max-w-[180px]">{lead.city}</span>
-                                                                                                </div>
-                                                                                            )}
+                                                                                            <div className="flex items-center gap-2 min-w-0 flex-1">
+                                                                                                <span className="font-bold text-slate-900 dark:text-slate-100 text-sm leading-snug break-words">
+                                                                                                    {lead.name}
+                                                                                                </span>
+                                                                                                {!compactMode && lead.rating ? (
+                                                                                                    <div
+                                                                                                        className="scale-75 origin-left shrink-0"
+                                                                                                        onClick={(e) => e.stopPropagation()}
+                                                                                                    >
+                                                                                                        {renderStars(lead.rating || 0, (newRating) => {
+                                                                                                            setLeads((prev) =>
+                                                                                                                prev.map((l) =>
+                                                                                                                    l.id === lead.id ? { ...l, rating: newRating } : l
+                                                                                                                )
+                                                                                                            );
+                                                                                                        })}
+                                                                                                    </div>
+                                                                                                ) : null}
+                                                                                            </div>
                                                                                         </div>
 
-                                                                                        {/* BADGES ROW: Client Type + Lead Source + PM Assignee */}
-                                                                                        <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                                                                                            {/* Client Type */}
-                                                                                            {lead.clientType === "business" && (
-                                                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60">
-                                                                                                    <Briefcase className="h-2.5 w-2.5" /> {t("Business", "Firma", "Cég")}
-                                                                                                </span>
-                                                                                            )}
-                                                                                            {lead.clientType === "partner" && (
-                                                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800/60">
-                                                                                                    <Handshake className="h-2.5 w-2.5" /> {t("Partner", "Partner", "Partner")}
-                                                                                                </span>
-                                                                                            )}
-                                                                                            {lead.clientType === "person" && (
-                                                                                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-blue-50 dark:bg-blue-950/40 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800/60">
-                                                                                                    <User className="h-2.5 w-2.5" /> {t("Person", "Osoba", "Személy")}
-                                                                                                </span>
-                                                                                            )}
+                                                                                        {/* METADATA & VALUE ROW: Value, Source, PM, Date, City (No Person/Type Tag) */}
+                                                                                        <div className="flex flex-wrap items-center gap-1.5 pt-0.5 text-xs">
+                                                                                            {/* Value Badge */}
+                                                                                            <span className="font-heading font-black text-xs text-blue-700 dark:text-blue-300 bg-blue-50/90 dark:bg-blue-950/60 px-2 py-0.5 rounded-md border border-blue-200/70 dark:border-blue-800/60 whitespace-nowrap shadow-2xs">
+                                                                                                {money(lead.value, { minimumFractionDigits: 2 })}
+                                                                                            </span>
 
                                                                                             {/* Lead Source */}
                                                                                             {lead.source && (
@@ -9966,7 +9946,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                                 </span>
                                                                                             ) : (
                                                                                                 <span
-                                                                                                    className="px-2 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-wider flex items-center gap-1 shadow-xs"
+                                                                                                    className="px-2 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-wider flex items-center gap-1 shadow-2xs"
                                                                                                     style={{
                                                                                                         backgroundColor: `${getSafePMColor(lead.owner)}18`,
                                                                                                         color: liftAccent(getSafePMColor(lead.owner)),
@@ -9977,63 +9957,31 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                                     {lead.owner}
                                                                                                 </span>
                                                                                             )}
-                                                                                        </div>
 
-                                                                                        {/* WORKFLOW BAR: Stage Selector (Left) & Next Up (Right) */}
-                                                                                        <div
-                                                                                            className="p-2.5 rounded-xl bg-slate-50/90 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 flex items-center justify-between gap-2"
-                                                                                            onClick={(e) => e.stopPropagation()}
-                                                                                        >
-                                                                                            {/* Stage */}
-                                                                                            <div className="flex flex-col gap-1 min-w-0">
-                                                                                                <span className="text-[8px] font-black text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                                                                                                    {t("Stage", "Fáza", "Fázis")}
-                                                                                                </span>
-                                                                                                <div className="flex items-center gap-1.5 flex-wrap">
-                                                                                                    <StatusSelector
-                                                                                                        status={lead.status}
-                                                                                                        onChange={(newStatus) => handleUpdateLeadState(lead.id, newStatus)}
-                                                                                                    />
-                                                                                                    {breachedSlaById[lead.id] && (
-                                                                                                        <SlaBreachBadge
-                                                                                                            sla={breachedSlaById[lead.id]}
-                                                                                                            lang={systemLanguage}
-                                                                                                        />
-                                                                                                    )}
+                                                                                            {/* Date */}
+                                                                                            {lead.createdAt && (
+                                                                                                <div className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 font-medium ml-1">
+                                                                                                    <Calendar className="h-3 w-3 text-slate-400 dark:text-slate-500 shrink-0" />
+                                                                                                    <span>
+                                                                                                        {(() => {
+                                                                                                            const dateMatch = lead.createdAt.match(/^(\d{4})-(\d{2})-(\d{2})/);
+                                                                                                            if (!dateMatch) return lead.createdAt;
+                                                                                                            const [, yyyy, mm, dd] = dateMatch;
+                                                                                                            if (systemLanguage === "sk") return `${dd}.${mm}.${yyyy}`;
+                                                                                                            if (systemLanguage === "hu") return `${yyyy}.${mm}.${dd}.`;
+                                                                                                            return `${mm}/${dd}/${yyyy}`;
+                                                                                                        })()}
+                                                                                                    </span>
                                                                                                 </div>
-                                                                                            </div>
+                                                                                            )}
 
-                                                                                            {/* Next Up */}
-                                                                                            <div className="flex flex-col text-right min-w-0 max-w-[50%] shrink-0 pl-2 border-l border-slate-200/80 dark:border-slate-700/60">
-                                                                                                <span className="text-[8px] font-black text-purple-600 dark:text-purple-400 uppercase tracking-wider">
-                                                                                                    {systemLanguage === "sk" ? "Nasleduje" : systemLanguage === "hu" ? "Következik" : "Next Up"}
-                                                                                                </span>
-                                                                                                {(() => {
-                                                                                                    const nextTask = getNextTaskForLead(lead.id);
-                                                                                                    if (nextTask) {
-                                                                                                        return (
-                                                                                                            <span
-                                                                                                                className="text-[10px] font-bold text-slate-700 dark:text-slate-300 truncate flex items-center justify-end gap-1 mt-0.5"
-                                                                                                                title={nextTask.title}
-                                                                                                            >
-                                                                                                                {nextTask.isAiGenerated && (
-                                                                                                                    <Brain className="h-3 w-3 text-purple-600 dark:text-purple-400 shrink-0" />
-                                                                                                                )}
-                                                                                                                <span className="truncate">{nextTask.title}</span>
-                                                                                                            </span>
-                                                                                                        );
-                                                                                                    }
-                                                                                                    const nextState = getNextState(lead.status);
-                                                                                                    return (
-                                                                                                        <span
-                                                                                                            className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide truncate mt-0.5"
-                                                                                                            title={nextState || ""}
-                                                                                                        >
-                                                                                                            {nextState || (systemLanguage === "sk" ? "Koniec" : systemLanguage === "hu" ? "Vége" : "Done")}
-                                                                                                        </span>
-                                                                                                    );
-                                                                                                })()}
-                                                                                            </div>
+                                                                                            {/* City */}
+                                                                                            {lead.city && (
+                                                                                                <div className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 font-medium ml-1">
+                                                                                                    <MapPin className="h-3 w-3 text-slate-400 dark:text-slate-500 shrink-0" />
+                                                                                                    <span className="truncate max-w-[140px]">{lead.city}</span>
+                                                                                                </div>
+                                                                                            )}
                                                                                         </div>
                                                                                     </div>
                                                                                 )}
