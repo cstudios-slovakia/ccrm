@@ -14,7 +14,6 @@ import { getTranslation, type Language } from "../utils/translations";
 import { nowLocalStamp, formatTimestampLocalized, formatDateLocalized, todayLocal } from "../utils/localTime";
 import {
   CURRENCY_OPTIONS,
-  currencyForRegion,
   formatMoney,
   isMoneyValueEmpty,
   parseMoneyValue,
@@ -154,10 +153,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   // answer rather than inheriting canEdit/canDelete above.
   const canEditFinance = financeAccess.edit;
   const canDeleteFinance = financeAccess.edit && financeAccess.delete;
-  const money = (v: number) => formatMoney(v, currencyCode, userLanguage);
+  const money = (v: number) => formatMoney(v, currencyCode || "EUR", userLanguage);
   // What a money attribute starts on. Only the default: the currency is stored
   // with the value, so each record keeps whichever one it was actually filled in.
-  const defaultCurrency = currencyCode || currencyForRegion(userLanguage);
+  const defaultCurrency = currencyCode || "EUR";
 
   /**
    * The input pair behind a `money` attribute — amount on the left, its own

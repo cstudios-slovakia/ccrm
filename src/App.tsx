@@ -2637,7 +2637,7 @@ ${log.payload || ''}
     // Raw currency code (or "" for "auto, follow region") — passed down so each
     // view can resolve the symbol AND its correct prefix/suffix position using
     // its own display language (see src/utils/currency.ts).
-    const currencyCode = systemCurrency || null;
+    const currencyCode = systemCurrency || "EUR";
     const activeUser = currentUser || users[0] || {
       id: "guest",
       name: t("Guest User", "Hosť", "Vendég"),

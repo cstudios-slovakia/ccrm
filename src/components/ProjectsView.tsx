@@ -48,7 +48,7 @@ import {
   toStoredColumns,
 } from "../utils/projectColumns";
 import type { BuiltinProjectColumnKey, ResolvedProjectColumn } from "../utils/projectColumns";
-import { currencyForRegion, formatMoney, isMoneyValueEmpty, parseMoneyValue } from "../utils/currency";
+import { formatMoney, isMoneyValueEmpty, parseMoneyValue } from "../utils/currency";
 
 /*
   The summary strip's chips. Each tone is written out in full because Tailwind
@@ -467,7 +467,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
   /* The currency a money attribute falls back to when it carries none of its
      own — the workspace default, or the one the language implies. */
-  const defaultCurrency = currencyCode || currencyForRegion(userLanguage);
+  const defaultCurrency = currencyCode || "EUR";
 
   /**
    * Derives project budget/value, invoiced amount, and remaining invoicable.
