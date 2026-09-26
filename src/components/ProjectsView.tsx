@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import * as Icons from "lucide-react";
 import { Plus, Trash2, Settings, Search, Users, User, Edit3, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, ListTree, Move, CalendarClock, Flag, ArrowUp, ArrowDown, ArrowUpDown, Lock, Star, Check, Minus, Paperclip, GripVertical, GripHorizontal } from "lucide-react";
 import type { Project, ProjectAttribute, ProjectAutoCreateSettings, ProjectStatus, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory } from "../types";
@@ -467,6 +467,57 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
      own — the workspace default, or the one the language implies. */
   const defaultCurrency = currencyCode || currencyForRegion(userLanguage);
 
+  /**
+   * Derives project budget/value, invoiced amount, and remaining invoicable.
+   */
+  const getProjectFinancials = useCallback((p: Project, pType?: ProjectType, lead?: Lead) => {
+    const moneyAttrs = pType?.attributes?.filter((a) => a.type === "money") || [];
+    let pVal = 0;
+    let pCurrency = defaultCurrency;
+    let hasMoneyVal = false;
+    for (const attr of moneyAttrs) {
+      const raw = p.data?.[attr.id];
+      if (
+        raw !== undefined &&
+        raw !== null &&
+        !isMoneyValueEmpty(raw, defaultCurrency)
+      ) {
+        const parsed = parseMoneyValue(raw, defaultCurrency);
+        if (parsed.amount) {
+          pVal += parsed.amount;
+          if (parsed.currency) pCurrency = parsed.currency;
+          hasMoneyVal = true;
+        }
+      }
+    }
+    if (!hasMoneyVal && lead?.value) {
+      pVal = lead.value;
+    }
+
+    // Calculate invoiced for this project from financialRecords
+    let pInvoiced = 0;
+    if (financialRecords && financialRecords.length > 0) {
+      const pFinRecords = financialRecords.filter(
+        (r) => r.projectId === p.id && r.type === "income"
+      );
+      pInvoiced = pFinRecords.reduce(
+        (sum, r) =>
+          sum + (Number(r.amountReal) || Number(r.amountPlanned) || 0),
+        0
+      );
+    }
+
+    const pInvoicable = Math.max(0, pVal - pInvoiced);
+
+    return {
+      totalBudget: pVal,
+      invoiced: pInvoiced,
+      invoicable: pInvoicable,
+      currency: pCurrency,
+      hasValue: pVal > 0,
+    };
+  }, [defaultCurrency, financialRecords]);
+
   /* Active project status items calculation for the expandable equation statistics */
   const activeProjectStatusItems = useMemo<StatusStatItem[]>(() => {
     const activeStatuses = (projectStatusOrder() as ProjectStatus[]).filter(
@@ -528,51 +579,12 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
       projectsInStatus.forEach((p) => {
         const pType = projectTypes.find((t) => t.id === p.projectTypeId);
-        const moneyAttrs =
-          pType?.attributes?.filter((a) => a.type === "money") || [];
-        let pVal = 0;
-        let hasMoneyVal = false;
-        for (const attr of moneyAttrs) {
-          const raw = p.data?.[attr.id];
-          if (
-            raw !== undefined &&
-            raw !== null &&
-            !isMoneyValueEmpty(raw, defaultCurrency)
-          ) {
-            const parsed = parseMoneyValue(raw, defaultCurrency);
-            if (parsed.amount) {
-              pVal += parsed.amount;
-              hasMoneyVal = true;
-            }
-          }
-        }
-        if (!hasMoneyVal && p.leadId) {
-          const pairedLead = leads.find((l) => l.id === p.leadId);
-          if (pairedLead?.value) {
-            pVal = pairedLead.value;
-          }
-        }
-
-        // Calculate invoiced for this project from financialRecords
-        let pInvoiced = 0;
-        if (financialRecords && financialRecords.length > 0) {
-          const pFinRecords = financialRecords.filter(
-            (r) => r.projectId === p.id && r.type === "income"
-          );
-          pInvoiced = pFinRecords.reduce(
-            (sum, r) =>
-              sum + (Number(r.amountReal) || Number(r.amountPlanned) || 0),
-            0
-          );
-        }
-
-        const pInvoicable = Math.max(0, pVal - pInvoiced);
-
-        statusInvoicableVal += pInvoicable;
-        statusTotalBudgetValue += pVal;
-        statusTotalInvoicedValue += pInvoiced;
-
         const pairedLead = p.leadId ? leads.find((l) => l.id === p.leadId) : undefined;
+        const fin = getProjectFinancials(p, pType, pairedLead);
+
+        statusInvoicableVal += fin.invoicable;
+        statusTotalBudgetValue += fin.totalBudget;
+        statusTotalInvoicedValue += fin.invoiced;
 
         statusRows.push({
           id: p.id,
@@ -581,9 +593,9 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           manager: p.managers?.[0],
           division: p.division,
           date: p.createdAt ? new Date(p.createdAt).toLocaleDateString() : undefined,
-          totalBudget: pVal,
-          invoiced: pInvoiced,
-          invoicable: pInvoicable,
+          totalBudget: fin.totalBudget,
+          invoiced: fin.invoiced,
+          invoicable: fin.invoicable,
           type: "project",
           url: `#projects?edit=${encodeURIComponent(p.id)}`,
         });
@@ -1633,6 +1645,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                       const progress = calculateProgress(p);
                       const dl = evaluateProjectDeadline(p, pType, today);
                       const drop = projectDrag.dropAt(p.id);
+                      const financials = getProjectFinancials(p, pType, lead);
 
                       return (
                         <tr
@@ -1726,8 +1739,34 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                                 )}
                               </div>
 
-                              {/* METADATA ROW: Type, Client, Manager, Division */}
+                              {/* METADATA ROW: Value / Remaining Invoicable, Type, Client, Manager, Division */}
                               <div className="flex flex-wrap items-center gap-1.5 pt-0.5 text-xs">
+                                {/* Value / Remaining Invoicable Badge */}
+                                {financials.hasValue && (
+                                  <span
+                                    className="font-heading font-black text-xs text-blue-700 bg-blue-50/90 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800/60 px-2 py-0.5 rounded-md border border-blue-200/70 whitespace-nowrap shadow-2xs shrink-0"
+                                    title={financials.invoiced > 0
+                                      ? t(
+                                          `Remaining to invoice: ${formatMoney(financials.invoicable, financials.currency, userLanguage)} (Total: ${formatMoney(financials.totalBudget, financials.currency, userLanguage)}, Invoiced: ${formatMoney(financials.invoiced, financials.currency, userLanguage)})`,
+                                          `Na vyfakturovanie: ${formatMoney(financials.invoicable, financials.currency, userLanguage)} (Spolu: ${formatMoney(financials.totalBudget, financials.currency, userLanguage)}, Vyfakturované: ${formatMoney(financials.invoiced, financials.currency, userLanguage)})`,
+                                          `Számlázható: ${formatMoney(financials.invoicable, financials.currency, userLanguage)} (Összesen: ${formatMoney(financials.totalBudget, financials.currency, userLanguage)}, Számlázva: ${formatMoney(financials.invoiced, financials.currency, userLanguage)})`
+                                        )
+                                      : t(
+                                          `Project value: ${formatMoney(financials.totalBudget, financials.currency, userLanguage)}`,
+                                          `Hodnota projektu: ${formatMoney(financials.totalBudget, financials.currency, userLanguage)}`,
+                                          `Projekt értéke: ${formatMoney(financials.totalBudget, financials.currency, userLanguage)}`
+                                        )
+                                    }
+                                  >
+                                    {formatMoney(financials.invoicable > 0 ? financials.invoicable : financials.totalBudget, financials.currency, userLanguage)}
+                                    {financials.invoiced > 0 && financials.invoicable > 0 && (
+                                      <span className="text-[9px] font-bold text-blue-500/80 ml-1">
+                                        {t("rem.", "zost.", "fennm.")}
+                                      </span>
+                                    )}
+                                  </span>
+                                )}
+
                                 {/* Project Type Badge */}
                                 <span
                                   className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold shadow-2xs shrink-0"
@@ -1864,6 +1903,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 const progress = calculateProgress(p);
                 const dl = evaluateProjectDeadline(p, pType, today);
                 const drop = projectDrag.dropAt(p.id);
+                const financials = getProjectFinancials(p, pType, lead);
 
                 return (
                   <div
@@ -1879,14 +1919,40 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                       projectDrag.draggedId === p.id ? "opacity-40" : ""
                     }`}
                   >
-                    {/* Project Type Badge */}
+                    {/* Project Type Badge + Value Badge */}
                     <div className="flex items-center justify-between mb-4">
-                      <div
-                        className="flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold shadow-sm"
-                        style={{ backgroundColor: pType.color, color: readableOn(pType.color) }}
-                      >
-                        {renderIcon(pType.icon, "h-3.5 w-3.5")}
-                        <span>{pType.name}</span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <div
+                          className="flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold shadow-sm"
+                          style={{ backgroundColor: pType.color, color: readableOn(pType.color) }}
+                        >
+                          {renderIcon(pType.icon, "h-3.5 w-3.5")}
+                          <span>{pType.name}</span>
+                        </div>
+                        {financials.hasValue && (
+                          <span
+                            className="font-heading font-black text-xs text-blue-700 bg-blue-50/90 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800/60 px-2 py-0.5 rounded-md border border-blue-200/70 whitespace-nowrap shadow-2xs shrink-0"
+                            title={financials.invoiced > 0
+                              ? t(
+                                  `Remaining to invoice: ${formatMoney(financials.invoicable, financials.currency, userLanguage)} (Total: ${formatMoney(financials.totalBudget, financials.currency, userLanguage)}, Invoiced: ${formatMoney(financials.invoiced, financials.currency, userLanguage)})`,
+                                  `Na vyfakturovanie: ${formatMoney(financials.invoicable, financials.currency, userLanguage)} (Spolu: ${formatMoney(financials.totalBudget, financials.currency, userLanguage)}, Vyfakturované: ${formatMoney(financials.invoiced, financials.currency, userLanguage)})`,
+                                  `Számlázható: ${formatMoney(financials.invoicable, financials.currency, userLanguage)} (Összesen: ${formatMoney(financials.totalBudget, financials.currency, userLanguage)}, Számlázva: ${formatMoney(financials.invoiced, financials.currency, userLanguage)})`
+                                )
+                              : t(
+                                  `Project value: ${formatMoney(financials.totalBudget, financials.currency, userLanguage)}`,
+                                  `Hodnota projektu: ${formatMoney(financials.totalBudget, financials.currency, userLanguage)}`,
+                                  `Projekt értéke: ${formatMoney(financials.totalBudget, financials.currency, userLanguage)}`
+                                )
+                            }
+                          >
+                            {formatMoney(financials.invoicable > 0 ? financials.invoicable : financials.totalBudget, financials.currency, userLanguage)}
+                            {financials.invoiced > 0 && financials.invoicable > 0 && (
+                              <span className="text-[9px] font-bold text-blue-500/80 ml-1">
+                                {t("rem.", "zost.", "fennm.")}
+                              </span>
+                            )}
+                          </span>
+                        )}
                       </div>
 
                       {/* Status badge */}
