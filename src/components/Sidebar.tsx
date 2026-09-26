@@ -87,6 +87,281 @@ interface SidebarProps {
   onSaveDefaultPage?: (pageId: string) => void;
 }
 
+export const getSidebarItemColors = (item: any, isActive: boolean) => {
+  if (item.isCustomUE || item.isCustomDash) {
+    if (isActive) {
+      return {
+        className: "text-white font-bold shadow-lg",
+        style: {
+          backgroundColor: item.customColor || "#6366f1",
+          borderColor: item.customColor || "#6366f1",
+          boxShadow: `0 10px 15px -3px ${item.customColor || "#6366f1"}4D, 0 4px 6px -4px ${item.customColor || "#6366f1"}4D`
+        },
+        iconColor: "#ffffff"
+      };
+    }
+    return {
+      className: "bg-slate-50/70 border-slate-200/90 text-slate-500 hover:bg-slate-100",
+      style: {},
+      iconColor: item.customColor || item.color || "#6366f1"
+    };
+  }
+
+  if (item.isPurpleToGreen) {
+    if (isActive) {
+      return {
+        className: "bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 text-white font-bold shadow-lg shadow-purple-600/30 border border-purple-500/20",
+        style: {},
+        iconColor: "#ffffff"
+      };
+    }
+    return {
+      className: "bg-slate-50/70 border-slate-200/90 text-purple-600 hover:text-emerald-600 hover:bg-gradient-to-r hover:from-purple-50/60 hover:to-emerald-50/60",
+      style: {},
+      iconColor: item.color || "#8b5cf6"
+    };
+  }
+
+  if (item.isPurple || item.id === "rag_ai" || item.id === "automation") {
+    if (isActive) {
+      return {
+        className: "bg-purple-600 text-white font-bold shadow-lg shadow-purple-600/30 border border-purple-500/20",
+        style: {},
+        iconColor: "#ffffff"
+      };
+    }
+    return {
+      className: "bg-slate-50/70 border-slate-200/90 text-purple-600 hover:text-purple-700 hover:bg-purple-50/50",
+      style: {},
+      iconColor: item.color || "var(--color-violet-500)"
+    };
+  }
+
+  if (item.isLavender || item.id === "projects") {
+    if (isActive) {
+      return {
+        className: "bg-purple-500 text-white font-bold shadow-lg shadow-purple-500/30 border border-purple-400/20",
+        style: {},
+        iconColor: "#ffffff"
+      };
+    }
+    return {
+      className: "bg-slate-50/70 border-slate-200/90 text-purple-500 hover:text-purple-600 hover:bg-purple-50/50",
+      style: {},
+      iconColor: item.color || "var(--color-purple-500)"
+    };
+  }
+
+  if (item.isNavy || item.id === "warehouse") {
+    if (isActive) {
+      return {
+        className: "bg-blue-950 text-white font-bold shadow-lg shadow-blue-950/30 border border-blue-900/20",
+        style: {},
+        iconColor: "#ffffff"
+      };
+    }
+    return {
+      className: "bg-slate-50/70 border-slate-200/90 text-blue-950 hover:text-blue-900 hover:bg-blue-50/50",
+      style: {},
+      iconColor: item.color || "var(--color-blue-900)"
+    };
+  }
+
+  if (item.isIndigo || item.id === "invoices") {
+    if (isActive) {
+      return {
+        className: "bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-600/30 border border-indigo-500/20",
+        style: {},
+        iconColor: "#ffffff"
+      };
+    }
+    return {
+      className: "bg-slate-50/70 border-slate-200/90 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50/50",
+      style: {},
+      iconColor: item.color || "var(--color-indigo-500)"
+    };
+  }
+
+  if (item.isEmerald || item.id === "financial") {
+    if (isActive) {
+      return {
+        className: "bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-600/30 border border-emerald-500/20",
+        style: {},
+        iconColor: "#ffffff"
+      };
+    }
+    return {
+      className: "bg-slate-50/70 border-slate-200/90 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50/50",
+      style: {},
+      iconColor: item.color || "var(--color-emerald-500)"
+    };
+  }
+
+  if (item.isNightBlue || item.id === "meetings") {
+    if (isActive) {
+      return {
+        className: "bg-slate-900 text-white font-bold shadow-lg shadow-slate-900/30 border border-slate-800/20",
+        style: {},
+        iconColor: "#ffffff"
+      };
+    }
+    return {
+      className: "bg-slate-50/70 border-slate-200/90 text-slate-600 hover:text-slate-900 hover:bg-slate-100/50",
+      style: {},
+      iconColor: item.color || "var(--color-indigo-600)"
+    };
+  }
+
+  if (item.isRose || item.id === "social_media") {
+    if (isActive) {
+      return {
+        className: "bg-rose-600 text-white font-bold shadow-lg shadow-rose-600/30 border border-rose-500/20",
+        style: {},
+        iconColor: "#ffffff"
+      };
+    }
+    return {
+      className: "bg-slate-50/70 border-slate-200/90 text-rose-600 hover:text-rose-700 hover:bg-rose-50/50",
+      style: {},
+      iconColor: item.color || "var(--color-rose-500)"
+    };
+  }
+
+  if (item.id === "leads") {
+    if (isActive) {
+      return {
+        className: "bg-blue-600 text-white font-bold shadow-lg shadow-blue-600/30 border border-blue-500/20",
+        style: {},
+        iconColor: "#ffffff"
+      };
+    }
+    return {
+      className: "bg-slate-50/70 border-slate-200/90 text-blue-600 hover:text-blue-700 hover:bg-blue-50/50",
+      style: {},
+      iconColor: item.color || "var(--color-blue-600)"
+    };
+  }
+
+  if (item.id === "clients") {
+    if (isActive) {
+      return {
+        className: "bg-emerald-600 text-white font-bold shadow-lg shadow-emerald-600/30 border border-emerald-500/20",
+        style: {},
+        iconColor: "#ffffff"
+      };
+    }
+    return {
+      className: "bg-slate-50/70 border-slate-200/90 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50/50",
+      style: {},
+      iconColor: item.color || "var(--color-emerald-600)"
+    };
+  }
+
+  if (item.id === "tasks") {
+    if (isActive) {
+      return {
+        className: "bg-orange-500 text-white font-bold shadow-lg shadow-orange-500/30 border border-orange-400/20",
+        style: {},
+        iconColor: "#ffffff"
+      };
+    }
+    return {
+      className: "bg-slate-50/70 border-slate-200/90 text-orange-500 hover:text-orange-600 hover:bg-orange-50/50",
+      style: {},
+      iconColor: item.color || "#ff5d00"
+    };
+  }
+
+  if (item.id === "files") {
+    if (isActive) {
+      return {
+        className: "bg-amber-700 text-white font-bold shadow-lg shadow-amber-700/30 border border-amber-600/20",
+        style: {},
+        iconColor: "#ffffff"
+      };
+    }
+    return {
+      className: "bg-slate-50/70 border-slate-200/90 text-amber-700 hover:text-amber-800 hover:bg-amber-50/50",
+      style: {},
+      iconColor: item.color || "var(--color-amber-700)"
+    };
+  }
+
+  if (item.id === "overview") {
+    if (isActive) {
+      return {
+        className: "bg-cyan-600 text-white font-bold shadow-lg shadow-cyan-600/30 border border-cyan-500/20",
+        style: {},
+        iconColor: "#ffffff"
+      };
+    }
+    return {
+      className: "bg-slate-50/70 border-slate-200/90 text-cyan-600 hover:text-cyan-700 hover:bg-cyan-50/50",
+      style: {},
+      iconColor: item.color || "var(--color-cyan-600)"
+    };
+  }
+
+  if (item.id === "email") {
+    if (isActive) {
+      return {
+        className: "bg-pink-600 text-white font-bold shadow-lg shadow-pink-600/30 border border-pink-500/20",
+        style: {},
+        iconColor: "#ffffff"
+      };
+    }
+    return {
+      className: "bg-slate-50/70 border-slate-200/90 text-pink-600 hover:text-pink-700 hover:bg-pink-50/50",
+      style: {},
+      iconColor: item.color || "var(--color-pink-600)"
+    };
+  }
+
+  if (item.id === "updates") {
+    if (isActive) {
+      return {
+        className: "bg-amber-600 text-white font-bold shadow-lg shadow-amber-600/30 border border-amber-500/20",
+        style: {},
+        iconColor: "#ffffff"
+      };
+    }
+    return {
+      className: "bg-slate-50/70 border-slate-200/90 text-amber-600 hover:text-amber-700 hover:bg-amber-50/50",
+      style: {},
+      iconColor: item.color || "var(--color-amber-600)"
+    };
+  }
+
+  if (item.id === "dashboard") {
+    if (isActive) {
+      return {
+        className: "bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-600/30 border border-indigo-500/20",
+        style: {},
+        iconColor: "#ffffff"
+      };
+    }
+    return {
+      className: "bg-slate-50/70 border-slate-200/90 text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50/50",
+      style: {},
+      iconColor: item.color || "var(--color-indigo-600)"
+    };
+  }
+
+  if (isActive) {
+    return {
+      className: "bg-indigo-600 text-white font-bold shadow-lg shadow-indigo-600/30 border border-indigo-500/20",
+      style: {},
+      iconColor: "#ffffff"
+    };
+  }
+
+  return {
+    className: "bg-slate-50/70 border-slate-200/90 text-slate-400 hover:text-slate-700 hover:bg-slate-100/50",
+    style: {},
+    iconColor: item.color || "currentColor"
+  };
+};
+
 interface SidebarDockButtonProps {
   entry: {
     type: "item";
@@ -1791,7 +2066,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         />
 
         <div className="flex flex-row items-center justify-between gap-1 w-full">
-          <div className="flex flex-row items-center gap-1 sm:gap-2 flex-1 pr-1 sm:pr-2 overflow-x-auto scrollbar-none">
+          <div className="flex flex-row items-center gap-1.5 sm:gap-2 flex-1 pr-1 sm:pr-2 overflow-x-auto scrollbar-none">
             {activeVisibleLayout.map((id) => {
               const item = allPossibleItems.find((i) => i.id === id);
               if (!item) return null;
@@ -1802,6 +2077,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 activeTab.startsWith(item.id + "?") ||
                 (item.id === "clients" && activeTab.startsWith("client-"));
 
+              const colorInfo = getSidebarItemColors(item, isActive);
+
               return (
                 <button
                   key={item.id}
@@ -1809,15 +2086,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   onClick={() => {
                     setActiveTab(item.id);
                   }}
+                  style={colorInfo.style}
                   className={cn(
-                    "transition-all duration-300 flex items-center shrink-0 border select-none h-10 w-10 sm:h-11 sm:w-11 rounded-xl justify-center",
-                    isActive
-                      ? "bg-indigo-600 border-indigo-700 text-white shadow-md"
-                      : "bg-slate-50/50 border-slate-200 text-slate-500 hover:bg-slate-100"
+                    "transition-all duration-300 flex items-center shrink-0 border select-none h-10 w-10 sm:h-11 sm:w-11 rounded-xl justify-center active:scale-95",
+                    colorInfo.className
                   )}
                   title={item.label}
                 >
-                  <Icon className="h-4.5 w-4.5 shrink-0" />
+                  <Icon
+                    className="h-4.5 w-4.5 shrink-0 transition-transform"
+                    style={!isActive ? { color: colorInfo.iconColor } : undefined}
+                  />
                 </button>
               );
             })}
@@ -1832,14 +2111,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   setActiveTab("settings");
                 }}
                 className={cn(
-                  "transition-all duration-300 flex items-center shrink-0 border select-none h-10 w-10 sm:h-11 sm:w-11 rounded-xl justify-center",
+                  "transition-all duration-300 flex items-center shrink-0 border select-none h-10 w-10 sm:h-11 sm:w-11 rounded-xl justify-center active:scale-95",
                   activeTab.startsWith("settings")
-                    ? "bg-indigo-600 border-indigo-700 text-white"
-                    : "bg-slate-50/50 border-slate-200 text-slate-500 hover:bg-slate-100"
+                    ? "bg-indigo-600 border-indigo-700 text-white shadow-md shadow-indigo-600/30"
+                    : "bg-slate-50/70 border-slate-200/90 text-slate-500 hover:text-slate-700 hover:bg-slate-100"
                 )}
                 title={getTranslation(systemLanguage, "sidebar.settings")}
               >
-                <Settings className="h-4.5 w-4.5 shrink-0" />
+                <Settings className={cn("h-4.5 w-4.5 shrink-0", !activeTab.startsWith("settings") && "text-slate-500")} />
               </button>
             )}
 
@@ -1848,10 +2127,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
               onClick={() => {
                 if (onLogout) onLogout();
               }}
-              className="transition-all duration-300 flex items-center shrink-0 border select-none h-10 w-10 sm:h-11 sm:w-11 rounded-xl justify-center bg-slate-50/50 border-slate-200 text-slate-500 hover:text-rose-600"
+              className="transition-all duration-300 flex items-center shrink-0 border select-none h-10 w-10 sm:h-11 sm:w-11 rounded-xl justify-center bg-slate-50/70 border-slate-200/90 text-slate-500 hover:text-rose-600 hover:bg-rose-50/50 active:scale-95"
               title={getTranslation(systemLanguage, "sidebar.logout")}
             >
-              <LogOut className="h-4.5 w-4.5 shrink-0" />
+              <LogOut className="h-4.5 w-4.5 shrink-0 text-slate-500 hover:text-rose-500 transition-colors" />
             </button>
           </div>
         </div>
