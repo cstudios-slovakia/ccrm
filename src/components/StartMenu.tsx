@@ -137,6 +137,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
   const inputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [touchStartY, setTouchStartY] = useState<number | null>(null);
+  const [touchStartScrollTop, setTouchStartScrollTop] = useState<number>(0);
 
   // Default initial groups configuration
   const defaultGroups: MenuGroup[] = useMemo(() => [
@@ -232,6 +235,23 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       onClose();
       setIsClosing(false);
     }, 220);
+  };
+
+  // Touch handlers for mobile swipe-down to dismiss
+  const handleModalTouchStart = (e: React.TouchEvent) => {
+    setTouchStartY(e.touches[0].clientY);
+    setTouchStartScrollTop(scrollContainerRef.current?.scrollTop || 0);
+  };
+
+  const handleModalTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartY === null) return;
+    const endY = e.changedTouches[0].clientY;
+    const deltaY = endY - touchStartY;
+    // Dismiss if swiped down by > 50px while scrolled near top
+    if (deltaY > 50 && touchStartScrollTop <= 10) {
+      handleAnimatedClose();
+    }
+    setTouchStartY(null);
   };
 
   // Keyboard shortcut listener (ESC to close)
@@ -867,7 +887,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 sm:p-6 lg:pl-72 lg:pr-8 select-none">
+    <div className="fixed inset-0 z-[99999] flex items-end sm:items-center justify-center p-0 sm:p-6 lg:pl-72 lg:pr-8 select-none">
       {/* Backdrop overlay */}
       <div
         className={`fixed inset-0 bg-slate-950/40 backdrop-blur-md transition-opacity duration-250 ease-out ${
@@ -879,52 +899,71 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       />
 
       {/* Start Menu Container */}
-      {/* 
-        Dark Theme Preset for Container:
-        className="... bg-slate-50  backdrop-blur-2xl border border-slate-200/90  ..."
-      */}
       <div
         ref={menuRef}
         data-start-menu="true"
-        className={`relative z-10 w-full max-w-6xl bg-white backdrop-blur-2xl border border-slate-200/90 rounded-3xl shadow-[0_25px_70px_rgba(0,0,0,0.25)] overflow-hidden flex flex-col max-h-[92vh] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] transform ${
+        onTouchStart={handleModalTouchStart}
+        onTouchEnd={handleModalTouchEnd}
+        className={`relative z-10 w-full max-w-6xl bg-white backdrop-blur-2xl border-t sm:border border-slate-200/90 rounded-t-3xl sm:rounded-3xl shadow-[0_-15px_50px_rgba(0,0,0,0.3)] sm:shadow-[0_25px_70px_rgba(0,0,0,0.25)] overflow-hidden flex flex-col h-[90vh] sm:h-auto sm:max-h-[92vh] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] transform ${
           isVisible
-            ? "scale-100 opacity-100 translate-y-0 translate-x-0"
-            : "scale-95 opacity-0 pointer-events-none"
+            ? "scale-100 opacity-100 translate-y-0"
+            : "scale-95 sm:scale-95 opacity-0 translate-y-12 sm:translate-y-0 pointer-events-none"
         }`}
       >
+        {/* Mobile Top Grab Pill Handle */}
+        <div
+          className="sm:hidden w-full pt-3 pb-1 flex justify-center items-center cursor-pointer shrink-0"
+          onClick={handleAnimatedClose}
+          title={t("Swipe down or tap to close", "Potiahnutím nadol zatvoríte", "Húzza le a bezáráshoz")}
+        >
+          <div className="w-12 h-1.5 bg-slate-300 active:bg-slate-400 rounded-full transition-colors" />
+        </div>
+
         {/* Top Header & Search Bar & Edit Button */}
-        <div className="p-5 sm:p-6 border-b border-slate-100  bg-gradient-to-b from-slate-50/80  to-transparent flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="flex flex-col items-center justify-center gap-1 p-2 rounded-2xl bg-white  shadow-sm border border-slate-200/80 ">
-              <div className="flex items-center justify-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-orange-500 shadow-xs animate-pulse" />
-                <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-xs" />
-                <span className="h-2.5 w-2.5 rounded-full bg-indigo-500 shadow-xs" />
-              </div>
-              <span className="text-[7.5px] font-black tracking-widest text-indigo-600  uppercase leading-none">
-                START
-              </span>
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-heading font-black text-base text-slate-900  tracking-tight">
-                  {systemName}
-                </span>
-                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600  border border-indigo-500/20">
-                  {t("Start Menu", "Štart menu", "Start menü")}
+        <div className="p-4 sm:p-6 border-b border-slate-100 bg-gradient-to-b from-slate-50/80 to-transparent flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+          <div className="flex items-center justify-between sm:justify-start gap-3 w-full sm:w-auto">
+            <div className="flex items-center gap-3">
+              <div className="flex flex-col items-center justify-center gap-1 p-2 rounded-2xl bg-white shadow-sm border border-slate-200/80">
+                <div className="flex items-center justify-center gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded-full bg-orange-500 shadow-xs animate-pulse" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-xs" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-indigo-500 shadow-xs" />
+                </div>
+                <span className="text-[7.5px] font-black tracking-widest text-indigo-600 uppercase leading-none">
+                  START
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 font-medium">
-                {(isEditing
-                  ? t("Drag groups to reorder columns • Add new group to sidebar • Pin 📌 items to left sidebar", "Presúvajte celé skupiny • Vytvorte novú skupinu pre bočný panel • Pripnite 📌 položky na bočný panel", "Csoportok átrendezése • Új csoport az oldalsávhoz • Kitűzés 📌 a bal oldalsávra")
-                  : t("Quick access to all CRM modules & applications", "Rýchly prístup k modulom a evidenciám", "Gyors hozzáférés az összes modulhoz"))}
-              </p>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-heading font-black text-base text-slate-900 tracking-tight">
+                    {systemName}
+                  </span>
+                  <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 border border-indigo-500/20">
+                    {t("Start Menu", "Štart menu", "Start menü")}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 font-medium hidden sm:block">
+                  {(isEditing
+                    ? t("Drag groups to reorder columns • Add new group to sidebar • Pin 📌 items to left sidebar", "Presúvajte celé skupiny • Vytvorte novú skupinu pre bočný panel • Pripnite 📌 položky na bočný panel", "Csoportok átrendezése • Új csoport az oldalsávhoz • Kitűzés 📌 a bal oldalsávra")
+                    : t("Quick access to all CRM modules & applications", "Rýchly prístup k modulom a evidenciám", "Gyors hozzáférés az összes modulhoz"))}
+                </p>
+              </div>
             </div>
+
+            {/* Mobile close button top-right */}
+            <button
+              type="button"
+              onClick={handleAnimatedClose}
+              className="sm:hidden p-2 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-900 transition-colors cursor-pointer shrink-0"
+              title="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
 
           {/* Search Bar & Actions */}
-          <div className="flex items-center gap-2 flex-1 max-w-xl justify-end">
-            <div className="relative w-full max-w-xs">
+          <div className="flex items-center gap-2 w-full sm:flex-1 sm:max-w-xl justify-between sm:justify-end">
+            <div className="relative w-full sm:max-w-xs flex-1 sm:flex-initial">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <input
                 ref={inputRef}
@@ -932,13 +971,13 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={t("Search modules... (ESC)", "Hľadať v moduloch... (ESC)", "Keresés a modulok között...")}
-                className="w-full pl-10 pr-9 py-2.5 bg-white  border border-slate-200  rounded-2xl text-xs text-slate-900  placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-xs transition-all"
+                className="w-full pl-10 pr-9 py-2.5 bg-white border border-slate-200 rounded-2xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-xs transition-all"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600  cursor-pointer"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
@@ -962,13 +1001,13 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 title={t("Add New Group to Sidebar", "Pridať novú skupinu do bočného panelu", "Új csoport hozzáadása az oldalsávhoz")}
               >
                 <FolderPlus className="h-3.5 w-3.5" />
-                <span>{t("New Group", "Nová skupina", "Új csoport")}</span>
+                <span className="hidden sm:inline">{t("New Group", "Nová skupina", "Új csoport")}</span>
               </button>
             )}
 
             {/* Default Startup Screen Selector (in Edit Mode) */}
             {isEditing && (
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-amber-50 hover:bg-amber-100/80 border border-amber-200 text-amber-900 transition-all shadow-xs shrink-0">
+              <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-amber-50 hover:bg-amber-100/80 border border-amber-200 text-amber-900 transition-all shadow-xs shrink-0">
                 <Home className="h-3.5 w-3.5 text-amber-600 shrink-0" />
                 <span className="text-[11px] font-bold whitespace-nowrap hidden md:inline">
                   {t("Start Screen:", "Úvodná obrazovka:", "Kezdőképernyő:")}
@@ -1001,19 +1040,19 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
                 isEditing
                   ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20 ring-2 ring-indigo-400/30"
-                  : "bg-slate-100  hover:bg-slate-200  text-slate-700 "
+                  : "bg-slate-100 hover:bg-slate-200 text-slate-700"
               }`}
               title={isEditing ? t("Finish Customization", "Ukončiť úpravy", "Módosítás befejezése") : t("Customize Order, Groups & Sidebar Pins", "Prispôsobiť menu a skupiny", "Menü és csoportok testreszabása")}
             >
               {isEditing ? (
                 <>
                   <Check className="h-3.5 w-3.5 stroke-[2.5]" />
-                  <span>{t("Done", "Hotovo", "Kész")}</span>
+                  <span className="hidden sm:inline">{t("Done", "Hotovo", "Kész")}</span>
                 </>
               ) : (
                 <>
                   <Pencil className="h-3.5 w-3.5" />
-                  <span>{t("Edit", "Upraviť", "Szerkesztés")}</span>
+                  <span className="hidden sm:inline">{t("Edit", "Upraviť", "Szerkesztés")}</span>
                 </>
               )}
             </button>
@@ -1023,18 +1062,18 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               <button
                 type="button"
                 onClick={handleResetLayout}
-                className="p-2 rounded-2xl bg-slate-100  hover:bg-slate-200  text-slate-500 hover:text-slate-800  transition-colors cursor-pointer shrink-0"
+                className="p-2 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer shrink-0"
                 title={t("Reset to Default Layout", "Obnoviť predvolené", "Alapértelmezett visszaállítása")}
               >
                 <RotateCcw className="h-4 w-4" />
               </button>
             )}
 
-            {/* Close Button */}
+            {/* Close Button on Desktop */}
             <button
               type="button"
               onClick={handleAnimatedClose}
-              className="p-2.5 rounded-2xl bg-slate-100  hover:bg-slate-200  text-slate-500 hover:text-slate-900  transition-colors cursor-pointer shrink-0"
+              className="hidden sm:flex p-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-900 transition-colors cursor-pointer shrink-0"
               title="Close (ESC)"
             >
               <X className="h-4 w-4" />
@@ -1044,7 +1083,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
         {/* Edit Mode Instructions Banner */}
         {isEditing && (
-          <div className="bg-indigo-50/90  border-b border-indigo-100  px-6 py-2.5 flex items-center justify-between gap-3 text-xs text-indigo-900  animate-in fade-in slide-in-from-top-1 duration-200">
+          <div className="bg-indigo-50/90 border-b border-indigo-100 px-4 sm:px-6 py-2 sm:py-2.5 flex items-center justify-between gap-3 text-xs text-indigo-900 animate-in fade-in slide-in-from-top-1 duration-200">
             <div className="flex items-center gap-2">
               <span className="flex h-2 w-2 rounded-full bg-indigo-500 animate-ping shrink-0" />
               <span className="font-bold shrink-0">
@@ -1061,7 +1100,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 e.stopPropagation();
                 setEditingMode(false);
               }}
-              className="text-xs font-bold text-indigo-600  hover:underline cursor-pointer shrink-0"
+              className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer shrink-0"
             >
               {t("Done Editing ➔", "Hotovo ➔", "Kész ➔")}
             </button>
@@ -1069,8 +1108,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         )}
 
         {/* Dynamic Multi-Column Grouped Menu Grid */}
-        <div className="flex-1 overflow-y-auto p-6 scrollbar-thin space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-start">
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 sm:p-6 scrollbar-thin space-y-4 sm:space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 items-start">
             {resolvedGroupsData.groupsWithItems.map((group) => {
               const IconComp = (Icons as any)[group.iconName || "FolderOpen"] || FolderOpen;
               const filteredItems = searchFilter(group.items);
@@ -1502,37 +1541,37 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         </div>
 
         {/* Footer: User Profile & Default Start Screen Quick Selector */}
-        <div className="p-4 sm:px-6 bg-slate-50/90  border-t border-slate-100  flex items-center justify-between gap-3 text-xs">
+        <div className="p-3.5 sm:px-6 bg-slate-50/90 border-t border-slate-100 flex items-center justify-between gap-2 sm:gap-3 text-xs">
           <button
             type="button"
             onClick={() => handleItemClick("personal-settings")}
             title={t("Profile", "Profil", "Profil")}
-            className="flex items-center gap-3 -mx-2 px-2 py-1.5 rounded-xl text-left hover:bg-white border border-transparent hover:border-slate-200 transition-colors cursor-pointer group"
+            className="flex items-center gap-2.5 sm:gap-3 -mx-1 sm:-mx-2 px-2 py-1.5 rounded-xl text-left hover:bg-white border border-transparent hover:border-slate-200 transition-colors cursor-pointer group shrink-0"
           >
-            <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-indigo-600 to-indigo-400 text-white font-bold flex items-center justify-center text-xs shadow-sm">
+            <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-indigo-600 to-indigo-400 text-white font-bold flex items-center justify-center text-xs shadow-sm shrink-0">
               {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : "U"}
             </div>
-            <div>
-              <span className="font-bold text-slate-800 block leading-tight">
+            <div className="min-w-0">
+              <span className="font-bold text-slate-800 block leading-tight truncate max-w-[100px] sm:max-w-none">
                 {currentUser?.name || "User"}
               </span>
-              <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
+              <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block truncate">
                 {currentUser?.role || "Member"}
               </span>
             </div>
-            <User className="h-3.5 w-3.5 text-slate-400 group-hover:text-slate-600 transition-colors" />
+            <User className="h-3.5 w-3.5 text-slate-400 group-hover:text-slate-600 transition-colors shrink-0 hidden sm:block" />
           </button>
 
           {/* Quick Start Screen Selector */}
-          <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white border border-slate-200/90 shadow-2xs hover:border-slate-300 transition-colors">
+          <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-white border border-slate-200/90 shadow-2xs hover:border-slate-300 transition-colors shrink-0">
             <Home className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-            <span className="text-[11px] font-semibold text-slate-500 hidden sm:inline">
+            <span className="text-[11px] font-semibold text-slate-500 hidden md:inline">
               {t("Start Screen:", "Úvodná obrazovka:", "Kezdőképernyő:")}
             </span>
             <select
               value={effectiveDefaultPage}
               onChange={(e) => handleSetDefaultPage(e.target.value)}
-              className="bg-transparent text-xs font-bold text-slate-800 focus:outline-none cursor-pointer pr-1 max-w-[130px] sm:max-w-[180px] truncate"
+              className="bg-transparent text-xs font-bold text-slate-800 focus:outline-none cursor-pointer pr-1 max-w-[110px] sm:max-w-[180px] truncate"
               title={t("Screen that opens when launching CCRM", "Obrazovka, ktorá sa otvorí pri spustení CCRM", "A CCRM indításakor megnyíló képernyő")}
             >
               {allItems
