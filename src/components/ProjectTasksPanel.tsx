@@ -320,7 +320,7 @@ export const ProjectTasksPanel: React.FC<ProjectTasksPanelProps> = ({
   };
 
   return (
-    <div className="flex-1 min-h-0 overflow-y-auto flex flex-col gap-4 pr-1">
+    <div className="flex-1 min-h-0 lg:overflow-y-auto flex flex-col gap-4 pr-0 lg:pr-1">
       {taskAccess.create && (
         <div className="shrink-0 rounded-2xl border border-slate-200 bg-slate-50 p-3 transition-all focus-within:border-indigo-300 focus-within:bg-white focus-within:shadow-sm">
           {isNew ? (

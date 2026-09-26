@@ -1361,7 +1361,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   };
 
   return (
-    <div className="w-full flex flex-col h-[calc(100vh-11rem)] animate-fade-in text-left">
+    <div className="w-full flex flex-col h-auto lg:h-[calc(100vh-11rem)] animate-fade-in text-left">
 
       {/* Header — the same shape the projects list opens with: a large
           heading with its icon, a caption under it, the actions on the right,
@@ -1489,13 +1489,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       </div>
 
       {/* Workspace Body */}
-      <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-12 gap-6 pt-6 min-h-0">
+      <div className="flex-1 lg:overflow-hidden grid grid-cols-1 lg:grid-cols-12 gap-6 pt-6 min-h-0">
         
         {/* LEFT COLUMN: the project's own card, its custom attributes, then
             the paired client at the bottom. The project card is edited in
             place and every change saves itself; the attributes card keeps an
             Edit mode of its own. */}
-        <div className="lg:col-span-4 flex flex-col h-full min-h-0 overflow-y-auto gap-4 pr-1 scrollbar-thin text-left">
+        <div className="lg:col-span-4 flex flex-col h-auto lg:h-full min-h-0 lg:overflow-y-auto gap-4 lg:pr-1 scrollbar-thin text-left">
 
 
           {/* PROJECT CARD DETAILS */}
@@ -2414,7 +2414,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
         </div>
 
         {/* RIGHT COLUMN: Timeline & Gantt Tabs */}
-        <div className="lg:col-span-8 flex flex-col h-full overflow-hidden bg-white border border-slate-200 rounded-3xl p-5 shadow-sm text-left">
+        <div className="lg:col-span-8 flex flex-col h-auto lg:h-full lg:overflow-hidden bg-white border border-slate-200 rounded-3xl p-4 sm:p-5 shadow-sm text-left">
           {/* Tab Switched Header */}
           <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4 shrink-0">
             {/* One shape for every tab: icon, label, optional badge. The row
@@ -2513,7 +2513,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
           {/* TAB CONTENT: Timeline */}
           {activeRightTab === "timeline" && projectType.hasTimeline && (
-            <div className="flex-1 overflow-hidden flex flex-col lg:flex-row gap-6">
+            <div className="flex-1 lg:overflow-hidden flex flex-col lg:flex-row gap-6">
               {/* Timeline Form — writes an event, so a read-only role gets the list alone. */}
               {canEdit && (
               <div className="lg:w-1/3 flex flex-col shrink-0 bg-slate-50 p-4 border border-slate-200 rounded-2xl h-fit">
@@ -2783,7 +2783,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               )}
 
               {/* Timeline Events List */}
-              <div className="flex-1 overflow-y-auto space-y-3.5 pr-1 scrollbar-thin">
+              <div className="flex-1 lg:overflow-y-auto space-y-3.5 lg:pr-1 scrollbar-thin">
                 {timeline.length === 0 ? (
                   <div className="h-full min-h-[200px] flex items-center justify-center border-2 border-dashed border-slate-100 rounded-2xl p-6 text-slate-400 text-xs">
                     {t("No events logged for this project yet.", "Zatiaľ neboli zaznamenané žiadne udalosti.", "Még nincsenek események rögzítve.")}
@@ -2888,7 +2888,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           {activeRightTab === "gantt" && projectType.hasGantt && (() => {
             const { weekdays, weekGroups, totalTimelineWidth } = getGanttTimelineData();
             return (
-              <div className="flex-1 overflow-hidden flex flex-col gap-4 text-xs font-semibold">
+              <div className="flex-1 lg:overflow-hidden flex flex-col gap-4 text-xs font-semibold">
                 
                 {/* Gantt Entry Form Inline — adds a row, so only for a role that may edit. */}
                 {canEdit && (
@@ -3325,7 +3325,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
           {/* TAB CONTENT: Files — the type's default files, then this project's own */}
           {activeRightTab === "files" && (
-            <div className="flex-1 overflow-y-auto space-y-5 scrollbar-thin pr-1 animate-in fade-in duration-150 text-left">
+            <div className="flex-1 lg:overflow-y-auto space-y-5 scrollbar-thin lg:pr-1 animate-in fade-in duration-150 text-left">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex flex-col min-w-0">
                   <span className="font-heading font-bold text-sm text-slate-800 flex items-center gap-1.5">
@@ -3414,7 +3414,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
           {/* TAB CONTENT: Finances & Revenue Analysis (CRITICAL REQUIREMENT #5, #6, #7) */}
           {activeRightTab === "finances" && (
-            <div className="flex-1 overflow-y-auto space-y-6 scrollbar-thin pr-1 animate-in fade-in duration-150 text-left">
+            <div className="flex-1 lg:overflow-y-auto space-y-6 scrollbar-thin lg:pr-1 animate-in fade-in duration-150 text-left">
               {/* 0. Project Budget — the ceiling the direct costs are measured against */}
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
                 <div className="flex flex-wrap items-center justify-between gap-3">
