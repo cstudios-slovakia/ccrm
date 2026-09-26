@@ -116,6 +116,7 @@ interface ProjectsViewProps {
   projectTypes: ProjectType[];
   setProjectTypes: React.Dispatch<React.SetStateAction<ProjectType[]>>;
   leads: Lead[];
+  setLeads?: (updater: Lead[] | ((prev: Lead[]) => Lead[])) => void;
   users: UserProfile[];
   userLanguage: Language;
   /**
@@ -167,6 +168,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   projectTypes,
   setProjectTypes,
   leads,
+  setLeads,
   users,
   userLanguage,
   access = FULL_MODULE_ACCESS,
@@ -488,6 +490,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           if (parsed.currency) pCurrency = parsed.currency;
           hasMoneyVal = true;
         }
+      }
+    }
+    if (!hasMoneyVal && (p.data?._projectValue !== undefined || p.data?.value !== undefined)) {
+      const v = Number(p.data?._projectValue ?? p.data?.value);
+      if (Number.isFinite(v) && v > 0) {
+        pVal = v;
+        hasMoneyVal = true;
       }
     }
     if (!hasMoneyVal && lead?.value) {
@@ -1119,6 +1128,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         project={editingProject}
         projectType={editingProjectType}
         leads={leads}
+        setLeads={setLeads}
         users={users}
         userLanguage={userLanguage}
         financialRecords={financialRecords}

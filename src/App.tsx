@@ -3003,6 +3003,7 @@ ${log.payload || ''}
             projectTypes={projectTypes}
             setProjectTypes={updateProjectTypesAndSync}
             leads={leads}
+            setLeads={updateLeadsAndSync}
             users={users}
             userLanguage={userLanguage}
             access={access.module("projects")}
