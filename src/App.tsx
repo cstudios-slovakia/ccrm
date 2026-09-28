@@ -33,9 +33,7 @@ import { CopilotSidebar } from "./components/executive/CopilotSidebar";
 import { AuroraBackground } from "./components/ui/AuroraBackground";
 import { useCurrentScreenContext } from "./hooks/useCurrentScreenContext";
 import { RefreshCw, AlertOctagon, Trash2, Copy, Brain, Mail } from "lucide-react";
-import { ShaderGradient } from "shadergradient";
-import { Canvas, type EventManager } from "@react-three/fiber";
-import { ShaderChunk } from "three";
+import { FeralGradientBackground } from "./components/FeralGradientBackground";
 import { getStoredTheme, getStoredThemeMode, isThemeMode, startThemeWatcher, type Appearance, type ThemeMode } from "./utils/theme";
 import { hasPersistentStorage } from "./utils/safeStorage";
 import { LicenseBanner } from "./components/LicenseBanner";
@@ -126,44 +124,6 @@ const SocialMediaView = safeLazy(() => import("./components/SocialMediaView").th
 const WarehouseView = safeLazy(() => import("./components/WarehouseView").then(m => ({ default: m.WarehouseView })));
 const FinancialManagementView = safeLazy(() => import("./components/FinancialManagementView").then(m => ({ default: m.FinancialManagementView })));
 const InvoicingView = safeLazy(() => import("./components/InvoicingView").then(m => ({ default: m.InvoicingView })));
-
-const ShaderGradientAny = ShaderGradient as any;
-
-/**
- * shadergradient's own ShaderGradientCanvas, minus pointer events.
- *
- * Its Canvas wires r3f's pointer handlers to the wrapper div once WebGL is up.
- * The loading screen that hosts it often unmounts before that happens, and r3f
- * then calls addEventListener on a null ref — an uncaught exception on nearly
- * every load. The gradient is pointer-events:none and never needed events, so
- * an event manager with no connect step removes the race rather than hiding it.
- * The rest mirrors the wrapper: its Canvas props, and blanking the uv2/encodings
- * chunks its shaders still #include but current three no longer ships.
- */
-const NO_POINTER_EVENTS = (): EventManager<HTMLElement> => ({ enabled: false, priority: 0 });
-const BackgroundGradientCanvas: React.FC<{ style: React.CSSProperties; children: React.ReactNode }> = ({ style, children }) => {
-  useEffect(() => {
-    const chunks = ShaderChunk as unknown as Record<string, string>;
-    chunks.uv2_pars_vertex = "";
-    chunks.uv2_vertex = "";
-    chunks.uv2_pars_fragment = "";
-    chunks.encodings_fragment = "";
-  }, []);
-  return (
-    <Canvas
-      style={style}
-      resize={{ offsetSize: true }}
-      dpr={1}
-      camera={{ fov: 45 }}
-      linear
-      flat
-      gl={{ preserveDrawingBuffer: true }}
-      events={NO_POINTER_EVENTS}
-    >
-      {children}
-    </Canvas>
-  );
-};
 
 // Stable, order-fixed fingerprint of the settings block. Used to tell a genuine
 // user edit apart from merely re-receiving the server's own settings, so the
@@ -3373,108 +3333,57 @@ ${log.payload || ''}
     );
   }
 
-  // While loading initial sync data from the database, show a premium glassmorphic loader
+  // While loading initial sync data from the database, show a premium timelapse atmospheric loader
   if (isInstalled && !isInitialSyncResolved) {
     return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-50 via-slate-100 to-indigo-50/50 p-6 relative overflow-hidden select-none font-sans">
+      <div className="min-h-screen w-full flex items-center justify-center p-6 relative overflow-hidden select-none font-sans">
         <style dangerouslySetInnerHTML={{__html: `
-          .loader {
-            width: 65px;
-            aspect-ratio: 1;
-            position: relative;
+          @keyframes pulse-ring {
+            0% { transform: scale(0.95); opacity: 0.8; }
+            50% { transform: scale(1.05); opacity: 0.4; }
+            100% { transform: scale(0.95); opacity: 0.8; }
           }
-          .loader:before,
-          .loader:after {
-            content: "";
-            position: absolute;
-            border-radius: 50px;
-            box-shadow: 0 0 0 3px inset rgba(255,255,255,0.95);
-            filter: drop-shadow(0 1px 4px rgba(30,27,75,0.45));
-            animation: l4 2.5s infinite;
+          @keyframes spin-slow {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
           }
-          .loader:after {
-            animation-delay: -1.25s;
+          .loader-spin {
+            animation: spin-slow 2.4s linear infinite;
           }
-          @keyframes l4 {
-            0% { inset: 0 35px 35px 0; }
-            12.5% { inset: 0 35px 0 0; }
-            25% { inset: 35px 35px 0 0; }
-            37.5% { inset: 35px 0 0 0; }
-            50% { inset: 35px 0 0 35px; }
-            62.5% { inset: 0 0 0 35px; }
-            75% { inset: 0 0 35px 35px; }
-            87.5% { inset: 0 0 35px 0; }
-            100% { inset: 0 35px 35px 0; }
+          .pulse-ring {
+            animation: pulse-ring 3s ease-in-out infinite;
           }
         `}} />
 
-        {/* Animated 3D Shader Background */}
-        <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
-          <BackgroundGradientCanvas
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              height: '100%',
-              pointerEvents: 'none'
-            }}
-          >
-            <ShaderGradientAny
-              animate="on"
-              axesHelper="off"
-              brightness={1.5}
-              cAzimuthAngle={250}
-              cDistance={1.5}
-              cPolarAngle={140}
-              cameraZoom={12.5}
-              color1="#809bd6"
-              color2="#910aff"
-              color3="#af38ff"
-              destination="onCanvas"
-              embedMode="off"
-              envPreset="city"
-              format="gif"
-              fov={45}
-              frameRate={10}
-              gizmoHelper="hide"
-              grain="on"
-              lightType="3d"
-              pixelDensity={1}
-              positionX={0}
-              positionY={0}
-              positionZ={0}
-              range="disabled"
-              rangeEnd={40}
-              rangeStart={0}
-              reflection={0.5}
-              rotationX={0}
-              rotationY={0}
-              rotationZ={140}
-              shader="defaults"
-              type="sphere"
-              uAmplitude={7}
-              uDensity={0.8}
-              uFrequency={5.5}
-              uSpeed={0.3}
-              uStrength={0.4}
-              wireframe={false}
-            />
-          </BackgroundGradientCanvas>
-        </div>
+        {/* Dynamic Animated Timelapse Atmospheric Background (matching Login View) */}
+        <FeralGradientBackground timelapse timelapseSpeed={0.16} />
 
-        <div className="relative z-10 flex flex-col items-center max-w-sm text-center">
-          {/* Custom Loader Animation */}
-          <div className="mb-8 flex items-center justify-center h-16 w-16">
-            <div className="loader"></div>
+        {/* Glassmorphic Executive Card */}
+        <div className="relative z-10 flex flex-col items-center max-w-sm text-center px-10 py-9 rounded-[32px] border backdrop-blur-2xl bg-white/40 dark:bg-slate-950/40 border-white/50 dark:border-white/10 shadow-2xl shadow-indigo-950/20 transition-all duration-700 animate-in fade-in zoom-in-95">
+          {/* Animated Glowing Monogram / Orbital Loader */}
+          <div className="relative mb-6 flex items-center justify-center h-20 w-20">
+            {/* Ambient Pulsing Glow Ring */}
+            <div className="absolute inset-0 rounded-full bg-white/30 dark:bg-indigo-500/20 blur-md pulse-ring"></div>
+            {/* Orbital Spinning Border */}
+            <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-white/90 border-r-white/40 loader-spin"></div>
+            <div className="absolute inset-1.5 rounded-full border border-white/30"></div>
+            
+            {/* Center Monogram */}
+            <div className="relative z-10 h-12 w-12 rounded-2xl bg-gradient-to-br from-white/90 to-white/60 dark:from-slate-800 dark:to-slate-900 border border-white/80 dark:border-white/20 shadow-md flex items-center justify-center font-heading font-black text-xs tracking-wider text-slate-900 dark:text-white">
+              CC
+            </div>
           </div>
           
-          <h2 className="text-xl font-heading font-black tracking-widest text-white uppercase [text-shadow:0_2px_8px_rgba(30,27,75,0.55)]">
-            CCRM
+          <h2 className="text-xl font-heading font-black tracking-widest text-slate-900 dark:text-white uppercase drop-shadow-sm">
+            {systemName || "CCRM"}
           </h2>
-          <p className="text-[10px] font-black text-white/90 uppercase tracking-widest mt-3.5 animate-pulse [text-shadow:0_1px_5px_rgba(30,27,75,0.6)]">
-            {t("Syncing database connection...", "Pripájam sa k databáze...", "Kapcsolódás az adatbázishoz...")}
-          </p>
+          
+          <div className="flex items-center gap-2 mt-3 px-3.5 py-1.5 rounded-full bg-white/50 dark:bg-slate-900/50 border border-white/60 dark:border-white/10 backdrop-blur-md shadow-sm">
+            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <p className="text-[10px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">
+              {t("Syncing database connection...", "Pripájam sa k databáze...", "Kapcsolódás az adatbázishoz...")}
+            </p>
+          </div>
         </div>
       </div>
     );
