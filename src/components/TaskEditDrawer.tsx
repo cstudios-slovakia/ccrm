@@ -1,10 +1,11 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo } from "react";
 import { createPortal } from "react-dom";
 import {
     Archive as ArchiveIcon,
     ArrowUpRight,
     CheckSquare,
     FolderKanban,
+    Hash,
     Lock,
     RotateCcw,
     Trash2,
@@ -18,6 +19,8 @@ import { TaskEmailReminderField } from "./TaskEmailReminderField";
 import { projectDisplayName } from "../utils/projects";
 import { isDoneTaskState, localStampStr } from "../utils/projectTasks";
 import { taskPriorityLabel, taskStateLabel, type Translate } from "../utils/taskLabels";
+import { TaskTagMentionInput } from "./TaskTagMentionInput";
+import { extractTagsFromText, type MentionEntity } from "./TaskPillText";
 
 // Named preset deadline times offered in the picker. "End of day (23:59)" was removed
 // in favour of a "Custom" option that lets the user type any specific time.
@@ -146,6 +149,8 @@ interface TaskEditDrawerProps {
     canDelete?: boolean;
     /** False when no outgoing mail server is set up; the e-mail reminder then warns. */
     mailConfigured?: boolean;
+    existingTags?: string[];
+    onTagClick?: (tag: string) => void;
     onSave: (task: Task) => void;
     onToggleArchive?: (task: Task) => void;
     /** Resolves true once the task is really gone; the drawer only closes then. */
@@ -171,6 +176,8 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
     canArchive = false,
     canDelete = false,
     mailConfigured,
+    existingTags = [],
+    onTagClick,
     onSave,
     onToggleArchive,
     onDelete,
@@ -199,6 +206,76 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
     };
 
     const update = (patch: Partial<Task>) => setDraft((prev) => ({ ...prev, ...patch }));
+
+    const mentionEntities: MentionEntity[] = useMemo(() => {
+        const list: MentionEntity[] = [];
+
+        // Users (Team members)
+        users.forEach((u) => {
+            list.push({
+                id: u.name,
+                name: u.name,
+                type: "user",
+                detail: u.role || "Team member",
+            });
+        });
+
+        // Projects
+        (projects || []).forEach((p) => {
+            const name = projectDisplayName(p, leads, t("Untitled project", "Projekt bez názvu", "Névtelen projekt"));
+            list.push({
+                id: p.id,
+                name,
+                type: "project",
+                detail: p.status || "Project",
+            });
+        });
+
+        // Clients and Leads
+        leads.forEach((l) => {
+            const isClient = (l.id || "").startsWith("client-") || (Number(l.adjustment) || 0) > 0;
+            if (isClient) {
+                list.push({
+                    id: l.id,
+                    name: l.name,
+                    type: "client",
+                    detail: l.city || "Client",
+                });
+            } else {
+                list.push({
+                    id: l.id,
+                    name: l.name,
+                    type: "lead",
+                    detail: l.status || "Lead",
+                });
+            }
+        });
+
+        return list;
+    }, [users, projects, leads, t]);
+
+    const combinedTags = useMemo(() => {
+        const fromTitle = extractTagsFromText(draft.title);
+        const fromDesc = extractTagsFromText(draft.description);
+        const explicit = draft.tags || [];
+        return Array.from(new Set([...explicit, ...fromTitle, ...fromDesc]));
+    }, [draft.title, draft.description, draft.tags]);
+
+    const handleAssignEntity = (entity: MentionEntity) => {
+        if (entity.type === "user") {
+            const currentUsers = draft.assignedUsers || [];
+            if (!currentUsers.includes(entity.id)) {
+                update({
+                    assignedUsers: [...currentUsers, entity.id],
+                    owner: draft.owner || entity.id,
+                });
+            }
+        } else if (entity.type === "project") {
+            update({ relatedProjectId: entity.id });
+        } else if (entity.type === "client" || entity.type === "lead") {
+            update({ relatedLeadId: entity.id });
+        }
+    };
 
     // A task can point at a project the viewer's list no longer has (deleted in
     // another session); keep it pickable rather than silently showing "None".
@@ -245,37 +322,107 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                     onSubmit={(e) => {
                         e.preventDefault();
                         if (!canEdit) return;
-                        onSave(draft);
+                        onSave({ ...draft, tags: combinedTags });
                         requestClose();
                     }}
                     className="flex-1 py-5 space-y-5 text-xs font-bold"
                 >
                     <fieldset disabled={!canEdit} className="space-y-5 min-w-0">
                         <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase">
-                                {t("Task Title", "Názov", "Cím")}
+                            <label className="text-[9px] font-black text-slate-500 uppercase flex items-center justify-between">
+                                <span>{t("Task Title", "Názov", "Cím")}</span>
+                                <span className="text-[9px] font-normal text-indigo-500">
+                                    {t("Use # for tags, @ to assign", "Použite # pre tagy, @ pre priradenie", "Használjon #-et címkékhez, @-ot hozzárendeléshez")}
+                                </span>
                             </label>
-                            <input
-                                type="text"
+                            <TaskTagMentionInput
+                                value={draft.title}
+                                onChange={(val) => update({ title: val })}
                                 required
                                 maxLength={255}
-                                value={draft.title}
-                                onChange={(e) => update({ title: e.target.value })}
-                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none disabled:bg-slate-50"
+                                disabled={!canEdit}
+                                existingTags={existingTags}
+                                onTagAdded={(tag) => {
+                                    const current = draft.tags || [];
+                                    if (!current.includes(tag)) update({ tags: [...current, tag] });
+                                }}
+                                mentionEntities={mentionEntities}
+                                onAssignEntity={handleAssignEntity}
+                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none disabled:bg-slate-50 text-xs font-bold"
                             />
                         </div>
 
                         <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase">
-                                {t("Description", "Popis", "Leírás")}
+                            <label className="text-[9px] font-black text-slate-500 uppercase flex items-center justify-between">
+                                <span>{t("Description", "Popis", "Leírás")}</span>
+                                <span className="text-[9px] font-normal text-indigo-500">
+                                    {t("Use # for tags, @ to assign", "Použite # pre tagy, @ pre priradenie", "Használjon #-et címkékhez, @-ot hozzárendeléshez")}
+                                </span>
                             </label>
-                            <textarea
+                            <TaskTagMentionInput
+                                multiline
                                 rows={3}
                                 value={draft.description}
-                                onChange={(e) => update({ description: e.target.value })}
-                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none resize-none disabled:bg-slate-50"
+                                onChange={(val) => update({ description: val })}
+                                disabled={!canEdit}
+                                existingTags={existingTags}
+                                onTagAdded={(tag) => {
+                                    const current = draft.tags || [];
+                                    if (!current.includes(tag)) update({ tags: [...current, tag] });
+                                }}
+                                mentionEntities={mentionEntities}
+                                onAssignEntity={handleAssignEntity}
+                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none resize-none disabled:bg-slate-50 text-xs font-bold"
                             />
                         </div>
+
+                        {combinedTags.length > 0 && (
+                            <div className="space-y-1 pt-0.5">
+                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
+                                    {t("Active Tags", "Aktívne tagy", "Aktív címkék")}
+                                </label>
+                                <div className="flex flex-wrap gap-1.5">
+                                    {combinedTags.map((tag) => (
+                                        <span
+                                            key={tag}
+                                            onClick={() => {
+                                                if (onTagClick) {
+                                                    requestClose();
+                                                    onTagClick(tag);
+                                                }
+                                            }}
+                                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-black uppercase bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs ${
+                                                onTagClick ? "cursor-pointer hover:bg-indigo-100" : ""
+                                            }`}
+                                            title={onTagClick ? `Filter archive by #${tag}` : undefined}
+                                        >
+                                            <Hash className="h-2.5 w-2.5 opacity-70" />
+                                            <span>{tag}</span>
+                                            {canEdit && (
+                                                <button
+                                                    type="button"
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        const nextTags = (draft.tags || []).filter((t) => t !== tag);
+                                                        const tagRegex = new RegExp(`#${tag}\\b`, "gi");
+                                                        const nextTitle = draft.title.replace(tagRegex, "").trim();
+                                                        const nextDesc = draft.description.replace(tagRegex, "").trim();
+                                                        update({
+                                                            tags: nextTags,
+                                                            title: nextTitle,
+                                                            description: nextDesc,
+                                                        });
+                                                    }}
+                                                    className="hover:text-rose-600 ml-0.5 p-0.5 rounded transition-colors"
+                                                >
+                                                    <X className="h-2.5 w-2.5" />
+                                                </button>
+                                            )}
+                                        </span>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
 
                         <div className="space-y-1">
                             <label className="text-[9px] font-black text-slate-500 uppercase">
@@ -479,7 +626,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                 // edits made in the drawer before archiving were
                                 // dropped without a word. Keep them first.
                                 if (canEdit && draft.title.trim() && JSON.stringify(draft) !== JSON.stringify(task)) {
-                                    onSave(draft);
+                                    onSave({ ...draft, tags: combinedTags });
                                 }
                                 onToggleArchive(draft);
                                 requestClose();

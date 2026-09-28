@@ -175,6 +175,25 @@ if (!function_exists('ccrm_schema_statements')) {
               FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
+            // Tags
+            "CREATE TABLE IF NOT EXISTS `tags` (
+              `id` VARCHAR(50) NOT NULL,
+              `name` VARCHAR(100) NOT NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (`id`),
+              UNIQUE KEY `idx_tag_name` (`name`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Task Tags (Relational linking)
+            "CREATE TABLE IF NOT EXISTS `task_tags` (
+              `task_id` VARCHAR(50) NOT NULL,
+              `tag_name` VARCHAR(100) NOT NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (`task_id`, `tag_name`),
+              INDEX `idx_task_tag_name` (`tag_name`),
+              FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
             // System Settings
             "CREATE TABLE IF NOT EXISTS `system_settings` (
               `key` VARCHAR(100) NOT NULL,

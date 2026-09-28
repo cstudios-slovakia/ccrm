@@ -16,6 +16,7 @@ import type { Lead, Project, Task, UserProfile } from "../types";
 import type { Language } from "../utils/translations";
 import { CustomSelect } from "./ui/CustomSelect";
 import { TaskEditDrawer } from "./TaskEditDrawer";
+import { TaskPillText } from "./TaskPillText";
 import { VoiceTaskActionBar } from "./VoiceTaskActionBar";
 import {
   buildProjectTasks,
@@ -245,7 +246,7 @@ export const ProjectTasksPanel: React.FC<ProjectTasksPanelProps> = ({
               closed ? "text-slate-400 line-through" : "text-slate-800 group-hover:text-indigo-700"
             }`}
           >
-            {task.title}
+            <TaskPillText text={task.title} />
           </span>
           <span className="mt-1 flex flex-wrap items-center gap-1.5 text-[10px] font-bold">
             <span

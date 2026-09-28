@@ -178,7 +178,7 @@ function ccrm_decode_attr_value($stored) {
 }
 
 function ccrm_compute_data_version($pdo) {
-    $candidates = ['leads', 'timeline_events', 'lead_categories', 'tasks', 'task_assignees', 'users', 'roles', 'meeting_notes', 'meeting_tasks', 'unified_entries', 'system_settings', 'project_types', 'projects', 'project_managers', 'warehouses', 'suppliers', 'warehouse_items', 'warehouse_stock', 'warehouse_batches', 'warehouse_movements', 'warehouse_movement_items', 'financial_categories', 'client_categories', 'financial_records', 'invoices_offers', 'invoice_offer_items', 'ai_custom_templates'];
+    $candidates = ['leads', 'timeline_events', 'lead_categories', 'tasks', 'task_assignees', 'tags', 'task_tags', 'users', 'roles', 'meeting_notes', 'meeting_tasks', 'unified_entries', 'system_settings', 'project_types', 'projects', 'project_managers', 'warehouses', 'suppliers', 'warehouse_items', 'warehouse_stock', 'warehouse_batches', 'warehouse_movements', 'warehouse_movement_items', 'financial_categories', 'client_categories', 'financial_records', 'invoices_offers', 'invoice_offer_items', 'ai_custom_templates'];
     try {
         $existing = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
         $existingSet = array_flip($existing);
@@ -885,12 +885,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         ];
     }
 
-    // 3.2. Fetch Tasks (assignees pre-fetched in one query, grouped by task_id)
+    // 3.2. Fetch Tasks (assignees and tags pre-fetched in one query, grouped by task_id)
     $assigneesByTask = [];
     $assBulk = $pdo->query("SELECT `task_id`, `user_name` FROM `task_assignees`");
     while ($a = $assBulk->fetch()) {
         $assigneesByTask[$a['task_id']][] = $a['user_name'];
     }
+
+    $tagsByTask = [];
+    try {
+        $tagsBulk = $pdo->query("SELECT `task_id`, `tag_name` FROM `task_tags`");
+        while ($tg = $tagsBulk->fetch()) {
+            $tagsByTask[$tg['task_id']][] = $tg['tag_name'];
+        }
+    } catch (\Throwable $e) {}
+
+    $allKnownTags = [];
+    try {
+        $allTagsStmt = $pdo->query("SELECT `name` FROM `tags` ORDER BY `name` ASC");
+        while ($tRow = $allTagsStmt->fetch()) {
+            $allKnownTags[] = $tRow['name'];
+        }
+    } catch (\Throwable $e) {}
 
     $tasksStmt = $pdo->query("SELECT * FROM `tasks` ORDER BY `created_at` DESC");
     $tasks = [];
@@ -916,7 +932,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'completedBy' => $row['completed_by'] ?? null,
             'completedAt' => $row['completed_at'] ?? null,
             'emailReminders' => ccrm_decode_task_reminders($row['email_reminders_json'] ?? null),
-            'assignedUsers' => $assignedUsers
+            'assignedUsers' => $assignedUsers,
+            'tags' => $tagsByTask[$taskId] ?? []
         ];
     }
 
@@ -1758,6 +1775,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'db_info' => $dbInfo,
         'leads' => $leads,
         'tasks' => $tasks,
+        'allTags' => $allKnownTags,
         'users' => $users,
         'roles' => $roles,
         'meetingNotes' => $meetingNotes,
@@ -3455,6 +3473,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     foreach ($t['assignedUsers'] as $user_name) {
                         $insAss->execute([$taskId, $user_name]);
                     }
+                }
+
+                // Sync task tags (Delete & Insert list)
+                try {
+                    $delTaskTags = $pdo->prepare("DELETE FROM `task_tags` WHERE `task_id` = ?");
+                    $delTaskTags->execute([$taskId]);
+
+                    if (isset($t['tags']) && is_array($t['tags'])) {
+                        $insTagDef = $pdo->prepare("INSERT IGNORE INTO `tags` (`id`, `name`) VALUES (?, ?)");
+                        $insTaskTag = $pdo->prepare("INSERT IGNORE INTO `task_tags` (`task_id`, `tag_name`) VALUES (?, ?)");
+                        foreach ($t['tags'] as $tagName) {
+                            $cleanTag = trim((string)$tagName);
+                            if ($cleanTag !== '') {
+                                $cleanTag = ltrim($cleanTag, '#');
+                                $tagId = 'tag-' . substr(md5(strtolower($cleanTag)), 0, 16);
+                                $insTagDef->execute([$tagId, $cleanTag]);
+                                $insTaskTag->execute([$taskId, $cleanTag]);
+                            }
+                        }
+                    }
+                } catch (\Throwable $e) {
+                    ccrm_log_exception($e);
                 }
             }
 

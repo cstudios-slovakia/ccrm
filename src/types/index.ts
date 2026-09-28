@@ -301,6 +301,7 @@ export interface Task {
    * by the server (api/task_reminders.php) through the system SMTP profile.
    */
   emailReminders?: Record<string, TaskEmailReminder>;
+  tags?: string[];
 }
 
 /** When a task e-mail reminder goes out: the deadline's morning, 1 hour or 1 day before. */

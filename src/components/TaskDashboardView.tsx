@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
 import {
     CheckSquare,
@@ -28,6 +28,7 @@ import {
     History,
     Search,
     ArrowUpDown,
+    Hash,
 } from "lucide-react";
 import type { Task, UserProfile, Lead, Project } from "../types";
 import type { Language } from "../utils/translations";
@@ -37,6 +38,8 @@ import { ClientSelect } from "./ui/ClientSelect";
 import { DeadlineTimePicker, TaskEditDrawer, taskProjectOptions } from "./TaskEditDrawer";
 import { VoiceTaskActionBar } from "./VoiceTaskActionBar";
 import { TaskEmailReminderField } from "./TaskEmailReminderField";
+import { TaskTagMentionInput } from "./TaskTagMentionInput";
+import { TaskPillText, extractTagsFromText, type MentionEntity } from "./TaskPillText";
 import { projectDisplayName } from "../utils/projects";
 import { taskPriorityLabel, taskStateLabel } from "../utils/taskLabels";
 import { requestTaskDeletion } from "../utils/taskApi";
@@ -577,6 +580,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const [globalDateEnd, setGlobalDateEnd] = useState<Date | null>(null);
     const [archiveDateStart, setArchiveDateStart] = useState<Date | null>(null);
     const [archiveDateEnd, setArchiveDateEnd] = useState<Date | null>(null);
+    const [archiveTagFilter, setArchiveTagFilter] = useState<string | null>(null);
 
     // Add Task Inline Card State
     const [isAddDrawerOpen, setIsAddDrawerOpen] = useState(false);
@@ -636,6 +640,74 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             setGlobalUserFilter("all");
         }
     }, [allUsersList, globalUserFilter]);
+
+    // All distinct tags collected from stored task.tags plus hashtags in titles/descriptions
+    const allExistingTags = useMemo(() => {
+        const tagSet = new Set<string>();
+        tasks.forEach((tk) => {
+            if (tk.tags && Array.isArray(tk.tags)) {
+                tk.tags.forEach((t) => tagSet.add(t));
+            }
+            extractTagsFromText(tk.title || "").forEach((t) => tagSet.add(t));
+            extractTagsFromText(tk.description || "").forEach((t) => tagSet.add(t));
+        });
+        return Array.from(tagSet).sort();
+    }, [tasks]);
+
+    // Mentionable entities (users, projects, clients, leads) for @ mentions
+    const mentionEntities: MentionEntity[] = useMemo(() => {
+        const list: MentionEntity[] = [];
+
+        // Users (Team members)
+        (users || []).forEach((u) => {
+            list.push({
+                id: u.name,
+                name: u.name,
+                type: "user",
+                detail: u.role || "Team member",
+            });
+        });
+
+        // Projects
+        (projects || []).forEach((p) => {
+            const name = projectDisplayName(p, leads, t("Untitled project", "Projekt bez názvu", "Névtelen projekt"));
+            list.push({
+                id: p.id,
+                name,
+                type: "project",
+                detail: p.status || "Project",
+            });
+        });
+
+        // Clients and Leads
+        leads.forEach((l) => {
+            const isClient = (l.id || "").startsWith("client-") || (Number(l.adjustment) || 0) > 0;
+            if (isClient) {
+                list.push({
+                    id: l.id,
+                    name: l.name,
+                    type: "client",
+                    detail: l.city || "Client",
+                });
+            } else {
+                list.push({
+                    id: l.id,
+                    name: l.name,
+                    type: "lead",
+                    detail: l.status || "Lead",
+                });
+            }
+        });
+
+        return list;
+    }, [users, projects, leads, t]);
+
+    // Handler when any tag is clicked anywhere: switch to Archive and filter by tag
+    const handleTagClick = useCallback((tag: string) => {
+        setEditingTask(null);
+        setViewMode("archive");
+        setArchiveTagFilter(tag.replace(/^#/, ""));
+    }, []);
 
     React.useEffect(() => {
         if (autoOpenAddTask) {
@@ -805,6 +877,19 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             // tasks of the whole team, not just their own. Use the "Completed By"
             // filter to narrow it down to a single person.
 
+            // Tag filter
+            if (archiveTagFilter) {
+                const targetTag = archiveTagFilter.toLowerCase();
+                const taskTags = [
+                    ...(task.tags || []),
+                    ...extractTagsFromText(task.title || ""),
+                    ...extractTagsFromText(task.description || ""),
+                ].map((tg) => tg.toLowerCase());
+                if (!taskTags.includes(targetTag)) {
+                    return false;
+                }
+            }
+
             // Item 9 — calendar date-range filter (by deadline/due date)
             if (!dateInRange(task.deadline, archiveDateStart, archiveDateEnd))
                 return false;
@@ -858,6 +943,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         archiveTimingFilter,
         archiveDateStart,
         archiveDateEnd,
+        archiveTagFilter,
         unknownCompletedBy,
     ]);
 
@@ -1025,14 +1111,26 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             return filteredGlobalTasks;
         }
         if (viewMode === "archive") {
-            const manualArchived = tasks.filter((t) => t.archived);
+            const manualArchived = tasks.filter((t) => {
+                if (!t.archived) return false;
+                if (archiveTagFilter) {
+                    const targetTag = archiveTagFilter.toLowerCase();
+                    const taskTags = [
+                        ...(t.tags || []),
+                        ...extractTagsFromText(t.title || ""),
+                        ...extractTagsFromText(t.description || ""),
+                    ].map((tg) => tg.toLowerCase());
+                    return taskTags.includes(targetTag);
+                }
+                return true;
+            });
             const map = new Map<string, Task>();
             filteredArchivedTasks.forEach((t) => map.set(t.id, t));
             manualArchived.forEach((t) => map.set(t.id, t));
             return Array.from(map.values());
         }
         return [];
-    }, [viewMode, myTasks, filteredGlobalTasks, filteredArchivedTasks, tasks]);
+    }, [viewMode, myTasks, filteredGlobalTasks, filteredArchivedTasks, tasks, archiveTagFilter]);
 
     const areAllVisibleSelected = useMemo(() => {
         if (visibleTasksInCurrentView.length === 0) return false;
@@ -1714,6 +1812,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             id: `task-${now}-${index}-${Math.random().toString(36).slice(2, 7)}`,
             title,
             description: "",
+            tags: extractTagsFromText(title),
             status: taskStates[0] || "New",
             priority: newPriority,
             deadline: newDeadline,
@@ -2319,7 +2418,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 className="hidden sm:inline font-bold text-slate-800 truncate cursor-pointer hover:text-indigo-600 transition-colors"
                                 title={task.title}
                             >
-                                {task.title}
+                                <TaskPillText
+                                    text={task.title}
+                                    onTagClick={handleTagClick}
+                                    knownEntities={mentionEntities}
+                                />
                             </span>
                         </div>
 
@@ -2380,7 +2483,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             className="font-bold text-slate-900 text-xs leading-snug cursor-pointer hover:text-indigo-600 transition-colors break-words line-clamp-3 block"
                             title={task.title}
                         >
-                            {task.title}
+                            <TaskPillText
+                                text={task.title}
+                                onTagClick={handleTagClick}
+                                knownEntities={mentionEntities}
+                            />
                         </span>
                     </div>
 
@@ -2430,9 +2537,35 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                         {task.description && (
                             <span className="text-slate-400 font-medium truncate max-w-[240px] sm:max-w-[180px]" title={task.description}>
-                                {task.description}
+                                <TaskPillText
+                                    text={task.description}
+                                    onTagClick={handleTagClick}
+                                    knownEntities={mentionEntities}
+                                />
                             </span>
                         )}
+                        {task.tags && task.tags.length > 0 && (() => {
+                            const textTags = new Set([
+                                ...extractTagsFromText(task.title || "").map((t) => t.toLowerCase()),
+                                ...extractTagsFromText(task.description || "").map((t) => t.toLowerCase()),
+                            ]);
+                            const extraTags = task.tags.filter((t) => !textTags.has(t.toLowerCase()));
+                            if (extraTags.length === 0) return null;
+                            return extraTags.map((tag) => (
+                                <button
+                                    key={tag}
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleTagClick(tag);
+                                    }}
+                                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-[#ff5d00]/10 text-[#ff5d00] border border-[#ff5d00]/25 hover:bg-[#ff5d00]/20 transition-all cursor-pointer"
+                                >
+                                    <Hash className="w-2.5 h-2.5" />
+                                    <span>{tag}</span>
+                                </button>
+                            ));
+                        })()}
                     </div>
                 </div>
 
@@ -2527,10 +2660,15 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                     <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-extrabold text-slate-800 truncate">
-                                {
-                                    task.title
-                                }
+                            <span
+                                onClick={() => setEditingTask(task)}
+                                className="font-extrabold text-slate-800 truncate cursor-pointer hover:text-indigo-600 transition-colors"
+                            >
+                                <TaskPillText
+                                    text={task.title}
+                                    onTagClick={handleTagClick}
+                                    knownEntities={mentionEntities}
+                                />
                             </span>
                             {renderLeadBadge(task, "max-w-[140px]")}
                             {projectNameFor(task) && (
@@ -2541,11 +2679,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             )}
                         </div>
                         {task.description && (
-                            <p className="text-[10px] font-semibold text-slate-500 truncate mt-0.5">
-                                {
-                                    task.description
-                                }
-                            </p>
+                            <div className="text-[10px] font-semibold text-slate-500 truncate mt-0.5">
+                                <TaskPillText
+                                    text={task.description}
+                                    onTagClick={handleTagClick}
+                                    knownEntities={mentionEntities}
+                                />
+                            </div>
                         )}
                     </div>
                 </div>
@@ -3257,22 +3397,37 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     {t("1 line = 1 task", "1 riadok = 1 úloha", "1 sor = 1 feladat")}
                                 </span>
                             </label>
-                            <textarea
+                            <TaskTagMentionInput
+                                multiline
+                                rows={2}
                                 autoFocus
                                 required
-                                rows={2}
                                 value={newTitle}
-                                onChange={(e) => setNewTitle(e.target.value)}
+                                onChange={setNewTitle}
                                 onKeyDown={(e) => {
                                     if (e.key === "Enter" && !e.shiftKey) {
                                         e.preventDefault();
                                         handleCreateTask(e);
+                                    } else if (e.key === "Escape") {
+                                        e.preventDefault();
+                                        closeAddDrawer();
+                                    }
+                                }}
+                                existingTags={allExistingTags}
+                                mentionEntities={mentionEntities}
+                                onAssignEntity={(entity) => {
+                                    if (entity.type === "user") {
+                                        setNewAssignedUser(entity.name);
+                                    } else if (entity.type === "project") {
+                                        setNewRelatedProjectId(entity.id);
+                                    } else if (entity.type === "client" || entity.type === "lead") {
+                                        setNewRelatedLeadId(entity.id);
                                     }
                                 }}
                                 placeholder={t(
-                                    "Enter task name... (Shift+Enter for next task)",
-                                    "Zadajte názov... (Shift+Enter pre ďalšiu úlohu)",
-                                    "Adja meg a feladatot... (Shift+Enter új feladathoz)",
+                                    "Enter task name... (Shift+Enter for next task, # for tags, @ for mentions)",
+                                    "Zadajte názov... (Shift+Enter pre ďalšiu úlohu, # pre tagy, @ pre zmienky)",
+                                    "Adja meg a feladatot... (Shift+Enter új feladathoz, # címkékhez, @ hivatkozáshoz)",
                                 )}
                                 className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-[#ff5d00] focus:outline-none transition-colors text-xs font-semibold placeholder:text-slate-400 leading-relaxed resize-y min-h-[50px]"
                             />
@@ -3864,7 +4019,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                             taskAccess.edit ? "cursor-pointer" : ""
                                                         } ${isDoneState(ev.task.status) ? "text-slate-600" : ""}`}
                                                     >
-                                                        {ev.task.title}
+                                                        <TaskPillText
+                                                            text={ev.task.title}
+                                                            onTagClick={handleTagClick}
+                                                            knownEntities={mentionEntities}
+                                                        />
                                                     </div>
 
                                                     {/* What changed & By Who + Metadata Badges */}
@@ -4219,6 +4378,23 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         </div>
                     </div>
 
+                    {archiveTagFilter && (
+                        <div className="flex items-center gap-2 mb-4 px-3 py-1.5 bg-[#ff5d00]/10 border border-[#ff5d00]/30 rounded-xl text-xs font-bold text-[#ff5d00] w-fit">
+                            <Hash className="w-3.5 h-3.5" />
+                            <span>
+                                {t("Tag filter:", "Filter tagu:", "Címke szűrő:")} #{archiveTagFilter}
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => setArchiveTagFilter(null)}
+                                className="ml-1 hover:text-red-600 transition-colors cursor-pointer"
+                                title={t("Clear tag filter", "Zrušiť filter tagu", "Címke szűrő törlése")}
+                            >
+                                <X className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+                    )}
+
                     {archiveView === "calendar" ? (
                         <div className="h-[560px] lg:h-[calc(100vh-22rem)] lg:min-h-[520px] flex flex-col rounded-3xl border border-slate-200 overflow-hidden bg-white">
                             {renderCalendarPanel({
@@ -4282,9 +4458,19 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     {/* Manually archived tasks — hidden from active views independent of status.
                         Team-wide, same as the completed-task archive above. */}
                     {(() => {
-                        const archivedList = tasks.filter(
-                            (task) => task.archived,
-                        );
+                        const archivedList = tasks.filter((task) => {
+                            if (!task.archived) return false;
+                            if (archiveTagFilter) {
+                                const targetTag = archiveTagFilter.toLowerCase();
+                                const taskTags = [
+                                    ...(task.tags || []),
+                                    ...extractTagsFromText(task.title || ""),
+                                    ...extractTagsFromText(task.description || ""),
+                                ].map((tg) => tg.toLowerCase());
+                                return taskTags.includes(targetTag);
+                            }
+                            return true;
+                        });
                         if (archivedList.length === 0) return null;
                         return (
                             <div className="mt-8 pt-6 border-t border-slate-100">
@@ -4337,8 +4523,15 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                     />
                                                     <div className="min-w-0 flex-1">
                                                         <div className="flex items-center gap-2 flex-wrap">
-                                                            <span className="font-extrabold text-slate-700 truncate">
-                                                                {task.title}
+                                                            <span
+                                                                onClick={() => setEditingTask(task)}
+                                                                className="font-extrabold text-slate-700 truncate cursor-pointer hover:text-indigo-600"
+                                                            >
+                                                                <TaskPillText
+                                                                    text={task.title}
+                                                                    onTagClick={handleTagClick}
+                                                                    knownEntities={mentionEntities}
+                                                                />
                                                             </span>
                                                             {task.assignedUsers &&
                                                                 task.assignedUsers
@@ -4463,6 +4656,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     mailConfigured={mailConfigured}
                     canEdit={mayEditTask(editingTask)}
                     canArchive={mayArchiveTask(editingTask)}
+                    existingTags={allExistingTags}
+                    onTagClick={handleTagClick}
                     onSave={(next) => {
                         if (!mayEditTask(next)) return;
                         setTasks((prev) =>
