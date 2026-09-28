@@ -34,6 +34,7 @@ import { AuroraBackground } from "./components/ui/AuroraBackground";
 import { useCurrentScreenContext } from "./hooks/useCurrentScreenContext";
 import { RefreshCw, AlertOctagon, Trash2, Copy, Brain, Mail } from "lucide-react";
 import { FeralGradientBackground } from "./components/FeralGradientBackground";
+import { OrganicNodeDatabaseLoader } from "./components/OrganicNodeDatabaseLoader";
 import { getStoredTheme, getStoredThemeMode, isThemeMode, startThemeWatcher, type Appearance, type ThemeMode } from "./utils/theme";
 import { hasPersistentStorage } from "./utils/safeStorage";
 import { LicenseBanner } from "./components/LicenseBanner";
@@ -3359,27 +3360,18 @@ ${log.payload || ''}
         <FeralGradientBackground timelapse timelapseSpeed={0.16} />
 
         {/* Glassmorphic Executive Card */}
-        <div className="relative z-10 flex flex-col items-center max-w-sm text-center px-10 py-9 rounded-[32px] border backdrop-blur-2xl bg-white/40 dark:bg-slate-950/40 border-white/50 dark:border-white/10 shadow-2xl shadow-indigo-950/20 transition-all duration-700 animate-in fade-in zoom-in-95">
-          {/* Animated Glowing Monogram / Orbital Loader */}
-          <div className="relative mb-6 flex items-center justify-center h-20 w-20">
-            {/* Ambient Pulsing Glow Ring */}
-            <div className="absolute inset-0 rounded-full bg-white/30 dark:bg-indigo-500/20 blur-md pulse-ring"></div>
-            {/* Orbital Spinning Border */}
-            <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-white/90 border-r-white/40 loader-spin"></div>
-            <div className="absolute inset-1.5 rounded-full border border-white/30"></div>
-            
-            {/* Center Monogram */}
-            <div className="relative z-10 h-12 w-12 rounded-2xl bg-gradient-to-br from-white/90 to-white/60 dark:from-slate-800 dark:to-slate-900 border border-white/80 dark:border-white/20 shadow-md flex items-center justify-center font-heading font-black text-xs tracking-wider text-slate-900 dark:text-white">
-              CC
-            </div>
+        <div className="relative z-10 flex flex-col items-center max-w-sm text-center px-10 py-8 rounded-[36px] border backdrop-blur-2xl bg-white/40 dark:bg-slate-950/40 border-white/50 dark:border-white/10 shadow-2xl shadow-indigo-950/20 transition-all duration-700 animate-in fade-in zoom-in-95">
+          {/* Organic Node Database Construction Animation */}
+          <div className="relative mb-3 flex items-center justify-center">
+            <OrganicNodeDatabaseLoader size={155} />
           </div>
           
           <h2 className="text-xl font-heading font-black tracking-widest text-slate-900 dark:text-white uppercase drop-shadow-sm">
             {systemName || "CCRM"}
           </h2>
           
-          <div className="flex items-center gap-2 mt-3 px-3.5 py-1.5 rounded-full bg-white/50 dark:bg-slate-900/50 border border-white/60 dark:border-white/10 backdrop-blur-md shadow-sm">
-            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+          <div className="flex items-center gap-2 mt-3.5 px-4 py-1.5 rounded-full bg-white/50 dark:bg-slate-900/50 border border-white/60 dark:border-white/10 backdrop-blur-md shadow-sm">
+            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shadow-sm shadow-emerald-500/50"></span>
             <p className="text-[10px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">
               {t("Syncing database connection...", "Pripájam sa k databáze...", "Kapcsolódás az adatbázishoz...")}
             </p>
