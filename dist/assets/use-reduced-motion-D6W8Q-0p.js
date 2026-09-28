@@ -1,1 +1,0 @@
-import{Fo as e,Po as t,an as n,on as r,sn as i}from"./index-CPf6ZMmM.js";var a=e(t(),1);function o(){!r.current&&n();let[e]=(0,a.useState)(i.current);return e}export{o as t};
