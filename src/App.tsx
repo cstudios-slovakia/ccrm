@@ -3445,7 +3445,7 @@ ${log.payload || ''}
       leadSources={leadSources}
       canCreate={access.canEdit("leads") || access.canEdit("clients")}
     >
-    <div className="flex h-screen overflow-hidden relative font-sans antialiased text-slate-800 bg-slate-50/50">
+    <div className="flex h-screen overflow-hidden relative font-sans antialiased text-slate-800 bg-slate-50/50 transition-colors duration-150">
       {/* Dynamic Aurora Ambient Background Blobs (Themed per active view) */}
       <AuroraBackground
         activeTab={activeTab}

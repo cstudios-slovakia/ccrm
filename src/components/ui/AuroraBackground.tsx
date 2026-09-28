@@ -1,4 +1,4 @@
-import React, { useMemo } from "react";
+import React, { useMemo, useState, useEffect, useRef } from "react";
 import type { CustomDashboard, UnifiedEntryRegistry } from "../../types";
 
 interface AuroraBackgroundProps {
@@ -6,6 +6,7 @@ interface AuroraBackgroundProps {
   customDashboards?: CustomDashboard[];
   unifiedEntries?: UnifiedEntryRegistry[];
   className?: string;
+  transitionDurationMs?: number;
 }
 
 interface ThemeColors {
@@ -132,8 +133,9 @@ export const AuroraBackground: React.FC<AuroraBackgroundProps> = ({
   customDashboards = [],
   unifiedEntries = [],
   className = "",
+  transitionDurationMs = 150,
 }) => {
-  const colors = useMemo<ThemeColors>(() => {
+  const targetColors = useMemo<ThemeColors>(() => {
     const rawTab = (activeTab || "dashboard").toLowerCase();
     const baseTab = rawTab.split(/[/?]/)[0];
 
@@ -176,14 +178,59 @@ export const AuroraBackground: React.FC<AuroraBackgroundProps> = ({
     return TAB_COLOR_MAP.dashboard;
   }, [activeTab, customDashboards, unifiedEntries]);
 
-  return (
+  // Dual-buffered cross-fade layers for seamless 150ms gradient color transitions
+  const [layers, setLayers] = useState<{
+    layerA: { colors: ThemeColors; opacity: number };
+    layerB: { colors: ThemeColors; opacity: number };
+    active: "A" | "B";
+  }>({
+    layerA: { colors: targetColors, opacity: 1 },
+    layerB: { colors: targetColors, opacity: 0 },
+    active: "A",
+  });
+
+  const prevColorsRef = useRef<ThemeColors>(targetColors);
+
+  useEffect(() => {
+    const prev = prevColorsRef.current;
+    if (
+      prev.primary === targetColors.primary &&
+      prev.secondary === targetColors.secondary &&
+      prev.accent === targetColors.accent
+    ) {
+      return;
+    }
+    prevColorsRef.current = targetColors;
+
+    setLayers((curr) => {
+      if (curr.active === "A") {
+        return {
+          layerA: { ...curr.layerA, opacity: 0 },
+          layerB: { colors: targetColors, opacity: 1 },
+          active: "B",
+        };
+      } else {
+        return {
+          layerA: { colors: targetColors, opacity: 1 },
+          layerB: { ...curr.layerB, opacity: 0 },
+          active: "A",
+        };
+      }
+    });
+  }, [targetColors]);
+
+  const renderBlobLayer = (colors: ThemeColors, opacity: number, key: string) => (
     <div
-      className={`pointer-events-none fixed inset-0 overflow-hidden select-none z-0 ${className}`}
-      aria-hidden="true"
+      key={key}
+      className="absolute inset-0 pointer-events-none will-change-opacity"
+      style={{
+        opacity,
+        transition: `opacity ${transitionDurationMs}ms ease-in-out`,
+      }}
     >
       {/* Aurora Ambient Blob 1 (Top Left / Upper Canvas) */}
       <div
-        className="absolute -top-[12%] -left-[10%] w-[580px] h-[580px] md:w-[800px] md:h-[800px] rounded-full blur-[110px] md:blur-[140px] opacity-90 transition-all duration-1000 ease-out will-change-transform animate-aurora-pulse-1"
+        className="absolute -top-[12%] -left-[10%] w-[580px] h-[580px] md:w-[800px] md:h-[800px] rounded-full blur-[110px] md:blur-[140px] opacity-90 will-change-transform animate-aurora-pulse-1"
         style={{
           background: `radial-gradient(circle at center, ${colors.primary} 0%, ${colors.secondary} 45%, transparent 75%)`,
         }}
@@ -191,7 +238,7 @@ export const AuroraBackground: React.FC<AuroraBackgroundProps> = ({
 
       {/* Aurora Ambient Blob 2 (Top Right / Middle Right Canvas) */}
       <div
-        className="absolute top-[8%] -right-[12%] w-[500px] h-[500px] md:w-[720px] md:h-[720px] rounded-full blur-[110px] md:blur-[140px] opacity-80 transition-all duration-1000 ease-out will-change-transform animate-aurora-pulse-2"
+        className="absolute top-[8%] -right-[12%] w-[500px] h-[500px] md:w-[720px] md:h-[720px] rounded-full blur-[110px] md:blur-[140px] opacity-80 will-change-transform animate-aurora-pulse-2"
         style={{
           background: `radial-gradient(circle at center, ${colors.secondary} 0%, ${colors.accent} 50%, transparent 75%)`,
         }}
@@ -199,11 +246,21 @@ export const AuroraBackground: React.FC<AuroraBackgroundProps> = ({
 
       {/* Aurora Ambient Blob 3 (Bottom Center / Left subtle glow) */}
       <div
-        className="absolute -bottom-[15%] left-[20%] w-[450px] h-[450px] md:w-[650px] md:h-[650px] rounded-full blur-[120px] md:blur-[150px] opacity-70 transition-all duration-1000 ease-out will-change-transform animate-aurora-pulse-3"
+        className="absolute -bottom-[15%] left-[20%] w-[450px] h-[450px] md:w-[650px] md:h-[650px] rounded-full blur-[120px] md:blur-[150px] opacity-70 will-change-transform animate-aurora-pulse-3"
         style={{
           background: `radial-gradient(circle at center, ${colors.accent} 0%, ${colors.primary} 45%, transparent 75%)`,
         }}
       />
+    </div>
+  );
+
+  return (
+    <div
+      className={`pointer-events-none fixed inset-0 overflow-hidden select-none z-0 ${className}`}
+      aria-hidden="true"
+    >
+      {renderBlobLayer(layers.layerA.colors, layers.layerA.opacity, "layer-a")}
+      {renderBlobLayer(layers.layerB.colors, layers.layerB.opacity, "layer-b")}
     </div>
   );
 };
