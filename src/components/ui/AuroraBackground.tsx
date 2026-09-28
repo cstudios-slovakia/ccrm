@@ -133,7 +133,7 @@ export const AuroraBackground: React.FC<AuroraBackgroundProps> = ({
   customDashboards = [],
   unifiedEntries = [],
   className = "",
-  transitionDurationMs = 150,
+  transitionDurationMs = 230,
 }) => {
   const targetColors = useMemo<ThemeColors>(() => {
     const rawTab = (activeTab || "dashboard").toLowerCase();
