@@ -674,6 +674,7 @@ export interface Project {
    * "unchanged", so an older client cannot wipe them.
    */
   customFileFields?: ProjectCustomFileField[];
+  archived?: boolean;
 }
 
 // Warehouse & Inventory Management Types

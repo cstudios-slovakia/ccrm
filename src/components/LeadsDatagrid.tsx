@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { useUserPref } from "../utils/userPrefs";
 import { canArchiveTask, resolveAssigneeName, type TaskAccess } from "../utils/taskSelectors";
@@ -12,8 +12,13 @@ import {
     Plus,
     Search,
     Trash2,
+    Archive,
     ArchiveRestore,
+    CheckSquare,
+    Square,
+    MinusSquare,
     Clock,
+
     User,
     Briefcase,
     Handshake,
@@ -38,7 +43,6 @@ import {
     FolderOpen,
     FileText,
     Minimize2,
-    CheckSquare,
     Lock,
     CornerDownLeft,
     CornerLeftDown,
@@ -1557,6 +1561,28 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     // Client importance filter. "all" = off, "none" = leads nobody rated yet,
     // "5".."1" = that exact star count, "min4"/"min3" = that many stars and up.
     const [selectedRating, setSelectedRating] = useState("all");
+    const [selectedArchiveFilter, setSelectedArchiveFilter] = useState<"active" | "archived" | "all">("active");
+
+    // Multi-selection & Bulk action toolbar state
+    const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
+    const [activeBulkMenu, setActiveBulkMenu] = useState<"status" | "owner" | null>(null);
+    const bulkToolbarRef = useRef<HTMLDivElement>(null);
+
+    // Close bulk floating dropdowns on click outside
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (bulkToolbarRef.current && !bulkToolbarRef.current.contains(e.target as Node)) {
+                setActiveBulkMenu(null);
+            }
+        };
+        if (activeBulkMenu) {
+            document.addEventListener("mousedown", handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, [activeBulkMenu]);
+
 
     // Category visibility toggle (local storage support)
     const majorStates = useMemo(() => {
@@ -1640,6 +1666,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             selectedType !== "all" ||
             selectedState !== "all" ||
             selectedRating !== "all" ||
+            selectedArchiveFilter !== "active" ||
             offerPresetName !== "All Time"
         );
     }, [
@@ -1650,6 +1677,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         selectedType,
         selectedState,
         selectedRating,
+        selectedArchiveFilter,
         offerPresetName,
     ]);
 
@@ -4010,7 +4038,15 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     }
                 }
 
+                const matchesArchive =
+                    selectedArchiveFilter === "all"
+                        ? true
+                        : selectedArchiveFilter === "archived"
+                        ? !!lead.archived
+                        : !lead.archived;
+
                 return (
+                    matchesArchive &&
                     matchesSearch &&
                     matchesState &&
                     matchesSource &&
@@ -4036,7 +4072,248 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         filterOfferStartDate,
         filterOfferEndDate,
         offerPresetName,
+        selectedArchiveFilter,
     ]);
+
+    // Bulk selection and action handlers
+    const handleToggleSelectLead = useCallback((leadId: string, e?: React.MouseEvent) => {
+        if (e) e.stopPropagation();
+        setSelectedLeadIds(prev => {
+            const next = new Set(prev);
+            if (next.has(leadId)) {
+                next.delete(leadId);
+            } else {
+                next.add(leadId);
+            }
+            return next;
+        });
+    }, []);
+
+    const handleSelectAllVisible = useCallback(() => {
+        if (selectedLeadIds.size === processedLeads.length && processedLeads.length > 0) {
+            setSelectedLeadIds(new Set());
+        } else {
+            setSelectedLeadIds(new Set(processedLeads.map(l => l.id)));
+        }
+    }, [processedLeads, selectedLeadIds]);
+
+    const handleClearSelection = useCallback(() => {
+        setSelectedLeadIds(new Set());
+        setActiveBulkMenu(null);
+    }, []);
+
+    const areAllVisibleSelected = useMemo(() => {
+        if (processedLeads.length === 0) return false;
+        return processedLeads.every(l => selectedLeadIds.has(l.id));
+    }, [processedLeads, selectedLeadIds]);
+
+    const isPartiallySelected = useMemo(() => {
+        if (selectedLeadIds.size === 0 || areAllVisibleSelected) return false;
+        return processedLeads.some(l => selectedLeadIds.has(l.id));
+    }, [processedLeads, selectedLeadIds, areAllVisibleSelected]);
+
+    const hasActiveSelected = useMemo(() => {
+        return pipelineLeads.some(l => selectedLeadIds.has(l.id) && !l.archived);
+    }, [pipelineLeads, selectedLeadIds]);
+
+    const hasArchivedSelected = useMemo(() => {
+        return pipelineLeads.some(l => selectedLeadIds.has(l.id) && Boolean(l.archived));
+    }, [pipelineLeads, selectedLeadIds]);
+
+    const handleBulkStatusChange = useCallback((newStatus: string) => {
+        if (selectedLeadIds.size === 0) return;
+        setLeads(prev => prev.map(lead => {
+            if (selectedLeadIds.has(lead.id)) {
+                return {
+                    ...lead,
+                    status: newStatus,
+                    updatedAt: new Date().toISOString(),
+                    timeline: [
+                        ...(lead.timeline || []),
+                        {
+                            id: `tl-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+                            type: 'status_change',
+                            title: 'Zmena stavu',
+                            content: `Status changed from ${lead.status} to ${newStatus} (Bulk Update)`,
+                            timestamp: new Date().toISOString()
+                        }
+                    ]
+                };
+            }
+            return lead;
+        }));
+        setActiveBulkMenu(null);
+    }, [selectedLeadIds, setLeads]);
+
+    const handleBulkOwnerChange = useCallback((newOwner: string) => {
+        if (selectedLeadIds.size === 0) return;
+        setLeads(prev => prev.map(lead => {
+            if (selectedLeadIds.has(lead.id)) {
+                return {
+                    ...lead,
+                    owner: newOwner,
+                    updatedAt: new Date().toISOString(),
+                    timeline: [
+                        ...(lead.timeline || []),
+                        {
+                            id: `tl-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+                            type: 'note',
+                            title: 'Priradenie manažéra',
+                            content: `Owner assigned to ${newOwner} (Bulk Update)`,
+                            timestamp: new Date().toISOString()
+                        }
+                    ]
+                };
+            }
+            return lead;
+        }));
+        setActiveBulkMenu(null);
+    }, [selectedLeadIds, setLeads]);
+
+    const handleBulkArchive = useCallback((archived: boolean) => {
+        if (selectedLeadIds.size === 0) return;
+        setLeads(prev => prev.map(lead => {
+            if (selectedLeadIds.has(lead.id)) {
+                return {
+                    ...lead,
+                    archived: archived,
+                    updatedAt: new Date().toISOString()
+                };
+            }
+            return lead;
+        }));
+        setSelectedLeadIds(new Set());
+        setActiveBulkMenu(null);
+    }, [selectedLeadIds, setLeads]);
+
+    const renderBulkActionToolbar = () => {
+        if (selectedLeadIds.size === 0) return null;
+
+        return createPortal(
+            <div
+                ref={bulkToolbarRef}
+                className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100000] flex items-center gap-3 px-4 py-2.5 bg-slate-900/95 backdrop-blur-xl border border-slate-700/70 rounded-2xl shadow-2xl shadow-black/40 text-white animate-in fade-in slide-in-from-bottom-5 duration-200"
+            >
+                <div className="flex items-center gap-2 pr-3 border-r border-slate-700/80">
+                    <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-500 text-[11px] font-black text-white">
+                        {selectedLeadIds.size}
+                    </span>
+                    <span className="text-xs font-semibold text-slate-200 hidden sm:inline">
+                        {systemLanguage === "sk" ? "vybraných" : systemLanguage === "hu" ? "kiválasztva" : "selected"}
+                    </span>
+                    <button
+                        type="button"
+                        onClick={handleClearSelection}
+                        className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors ml-1 cursor-pointer"
+                        title={t("Clear selection", "Zrušiť výber", "Kijelölés törlése")}
+                    >
+                        <X className="w-3.5 h-3.5" />
+                    </button>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                    {/* Status / Stage Menu */}
+                    <div className="relative">
+                        <button
+                            type="button"
+                            onClick={() => setActiveBulkMenu(prev => prev === "status" ? null : "status")}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all cursor-pointer ${
+                                activeBulkMenu === "status"
+                                    ? "bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-500/25"
+                                    : "bg-slate-800/80 hover:bg-slate-800 border-slate-700 text-slate-200 hover:text-white"
+                            }`}
+                        >
+                            <Layers className="w-3.5 h-3.5 text-blue-400" />
+                            <span>{t("Stage", "Fáza", "Fázis")}</span>
+                        </button>
+                        {activeBulkMenu === "status" && (
+                            <div className="absolute bottom-full mb-2 left-0 w-48 max-h-60 overflow-y-auto bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-1.5 space-y-1 z-[100001] scrollbar-thin animate-in fade-in zoom-in-95 duration-150">
+                                <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                    {t("Change Stage", "Zmeniť fázu", "Fázis módosítása")}
+                                </div>
+                                {leadStates.map(st => (
+                                    <button
+                                        key={st}
+                                        type="button"
+                                        onClick={() => handleBulkStatusChange(st)}
+                                        className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg hover:bg-blue-600/30 text-slate-200 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
+                                    >
+                                        <span
+                                            className="w-2 h-2 rounded-full shrink-0"
+                                            style={{ backgroundColor: getSafeStateColor(st) }}
+                                        />
+                                        <span className="truncate">{st}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Owner / PM Menu */}
+                    <div className="relative">
+                        <button
+                            type="button"
+                            onClick={() => setActiveBulkMenu(prev => prev === "owner" ? null : "owner")}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all cursor-pointer ${
+                                activeBulkMenu === "owner"
+                                    ? "bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-500/25"
+                                    : "bg-slate-800/80 hover:bg-slate-800 border-slate-700 text-slate-200 hover:text-white"
+                            }`}
+                        >
+                            <Users className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>{t("Owner", "Manažér", "Menedzser")}</span>
+                        </button>
+                        {activeBulkMenu === "owner" && (
+                            <div className="absolute bottom-full mb-2 left-0 w-48 max-h-60 overflow-y-auto bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-1.5 space-y-1 z-[100001] scrollbar-thin animate-in fade-in zoom-in-95 duration-150">
+                                <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                    {t("Assign Owner", "Priradiť manažéra", "Menedzser kijelölése")}
+                                </div>
+                                {projectManagers.map(pm => (
+                                    <button
+                                        key={pm}
+                                        type="button"
+                                        onClick={() => handleBulkOwnerChange(pm)}
+                                        className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg hover:bg-emerald-600/30 text-slate-200 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
+                                    >
+                                        <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                        <span className="truncate">{pm}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Archive / Restore button */}
+                    {hasActiveSelected && (
+                        <button
+                            type="button"
+                            onClick={() => handleBulkArchive(true)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border border-amber-700/60 bg-amber-950/40 hover:bg-amber-900/60 text-amber-200 transition-colors cursor-pointer"
+                            title={t("Archive selected leads", "Archivovať vybrané leady", "Kijelölt leadek archiválása")}
+                        >
+                            <Archive className="w-3.5 h-3.5 text-amber-400" />
+                            <span className="hidden sm:inline">{t("Archive", "Archivovať", "Archiválás")}</span>
+                        </button>
+                    )}
+                    {hasArchivedSelected && (
+                        <button
+                            type="button"
+                            onClick={() => handleBulkArchive(false)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border border-emerald-700/60 bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-200 transition-colors cursor-pointer"
+                            title={t("Restore selected leads", "Obnoviť vybrané leady", "Kijelölt leadek visszaállítása")}
+                        >
+                            <ArchiveRestore className="w-3.5 h-3.5 text-emerald-400" />
+                            <span className="hidden sm:inline">{t("Restore", "Obnoviť", "Visszaállítás")}</span>
+                        </button>
+                    )}
+                </div>
+            </div>,
+            document.body
+        );
+    };
+
+
+
 
     // Group processed leads by lead states dynamically (always used for Kanban & Top Summary counters)
     const stateGroupedLeads = useMemo(() => {
@@ -8467,6 +8744,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     setSelectedType("all");
                                     setSelectedState("all");
                                     setSelectedRating("all");
+                                    setSelectedArchiveFilter("active");
                                     setFilterOfferStartDate(null);
                                     setFilterOfferEndDate(null);
                                     setOfferPresetName("All Time");
@@ -8638,9 +8916,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     </div>
                 </div>
 
-                {/* Collapsible 7-column filter panels */}
+                {/* Collapsible filter panels */}
                 {showFilters && (
-                    <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3 bg-blue-50/10 p-3 rounded-2xl border border-blue-50 animate-fade-in relative z-40">
+                    <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3 bg-blue-50/10 p-3 rounded-2xl border border-blue-50 animate-fade-in relative z-40">
                         {/* Filter 1: Project Manager */}
                         <div className="flex flex-col gap-1">
                             <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider pl-1">
@@ -9432,6 +9710,41 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 />
                             </div>
                         </div>
+
+                        {/* Filter 8: Archive Status */}
+                        <div className="flex flex-col gap-1">
+                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider pl-1">
+                                {t(
+                                    "Archive",
+                                    "Archív",
+                                    "Archívum",
+                                )}
+                            </span>
+                            <div className="flex items-center gap-1.5 bg-white border border-slate-200/70 rounded-xl px-2.5 py-1.5">
+                                <Archive className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                                <CustomSelect
+                                    value={selectedArchiveFilter}
+                                    onChange={(v) => setSelectedArchiveFilter(v as any)}
+                                    size="sm"
+                                    unstyled
+                                    className="text-[11px] font-bold text-slate-700 uppercase tracking-wider w-full justify-between gap-2"
+                                    options={[
+                                        {
+                                            value: "active",
+                                            label: t("Active Only", "Iba aktívne", "Csak aktív"),
+                                        },
+                                        {
+                                            value: "archived",
+                                            label: t("Archived Only", "Iba archivované", "Csak archivált"),
+                                        },
+                                        {
+                                            value: "all",
+                                            label: t("All Leads", "Všetky leady", "Minden lead"),
+                                        },
+                                    ]}
+                                />
+                            </div>
+                        </div>
                     </div>
                 )}
 
@@ -9473,7 +9786,23 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         <table className="w-full border-collapse text-left block lg:table">
                             <thead className="hidden lg:table-header-group">
                                 <tr className="bg-white text-blue-600 text-[10px] font-black uppercase tracking-wider">
-                                    <th className="sticky top-0 bg-white z-10 py-4 px-6 rounded-tl-[24px] border-b-2 border-slate-100">
+                                    <th className="sticky top-0 bg-white z-10 py-4 px-3 w-12 rounded-tl-[24px] border-b-2 border-slate-100 text-center">
+                                        <button
+                                            type="button"
+                                            onClick={handleSelectAllVisible}
+                                            className="text-slate-400 hover:text-blue-600 transition-colors p-1 rounded-lg hover:bg-slate-100 flex items-center justify-center mx-auto cursor-pointer"
+                                            title={areAllVisibleSelected ? "Deselect all" : "Select all"}
+                                        >
+                                            {areAllVisibleSelected ? (
+                                                <CheckSquare className="w-4 h-4 text-blue-600" />
+                                            ) : isPartiallySelected ? (
+                                                <MinusSquare className="w-4 h-4 text-blue-600" />
+                                            ) : (
+                                                <Square className="w-4 h-4 text-slate-300" />
+                                            )}
+                                        </button>
+                                    </th>
+                                    <th className="sticky top-0 bg-white z-10 py-4 px-6 border-b-2 border-slate-100">
                                         {getTranslation(
                                             systemLanguage,
                                             "leads.table.client",
@@ -9561,7 +9890,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 >
                                                     <th
                                                         scope="colgroup"
-                                                        colSpan={9}
+                                                        colSpan={10}
                                                         className={`px-4 lg:px-6 font-bold align-middle select-none block lg:table-cell w-full lg:w-auto ${compactMode ? "py-1" : "py-1.5"}`}
                                                         style={{
                                                             backgroundColor:
@@ -9673,7 +10002,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 (group.leads.length === 0 ? (
                                                     <tr className="block lg:table-row">
                                                         <td
-                                                            colSpan={9}
+                                                            colSpan={10}
                                                             className="py-5 px-6 text-center text-slate-400 select-none uppercase font-black text-[9px] tracking-wider bg-slate-50/10 border-l-4 block lg:table-cell w-full lg:w-auto"
                                                             style={{
                                                                 borderLeftColor: `${stateColor}15`,
@@ -9731,7 +10060,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                             {/* --- MOBILE DEDICATED LIST VIEW (< lg) --- */}
                                                                             {/* ============================================================ */}
                                                                             <td
-                                                                                colSpan={9}
+                                                                                colSpan={10}
                                                                                 className="block lg:hidden p-0 border-none bg-transparent w-full"
                                                                             >
                                                                                 {isInlineEditing ? (
@@ -9847,6 +10176,18 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                                 className="flex items-center gap-1.5 flex-wrap min-w-0"
                                                                                                 onClick={(e) => e.stopPropagation()}
                                                                                             >
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    onClick={() => handleToggleSelectLead(lead.id)}
+                                                                                                    className="p-1 text-slate-400 hover:text-blue-600 transition-colors cursor-pointer"
+                                                                                                    title={selectedLeadIds.has(lead.id) ? "Deselect" : "Select"}
+                                                                                                >
+                                                                                                    {selectedLeadIds.has(lead.id) ? (
+                                                                                                        <CheckSquare className="w-4 h-4 text-blue-600" />
+                                                                                                    ) : (
+                                                                                                        <Square className="w-4 h-4 text-slate-300" />
+                                                                                                    )}
+                                                                                                </button>
                                                                                                 <div className="scale-85 origin-left">
                                                                                                     <StatusSelector
                                                                                                         status={lead.status}
@@ -9981,6 +10322,25 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                             {/* ============================================================ */}
                                                                             {/* --- DESKTOP TABLE CELLS (>= lg) --- */}
                                                                             {/* ============================================================ */}
+                                                                            {/* --- SELECTION CHECKBOX CELL --- */}
+                                                                            <td
+                                                                                className="hidden lg:table-cell px-3 py-3 w-12 text-center align-middle"
+                                                                                onClick={(e) => e.stopPropagation()}
+                                                                            >
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => handleToggleSelectLead(lead.id)}
+                                                                                    className="text-slate-400 hover:text-blue-600 transition-colors p-1 rounded-lg hover:bg-slate-100 flex items-center justify-center mx-auto cursor-pointer"
+                                                                                    title={selectedLeadIds.has(lead.id) ? "Deselect" : "Select"}
+                                                                                >
+                                                                                    {selectedLeadIds.has(lead.id) ? (
+                                                                                        <CheckSquare className="w-4 h-4 text-blue-600" />
+                                                                                    ) : (
+                                                                                        <Square className="w-4 h-4 text-slate-300" />
+                                                                                    )}
+                                                                                </button>
+                                                                            </td>
+
                                                                             {/* --- COLUMN 1: CLIENT NAME --- */}
                                                                             <td
                                                                                 onClick={() => {
@@ -11154,20 +11514,35 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                 : "p-4 gap-2.5"
                                                                         }`}
                                                                     >
-                                                                        {/* Row 1: SLA warning (always on) + hover actions */}
+                                                                        {/* Row 1: Selection + SLA warning (always on) + hover actions */}
                                                                         <div
                                                                             className={`flex items-center justify-between gap-1 shrink-0 ${compactMode ? "min-h-2" : "min-h-4"}`}
                                                                         >
-                                                                            {/* Kanban is the other reading of the same list, so a
-                                                                                breached lead has to be as obvious here as in a row. */}
-                                                                            {breachedSlaById[lead.id] ? (
-                                                                                <SlaBreachBadge
-                                                                                    sla={breachedSlaById[lead.id]}
-                                                                                    lang={systemLanguage}
-                                                                                />
-                                                                            ) : (
-                                                                                <span />
-                                                                            )}
+                                                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        handleToggleSelectLead(lead.id);
+                                                                                    }}
+                                                                                    className="text-slate-400 hover:text-blue-600 transition-colors p-0.5 cursor-pointer"
+                                                                                    title={selectedLeadIds.has(lead.id) ? "Deselect" : "Select"}
+                                                                                >
+                                                                                    {selectedLeadIds.has(lead.id) ? (
+                                                                                        <CheckSquare className="w-3.5 h-3.5 text-blue-600" />
+                                                                                    ) : (
+                                                                                        <Square className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-400" />
+                                                                                    )}
+                                                                                </button>
+                                                                                {/* Kanban is the other reading of the same list, so a
+                                                                                    breached lead has to be as obvious here as in a row. */}
+                                                                                {breachedSlaById[lead.id] && (
+                                                                                    <SlaBreachBadge
+                                                                                        sla={breachedSlaById[lead.id]}
+                                                                                        lang={systemLanguage}
+                                                                                    />
+                                                                                )}
+                                                                            </div>
 
                                                                             {/* Card quick actions on hover */}
                                                                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -12387,6 +12762,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 </div>,
                 document.body,
             )}
+            {/* Bulk Action Toolbar */}
+            {renderBulkActionToolbar()}
         </div>
     );
 };

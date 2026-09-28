@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import * as Icons from "lucide-react";
-import { Plus, Trash2, Settings, Search, Users, User, Edit3, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, ListTree, Move, CalendarClock, Flag, ArrowUp, ArrowDown, ArrowUpDown, Lock, Star, Check, Minus, Paperclip, GripVertical, GripHorizontal } from "lucide-react";
+import { Plus, Trash2, Settings, Search, Users, User, Edit3, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, ListTree, Move, CalendarClock, Flag, ArrowUp, ArrowDown, ArrowUpDown, Lock, Star, Check, Minus, Paperclip, GripVertical, GripHorizontal, Archive, ArchiveRestore, CheckSquare, Square, MinusSquare, X } from "lucide-react";
 import type { Project, ProjectAttribute, ProjectAutoCreateSettings, ProjectStatus, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory } from "../types";
 import { ProjectDetailsView } from "./ProjectDetailsView";
 import type { Task } from "../types";
@@ -206,9 +207,15 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   const [selectedManagerFilter, setSelectedManagerFilter] = useState("all");
   /* Star priority, same options as the leads list — see utils/rating.ts. */
   const [selectedRatingFilter, setSelectedRatingFilter] = useState("all");
+  const [selectedArchiveFilter, setSelectedArchiveFilter] = useState<"active" | "archived" | "all">("active");
   /* Its own dimension rather than another status: a project can be late in any
      status, so "overdue" cannot live in the status dropdown. */
   const [overdueOnly, setOverdueOnly] = useState(false);
+
+  // Batch Multi-Selection State
+  const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(new Set());
+  const [activeBulkMenu, setActiveBulkMenu] = useState<"status" | "manager" | null>(null);
+  const bulkToolbarRef = useRef<HTMLDivElement>(null);
 
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [editingProjectType, setEditingProjectType] = useState<ProjectType | null>(null);
@@ -314,10 +321,34 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           : (p.managers || []).includes(selectedManagerFilter));
       const matchesOverdue = !overdueOnly || overdueIds.has(p.id);
       const matchesRating = matchesRatingFilter(p.rating, selectedRatingFilter);
+      const isArchived = Boolean(p.archived);
+      const matchesArchive =
+        selectedArchiveFilter === "all"
+          ? true
+          : selectedArchiveFilter === "archived"
+          ? isArchived
+          : !isArchived;
 
-      return matchesSearch && matchesStatus && matchesType && matchesDivision && matchesManager && matchesOverdue && matchesRating;
+      return matchesSearch && matchesStatus && matchesType && matchesDivision && matchesManager && matchesOverdue && matchesRating && matchesArchive;
     });
-  }, [projects, projectTypes, leads, searchQuery, selectedStatusFilter, selectedTypeFilter, selectedDivisionFilter, selectedManagerFilter, selectedRatingFilter, overdueOnly, overdueIds]);
+  }, [projects, projectTypes, leads, searchQuery, selectedStatusFilter, selectedTypeFilter, selectedDivisionFilter, selectedManagerFilter, selectedRatingFilter, selectedArchiveFilter, overdueOnly, overdueIds]);
+
+  // Close bulk menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (bulkToolbarRef.current && !bulkToolbarRef.current.contains(e.target as Node)) {
+        setActiveBulkMenu(null);
+      }
+    };
+    if (activeBulkMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [activeBulkMenu]);
+
+
 
   /* Deep link: `#projects?edit=<projectId>` opens that project directly.
      "Convert to Project" on a lead has always navigated here with that query,
@@ -758,6 +789,259 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     const visible = new Set(filteredProjects.map(p => p.id));
     return (isStructure ? structureProjects : orderedProjects).filter(p => visible.has(p.id));
   }, [isStructure, structureProjects, orderedProjects, filteredProjects]);
+
+  const areAllVisibleSelected = useMemo(() => {
+    if (sortedProjects.length === 0) return false;
+    return sortedProjects.every(p => selectedProjectIds.has(p.id));
+  }, [sortedProjects, selectedProjectIds]);
+
+  const isPartiallySelected = useMemo(() => {
+    if (selectedProjectIds.size === 0 || areAllVisibleSelected) return false;
+    return sortedProjects.some(p => selectedProjectIds.has(p.id));
+  }, [sortedProjects, selectedProjectIds, areAllVisibleSelected]);
+
+  const hasActiveSelected = useMemo(() => {
+    return projects.some(p => selectedProjectIds.has(p.id) && !p.archived);
+  }, [projects, selectedProjectIds]);
+
+  const hasArchivedSelected = useMemo(() => {
+    return projects.some(p => selectedProjectIds.has(p.id) && Boolean(p.archived));
+  }, [projects, selectedProjectIds]);
+
+  const handleToggleSelectProject = (id: string) => {
+    setSelectedProjectIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSelectAllVisible = () => {
+    if (areAllVisibleSelected) {
+      setSelectedProjectIds(prev => {
+        const next = new Set(prev);
+        sortedProjects.forEach(p => next.delete(p.id));
+        return next;
+      });
+    } else {
+      setSelectedProjectIds(prev => {
+        const next = new Set(prev);
+        sortedProjects.forEach(p => next.add(p.id));
+        return next;
+      });
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelectedProjectIds(new Set());
+    setActiveBulkMenu(null);
+  };
+
+  const handleBulkStatusChange = (newStatus: string) => {
+    if (!canEdit || selectedProjectIds.size === 0) return;
+    setProjects(prev =>
+      prev.map(p => {
+        if (!selectedProjectIds.has(p.id)) return p;
+        const isClosing = CLOSED_PROJECT_STATUSES.includes(newStatus);
+        return {
+          ...p,
+          status: newStatus,
+          finishedAt: isClosing ? (p.finishedAt || todayLocal()) : null,
+        };
+      })
+    );
+    setActiveBulkMenu(null);
+    setSelectedProjectIds(new Set());
+  };
+
+  const handleBulkManagerChange = (managerName: string) => {
+    if (!canEdit || selectedProjectIds.size === 0) return;
+    const managersList = managerName === "unassigned" ? [] : [managerName];
+    setProjects(prev =>
+      prev.map(p => {
+        if (!selectedProjectIds.has(p.id)) return p;
+        return {
+          ...p,
+          managers: managersList,
+        };
+      })
+    );
+    setActiveBulkMenu(null);
+    setSelectedProjectIds(new Set());
+  };
+
+  const handleBulkArchive = (archive: boolean) => {
+    if (!canEdit || selectedProjectIds.size === 0) return;
+    setProjects(prev =>
+      prev.map(p => {
+        if (!selectedProjectIds.has(p.id)) return p;
+        return {
+          ...p,
+          archived: archive,
+        };
+      })
+    );
+    setActiveBulkMenu(null);
+    setSelectedProjectIds(new Set());
+  };
+
+  const renderBulkActionToolbar = () => {
+    if (selectedProjectIds.size === 0) return null;
+    const selectedCount = selectedProjectIds.size;
+    const countLabel =
+      userLanguage === "sk"
+        ? selectedCount === 1
+          ? "1 vybraný"
+          : selectedCount >= 2 && selectedCount <= 4
+          ? `${selectedCount} vybrané`
+          : `${selectedCount} vybraných`
+        : userLanguage === "hu"
+        ? `${selectedCount} kiválasztva`
+        : `${selectedCount} selected`;
+
+    const statusList: { key: ProjectStatus; label: string; tone: string }[] = [
+      { key: "new", label: projectStatusLabel("new", t), tone: "bg-sky-500" },
+      { key: "active", label: projectStatusLabel("active", t), tone: "bg-purple-500" },
+      { key: "on_hold", label: projectStatusLabel("on_hold", t), tone: "bg-amber-500" },
+      { key: "completed", label: projectStatusLabel("completed", t), tone: "bg-emerald-500" },
+      { key: "cancelled", label: projectStatusLabel("cancelled", t), tone: "bg-rose-500" },
+    ];
+
+    return createPortal(
+      <div
+        ref={bulkToolbarRef}
+        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100000] max-w-[95vw] sm:max-w-3xl lg:max-w-4xl bg-slate-900/95 text-white backdrop-blur-xl px-4 py-2.5 rounded-2xl shadow-2xl border border-slate-700/70 flex flex-wrap items-center justify-between gap-2.5 animate-in fade-in slide-in-from-bottom-5 duration-200"
+      >
+        {/* Left: Count and selection management */}
+        <div className="flex items-center gap-2">
+          <span className="bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-xs font-black px-2.5 py-1 rounded-xl">
+            {countLabel}
+          </span>
+          <button
+            type="button"
+            onClick={handleSelectAllVisible}
+            className="text-[11px] font-bold text-slate-300 hover:text-white px-2 py-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+          >
+            {areAllVisibleSelected
+              ? t("Deselect visible", "Zrušiť výber zobrazených", "Láthatók kijelölésének törlése")
+              : t(
+                  `Select all visible (${sortedProjects.length})`,
+                  `Vybrať všetky zobrazené (${sortedProjects.length})`,
+                  `Összes látható kijelölése (${sortedProjects.length})`
+                )}
+          </button>
+          <button
+            type="button"
+            onClick={handleClearSelection}
+            title={t("Clear selection", "Zrušiť výber", "Kijelölés törlése")}
+            className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="h-5 w-px bg-slate-700/80 hidden sm:block" />
+
+        {/* Right: Actions */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {/* Status Dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setActiveBulkMenu(activeBulkMenu === "status" ? null : "status")}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-xs font-black transition-colors border border-slate-700/50 cursor-pointer"
+            >
+              <CheckSquare className="h-3.5 w-3.5 text-indigo-400" />
+              <span>{t("Status", "Stav", "Státusz")}</span>
+              <ChevronDown className="h-3 w-3 text-slate-400" />
+            </button>
+            {activeBulkMenu === "status" && (
+              <div className="absolute bottom-full mb-2 left-0 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl p-1.5 min-w-[160px] space-y-0.5 animate-in fade-in zoom-in-95 duration-100 z-50">
+                {statusList.map((st) => (
+                  <button
+                    key={st.key}
+                    type="button"
+                    onClick={() => handleBulkStatusChange(st.key)}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:bg-indigo-600 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
+                  >
+                    <span className={`h-2 w-2 rounded-full shrink-0 ${st.tone}`} />
+                    <span>{st.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Project Manager Dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setActiveBulkMenu(activeBulkMenu === "manager" ? null : "manager")}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-xs font-black transition-colors border border-slate-700/50 cursor-pointer"
+            >
+              <Users className="h-3.5 w-3.5 text-sky-400" />
+              <span>{t("Project Manager", "Manažér projektu", "Projektmenedzser")}</span>
+              <ChevronDown className="h-3 w-3 text-slate-400" />
+            </button>
+            {activeBulkMenu === "manager" && (
+              <div className="absolute bottom-full mb-2 left-0 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl p-1.5 min-w-[180px] max-h-56 overflow-y-auto space-y-0.5 animate-in fade-in zoom-in-95 duration-100 z-50">
+                <button
+                  type="button"
+                  onClick={() => handleBulkManagerChange("unassigned")}
+                  className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-bold text-rose-300 hover:bg-rose-900/40 hover:text-rose-100 transition-colors flex items-center gap-2 cursor-pointer border-b border-slate-800 pb-1 mb-1"
+                >
+                  <User className="h-3.5 w-3.5 text-rose-400 shrink-0" />
+                  <span>{t("Unassigned", "Bez manažéra", "Nincs hozzárendelve")}</span>
+                </button>
+                {managerOptions.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => handleBulkManagerChange(name)}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:bg-indigo-600 hover:text-white transition-colors flex items-center justify-between gap-2 cursor-pointer"
+                  >
+                    <span className="truncate">{name}</span>
+                    {currentUser?.name === name && (
+                      <span className="text-[9px] bg-slate-800 px-1 py-0.5 rounded text-indigo-300">
+                        {t("You", "Vy", "Ön")}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Archive / Restore Buttons */}
+          {hasActiveSelected && (
+            <button
+              type="button"
+              onClick={() => handleBulkArchive(true)}
+              title={t("Archive selected projects", "Archivovať vybrané projekty", "Kiválasztott projektek archiválása")}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-amber-900/40 text-amber-300 hover:text-amber-100 text-xs font-black transition-colors border border-slate-700/50 hover:border-amber-700/50 cursor-pointer"
+            >
+              <Archive className="h-3.5 w-3.5 text-amber-400" />
+              <span>{t("Archive", "Archivovať", "Archiválás")}</span>
+            </button>
+          )}
+          {hasArchivedSelected && (
+            <button
+              type="button"
+              onClick={() => handleBulkArchive(false)}
+              title={t("Restore selected projects", "Obnoviť vybrané projekty", "Kiválasztott projektek visszaállítása")}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-emerald-900/40 text-emerald-300 hover:text-emerald-100 text-xs font-black transition-colors border border-slate-700/50 hover:border-emerald-700/50 cursor-pointer"
+            >
+              <ArchiveRestore className="h-3.5 w-3.5 text-emerald-400" />
+              <span>{t("Restore", "Obnoviť", "Visszaállítás")}</span>
+            </button>
+          )}
+        </div>
+      </div>,
+      document.body
+    );
+  };
+
 
   /* Drag a row or a card onto another to put it there. The structure is the
      user's own view preference, like the sort, so anyone who can see the list
@@ -1508,6 +1792,21 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                   options={ratingFilterOptions(t)}
                 />
               </div>
+
+              {/* Archive Filter */}
+              <div className="w-[140px] shrink-0">
+                <CustomSelect
+                  className="h-10"
+                  icon={<Archive className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
+                  value={selectedArchiveFilter}
+                  onChange={(v) => setSelectedArchiveFilter(v as any)}
+                  options={[
+                    { value: "active", label: t("Active only", "Len aktívne", "Csak aktívak") },
+                    { value: "archived", label: t("Archived only", "Len archív", "Csak archívum") },
+                    { value: "all", label: t("All projects", "Všetky projekty", "Összes projekt") },
+                  ]}
+                />
+              </div>
             </div>
 
             {/* Order and columns — Desktop only (sm:flex) */}
@@ -1603,6 +1902,22 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                       place. See utils/projectColumns.ts. */}
                   <thead className="hidden lg:table-header-group">
                     <tr className="border-b border-slate-200 bg-slate-50/70">
+                      <th className="px-3 py-3 w-10 text-center">
+                        <button
+                          type="button"
+                          onClick={handleSelectAllVisible}
+                          className="p-1 text-slate-400 hover:text-indigo-600 rounded transition-colors cursor-pointer inline-flex items-center justify-center"
+                          title={areAllVisibleSelected ? t("Deselect all", "Zrušiť výber", "Kijelölés törlése") : t("Select all", "Vybrať všetko", "Összes kijelölése")}
+                        >
+                          {areAllVisibleSelected ? (
+                            <CheckSquare className="h-4 w-4 text-indigo-600" />
+                          ) : isPartiallySelected ? (
+                            <MinusSquare className="h-4 w-4 text-indigo-600" />
+                          ) : (
+                            <Square className="h-4 w-4 text-slate-400" />
+                          )}
+                        </button>
+                      </th>
                       {activeColumns.map(col => {
                         const key = col.key as ProjectSortKey;
                         // Click to sort; again to flip; a third time returns to the default order.
@@ -1656,6 +1971,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                       const dl = evaluateProjectDeadline(p, pType, today);
                       const drop = projectDrag.dropAt(p.id);
                       const financials = getProjectFinancials(p, pType, lead);
+                      const isSelected = selectedProjectIds.has(p.id);
 
                       return (
                         <tr
@@ -1667,6 +1983,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                             setEditingProject(p);
                           }}
                           className={`border-b border-slate-200/70 lg:border-slate-100 last:border-0 hover:bg-indigo-50/40 transition-[background-color,opacity] duration-150 cursor-pointer group block lg:table-row ${
+                            isSelected ? "bg-indigo-50/70" : ""
+                          } ${
                             projectDrag.draggedId === p.id ? "opacity-40" : ""
                           } ${
                             // A table row cannot hold a positioned marker, so the drop line is an inset edge on its cells.
@@ -1675,10 +1993,73 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           }`}
                         >
                           {/* ============================================================ */}
+                          {/* --- DESKTOP TABLE CELLS (lg:table-cell) --- */}
+                          {/* ============================================================ */}
+                          <td
+                            className="hidden lg:table-cell px-3 py-3 w-10 text-center"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleSelectProject(p.id);
+                            }}
+                          >
+                            <button
+                              type="button"
+                              className="p-1 text-slate-400 hover:text-indigo-600 rounded transition-colors cursor-pointer inline-flex items-center justify-center"
+                              title={isSelected ? t("Deselect", "Odznačiť", "Kijelölés megszüntetése") : t("Select", "Označiť", "Kijelölés")}
+                            >
+                              {isSelected ? (
+                                <CheckSquare className="h-4 w-4 text-indigo-600" />
+                              ) : (
+                                <Square className="h-4 w-4 text-slate-300 group-hover:text-slate-400" />
+                              )}
+                            </button>
+                          </td>
+
+                          {activeColumns.map((col, colIndex) => (
+                            <td key={col.key} className={`hidden lg:table-cell px-4 py-3 ${colIndex === 0 ? "relative" : ""}`}>
+                              {colIndex === 0 && isStructure ? (
+                                /* The structure's move handle sits in front of the
+                                   first cell and is always shown, as in a CMS
+                                   structure; the whole row drags, the handle
+                                   says so. */
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <Move
+                                    aria-hidden
+                                    data-structure-handle
+                                    className="h-3.5 w-3.5 shrink-0 text-slate-300 group-hover:text-indigo-500 transition-colors duration-150 cursor-grab active:cursor-grabbing"
+                                  />
+                                  <div className="min-w-0 flex-1">{renderColumnCell(col, { project: p, pType, lead, title, progress, dl })}</div>
+                                </div>
+                              ) : (
+                                <>
+                                  {colIndex === 0 && canDragProjects && (
+                                    <GripVertical
+                                      aria-hidden
+                                      className="absolute left-0.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity duration-150 cursor-grab"
+                                    />
+                                  )}
+                                  {renderColumnCell(col, { project: p, pType, lead, title, progress, dl })}
+                                </>
+                              )}
+                            </td>
+                          ))}
+                          <td className="hidden lg:table-cell px-4 py-3">
+                            {canDelete && (
+                              <button
+                                type="button"
+                                onClick={(e) => handleDeleteProject(p.id, e)}
+                                className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
+                                title={t("Delete Project", "Vymazať projekt", "Projekt törlése")}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </button>
+                            )}
+                          </td>
+
+                          {/* ============================================================ */}
                           {/* --- MOBILE DEDICATED LIST VIEW (< lg) --- */}
                           {/* ============================================================ */}
                           <td
-                            colSpan={activeColumns.length + 1}
                             className="block lg:hidden p-0 border-none bg-transparent w-full"
                           >
                             <div
@@ -1687,9 +2068,24 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                                 borderLeft: `3px solid ${pType.color || "#6366f1"}`,
                               }}
                             >
-                              {/* TOP ROW: Status badge + Deadlines / Delay (Left) | Quick Actions (Right) */}
+                              {/* TOP ROW: Checkbox + Status badge + Deadlines / Delay (Left) | Quick Actions (Right) */}
                               <div className="flex items-center justify-between gap-2">
                                 <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleToggleSelectProject(p.id);
+                                    }}
+                                    className="p-1 -ml-1 text-slate-400 hover:text-indigo-600 rounded transition-colors cursor-pointer inline-flex items-center justify-center shrink-0"
+                                    title={isSelected ? t("Deselect", "Odznačiť", "Kijelölés megszüntetése") : t("Select", "Označiť", "Kijelölés")}
+                                  >
+                                    {isSelected ? (
+                                      <CheckSquare className="h-4 w-4 text-indigo-600" />
+                                    ) : (
+                                      <Square className="h-4 w-4 text-slate-400" />
+                                    )}
+                                  </button>
                                   <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${projectStatusBadgeClass(p.status)}`}>
                                     {projectStatusLabel(p.status, t)}
                                   </span>
@@ -1737,14 +2133,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                                 </span>
                                 {ratingValue(p.rating) > 0 && (
                                   <div
-                                    className="scale-75 origin-left shrink-0"
+                                    className="shrink-0 inline-flex items-center gap-0.5"
                                     onClick={(e) => e.stopPropagation()}
                                   >
-                                    <StarRating
-                                      rating={ratingValue(p.rating)}
-                                      onChange={canEdit ? (stars) => handleRateProject(p.id, stars) : undefined}
-                                      userLanguage={userLanguage}
-                                    />
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200/70 shadow-2xs">
+                                      <Star className="h-2.5 w-2.5 fill-amber-400 text-amber-500" />
+                                      <span>{ratingValue(p.rating)}</span>
+                                    </span>
                                   </div>
                                 )}
                               </div>
@@ -1849,49 +2244,6 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                             </div>
                           </td>
 
-                          {/* ============================================================ */}
-                          {/* --- DESKTOP TABLE CELLS (lg:table-cell) --- */}
-                          {/* ============================================================ */}
-                          {activeColumns.map((col, colIndex) => (
-                            <td key={col.key} className={`hidden lg:table-cell px-4 py-3 ${colIndex === 0 ? "relative" : ""}`}>
-                              {colIndex === 0 && isStructure ? (
-                                /* The structure's move handle sits in front of the
-                                   first cell and is always shown, as in a CMS
-                                   structure; the whole row drags, the handle
-                                   says so. */
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <Move
-                                    aria-hidden
-                                    data-structure-handle
-                                    className="h-3.5 w-3.5 shrink-0 text-slate-300 group-hover:text-indigo-500 transition-colors duration-150 cursor-grab active:cursor-grabbing"
-                                  />
-                                  <div className="min-w-0 flex-1">{renderColumnCell(col, { project: p, pType, lead, title, progress, dl })}</div>
-                                </div>
-                              ) : (
-                                <>
-                                  {colIndex === 0 && canDragProjects && (
-                                    <GripVertical
-                                      aria-hidden
-                                      className="absolute left-0.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-300 opacity-0 group-hover:opacity-100 transition-opacity duration-150 cursor-grab"
-                                    />
-                                  )}
-                                  {renderColumnCell(col, { project: p, pType, lead, title, progress, dl })}
-                                </>
-                              )}
-                            </td>
-                          ))}
-                          <td className="hidden lg:table-cell px-4 py-3">
-                            {canDelete && (
-                              <button
-                                type="button"
-                                onClick={(e) => handleDeleteProject(p.id, e)}
-                                className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
-                                title={t("Delete Project", "Vymazať projekt", "Projekt törlése")}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            )}
-                          </td>
                         </tr>
                       );
                     })}
@@ -1914,6 +2266,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 const dl = evaluateProjectDeadline(p, pType, today);
                 const drop = projectDrag.dropAt(p.id);
                 const financials = getProjectFinancials(p, pType, lead);
+                const isSelected = selectedProjectIds.has(p.id);
 
                 return (
                   <div
@@ -1925,13 +2278,32 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                       setEditingProjectType(pType);
                       setEditingProject(p);
                     }}
-                    className={`glass-panel p-5 rounded-3xl border border-white/60 bg-white/95 shadow-glass hover:shadow-lg transition-all duration-300 cursor-pointer flex flex-col text-left group relative ${
+                    className={`glass-panel p-5 rounded-3xl border transition-all duration-300 cursor-pointer flex flex-col text-left group relative ${
+                      isSelected
+                        ? "border-indigo-400/80 bg-indigo-50/40 ring-2 ring-indigo-500/30 shadow-md"
+                        : "border-white/60 bg-white/95 shadow-glass hover:shadow-lg"
+                    } ${
                       projectDrag.draggedId === p.id ? "opacity-40" : ""
                     }`}
                   >
                     {/* Project Type Badge + Value Badge */}
                     <div className="flex items-center justify-between mb-4">
                       <div className="flex items-center gap-1.5 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleSelectProject(p.id);
+                          }}
+                          className="p-1 -ml-1 text-slate-400 hover:text-indigo-600 rounded transition-colors cursor-pointer inline-flex items-center justify-center shrink-0"
+                          title={isSelected ? t("Deselect", "Odznačiť", "Kijelölés megszüntetése") : t("Select", "Označiť", "Kijelölés")}
+                        >
+                          {isSelected ? (
+                            <CheckSquare className="h-4 w-4 text-indigo-600" />
+                          ) : (
+                            <Square className="h-4 w-4 text-slate-400 group-hover:text-slate-600" />
+                          )}
+                        </button>
                         <div
                           className="flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold shadow-sm"
                           style={{ backgroundColor: pType.color, color: readableOn(pType.color) }}
@@ -2090,6 +2462,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
         </div>
       )}
+
+      {renderBulkActionToolbar()}
 
     </div>
   );
