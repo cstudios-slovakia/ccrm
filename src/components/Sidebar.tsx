@@ -85,6 +85,7 @@ interface SidebarProps {
   onSaveCustomDashboards?: (dashboards: CustomDashboard[]) => void;
   defaultPage?: string;
   onSaveDefaultPage?: (pageId: string) => void;
+  disabledModules?: string[];
 }
 
 export const getSidebarItemColors = (item: any, isActive: boolean) => {
@@ -777,7 +778,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   customDashboards = [],
   onSaveCustomDashboards,
   defaultPage,
-  onSaveDefaultPage
+  onSaveDefaultPage,
+  disabledModules = []
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
@@ -935,6 +937,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }, [systemLanguage, dynamicUeItems, dynamicDashItems]);
 
   const isItemVisibleInSystem = (id: string) => {
+    if (disabledModules.includes(id)) return false;
     if (!canOpenRoute(id)) return false;
     // RAG AI and Mail used to vanish until their setup was done, which left no
     // hint that the module exists or what it needs. They stay listed; the view
@@ -950,7 +953,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const activeVisibleLayout = useMemo(() => {
     return resolvedLayout.filter(isItemVisibleInSystem);
-  }, [resolvedLayout, canOpenRoute, showRagAi]);
+  }, [resolvedLayout, canOpenRoute, showRagAi, disabledModules]);
 
   // Normalized Groups
   const sidebarGroups = useMemo(() => {
@@ -2165,6 +2168,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         onAddSidebarGroup={() => handleAddNewSidebarGroup()}
         defaultPage={defaultPage}
         onSaveDefaultPage={onSaveDefaultPage}
+        disabledModules={disabledModules}
       />
 
       {/* New Custom Dashboard Modal */}

@@ -2704,6 +2704,7 @@ ${log.payload || ''}
           setAiCustomTemplates={updateAiCustomTemplatesAndSync}
           licenseState={licenseState}
           onLicenseStateChange={setLicenseState}
+          customDashboards={customDashboards}
         />
       );
     }
@@ -2912,6 +2913,7 @@ ${log.payload || ''}
           settingsActionId={settingsActionId}
           licenseState={licenseState}
           onLicenseStateChange={setLicenseState}
+          customDashboards={customDashboards}
         />
       );
     }
@@ -3481,6 +3483,7 @@ ${log.payload || ''}
           onSaveCustomDashboards={updateCustomDashboardsAndSync}
           defaultPage={getDefaultPageForUser(currentUser) || "dashboard"}
           onSaveDefaultPage={handleSaveDefaultPage}
+          disabledModules={integrationsConfig?.disabledModules || []}
         />
         
         {/* Workspace Area - Add pb-20 on mobile viewports so that the bottom navigation bar never overlaps content */}

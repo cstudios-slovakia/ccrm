@@ -42,6 +42,7 @@ interface StartMenuProps {
   onAddSidebarGroup?: () => void;
   defaultPage?: string;
   onSaveDefaultPage?: (pageId: string) => void;
+  disabledModules?: string[];
 }
 
 /** The stored group shape, defined next to the layout it is persisted in. */
@@ -80,7 +81,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   onEditModeChange,
   onAddSidebarGroup,
   defaultPage,
-  onSaveDefaultPage
+  onSaveDefaultPage,
+  disabledModules = []
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
@@ -529,9 +531,11 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       defaultSection: "system"
     });
 
-    // Drop every tile the role may not open (custom dashboards and registries
-    // included) so the launcher never advertises a route the router would deny.
-    return items.filter((item) => canOpenRoute(item.id));
+    // Drop disabled modules and items the role may not open
+    return items.filter((item) => {
+      if (disabledModules.includes(item.id)) return false;
+      return canOpenRoute(item.id);
+    });
   }, [
     systemLanguage,
     customDashboards,
@@ -539,6 +543,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     showRagAi,
     showSettings,
     canOpenRoute,
+    disabledModules,
     t
   ]);
 

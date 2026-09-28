@@ -57,6 +57,7 @@ export const translations: Record<Language, Record<string, string>> = {
     // Settings Subtabs
     "settings.category_title": "Preferences Categories",
     "settings.tab.branding": "⚙️ General Config",
+    "settings.tab.modules": "👁️ Visible Modules",
     "settings.tab.invoicing": "🧾 Invoicing & Templates",
     "settings.tab.projects": "💼 Project Settings",
     "settings.tab.unified": "🗂️ Unified Entries",
@@ -73,6 +74,28 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.tab.danger": "⚠️ System Reset",
     "settings.tab.errors": "⚠️ Error Logs",
     "settings.tab.license": "🔑 Licence",
+
+    // Visible Modules Tab
+    "settings.modules.title": "Visible Modules",
+    "settings.modules.subtitle": "Configure which modules appear in the Start Menu and navigation sidebar. Turn off unused modules to keep the workspace clean and focused.",
+    "settings.modules.admin_badge": "Admin Only",
+    "settings.modules.admin_notice": "Module visibility settings apply to the Start Menu launcher and navigation sidebar across the entire organization.",
+    "settings.modules.search_placeholder": "Search modules by name or description...",
+    "settings.modules.enable_all": "Show All Modules",
+    "settings.modules.disable_all": "Hide All (Except Core)",
+    "settings.modules.reset_default": "Reset to Default",
+    "settings.modules.active_stats": "Active",
+    "settings.modules.hidden_stats": "Hidden",
+    "settings.modules.total_stats": "Total",
+    "settings.modules.cat.operations": "Operations & CRM",
+    "settings.modules.cat.analytics": "Analytics & Registries",
+    "settings.modules.cat.collaboration": "Collaboration & AI",
+    "settings.modules.cat.system": "System & Tools",
+    "settings.modules.show_category": "Show All in Category",
+    "settings.modules.hide_category": "Hide All in Category",
+    "settings.modules.status.visible": "Visible",
+    "settings.modules.status.hidden": "Hidden",
+    "settings.modules.no_results": "No modules match your search query.",
 
     // Licensing — the banner, the settings section, and the coded answers
     // api/license.php returns. Statuses and error codes are translated HERE and
@@ -713,6 +736,7 @@ export const translations: Record<Language, Record<string, string>> = {
     // Settings Subtabs
     "settings.category_title": "Kategórie nastavení",
     "settings.tab.branding": "⚙️ Všeobecná konfigurácia",
+    "settings.tab.modules": "👁️ Viditeľnosť modulov",
     "settings.tab.invoicing": "🧾 Fakturácia a šablóny",
     "settings.tab.projects": "💼 Nastavenia projektov",
     "settings.tab.unified": "🗂️ Unifikované záznamy",
@@ -729,6 +753,28 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.tab.danger": "⚠️ Reset systému",
     "settings.tab.errors": "⚠️ Chybové záznamy",
     "settings.tab.license": "🔑 Licencia",
+
+    // Viditeľnosť modulov
+    "settings.modules.title": "Viditeľnosť modulov",
+    "settings.modules.subtitle": "Nastavte, ktoré moduly sú viditeľné v Štart menu a bočnej navigácii. Vypnite nepoužívané moduly pre prehľadnejšie prostredie.",
+    "settings.modules.admin_badge": "Iba administrátor",
+    "settings.modules.admin_notice": "Zmeny viditeľnosti modulov sa uplatnia v Štart menu a v bočnej navigácii pre všetkých používateľov.",
+    "settings.modules.search_placeholder": "Hľadať moduly podľa názvu alebo popisu...",
+    "settings.modules.enable_all": "Zobraziť všetky moduly",
+    "settings.modules.disable_all": "Skryť všetky (okrem hlavných)",
+    "settings.modules.reset_default": "Obnoviť predvolené",
+    "settings.modules.active_stats": "Aktívne",
+    "settings.modules.hidden_stats": "Skryté",
+    "settings.modules.total_stats": "Celkovo",
+    "settings.modules.cat.operations": "Operatíva & CRM",
+    "settings.modules.cat.analytics": "Analytika & Evidencie",
+    "settings.modules.cat.collaboration": "Spolupráca & AI",
+    "settings.modules.cat.system": "Systém & Nástroje",
+    "settings.modules.show_category": "Zobraziť celú kategóriu",
+    "settings.modules.hide_category": "Skryť celú kategóriu",
+    "settings.modules.status.visible": "Zobrazený",
+    "settings.modules.status.hidden": "Skrytý",
+    "settings.modules.no_results": "Žiadne moduly nevyhovujú vášmu vyhľadávaniu.",
 
     // Licencovanie — banner, sekcia v nastaveniach a kódy, ktoré vracia
     // api/license.php. Stavy a chybové kódy sa prekladajú LEN tu, takže backend
@@ -1368,6 +1414,7 @@ export const translations: Record<Language, Record<string, string>> = {
     // Settings Subtabs
     "settings.category_title": "Beállítási kategóriák",
     "settings.tab.branding": "⚙️ Általános beállítások",
+    "settings.tab.modules": "👁️ Modulok láthatósága",
     "settings.tab.invoicing": "🧾 Számlázás és sablonok",
     "settings.tab.projects": "💼 Projekt beállítások",
     "settings.tab.unified": "🗂️ Egységes bejegyzések",
@@ -1384,6 +1431,28 @@ export const translations: Record<Language, Record<string, string>> = {
     "settings.tab.danger": "⚠️ Rendszer visszaállítása",
     "settings.tab.errors": "⚠️ Hiba naplók",
     "settings.tab.license": "🔑 Licenc",
+
+    // Modulok láthatósága
+    "settings.modules.title": "Modulok láthatósága",
+    "settings.modules.subtitle": "Állítsa be, mely modulok jelenjenek meg a Start menüben és az oldalsó navigációban. Kapcsolja ki a felesleges modulokat a letisztult felületért.",
+    "settings.modules.admin_badge": "Csak rendszergazda",
+    "settings.modules.admin_notice": "A modulok láthatóságának beállítása a Start menüre és a navigációs sávra minden felhasználónál érvényesül.",
+    "settings.modules.search_placeholder": "Modulok keresése név vagy leírás alapján...",
+    "settings.modules.enable_all": "Összes modul megjelenítése",
+    "settings.modules.disable_all": "Összes elrejtése",
+    "settings.modules.reset_default": "Alapértelmezett visszaállítása",
+    "settings.modules.active_stats": "Aktív",
+    "settings.modules.hidden_stats": "Rejtett",
+    "settings.modules.total_stats": "Összesen",
+    "settings.modules.cat.operations": "Operáció & CRM",
+    "settings.modules.cat.analytics": "Analitika & Nyilvántartások",
+    "settings.modules.cat.collaboration": "Együttműködés & AI",
+    "settings.modules.cat.system": "Rendszer & Eszközök",
+    "settings.modules.show_category": "Összes megjelenítése a kategóriában",
+    "settings.modules.hide_category": "Összes elrejtése a kategóriában",
+    "settings.modules.status.visible": "Látható",
+    "settings.modules.status.hidden": "Rejtett",
+    "settings.modules.no_results": "Nincs találat a keresési feltételeknek megfelelően.",
 
     // Licencelés — a szalag, a beállítási szakasz és az api/license.php által
     // visszaadott kódok. Az állapotok és hibakódok KIZÁRÓLAG itt fordulnak le,

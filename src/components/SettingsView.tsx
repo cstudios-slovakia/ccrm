@@ -6,13 +6,14 @@ import {
   Eye, Pencil, Minus, GripVertical, ArrowLeft, Activity, Clock, CheckSquare, Check,
   Menu, ArrowUp, FolderOpen, Search, FileText, Building2, Sparkles
 } from "lucide-react";
-import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, ProjectType, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings } from "../types";
+import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, ProjectType, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, CustomDashboard } from "../types";
 import { leadAssignmentPanel, resolveAssignmentPool, type LeadAssignmentPanel } from "../utils/leadAssignment";
 import { normalizeSlaDays, type LeadStateSla } from "../utils/leadSla";
 import { listIdFor, nextListId, type ListIds } from "../utils/listIds";
 import { getTranslation, formatTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { ProjectSettings } from "./ProjectSettings";
+import { VisibleModulesSettings } from "./VisibleModulesSettings";
 import { PasswordInput } from "./PasswordInput";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ColorPicker } from "./ui/ColorPicker";
@@ -573,6 +574,7 @@ interface SettingsViewProps {
   /** Licence for this installation — drives the Licence tab and the seat limit. */
   licenseState?: LicenseState | null;
   onLicenseStateChange?: (next: LicenseState) => void;
+  customDashboards?: CustomDashboard[];
 }
 
 // Extract all valid Lucide icon names dynamically for search
@@ -589,6 +591,7 @@ const ALL_LUCIDE_ICONS = Object.keys(Icons).filter(key => {
 // back to Branding every time a background sync produced a new `roles` array.
 const SETTINGS_TABS = [
   { id: "branding", permKey: "general_config" },
+  { id: "modules", permKey: "general_config" },
   { id: "license", permKey: "general_config" },
   { id: "invoicing", permKey: "general_config" },
   { id: "projects", permKey: "general_config" },
@@ -677,7 +680,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   aiCustomTemplates = [],
   setAiCustomTemplates,
   licenseState = null,
-  onLicenseStateChange
+  onLicenseStateChange,
+  customDashboards = []
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
 
@@ -1087,7 +1091,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Role creation states
   const [newRoleName, setNewRoleName] = React.useState("");
 
-  const [activeSubTab, setActiveSubTab] = React.useState<"branding" | "license" | "invoicing" | "managers" | "rbac" | "states" | "sources" | "danger" | "ads" | "social" | "api" | "email" | "ai" | "unified" | "errors" | "projects">((initialSubTab as any) || "branding");
+  const [activeSubTab, setActiveSubTab] = React.useState<"branding" | "modules" | "license" | "invoicing" | "managers" | "rbac" | "states" | "sources" | "danger" | "ads" | "social" | "api" | "email" | "ai" | "unified" | "errors" | "projects">((initialSubTab as any) || "branding");
 
   // Zernio Social Media Integration State
   const [zernioApiKey, setZernioApiKey] = React.useState<string>(integrationsConfig?.zernioApiKey || "");
@@ -4019,6 +4023,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               </div>
 
             </div>
+          </div>
+        )}
+
+        {/* TAB: Visible Modules */}
+        {activeSubTab === "modules" && getPermission("general_config") !== "nothing" && (
+          <div className="lg:col-span-12 space-y-6">
+            {renderReadOnlyBanner("general_config")}
+            <VisibleModulesSettings
+              language={userLanguage}
+              canEdit={currentUser?.role?.toLowerCase() === "admin" || getPermission("general_config") === "edit"}
+              disabledModules={integrationsConfig?.disabledModules || []}
+              onChangeDisabledModules={(nextDisabled) => {
+                updateIntegrationsConfig?.((prev: any) => ({
+                  ...prev,
+                  disabledModules: nextDisabled
+                }));
+              }}
+              customDashboards={customDashboards}
+              unifiedEntries={unifiedEntries}
+            />
           </div>
         )}
 
