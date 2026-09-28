@@ -20,6 +20,7 @@ import {
     Clock,
 
     User,
+    UserPlus,
     Briefcase,
     Handshake,
     X,
@@ -1702,7 +1703,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const [newLeadEmail, setNewLeadEmail] = useState("");
     const [newLeadInterestNote, setNewLeadInterestNote] = useState("");
 
-    const [clientMode, setClientMode] = useState<"existing" | "new">("new");
+    const [clientMode, setClientMode] = useState<"none" | "existing" | "new">("none");
     const [selectedExistingClient, setSelectedExistingClient] = useState("");
 
     const existingClients = useMemo(() => {
@@ -1717,6 +1718,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             }
         > = {};
         leads.forEach((lead) => {
+            // Only actual clients (explicit client-* record or non-zero adjustment/value)
+            const isClient =
+                (lead.id || "").startsWith("client-") ||
+                (Number(lead.adjustment) || 0) > 0 ||
+                (Number(lead.value) || 0) > 0;
+            if (!isClient) return;
+
             const key = lead.name.trim().toLowerCase();
             if (key && !profiles[key]) {
                 profiles[key] = {
@@ -2079,39 +2087,55 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const clientCardData = useMemo(() => {
         if (!activeLead) return null;
         const clientName = activeLead.name.trim().toLowerCase();
+        if (!clientName) return null;
+
         const matchingLeads = leads.filter(
             (l) => l.name.trim().toLowerCase() === clientName,
         );
 
-        // The lead being viewed always wins. Leads are grouped into a client by name
-        // alone, and a name is not an identity: website forms set the client name from
-        // whatever the visitor typed, so two different people (different emails) end up
-        // in the same group. Taking the first sibling that happens to have a value —
-        // as this did — showed one person's email and phone on another person's lead,
-        // i.e. the details you would call back on were the wrong ones. Siblings may
-        // only fill in fields this lead left blank.
+        // Check if there is an actual client record or client association for this name:
+        // A client exists if there is an explicit client-* record or non-zero adjustment/value
+        const clientRecord = matchingLeads.find(
+            (l) =>
+                (l.id || "").startsWith("client-") ||
+                (Number(l.adjustment) || 0) > 0 ||
+                (Number(l.value) || 0) > 0,
+        );
+
+        if (!clientRecord) {
+            return null;
+        }
+
         const phone =
-            activeLead.phone || matchingLeads.find((l) => l.phone)?.phone || "";
+            activeLead.phone ||
+            matchingLeads.find((l) => l.phone)?.phone ||
+            clientRecord.phone ||
+            "";
         const email =
-            activeLead.email || matchingLeads.find((l) => l.email)?.email || "";
+            activeLead.email ||
+            matchingLeads.find((l) => l.email)?.email ||
+            clientRecord.email ||
+            "";
         const website =
             activeLead.website ||
             matchingLeads.find((l) => l.website)?.website ||
+            clientRecord.website ||
             "";
         const leadWithAddress = activeLead.address?.street
             ? activeLead
-            : matchingLeads.find((l) => l.address?.street) || activeLead;
+            : matchingLeads.find((l) => l.address?.street) || clientRecord;
         const leadWithCompanyId = activeLead.companyId
             ? activeLead
-            : matchingLeads.find((l) => l.companyId) || activeLead;
+            : matchingLeads.find((l) => l.companyId) || clientRecord;
 
         return {
-            name: activeLead.name,
-            clientType: activeLead.clientType || "person",
+            name: clientRecord.name || activeLead.name,
+            clientType:
+                clientRecord.clientType || activeLead.clientType || "person",
             phone,
             email,
             street: leadWithAddress.address?.street || "",
-            city: activeLead.city || "",
+            city: clientRecord.city || activeLead.city || "",
             postalCode: leadWithAddress.address?.postalCode || "",
             country: leadWithAddress.address?.country || "Slovakia",
             companyId: leadWithCompanyId.companyId || "",
@@ -2121,6 +2145,87 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             website,
         };
     }, [leads, activeLead]);
+
+    // Create a new client profile in the client registry from the active lead
+    const handleCreateClientFromLead = useCallback(
+        (lead: Lead) => {
+            if (!lead) return;
+            const clientName = lead.name.trim();
+            if (!clientName) {
+                (window as any).showToast?.(
+                    t(
+                        "Lead name cannot be empty to create a client.",
+                        "Názov leadu nemôže byť prázdny pre vytvorenie klienta.",
+                        "A lead neve nem lehet üres az ügyfél létrehozásához.",
+                    ),
+                );
+                return;
+            }
+
+            const newClientId = `client-${Date.now()}`;
+            const newClientRecord: Lead = {
+                id: newClientId,
+                name: clientName,
+                city: lead.city || "",
+                clientType: lead.clientType || "person",
+                status: "accepted",
+                owner: lead.owner || "",
+                source: lead.source || "direct",
+                value: 0,
+                adjustment: 0,
+                createdAt: todayLocal(),
+                phone: lead.phone || undefined,
+                email: lead.email || undefined,
+                address: lead.address || undefined,
+                companyId: lead.companyId || undefined,
+                taxId: lead.taxId || undefined,
+                vatId: lead.vatId || undefined,
+                contactPerson: lead.contactPerson || undefined,
+                website: lead.website || undefined,
+                interestNote: lead.interestNote || undefined,
+            };
+
+            setLeads((prev) => [newClientRecord, ...prev]);
+
+            (window as any).showToast?.(
+                t(
+                    `Client "${clientName}" created successfully!`,
+                    `Klient "${clientName}" bol úspešne vytvorený!`,
+                    `"${clientName}" ügyfél sikeresen létrehozva!`,
+                ),
+            );
+        },
+        [setLeads, t],
+    );
+
+    // Link this lead to an existing client profile
+    const handleLinkLeadToExistingClient = useCallback(
+        (clientName: string) => {
+            if (!activeLead || !clientName) return;
+            const found = existingClients.find((c) => c.name === clientName);
+            setLeads((prev) =>
+                prev.map((l) => {
+                    if (l.id !== activeLead.id) return l;
+                    return {
+                        ...l,
+                        name: clientName,
+                        city: l.city || found?.city || "",
+                        phone: l.phone || found?.phone || undefined,
+                        email: l.email || found?.email || undefined,
+                        clientType: l.clientType || found?.clientType || "person",
+                    };
+                }),
+            );
+            (window as any).showToast?.(
+                t(
+                    `Lead linked to client "${clientName}"`,
+                    `Lead bol prepojený s klientom "${clientName}"`,
+                    `A lead összekapcsolva a következő ügyféllel: "${clientName}"`,
+                ),
+            );
+        },
+        [activeLead, existingClients, setLeads, t],
+    );
 
     // Event Logging states
     const [logType, setLogType] = useState<LeadEventType | null>(null);
@@ -3598,6 +3703,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         setTimeout(() => {
             setIsModalOpen(false);
             setIsClosingModal(false);
+            setClientMode("none");
+            setSelectedExistingClient("");
         }, 350);
     };
 
@@ -3895,7 +4002,26 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             interestNote: newLeadInterestNote.trim() || undefined,
         };
 
-        setLeads((prev) => [newLead, ...prev]);
+        if (clientMode === "new") {
+            const newClientRecord: Lead = {
+                id: `client-${Date.now() + 1}`,
+                name: newLeadName.trim(),
+                city: newLeadCity.trim(),
+                clientType: newLeadType,
+                status: "accepted",
+                owner: newLeadOwner || "",
+                source: newLeadSource || leadSources[0] || "direct",
+                value: 0,
+                adjustment: 0,
+                createdAt: todayLocal(),
+                phone: newLeadPhone.trim() || undefined,
+                email: newLeadEmail.trim() || undefined,
+                interestNote: newLeadInterestNote.trim() || undefined,
+            };
+            setLeads((prev) => [newLead, newClientRecord, ...prev]);
+        } else {
+            setLeads((prev) => [newLead, ...prev]);
+        }
         closeLeadModal();
 
         setNewLeadName("");
@@ -3912,7 +4038,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         setNewLeadPhone("");
         setNewLeadEmail("");
         setNewLeadInterestNote("");
-        setClientMode("new");
+        setClientMode("none");
         setSelectedExistingClient("");
     };
 
@@ -4973,7 +5099,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     {/* LEFT PANEL: Client Card & Lead Details Form */}
                     <div className="lg:col-span-5 space-y-6">
                         {/* 1. Client Profile Card (On Top) */}
-                        {clientCardData && (
+                        {clientCardData ? (
                             <div className="glass-panel p-6 rounded-[28px] border-2 border-emerald-400 bg-emerald-50/70 shadow-xl space-y-4 text-emerald-950">
                                 <div className="border-b-2 border-emerald-200/50 pb-2 flex items-center justify-between gap-2">
                                     <span className="text-xs font-black text-emerald-700 uppercase tracking-wider flex items-center gap-1.5">
@@ -5177,7 +5303,81 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     </div>
                                 </div>
                             </div>
-                        )}
+                        ) : activeLead ? (
+                            <div className="glass-panel p-6 rounded-[28px] border-2 border-dashed border-slate-300 bg-white/80 shadow-sm space-y-4 text-slate-700">
+                                <div className="border-b border-slate-200 pb-2.5 flex items-center justify-between gap-2">
+                                    <span className="text-xs font-black text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                                        <Briefcase className="h-4.5 w-4.5 text-slate-400 stroke-[2.5] shrink-0" />
+                                        {t(
+                                            "Client Profile",
+                                            "Profil klienta",
+                                            "Ügyfélprofil",
+                                        )}
+                                    </span>
+                                    <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black bg-slate-100 text-slate-500 border border-slate-200 uppercase tracking-wider shrink-0">
+                                        {t(
+                                            "No Client Linked",
+                                            "Bez klienta",
+                                            "Nincs ügyfél",
+                                        )}
+                                    </span>
+                                </div>
+
+                                <div className="space-y-3.5">
+                                    <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                                        {t(
+                                            "This lead is not currently linked to an official client profile in the client registry. You can create a new client profile from this lead with one click.",
+                                            "Tento lead zatiaľ nie je prepojený s oficiálnym profilom v evidencii klientov. Môžete z tohto leadu vytvoriť nového klienta jedným kliknutím.",
+                                            "Ez a lead jelenleg nincs összekapcsolva hivatalos ügyfélprofillal a nyilvántartásban. Egy kattintással létrehozhat új ügyfelet ebből a leadből.",
+                                        )}
+                                    </p>
+
+                                    <div className="pt-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => handleCreateClientFromLead(activeLead)}
+                                            className="w-full px-5 py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-black uppercase tracking-wider shadow-md hover:shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                                        >
+                                            <UserPlus className="h-4 w-4" />
+                                            {t(
+                                                "Create New Client from Lead",
+                                                "Vytvoriť nového klienta z leadu",
+                                                "Új ügyfél létrehozása a leadből",
+                                            )}
+                                        </button>
+                                    </div>
+
+                                    {existingClients.length > 0 && (
+                                        <div className="pt-3 border-t border-slate-100 space-y-1.5">
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
+                                                {t(
+                                                    "Or link to existing client",
+                                                    "Alebo prepojiť s existujúcim klientom",
+                                                    "Vagy összekapcsolás meglévő ügyféllel",
+                                                )}
+                                            </label>
+                                            <CustomSelect
+                                                searchable
+                                                size="sm"
+                                                value=""
+                                                onChange={(clientName) => {
+                                                    if (clientName) handleLinkLeadToExistingClient(clientName);
+                                                }}
+                                                placeholder={t(
+                                                    "-- Choose Client to Link --",
+                                                    "-- Vyberte klienta na prepojenie --",
+                                                    "-- Válasszon ügyfelet --",
+                                                )}
+                                                options={existingClients.map((c) => ({
+                                                    value: c.name,
+                                                    label: `${c.name} (${c.city || t("No City", "Bez mesta", "Nincs város")})`,
+                                                }))}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        ) : null}
 
                         {/* 2. Lead Details Panel (On Bottom) */}
                         <div className="glass-panel p-6 rounded-[28px] border-2 border-blue-400 bg-white shadow-xl space-y-6 overflow-hidden relative">
@@ -11989,7 +12189,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         <button
                                             type="button"
                                             onClick={() => {
-                                                setClientMode("new");
+                                                setClientMode("none");
                                                 setNewLeadName("");
                                                 setNewLeadCity("");
                                                 setNewLeadType("person");
@@ -11998,15 +12198,15 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 setSelectedExistingClient("");
                                             }}
                                             className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
-                                                clientMode === "new"
+                                                clientMode === "none"
                                                     ? "bg-white text-blue-600 shadow-sm font-black"
                                                     : "text-slate-500 hover:text-slate-800 font-bold"
                                             }`}
                                         >
                                             {t(
-                                                "New Client",
-                                                "Nový klient",
-                                                "Új ügyfél",
+                                                "No Client",
+                                                "Žiadny klient",
+                                                "Nincs ügyfél",
                                             )}
                                         </button>
                                         <button
@@ -12030,6 +12230,29 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 "Existing Client",
                                                 "Existujúci klient",
                                                 "Meglévő ügyfél",
+                                            )}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setClientMode("new");
+                                                setNewLeadName("");
+                                                setNewLeadCity("");
+                                                setNewLeadType("person");
+                                                setNewLeadPhone("");
+                                                setNewLeadEmail("");
+                                                setSelectedExistingClient("");
+                                            }}
+                                            className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
+                                                clientMode === "new"
+                                                    ? "bg-white text-blue-600 shadow-sm font-black"
+                                                    : "text-slate-500 hover:text-slate-800 font-bold"
+                                            }`}
+                                        >
+                                            {t(
+                                                "New Client",
+                                                "Nový klient",
+                                                "Új ügyfél",
                                             )}
                                         </button>
                                     </div>
@@ -12061,21 +12284,54 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             }),
                                         )}
                                     />
+                                ) : clientMode === "new" ? (
+                                    <div className="space-y-1">
+                                        <input
+                                            type="text"
+                                            required
+                                            value={newLeadName}
+                                            onChange={(e) =>
+                                                setNewLeadName(e.target.value)
+                                            }
+                                            placeholder={t(
+                                                "e.g. Acme s.r.o. / John Doe",
+                                                "napr. Acme s.r.o. / Ján Novák",
+                                                "pl. Acme Kft. / Kovács János",
+                                            )}
+                                            className="w-full px-4 py-2.5 rounded-xl bg-blue-50/10 border border-blue-100 text-xs text-slate-800 focus:outline-none focus:bg-white focus:border-blue-500 focus:ring-1"
+                                        />
+                                        <p className="text-[10px] text-emerald-600 font-medium">
+                                            {t(
+                                                "Will automatically create both this lead and a new registered client profile.",
+                                                "Vytvorí tento lead a zároveň nový registrovaný profil klienta.",
+                                                "Létrehozza ezt a leadet és egy új regisztrált ügyfélprofilt is.",
+                                            )}
+                                        </p>
+                                    </div>
                                 ) : (
-                                    <input
-                                        type="text"
-                                        required
-                                        value={newLeadName}
-                                        onChange={(e) =>
-                                            setNewLeadName(e.target.value)
-                                        }
-                                        placeholder={t(
-                                            "e.g. John Doe",
-                                            "napr. Ján Novák",
-                                            "pl. Kovács János",
-                                        )}
-                                        className="w-full px-4 py-2.5 rounded-xl bg-blue-50/10 border border-blue-100 text-xs text-slate-800 focus:outline-none focus:bg-white focus:border-blue-500 focus:ring-1"
-                                    />
+                                    <div className="space-y-1">
+                                        <input
+                                            type="text"
+                                            required
+                                            value={newLeadName}
+                                            onChange={(e) =>
+                                                setNewLeadName(e.target.value)
+                                            }
+                                            placeholder={t(
+                                                "e.g. Website redesign / New deal",
+                                                "napr. Redizajn webu / Nová zákazka",
+                                                "pl. Weboldal áttervezés / Új ügylet",
+                                            )}
+                                            className="w-full px-4 py-2.5 rounded-xl bg-blue-50/10 border border-blue-100 text-xs text-slate-800 focus:outline-none focus:bg-white focus:border-blue-500 focus:ring-1"
+                                        />
+                                        <p className="text-[10px] text-slate-400 font-medium">
+                                            {t(
+                                                "Lead without a linked client profile. You can create a client later.",
+                                                "Lead bez prepojeného profilu klienta. Profil môžete vytvoriť neskôr.",
+                                                "Lead összekapcsolt ügyfélprofil nélkül. Később létrehozhatja az ügyfelet.",
+                                            )}
+                                        </p>
+                                    </div>
                                 )}
                             </div>
 
