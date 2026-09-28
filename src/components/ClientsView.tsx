@@ -500,6 +500,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [newClientDistrict, setNewClientDistrict] = useState("");
   const [newClientOwner, setNewClientOwner] = useState(projectManagers[0] || "");
   const [newClientValue, setNewClientValue] = useState("");
+  const [newClientAdjustment, setNewClientAdjustment] = useState("");
   const [newClientCategories, setNewClientCategories] = useState<string[]>([]);
   const [newClientCategoryId, setNewClientCategoryId] = useState("");
 
@@ -799,6 +800,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       source: "website",
       owner: newClientOwner || projectManagers[0] || currentUser?.name || "",
       value: parseFloat(newClientValue) || 0,
+      adjustment: parseFloat(newClientAdjustment) || 0,
       // `leads.created_at` is a DATE column: a full ISO timestamp makes MySQL
       // reject the whole sync payload. Local date so a client registered just
       // after midnight is not filed under the previous day.
@@ -871,6 +873,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     setNewClientDistrict("");
     setNewClientOwner(projectManagers[0] || "");
     setNewClientValue("");
+    setNewClientAdjustment("");
     setNewClientCategories([]);
     setNewClientCategoryId("");
     setNewClientVatStatus("idle");
@@ -894,6 +897,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       source: string;
       owner: string;
       totalValue: number;
+      adjustment: number;
       leadsCount: number;
       associatedLeads: Lead[];
       createdAt: string;
@@ -944,6 +948,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           source: lead.source || "website",
           owner: lead.owner || "",
           totalValue: 0,
+          adjustment: Number(lead.adjustment) || 0,
           leadsCount: 0,
           associatedLeads: [],
           createdAt: lead.createdAt || "",
@@ -993,11 +998,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         if (lead.vatValidationResult && !profilesMap[clientKey].vatValidationResult) {
           profilesMap[clientKey].vatValidationResult = lead.vatValidationResult;
         }
+        if (lead.adjustment !== undefined && lead.adjustment !== null && lead.adjustment !== 0 && !profilesMap[clientKey].adjustment) {
+          profilesMap[clientKey].adjustment = Number(lead.adjustment) || 0;
+        }
         if (lead.createdAt && (!profilesMap[clientKey].createdAt || lead.createdAt < profilesMap[clientKey].createdAt)) {
           profilesMap[clientKey].createdAt = lead.createdAt;
         }
       }
-      profilesMap[clientKey].totalValue += lead.value;
+      profilesMap[clientKey].totalValue += (Number(lead.value) || 0);
       profilesMap[clientKey].leadsCount += 1;
       profilesMap[clientKey].associatedLeads.push(lead);
 
@@ -1019,8 +1027,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       }
     });
 
-    // Sort timelines chronologically (Newest First)
+    // Add adjustment to total client value & sort timelines chronologically (Newest First)
     Object.values(profilesMap).forEach(profile => {
+      profile.totalValue += (Number(profile.adjustment) || 0);
       profile.timeline.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
     });
 
@@ -1269,6 +1278,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
   // --- CLIENT DETAIL VIEW FORM STATE HOOKS ---
   const [profileName, setProfileName] = useState("");
+  const [profileAdjustment, setProfileAdjustment] = useState("");
   const [profileStreet, setProfileStreet] = useState("");
   const [profileCity, setProfileCity] = useState("");
   const [profilePostalCode, setProfilePostalCode] = useState("");
@@ -2280,6 +2290,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       // Only sync form states if we transitioned to a different client, or if we are not currently editing
       if (clientNameChanged || !isEditingProfile) {
         setProfileName(activeClient.name);
+        setProfileAdjustment(activeClient.adjustment !== undefined && activeClient.adjustment !== null && activeClient.adjustment !== 0 ? String(activeClient.adjustment) : "");
         setProfileStreet(activeClient.street);
         setProfileCity(activeClient.city);
         setProfilePostalCode(activeClient.postalCode);
@@ -2397,6 +2408,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         return {
           ...lead,
           name: profileName.trim(),
+          adjustment: parseFloat(profileAdjustment) || 0,
           city: profileCity.trim(),
           clientType: profileType,
           owner: profileOwner,
@@ -2976,6 +2988,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   if (isEditingProfile) {
                     // Revert changes on toggle off
                     setProfileName(activeClient.name);
+                    setProfileAdjustment(activeClient.adjustment !== undefined && activeClient.adjustment !== null && activeClient.adjustment !== 0 ? String(activeClient.adjustment) : "");
                     setProfileStreet(activeClient.street);
                     setProfileCity(activeClient.city);
                     setProfilePostalCode(activeClient.postalCode);
@@ -3115,15 +3128,48 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 </div>
               </div>
 
-              {/* Date Added (read-only, derived from earliest associated lead) */}
-              {activeClient?.createdAt && (
-                <div className="space-y-1">
-                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1"><Calendar className="h-3 w-3 text-emerald-500" /> {getTranslation(systemLanguage, "profile.created_at")}</label>
-                  <div className="pt-2 pl-0 text-slate-900 text-sm font-black cursor-default select-all">
-                    {formatDateLocalized(activeClient.createdAt, systemLanguage)}
+              {/* Date Added & Financial Adjustment */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {activeClient?.createdAt ? (
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1"><Calendar className="h-3 w-3 text-emerald-500" /> {getTranslation(systemLanguage, "profile.created_at")}</label>
+                    <div className="pt-2 pl-0 text-slate-900 text-sm font-black cursor-default select-all">
+                      {formatDateLocalized(activeClient.createdAt, systemLanguage)}
+                    </div>
                   </div>
+                ) : <div />}
+
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                    <TrendingUp className="h-3 w-3 text-emerald-500" />
+                    {systemLanguage === "sk" ? "Finančná úprava" : systemLanguage === "hu" ? "Pénzügyi korrekció" : "Financial Adjustment"}
+                  </label>
+                  {isEditingProfile ? (
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={profileAdjustment}
+                        onChange={(e) => setProfileAdjustment(e.target.value)}
+                        placeholder="0.00"
+                        className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-emerald-500 text-slate-800 text-sm font-black focus:outline-none transition-all pr-8"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">
+                        {currencySymbol}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="pt-2 pl-0 text-emerald-700 text-sm font-black cursor-default select-all flex items-center gap-2">
+                      <span>{money(activeClient.adjustment || 0, { minimumFractionDigits: 2 })}</span>
+                      {Number(activeClient.adjustment || 0) !== 0 && (
+                        <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md border border-emerald-300">
+                          {t("Adjustment", "Úprava", "Korrekció")}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
 
               {/* Address details */}
               <div className="border-t-2 border-slate-100 pt-4 space-y-3">
@@ -5922,7 +5968,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                   <div className="space-y-1">
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
                       {systemLanguage === "sk" ? "Krajina" : systemLanguage === "hu" ? "Ország" : "Country"}
@@ -5960,12 +6006,26 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   
                   <div className="md:col-span-1 space-y-1">
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
-                      {systemLanguage === "sk" ? `Odhadovaná hodnota (${currencySymbol})` : systemLanguage === "hu" ? `Becsült érték (${currencySymbol})` : `Estimated Worth (${currencySymbol})`}
+                      {systemLanguage === "sk" ? `Odhad (${currencySymbol})` : systemLanguage === "hu" ? `Becsült (${currencySymbol})` : `Est. (${currencySymbol})`}
                     </label>
                     <input
                       type="number"
                       value={newClientValue}
                       onChange={(e) => setNewClientValue(e.target.value)}
+                      placeholder="0.00"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
+                    />
+                  </div>
+
+                  <div className="md:col-span-1 space-y-1">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
+                      {systemLanguage === "sk" ? `Úprava (${currencySymbol})` : systemLanguage === "hu" ? `Korrekció (${currencySymbol})` : `Adjust. (${currencySymbol})`}
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={newClientAdjustment}
+                      onChange={(e) => setNewClientAdjustment(e.target.value)}
                       placeholder="0.00"
                       className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
                     />

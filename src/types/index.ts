@@ -135,6 +135,7 @@ export interface Lead {
   owner: string;            // Project manager
   division?: string | null; // Assigned business division (e.g. Cstudios, Cstudios Budapest)
   value: number;            // Lead value
+  adjustment?: number;      // Client value adjustment (independent from deals/pipeline)
   createdAt: string;
   rating?: number;          // Star rating (1-5)
   

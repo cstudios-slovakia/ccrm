@@ -272,6 +272,7 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
         'owner' => $inc['owner'] ?? $defaultOwner,
         'division' => $inc['division'] ?? null,
         'value' => isset($inc['value']) ? floatval($inc['value']) : 0.00,
+        'adjustment' => isset($inc['adjustment']) ? floatval($inc['adjustment']) : 0.00,
         'rating' => isset($inc['rating']) ? intval($inc['rating']) : 3,
         'phone' => $inc['phone'] ?? null,
         'email' => $inc['email'] ?? null,
@@ -308,7 +309,7 @@ function ccrm_leads_are_identical($inc, $db, $defaultOwner = '') {
     
     foreach ($fields as $col => $val) {
         $dbVal = $db[$col] ?? null;
-        if ($col === 'value') {
+        if ($col === 'value' || $col === 'adjustment') {
             if (abs(floatval($val) - floatval($dbVal)) > 0.001) return false;
         } elseif ($col === 'rating') {
             if (intval($val) !== intval($dbVal)) return false;
@@ -845,6 +846,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'owner' => $row['owner'],
             'division' => $row['division'] ?? null,
             'value' => floatval($row['value']),
+            'adjustment' => floatval($row['adjustment'] ?? 0),
             'rating' => intval($row['rating']),
             'phone' => $row['phone'] ?? '',
             'email' => $row['email'] ?? '',
@@ -2968,7 +2970,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $seenTimelineIds = [];
 
             $insLead = $pdo->prepare("INSERT INTO `leads` (
-              `id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `division`, `value`, `rating`, `phone`, `email`, 
+              `id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `division`, `value`, `adjustment`, `rating`, `phone`, `email`, 
               `company_id`, `tax_id`, `vat_id`, `contact_person`, `website`, `street`, `postal_code`, `country`, 
               `ai_summary`, `ai_summary_fingerprint`, `interest_note`, `referral_lead_id`,
               `establishment_date`, `legal_form`, `sk_nace`, `organization_size`, `ownership_type`, `data_source`, `dissolution_date`, `region`, `district`, `financial_summary`,
@@ -2976,9 +2978,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
               `created_at`,
               `follow_ups`,
               `client_category_id`, `archived`
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON DUPLICATE KEY UPDATE
-              `name` = VALUES(`name`), `city` = VALUES(`city`), `client_type` = VALUES(`client_type`), `status` = VALUES(`status`), `source` = VALUES(`source`), `owner` = VALUES(`owner`), `division` = VALUES(`division`), `value` = VALUES(`value`), `rating` = VALUES(`rating`), `phone` = VALUES(`phone`), `email` = VALUES(`email`), `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`), `contact_person` = VALUES(`contact_person`), `website` = VALUES(`website`), `street` = VALUES(`street`), `postal_code` = VALUES(`postal_code`), `country` = VALUES(`country`), `ai_summary` = VALUES(`ai_summary`), `ai_summary_fingerprint` = VALUES(`ai_summary_fingerprint`), `interest_note` = VALUES(`interest_note`), `referral_lead_id` = VALUES(`referral_lead_id`),
+              `name` = VALUES(`name`), `city` = VALUES(`city`), `client_type` = VALUES(`client_type`), `status` = VALUES(`status`), `source` = VALUES(`source`), `owner` = VALUES(`owner`), `division` = VALUES(`division`), `value` = VALUES(`value`), `adjustment` = VALUES(`adjustment`), `rating` = VALUES(`rating`), `phone` = VALUES(`phone`), `email` = VALUES(`email`), `company_id` = VALUES(`company_id`), `tax_id` = VALUES(`tax_id`), `vat_id` = VALUES(`vat_id`), `contact_person` = VALUES(`contact_person`), `website` = VALUES(`website`), `street` = VALUES(`street`), `postal_code` = VALUES(`postal_code`), `country` = VALUES(`country`), `ai_summary` = VALUES(`ai_summary`), `ai_summary_fingerprint` = VALUES(`ai_summary_fingerprint`), `interest_note` = VALUES(`interest_note`), `referral_lead_id` = VALUES(`referral_lead_id`),
               `establishment_date` = VALUES(`establishment_date`), `legal_form` = VALUES(`legal_form`), `sk_nace` = VALUES(`sk_nace`), `organization_size` = VALUES(`organization_size`), `ownership_type` = VALUES(`ownership_type`), `data_source` = VALUES(`data_source`), `dissolution_date` = VALUES(`dissolution_date`), `region` = VALUES(`region`), `district` = VALUES(`district`),
               `vat_validation_result` = VALUES(`vat_validation_result`),
               `follow_ups` = VALUES(`follow_ups`),
@@ -3068,6 +3070,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $l['owner'],
                     !empty($l['division']) ? trim((string)$l['division']) : null,
                     $l['value'] ?? 0.00,
+                    $l['adjustment'] ?? 0.00,
                     $l['rating'] ?? 3,
                     $l['phone'] ?? null,
                     $l['email'] ?? null,

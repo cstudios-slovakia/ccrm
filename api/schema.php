@@ -61,6 +61,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `owner` VARCHAR(100) NOT NULL COMMENT 'Assigned Project Manager Name',
               `division` VARCHAR(100) NULL COMMENT 'Assigned Division (e.g. Cstudios, Cstudios Budapest)',
               `value` DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'Estimated Opportunity Worth',
+              `adjustment` DECIMAL(14,2) NOT NULL DEFAULT 0.00 COMMENT 'Client Value Adjustment',
               `rating` INT NOT NULL DEFAULT 3 COMMENT 'Star Rating 1-5',
               `phone` VARCHAR(30) NULL,
               `email` VARCHAR(150) NULL,
@@ -1097,6 +1098,9 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         if (!ccrm_column_exists($pdo, 'leads', 'division')) {
             $pdo->exec("ALTER TABLE `leads` ADD COLUMN `division` VARCHAR(100) NULL AFTER `owner`");
+        }
+        if (!ccrm_column_exists($pdo, 'leads', 'adjustment')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `adjustment` DECIMAL(14,2) NOT NULL DEFAULT 0.00 AFTER `value`");
         }
         if (!ccrm_column_exists($pdo, 'projects', 'division')) {
             $pdo->exec("ALTER TABLE `projects` ADD COLUMN `division` VARCHAR(100) NULL AFTER `status`");
