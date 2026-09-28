@@ -965,6 +965,57 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             }));
     }, [filteredArchivedTasks]);
 
+    // Manually archived tasks filtered by current archive query, priority, date & tag
+    const filteredManuallyArchivedTasks = useMemo(() => {
+        return tasks.filter((task) => {
+            if (!task.archived) return false;
+
+            // Search Query
+            if (archiveSearchQuery.trim()) {
+                const query = archiveSearchQuery.toLowerCase();
+                const matchesTitle = task.title.toLowerCase().includes(query);
+                const matchesDesc =
+                    task.description?.toLowerCase().includes(query) || false;
+                if (!matchesTitle && !matchesDesc) return false;
+            }
+
+            // Priority
+            if (
+                archivePriorityFilter !== "all" &&
+                task.priority !== archivePriorityFilter
+            ) {
+                return false;
+            }
+
+            // Tag filter
+            if (archiveTagFilter) {
+                const targetTag = archiveTagFilter.toLowerCase();
+                const taskTags = [
+                    ...(task.tags || []),
+                    ...extractTagsFromText(task.title || ""),
+                    ...extractTagsFromText(task.description || ""),
+                ].map((tg) => tg.toLowerCase());
+                if (!taskTags.includes(targetTag)) {
+                    return false;
+                }
+            }
+
+            // Date filter
+            if (!dateInRange(task.deadline, archiveDateStart, archiveDateEnd)) {
+                return false;
+            }
+
+            return true;
+        });
+    }, [
+        tasks,
+        archiveSearchQuery,
+        archivePriorityFilter,
+        archiveDateStart,
+        archiveDateEnd,
+        archiveTagFilter,
+    ]);
+
     // Completed tasks land on the archive calendar by their due date, which is
     // the same date the grouped list buckets them under.
     const archivedTasksForDate = (dateStr: string) =>
@@ -1111,26 +1162,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             return filteredGlobalTasks;
         }
         if (viewMode === "archive") {
-            const manualArchived = tasks.filter((t) => {
-                if (!t.archived) return false;
-                if (archiveTagFilter) {
-                    const targetTag = archiveTagFilter.toLowerCase();
-                    const taskTags = [
-                        ...(t.tags || []),
-                        ...extractTagsFromText(t.title || ""),
-                        ...extractTagsFromText(t.description || ""),
-                    ].map((tg) => tg.toLowerCase());
-                    return taskTags.includes(targetTag);
-                }
-                return true;
-            });
             const map = new Map<string, Task>();
             filteredArchivedTasks.forEach((t) => map.set(t.id, t));
-            manualArchived.forEach((t) => map.set(t.id, t));
+            filteredManuallyArchivedTasks.forEach((t) => map.set(t.id, t));
             return Array.from(map.values());
         }
         return [];
-    }, [viewMode, myTasks, filteredGlobalTasks, filteredArchivedTasks, tasks, archiveTagFilter]);
+    }, [viewMode, myTasks, filteredGlobalTasks, filteredArchivedTasks, filteredManuallyArchivedTasks]);
 
     const areAllVisibleSelected = useMemo(() => {
         if (visibleTasksInCurrentView.length === 0) return false;
@@ -4413,25 +4451,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         </div>
                     ) : (
                         <div className="pr-1">
-                            {filteredArchivedTasks.length === 0 ? (
-                                <div className="py-20 text-center text-slate-400">
-                                    <div className="text-4xl mb-3">🔍</div>
-                                    <div className="font-black text-slate-700 uppercase tracking-wider">
-                                        {t(
-                                            "No matching tasks",
-                                            "Žiadne zhodné úlohy",
-                                            "Nincsenek egyező feladatok",
-                                        )}
-                                    </div>
-                                    <p className="text-[10px] mt-1.5 uppercase tracking-wide font-extrabold text-slate-400">
-                                        {t(
-                                            "Try adjusting your filters.",
-                                            "Skúste upraviť filtre.",
-                                            "Próbálja módosítani a szűrőket.",
-                                        )}
-                                    </p>
-                                </div>
-                            ) : (
+                            {filteredArchivedTasks.length > 0 && (
                                 <div className="space-y-6">
                                     {archivedTasksGroupedByDate.map((group) => (
                                         <div key={group.date} className="space-y-2">
@@ -4452,155 +4472,157 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     ))}
                                 </div>
                             )}
-                        </div>
-                    )}
 
-                    {/* Manually archived tasks — hidden from active views independent of status.
-                        Team-wide, same as the completed-task archive above. */}
-                    {(() => {
-                        const archivedList = tasks.filter((task) => {
-                            if (!task.archived) return false;
-                            if (archiveTagFilter) {
-                                const targetTag = archiveTagFilter.toLowerCase();
-                                const taskTags = [
-                                    ...(task.tags || []),
-                                    ...extractTagsFromText(task.title || ""),
-                                    ...extractTagsFromText(task.description || ""),
-                                ].map((tg) => tg.toLowerCase());
-                                return taskTags.includes(targetTag);
-                            }
-                            return true;
-                        });
-                        if (archivedList.length === 0) return null;
-                        return (
-                            <div className="mt-8 pt-6 border-t border-slate-100">
-                                <div className="flex items-center gap-2 mb-4">
-                                    <ArchiveIcon className="h-4 w-4 text-slate-400" />
-                                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                                        {t(
-                                            "Archived Tasks",
-                                            "Archivované úlohy",
-                                            "Archivált feladatok",
-                                        )}
-                                    </span>
-                                    <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
-                                        {archivedList.length}
-                                    </span>
-                                </div>
-                                <div className="space-y-2">
-                                    {archivedList.map((task) => {
-                                        const isSelected = selectedTaskIds.has(task.id);
-                                        return (
-                                            <div
-                                                key={task.id}
-                                                className={`p-2.5 rounded-xl border ${
-                                                    isSelected
-                                                        ? "bg-indigo-50/50 ring-1 ring-indigo-300/80 border-indigo-300"
-                                                        : "border-slate-200 bg-slate-50/60"
-                                                } flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs`}
-                                            >
-                                                <div className="flex-1 min-w-0 flex items-center gap-3">
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={isSelected}
-                                                        onChange={(e) => {
-                                                            e.stopPropagation();
-                                                            handleToggleSelect(task.id);
-                                                        }}
-                                                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600 shrink-0"
-                                                        aria-label={`Select ${task.title}`}
-                                                    />
-                                                    <span
-                                                        className={`h-2.5 w-2.5 rounded-full shrink-0 ${
-                                                            task.priority ===
-                                                            "high"
-                                                                ? "bg-rose-500"
-                                                                : task.priority ===
-                                                                    "medium"
-                                                                  ? "bg-amber-500"
-                                                                  : "bg-slate-400"
-                                                        }`}
-                                                    />
-                                                    <div className="min-w-0 flex-1">
-                                                        <div className="flex items-center gap-2 flex-wrap">
-                                                            <span
-                                                                onClick={() => setEditingTask(task)}
-                                                                className="font-extrabold text-slate-700 truncate cursor-pointer hover:text-indigo-600"
-                                                            >
-                                                                <TaskPillText
-                                                                    text={task.title}
-                                                                    onTagClick={handleTagClick}
-                                                                    knownEntities={mentionEntities}
-                                                                />
-                                                            </span>
-                                                            {task.assignedUsers &&
-                                                                task.assignedUsers
-                                                                    .length > 0 && (
-                                                                    <span className="text-[9px] font-bold text-indigo-600 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-[120px]">
-                                                                        <span className="h-1 w-1 rounded-full bg-indigo-500 shrink-0" />
-                                                                        <span className="truncate">
-                                                                            {task.assignedUsers.join(
-                                                                                ", ",
-                                                                            )}
+                            {filteredManuallyArchivedTasks.length > 0 && (
+                                <div className={filteredArchivedTasks.length > 0 ? "mt-8 pt-6 border-t border-slate-100" : ""}>
+                                    <div className="flex items-center gap-2 mb-4">
+                                        <ArchiveIcon className="h-4 w-4 text-slate-400" />
+                                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                                            {t(
+                                                "Archived Tasks",
+                                                "Archivované úlohy",
+                                                "Archivált feladatok",
+                                            )}
+                                        </span>
+                                        <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+                                            {filteredManuallyArchivedTasks.length}
+                                        </span>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {filteredManuallyArchivedTasks.map((task) => {
+                                            const isSelected = selectedTaskIds.has(task.id);
+                                            return (
+                                                <div
+                                                    key={task.id}
+                                                    className={`p-2.5 rounded-xl border ${
+                                                        isSelected
+                                                            ? "bg-indigo-50/50 ring-1 ring-indigo-300/80 border-indigo-300"
+                                                            : "border-slate-200 bg-slate-50/60"
+                                                    } flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs`}
+                                                >
+                                                    <div className="flex-1 min-w-0 flex items-center gap-3">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isSelected}
+                                                            onChange={(e) => {
+                                                                e.stopPropagation();
+                                                                handleToggleSelect(task.id);
+                                                            }}
+                                                            className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600 shrink-0"
+                                                            aria-label={`Select ${task.title}`}
+                                                        />
+                                                        <span
+                                                            className={`h-2.5 w-2.5 rounded-full shrink-0 ${
+                                                                task.priority ===
+                                                                "high"
+                                                                    ? "bg-rose-500"
+                                                                    : task.priority ===
+                                                                        "medium"
+                                                                      ? "bg-amber-500"
+                                                                      : "bg-slate-400"
+                                                            }`}
+                                                        />
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                <span
+                                                                    onClick={() => setEditingTask(task)}
+                                                                    className="font-extrabold text-slate-700 truncate cursor-pointer hover:text-indigo-600"
+                                                                >
+                                                                    <TaskPillText
+                                                                        text={task.title}
+                                                                        onTagClick={handleTagClick}
+                                                                        knownEntities={mentionEntities}
+                                                                    />
+                                                                </span>
+                                                                {task.assignedUsers &&
+                                                                    task.assignedUsers
+                                                                        .length > 0 && (
+                                                                        <span className="text-[9px] font-bold text-indigo-600 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-[120px]">
+                                                                            <span className="h-1 w-1 rounded-full bg-indigo-500 shrink-0" />
+                                                                            <span className="truncate">
+                                                                                {task.assignedUsers.join(
+                                                                                    ", ",
+                                                                                )}
+                                                                            </span>
                                                                         </span>
-                                                                    </span>
+                                                                    )}
+                                                            </div>
+                                                            <div className="text-[9px] font-bold text-slate-400 mt-0.5">
+                                                                {t(
+                                                                    "Due",
+                                                                    "Termín",
+                                                                    "Határidő",
                                                                 )}
-                                                        </div>
-                                                        <div className="text-[9px] font-bold text-slate-400 mt-0.5">
-                                                            {t(
-                                                                "Due",
-                                                                "Termín",
-                                                                "Határidő",
-                                                            )}
-                                                            : {formatTaskDate(task.deadline)}
+                                                                : {formatTaskDate(task.deadline)}
+                                                            </div>
                                                         </div>
                                                     </div>
-                                                </div>
-                                                <div className="flex items-center gap-1.5 shrink-0">
-                                                    <button
-                                                        onClick={() =>
-                                                            handleUnarchiveTask(
-                                                                task,
-                                                            )
-                                                        }
-                                                        disabled={!mayArchiveTask(task)}
-                                                        title={
-                                                            mayArchiveTask(task)
-                                                                ? undefined
-                                                                : archiveDeniedHint()
-                                                        }
-                                                        className="px-2.5 py-1.5 border border-indigo-200 hover:bg-indigo-50 text-indigo-600 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:active:scale-100"
-                                                    >
-                                                        <RotateCcw className="h-3 w-3 stroke-[2.5]" />
-                                                        {t(
-                                                            "Unarchive",
-                                                            "Zrušiť archiváciu",
-                                                            "Archiválás visszavonása",
-                                                        )}
-                                                    </button>
-                                                    {mayDeleteTask(task) && (
+                                                    <div className="flex items-center gap-1.5 shrink-0">
                                                         <button
                                                             onClick={() =>
-                                                                handleDeleteTask(task)
+                                                                handleUnarchiveTask(
+                                                                    task,
+                                                                )
                                                             }
-                                                            title={t(
-                                                                "Delete permanently",
-                                                                "Natrvalo odstrániť",
-                                                                "Végleges törlés",
-                                                            )}
-                                                            className="px-2 py-1.5 border border-rose-200 hover:bg-rose-50 text-rose-600 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+                                                            disabled={!mayArchiveTask(task)}
+                                                            title={
+                                                                mayArchiveTask(task)
+                                                                    ? undefined
+                                                                    : archiveDeniedHint()
+                                                            }
+                                                            className="px-2.5 py-1.5 border border-indigo-200 hover:bg-indigo-50 text-indigo-600 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:active:scale-100"
                                                         >
-                                                            <Trash2 className="h-3 w-3 stroke-[2.5]" />
+                                                            <RotateCcw className="h-3 w-3 stroke-[2.5]" />
+                                                            {t(
+                                                                "Unarchive",
+                                                                "Zrušiť archiváciu",
+                                                                "Archiválás visszavonása",
+                                                            )}
                                                         </button>
-                                                    )}
+                                                        {mayDeleteTask(task) && (
+                                                            <button
+                                                                onClick={() =>
+                                                                    handleDeleteTask(task)
+                                                                }
+                                                                title={t(
+                                                                    "Delete permanently",
+                                                                    "Natrvalo odstrániť",
+                                                                    "Végleges törlés",
+                                                                )}
+                                                                className="px-2 py-1.5 border border-rose-200 hover:bg-rose-50 text-rose-600 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+                                                            >
+                                                                <Trash2 className="h-3 w-3 stroke-[2.5]" />
+                                                            </button>
+                                                        )}
+                                                    </div>
                                                 </div>
-                                            </div>
-                                        );
-                                    })}
+                                            );
+                                        })}
+                                    </div>
                                 </div>
-                            </div>
-                        );
-                    })()}
+                            )}
+
+                            {filteredArchivedTasks.length === 0 && filteredManuallyArchivedTasks.length === 0 && (
+                                <div className="py-20 text-center text-slate-400">
+                                    <div className="text-4xl mb-3">🔍</div>
+                                    <div className="font-black text-slate-700 uppercase tracking-wider">
+                                        {t(
+                                            "No matching tasks",
+                                            "Žiadne zhodné úlohy",
+                                            "Nincsenek egyező feladatok",
+                                        )}
+                                    </div>
+                                    <p className="text-[10px] mt-1.5 uppercase tracking-wide font-extrabold text-slate-400">
+                                        {t(
+                                            "Try adjusting your filters.",
+                                            "Skúste upraviť filtre.",
+                                            "Próbálja módosítani a szűrőket.",
+                                        )}
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
             ) : viewMode === "global" ? (
                 renderGlobalTasksView()
