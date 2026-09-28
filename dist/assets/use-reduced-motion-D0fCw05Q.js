@@ -1,1 +1,0 @@
-import{Io as e,Lo as t,cn as n,on as r,sn as i}from"./index-Z7CDpDRj.js";var a=t(e(),1);function o(){!i.current&&r();let[e]=(0,a.useState)(n.current);return e}export{o as t};

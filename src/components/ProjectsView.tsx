@@ -201,7 +201,43 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
   const [activeSubTab, setActiveSubTab] = useState<"list" | "settings">("list");
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedStatusFilter, setSelectedStatusFilter] = useState("all");
+
+  /* Multi-status selection preference, same as the leads list (leadsVisibleStates).
+     null = never chosen by user, defaults to only open / active statuses (leaves out closed). */
+  const [visibleStatuses, setVisibleStatuses] = useUserPref("projectsVisibleStatuses");
+  const allProjectStatuses = useMemo(() => projectStatusOrder(), []);
+  const defaultOpenStatuses = useMemo(
+    () => (allProjectStatuses as ProjectStatus[]).filter(s => !CLOSED_PROJECT_STATUSES.includes(s)),
+    [allProjectStatuses]
+  );
+
+  const resolvedVisibleStatuses = useMemo<ProjectStatus[]>(() => {
+    if (visibleStatuses === null) {
+      // By default, only non-closed statuses are visible (same as leads)
+      return defaultOpenStatuses;
+    }
+    return visibleStatuses.filter((s): s is ProjectStatus => allProjectStatuses.includes(s as ProjectStatus));
+  }, [visibleStatuses, defaultOpenStatuses, allProjectStatuses]);
+
+  const toggleStatusVisibility = useCallback((status: ProjectStatus, solo = false) => {
+    if (solo) {
+      setVisibleStatuses([status]);
+      return;
+    }
+    const currentList =
+      visibleStatuses === null
+        ? defaultOpenStatuses
+        : visibleStatuses;
+
+    let next: string[];
+    if (currentList.includes(status)) {
+      next = currentList.filter(s => s !== status);
+    } else {
+      next = [...currentList, status];
+    }
+    setVisibleStatuses(next);
+  }, [visibleStatuses, defaultOpenStatuses, setVisibleStatuses]);
+
   const [selectedTypeFilter, setSelectedTypeFilter] = useState("all");
   const [selectedDivisionFilter, setSelectedDivisionFilter] = useState("all");
   const [selectedManagerFilter, setSelectedManagerFilter] = useState("all");
@@ -308,7 +344,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         p.id.toLowerCase().includes(needle) ||
         (pType?.name || "").toLowerCase().includes(needle);
       
-      const matchesStatus = selectedStatusFilter === "all" || p.status === selectedStatusFilter;
+      const statusKey = (p.status || DEFAULT_PROJECT_STATUS) as ProjectStatus;
+      const matchesStatus = resolvedVisibleStatuses.includes(statusKey);
       const matchesType = selectedTypeFilter === "all" || p.projectTypeId === selectedTypeFilter;
       const matchesDivision =
         selectedDivisionFilter === "all" ||
@@ -331,7 +368,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
       return matchesSearch && matchesStatus && matchesType && matchesDivision && matchesManager && matchesOverdue && matchesRating && matchesArchive;
     });
-  }, [projects, projectTypes, leads, searchQuery, selectedStatusFilter, selectedTypeFilter, selectedDivisionFilter, selectedManagerFilter, selectedRatingFilter, selectedArchiveFilter, overdueOnly, overdueIds]);
+  }, [projects, projectTypes, leads, searchQuery, resolvedVisibleStatuses, selectedTypeFilter, selectedDivisionFilter, selectedManagerFilter, selectedRatingFilter, selectedArchiveFilter, overdueOnly, overdueIds]);
 
   // Close bulk menu when clicking outside
   useEffect(() => {
@@ -1581,35 +1618,103 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               project can be late in any of them — so it sits apart, as the red
               flag it is. */}
           <div className="w-full flex items-center gap-2 overflow-x-auto scrollbar-none flex-nowrap sm:flex-wrap select-none pb-1 sm:pb-0">
-            {([
-              { key: "all", label: t("All", "Všetky", "Összes"), count: totalProjects, tone: STAT_CHIP_TONES.slate },
-              ...projectStatusOrder().map(value => ({
-                key: value as string,
-                label: projectStatusLabel(value, t),
-                count: statusCounts[value] || 0,
-                tone: STATUS_CHIP_TONES[value],
-              })),
-            ]).map(({ key, label, count, tone }) => {
-              const active = selectedStatusFilter === key;
+            {/* All toggle button */}
+            {(() => {
+              const isAllVisible =
+                allProjectStatuses.length > 0 &&
+                allProjectStatuses.every((s) => resolvedVisibleStatuses.includes(s));
 
               return (
                 <button
-                  key={key}
+                  key="all"
                   type="button"
-                  aria-pressed={active}
+                  aria-pressed={isAllVisible}
                   onClick={() => {
-                    // A second click on the chip you are already filtered by
-                    // clears the filter, rather than being a no-op.
-                    setSelectedStatusFilter(prev => (prev === key ? "all" : key));
+                    if (isAllVisible) {
+                      setVisibleStatuses(defaultOpenStatuses);
+                    } else {
+                      setVisibleStatuses(allProjectStatuses);
+                    }
                   }}
+                  title={
+                    isAllVisible
+                      ? t(
+                          "Showing all statuses. Click to show active only.",
+                          "Zobrazené všetky stavy. Kliknutím zobrazíte iba aktívne.",
+                          "Minden állapot látható. Kattintson csak az aktívak megjelenítéséhez.",
+                        )
+                      : t(
+                          "Click to show all statuses (including closed).",
+                          "Kliknutím zobrazíte všetky stavy (vrátane uzavretých).",
+                          "Kattintson az összes állapot megjelenítéséhez (beleértve a lezártakat is).",
+                        )
+                  }
                   className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl border shadow-sm transition-all cursor-pointer active:scale-[0.98] shrink-0 ${
-                    active ? tone.active : `bg-white/95 ${tone.idle}`
+                    isAllVisible
+                      ? STAT_CHIP_TONES.slate.active
+                      : "bg-white/95 border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700"
                   }`}
                 >
-                  <span className={`font-heading font-bold text-base leading-none tabular-nums ${active ? "text-white" : tone.count}`}>
-                    {count}
+                  <span
+                    className={`font-heading font-bold text-base leading-none tabular-nums ${
+                      isAllVisible ? "text-white" : "text-slate-800"
+                    }`}
+                  >
+                    {totalProjects}
                   </span>
                   <span className="text-[10px] font-black uppercase tracking-widest leading-none">
+                    {t("All", "Všetky", "Összes")}
+                  </span>
+                </button>
+              );
+            })()}
+
+            {/* Individual status chips — toggleable like the leads view */}
+            {allProjectStatuses.map((value) => {
+              const active = resolvedVisibleStatuses.includes(value);
+              const tone = STATUS_CHIP_TONES[value];
+              const count = statusCounts[value] || 0;
+              const label = projectStatusLabel(value, t);
+
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={(e) => {
+                    toggleStatusVisibility(value, e.altKey || e.metaKey);
+                  }}
+                  title={
+                    active
+                      ? t(
+                          "Active — click to hide (Alt+Click to solo)",
+                          "Aktívny — kliknutím skryjete (Alt+Klik pre sólo)",
+                          "Aktív — kattintson az elrejtéshez (Alt+Kattintás csak ennek)",
+                        )
+                      : t(
+                          "Hidden — click to show (Alt+Click to solo)",
+                          "Skrytý — kliknutím zobrazíte (Alt+Klik pre sólo)",
+                          "Rejtett — kattintson a megjelenítéshez (Alt+Kattintás csak ennek)",
+                        )
+                  }
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl border shadow-sm transition-all cursor-pointer active:scale-[0.98] shrink-0 ${
+                    active
+                      ? tone.active
+                      : "bg-slate-100/60 border-slate-200 text-slate-400 opacity-60 hover:opacity-100 hover:border-slate-300 hover:text-slate-600 hover:bg-white/95"
+                  }`}
+                >
+                  <span
+                    className={`font-heading font-bold text-base leading-none tabular-nums ${
+                      active ? "text-white" : "text-slate-400"
+                    }`}
+                  >
+                    {count}
+                  </span>
+                  <span
+                    className={`text-[10px] font-black uppercase tracking-widest leading-none ${
+                      active ? "text-white" : "text-slate-400"
+                    }`}
+                  >
                     {label}
                   </span>
                 </button>
@@ -1729,8 +1834,14 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 <div className="w-[130px] shrink-0">
                   <CustomSelect
                     className="h-10"
-                    value={selectedStatusFilter}
-                    onChange={(v) => setSelectedStatusFilter(v)}
+                    value={resolvedVisibleStatuses.length === 1 ? resolvedVisibleStatuses[0] : "all"}
+                    onChange={(v) => {
+                      if (v === "all") {
+                        setVisibleStatuses(allProjectStatuses);
+                      } else {
+                        setVisibleStatuses([v as ProjectStatus]);
+                      }
+                    }}
                     options={[
                       { value: "all", label: t("All Statuses", "Všetky stavy", "Minden állapot") },
                       ...projectStatusOptions(t),

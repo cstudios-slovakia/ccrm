@@ -71,6 +71,11 @@ export interface UserPrefs {
    */
   leadsVisibleStates: string[] | null;
   /**
+   * Projects screen: which project statuses are shown. `null` means "never chosen",
+   * which falls back to every active (non-closed) status.
+   */
+  projectsVisibleStatuses: string[] | null;
+  /**
    * Finance trend chart: weekly net cash flow, or the running bank balance.
    *
    * Only the *choice of curve* is per user. The manual weekly anchors the
@@ -131,6 +136,7 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   leadsCompactMode: false,
   leadsOrderingMode: "state",
   leadsVisibleStates: null,
+  projectsVisibleStatuses: null,
   financialTrendMode: "relative",
   financialProjectionMonths: 3,
   startMenuLayout: null,
@@ -214,6 +220,7 @@ const LEGACY_PREF_KEYS = [
   // it would put a flash of the default theme on every reload.
   "ccrm_error_sidebar_enabled",
   "crm_leads_visible_states",
+  "crm_projects_visible_statuses",
   "ccrm_seen_update_id",
   "ccrm_custom_default_agent",
   "crm_financial_trend_mode",
@@ -240,6 +247,14 @@ export const readLegacyPrefs = (): Partial<UserPrefs> => {
     try {
       const parsed = JSON.parse(visibleStates);
       if (Array.isArray(parsed)) legacy.leadsVisibleStates = parsed;
+    } catch (e) {}
+  }
+
+  const visibleProjStatuses = read("crm_projects_visible_statuses");
+  if (visibleProjStatuses) {
+    try {
+      const parsed = JSON.parse(visibleProjStatuses);
+      if (Array.isArray(parsed)) legacy.projectsVisibleStatuses = parsed;
     } catch (e) {}
   }
 
