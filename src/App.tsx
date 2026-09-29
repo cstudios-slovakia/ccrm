@@ -409,16 +409,23 @@ function App() {
       client: "clients",
       lead: "leads",
       project: "projects",
+      employee: "employees",
+      salaries: "employees",
+      salary: "employees",
+      vacation: "employees",
+      vacations: "employees",
+      mzdy: "employees",
+      berek: "employees",
     };
 
     const resolvedBase = aliasMap[hashLower] || hashLower;
 
-    if (resolvedBase.startsWith("client-") || resolvedBase.startsWith("lead-") || resolvedBase.startsWith("user-") || resolvedBase.startsWith("ue_") || resolvedBase.startsWith("dash_") || resolvedBase.startsWith("settings") || resolvedBase.startsWith("warehouse") || resolvedBase.startsWith("financial") || resolvedBase.startsWith("invoices") || resolvedBase.startsWith("sai") || resolvedBase.startsWith("automation")) {
+    if (resolvedBase.startsWith("client-") || resolvedBase.startsWith("lead-") || resolvedBase.startsWith("user-") || resolvedBase.startsWith("ue_") || resolvedBase.startsWith("dash_") || resolvedBase.startsWith("settings") || resolvedBase.startsWith("warehouse") || resolvedBase.startsWith("financial") || resolvedBase.startsWith("invoices") || resolvedBase.startsWith("sai") || resolvedBase.startsWith("automation") || resolvedBase.startsWith("employees")) {
       // An alias maps to its canonical tab; anything else keeps its original case.
       const route = (aliasMap[hashLower] || baseRaw) + subPath;
       return queryRaw ? `${route}?${queryRaw}` : route;
     }
-    const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "tasks", "files", "personal-settings", "email", "rag_ai", "sai", "automation", "meetings", "projects", "updates", "warehouse", "financial", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
+    const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "tasks", "files", "personal-settings", "email", "rag_ai", "sai", "automation", "meetings", "projects", "updates", "warehouse", "financial", "employees", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
     if (!validTabs.includes(resolvedBase)) return "dashboard";
     const route = resolvedBase + subPath;
     return queryRaw ? `${route}?${queryRaw}` : route;
