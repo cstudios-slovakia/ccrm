@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { User, Mail, Settings, Save, RefreshCw, CheckCircle2, AlertCircle, AlertOctagon } from "lucide-react";
+import { User, Mail, Settings, Save, RefreshCw, CheckCircle2, AlertCircle, AlertOctagon, Bot, Key, Copy, Check, Eye, EyeOff, Sparkles, Terminal, Code2, Trash2 } from "lucide-react";
 import { PasswordInput } from "./PasswordInput";
 import type { UserProfile } from "../types";
 import type { Language } from "../utils/translations";
@@ -28,7 +28,7 @@ interface PersonalSettingsViewProps {
   initialSubTab?: string;
 }
 
-const SUB_TABS = ["profile", "email", "errors"] as const;
+const SUB_TABS = ["profile", "email", "mcp", "errors"] as const;
 type SubTab = (typeof SUB_TABS)[number];
 
 export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
@@ -115,8 +115,122 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
   React.useEffect(() => {
     if (activeSubTab === "errors") {
       fetchErrorLogs();
+    } else if (activeSubTab === "mcp") {
+      fetchMcpKey();
     }
   }, [activeSubTab]);
+
+  // MCP Key & Integration states
+  const [mcpData, setMcpData] = useState<{
+    has_key: boolean;
+    key?: {
+      id: number;
+      prefix: string;
+      name: string;
+      created_at: string;
+      last_used_at: string | null;
+    };
+  } | null>(null);
+  const [isLoadingMcp, setIsLoadingMcp] = useState(false);
+  const [isGeneratingMcp, setIsGeneratingMcp] = useState(false);
+  const [isRevokingMcp, setIsRevokingMcp] = useState(false);
+  const [newlyGeneratedToken, setNewlyGeneratedToken] = useState<string | null>(null);
+  const [showPlainToken, setShowPlainToken] = useState(true);
+  const [copiedField, setCopiedField] = useState<string | null>(null);
+  const [mcpTransportTab, setMcpTransportTab] = useState<"sse" | "stdio">("sse");
+
+  const fetchMcpKey = async () => {
+    setIsLoadingMcp(true);
+    try {
+      const res = await fetch("/api/mcp_keys.php");
+      const data = await res.json();
+      if (data.success) {
+        setMcpData(data);
+      }
+    } catch (e) {
+      console.error("Failed to fetch MCP key:", e);
+    } finally {
+      setIsLoadingMcp(false);
+    }
+  };
+
+  const handleGenerateMcpKey = async () => {
+    if (mcpData?.has_key && !confirm(t(
+      "Generating a new MCP key will revoke your current key. Any active AI assistants will need the new key. Continue?",
+      "Vygenerovanie nového MCP kľúča zruší váš aktuálny kľúč. Aktívni AI asistenti budú potrebovať nový kľúč. Pokračovať?",
+      "Az új MCP kulcs létrehozása érvényteleníti a jelenlegi kulcsot. A folyamatban lévő MI asszisztenseknek az új kulcsra lesz szükségük. Folytatja?"
+    ))) {
+      return;
+    }
+
+    setIsGeneratingMcp(true);
+    try {
+      const res = await fetch("/api/mcp_keys.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: `${currentUser.name}'s MCP Key` })
+      });
+      const data = await res.json();
+      if (data.success && data.token) {
+        setNewlyGeneratedToken(data.token);
+        setShowPlainToken(true);
+        setMcpData({
+          has_key: true,
+          key: {
+            id: 0,
+            prefix: data.prefix,
+            name: data.name,
+            created_at: data.created_at,
+            last_used_at: null
+          }
+        });
+        if ((window as any).showToast) {
+          (window as any).showToast(t("MCP Key generated successfully!", "MCP kľúč bol úspešne vygenerovaný!", "MCP kulcs sikeresen létrehozva!"));
+        }
+      } else {
+        alert(data.error || "Failed to generate MCP key");
+      }
+    } catch (e) {
+      console.error("Failed to generate MCP key:", e);
+    } finally {
+      setIsGeneratingMcp(false);
+    }
+  };
+
+  const handleRevokeMcpKey = async () => {
+    if (!confirm(t(
+      "Are you sure you want to revoke your MCP key? All connected AI assistants will immediately lose access.",
+      "Naozaj chcete odvolať svoj MCP kľúč? Všetci pripojení AI asistenti okamžite stratia prístup.",
+      "Biztosan vissza szeretné vonni az MCP kulcsot? Minden csatlakoztatott MI asszisztens azonnal elveszíti a hozzáférést."
+    ))) {
+      return;
+    }
+
+    setIsRevokingMcp(true);
+    try {
+      const res = await fetch("/api/mcp_keys.php", { method: "DELETE" });
+      const data = await res.json();
+      if (data.success) {
+        setNewlyGeneratedToken(null);
+        setMcpData({ has_key: false });
+        if ((window as any).showToast) {
+          (window as any).showToast(t("MCP Key revoked successfully.", "MCP kľúč bol odvolaný.", "MCP kulcs sikeresen visszavonva."));
+        }
+      }
+    } catch (e) {
+      console.error("Failed to revoke MCP key:", e);
+    } finally {
+      setIsRevokingMcp(false);
+    }
+  };
+
+  const copyToClipboard = (text: string, fieldId: string) => {
+    navigator.clipboard.writeText(text);
+    setCopiedField(fieldId);
+    setTimeout(() => {
+      setCopiedField(prev => (prev === fieldId ? null : prev));
+    }, 2500);
+  };
 
   // User profile states
   const [name, setName] = useState(currentUser.name);
@@ -345,6 +459,17 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
               }`}
             >
               <Mail className="h-4 w-4" /> {t("Email Server", "E-mailová schránka", "E-mail szerver")}
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveSubTab("mcp")}
+              className={`w-full text-left px-4 py-3 rounded-2xl font-black text-[10.5px] uppercase tracking-wider transition-all flex items-center gap-2 cursor-pointer ${
+                activeSubTab === "mcp"
+                  ? "bg-emerald-600 text-white shadow-lg shadow-emerald-600/20 border border-emerald-700"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-50 border border-transparent"
+              }`}
+            >
+              <Bot className="h-4 w-4 text-emerald-400" /> {t("AI Assistant (MCP)", "AI Asistent (MCP)", "MI Asszisztens (MCP)")}
             </button>
             <button
               type="button"
@@ -830,7 +955,361 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
             </div>
           )}
 
-          {/* TAB 3: Error Logs Exception Tracking */}
+          {/* TAB 3: MCP (Model Context Protocol) AI Integration */}
+          {activeSubTab === "mcp" && (
+            <div className="space-y-6">
+              {/* Header Card */}
+              <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-100 pb-5">
+                  <div className="flex items-center gap-3">
+                    <div className="p-3 bg-emerald-50 rounded-2xl text-emerald-600 border border-emerald-100/60 shadow-sm">
+                      <Bot className="h-6 w-6" />
+                    </div>
+                    <div>
+                      <h3 className="text-base font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                        {t("AI Assistant & MCP Gateway", "AI Asistent & MCP Brána", "MI Asszisztens & MCP Kapu")}
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 uppercase tracking-wider border border-emerald-200">
+                          {t("Live", "Aktívne", "Aktív")}
+                        </span>
+                      </h3>
+                      <p className="text-xs text-slate-500 font-medium mt-0.5">
+                        {t(
+                          "Connect Claude, Cursor, Antigravity or any Model Context Protocol client to interact with your CRM data.",
+                          "Pripojte Claude, Cursor, Antigravity alebo ľubovoľného MCP klienta na interakciu s CRM dátami.",
+                          "Csatlakoztassa a Claude, Cursor, Antigravity vagy bármely MCP klienst a CRM adatok eléréséhez."
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={fetchMcpKey}
+                      disabled={isLoadingMcp}
+                      className="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 border border-slate-200 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                      title={t("Refresh status", "Obnoviť stav", "Frissítés")}
+                    >
+                      <RefreshCw className={`h-3.5 w-3.5 ${isLoadingMcp ? "animate-spin text-emerald-600" : ""}`} />
+                      <span>{t("Refresh", "Obnoviť", "Frissítés")}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {/* Key Status & Actions */}
+                <div className="pt-6 space-y-4">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4.5 rounded-2xl bg-slate-50/80 border border-slate-200/60">
+                    <div className="flex items-center gap-3">
+                      <div className={`p-2.5 rounded-xl ${mcpData?.has_key ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-500"}`}>
+                        <Key className="h-5 w-5" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-black uppercase tracking-wider text-slate-800">
+                            {t("Personal MCP Access Key", "Osobný MCP prístupový kľúč", "Személyes MCP hozzáférési kulcs")}
+                          </span>
+                          {mcpData?.has_key ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                              {t("Active Key", "Aktívny kľúč", "Aktív kulcs")}
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-200 text-slate-600">
+                              {t("No Key Generated", "Kľúč nevytvorený", "Nincs létrehozott kulcs")}
+                            </span>
+                          )}
+                        </div>
+                        <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                          {mcpData?.has_key && mcpData.key ? (
+                            <>
+                              {t("Created", "Vytvorený", "Létrehozva")}: {mcpData.key.created_at} • {t("Last used", "Naposledy použitý", "Utoljára használva")}: {mcpData.key.last_used_at || t("Never", "Nikdy", "Soha")}
+                            </>
+                          ) : (
+                            t("Generate a personal key to authenticate your AI pair programmer or assistant.", "Vygenerujte si osobný kľúč pre pripojenie AI asistenta.", "Hozzon létre személyes kulcsot az MI asszisztens hitelesítéséhez.")
+                          )}
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      {mcpData?.has_key ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={handleGenerateMcpKey}
+                            disabled={isGeneratingMcp}
+                            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                          >
+                            <RefreshCw className={`h-3.5 w-3.5 ${isGeneratingMcp ? "animate-spin" : ""}`} />
+                            <span>{t("Regenerate Key", "Pregenerovať kľúč", "Kulcs újragenerálása")}</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleRevokeMcpKey}
+                            disabled={isRevokingMcp}
+                            className="px-3.5 py-2 bg-red-50 hover:bg-red-100 text-red-600 border border-red-200/80 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            <span>{t("Revoke", "Odvolať", "Visszavonás")}</span>
+                          </button>
+                        </>
+                      ) : (
+                        <button
+                          type="button"
+                          onClick={handleGenerateMcpKey}
+                          disabled={isGeneratingMcp}
+                          className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-extrabold transition-all shadow-lg shadow-emerald-600/25 flex items-center gap-2 cursor-pointer disabled:opacity-50"
+                        >
+                          <Key className="h-4 w-4" />
+                          <span>{isGeneratingMcp ? t("Generating...", "Generujem...", "Létrehozás...") : t("Generate MCP Key", "Vygenerovať MCP Kľúč", "MCP Kulcs Létrehozása")}</span>
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Active / Newly Generated Token Display */}
+                  {newlyGeneratedToken && (
+                    <div className="p-4 rounded-2xl bg-emerald-500/10 border-2 border-emerald-500/30 space-y-2.5 animate-fade-in">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-emerald-800 font-extrabold text-xs">
+                          <Sparkles className="h-4 w-4 text-emerald-600" />
+                          <span>{t("New MCP Key Ready! Save it now — it will only be shown once in full.", "Nový MCP kľúč pripravený! Uložte si ho — v plnom znení sa zobrazuje iba teraz.", "Az új MCP kulcs elkészült! Mentse el most — teljes formájában csak most látható.")}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setShowPlainToken(!showPlainToken)}
+                          className="text-xs font-bold text-emerald-700 hover:text-emerald-900 flex items-center gap-1 cursor-pointer"
+                        >
+                          {showPlainToken ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                          <span>{showPlainToken ? t("Hide", "Skryť", "Elrejtés") : t("Show", "Zobraziť", "Megjelenítés")}</span>
+                        </button>
+                      </div>
+
+                      <div className="flex items-center gap-2 bg-slate-900 text-white p-2.5 rounded-xl border border-slate-800 font-mono text-xs">
+                        <div className="flex-1 overflow-x-auto select-all text-emerald-400 font-bold px-1 tracking-wider">
+                          {showPlainToken ? newlyGeneratedToken : "••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••"}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => copyToClipboard(newlyGeneratedToken, "token")}
+                          className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 transition-all shrink-0 cursor-pointer shadow"
+                        >
+                          {copiedField === "token" ? (
+                            <>
+                              <Check className="h-3.5 w-3.5 text-white" />
+                              <span>{t("Copied!", "Skopírované!", "Másolva!")}</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="h-3.5 w-3.5" />
+                              <span>{t("Copy Key", "Kopírovať", "Másolás")}</span>
+                            </>
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {!newlyGeneratedToken && mcpData?.has_key && mcpData.key && (
+                    <div className="flex items-center justify-between p-3.5 bg-slate-100/80 rounded-xl border border-slate-200 text-xs text-slate-700 font-mono">
+                      <div className="flex items-center gap-2">
+                        <Key className="h-3.5 w-3.5 text-slate-400" />
+                        <span className="font-bold text-slate-800">{mcpData.key.prefix}</span>
+                        <span className="text-slate-400">••••••••••••••••••••••••••••••••••••••••</span>
+                      </div>
+                      <span className="text-[10px] font-sans font-bold text-slate-400 uppercase tracking-wider">
+                        {t("Encrypted SHA-256 Storage", "Šifrované SHA-256 úložisko", "Titkosított SHA-256 tárolás")}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Integration Configuration JSON Card */}
+              <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                  <div className="flex items-center gap-2.5">
+                    <Code2 className="h-5 w-5 text-indigo-500" />
+                    <div>
+                      <h4 className="text-xs font-black uppercase tracking-wider text-slate-800">
+                        {t("Agent MCP Configuration (mcp_config.json)", "Konfigurácia pre AI Agenta (mcp_config.json)", "MI Ügynök Konfiguráció (mcp_config.json)")}
+                      </h4>
+                      <p className="text-[11px] text-slate-500 font-medium">
+                        {t(
+                          "Paste this configuration directly into Antigravity, Claude Desktop, or Cursor config.",
+                          "Vložte túto konfiguráciu do Antigravity, Claude Desktop alebo Cursor nastavení.",
+                          "Illessze be ezt a konfigurációt az Antigravity, Claude Desktop vagy Cursor beállításaiba."
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  {/* Transport Format Switcher */}
+                  <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200/80 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setMcpTransportTab("sse")}
+                      className={`px-3 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                        mcpTransportTab === "sse"
+                          ? "bg-white text-indigo-700 shadow-sm"
+                          : "text-slate-600 hover:text-slate-900"
+                      }`}
+                    >
+                      HTTP / SSE (Remote / Docker)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setMcpTransportTab("stdio")}
+                      className={`px-3 py-1 text-[11px] font-bold rounded-lg transition-all cursor-pointer ${
+                        mcpTransportTab === "stdio"
+                          ? "bg-white text-indigo-700 shadow-sm"
+                          : "text-slate-600 hover:text-slate-900"
+                      }`}
+                    >
+                      Local Stdio (CLI / Node)
+                    </button>
+                  </div>
+                </div>
+
+                {/* Configuration Code Block */}
+                {(() => {
+                  const tokenPlaceholder = newlyGeneratedToken || (mcpData?.key ? `${mcpData.key.prefix}...<YOUR_KEY>` : "YOUR_MCP_KEY_HERE");
+                  const origin = window.location.origin;
+
+                  const sseJson = JSON.stringify(
+                    {
+                      mcpServers: {
+                        ccrm: {
+                          url: `${origin}/api/mcp.php?token=${tokenPlaceholder}`,
+                          transport: "sse"
+                        }
+                      }
+                    },
+                    null,
+                    2
+                  );
+
+                  const stdioJson = JSON.stringify(
+                    {
+                      mcpServers: {
+                        ccrm: {
+                          command: "node",
+                          args: ["/Users/erik/Documents/vibe coding/crm/mcp-server/dist/index.js"],
+                          env: {
+                            CCRM_API_URL: `${origin}/api`,
+                            CCRM_MCP_KEY: tokenPlaceholder
+                          }
+                        }
+                      }
+                    },
+                    null,
+                    2
+                  );
+
+                  const activeConfig = mcpTransportTab === "sse" ? sseJson : stdioJson;
+
+                  return (
+                    <div className="relative">
+                      <pre className="p-4 bg-slate-900 text-slate-100 rounded-2xl font-mono text-[11px] overflow-x-auto whitespace-pre leading-relaxed border border-slate-800">
+                        {activeConfig}
+                      </pre>
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard(activeConfig, `config-${mcpTransportTab}`)}
+                        className="absolute top-3 right-3 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow border border-slate-700 cursor-pointer"
+                      >
+                        {copiedField === `config-${mcpTransportTab}` ? (
+                          <>
+                            <Check className="h-3.5 w-3.5 text-emerald-400" />
+                            <span className="text-emerald-300">{t("Copied JSON!", "Skopírované!", "Másolva!")}</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-3.5 w-3.5 text-slate-300" />
+                            <span>{t("Copy JSON", "Kopírovať JSON", "JSON Másolása")}</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  );
+                })()}
+              </div>
+
+              {/* Agent System Prompt Card */}
+              <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                  <div className="flex items-center gap-2.5">
+                    <Sparkles className="h-5 w-5 text-amber-500" />
+                    <div>
+                      <h4 className="text-xs font-black uppercase tracking-wider text-slate-800">
+                        {t("Tailored AI Agent Instructions & System Prompt", "Inštrukcie a systémový prompt pre AI Agenta", "MI Rendszerprompt és Használati Útmutató")}
+                      </h4>
+                      <p className="text-[11px] text-slate-500 font-medium">
+                        {t(
+                          "Copy and paste these guidelines into your AI agent's custom instructions or system prompt.",
+                          "Skopírujte a vložte tieto pokyny do vlastných inštrukcií vášho AI asistenta.",
+                          "Másolja be ezeket az irányelveket az MI asszisztens egyéni instrukcióiba."
+                        )}
+                      </p>
+                    </div>
+                  </div>
+
+                  {(() => {
+                    const agentPrompt = `You have full access to CCRM via the \`ccrm\` MCP server tools.
+You are operating on behalf of ${currentUser.name} (${currentUser.email}, Role: ${currentUser.role || 'Admin'}).
+
+### Available Capabilities:
+- Leads & Opportunities: Manage sales pipeline, stage transitions, deal values.
+- Clients & Contacts: View, create, update companies, addresses, and contacts.
+- Projects & Tasks: Manage Gantt milestones, tasks, statuses, assignments, and priorities.
+- Financials & Invoicing: View summaries, issue invoices, log expense items.
+- Warehouse & Stock: View inventory levels, movements, and stock locations.
+- Meetings & Comms: Schedule meetings, log internal notes, view communication threads.
+- Global Search: Search records across the entire CRM with \`search_entities\`.
+
+### Strict Operational Rules:
+1. Always search or inspect existing records before creating duplicates.
+2. For financial actions (invoices, expenses), double check amounts, currencies, and client IDs.
+3. You CANNOT view or modify system-wide settings, application licenses, credentials, or raw DB tables.
+4. All actions taken through your tools are logged and attributed to ${currentUser.name} in the system audit log.`;
+
+                    return (
+                      <button
+                        type="button"
+                        onClick={() => copyToClipboard(agentPrompt, "prompt")}
+                        className="px-4 py-2 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-md shadow-amber-500/20 cursor-pointer shrink-0"
+                      >
+                        {copiedField === "prompt" ? (
+                          <>
+                            <Check className="h-3.5 w-3.5 text-white" />
+                            <span>{t("Prompt Copied!", "Prompt skopírovaný!", "Prompt másolva!")}</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-3.5 w-3.5" />
+                            <span>{t("Copy Agent Prompt", "Kopírovať prompt", "Prompt másolása")}</span>
+                          </>
+                        )}
+                      </button>
+                    );
+                  })()}
+                </div>
+
+                <div className="bg-amber-50/50 border border-amber-200/60 rounded-2xl p-4.5 text-xs text-amber-950 font-medium space-y-3">
+                  <div className="font-bold text-amber-900 flex items-center gap-2">
+                    <Terminal className="h-4 w-4 text-amber-600" />
+                    <span>{t("Agent Identity & Scope:", "Identita a rozsah agenta:", "Ügynök identitás és hatókör:")}</span>
+                  </div>
+                  <ul className="list-disc pl-5 space-y-1.5 text-[11px] leading-relaxed text-amber-900/90">
+                    <li>{t("Active Persona:", "Aktívna identita:", "Aktív identitás:")} <strong>{currentUser.name}</strong> ({currentUser.email})</li>
+                    <li>{t("Security Boundary:", "Bezpečnostná hranica:", "Biztonsági határ:")} {t("Zero access to system settings, database credentials, or destructive reset commands.", "Nulový prístup k systémovým nastaveniam, heslám a deštruktívnym príkazom.", "Zéró hozzáférés a rendszerbeállításokhoz, jelszavakhoz vagy destruktív parancsokhoz.")}</li>
+                    <li>{t("Audit Logged:", "Auditované:", "Auditálva:")} {t("Every write action (invoice creation, stage change, task assignment) is stamped with your user ID.", "Každý zápis je v audit logu označený vaším používateľským účtom.", "Minden művelet rögzítésre kerül az Ön felhasználói azonosítójával.")}</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: Error Logs Exception Tracking */}
           {activeSubTab === "errors" && (
             <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass">
 

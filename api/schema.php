@@ -782,6 +782,21 @@ if (!function_exists('ccrm_schema_statements')) {
               `custom_banner_text` TEXT NULL,
               `badge_style` VARCHAR(50) NOT NULL DEFAULT 'rounded',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // MCP Personal API Keys (Prístupové kľúče pre AI agentov)
+            "CREATE TABLE IF NOT EXISTS `mcp_keys` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `user_id` VARCHAR(50) NOT NULL,
+              `key_hash` VARCHAR(64) NOT NULL UNIQUE,
+              `key_prefix` VARCHAR(20) NOT NULL,
+              `name` VARCHAR(100) NOT NULL DEFAULT 'Personal AI Assistant',
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `last_used_at` TIMESTAMP NULL,
+              `revoked_at` TIMESTAMP NULL,
+              INDEX idx_mcp_user (`user_id`),
+              INDEX idx_mcp_hash (`key_hash`),
+              FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
         ];
     }
