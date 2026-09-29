@@ -77,6 +77,22 @@ if ($action === 'stats') {
             $stmt = $pdo->query("SELECT COUNT(*) FROM `warehouse_items` WHERE (`is_archived` = 0 OR `is_archived` IS NULL)");
             $productsCount = (int)$stmt->fetchColumn();
         } catch (\Exception $e) {}
+
+        // Count employees, salaries, vacations
+        $employeesCount = 0;
+        $salariesCount = 0;
+        $vacationsCount = 0;
+        try {
+            if ($pdo->query("SHOW TABLES LIKE 'employees'")->rowCount() > 0) {
+                $employeesCount = (int)$pdo->query("SELECT COUNT(*) FROM `employees` WHERE `is_active` = 1")->fetchColumn();
+            }
+            if ($pdo->query("SHOW TABLES LIKE 'employee_salaries'")->rowCount() > 0) {
+                $salariesCount = (int)$pdo->query("SELECT COUNT(*) FROM `employee_salaries`")->fetchColumn();
+            }
+            if ($pdo->query("SHOW TABLES LIKE 'employee_vacations'")->rowCount() > 0) {
+                $vacationsCount = (int)$pdo->query("SELECT COUNT(*) FROM `employee_vacations`")->fetchColumn();
+            }
+        } catch (\Exception $e) {}
         
         echo json_encode([
             'success' => true,
@@ -89,7 +105,10 @@ if ($action === 'stats') {
                 'documents' => $documentsCount,
                 'unified_entries' => $unifiedEntriesCount,
                 'products' => $productsCount,
-                'total_items' => $leadsCount + $clientsCount + $emailsCount + $chatsCount + $meetingsCount + $documentsCount + $unifiedEntriesCount + $productsCount
+                'employees' => $employeesCount,
+                'salaries' => $salariesCount,
+                'vacations' => $vacationsCount,
+                'total_items' => $leadsCount + $clientsCount + $emailsCount + $chatsCount + $meetingsCount + $documentsCount + $unifiedEntriesCount + $productsCount + $employeesCount + $salariesCount + $vacationsCount
             ]
         ]);
     } catch (\Exception $e) {
@@ -331,6 +350,78 @@ if ($action === 'train') {
                 'text' => $text
             ];
         }
+
+        // Ingest Employees, Salaries & Vacations
+        try {
+            if ($pdo->query("SHOW TABLES LIKE 'employees'")->rowCount() > 0) {
+                $emps = $pdo->query("SELECT * FROM `employees` WHERE `is_active` = 1 LIMIT 40")->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($emps as $emp) {
+                    $text = "Employee Record / Staff Profile:\n" .
+                            "- Name: " . $emp['name'] . "\n" .
+                            "- Email: " . ($emp['email'] ?: 'N/A') . "\n" .
+                            "- Phone: " . ($emp['phone'] ?: 'N/A') . "\n" .
+                            "- Address: " . ($emp['address_street'] ? ($emp['address_street'] . ', ' . $emp['address_city'] . ' ' . $emp['address_zip']) : 'N/A') . "\n" .
+                            "- Salary Rate: €" . number_format((float)$emp['salary_amount'], 2) . " / " . $emp['salary_type'] . "\n" .
+                            "- Payout Target Day: " . ($emp['salary_due_day'] ? ($emp['salary_due_day'] . 'th of month') : 'Company Default') . "\n" .
+                            "- External Time Tracker (Toggl): " . ($emp['time_tracking_user_name'] ?: 'None') . "\n" .
+                            "- Vacation Allowances: " . ($emp['vacation_allowances_json'] ?: 'Default') . "\n" .
+                            "- Notes: " . ($emp['notes'] ?: '');
+                    $allSourceItems[] = [
+                        'type' => 'employee',
+                        'id' => $emp['id'],
+                        'label' => $emp['name'],
+                        'text' => $text
+                    ];
+                }
+            }
+            if ($pdo->query("SHOW TABLES LIKE 'employee_salaries'")->rowCount() > 0) {
+                $sals = $pdo->query("
+                    SELECT es.*, e.`name` as `emp_name`
+                    FROM `employee_salaries` es
+                    JOIN `employees` e ON es.`employee_id` = e.`id`
+                    ORDER BY es.`year` DESC, es.`period_number` DESC
+                    LIMIT 30
+                ")->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($sals as $s) {
+                    $text = "Payroll Record (" . $s['period_key'] . "):\n" .
+                            "- Employee: " . $s['emp_name'] . "\n" .
+                            "- Total Salary: €" . number_format((float)$s['total_salary'], 2) . "\n" .
+                            "- Total Paid: €" . number_format((float)$s['total_paid'], 2) . "\n" .
+                            "- Status: " . strtoupper($s['status']) . "\n" .
+                            "- Payment Date: " . ($s['payment_date'] ?: 'Unpaid / Pending') . "\n" .
+                            "- Due Date: " . ($s['due_date'] ?: 'N/A');
+                    $allSourceItems[] = [
+                        'type' => 'employee_salary',
+                        'id' => $s['id'],
+                        'label' => $s['emp_name'] . ' - ' . $s['period_key'],
+                        'text' => $text
+                    ];
+                }
+            }
+            if ($pdo->query("SHOW TABLES LIKE 'employee_vacations'")->rowCount() > 0) {
+                $vacs = $pdo->query("
+                    SELECT ev.*, e.`name` as `emp_name`
+                    FROM `employee_vacations` ev
+                    JOIN `employees` e ON ev.`employee_id` = e.`id`
+                    ORDER BY ev.`start_date` DESC
+                    LIMIT 30
+                ")->fetchAll(PDO::FETCH_ASSOC);
+                foreach ($vacs as $v) {
+                    $text = "Vacation / Absence Record:\n" .
+                            "- Employee: " . $v['emp_name'] . "\n" .
+                            "- Leave Type: " . $v['vacation_type_id'] . "\n" .
+                            "- Duration: " . $v['start_date'] . " to " . $v['end_date'] . " (" . $v['days_count'] . " days)\n" .
+                            "- Status: " . strtoupper($v['status']) . "\n" .
+                            "- Note: " . ($v['note'] ?: 'None');
+                    $allSourceItems[] = [
+                        'type' => 'employee_vacation',
+                        'id' => $v['id'],
+                        'label' => $v['emp_name'] . ' (' . $v['vacation_type_id'] . ')',
+                        'text' => $text
+                    ];
+                }
+            }
+        } catch (\Exception $e) {}
         
         $totalItems = count($allSourceItems);
         if ($totalItems === 0) {

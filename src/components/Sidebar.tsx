@@ -32,6 +32,7 @@ import { SOCIAL_MEDIA_ENABLED } from "../utils/featureFlags";
 import type { UserProfile, RolePermission, UnifiedEntryRegistry, CustomDashboard } from "../types";
 import { StartMenu } from "./StartMenu";
 import { FlockIcon } from "./icons/FlockIcon";
+import { EmployeeTieIcon } from "./icons/EmployeeTieIcon";
 import { isHomeDashboard } from "../utils/dashboardWidgets";
 import { useUserPref } from "../utils/userPrefs";
 import {
@@ -195,6 +196,21 @@ export const getSidebarItemColors = (item: any, isActive: boolean) => {
       className: "bg-slate-50/70 border-slate-200/90 text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50/50",
       style: {},
       iconColor: item.color || "var(--color-emerald-500)"
+    };
+  }
+
+  if (item.isSand || item.id === "employees") {
+    if (isActive) {
+      return {
+        className: "bg-[#b58b4c] text-white font-bold shadow-lg shadow-[#b58b4c]/30 border border-[#c29b62]/40",
+        style: {},
+        iconColor: "#ffffff"
+      };
+    }
+    return {
+      className: "bg-slate-50/70 border-slate-200/90 text-[#b58b4c] hover:text-[#9e7638] hover:bg-[#c29b62]/10",
+      style: {},
+      iconColor: item.color || "#c29b62"
     };
   }
 
@@ -517,7 +533,11 @@ const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
                     ? isActive
                       ? "bg-slate-900 text-white font-bold shadow-lg shadow-slate-900/30 border border-slate-800/20"
                       : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/50"
-                    : isActive
+                    : item.isSand
+                      ? isActive
+                        ? "bg-[#b58b4c] text-white font-bold shadow-lg shadow-[#b58b4c]/30 border border-[#c29b62]/40"
+                        : "text-[#b58b4c] hover:text-[#9e7638] hover:bg-[#c29b62]/10"
+                      : isActive
                       ? item.id === "leads"
                         ? "bg-blue-600 text-white font-bold shadow-lg shadow-blue-600/30 border border-blue-500/20"
                         : item.id === "clients"
@@ -561,7 +581,11 @@ const SidebarDockButton: React.FC<SidebarDockButtonProps> = ({
                     ? isActive
                       ? "text-white font-bold"
                       : "text-slate-800 font-semibold"
-                    : isActive
+                    : item.isSand
+                      ? isActive
+                        ? "text-white font-bold"
+                        : "text-[#b58b4c] font-semibold"
+                      : isActive
                       ? "text-white font-bold"
                       : "text-slate-500 font-semibold"
       )}
@@ -875,6 +899,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       "invoices",
       "warehouse",
       "financial",
+      "employees",
       "meetings",
       ...dynamicUeItems.map((item) => item.id),
       ...dynamicDashItems.map((item) => item.id),
@@ -925,6 +950,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       { id: "invoices", label: systemLanguage === "sk" ? "Cenové ponuky & Faktúry" : systemLanguage === "hu" ? "Ajánlatok és számlák" : "Invoices & Offers", icon: Icons.FileText || Coins, color: "var(--color-indigo-500)", isIndigo: true },
       { id: "warehouse", label: getTranslation(systemLanguage, "sidebar.warehouse"), icon: Icons.Package || Icons.Boxes || FolderOpen, color: "var(--color-blue-900)", isNavy: true },
       { id: "financial", label: getTranslation(systemLanguage, "sidebar.financial"), icon: Coins, color: "var(--color-emerald-500)", isEmerald: true },
+      { id: "employees", label: getTranslation(systemLanguage, "sidebar.employees"), icon: EmployeeTieIcon, color: "#c29b62", isSand: true },
       { id: "meetings", label: getTranslation(systemLanguage, "sidebar.meetings"), icon: PencilLine, color: "var(--color-indigo-600)", isNightBlue: true },
       ...dynamicUeItems,
       ...dynamicDashItems,

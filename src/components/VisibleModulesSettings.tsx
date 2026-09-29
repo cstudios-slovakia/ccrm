@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import type { Language } from "../utils/translations";
 import { getTranslation } from "../utils/translations";
+import { EmployeeTieIcon } from "./icons/EmployeeTieIcon";
 import type { CustomDashboard, UnifiedEntryRegistry } from "../types";
 import { SOCIAL_MEDIA_ENABLED } from "../utils/featureFlags";
 import { FlockIcon } from "./icons/FlockIcon";
@@ -135,6 +136,15 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
         icon: Coins,
         color: "#10b981",
         bgColor: "rgba(16, 185, 129, 0.12)"
+      },
+      {
+        id: "employees",
+        category: "operations",
+        title: getTranslation(language, "sidebar.employees"),
+        description: t("Staff directory, salaries matrix, Toggl tracking & leave planner", "Zoznam zamestnancov, matica miezd, meranie času a dovolenky", "Munkatársak, bérmátrix, időkövetés és szabadságok"),
+        icon: EmployeeTieIcon,
+        color: "#c29b62",
+        bgColor: "rgba(194, 155, 98, 0.12)"
       },
 
       // 2. ANALYTICS & REGISTRIES

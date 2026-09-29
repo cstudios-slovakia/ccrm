@@ -3,12 +3,18 @@ import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { LoginView } from "./components/LoginView";
 import { TaskDashboardView } from "./components/TaskDashboardView";
-import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, FinancialRecord, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings } from "./types";
+import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, FinancialRecord, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings } from "./types";
 import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAssignment";
 import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils/projectAutoCreate";
 import { normalizeLeadStateSla, type LeadStateSla } from "./utils/leadSla";
 import { isSystemMailConfigured } from "./utils/taskReminders";
-import { requestBrowserNotificationPermission, sendBrowserNotification } from "./utils/browserNotifications";
+import {
+  requestBrowserNotificationPermission,
+  sendTaskPushNotification,
+  getBrowserNotificationPermission,
+  registerWebPushSubscription,
+} from "./utils/browserNotifications";
+import { isDoneTaskState } from "./utils/projectTasks";
 import { listIdsSignature, normalizeListIds, type ListIds } from "./utils/listIds";
 import { VERSION } from "./utils/version";
 import { reconcileInvoiceMovements } from "./utils/invoiceFinanceBridge";
@@ -32,7 +38,7 @@ import { FloatingCopilotOrb, type CopilotCorner } from "./components/executive/F
 import { CopilotSidebar } from "./components/executive/CopilotSidebar";
 import { AuroraBackground } from "./components/ui/AuroraBackground";
 import { useCurrentScreenContext } from "./hooks/useCurrentScreenContext";
-import { RefreshCw, AlertOctagon, Trash2, Copy, Brain, Mail } from "lucide-react";
+import { RefreshCw, AlertOctagon, Trash2, Copy, Brain, Mail, Bell, X } from "lucide-react";
 import { FeralGradientBackground } from "./components/FeralGradientBackground";
 import { OrganicNodeDatabaseLoader } from "./components/OrganicNodeDatabaseLoader";
 import { getStoredTheme, getStoredThemeMode, isThemeMode, startThemeWatcher, type Appearance, type ThemeMode } from "./utils/theme";
@@ -125,6 +131,7 @@ const SocialMediaView = safeLazy(() => import("./components/SocialMediaView").th
 const WarehouseView = safeLazy(() => import("./components/WarehouseView").then(m => ({ default: m.WarehouseView })));
 const FinancialManagementView = safeLazy(() => import("./components/FinancialManagementView").then(m => ({ default: m.FinancialManagementView })));
 const InvoicingView = safeLazy(() => import("./components/InvoicingView").then(m => ({ default: m.InvoicingView })));
+const EmployeesView = safeLazy(() => import("./components/employees/EmployeesView").then(m => ({ default: m.EmployeesView })));
 
 // Stable, order-fixed fingerprint of the settings block. Used to tell a genuine
 // user edit apart from merely re-receiving the server's own settings, so the
@@ -190,6 +197,7 @@ const computePushSig = (p: {
   warehouseStock?: unknown; warehouseBatches?: unknown; warehouseMovements?: unknown;
   financialCategories?: unknown; financialRecords?: unknown;
   invoicesOffers?: unknown; aiCustomTemplates?: unknown; clientCategories?: unknown;
+  employees?: unknown; employeeSalaries?: unknown; employeeVacations?: unknown; employeeSettings?: unknown;
   settings?: any;
 }): string => JSON.stringify([
   p.leads, p.tasks, p.users, p.roles, p.meetingNotes, p.unifiedEntries,
@@ -197,6 +205,7 @@ const computePushSig = (p: {
   p.warehouses, p.suppliers, p.warehouseItems, p.warehouseStock, p.warehouseBatches, p.warehouseMovements,
   p.financialCategories, p.financialRecords,
   p.invoicesOffers, p.aiCustomTemplates, p.clientCategories,
+  p.employees, p.employeeSalaries, p.employeeVacations, p.employeeSettings,
   computeSettingsSig(p.settings),
 ]);
 
@@ -318,6 +327,10 @@ function App() {
   const financialTrendRef = useRef<FinancialTrendSettings>(EMPTY_FINANCIAL_TREND);
   const companyBillingSettingsRef = useRef<CompanyBillingSettings | null>(null);
   const invoicingIntegrationsRef = useRef<ExternalInvoicingConfig | null>(null);
+  const employeesRef = useRef<Employee[]>([]);
+  const employeeSalariesRef = useRef<EmployeeSalary[]>([]);
+  const employeeVacationsRef = useRef<EmployeeVacation[]>([]);
+  const employeeSettingsRef = useRef<EmployeeSettings | null>(null);
   // DB clock from the last GET/POST. Sent back as baseSyncedAt so the server can
   // avoid deleting records a concurrent user added after our snapshot.
   const baseSyncedAtRef = useRef<string | null>(null);
@@ -591,6 +604,10 @@ function App() {
   const [financialTrend, setFinancialTrend] = useState<FinancialTrendSettings>(EMPTY_FINANCIAL_TREND);
   const [companyBillingSettings, setCompanyBillingSettings] = useState<CompanyBillingSettings | null>(null);
   const [invoicingIntegrations, setInvoicingIntegrations] = useState<ExternalInvoicingConfig | null>(null);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [employeeSalaries, setEmployeeSalaries] = useState<EmployeeSalary[]>([]);
+  const [employeeVacations, setEmployeeVacations] = useState<EmployeeVacation[]>([]);
+  const [employeeSettings, setEmployeeSettings] = useState<EmployeeSettings | null>(null);
 
   // Initial states set to empty / defaults without localStorage or mockData loaders
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -757,12 +774,17 @@ function App() {
     }
   }, [currentUser]);
 
-  // Request browser notification permission once user is logged in
+  // Register Web Push subscription if permission was already granted
   useEffect(() => {
-    if (currentUser) {
-      requestBrowserNotificationPermission();
+    if (currentUser && typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+      registerWebPushSubscription(currentUser).catch(() => {});
     }
   }, [currentUser?.email]);
+
+  const [showNotifBanner, setShowNotifBanner] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return !sessionStorage.getItem("ccrm_notif_banner_dismissed");
+  });
 
   // Licence for this installation. Fetched once per session and re-checked on a
   // slow timer — it changes about once a year, and api/license.php throttles the
@@ -985,6 +1007,9 @@ ${log.payload || ''}
         case "warehouse":
           viewName = t("Warehouse & Inventory", "Sklad a zásoby", "Raktár és készlet");
           break;
+        case "employees":
+          viewName = t("Employees & Payroll", "Zamestnanci a mzdy", "Alkalmazottak és bérek");
+          break;
         case "invoices":
           viewName = t("Invoices & Price Offers", "Cenové ponuky a faktúry", "Árajánlatok és számlák");
           break;
@@ -1067,6 +1092,10 @@ ${log.payload || ''}
   financialTrendRef.current = financialTrend;
   companyBillingSettingsRef.current = companyBillingSettings;
   invoicingIntegrationsRef.current = invoicingIntegrations;
+  employeesRef.current = employees;
+  employeeSalariesRef.current = employeeSalaries;
+  employeeVacationsRef.current = employeeVacations;
+  employeeSettingsRef.current = employeeSettings;
 
   // --- REAL-TIME SERVER SYNCHRONIZER ENGINE ---
   const pushStateToServer = (
@@ -1132,6 +1161,10 @@ ${log.payload || ''}
     const liveInvoicesOffers = nextInvoicesOffers ?? invoicesOffersRef.current;
     const liveAiCustomTemplates = nextAiCustomTemplates ?? aiCustomTemplatesRef.current;
     const liveClientCategories = nextClientCategories ?? clientCategoriesRef.current;
+    const liveEmployees = employeesRef.current;
+    const liveEmployeeSalaries = employeeSalariesRef.current;
+    const liveEmployeeVacations = employeeVacationsRef.current;
+    const liveEmployeeSettings = employeeSettingsRef.current;
 
     const payload: any = {
       baseSyncedAt: baseSyncedAtRef.current,
@@ -1156,6 +1189,10 @@ ${log.payload || ''}
       invoicesOffers: liveInvoicesOffers,
       aiCustomTemplates: liveAiCustomTemplates,
       clientCategories: liveClientCategories,
+      employees: liveEmployees,
+      employeeSalaries: liveEmployeeSalaries,
+      employeeVacations: liveEmployeeVacations,
+      employeeSettings: liveEmployeeSettings,
       // Always sent whole: it is one small blob, and the server's contract is
       // "omitted means unchanged", so narrowing it would be indistinguishable
       // from a client that predates the key.
@@ -1223,6 +1260,9 @@ ${log.payload || ''}
       narrow("invoicesOffers", liveInvoicesOffers);
       narrow("aiCustomTemplates", liveAiCustomTemplates);
       narrow("clientCategories", liveClientCategories);
+      narrow("employees", liveEmployees);
+      narrow("employeeSalaries", liveEmployeeSalaries);
+      narrow("employeeVacations", liveEmployeeVacations);
 
       // The registry list stays whole on purpose: sync.php walks unifiedEntries to
       // reach each entry's dynamic table, so an entry omitted here would silently
@@ -1303,6 +1343,8 @@ ${log.payload || ''}
               financial_categories: "financialCategories", client_categories: "clientCategories",
               financial_records: "financialRecords", invoices_offers: "invoicesOffers",
               ai_custom_templates: "aiCustomTemplates",
+              employees: "employees", employee_salaries: "employeeSalaries",
+              employee_vacations: "employeeVacations",
             };
             for (const [table, ids] of Object.entries(out.deleteBlocked as Record<string, unknown>)) {
               if (Array.isArray(ids) && ids.length && tableToKey[table]) {
@@ -1682,6 +1724,42 @@ ${log.payload || ''}
       const next = typeof newTemplates === "function" ? newTemplates(prev) : newTemplates;
       aiCustomTemplatesRef.current = next;
       pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
+      return next;
+    });
+  };
+
+  const updateEmployeesAndSync = (newEmployees: Employee[] | ((prev: Employee[]) => Employee[])) => {
+    setEmployees(prev => {
+      const next = typeof newEmployees === "function" ? newEmployees(prev) : newEmployees;
+      employeesRef.current = next;
+      pushStateToServer();
+      return next;
+    });
+  };
+
+  const updateEmployeeSalariesAndSync = (newSalaries: EmployeeSalary[] | ((prev: EmployeeSalary[]) => EmployeeSalary[])) => {
+    setEmployeeSalaries(prev => {
+      const next = typeof newSalaries === "function" ? newSalaries(prev) : newSalaries;
+      employeeSalariesRef.current = next;
+      pushStateToServer();
+      return next;
+    });
+  };
+
+  const updateEmployeeVacationsAndSync = (newVacations: EmployeeVacation[] | ((prev: EmployeeVacation[]) => EmployeeVacation[])) => {
+    setEmployeeVacations(prev => {
+      const next = typeof newVacations === "function" ? newVacations(prev) : newVacations;
+      employeeVacationsRef.current = next;
+      pushStateToServer();
+      return next;
+    });
+  };
+
+  const updateEmployeeSettingsAndSync = (newSettings: EmployeeSettings | ((prev: EmployeeSettings) => EmployeeSettings)) => {
+    setEmployeeSettings(prev => {
+      const next = typeof newSettings === "function" ? newSettings(prev as any) : newSettings;
+      employeeSettingsRef.current = next;
+      pushStateToServer();
       return next;
     });
   };
@@ -2197,48 +2275,59 @@ ${log.payload || ''}
       if (data.tasks && Array.isArray(data.tasks)) {
         const incomingTasks = data.tasks as Task[];
         const prevTasks = lastKnownTasksRef.current;
-        const myName = currentUser?.name;
 
-        if (prevTasks !== null && myName) {
+        if (prevTasks !== null && currentUser) {
+          const myName = (currentUser.name || "").trim().toLowerCase();
+          const myEmail = (currentUser.email || "").trim().toLowerCase();
+
+          const isUserMe = (userStr?: string | null): boolean => {
+            if (!userStr) return false;
+            const u = userStr.trim().toLowerCase();
+            return u === myName || u === myEmail || (myName !== "" && u.length > 2 && (myName.includes(u) || u.includes(myName)));
+          };
+
+          const checkAssignedToMe = (t: Task): boolean => {
+            if (isUserMe(t.owner)) return true;
+            if (Array.isArray(t.assignedUsers) && t.assignedUsers.some((u) => isUserMe(u))) return true;
+            return false;
+          };
+
           const prevMap = new Map<string, Task>(prevTasks.map((t) => [t.id, t]));
+          const currentStates = Array.isArray(data.settings?.taskStates) ? data.settings.taskStates : taskStates;
 
           incomingTasks.forEach((task) => {
             const old = prevMap.get(task.id);
 
             // 1. Newly created or reassigned task assigned to current user (and not created by me)
-            const isAssignedToMe =
-              task.owner === myName ||
-              (Array.isArray(task.assignedUsers) && task.assignedUsers.includes(myName));
-            const wasAssignedToMe =
-              old &&
-              (old.owner === myName ||
-                (Array.isArray(old.assignedUsers) && old.assignedUsers.includes(myName)));
+            const isAssignedToMe = checkAssignedToMe(task);
+            const wasAssignedToMe = old ? checkAssignedToMe(old) : false;
+            const createdByMe = isUserMe(task.createdBy);
 
-            if (isAssignedToMe && (!old || !wasAssignedToMe)) {
-              if (task.createdBy !== myName) {
-                sendBrowserNotification(
-                  t("New Task Assigned", "Priradená nová úloha", "Új feladat kijelölve"),
-                  {
-                    body: `${task.title} (${task.createdBy || t("System", "Systém", "Rendszer")})`,
-                    onClickUrl: "tasks",
-                  }
-                );
-              }
+            if (isAssignedToMe && (!old || !wasAssignedToMe) && !createdByMe) {
+              sendTaskPushNotification({
+                title: t("New Task Assigned", "Priradená nová úloha", "Új feladat kijelölve"),
+                body: `${task.title} (${task.createdBy || t("System", "Systém", "Rendszer")})`,
+                onClickUrl: "tasks",
+                type: "assigned",
+              });
             }
 
-            // 2. Task created by me has been marked as completed/done
-            const isDone = String(task.status || "").toLowerCase() === "done";
-            const wasDone = old ? String(old.status || "").toLowerCase() === "done" : false;
+            // 2. Task created by me or previously assigned to me has been marked as completed/done by someone else
+            const isDone = isDoneTaskState(task.status, currentStates) || task.archived === true;
+            const wasDone = old ? (isDoneTaskState(old.status, currentStates) || old.archived === true) : false;
 
-            if (old && !wasDone && isDone && task.createdBy === myName) {
+            if (old && !wasDone && isDone) {
               const completer = task.completedBy || task.owner || task.assignedUsers?.[0] || t("Team member", "Člen tímu", "Csapattag");
-              sendBrowserNotification(
-                t("Task Completed", "Úloha dokončená", "Feladat befejezve"),
-                {
+              const completedByMe = isUserMe(task.completedBy);
+
+              if (!completedByMe && (createdByMe || wasAssignedToMe || isAssignedToMe)) {
+                sendTaskPushNotification({
+                  title: t("Task Completed", "Úloha dokončená", "Feladat befejezve"),
                   body: `${task.title} · ${t("Completed by", "Dokončil", "Befejezte")}: ${completer}`,
                   onClickUrl: "tasks",
-                }
-              );
+                  type: "done",
+                });
+              }
             }
           });
         }
@@ -2324,6 +2413,18 @@ ${log.payload || ''}
       }
       if (data.clientCategories && Array.isArray(data.clientCategories)) {
         setClientCategories(sameOr(data.clientCategories));
+      }
+      if (data.employees && Array.isArray(data.employees)) {
+        setEmployees(sameOr(data.employees));
+      }
+      if (data.employeeSalaries && Array.isArray(data.employeeSalaries)) {
+        setEmployeeSalaries(sameOr(data.employeeSalaries));
+      }
+      if (data.employeeVacations && Array.isArray(data.employeeVacations)) {
+        setEmployeeVacations(sameOr(data.employeeVacations));
+      }
+      if (data.employeeSettings !== undefined) {
+        setEmployeeSettings(data.employeeSettings);
       }
       // Absent key = a sync.php that predates the trend anchors. Keep whatever
       // is in memory rather than blanking the chart back to the default curve.
@@ -2412,6 +2513,9 @@ ${log.payload || ''}
         invoicesOffers: baselineOf(data.invoicesOffers ?? invoicesOffersRef.current),
         aiCustomTemplates: baselineOf(data.aiCustomTemplates ?? aiCustomTemplatesRef.current),
         clientCategories: baselineOf(data.clientCategories ?? clientCategoriesRef.current),
+        employees: baselineOf(data.employees ?? employeesRef.current),
+        employeeSalaries: baselineOf(data.employeeSalaries ?? employeeSalariesRef.current),
+        employeeVacations: baselineOf(data.employeeVacations ?? employeeVacationsRef.current),
       };
       const ueData = data.unifiedEntriesData ?? unifiedEntriesDataRef.current ?? {};
       const nextUeBaselines: Record<string, RecordBaseline> = {};
@@ -2443,6 +2547,10 @@ ${log.payload || ''}
         invoicesOffers: data.invoicesOffers ?? invoicesOffersRef.current,
         aiCustomTemplates: data.aiCustomTemplates ?? aiCustomTemplatesRef.current,
         clientCategories: data.clientCategories ?? clientCategoriesRef.current,
+        employees: data.employees ?? employeesRef.current,
+        employeeSalaries: data.employeeSalaries ?? employeeSalariesRef.current,
+        employeeVacations: data.employeeVacations ?? employeeVacationsRef.current,
+        employeeSettings: data.employeeSettings ?? employeeSettingsRef.current,
         settings: data.settings ?? {},
       });
     };
@@ -3302,6 +3410,24 @@ ${log.payload || ''}
             }}
           />
         );
+      case "employees":
+        return (
+          <EmployeesView
+            access={access.module("employees")}
+            systemLanguage={userLanguage}
+            systemCurrency={currencyCode}
+            currentUser={activeUser}
+            employees={employees}
+            setEmployees={updateEmployeesAndSync}
+            salaries={employeeSalaries}
+            setSalaries={updateEmployeeSalariesAndSync}
+            vacations={employeeVacations}
+            setVacations={updateEmployeeVacationsAndSync}
+            employeeSettings={employeeSettings}
+            setEmployeeSettings={updateEmployeeSettingsAndSync}
+            financialCategories={financialCategories}
+          />
+        );
       default:
         return (
           <TaskDashboardView 
@@ -3540,6 +3666,57 @@ ${log.payload || ''}
           
           <main className="flex-1 p-4 md:p-6 overflow-y-auto [scrollbar-gutter:stable] max-w-[1600px] mx-auto w-full relative flex flex-col justify-between">
             <div className="shrink-0 w-full">
+              {showNotifBanner && currentUser && getBrowserNotificationPermission() === "default" && (
+                <div className="mb-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 py-3 rounded-2xl flex items-center justify-between shadow-md animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-white/20 rounded-xl shrink-0">
+                      <Bell className="h-5 w-5 text-white animate-pulse" />
+                    </div>
+                    <div>
+                      <p className="text-xs font-black tracking-wide uppercase">
+                        {t("Enable Desktop Notifications", "Zapnúť upozornenia na ploche", "Asztali értesítések engedélyezése")}
+                      </p>
+                      <p className="text-[11px] text-blue-100 font-medium">
+                        {t(
+                          "Get instant alerts when tasks are assigned to you or marked as completed.",
+                          "Dostávajte okamžité hlásenia pri priradení novej úlohy alebo jej dokončení.",
+                          "Értesüljön azonnal az új feladatok kijelöléséről és a feladatok befejezéséről."
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const granted = await requestBrowserNotificationPermission(currentUser);
+                        setShowNotifBanner(false);
+                        if (granted) {
+                          sendTaskPushNotification({
+                            title: t("Notifications Active", "Upozornenia aktívne", "Értesítések bekapcsolva"),
+                            body: t("You will now receive task alerts.", "Budete dostávať hlásenia o úlohách.", "Mostantól kapni fog értesítéseket a feladatokról."),
+                            type: "info",
+                          });
+                        }
+                      }}
+                      className="px-3.5 py-1.5 bg-white text-blue-700 hover:bg-blue-50 text-xs font-black rounded-xl shadow-sm transition active:scale-95"
+                    >
+                      {t("Enable", "Povoliť", "Engedélyezés")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowNotifBanner(false);
+                        sessionStorage.setItem("ccrm_notif_banner_dismissed", "1");
+                      }}
+                      className="p-1.5 hover:bg-white/10 rounded-xl text-white/80 hover:text-white transition"
+                      title={t("Dismiss", "Zavrieť", "Bezárás")}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
               {/* Advance warning that the licence is lapsing. Above the workspace
                   rather than over it: nothing here justifies interrupting work,
                   and it stays out of the per-view ErrorBoundary so a crash in one

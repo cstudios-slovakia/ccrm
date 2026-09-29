@@ -133,6 +133,14 @@ export const PERMISSION_SECTIONS: PermissionSection[] = [
     permissions: [access("financial"), deleteToggle("financial")],
   },
   {
+    id: "employees",
+    permissions: [
+      access("employees"),
+      deleteToggle("employees"),
+      toggle("employees.salaries", "edit", "nothing", { key: "employees", level: "view" }),
+    ],
+  },
+  {
     id: "meetings",
     permissions: [access("meetings"), deleteToggle("meetings")],
   },

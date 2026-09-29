@@ -64,6 +64,7 @@ import {
     Building2,
 } from "lucide-react";
 import { VoiceTaskActionBar } from "./VoiceTaskActionBar";
+import { EntityTasksPanel } from "./EntityTasksPanel";
 import type {
     Lead,
     TimelineEvent,
@@ -87,6 +88,7 @@ import { evaluateLeadSla, type LeadSlaStatus, type LeadStateSla, isClosedLeadSta
 import { orderLeadStates } from "../utils/leadStates";
 import { StatusValueEquationStats, type StatusStatItem, type StatusStatDetailRow } from "./StatusValueEquationStats";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
+import { isSystemMailConfigured } from "../utils/taskReminders";
 
 // Named preset deadline times offered in the gate quick-add picker, mirroring the
 // task dashboard's Add-task drawer. A "Custom" option reveals a free time input so
@@ -1948,11 +1950,17 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         undefined,
     );
 
+    const [activeDetailTab, setActiveDetailTab] = useState<"timeline" | "tasks">("timeline");
+
     // Filter tasks belonging to the active lead
     const activeLeadTasks = useMemo(() => {
         if (!activeLead) return [];
         return tasks.filter((t) => t.relatedLeadId === activeLead.id);
     }, [tasks, activeLead]);
+
+    const activeLeadOpenTasksCount = useMemo(() => {
+        return activeLeadTasks.filter((t) => !t.archived && !isDoneState(t.status)).length;
+    }, [activeLeadTasks, isDoneState]);
 
     // Compute active lead data fingerprint to monitor changes
     const activeLeadFingerprint = useMemo(() => {
@@ -6153,6 +6161,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     {t("arch.", "arch.", "arch.")}
                                                 </span>
                                             )}
+                                            <button
+                                                type="button"
+                                                onClick={() => setActiveDetailTab("tasks")}
+                                                className="ml-2 text-[9px] font-black uppercase text-violet-600 hover:text-violet-800 hover:underline cursor-pointer flex items-center gap-0.5"
+                                            >
+                                                {t("View in Tasks tab", "Zobraziť v úlohách", "Megnyitás a feladatokban")} →
+                                            </button>
                                         </span>
                                     );
                                 })()}
@@ -6788,10 +6803,40 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         </div>
                     </div>
 
-                    {/* RIGHT PANEL: Timeline History & Quick Logger */}
+                    {/* RIGHT PANEL: Timeline History & Quick Logger / Lead Tasks */}
                     <div className="lg:col-span-7">
                         <div className="glass-panel p-6 rounded-[28px] border-2 border-blue-400 bg-white shadow-xl space-y-6">
-                            {/* Logger form */}
+                            {/* Tab Navigation Switches */}
+                            <div className="flex flex-wrap justify-start border-b-2 border-slate-100 pb-2.5 gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveDetailTab("timeline")}
+                                    className={`px-5 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all text-center flex items-center justify-center gap-2 border-2 cursor-pointer ${
+                                        activeDetailTab === "timeline"
+                                            ? "bg-blue-600 text-white shadow-md shadow-blue-500/10 border-blue-700"
+                                            : "text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border-slate-200"
+                                    }`}
+                                >
+                                    <Clock className="h-4.5 w-4.5 stroke-[2.5]" />{" "}
+                                    {getTranslation(systemLanguage, "common.history_timeline")}
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setActiveDetailTab("tasks")}
+                                    className={`px-5 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all text-center flex items-center justify-center gap-2 border-2 cursor-pointer ${
+                                        activeDetailTab === "tasks"
+                                            ? "bg-blue-600 text-white shadow-md shadow-blue-500/10 border-blue-700"
+                                            : "text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border-slate-200"
+                                    }`}
+                                >
+                                    <CheckSquare className="h-4.5 w-4.5 stroke-[2.5]" />{" "}
+                                    {t("Tasks", "Úlohy", "Feladatok")} ({activeLeadOpenTasksCount})
+                                </button>
+                            </div>
+
+                            {activeDetailTab === "timeline" && (
+                                <>
+                                    {/* Logger form */}
                             <div>
                                 <h3 className="text-xs font-black text-blue-700 uppercase tracking-wider mb-4 flex items-center gap-1.5 border-b-2 border-slate-100 pb-2">
                                     <PencilLine className="h-4.5 w-4.5 text-blue-600 stroke-[2.5]" />{" "}
@@ -8439,6 +8484,59 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     </div>
                                 )}
                             </div>
+                                </>
+                            )}
+
+                            {activeDetailTab === "tasks" && (
+                                <div className="space-y-4 text-left animate-in fade-in duration-150">
+                                    <div className="flex items-center justify-between border-b-2 border-slate-100 pb-3">
+                                        <div>
+                                            <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                                                <CheckSquare className="h-4.5 w-4.5 text-blue-600 stroke-[2.5]" />
+                                                {t("Lead Tasks", "Úlohy leadu", "Lead feladatai")}
+                                            </h3>
+                                            <p className="text-[11px] text-slate-500 mt-0.5">
+                                                {t(
+                                                    `Tasks associated with ${activeLead.name}`,
+                                                    `Úlohy priradené k leadu ${activeLead.name}`,
+                                                    `A(z) ${activeLead.name} leadhez rendelt feladatok`,
+                                                )}
+                                            </p>
+                                        </div>
+                                        <span className="px-2.5 py-1 rounded-xl bg-blue-50 text-blue-700 border border-blue-200 text-xs font-black">
+                                            {activeLeadOpenTasksCount} {t("open", "otvorených", "nyitott")}
+                                        </span>
+                                    </div>
+
+                                    <EntityTasksPanel
+                                        entityType="lead"
+                                        entityId={activeLead.id}
+                                        entityName={activeLead.name}
+                                        relatedLeadId={activeLead.id}
+                                        isNew={false}
+                                        tasks={tasks}
+                                        setTasks={setTasks}
+                                        projects={projects}
+                                        leads={leads}
+                                        users={_users}
+                                        userLanguage={systemLanguage}
+                                        taskStates={taskStates}
+                                        taskStateColors={taskStateColors}
+                                        taskAccess={
+                                            taskAccess || {
+                                                view: true,
+                                                viewAll: true,
+                                                create: canCreateTask,
+                                                edit: canEditGateTask,
+                                                delete: canEditGateTask,
+                                            }
+                                        }
+                                        currentUser={currentUser}
+                                        mailConfigured={isSystemMailConfigured(integrationsConfig)}
+                                        accentColor="blue"
+                                    />
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

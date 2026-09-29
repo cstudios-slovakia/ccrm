@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { User, Mail, Settings, Save, RefreshCw, CheckCircle2, AlertCircle, AlertOctagon, Bot, Key, Copy, Check, Eye, EyeOff, Sparkles, Terminal, Code2, Trash2 } from "lucide-react";
+import { User, Mail, Settings, Save, RefreshCw, CheckCircle2, AlertCircle, AlertOctagon, Bot, Key, Copy, Check, Eye, EyeOff, Sparkles, Terminal, Code2, Trash2, Bell, Volume2 } from "lucide-react";
 import { PasswordInput } from "./PasswordInput";
 import type { UserProfile } from "../types";
 import type { Language } from "../utils/translations";
@@ -8,6 +8,13 @@ import { CustomSelect } from "./ui/CustomSelect";
 import { ThemeSettings } from "./ThemeSettings";
 import { SidebarSettings } from "./SidebarSettings";
 import { SecretInput } from "./ui/SecretInput";
+import {
+  requestBrowserNotificationPermission,
+  getBrowserNotificationPermission,
+  sendTaskPushNotification,
+  sendTestPushNotification,
+  type NotificationPermissionState,
+} from "../utils/browserNotifications";
 
 interface PersonalSettingsViewProps {
   currentUser: UserProfile;
@@ -56,6 +63,41 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
   const [errorLogs, setErrorLogs] = useState<any[]>([]);
   const [selectedLog, setSelectedLog] = useState<any | null>(null);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
+
+  const [notifPermission, setNotifPermission] = useState<NotificationPermissionState>(() => getBrowserNotificationPermission());
+
+  React.useEffect(() => {
+    const update = () => setNotifPermission(getBrowserNotificationPermission());
+    window.addEventListener("focus", update);
+    return () => window.removeEventListener("focus", update);
+  }, []);
+
+  const handleEnableNotifications = async () => {
+    const granted = await requestBrowserNotificationPermission(currentUser);
+    setNotifPermission(getBrowserNotificationPermission());
+    if (granted) {
+      sendTaskPushNotification({
+        title: t("Notifications Active", "Upozornenia aktívne", "Értesítések bekapcsolva"),
+        body: t("You will now receive alerts for task updates.", "Budete dostávať hlásenia o úlohách.", "Mostantól értesítéseket kap a feladatokról."),
+        type: "info",
+      });
+    } else if (Notification.permission === "denied") {
+      (window as any).showToast?.(t(
+        "Notifications are blocked by your browser. Please allow notifications in site settings (click the lock icon in the browser address bar).",
+        "Upozornenia sú zablokované prehliadačom. Povoľte ich v nastaveniach stránky (kliknite na zámok v paneli adries).",
+        "Az értesítések le vannak tiltva a böngészőben. Engedélyezze őket az oldal beállításaiban (kattintson a lakat ikonra a címsorban)."
+      ), "warning");
+    }
+  };
+
+  const handleTestNotification = () => {
+    sendTaskPushNotification({
+      title: t("Test Notification", "Testovacie upozornenie", "Teszt értesítés"),
+      body: t("Desktop & sound alerts are working perfectly!", "Upozornenia na ploche a zvuky fungujú správne!", "Az asztali és hangértesítések hibátlanul működnek!"),
+      type: "info",
+    });
+    sendTestPushNotification(currentUser).catch(() => {});
+  };
 
   const fetchErrorLogs = async () => {
     setIsLoadingLogs(true);
@@ -560,6 +602,59 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
               />
 
               <SidebarSettings systemLanguage={systemLanguage} />
+
+              {/* Notification Settings */}
+              <div className="space-y-2 border-t border-slate-200/80 pt-4">
+                <div className="flex items-center justify-between">
+                  <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+                    <Bell className="h-3.5 w-3.5 text-indigo-500" />
+                    {t("Desktop & Push Notifications", "Upozornenia na ploche", "Asztali értesítések")}
+                  </label>
+                  <span className={`px-2.5 py-0.5 rounded-lg text-[10px] font-black uppercase tracking-wider ${
+                    notifPermission === "granted"
+                      ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                      : notifPermission === "denied"
+                      ? "bg-rose-50 text-rose-700 border border-rose-200"
+                      : "bg-amber-50 text-amber-700 border border-amber-200"
+                  }`}>
+                    {notifPermission === "granted"
+                      ? t("Active / Allowed", "Aktívne / Povolené", "Aktív / Engedélyezve")
+                      : notifPermission === "denied"
+                      ? t("Blocked by browser", "Zablokované prehliadačom", "Letiltva a böngészőben")
+                      : t("Not enabled", "Nepovolené", "Nincs engedélyezve")}
+                  </span>
+                </div>
+                <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <p className="text-xs text-slate-600 leading-relaxed max-w-md font-medium">
+                    {t(
+                      "Get alerted with an audio chime and desktop notification when a new task is assigned to you or completed.",
+                      "Získajte okamžité zvukové a obrazové upozornenie pri priradení novej úlohy alebo jej dokončení.",
+                      "Azonnali hang- és asztali értesítést kap, ha feladatot rendelnek Önhöz vagy befejeznek."
+                    )}
+                  </p>
+                  <div className="shrink-0 flex items-center gap-2">
+                    {notifPermission !== "granted" ? (
+                      <button
+                        type="button"
+                        onClick={handleEnableNotifications}
+                        className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 rounded-xl text-xs font-bold text-white shadow-md shadow-indigo-600/20 active:scale-95 transition flex items-center gap-2 cursor-pointer"
+                      >
+                        <Bell className="h-4 w-4" />
+                        <span>{t("Enable Notifications", "Zapnúť upozornenia", "Értesítések bekapcsolása")}</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleTestNotification}
+                        className="px-4 py-2 bg-white hover:bg-slate-100 border border-slate-200 rounded-xl text-xs font-bold text-slate-700 shadow-2xs active:scale-95 transition flex items-center gap-2 cursor-pointer"
+                      >
+                        <Volume2 className="h-4 w-4 text-indigo-600" />
+                        <span>{t("Test Alert", "Otestovať zvuk a hlásenie", "Riasztás tesztelése")}</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
 
               <div className="flex justify-end pt-2">
                 <button

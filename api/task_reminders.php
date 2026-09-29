@@ -272,3 +272,178 @@ function ccrm_maybe_process_task_reminders(PDO $pdo): void {
         }
     }
 }
+
+/**
+ * Send an email notification when a task is assigned to a user.
+ * Silently skipped if outgoing mail is not configured.
+ */
+function ccrm_send_task_assigned_email_notification(PDO $pdo, array $task, ?string $actorName = null): bool {
+    try {
+        $config = ccrm_load_integrations_config($pdo);
+        if (!ccrm_system_mail_configured($config)) {
+            return false;
+        }
+
+        $assignees = [];
+        if (!empty($task['owner'])) $assignees[] = trim((string)$task['owner']);
+        if (!empty($task['assignedUsers']) && is_array($task['assignedUsers'])) {
+            foreach ($task['assignedUsers'] as $u) {
+                $u = trim((string)$u);
+                if ($u !== '') $assignees[] = $u;
+            }
+        }
+        $assignees = array_unique($assignees);
+        if (!$assignees) return false;
+
+        $settings = [];
+        foreach ($pdo->query("SELECT `key`, `value` FROM `system_settings` WHERE `key` = 'SYSTEM_LANGUAGE'") as $row) {
+            $settings[$row['key']] = $row['value'];
+        }
+        $systemLang = $settings['SYSTEM_LANGUAGE'] ?? 'sk';
+
+        // Load users map: name/email -> [name, email, lang]
+        $usersStmt = $pdo->query("SELECT `name`, `email`, `metadata_json` FROM `users`");
+        $users = [];
+        foreach ($usersStmt as $u) {
+            $meta = json_decode((string)($u['metadata_json'] ?? ''), true);
+            $lang = is_array($meta) ? ($meta['language'] ?? null) : null;
+            $userEntry = [
+                'name' => (string)$u['name'],
+                'email' => (string)$u['email'],
+                'lang' => in_array($lang, ['en', 'sk', 'hu'], true) ? $lang : $systemLang
+            ];
+            $users[mb_strtolower(trim($u['name']))] = $userEntry;
+            $users[mb_strtolower(trim($u['email']))] = $userEntry;
+        }
+
+        $appUrl = ccrm_app_base_url($pdo);
+        $leadName = null;
+        if (!empty($task['relatedLeadId'])) {
+            $lStmt = $pdo->prepare("SELECT `name` FROM `leads` WHERE `id` = ? LIMIT 1");
+            $lStmt->execute([$task['relatedLeadId']]);
+            $leadName = $lStmt->fetchColumn() ?: null;
+        }
+
+        $creator = !empty($task['createdBy']) ? $task['createdBy'] : ($actorName ?: 'System');
+        $actorLower = mb_strtolower(trim((string)$creator));
+
+        $sentCount = 0;
+        foreach ($assignees as $assignee) {
+            $assigneeLower = mb_strtolower(trim($assignee));
+            // Do not send notification to the creator if they assigned to themselves
+            if ($assigneeLower === $actorLower) continue;
+
+            $recipient = $users[$assigneeLower] ?? null;
+            if (!$recipient || !filter_var($recipient['email'], FILTER_VALIDATE_EMAIL)) continue;
+
+            $lang = $recipient['lang'] ?? 'sk';
+            $t = function (string $en, string $sk, string $hu) use ($lang) {
+                return $lang === 'sk' ? $sk : ($lang === 'hu' ? $hu : $en);
+            };
+            $esc = function ($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); };
+
+            $subject = $t('New Task Assigned', 'Priradená nová úloha', 'Új feladat kijelölve') . ': ' . $task['title'];
+
+            $deadlineStr = !empty($task['deadline']) ? $task['deadline'] : $t('No deadline', 'Bez termínu', 'Nincs határidő');
+            if (!empty($task['deadlineTime'])) $deadlineStr .= ' ' . $task['deadlineTime'];
+
+            $priority = [
+                'high' => $t('High', 'Vysoká', 'Magas'),
+                'medium' => $t('Medium', 'Stredná', 'Közepes'),
+                'low' => $t('Low', 'Nízka', 'Alacsony'),
+            ][$task['priority'] ?? 'medium'] ?? ($task['priority'] ?? 'medium');
+
+            $html = '<div style="font-family:Arial,Helvetica,sans-serif;max-width:540px;margin:0 auto;padding:24px;color:#1e293b;border:1px solid #e2e8f0;border-radius:12px">'
+                . '<p style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:#4f46e5;font-weight:bold;margin:0 0 8px">'
+                . $esc($t('Task Assignment', 'Priradenie úlohy', 'Feladat kijelölés')) . '</p>'
+                . '<h2 style="font-size:20px;margin:0 0 12px;color:#0f172a">' . $esc($task['title']) . '</h2>'
+                . '<p style="font-size:14px;color:#475569;margin:0 0 16px">'
+                . $esc($t('A task has been assigned to you by', 'Bola vám priradená nová úloha používateľom', 'Új feladatot jelölt ki Önnek')) . ' <strong>' . $esc($creator) . '</strong>.</p>'
+                . '<table style="font-size:14px;border-collapse:collapse;margin:0 0 16px;width:100%">'
+                . '<tr><td style="padding:6px 12px 6px 0;color:#64748b">' . $esc($t('Deadline', 'Termín', 'Határidő')) . '</td><td style="padding:6px 0;font-weight:bold">' . $esc($deadlineStr) . '</td></tr>'
+                . '<tr><td style="padding:6px 12px 6px 0;color:#64748b">' . $esc($t('Priority', 'Priorita', 'Prioritás')) . '</td><td style="padding:6px 0;font-weight:bold">' . $esc($priority) . '</td></tr>';
+            if ($leadName) {
+                $html .= '<tr><td style="padding:6px 12px 6px 0;color:#64748b">' . $esc($t('Client / Lead', 'Klient / Lead', 'Ügyfél / Lead')) . '</td><td style="padding:6px 0;font-weight:bold">' . $esc($leadName) . '</td></tr>';
+            }
+            $html .= '</table>';
+            if (!empty($task['description'])) {
+                $html .= '<div style="background:#f8fafc;padding:12px;border-radius:8px;border:1px solid #f1f5f9;margin:0 0 16px;font-size:13px;line-height:1.5">'
+                    . nl2br($esc($task['description'])) . '</div>';
+            }
+            if ($appUrl !== '') {
+                $html .= '<p style="margin:0 0 16px"><a href="' . $esc($appUrl) . '#tasks" style="display:inline-block;background:#4f46e5;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-size:14px;font-weight:bold">'
+                    . $esc($t('Open in CRM', 'Otvoriť v CRM', 'Megnyitás a CRM-ben')) . '</a></p>';
+            }
+            $html .= '</div>';
+
+            ccrm_send_system_mail($config, $recipient['email'], $subject, $html);
+            $sentCount++;
+        }
+        return $sentCount > 0;
+    } catch (\Throwable $e) {
+        error_log('[ccrm task assignment mail] ' . $e->getMessage());
+        return false;
+    }
+}
+
+/**
+ * Send an email notification when a task is completed/done.
+ * Silently skipped if outgoing mail is not configured.
+ */
+function ccrm_send_task_completed_email_notification(PDO $pdo, array $task, ?string $actorName = null): bool {
+    try {
+        $config = ccrm_load_integrations_config($pdo);
+        if (!ccrm_system_mail_configured($config)) {
+            return false;
+        }
+
+        $creator = !empty($task['createdBy']) ? trim((string)$task['createdBy']) : '';
+        if ($creator === '') return false;
+
+        $completer = !empty($task['completedBy']) ? trim((string)$task['completedBy']) : ($actorName ?: 'A team member');
+        if (mb_strtolower($creator) === mb_strtolower($completer)) return false;
+
+        $stmt = $pdo->prepare("SELECT `name`, `email`, `metadata_json` FROM `users` WHERE `name` = ? OR `email` = ? LIMIT 1");
+        $stmt->execute([$creator, $creator]);
+        $recipient = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$recipient || !filter_var($recipient['email'], FILTER_VALIDATE_EMAIL)) return false;
+
+        $settings = [];
+        foreach ($pdo->query("SELECT `key`, `value` FROM `system_settings` WHERE `key` = 'SYSTEM_LANGUAGE'") as $row) {
+            $settings[$row['key']] = $row['value'];
+        }
+        $systemLang = $settings['SYSTEM_LANGUAGE'] ?? 'sk';
+
+        $meta = json_decode((string)($recipient['metadata_json'] ?? ''), true);
+        $lang = is_array($meta) ? ($meta['language'] ?? $systemLang) : $systemLang;
+        $t = function (string $en, string $sk, string $hu) use ($lang) {
+            return $lang === 'sk' ? $sk : ($lang === 'hu' ? $hu : $en);
+        };
+        $esc = function ($s) { return htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8'); };
+
+        $appUrl = ccrm_app_base_url($pdo);
+        $subject = $t('Task Completed', 'Úloha dokončená', 'Feladat befejezve') . ': ' . $task['title'];
+
+        $html = '<div style="font-family:Arial,Helvetica,sans-serif;max-width:540px;margin:0 auto;padding:24px;color:#1e293b;border:1px solid #e2e8f0;border-radius:12px">'
+            . '<p style="font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:#10b981;font-weight:bold;margin:0 0 8px">'
+            . $esc($t('Task Completed', 'Úloha dokončená', 'Feladat befejezve')) . '</p>'
+            . '<h2 style="font-size:20px;margin:0 0 12px;color:#0f172a">' . $esc($task['title']) . '</h2>'
+            . '<p style="font-size:14px;color:#475569;margin:0 0 16px">'
+            . $esc($t('Your task was completed by', 'Vaša úloha bola dokončená používateľom', 'A feladatot befejezte:')) . ' <strong>' . $esc($completer) . '</strong>.</p>'
+            . '<table style="font-size:14px;border-collapse:collapse;margin:0 0 16px;width:100%">'
+            . '<tr><td style="padding:6px 12px 6px 0;color:#64748b">' . $esc($t('Completed at', 'Čas dokončenia', 'Befejezés ideje')) . '</td><td style="padding:6px 0;font-weight:bold">' . $esc($task['completedAt'] ?? date('Y-m-d H:i')) . '</td></tr>'
+            . '</table>';
+        if ($appUrl !== '') {
+            $html .= '<p style="margin:0 0 16px"><a href="' . $esc($appUrl) . '#tasks" style="display:inline-block;background:#10b981;color:#fff;text-decoration:none;padding:10px 18px;border-radius:8px;font-size:14px;font-weight:bold">'
+                . $esc($t('View in CRM', 'Zobraziť v CRM', 'Megtekintés a CRM-ben')) . '</a></p>';
+        }
+        $html .= '</div>';
+
+        ccrm_send_system_mail($config, $recipient['email'], $subject, $html);
+        return true;
+    } catch (\Throwable $e) {
+        error_log('[ccrm task completed mail] ' . $e->getMessage());
+        return false;
+    }
+}
+

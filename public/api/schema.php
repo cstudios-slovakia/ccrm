@@ -798,6 +798,96 @@ if (!function_exists('ccrm_schema_statements')) {
               INDEX idx_mcp_user (`user_id`),
               INDEX idx_mcp_hash (`key_hash`),
               FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Web Push Subscriptions (Browser & Mobile PWA push endpoints)
+            "CREATE TABLE IF NOT EXISTS `push_subscriptions` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `user_id` VARCHAR(50) NULL,
+              `user_name` VARCHAR(100) NULL,
+              `user_email` VARCHAR(150) NULL,
+              `endpoint` TEXT NOT NULL,
+              `endpoint_hash` VARCHAR(64) NOT NULL UNIQUE,
+              `p256dh` VARCHAR(255) NOT NULL,
+              `auth` VARCHAR(255) NOT NULL,
+              `user_agent` VARCHAR(255) NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX idx_ps_user_id (`user_id`),
+              INDEX idx_ps_user_name (`user_name`),
+              INDEX idx_ps_user_email (`user_email`),
+              INDEX idx_ps_hash (`endpoint_hash`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Employees (Staff profile, contracts, salary rate, Toggl mapping)
+            "CREATE TABLE IF NOT EXISTS `employees` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `name` VARCHAR(150) NOT NULL,
+              `pin` VARCHAR(50) NULL COMMENT 'Personal identification number / Rodné číslo / Tax ID',
+              `email` VARCHAR(150) NULL,
+              `phone` VARCHAR(50) NULL,
+              `address_street` VARCHAR(255) NULL,
+              `address_city` VARCHAR(100) NULL,
+              `address_zip` VARCHAR(20) NULL,
+              `address_country` VARCHAR(100) NULL DEFAULT 'Slovakia',
+              `salary_type` ENUM('monthly', 'daily', 'hourly') NOT NULL DEFAULT 'monthly',
+              `salary_amount` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+              `salary_due_day` INT NULL COMMENT 'Payout day of month (1-31) or week (1-7)',
+              `vacation_allowances_json` TEXT NULL,
+              `time_tracking_provider` VARCHAR(50) NOT NULL DEFAULT 'toggl',
+              `time_tracking_user_id` VARCHAR(100) NULL,
+              `time_tracking_user_name` VARCHAR(150) NULL,
+              `auto_expense` TINYINT(1) NOT NULL DEFAULT 0,
+              `expense_category_id` VARCHAR(50) NULL,
+              `files_json` LONGTEXT NULL,
+              `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+              `notes` TEXT NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX idx_emp_active (`is_active`),
+              INDEX idx_emp_name (`name`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Employee Salaries & Payouts (Monthly / Weekly payroll records)
+            "CREATE TABLE IF NOT EXISTS `employee_salaries` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `employee_id` VARCHAR(50) NOT NULL,
+              `period_type` ENUM('monthly', 'weekly') NOT NULL DEFAULT 'monthly',
+              `period_key` VARCHAR(20) NOT NULL COMMENT 'e.g. 2026-09 or 2026-W39',
+              `year` INT NOT NULL,
+              `period_number` INT NOT NULL COMMENT 'Month 1-12 or Week 1-53',
+              `items_json` TEXT NOT NULL COMMENT 'Array of { categoryId, categoryName, salary, paid }',
+              `total_salary` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+              `total_paid` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+              `status` ENUM('pending', 'partially_paid', 'paid') NOT NULL DEFAULT 'pending',
+              `due_date` DATE NULL,
+              `payment_date` DATE NULL,
+              `payment_method` VARCHAR(50) NULL DEFAULT 'bank_transfer',
+              `financial_record_id` VARCHAR(50) NULL,
+              `note` TEXT NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX idx_sal_emp (`employee_id`),
+              INDEX idx_sal_period (`period_key`),
+              INDEX idx_sal_year (`year`),
+              UNIQUE KEY uk_emp_period (`employee_id`, `period_key`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Employee Vacations & Absences
+            "CREATE TABLE IF NOT EXISTS `employee_vacations` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `employee_id` VARCHAR(50) NOT NULL,
+              `vacation_type_id` VARCHAR(50) NOT NULL,
+              `start_date` DATE NOT NULL,
+              `end_date` DATE NOT NULL,
+              `days_count` DECIMAL(5, 1) NOT NULL DEFAULT 1.0,
+              `status` ENUM('requested', 'approved', 'rejected', 'taken') NOT NULL DEFAULT 'approved',
+              `note` TEXT NULL,
+              `approved_by` VARCHAR(100) NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+              INDEX idx_vac_emp (`employee_id`),
+              INDEX idx_vac_dates (`start_date`, `end_date`)
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
         ];
     }
@@ -1303,6 +1393,147 @@ if (!function_exists('ccrm_schema_statements')) {
             } catch (\Throwable $e) {
                 error_log('[ccrm] schema: precision migration skipped for ' . $table . '.' . $column . ': ' . $e->getMessage());
             }
+        }
+
+        // Push Subscriptions table for mobile PWA push notifications
+        try {
+            $hasPushTable = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'push_subscriptions'")->fetchColumn() > 0;
+            if (!$hasPushTable) {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS `push_subscriptions` (
+                  `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+                  `user_id` VARCHAR(50) NULL,
+                  `user_name` VARCHAR(100) NULL,
+                  `user_email` VARCHAR(150) NULL,
+                  `endpoint` TEXT NOT NULL,
+                  `endpoint_hash` VARCHAR(64) NOT NULL UNIQUE,
+                  `p256dh` VARCHAR(255) NOT NULL,
+                  `auth` VARCHAR(255) NOT NULL,
+                  `user_agent` VARCHAR(255) NULL,
+                  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  INDEX idx_ps_user_id (`user_id`),
+                  INDEX idx_ps_user_name (`user_name`),
+                  INDEX idx_ps_user_email (`user_email`),
+                  INDEX idx_ps_hash (`endpoint_hash`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] push_subscriptions migration skipped: ' . $e->getMessage());
+        }
+
+        // Employees, Salaries & Vacations module tables and default settings
+        try {
+            $hasEmp = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees'")->fetchColumn();
+            if ($hasEmp === 0) {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS `employees` (
+                  `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+                  `name` VARCHAR(150) NOT NULL,
+                  `pin` VARCHAR(50) NULL COMMENT 'Personal identification number / Rodné číslo / Tax ID',
+                  `email` VARCHAR(150) NULL,
+                  `phone` VARCHAR(50) NULL,
+                  `address_street` VARCHAR(255) NULL,
+                  `address_city` VARCHAR(100) NULL,
+                  `address_zip` VARCHAR(20) NULL,
+                  `address_country` VARCHAR(100) NULL DEFAULT 'Slovakia',
+                  `salary_type` ENUM('monthly', 'daily', 'hourly') NOT NULL DEFAULT 'monthly',
+                  `salary_amount` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+                  `salary_due_day` INT NULL COMMENT 'Payout day of month (1-31) or week (1-7)',
+                  `vacation_allowances_json` TEXT NULL,
+                  `time_tracking_provider` VARCHAR(50) NOT NULL DEFAULT 'toggl',
+                  `time_tracking_user_id` VARCHAR(100) NULL,
+                  `time_tracking_user_name` VARCHAR(150) NULL,
+                  `auto_expense` TINYINT(1) NOT NULL DEFAULT 0,
+                  `expense_category_id` VARCHAR(50) NULL,
+                  `files_json` LONGTEXT NULL,
+                  `is_active` TINYINT(1) NOT NULL DEFAULT 1,
+                  `notes` TEXT NULL,
+                  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  INDEX idx_emp_active (`is_active`),
+                  INDEX idx_emp_name (`name`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+            }
+            $hasSal = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employee_salaries'")->fetchColumn();
+            if ($hasSal === 0) {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS `employee_salaries` (
+                  `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+                  `employee_id` VARCHAR(50) NOT NULL,
+                  `period_type` ENUM('monthly', 'weekly') NOT NULL DEFAULT 'monthly',
+                  `period_key` VARCHAR(20) NOT NULL COMMENT 'e.g. 2026-09 or 2026-W39',
+                  `year` INT NOT NULL,
+                  `period_number` INT NOT NULL COMMENT 'Month 1-12 or Week 1-53',
+                  `items_json` TEXT NOT NULL COMMENT 'Array of { categoryId, categoryName, salary, paid }',
+                  `total_salary` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+                  `total_paid` DECIMAL(12, 2) NOT NULL DEFAULT 0.00,
+                  `status` ENUM('pending', 'partially_paid', 'paid') NOT NULL DEFAULT 'pending',
+                  `due_date` DATE NULL,
+                  `payment_date` DATE NULL,
+                  `payment_method` VARCHAR(50) NULL DEFAULT 'bank_transfer',
+                  `financial_record_id` VARCHAR(50) NULL,
+                  `note` TEXT NULL,
+                  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  INDEX idx_sal_emp (`employee_id`),
+                  INDEX idx_sal_period (`period_key`),
+                  INDEX idx_sal_year (`year`),
+                  UNIQUE KEY uk_emp_period (`employee_id`, `period_key`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+            }
+            $hasVac = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employee_vacations'")->fetchColumn();
+            if ($hasVac === 0) {
+                $pdo->exec("CREATE TABLE IF NOT EXISTS `employee_vacations` (
+                  `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+                  `employee_id` VARCHAR(50) NOT NULL,
+                  `vacation_type_id` VARCHAR(50) NOT NULL,
+                  `start_date` DATE NOT NULL,
+                  `end_date` DATE NOT NULL,
+                  `days_count` DECIMAL(5, 1) NOT NULL DEFAULT 1.0,
+                  `status` ENUM('requested', 'approved', 'rejected', 'taken') NOT NULL DEFAULT 'approved',
+                  `note` TEXT NULL,
+                  `approved_by` VARCHAR(100) NULL,
+                  `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                  `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                  INDEX idx_vac_emp (`employee_id`),
+                  INDEX idx_vac_dates (`start_date`, `end_date`)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;");
+            }
+
+            // Seed default EMPLOYEE_SETTINGS in system_settings if absent
+            $hasSettingsTable = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'system_settings'")->fetchColumn();
+            if ($hasSettingsTable > 0) {
+                $empSet = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'EMPLOYEE_SETTINGS'")->fetchColumn();
+                if ($empSet === false || $empSet === null) {
+                    $defaultEmpSettings = json_encode([
+                        'salaryPeriod' => 'monthly',
+                        'defaultSalaryDueDay' => 15,
+                        'defaultAutoExpense' => false,
+                        'defaultExpenseCategoryId' => 'fc-exp-payroll',
+                        'salaryTypes' => [
+                            ['id' => 'salary', 'name' => 'Salary / Mzda', 'color' => '#10b981'],
+                            ['id' => 'bonus', 'name' => 'Bonus / Odmeny', 'color' => '#f59e0b'],
+                            ['id' => 'invoicing', 'name' => 'Invoicing / Živnosť', 'color' => '#6366f1'],
+                            ['id' => 'overtime', 'name' => 'Overtime / Nadčasy', 'color' => '#ec4899']
+                        ],
+                        'vacationTypes' => [
+                            ['id' => 'annual', 'name' => 'Annual leave (Dovolenka)', 'isPaid' => true, 'defaultDays' => 25, 'color' => '#0ea5e9'],
+                            ['id' => 'worked_days', 'name' => 'Leave for days worked (Náhradné voľno)', 'isPaid' => true, 'defaultDays' => 5, 'color' => '#8b5cf6'],
+                            ['id' => 'sick', 'name' => 'Sick leave (PN / OČR)', 'isPaid' => false, 'defaultDays' => 10, 'color' => '#ef4444'],
+                            ['id' => 'unpaid', 'name' => 'Unpaid leave (Neplatené voľno)', 'isPaid' => false, 'defaultDays' => 0, 'color' => '#64748b']
+                        ],
+                        'timeTracking' => [
+                            'provider' => 'toggl',
+                            'togglApiToken' => '',
+                            'togglWorkspaceId' => '',
+                            'clockifyApiKey' => '',
+                            'clockifyWorkspaceId' => ''
+                        ]
+                    ], JSON_UNESCAPED_UNICODE);
+                    $ins = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('EMPLOYEE_SETTINGS', ?)");
+                    $ins->execute([$defaultEmpSettings]);
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] employees migration skipped: ' . $e->getMessage());
         }
     }
 

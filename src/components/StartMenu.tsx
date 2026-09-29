@@ -16,6 +16,7 @@ import type { StartMenuGroup } from "../utils/startMenuLayout";
 import { normalizeStartMenuLayout } from "../utils/startMenuLayout";
 import { SOCIAL_MEDIA_ENABLED } from "../utils/featureFlags";
 import { FlockIcon } from "./icons/FlockIcon";
+import { EmployeeTieIcon } from "./icons/EmployeeTieIcon";
 import { isHomeDashboard } from "../utils/dashboardWidgets";
 import { cn } from "../utils/cn";
 
@@ -362,6 +363,15 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         icon: Coins,
         color: "var(--color-emerald-500)",
         bgColor: "rgba(16, 185, 129, 0.12)",
+        defaultSection: "operations"
+      },
+      {
+        id: "employees",
+        label: getTranslation(systemLanguage, "sidebar.employees"),
+        description: t("Staff directory, salaries matrix, Toggl tracking & leave planner", "Zoznam zamestnancov, matica miezd, meranie času a dovolenky", "Munkatársak, bérmátrix, időkövetés és szabadságok"),
+        icon: EmployeeTieIcon,
+        color: "#c29b62",
+        bgColor: "rgba(194, 155, 98, 0.12)",
         defaultSection: "operations"
       },
 

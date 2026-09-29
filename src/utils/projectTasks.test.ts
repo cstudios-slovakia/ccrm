@@ -3,8 +3,11 @@ import test from "node:test";
 import type { Task } from "../types";
 import {
   buildProjectTasks,
+  computeTaskDateRange,
   isDoneTaskState,
+  isTaskInDateRange,
   parseTaskLines,
+  splitFilteredTasks,
   splitProjectTasks,
   toggleTaskDone,
 } from "./projectTasks.ts";
@@ -123,3 +126,83 @@ test("toggleTaskDone: custom states finish on the last one", () => {
   const states = ["Open", "Working", "Closed"];
   assert.equal(toggleTaskDone(task({ status: "Open" }), states, "Alex").status, "Closed");
 });
+
+test("computeTaskDateRange: computes presets accurately", () => {
+  // Tuesday Sep 29, 2026
+  const ref = new Date(2026, 8, 29, 12, 0);
+
+  // All
+  assert.deepEqual(computeTaskDateRange("all", ref), { start: null, end: null });
+
+  // Last week: Monday Sep 21 to Sunday Sep 27
+  assert.deepEqual(computeTaskDateRange("last_week", ref), { start: "2026-09-21", end: "2026-09-27" });
+
+  // Last month: Aug 1 to Aug 31
+  assert.deepEqual(computeTaskDateRange("last_month", ref), { start: "2026-08-01", end: "2026-08-31" });
+
+  // Last quarter: Q2 (April 1 to June 30) since September is Q3
+  assert.deepEqual(computeTaskDateRange("last_quarter", ref), { start: "2026-04-01", end: "2026-06-30" });
+
+  // Last year to date: Jan 1 2025 to Sep 29 2026
+  assert.deepEqual(computeTaskDateRange("last_year_to_date", ref), { start: "2025-01-01", end: "2026-09-29" });
+});
+
+test("isTaskInDateRange: filters tasks by deadline, completedAt or startDate", () => {
+  const ref = new Date(2026, 8, 29, 12, 0);
+
+  const t1 = task({ id: "1", deadline: "2026-09-23" }); // last week
+  const t2 = task({ id: "2", deadline: "2026-09-29" }); // today
+  const t3 = task({ id: "3", deadline: "2026-08-15" }); // last month
+  const t4 = task({ id: "4", deadline: "2026-05-10" }); // last quarter
+  const t5 = task({ id: "5", deadline: "2025-06-15" }); // last year
+
+  // all
+  assert.ok(isTaskInDateRange(t1, "all", undefined, undefined, ref));
+  assert.ok(isTaskInDateRange(t2, "all", undefined, undefined, ref));
+
+  // last_week
+  assert.ok(isTaskInDateRange(t1, "last_week", undefined, undefined, ref));
+  assert.ok(!isTaskInDateRange(t2, "last_week", undefined, undefined, ref));
+  assert.ok(!isTaskInDateRange(t3, "last_week", undefined, undefined, ref));
+
+  // last_month
+  assert.ok(isTaskInDateRange(t3, "last_month", undefined, undefined, ref));
+  assert.ok(!isTaskInDateRange(t1, "last_month", undefined, undefined, ref));
+
+  // last_quarter
+  assert.ok(isTaskInDateRange(t4, "last_quarter", undefined, undefined, ref));
+  assert.ok(!isTaskInDateRange(t1, "last_quarter", undefined, undefined, ref));
+
+  // last_year_to_date
+  assert.ok(isTaskInDateRange(t5, "last_year_to_date", undefined, undefined, ref));
+  assert.ok(isTaskInDateRange(t3, "last_year_to_date", undefined, undefined, ref));
+  assert.ok(isTaskInDateRange(t2, "last_year_to_date", undefined, undefined, ref));
+
+  // custom interval
+  assert.ok(isTaskInDateRange(t1, "custom", "2026-09-20", "2026-09-25", ref));
+  assert.ok(!isTaskInDateRange(t2, "custom", "2026-09-20", "2026-09-25", ref));
+
+  // completedAt match
+  const tCompleted = task({ id: "comp", deadline: "2026-07-01", completedAt: "2026-09-23 15:30" });
+  assert.ok(isTaskInDateRange(tCompleted, "last_week", undefined, undefined, ref));
+});
+
+test("splitFilteredTasks: splits tasks into open and finished buckets with filter", () => {
+  const ref = new Date(2026, 8, 29, 12, 0);
+  const tasks = [
+    task({ id: "t1", deadline: "2026-09-23", status: "New" }),
+    task({ id: "t2", deadline: "2026-09-24", status: "Done", completedAt: "2026-09-24 10:00" }),
+    task({ id: "t3", deadline: "2026-09-29", status: "New" }),
+  ];
+
+  const resLastWeek = splitFilteredTasks(tasks, STATES, "last_week", undefined, undefined, ref);
+  assert.deepEqual(resLastWeek.open.map((t) => t.id), ["t1"]);
+  assert.deepEqual(resLastWeek.finished.map((t) => t.id), ["t2"]);
+  assert.equal(resLastWeek.totalCount, 2);
+
+  const resAll = splitFilteredTasks(tasks, STATES, "all", undefined, undefined, ref);
+  assert.deepEqual(resAll.open.map((t) => t.id), ["t1", "t3"]);
+  assert.deepEqual(resAll.finished.map((t) => t.id), ["t2"]);
+  assert.equal(resAll.totalCount, 3);
+});
+

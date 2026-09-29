@@ -178,7 +178,7 @@ function ccrm_decode_attr_value($stored) {
 }
 
 function ccrm_compute_data_version($pdo) {
-    $candidates = ['leads', 'timeline_events', 'lead_categories', 'tasks', 'task_assignees', 'tags', 'task_tags', 'users', 'roles', 'meeting_notes', 'meeting_tasks', 'unified_entries', 'system_settings', 'project_types', 'projects', 'project_managers', 'warehouses', 'suppliers', 'warehouse_items', 'warehouse_stock', 'warehouse_batches', 'warehouse_movements', 'warehouse_movement_items', 'financial_categories', 'client_categories', 'financial_records', 'invoices_offers', 'invoice_offer_items', 'ai_custom_templates'];
+    $candidates = ['leads', 'timeline_events', 'lead_categories', 'tasks', 'task_assignees', 'tags', 'task_tags', 'users', 'roles', 'meeting_notes', 'meeting_tasks', 'unified_entries', 'system_settings', 'project_types', 'projects', 'project_managers', 'warehouses', 'suppliers', 'warehouse_items', 'warehouse_stock', 'warehouse_batches', 'warehouse_movements', 'warehouse_movement_items', 'financial_categories', 'client_categories', 'financial_records', 'invoices_offers', 'invoice_offer_items', 'ai_custom_templates', 'employees', 'employee_salaries', 'employee_vacations'];
     try {
         $existing = $pdo->query("SHOW TABLES")->fetchAll(PDO::FETCH_COLUMN);
         $existingSet = array_flip($existing);
@@ -1731,6 +1731,90 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         error_log('[ccrm sync] financial/invoicing fetch error: ' . $e->getMessage());
     }
 
+    $employees = [];
+    $employeeSalaries = [];
+    $employeeVacations = [];
+    $employeeSettings = null;
+    try {
+        if ($pdo->query("SHOW TABLES LIKE 'employees'")->rowCount() > 0) {
+            $empStmt = $pdo->query("SELECT * FROM `employees` ORDER BY `name` ASC");
+            while ($row = $empStmt->fetch()) {
+                $employees[] = [
+                    'id' => $row['id'],
+                    'name' => $row['name'],
+                    'pin' => $row['pin'],
+                    'email' => $row['email'],
+                    'phone' => $row['phone'],
+                    'addressStreet' => $row['address_street'],
+                    'addressCity' => $row['address_city'],
+                    'addressZip' => $row['address_zip'],
+                    'addressCountry' => $row['address_country'] ?? 'Slovakia',
+                    'salaryType' => $row['salary_type'] ?? 'monthly',
+                    'salaryAmount' => (float)($row['salary_amount'] ?? 0),
+                    'salaryDueDay' => $row['salary_due_day'] !== null ? (int)$row['salary_due_day'] : null,
+                    'vacationAllowances' => !empty($row['vacation_allowances_json']) ? json_decode($row['vacation_allowances_json'], true) : (object)[],
+                    'timeTrackingProvider' => $row['time_tracking_provider'] ?? 'toggl',
+                    'timeTrackingUserId' => $row['time_tracking_user_id'],
+                    'timeTrackingUserName' => $row['time_tracking_user_name'],
+                    'autoExpense' => (int)($row['auto_expense'] ?? 0) === 1,
+                    'expenseCategoryId' => $row['expense_category_id'],
+                    'files' => !empty($row['files_json']) ? json_decode($row['files_json'], true) : [],
+                    'isActive' => (int)($row['is_active'] ?? 1) === 1,
+                    'notes' => $row['notes'],
+                    'createdAt' => $row['created_at'],
+                    'updatedAt' => $row['updated_at'],
+                ];
+            }
+        }
+        if ($pdo->query("SHOW TABLES LIKE 'employee_salaries'")->rowCount() > 0) {
+            $salStmt = $pdo->query("SELECT * FROM `employee_salaries` ORDER BY `year` DESC, `period_number` DESC");
+            while ($row = $salStmt->fetch()) {
+                $employeeSalaries[] = [
+                    'id' => $row['id'],
+                    'employeeId' => $row['employee_id'],
+                    'periodType' => $row['period_type'] ?? 'monthly',
+                    'periodKey' => $row['period_key'],
+                    'year' => (int)$row['year'],
+                    'periodNumber' => (int)$row['period_number'],
+                    'items' => !empty($row['items_json']) ? json_decode($row['items_json'], true) : [],
+                    'totalSalary' => (float)($row['total_salary'] ?? 0),
+                    'totalPaid' => (float)($row['total_paid'] ?? 0),
+                    'status' => $row['status'] ?? 'pending',
+                    'dueDate' => $row['due_date'],
+                    'paymentDate' => $row['payment_date'],
+                    'paymentMethod' => $row['payment_method'] ?? 'bank_transfer',
+                    'financialRecordId' => $row['financial_record_id'],
+                    'note' => $row['note'],
+                    'createdAt' => $row['created_at'],
+                    'updatedAt' => $row['updated_at'],
+                ];
+            }
+        }
+        if ($pdo->query("SHOW TABLES LIKE 'employee_vacations'")->rowCount() > 0) {
+            $vacStmt = $pdo->query("SELECT * FROM `employee_vacations` ORDER BY `start_date` DESC");
+            while ($row = $vacStmt->fetch()) {
+                $employeeVacations[] = [
+                    'id' => $row['id'],
+                    'employeeId' => $row['employee_id'],
+                    'vacationTypeId' => $row['vacation_type_id'],
+                    'startDate' => $row['start_date'],
+                    'endDate' => $row['end_date'],
+                    'daysCount' => (float)($row['days_count'] ?? 1.0),
+                    'status' => $row['status'] ?? 'approved',
+                    'note' => $row['note'],
+                    'approvedBy' => $row['approved_by'],
+                    'createdAt' => $row['created_at'],
+                    'updatedAt' => $row['updated_at'],
+                ];
+            }
+        }
+        if (isset($settings['EMPLOYEE_SETTINGS'])) {
+            $employeeSettings = json_decode($settings['EMPLOYEE_SETTINGS'], true);
+        }
+    } catch (\Throwable $e) {
+        error_log('[ccrm sync] employees fetch error: ' . $e->getMessage());
+    }
+
     // DB clock at read time. The client echoes this back as baseSyncedAt on the
     // next POST so the server can tell "the user deleted this" apart from "the
     // client never saw this newer row" (see ccrm_delete_omitted).
@@ -1796,6 +1880,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'financialRecords' => $financialRecords,
         'invoicesOffers' => $invoicesOffers,
         'aiCustomTemplates' => $aiCustomTemplates,
+        'employees' => $employees,
+        'employeeSalaries' => $employeeSalaries,
+        'employeeVacations' => $employeeVacations,
+        'employeeSettings' => $employeeSettings,
         // Manual weekly bank-balance anchors behind the finance trend chart.
         // Shared workspace data, not a per-user setting: these anchors define
         // the shape of the projection curve, so everyone has to see the same
@@ -1970,7 +2058,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'leads', 'meetingNotes', 'users', 'customDashboards', 'projects', 'projectTypes',
             'warehouses', 'suppliers', 'warehouseItems', 'warehouseStock', 'warehouseBatches',
             'warehouseMovements', 'financialCategories', 'financialRecords', 'invoicesOffers',
-            'aiCustomTemplates', 'clientCategories',
+            'aiCustomTemplates', 'clientCategories', 'employees', 'employeeSalaries', 'employeeVacations',
         ] as $entity) {
             if (!isset($payload[$entity]) && ccrm_explicit_deleted_ids($explicitDeletes, $entity)) {
                 $payload[$entity] = [];
@@ -3439,10 +3527,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                 $isNewTask = !isset($dbTasks[$taskId]);
                 $oldTaskStatus = null;
+                $oldTaskOwner = null;
                 if (!$isNewTask) {
-                    $oldStatusStmt = $pdo->prepare("SELECT `status` FROM `tasks` WHERE `id` = ? LIMIT 1");
+                    $oldStatusStmt = $pdo->prepare("SELECT `status`, `owner` FROM `tasks` WHERE `id` = ? LIMIT 1");
                     $oldStatusStmt->execute([$taskId]);
-                    $oldTaskStatus = $oldStatusStmt->fetchColumn() ?: null;
+                    $oldRow = $oldStatusStmt->fetch(PDO::FETCH_ASSOC);
+                    if ($oldRow) {
+                        $oldTaskStatus = $oldRow['status'] ?? null;
+                        $oldTaskOwner = $oldRow['owner'] ?? null;
+                    }
                 }
 
                 $insTask->execute([
@@ -3466,10 +3559,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 ]);
                 $processedTaskIds[] = $taskId;
 
-                // Workflow Triggers
+                // Workflow Triggers & Task Email/Push Notifications
                 require_once __DIR__ . '/api/workflows_engine.php';
+                require_once __DIR__ . '/api/task_reminders.php';
+                require_once __DIR__ . '/api/webpush.php';
                 if ($isNewTask) {
                     ccrm_trigger_workflow('task_created', array_merge($t, $workflowActor), $pdo);
+                    ccrm_send_task_assigned_email_notification($pdo, $t, $sessionUserName);
+                    ccrm_send_task_assigned_push_notification($pdo, $t, $sessionUserName);
                 } else {
                     $newTaskStatus = $t['status'] ?? null;
                     if ($oldTaskStatus !== null && $newTaskStatus !== null && $oldTaskStatus !== $newTaskStatus) {
@@ -3478,10 +3575,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             'newStatus' => $newTaskStatus
                         ]);
                         ccrm_trigger_workflow('task_status_changed', $triggerPayload, $pdo);
+
+                        if (strtolower($newTaskStatus) === 'done' || (function_exists('ccrm_is_done_task_status') && ccrm_is_done_task_status($newTaskStatus, $pdo))) {
+                            ccrm_send_task_completed_email_notification($pdo, $t, $sessionUserName);
+                            ccrm_send_task_completed_push_notification($pdo, $t, $sessionUserName);
+                        }
                     }
                 }
 
                 // Sync assignees (Delete & Insert list)
+                $oldAssignees = [];
+                if (!$isNewTask) {
+                    $oldAssStmt = $pdo->prepare("SELECT `user_name` FROM `task_assignees` WHERE `task_id` = ?");
+                    $oldAssStmt->execute([$taskId]);
+                    $oldAssignees = $oldAssStmt->fetchAll(PDO::FETCH_COLUMN) ?: [];
+                }
+
                 $delAss = $pdo->prepare("DELETE FROM `task_assignees` WHERE `task_id` = ?");
                 $delAss->execute([$taskId]);
 
@@ -3489,6 +3598,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $insAss = $pdo->prepare("INSERT INTO `task_assignees` (`task_id`, `user_name`) VALUES (?, ?)");
                     foreach ($t['assignedUsers'] as $user_name) {
                         $insAss->execute([$taskId, $user_name]);
+                    }
+                }
+
+                // If existing task was re-assigned to new users, notify the newly added users
+                if (!$isNewTask) {
+                    $newAssignees = isset($t['assignedUsers']) && is_array($t['assignedUsers']) ? $t['assignedUsers'] : [];
+                    $addedAssignees = array_values(array_diff($newAssignees, $oldAssignees));
+                    $newOwner = $t['owner'] ?? null;
+                    if ($newOwner && $newOwner !== $oldTaskOwner && !in_array($newOwner, $addedAssignees, true)) {
+                        $addedAssignees[] = $newOwner;
+                    }
+                    if (!empty($addedAssignees)) {
+                        $reassignedTask = array_merge($t, ['assignedUsers' => $addedAssignees, 'owner' => null]);
+                        ccrm_send_task_assigned_push_notification($pdo, $reassignedTask, $sessionUserName);
                     }
                 }
 
@@ -4386,6 +4509,258 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             if (!empty($actToDelete) && !$ccrm_skip_deletes('general_config', 'aiCustomTemplates')) {
                 ccrm_delete_omitted($pdo, 'ai_custom_templates', $actToDelete, null, [], false, $isDeltaSync);
             }
+        }
+
+        // 4.17. Synchronize Employees
+        if (isset($payload['employees']) && is_array($payload['employees']) && !$ccrm_skip_writes('employees', 'employees')) {
+            $stmt = $pdo->query("SELECT `id` FROM `employees`");
+            $existingEmpIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $processedEmpIds = [];
+
+            $insEmp = $pdo->prepare("INSERT INTO `employees` (
+                `id`, `name`, `pin`, `email`, `phone`, `address_street`, `address_city`,
+                `address_zip`, `address_country`, `salary_type`, `salary_amount`, `salary_due_day`,
+                `vacation_allowances_json`, `time_tracking_provider`, `time_tracking_user_id`,
+                `time_tracking_user_name`, `auto_expense`, `expense_category_id`, `files_json`,
+                `is_active`, `notes`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                `name` = VALUES(`name`), `pin` = VALUES(`pin`), `email` = VALUES(`email`), `phone` = VALUES(`phone`),
+                `address_street` = VALUES(`address_street`), `address_city` = VALUES(`address_city`),
+                `address_zip` = VALUES(`address_zip`), `address_country` = VALUES(`address_country`),
+                `salary_type` = VALUES(`salary_type`), `salary_amount` = VALUES(`salary_amount`),
+                `salary_due_day` = VALUES(`salary_due_day`), `vacation_allowances_json` = VALUES(`vacation_allowances_json`),
+                `time_tracking_provider` = VALUES(`time_tracking_provider`), `time_tracking_user_id` = VALUES(`time_tracking_user_id`),
+                `time_tracking_user_name` = VALUES(`time_tracking_user_name`), `auto_expense` = VALUES(`auto_expense`),
+                `expense_category_id` = VALUES(`expense_category_id`), `files_json` = VALUES(`files_json`),
+                `is_active` = VALUES(`is_active`), `notes` = VALUES(`notes`)");
+
+            foreach ($payload['employees'] as $emp) {
+                $empId = $emp['id'];
+                $insEmp->execute([
+                    $empId,
+                    $emp['name'] ?? 'Unnamed Employee',
+                    $emp['pin'] ?? null,
+                    $emp['email'] ?? null,
+                    $emp['phone'] ?? null,
+                    $emp['addressStreet'] ?? null,
+                    $emp['addressCity'] ?? null,
+                    $emp['addressZip'] ?? null,
+                    $emp['addressCountry'] ?? 'Slovakia',
+                    $emp['salaryType'] ?? 'monthly',
+                    (float)($emp['salaryAmount'] ?? 0),
+                    isset($emp['salaryDueDay']) && $emp['salaryDueDay'] !== null ? (int)$emp['salaryDueDay'] : null,
+                    json_encode($emp['vacationAllowances'] ?? (object)[], JSON_UNESCAPED_UNICODE),
+                    $emp['timeTrackingProvider'] ?? 'toggl',
+                    $emp['timeTrackingUserId'] ?? null,
+                    $emp['timeTrackingUserName'] ?? null,
+                    !empty($emp['autoExpense']) ? 1 : 0,
+                    $emp['expenseCategoryId'] ?? null,
+                    json_encode($emp['files'] ?? [], JSON_UNESCAPED_UNICODE),
+                    isset($emp['isActive']) ? ((bool)$emp['isActive'] ? 1 : 0) : 1,
+                    $emp['notes'] ?? null
+                ]);
+                $processedEmpIds[] = $empId;
+            }
+
+            $empToDelete = $isDeltaSync ? $deletionsFor('employees', $existingEmpIds) : array_diff($existingEmpIds, $processedEmpIds);
+            if (!empty($empToDelete) && !$ccrm_skip_deletes('employees', 'employees')) {
+                ccrm_delete_omitted($pdo, 'employees', $empToDelete, null, [], false, $isDeltaSync);
+            }
+        }
+
+        // 4.18. Synchronize Employee Salaries & Auto-Expense Linkage
+        if (isset($payload['employeeSalaries']) && is_array($payload['employeeSalaries']) && !$ccrm_skip_writes('employees', 'employeeSalaries')) {
+            $stmt = $pdo->query("SELECT `id` FROM `employee_salaries`");
+            $existingSalIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $processedSalIds = [];
+
+            // Load employee lookup for auto-expense checks
+            $empLookup = [];
+            $empQuery = $pdo->query("SELECT `id`, `name`, `auto_expense`, `expense_category_id`, `salary_due_day` FROM `employees`");
+            while ($eRow = $empQuery->fetch(PDO::FETCH_ASSOC)) {
+                $empLookup[$eRow['id']] = $eRow;
+            }
+
+            // Load employee settings for defaults
+            $empSettingsRaw = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'EMPLOYEE_SETTINGS'")->fetchColumn();
+            $empSettings = $empSettingsRaw ? json_decode($empSettingsRaw, true) : [];
+            $defaultAutoExpense = (bool)($empSettings['defaultAutoExpense'] ?? false);
+            $defaultExpenseCatId = $empSettings['defaultExpenseCategoryId'] ?? 'fc-exp-payroll';
+            $defaultDueDay = (int)($empSettings['defaultSalaryDueDay'] ?? 15);
+
+            $insSal = $pdo->prepare("INSERT INTO `employee_salaries` (
+                `id`, `employee_id`, `period_type`, `period_key`, `year`, `period_number`,
+                `items_json`, `total_salary`, `total_paid`, `status`, `due_date`, `payment_date`,
+                `payment_method`, `financial_record_id`, `note`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                `employee_id` = VALUES(`employee_id`),
+                `period_type` = VALUES(`period_type`),
+                `period_key` = VALUES(`period_key`),
+                `year` = VALUES(`year`),
+                `period_number` = VALUES(`period_number`),
+                `items_json` = VALUES(`items_json`),
+                `total_salary` = VALUES(`total_salary`),
+                `total_paid` = VALUES(`total_paid`),
+                `status` = VALUES(`status`),
+                `due_date` = VALUES(`due_date`),
+                `payment_date` = VALUES(`payment_date`),
+                `payment_method` = VALUES(`payment_method`),
+                `financial_record_id` = VALUES(`financial_record_id`),
+                `note` = VALUES(`note`)");
+
+            // Prepared statement for financial_records upsert
+            $upsertFr = $pdo->prepare("INSERT INTO `financial_records` (
+                `id`, `type`, `subtype`, `title`, `description`, `category_id`,
+                `amount_planned`, `amount_real`, `currency`, `status`, `issue_date`,
+                `due_date`, `paid_date`, `payment_method`, `created_by`
+            ) VALUES (?, 'expense', 'salary', ?, ?, ?, ?, ?, 'EUR', ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                `title` = VALUES(`title`),
+                `description` = VALUES(`description`),
+                `category_id` = VALUES(`category_id`),
+                `amount_planned` = VALUES(`amount_planned`),
+                `amount_real` = VALUES(`amount_real`),
+                `status` = VALUES(`status`),
+                `due_date` = VALUES(`due_date`),
+                `paid_date` = VALUES(`paid_date`),
+                `payment_method` = VALUES(`payment_method`)");
+
+            foreach ($payload['employeeSalaries'] as $sal) {
+                $salId = $sal['id'];
+                $empId = $sal['employeeId'];
+                $empInfo = $empLookup[$empId] ?? null;
+
+                $totalSalary = (float)($sal['totalSalary'] ?? 0);
+                $totalPaid = (float)($sal['totalPaid'] ?? 0);
+
+                // Determine salary record status
+                $salStatus = $sal['status'] ?? 'pending';
+                if ($totalPaid >= $totalSalary && $totalSalary > 0) {
+                    $salStatus = 'paid';
+                } elseif ($totalPaid > 0) {
+                    $salStatus = 'partially_paid';
+                } else {
+                    $salStatus = 'pending';
+                }
+
+                // Compute due date if not provided
+                $dueDate = !empty($sal['dueDate']) ? $sal['dueDate'] : null;
+                if (!$dueDate) {
+                    $dueDay = (int)($empInfo['salary_due_day'] ?? $defaultDueDay);
+                    if ($dueDay < 1 || $dueDay > 31) $dueDay = 15;
+                    $yearNum = (int)($sal['year'] ?? date('Y'));
+                    $periodNum = (int)($sal['periodNumber'] ?? date('n'));
+                    $nextMonthTimestamp = mktime(0, 0, 0, $periodNum + 1, min($dueDay, 28), $yearNum);
+                    $dueDate = date('Y-m-d', $nextMonthTimestamp);
+                }
+
+                $finRecordId = $sal['financialRecordId'] ?? null;
+
+                // Auto-Expense linkage
+                $empAutoExp = isset($empInfo['auto_expense']) ? ((int)$empInfo['auto_expense'] === 1) : $defaultAutoExpense;
+                if ($empAutoExp && ($totalSalary > 0 || $totalPaid > 0)) {
+                    $targetCatId = !empty($empInfo['expense_category_id']) ? $empInfo['expense_category_id'] : $defaultExpenseCatId;
+                    $empDisplayName = $empInfo['name'] ?? ('Employee ' . $empId);
+                    $frTitle = "Salary: {$empDisplayName} ({$sal['periodKey']})";
+                    $frStatus = ($totalPaid >= $totalSalary && $totalSalary > 0) ? 'paid' : ($totalPaid > 0 ? 'partially_paid' : 'planned');
+                    $paidDate = ($totalPaid > 0) ? (!empty($sal['paymentDate']) ? $sal['paymentDate'] : date('Y-m-d')) : null;
+                    $issueDate = sprintf('%04d-%02d-01', (int)($sal['year'] ?? date('Y')), (int)($sal['periodNumber'] ?? date('n')));
+
+                    if (!$finRecordId) {
+                        $finRecordId = 'fr-sal-' . $salId;
+                    }
+
+                    $upsertFr->execute([
+                        $finRecordId,
+                        $frTitle,
+                        "Monthly payroll salary payout for {$empDisplayName}",
+                        $targetCatId,
+                        $totalSalary,
+                        $totalPaid,
+                        $frStatus,
+                        $issueDate,
+                        $dueDate,
+                        $paidDate,
+                        $sal['paymentMethod'] ?? 'bank_transfer',
+                        $sessionEmail
+                    ]);
+                }
+
+                $insSal->execute([
+                    $salId,
+                    $empId,
+                    $sal['periodType'] ?? 'monthly',
+                    $sal['periodKey'],
+                    (int)$sal['year'],
+                    (int)$sal['periodNumber'],
+                    json_encode($sal['items'] ?? [], JSON_UNESCAPED_UNICODE),
+                    $totalSalary,
+                    $totalPaid,
+                    $salStatus,
+                    $dueDate,
+                    !empty($sal['paymentDate']) ? $sal['paymentDate'] : null,
+                    $sal['paymentMethod'] ?? 'bank_transfer',
+                    $finRecordId,
+                    $sal['note'] ?? null
+                ]);
+                $processedSalIds[] = $salId;
+            }
+
+            $salToDelete = $isDeltaSync ? $deletionsFor('employeeSalaries', $existingSalIds) : array_diff($existingSalIds, $processedSalIds);
+            if (!empty($salToDelete) && !$ccrm_skip_deletes('employees', 'employeeSalaries')) {
+                ccrm_delete_omitted($pdo, 'employee_salaries', $salToDelete, null, [], false, $isDeltaSync);
+            }
+        }
+
+        // 4.19. Synchronize Employee Vacations
+        if (isset($payload['employeeVacations']) && is_array($payload['employeeVacations']) && !$ccrm_skip_writes('employees', 'employeeVacations')) {
+            $stmt = $pdo->query("SELECT `id` FROM `employee_vacations`");
+            $existingVacIds = $stmt->fetchAll(PDO::FETCH_COLUMN);
+            $processedVacIds = [];
+
+            $insVac = $pdo->prepare("INSERT INTO `employee_vacations` (
+                `id`, `employee_id`, `vacation_type_id`, `start_date`, `end_date`,
+                `days_count`, `status`, `note`, `approved_by`
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                `employee_id` = VALUES(`employee_id`),
+                `vacation_type_id` = VALUES(`vacation_type_id`),
+                `start_date` = VALUES(`start_date`),
+                `end_date` = VALUES(`end_date`),
+                `days_count` = VALUES(`days_count`),
+                `status` = VALUES(`status`),
+                `note` = VALUES(`note`),
+                `approved_by` = VALUES(`approved_by`)");
+
+            foreach ($payload['employeeVacations'] as $vac) {
+                $vacId = $vac['id'];
+                $insVac->execute([
+                    $vacId,
+                    $vac['employeeId'],
+                    $vac['vacationTypeId'] ?? 'annual',
+                    $vac['startDate'],
+                    $vac['endDate'],
+                    (float)($vac['daysCount'] ?? 1.0),
+                    $vac['status'] ?? 'approved',
+                    $vac['note'] ?? null,
+                    $vac['approvedBy'] ?? $sessionEmail
+                ]);
+                $processedVacIds[] = $vacId;
+            }
+
+            $vacToDelete = $isDeltaSync ? $deletionsFor('employeeVacations', $existingVacIds) : array_diff($existingVacIds, $processedVacIds);
+            if (!empty($vacToDelete) && !$ccrm_skip_deletes('employees', 'employeeVacations')) {
+                ccrm_delete_omitted($pdo, 'employee_vacations', $vacToDelete, null, [], false, $isDeltaSync);
+            }
+        }
+
+        // 4.20. Synchronize Employee Settings
+        if (isset($payload['employeeSettings']) && is_array($payload['employeeSettings']) && !$ccrm_skip_writes('general_config', 'employeeSettings')) {
+            $empSettingsVal = json_encode($payload['employeeSettings'], JSON_UNESCAPED_UNICODE);
+            $insSet = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('EMPLOYEE_SETTINGS', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
+            $insSet->execute([$empSettingsVal]);
         }
 
         $pdo->commit();

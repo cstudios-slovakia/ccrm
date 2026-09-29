@@ -372,6 +372,29 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
         $roleCategory === 'cmo'
     );
 
+    $isEmployeeQuery = (
+        mb_strpos($normalized_query_clean, 'zamestnan') !== false ||
+        mb_strpos($normalized_query_clean, 'pracovn') !== false ||
+        mb_strpos($normalized_query_clean, 'employee') !== false ||
+        mb_strpos($normalized_query_clean, 'staff') !== false ||
+        mb_strpos($normalized_query_clean, 'plat') !== false ||
+        mb_strpos($normalized_query_clean, 'mzd') !== false ||
+        mb_strpos($normalized_query_clean, 'salary') !== false ||
+        mb_strpos($normalized_query_clean, 'vyplat') !== false ||
+        mb_strpos($normalized_query_clean, 'payroll') !== false ||
+        mb_strpos($normalized_query_clean, 'dovolen') !== false ||
+        mb_strpos($normalized_query_clean, 'vacation') !== false ||
+        mb_strpos($normalized_query_clean, 'volno') !== false ||
+        mb_strpos($normalized_query_clean, 'absenci') !== false ||
+        mb_strpos($normalized_query_clean, 'toggl') !== false ||
+        mb_strpos($normalized_query_clean, 'zmluv') !== false ||
+        mb_strpos($normalized_query_clean, 'rodne') !== false ||
+        mb_strpos($normalized_query_clean, 'alkalmazott') !== false ||
+        mb_strpos($normalized_query_clean, 'fizetes') !== false ||
+        mb_strpos($normalized_query_clean, 'szabadsag') !== false ||
+        $roleCategory === 'chro'
+    );
+
     $context_blocks = [];
 
     // =========================================================================
@@ -1268,6 +1291,71 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
     } catch (\Exception $ex) {}
 
     // =========================================================================
+    // 12b. EMPLOYEES, SALARIES & VACATIONS (employees, employee_salaries, employee_vacations)
+    // =========================================================================
+    try {
+        if ($pdo->query("SHOW TABLES LIKE 'employees'")->rowCount() > 0) {
+            $empStmt = $pdo->query("SELECT `id`, `name`, `email`, `phone`, `salary_type`, `salary_amount`, `salary_due_day`, `time_tracking_user_name`, `is_active`, `vacation_allowances_json` FROM `employees` WHERE `is_active` = 1 LIMIT 50");
+            $employeesAll = $empStmt->fetchAll(PDO::FETCH_ASSOC);
+            if (!empty($employeesAll)) {
+                $hrBlock = "=== COMPANY EMPLOYEES ROSTER & COMPENSATION ===\n";
+                foreach ($employeesAll as $emp) {
+                    $hrBlock .= "- Employee: " . $emp['name'] . " | Contact: " . ($emp['email'] ?: 'N/A') . " (" . ($emp['phone'] ?: 'N/A') . ")\n";
+                    $hrBlock .= "  Rate: €" . number_format((float)$emp['salary_amount'], 2) . " / " . $emp['salary_type'] . " | Salary due day: " . ($emp['salary_due_day'] ? $emp['salary_due_day'] . 'th' : 'Company default') . "\n";
+                    if (!empty($emp['time_tracking_user_name'])) {
+                        $hrBlock .= "  Time tracker (Toggl): " . $emp['time_tracking_user_name'] . "\n";
+                    }
+                    if (!empty($emp['vacation_allowances_json'])) {
+                        $hrBlock .= "  Vacation allowances: " . $emp['vacation_allowances_json'] . "\n";
+                    }
+                }
+
+                // Recent salaries summary
+                if ($pdo->query("SHOW TABLES LIKE 'employee_salaries'")->rowCount() > 0) {
+                    $salSummaryStmt = $pdo->query("
+                        SELECT es.`period_key`, es.`total_salary`, es.`total_paid`, es.`status`, es.`payment_date`, es.`due_date`, e.`name` as `emp_name`
+                        FROM `employee_salaries` es
+                        JOIN `employees` e ON es.`employee_id` = e.`id`
+                        ORDER BY es.`year` DESC, es.`period_number` DESC
+                        LIMIT 25
+                    ");
+                    $salRows = $salSummaryStmt->fetchAll(PDO::FETCH_ASSOC);
+                    if (!empty($salRows)) {
+                        $hrBlock .= "\n--- RECENT PAYROLL & SALARY RECORDS ---\n";
+                        foreach ($salRows as $sr) {
+                            $hrBlock .= "- Period " . $sr['period_key'] . " | " . $sr['emp_name'] . ": Salary €" . number_format((float)$sr['total_salary'], 2) . " | Paid €" . number_format((float)$sr['total_paid'], 2) . " [Status: " . strtoupper($sr['status']) . ", Due: " . ($sr['due_date'] ?: 'N/A') . "]\n";
+                        }
+                    }
+                }
+
+                // Recent / upcoming vacations
+                if ($pdo->query("SHOW TABLES LIKE 'employee_vacations'")->rowCount() > 0) {
+                    $vacSummaryStmt = $pdo->query("
+                        SELECT ev.`vacation_type_id`, ev.`start_date`, ev.`end_date`, ev.`days_count`, ev.`status`, e.`name` as `emp_name`
+                        FROM `employee_vacations` ev
+                        JOIN `employees` e ON ev.`employee_id` = e.`id`
+                        ORDER BY ev.`start_date` DESC
+                        LIMIT 20
+                    ");
+                    $vacRows = $vacSummaryStmt->fetchAll(PDO::FETCH_ASSOC);
+                    if (!empty($vacRows)) {
+                        $hrBlock .= "\n--- VACATIONS & LEAVES ---\n";
+                        foreach ($vacRows as $vr) {
+                            $hrBlock .= "- " . $vr['emp_name'] . ": " . $vr['vacation_type_id'] . " (" . $vr['start_date'] . " to " . $vr['end_date'] . ", " . $vr['days_count'] . " days) [" . strtoupper($vr['status']) . "]\n";
+                        }
+                    }
+                }
+
+                $context_blocks[] = [
+                    'text' => $hrBlock,
+                    'score' => $isEmployeeQuery ? 450 : (($roleCategory === 'chro' || $roleCategory === 'orchestrator') ? 350 : 120),
+                    'is_match' => $isEmployeeQuery || ($roleCategory === 'chro')
+                ];
+            }
+        }
+    } catch (\Exception $ex) {}
+
+    // =========================================================================
     // 13. EPISODIC STRATEGIC DECISIONS (rag_decisions)
     // =========================================================================
     try {
@@ -1418,7 +1506,7 @@ function get_executive_prompts() {
             'name' => 'Chief HR Officer (CHRO)',
             'position' => 'Talent Strategy, Comp Bands & Org Design',
             'voice' => 'coral',
-            'prompt' => "You are the Chief HR / People Officer (CHRO) — a specialist in talent strategy, organizational design, performance culture, and compensation architecture. You have real-time RAG access to the team roster, role permissions, task assignments, and activity audit logs. Focus on 90-day onboarding ramps, compensation percentiles (50th-75th), spans of control (5-8 reports), and regretted attrition."
+            'prompt' => "You are the Chief HR / People Officer (CHRO) — a specialist in talent strategy, organizational design, performance culture, and compensation architecture. You have real-time RAG access to the company employee roster, employment contracts, salary rates & payroll history, vacation allowances & taken leaves, Toggl tracked hours, and task assignments. Focus on 90-day onboarding ramps, compensation percentiles (50th-75th), spans of control (5-8 reports), payroll budget planning, vacation coverage, and regretted attrition."
         ],
         'gc' => [
             'key' => 'gc',

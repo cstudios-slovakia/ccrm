@@ -317,21 +317,8 @@ export interface TimeLog {
   description: string;
 }
 
-export interface Employee {
-  id: string;
-  name: string;
-  role: string;
-  email: string;
-  avatar: string;
-  performanceScore: number; // 0-100
-  leaves: {
-    id: string;
-    startDate: string;
-    endDate: string;
-    type: "vacation" | "sick" | "personal";
-    status: "pending" | "approved" | "rejected";
-  }[];
-}
+// Note: Full Employee interface defined below in Employees, Salaries & Vacation Management section
+
 
 export interface FormField {
   id: string;
@@ -1090,3 +1077,136 @@ export interface AiCustomTemplate {
   badgeStyle?: 'rounded' | 'square' | 'pill';
   createdAt: string;
 }
+
+// ============================================================================
+// Employees, Salaries & Vacation Management
+// ============================================================================
+
+export interface EmployeeFile {
+  id: string;
+  name: string;
+  filePath?: string;
+  url?: string;
+  fileSize?: string | number;
+  size?: number;
+  fileType?: string;
+  type?: string;
+  uploadedAt: string;
+}
+
+export interface Employee {
+  id: string;
+  name: string;
+  role?: string;
+  avatar?: string;
+  performanceScore?: number;
+  pin?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  addressStreet?: string | null;
+  addressCity?: string | null;
+  addressZip?: string | null;
+  addressCountry?: string | null;
+  salaryType?: 'monthly' | 'daily' | 'hourly';
+  salaryAmount?: number;
+  salaryDueDay?: number | null;
+  vacationAllowances?: Record<string, number>;
+  timeTrackingProvider?: 'toggl' | 'clockify' | 'manual';
+  timeTrackingUserId?: string | null;
+  timeTrackingUserName?: string | null;
+  autoExpense?: boolean;
+  expenseCategoryId?: string | null;
+  files?: EmployeeFile[];
+  isActive?: boolean;
+  notes?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  leaves?: {
+    id: string;
+    startDate: string;
+    endDate: string;
+    type: "vacation" | "sick" | "personal";
+    status: "pending" | "approved" | "rejected";
+  }[];
+}
+
+export interface SalaryCategoryItem {
+  categoryId: string;
+  categoryName: string;
+  salary?: number;
+  paid?: number;
+  amount?: number;
+  paidAmount?: number;
+}
+
+export interface EmployeeSalary {
+  id: string;
+  employeeId: string;
+  periodType: 'monthly' | 'weekly';
+  periodKey: string;
+  year: number;
+  periodNumber: number;
+  items: SalaryCategoryItem[];
+  totalSalary: number;
+  totalPaid: number;
+  status: 'pending' | 'partially_paid' | 'paid';
+  dueDate?: string | null;
+  paymentDate?: string | null;
+  paymentMethod?: string | null;
+  financialRecordId?: string | null;
+  note?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface EmployeeVacation {
+  id: string;
+  employeeId: string;
+  vacationTypeId: string;
+  startDate: string;
+  endDate: string;
+  daysCount: number;
+  status: 'requested' | 'approved' | 'rejected' | 'taken' | 'pending';
+  note?: string | null;
+  approvedBy?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface SalaryTypeConfig {
+  id: string;
+  name: string;
+  color?: string;
+  defaultAmount?: number;
+}
+
+export interface VacationTypeConfig {
+  id: string;
+  name: string;
+  isPaid?: boolean;
+  defaultDays?: number;
+  defaultAllowance?: number;
+  color?: string;
+}
+
+export interface EmployeeSettings {
+  salaryPeriod?: 'monthly' | 'weekly';
+  salaryDueDay?: number;
+  defaultSalaryDueDay?: number;
+  autoExpense?: boolean;
+  defaultAutoExpense?: boolean;
+  expenseCategoryId?: string;
+  defaultExpenseCategoryId?: string;
+  salaryTypes?: SalaryTypeConfig[];
+  vacationTypes?: VacationTypeConfig[];
+  togglApiKey?: string;
+  togglWorkspaceId?: string;
+  timeTracking?: {
+    provider: 'toggl' | 'clockify';
+    togglApiToken: string;
+    togglWorkspaceId: string;
+    clockifyApiKey?: string;
+    clockifyWorkspaceId?: string;
+  };
+}
+

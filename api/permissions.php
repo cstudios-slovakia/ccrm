@@ -85,6 +85,7 @@ if (!function_exists('ccrm_permission_sections')) {
             ['id' => 'invoices', 'permissions' => [$access('invoices'), $deleteToggle('invoices')]],
             ['id' => 'warehouse', 'permissions' => [$access('warehouse'), $deleteToggle('warehouse')]],
             ['id' => 'financial', 'permissions' => [$access('financial'), $deleteToggle('financial')]],
+            ['id' => 'employees', 'permissions' => [$access('employees'), $deleteToggle('employees'), $toggle('employees.salaries', 'edit', 'nothing', ['key' => 'employees', 'level' => 'view'])]],
             ['id' => 'meetings', 'permissions' => [$access('meetings'), $deleteToggle('meetings')]],
             ['id' => 'files', 'permissions' => [
                 $access('files', 'edit', 'nothing', ['keys' => ['files.view', 'files.create'], 'edit' => ['files.create']]),
