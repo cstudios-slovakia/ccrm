@@ -3586,12 +3586,12 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     };
 
     // The left task list column for My Calendar.
-    // If isCentered is true (when calendarScope === "hide"), it expands with max-w-3xl for optimal readability.
+    // If isCentered is true (when calendarScope === "hide"), it expands with max-w-3xl on mobile and double width (max-w-[96rem]) on desktop.
     const renderMyTaskListColumn = (isCentered: boolean = false) => (
         <div
             className={`flex flex-col space-y-6 min-h-0 ${
                 isCentered
-                    ? "w-full max-w-3xl mx-auto p-2"
+                    ? "w-full max-w-3xl lg:max-w-[96rem] mx-auto p-2"
                     : "lg:h-full lg:overflow-y-auto overflow-visible h-auto pr-2 pb-8 scrollbar-thin"
             }`}
         >
