@@ -3372,14 +3372,14 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // If isCentered is true (when calendarScope === "hide"), it expands with max-w-3xl for optimal readability.
     const renderMyTaskListColumn = (isCentered: boolean = false) => (
         <div
-            className={`flex flex-col space-y-4 min-h-0 ${
+            className={`flex flex-col space-y-6 min-h-0 ${
                 isCentered
                     ? "w-full max-w-3xl mx-auto p-2"
                     : "lg:h-full lg:overflow-y-auto overflow-visible h-auto pr-2 pb-8 scrollbar-thin"
             }`}
         >
             {/* Create New Task Section: Sticky action bar matching column width */}
-            <div className="sticky top-0 z-20 w-full shrink-0 pt-1.5 pb-2.5 bg-slate-50/90 dark:bg-slate-900/90 backdrop-blur-md">
+            <div className="sticky top-0 z-20 w-full shrink-0">
                 {!isAddDrawerOpen ? (
                     <div className="w-full">
                     <VoiceTaskActionBar
