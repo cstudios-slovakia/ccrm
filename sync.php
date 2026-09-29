@@ -2739,7 +2739,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingProjIds = $pdo->query("SELECT `id` FROM `projects`")->fetchAll(PDO::FETCH_COLUMN);
             $processedProjIds = [];
 
-            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `division`, `rating`, `deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`, `custom_files_json`, `archived`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `division`=VALUES(`division`), `rating`=COALESCE(VALUES(`rating`), `rating`), `deadline`=VALUES(`deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`), `custom_files_json`=COALESCE(VALUES(`custom_files_json`), `custom_files_json`), `archived`=COALESCE(VALUES(`archived`), `archived`)");
+            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `division`, `rating`, `deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`, `custom_files_json`, `archived`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `division`=VALUES(`division`), `rating`=COALESCE(VALUES(`rating`), `rating`), `deadline`=VALUES(`deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`), `custom_files_json`=COALESCE(VALUES(`custom_files_json`), `custom_files_json`), `archived`=VALUES(`archived`)");
 
             // Manager assignments are replaced per project, never globally. The old
             // unconditional `DELETE FROM project_managers` assumed every push carried
@@ -2809,10 +2809,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $projCustomFiles = json_encode($cleanCustom);
                 }
 
-                $projArchived = null;
-                if (array_key_exists('archived', $p)) {
-                    $projArchived = !empty($p['archived']) ? 1 : 0;
-                }
+                // Archived state: column is NOT NULL DEFAULT 0, so never pass null into VALUES.
+                $projArchived = !empty($p['archived']) ? 1 : 0;
 
                 $insProj->execute([
                     $projId,
@@ -2848,86 +2846,98 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Save dynamic data
                 if (isset($p['data']) && is_array($p['data'])) {
                     $dataTable = "proj_data_" . $safeId;
-                    $cols = ['id', 'project_id'];
-                    $vals = [$projId, $projId]; 
-                    $updParts = [];
-                    foreach ($p['data'] as $k => $v) {
-                        $colName = ccrm_attr_column($k);
-                        // Verify column exists
-                        if (ccrm_column_exists($pdo, $dataTable, $colName)) {
-                            $cols[] = $colName;
-                            // Lists/objects as JSON, booleans as words, text verbatim —
-                            // the exact inverse of ccrm_decode_attr_value() on read.
-                            $vals[] = ccrm_encode_attr_value($v);
-                            $updParts[] = "`{$colName}`=VALUES(`{$colName}`)";
+                    try {
+                        $cols = ['id', 'project_id'];
+                        $vals = [$projId, $projId]; 
+                        $updParts = [];
+                        foreach ($p['data'] as $k => $v) {
+                            $colName = ccrm_attr_column($k);
+                            // Verify column exists
+                            if (ccrm_column_exists($pdo, $dataTable, $colName)) {
+                                $cols[] = $colName;
+                                // Lists/objects as JSON, booleans as words, text verbatim —
+                                // the exact inverse of ccrm_decode_attr_value() on read.
+                                $vals[] = ccrm_encode_attr_value($v);
+                                $updParts[] = "`{$colName}`=VALUES(`{$colName}`)";
+                            }
                         }
-                    }
-                    if (!empty($updParts)) {
-                        $colsStr = implode(', ', array_map(function($c){return "`$c`";}, $cols));
-                        $placeholders = implode(', ', array_fill(0, count($cols), '?'));
-                        $updStr = implode(', ', $updParts);
-                        $insData = "INSERT INTO `{$dataTable}` ({$colsStr}) VALUES ({$placeholders}) ON DUPLICATE KEY UPDATE {$updStr}";
-                        $pdo->prepare($insData)->execute($vals);
-                        if (isset($ragPdo) && $ragPdo) {
-                           try { $ragPdo->prepare($insData)->execute($vals); } catch(\Exception $e) {}
+                        if (!empty($updParts)) {
+                            $colsStr = implode(', ', array_map(function($c){return "`$c`";}, $cols));
+                            $placeholders = implode(', ', array_fill(0, count($cols), '?'));
+                            $updStr = implode(', ', $updParts);
+                            $insData = "INSERT INTO `{$dataTable}` ({$colsStr}) VALUES ({$placeholders}) ON DUPLICATE KEY UPDATE {$updStr}";
+                            $pdo->prepare($insData)->execute($vals);
+                            if (isset($ragPdo) && $ragPdo) {
+                                try { $ragPdo->prepare($insData)->execute($vals); } catch(\Exception $e) {}
+                            }
+                        } else {
+                            // At least insert the basic row
+                            $insData = "INSERT INTO `{$dataTable}` (`id`, `project_id`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `project_id`=VALUES(`project_id`)";
+                            $pdo->prepare($insData)->execute([$projId, $projId]);
+                            if (isset($ragPdo) && $ragPdo) {
+                                try { $ragPdo->prepare($insData)->execute([$projId, $projId]); } catch(\Exception $e) {}
+                            }
                         }
-                    } else {
-                        // At least insert the basic row
-                        $insData = "INSERT INTO `{$dataTable}` (`id`, `project_id`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `project_id`=VALUES(`project_id`)";
-                        $pdo->prepare($insData)->execute([$projId, $projId]);
-                        if (isset($ragPdo) && $ragPdo) {
-                           try { $ragPdo->prepare($insData)->execute([$projId, $projId]); } catch(\Exception $e) {}
-                        }
+                    } catch (\Throwable $e) {
+                        if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
                     }
                 }
 
                 // Save Timeline
                 if (isset($p['timeline']) && is_array($p['timeline'])) {
                     $timelineTable = "proj_timeline_" . $safeId;
-                    $pdo->prepare("DELETE FROM `{$timelineTable}` WHERE `project_id` = ?")->execute([$projId]);
-                    if (isset($ragPdo) && $ragPdo) {
-                        try { $ragPdo->prepare("DELETE FROM `{$timelineTable}` WHERE `project_id` = ?")->execute([$projId]); } catch(\Exception $e) {}
-                    }
+                    try {
+                        $pdo->prepare("DELETE FROM `{$timelineTable}` WHERE `project_id` = ?")->execute([$projId]);
+                        if (isset($ragPdo) && $ragPdo) {
+                            try { $ragPdo->prepare("DELETE FROM `{$timelineTable}` WHERE `project_id` = ?")->execute([$projId]); } catch(\Exception $e) {}
+                        }
 
-                    foreach ($p['timeline'] as $te) {
-                        $cols = ['id', 'project_id', 'type', 'event_type', 'timestamp', 'title', 'content'];
-                        $vals = [$te['id'], $projId, $te['type'], $te['eventType'] ?? null, $te['timestamp'], $te['title'], $te['content'] ?? null];
+                        foreach ($p['timeline'] as $te) {
+                            $cols = ['id', 'project_id', 'type', 'event_type', 'timestamp', 'title', 'content'];
+                            $vals = [$te['id'], $projId, $te['type'], $te['eventType'] ?? null, $te['timestamp'], $te['title'], $te['content'] ?? null];
 
-                        if (isset($te['data']) && is_array($te['data'])) {
-                            foreach ($te['data'] as $k => $v) {
-                                $colName = ccrm_attr_column($k);
-                                if (ccrm_column_exists($pdo, $timelineTable, $colName)) {
-                                    $cols[] = $colName;
-                                    $vals[] = ccrm_encode_attr_value($v);
+                            if (isset($te['data']) && is_array($te['data'])) {
+                                foreach ($te['data'] as $k => $v) {
+                                    $colName = ccrm_attr_column($k);
+                                    if (ccrm_column_exists($pdo, $timelineTable, $colName)) {
+                                        $cols[] = $colName;
+                                        $vals[] = ccrm_encode_attr_value($v);
+                                    }
                                 }
                             }
-                        }
 
-                        $colsStr = implode(', ', array_map(function($c){return "`$c`";}, $cols));
-                        $placeholders = implode(', ', array_fill(0, count($cols), '?'));
-                        $insTime = "INSERT INTO `{$timelineTable}` ({$colsStr}) VALUES ({$placeholders})";
-                        $pdo->prepare($insTime)->execute($vals);
-                        if (isset($ragPdo) && $ragPdo) {
-                            try { $ragPdo->prepare($insTime)->execute($vals); } catch(\Exception $e) {}
+                            $colsStr = implode(', ', array_map(function($c){return "`$c`";}, $cols));
+                            $placeholders = implode(', ', array_fill(0, count($cols), '?'));
+                            $insTime = "INSERT INTO `{$timelineTable}` ({$colsStr}) VALUES ({$placeholders})";
+                            $pdo->prepare($insTime)->execute($vals);
+                            if (isset($ragPdo) && $ragPdo) {
+                                try { $ragPdo->prepare($insTime)->execute($vals); } catch(\Exception $e) {}
+                            }
                         }
+                    } catch (\Throwable $e) {
+                        if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
                     }
                 }
 
                 // Save Gantt
                 if (isset($p['gantt']) && is_array($p['gantt'])) {
                     $ganttTable = "proj_gantt_" . $safeId;
-                    $pdo->prepare("DELETE FROM `{$ganttTable}` WHERE `project_id` = ?")->execute([$projId]);
-                    if (isset($ragPdo) && $ragPdo) {
-                        try { $ragPdo->prepare("DELETE FROM `{$ganttTable}` WHERE `project_id` = ?")->execute([$projId]); } catch(\Exception $e) {}
-                    }
+                    try {
+                        $pdo->prepare("DELETE FROM `{$ganttTable}` WHERE `project_id` = ?")->execute([$projId]);
+                        if (isset($ragPdo) && $ragPdo) {
+                            try { $ragPdo->prepare("DELETE FROM `{$ganttTable}` WHERE `project_id` = ?")->execute([$projId]); } catch(\Exception $e) {}
+                        }
 
-                    $insGantt = $pdo->prepare("INSERT INTO `{$ganttTable}` (`id`, `project_id`, `title`, `contact_id`, `start_date`, `end_date`, `progress`) VALUES (?, ?, ?, ?, ?, ?, ?)");
-                    $ragInsGantt = (isset($ragPdo) && $ragPdo) ? $ragPdo->prepare("INSERT INTO `{$ganttTable}` (`id`, `project_id`, `title`, `contact_id`, `start_date`, `end_date`, `progress`) VALUES (?, ?, ?, ?, ?, ?, ?)") : null;
+                        $insGantt = $pdo->prepare("INSERT INTO `{$ganttTable}` (`id`, `project_id`, `title`, `contact_id`, `start_date`, `end_date`, `progress`) VALUES (?, ?, ?, ?, ?, ?, ?)");
+                        $ragInsGantt = (isset($ragPdo) && $ragPdo) ? $ragPdo->prepare("INSERT INTO `{$ganttTable}` (`id`, `project_id`, `title`, `contact_id`, `start_date`, `end_date`, `progress`) VALUES (?, ?, ?, ?, ?, ?, ?)") : null;
 
-                    foreach ($p['gantt'] as $ge) {
-                        $args = [$ge['id'], $projId, $ge['title'], empty($ge['contactId']) ? null : $ge['contactId'], empty($ge['startDate']) ? null : $ge['startDate'], empty($ge['endDate']) ? null : $ge['endDate'], $ge['progress'] ?? 0];
-                        $insGantt->execute($args);
-                        if ($ragInsGantt) try { $ragInsGantt->execute($args); } catch(\Exception $e) {}
+                        foreach ($p['gantt'] as $ge) {
+                            $args = [$ge['id'], $projId, $ge['title'], empty($ge['contactId']) ? null : $ge['contactId'], empty($ge['startDate']) ? null : $ge['startDate'], empty($ge['endDate']) ? null : $ge['endDate'], $ge['progress'] ?? 0];
+                            $insGantt->execute($args);
+                            if ($ragInsGantt) try { $ragInsGantt->execute($args); } catch(\Exception $e) {}
+                        }
+                    } catch (\Throwable $e) {
+                        if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
                     }
                 }
             }

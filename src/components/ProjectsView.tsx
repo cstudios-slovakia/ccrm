@@ -478,7 +478,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       managers: [],
       data: {},
       timeline: [],
-      gantt: []
+      gantt: [],
+      archived: false
     };
 
     setEditingProjectType(type);

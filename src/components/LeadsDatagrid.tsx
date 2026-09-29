@@ -1846,6 +1846,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             data: dynamicData,
             timeline: [],
             gantt: [],
+            archived: false,
         };
 
         setProjects((prev) => [newProj, ...prev]);
