@@ -2715,8 +2715,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       : "text-rose-700 ";
 
     // Typography size scaling: Level 1 = standard text-xs (12px), Level 2 = text-[10.5px], Level 3 = text-[9.5px]
-    const mainTextSize = level === 1 ? "text-xs" : level === 2 ? "text-[10.5px]" : "text-[9.5px]";
-    const estTextSize = level === 1 ? "text-[9px]" : "text-[8px]";
+    const mainTextSize = level === 1 ? "text-[11px] sm:text-xs" : level === 2 ? "text-[10px] sm:text-[10.5px]" : "text-[9px] sm:text-[9.5px]";
+    const estTextSize = level === 1 ? "text-[8px] sm:text-[9px]" : "text-[7.5px] sm:text-[8px]";
     const mainFontWeight = level === 1 ? "font-bold" : level === 2 ? "font-semibold" : "font-medium";
 
     if (tableValueMode === "real") {
@@ -2783,43 +2783,43 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         >
           {/* Category Name Cell (Sticky Left with solid background and crisp right border) */}
           <td
-            className={`w-[320px] min-w-[320px] max-w-[320px] py-2 px-3 sticky left-0 z-20 border-r-2 border-slate-200  shadow-[2px_0_4px_rgba(0,0,0,0.04)] select-none ${
+            className={`w-[140px] min-w-[140px] max-w-[140px] sm:w-[320px] sm:min-w-[320px] sm:max-w-[320px] py-1.5 sm:py-2 px-1.5 sm:px-3 sticky left-0 z-20 border-r-2 border-slate-200  shadow-[2px_0_4px_rgba(0,0,0,0.04)] select-none ${
               level === 1
-                ? "bg-slate-50  font-bold text-xs text-slate-900 "
+                ? "bg-slate-50  font-bold text-[11px] sm:text-xs text-slate-900 "
                 : level === 2
-                ? "bg-white  pl-7 font-semibold text-[11px] text-slate-800 "
-                : "bg-white  pl-12 font-normal text-[10px] text-slate-600 "
+                ? "bg-white  pl-3.5 sm:pl-7 pr-1 sm:pr-3 font-semibold text-[10px] sm:text-[11px] text-slate-800 "
+                : "bg-white  pl-5 sm:pl-12 pr-1 sm:pr-3 font-normal text-[9px] sm:text-[10px] text-slate-600 "
             }`}
           >
             <div
-              className={`flex items-center gap-1.5 ${hasChildren ? "cursor-pointer" : ""}`}
+              className={`flex items-center gap-1 sm:gap-1.5 ${hasChildren ? "cursor-pointer" : ""}`}
               onClick={() => hasChildren && toggleCategoryExpand(cat.id)}
             >
               {hasChildren ? (
                 <button
                   type="button"
-                  className="p-0.5 text-slate-400 hover:text-slate-700  transition-transform cursor-pointer"
+                  className="p-0.5 text-slate-400 hover:text-slate-700  transition-transform cursor-pointer shrink-0"
                 >
                   <ChevronRight
-                    className={`h-3.5 w-3.5 transition-transform duration-150 ${isExpanded ? "rotate-90 text-purple-600" : ""}`}
+                    className={`h-3 w-3 sm:h-3.5 sm:w-3.5 transition-transform duration-150 ${isExpanded ? "rotate-90 text-purple-600" : ""}`}
                   />
                 </button>
               ) : (
-                <span className="w-3.5 shrink-0" />
+                <span className="w-3 sm:w-3.5 shrink-0" />
               )}
 
               {level === 1 ? (
                 <span
-                  className="h-2.5 w-2.5 rounded-full shrink-0 shadow-xs"
+                  className="h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full shrink-0 shadow-xs"
                   style={{ backgroundColor: cat.color || (type === "expense" ? "#f43f5e" : "#10b981") }}
                 />
               ) : (
-                <span className="text-slate-400  text-[10px] shrink-0">
+                <span className="text-slate-400  text-[9px] sm:text-[10px] shrink-0">
                   {level === 2 ? "↳" : "↳↳"}
                 </span>
               )}
 
-              <span className="truncate max-w-[220px]" title={cat.name}>
+              <span className="truncate max-w-[85px] sm:max-w-[220px]" title={cat.name}>
                 {cat.name}
               </span>
             </div>
@@ -2831,7 +2831,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             return (
               <td
                 key={cat.id + "-" + col.id}
-                className={`py-1.5 px-3 text-right ${
+                className={`py-1 sm:py-1.5 px-2 sm:px-3 text-right ${
                   col.isCurrent ? "bg-indigo-50/20  border-x border-indigo-100 " : ""
                 }`}
               >
@@ -2840,8 +2840,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             );
           })}
 
-          {/* Row Total (Sticky Right with solid background) */}
-          <td className="py-1.5 px-4 text-right font-bold bg-slate-50  border-l border-slate-200  sticky right-0 z-20">
+          {/* Row Total (Sticky Right on desktop, scrollable on mobile) */}
+          <td className="py-1 sm:py-1.5 px-2.5 sm:px-4 text-right font-bold bg-slate-50  border-l border-slate-200  relative sm:sticky sm:right-0 z-20 min-w-[100px] sm:min-w-[130px]">
             {renderTableCellValue(catTotal, type, level)}
           </td>
         </tr>
@@ -2872,18 +2872,18 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         data-uncategorized-row={type}
         className="hover:bg-slate-50  transition-colors bg-slate-50/60  font-bold"
       >
-        <td className="w-[320px] min-w-[320px] max-w-[320px] py-2 px-3 sticky left-0 z-20 border-r-2 border-slate-200  shadow-[2px_0_4px_rgba(0,0,0,0.04)] select-none bg-slate-50  font-bold text-xs text-slate-500  italic">
+        <td className="w-[140px] min-w-[140px] max-w-[140px] sm:w-[320px] sm:min-w-[320px] sm:max-w-[320px] py-1.5 sm:py-2 px-1.5 sm:px-3 sticky left-0 z-20 border-r-2 border-slate-200  shadow-[2px_0_4px_rgba(0,0,0,0.04)] select-none bg-slate-50  font-bold text-[11px] sm:text-xs text-slate-500  italic">
           <div
-            className="flex items-center gap-1.5"
+            className="flex items-center gap-1 sm:gap-1.5"
             title={t(
               "Movements without a category, or whose category no longer exists. Assign one in the Movements tab.",
               "Pohyby bez kategórie alebo s kategóriou, ktorá už neexistuje. Kategóriu im priradíte v záložke Pohyby.",
               "Kategória nélküli mozgások, vagy amelyek kategóriája már nem létezik. A Mozgások fülön rendelhet hozzájuk kategóriát."
             )}
           >
-            <span className="w-3.5 shrink-0" />
-            <span className="h-2.5 w-2.5 rounded-full shrink-0 border border-dashed border-slate-400" />
-            <span className="truncate max-w-[220px]">{label}</span>
+            <span className="w-3 sm:w-3.5 shrink-0" />
+            <span className="h-2 w-2 sm:h-2.5 sm:w-2.5 rounded-full shrink-0 border border-dashed border-slate-400" />
+            <span className="truncate max-w-[85px] sm:max-w-[220px]">{label}</span>
           </div>
         </td>
 
@@ -2892,14 +2892,14 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           return (
             <td
               key={rowId + "-" + col.id}
-              className={`py-1.5 px-3 text-right ${col.isCurrent ? "bg-indigo-50/20  border-x border-indigo-100 " : ""}`}
+              className={`py-1 sm:py-1.5 px-2 sm:px-3 text-right ${col.isCurrent ? "bg-indigo-50/20  border-x border-indigo-100 " : ""}`}
             >
               {renderTableCellValue(cellVal, type, 1)}
             </td>
           );
         })}
 
-        <td className="py-1.5 px-4 text-right font-bold bg-slate-50  border-l border-slate-200  sticky right-0 z-20">
+        <td className="py-1 sm:py-1.5 px-2.5 sm:px-4 text-right font-bold bg-slate-50  border-l border-slate-200  relative sm:sticky sm:right-0 z-20 min-w-[100px] sm:min-w-[130px]">
           {renderTableCellValue(rowTotal, type, 1)}
         </td>
       </tr>
@@ -5435,9 +5435,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           {/* THE MATRIX DATA TABLE CONTAINER */}
           <div className="bg-white  rounded-3xl border border-slate-200/80  shadow-sm overflow-hidden">
             {/* Sleek Single-Line Table Toolbar */}
-            <div className="px-5 py-3 border-b border-slate-100  flex flex-wrap items-center justify-between gap-3 bg-slate-50/50 ">
+            <div className="px-3 sm:px-5 py-2.5 sm:py-3 border-b border-slate-100  flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2.5 sm:gap-3 bg-slate-50/50 ">
               {/* Category Search Filter */}
-              <div className="relative w-56">
+              <div className="relative w-full sm:w-56">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
                 <input
                   type="text"
@@ -5458,62 +5458,64 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               </div>
 
               {/* Granularity & Year & Value Mode Switchers */}
-              <div className="flex flex-wrap items-center gap-2">
-                {/* Granularity Switcher */}
-                <div className="bg-slate-100  p-0.5 rounded-xl flex items-center gap-0.5 border border-slate-200 ">
-                  {[
-                    { id: "week", label: t("Week", "Týždeň", "Hét") },
-                    { id: "month", label: t("Month", "Mesiac", "Hónap") },
-                    { id: "quarter", label: t("Quarter", "Kvartál", "Negyedév") },
-                    { id: "half", label: t("Half-year", "Polrok", "Félév") },
-                    { id: "year", label: t("Year", "Rok", "Év") }
-                  ].map((g) => (
-                    <button
-                      key={g.id}
-                      type="button"
-                      onClick={() => setTableGranularity(g.id as any)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
-                        tableGranularity === g.id
-                          ? "bg-white  text-purple-600  shadow-2xs border border-slate-200 "
-                          : "text-slate-600  hover:text-slate-900 "
-                      }`}
-                    >
-                      {g.label}
-                    </button>
-                  ))}
+              <div className="flex flex-wrap sm:flex-nowrap items-center gap-2 w-full sm:w-auto">
+                <div className="flex items-center gap-1.5 overflow-x-auto scrollbar-none pb-0.5 sm:pb-0 max-w-full">
+                  {/* Granularity Switcher */}
+                  <div className="bg-slate-100  p-0.5 rounded-xl flex items-center gap-0.5 border border-slate-200 shrink-0">
+                    {[
+                      { id: "week", label: t("Week", "Týždeň", "Hét") },
+                      { id: "month", label: t("Month", "Mesiac", "Hónap") },
+                      { id: "quarter", label: t("Quarter", "Kvartál", "Negyedév") },
+                      { id: "half", label: t("Half-year", "Polrok", "Félév") },
+                      { id: "year", label: t("Year", "Rok", "Év") }
+                    ].map((g) => (
+                      <button
+                        key={g.id}
+                        type="button"
+                        onClick={() => setTableGranularity(g.id as any)}
+                        className={`px-2 sm:px-2.5 py-1 rounded-lg text-[11px] sm:text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                          tableGranularity === g.id
+                            ? "bg-white  text-purple-600  shadow-2xs border border-slate-200 "
+                            : "text-slate-600  hover:text-slate-900 "
+                        }`}
+                      >
+                        {g.label}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Year Navigator (for month, quarter, week) */}
+                  {(tableGranularity === "month" || tableGranularity === "quarter" || tableGranularity === "half" || tableGranularity === "week") && (
+                    <div className="flex items-center bg-slate-100  px-1 py-0.5 rounded-xl border border-slate-200 shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => setTableYear(tableYear - 1)}
+                        className="p-1 hover:bg-slate-200  rounded-lg text-slate-600  transition-colors cursor-pointer"
+                        title={t("Previous Year", "Predchádzajúci rok", "Előző év")}
+                      >
+                        <ChevronDown className="h-3 w-3 rotate-90" />
+                      </button>
+                      <span className="px-1.5 sm:px-2 text-[11px] sm:text-xs font-black text-slate-800  select-none">
+                        {tableYear}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setTableYear(tableYear + 1)}
+                        className="p-1 hover:bg-slate-200  rounded-lg text-slate-600  transition-colors cursor-pointer"
+                        title={t("Next Year", "Nasledujúci rok", "Következő év")}
+                      >
+                        <ChevronDown className="h-3 w-3 -rotate-90" />
+                      </button>
+                    </div>
+                  )}
                 </div>
 
-                {/* Year Navigator (for month, quarter, week) */}
-                {(tableGranularity === "month" || tableGranularity === "quarter" || tableGranularity === "half" || tableGranularity === "week") && (
-                  <div className="flex items-center bg-slate-100  px-1 py-0.5 rounded-xl border border-slate-200 ">
-                    <button
-                      type="button"
-                      onClick={() => setTableYear(tableYear - 1)}
-                      className="p-1 hover:bg-slate-200  rounded-lg text-slate-600  transition-colors cursor-pointer"
-                      title={t("Previous Year", "Predchádzajúci rok", "Előző év")}
-                    >
-                      <ChevronDown className="h-3 w-3 rotate-90" />
-                    </button>
-                    <span className="px-2 text-xs font-black text-slate-800  select-none">
-                      {tableYear}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setTableYear(tableYear + 1)}
-                      className="p-1 hover:bg-slate-200  rounded-lg text-slate-600  transition-colors cursor-pointer"
-                      title={t("Next Year", "Nasledujúci rok", "Következő év")}
-                    >
-                      <ChevronDown className="h-3 w-3 -rotate-90" />
-                    </button>
-                  </div>
-                )}
-
                 {/* Real vs Estimated Value Mode Toggle */}
-                <div className="bg-slate-100  p-0.5 rounded-xl flex items-center gap-0.5 border border-slate-200 ">
+                <div className="bg-slate-100  p-0.5 rounded-xl flex items-center gap-0.5 border border-slate-200 overflow-x-auto scrollbar-none max-w-full shrink-0">
                   <button
                     type="button"
                     onClick={() => setTableValueMode("both")}
-                    className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                    className={`px-1.5 sm:px-2 py-1 rounded-lg text-[10px] sm:text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
                       tableValueMode === "both"
                         ? "bg-white  text-slate-900  shadow-2xs border border-slate-200/80 "
                         : "text-slate-500 hover:text-slate-800 "
@@ -5524,7 +5526,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   <button
                     type="button"
                     onClick={() => setTableValueMode("real")}
-                    className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                    className={`px-1.5 sm:px-2 py-1 rounded-lg text-[10px] sm:text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
                       tableValueMode === "real"
                         ? "bg-emerald-500 text-white shadow-2xs"
                         : "text-slate-500 hover:text-slate-800 "
@@ -5535,7 +5537,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   <button
                     type="button"
                     onClick={() => setTableValueMode("estimated")}
-                    className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                    className={`px-1.5 sm:px-2 py-1 rounded-lg text-[10px] sm:text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
                       tableValueMode === "estimated"
                         ? "bg-purple-600 text-white shadow-2xs"
                         : "text-slate-500 hover:text-slate-800 "
@@ -5546,7 +5548,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   <button
                     type="button"
                     onClick={() => setTableValueMode("total")}
-                    className={`px-2 py-1 rounded-lg text-[11px] font-bold transition-all cursor-pointer ${
+                    className={`px-1.5 sm:px-2 py-1 rounded-lg text-[10px] sm:text-[11px] font-bold transition-all cursor-pointer whitespace-nowrap ${
                       tableValueMode === "total"
                         ? "bg-indigo-600 text-white shadow-2xs"
                         : "text-slate-500 hover:text-slate-800 "
@@ -5558,18 +5560,29 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               </div>
             </div>
 
-            <div className="overflow-x-auto scrollbar-thin">
+            {/* Mobile swipe helper */}
+            <div className="sm:hidden px-3 py-1.5 bg-slate-100/70 border-b border-slate-200 flex items-center justify-between text-[10px] text-slate-500 font-medium select-none">
+              <span className="flex items-center gap-1">👉 <span>{t("Swipe horizontally for periods", "Potiahnutím zobrazíte ďalšie obdobia", "Lapozzon oldalra az időszakokhoz")}</span></span>
+              <span className="font-bold text-slate-700">{tableGranularity.toUpperCase()} • {tableYear}</span>
+            </div>
+
+            <div className="overflow-x-auto scrollbar-thin overscroll-x-contain touch-pan-x">
               <table className="w-full text-left text-xs border-collapse">
                 {/* Sticky Header */}
                 <thead className="bg-slate-50  sticky top-0 z-30 shadow-xs border-b border-slate-200 ">
                   <tr>
-                    <th className="w-[320px] min-w-[320px] max-w-[320px] py-3 px-4 sticky left-0 bg-slate-100  z-40 font-black uppercase text-[10px] tracking-wider text-slate-600  border-r-2 border-slate-200  shadow-[2px_0_4px_rgba(0,0,0,0.04)]">
-                      {t("Category Structure (3 Levels)", "Štruktúra kategórií (3 úrovne)", "Kategória struktúra (3 szint)")}
+                    <th className="w-[140px] min-w-[140px] max-w-[140px] sm:w-[320px] sm:min-w-[320px] sm:max-w-[320px] py-2.5 sm:py-3 px-2 sm:px-4 sticky left-0 bg-slate-100  z-40 font-black uppercase text-[9px] sm:text-[10px] tracking-wider text-slate-600  border-r-2 border-slate-200  shadow-[2px_0_4px_rgba(0,0,0,0.04)]">
+                      <span className="hidden sm:inline">
+                        {t("Category Structure (3 Levels)", "Štruktúra kategórií (3 úrovne)", "Kategória struktúra (3 szint)")}
+                      </span>
+                      <span className="sm:hidden">
+                        {t("Categories", "Kategórie", "Kategóriák")}
+                      </span>
                     </th>
                     {overviewTableData.columns.map((col) => (
                       <th
                         key={col.id}
-                        className={`py-3 px-3 text-right font-black uppercase text-[10px] tracking-wider min-w-[110px] ${
+                        className={`py-2 sm:py-3 px-2 sm:px-3 text-right font-black uppercase text-[9px] sm:text-[10px] tracking-wider min-w-[85px] sm:min-w-[110px] ${
                           col.isCurrent
                             ? "bg-indigo-50/80  text-indigo-700  border-x border-indigo-200 "
                             : "text-slate-600 "
@@ -5577,12 +5590,12 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                       >
                         <div className="flex flex-col items-end">
                           <span>{col.label}</span>
-                          {col.subLabel && <span className="text-[8px] font-medium opacity-60 lowercase">{col.subLabel}</span>}
+                          {col.subLabel && <span className="text-[7.5px] sm:text-[8px] font-medium opacity-60 lowercase">{col.subLabel}</span>}
                         </div>
                       </th>
                     ))}
-                    <th className="py-3 px-4 text-right font-black uppercase text-[10px] tracking-wider min-w-[130px] bg-slate-100  text-slate-900  border-l border-slate-200  sticky right-0 z-30">
-                      {t("Total / Horizon", "Spolu / Horizont", "Összesen")}
+                    <th className="py-2.5 sm:py-3 px-2.5 sm:px-4 text-right font-black uppercase text-[9px] sm:text-[10px] tracking-wider min-w-[100px] sm:min-w-[130px] bg-slate-100  text-slate-900  border-l border-slate-200  relative sm:sticky sm:right-0 z-30">
+                      {t("Total", "Spolu", "Összesen")}
                     </th>
                   </tr>
                 </thead>
@@ -5592,24 +5605,24 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   {/* SECTION 1: EXPENSES (TOP OF TABLE) */}
                   {/* ======================================================== */}
                   <tr className="bg-rose-50  border-y-2 border-rose-200 ">
-                    <td className="w-[320px] min-w-[320px] max-w-[320px] py-2.5 px-4 sticky left-0 z-20 bg-rose-50  border-r-2 border-rose-200  shadow-[2px_0_4px_rgba(0,0,0,0.04)]">
-                      <div className="flex items-center justify-between gap-2 text-xs font-black uppercase tracking-wider text-rose-700  whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          <TrendingDown className="h-4 w-4 shrink-0" />
-                          <span>{t("💸 EXPENSES", "💸 VÝDAVKY", "💸 KIADÁSOK")}</span>
+                    <td className="w-[140px] min-w-[140px] max-w-[140px] sm:w-[320px] sm:min-w-[320px] sm:max-w-[320px] py-2 sm:py-2.5 px-2 sm:px-4 sticky left-0 z-20 bg-rose-50  border-r-2 border-rose-200  shadow-[2px_0_4px_rgba(0,0,0,0.04)]">
+                      <div className="flex items-center justify-between gap-1 text-[11px] sm:text-xs font-black uppercase tracking-wider text-rose-700 ">
+                        <div className="flex items-center gap-1 sm:gap-2 truncate">
+                          <TrendingDown className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+                          <span className="truncate">{t("Expenses", "Výdavky", "Kiadások")}</span>
                         </div>
                         <button
                           type="button"
                           onClick={areAllExpensesExpanded ? collapseAllExpenseCategories : expandAllExpenseCategories}
-                          className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-rose-100 hover:bg-rose-200   text-rose-700  text-[10px] font-bold tracking-normal normal-case transition-colors cursor-pointer"
+                          className="flex items-center gap-0.5 sm:gap-1 px-1 sm:px-2 py-0.5 rounded-lg bg-rose-100 hover:bg-rose-200   text-rose-700  text-[9px] sm:text-[10px] font-bold tracking-normal normal-case transition-colors cursor-pointer shrink-0"
                           title={areAllExpensesExpanded ? t("Collapse all expense categories", "Zbaliť výdavky", "Kiadások becsukása") : t("Expand all expense categories", "Rozbaliť výdavky", "Kiadások kinyitása")}
                         >
                           {areAllExpensesExpanded ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
-                          <span>{areAllExpensesExpanded ? t("Collapse", "Zbaliť", "Becsuk") : t("Expand", "Rozbaliť", "Kinyit")}</span>
+                          <span className="hidden sm:inline">{areAllExpensesExpanded ? t("Collapse", "Zbaliť", "Becsuk") : t("Expand", "Rozbaliť", "Kinyit")}</span>
                         </button>
                       </div>
                     </td>
-                    <td colSpan={overviewTableData.columns.length + 1} className="py-2.5 px-4 bg-rose-50/60 " />
+                    <td colSpan={overviewTableData.columns.length + 1} className="py-2 sm:py-2.5 px-2 sm:px-4 bg-rose-50/60 " />
                   </tr>
 
                   {/* Render Expense Categories Recursively */}
@@ -5618,21 +5631,21 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
                   {/* SUB-TOTAL EXPENSES ROW */}
                   <tr className="bg-rose-100/60  font-black border-y-2 border-rose-300 ">
-                    <td className="w-[320px] min-w-[320px] max-w-[320px] py-3 px-4 sticky left-0 bg-rose-100  z-20 text-rose-800  border-r-2 border-rose-300  shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
-                      <div className="flex items-center gap-2 whitespace-nowrap">
-                        <ArrowDownRight className="h-4 w-4 text-rose-600 shrink-0" />
-                        <span>{t("Total Expenses", "Výdavky spolu", "Összes kiadás")}{tableSearchTotalSuffix}</span>
+                    <td className="w-[140px] min-w-[140px] max-w-[140px] sm:w-[320px] sm:min-w-[320px] sm:max-w-[320px] py-2 sm:py-3 px-2 sm:px-4 sticky left-0 bg-rose-100  z-20 text-rose-800  border-r-2 border-rose-300  shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
+                      <div className="flex items-center gap-1 sm:gap-2">
+                        <ArrowDownRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-rose-600 shrink-0" />
+                        <span className="truncate text-[11px] sm:text-xs">{t("Total Expenses", "Výdavky spolu", "Összes kiadás")}{tableSearchTotalSuffix}</span>
                       </div>
                     </td>
                     {overviewTableData.columns.map((col) => {
                       const val = overviewTableData.totalExpensesByCol[col.id];
                       return (
-                        <td key={"sub-exp-" + col.id} className="py-3 px-3 text-right">
+                        <td key={"sub-exp-" + col.id} className="py-2 sm:py-3 px-2 sm:px-3 text-right">
                           {renderTableCellValue(val, "expense")}
                         </td>
                       );
                     })}
-                    <td className="py-3 px-4 text-right font-extrabold bg-rose-100  border-l border-slate-200  sticky right-0 z-20">
+                    <td className="py-2 sm:py-3 px-2.5 sm:px-4 text-right font-extrabold bg-rose-100  border-l border-slate-200  relative sm:sticky sm:right-0 z-20 min-w-[100px] sm:min-w-[130px]">
                       {renderTableCellValue(overviewTableData.totalExpenseSummary, "expense")}
                     </td>
                   </tr>
@@ -5641,24 +5654,24 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   {/* SECTION 2: INCOMES (RIGHT BELOW EXPENSES) */}
                   {/* ======================================================== */}
                   <tr className="bg-emerald-50  border-y-2 border-emerald-200 ">
-                    <td className="w-[320px] min-w-[320px] max-w-[320px] py-2.5 px-4 sticky left-0 z-20 bg-emerald-50  border-r-2 border-emerald-200  shadow-[2px_0_4px_rgba(0,0,0,0.04)]">
-                      <div className="flex items-center justify-between gap-2 text-xs font-black uppercase tracking-wider text-emerald-700  whitespace-nowrap">
-                        <div className="flex items-center gap-2">
-                          <TrendingUp className="h-4 w-4 shrink-0" />
-                          <span>{t("💰 INCOMES", "💰 PRÍJMY", "💰 BEVÉTELEK")}</span>
+                    <td className="w-[140px] min-w-[140px] max-w-[140px] sm:w-[320px] sm:min-w-[320px] sm:max-w-[320px] py-2 sm:py-2.5 px-2 sm:px-4 sticky left-0 z-20 bg-emerald-50  border-r-2 border-emerald-200  shadow-[2px_0_4px_rgba(0,0,0,0.04)]">
+                      <div className="flex items-center justify-between gap-1 text-[11px] sm:text-xs font-black uppercase tracking-wider text-emerald-700 ">
+                        <div className="flex items-center gap-1 sm:gap-2 truncate">
+                          <TrendingUp className="h-3.5 w-3.5 sm:h-4 sm:w-4 shrink-0" />
+                          <span className="truncate">{t("Incomes", "Príjmy", "Bevételek")}</span>
                         </div>
                         <button
                           type="button"
                           onClick={areAllIncomesExpanded ? collapseAllIncomeCategories : expandAllIncomeCategories}
-                          className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-100 hover:bg-emerald-200   text-emerald-700  text-[10px] font-bold tracking-normal normal-case transition-colors cursor-pointer"
+                          className="flex items-center gap-0.5 sm:gap-1 px-1 sm:px-2 py-0.5 rounded-lg bg-emerald-100 hover:bg-emerald-200   text-emerald-700  text-[9px] sm:text-[10px] font-bold tracking-normal normal-case transition-colors cursor-pointer shrink-0"
                           title={areAllIncomesExpanded ? t("Collapse all income categories", "Zbaliť príjmy", "Bevételek becsukása") : t("Expand all income categories", "Rozbaliť príjmy", "Bevételek kinyitása")}
                         >
                           {areAllIncomesExpanded ? <Minimize2 className="h-3 w-3" /> : <Maximize2 className="h-3 w-3" />}
-                          <span>{areAllIncomesExpanded ? t("Collapse", "Zbaliť", "Becsuk") : t("Expand", "Rozbaliť", "Kinyit")}</span>
+                          <span className="hidden sm:inline">{areAllIncomesExpanded ? t("Collapse", "Zbaliť", "Becsuk") : t("Expand", "Rozbaliť", "Kinyit")}</span>
                         </button>
                       </div>
                     </td>
-                    <td colSpan={overviewTableData.columns.length + 1} className="py-2.5 px-4 bg-emerald-50/60 " />
+                    <td colSpan={overviewTableData.columns.length + 1} className="py-2 sm:py-2.5 px-2 sm:px-4 bg-emerald-50/60 " />
                   </tr>
 
                   {/* Render Income Categories Recursively */}
@@ -5667,21 +5680,21 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
                   {/* SUB-TOTAL INCOMES ROW */}
                   <tr className="bg-emerald-100/60  font-black border-y-2 border-emerald-300 ">
-                    <td className="w-[320px] min-w-[320px] max-w-[320px] py-3 px-4 sticky left-0 bg-emerald-100  z-20 text-emerald-800  border-r-2 border-emerald-300  shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
-                      <div className="flex items-center gap-2 whitespace-nowrap">
-                        <ArrowUpRight className="h-4 w-4 text-emerald-600 shrink-0" />
-                        <span>{t("Total Incomes", "Príjmy spolu", "Összes bevétel")}{tableSearchTotalSuffix}</span>
+                    <td className="w-[140px] min-w-[140px] max-w-[140px] sm:w-[320px] sm:min-w-[320px] sm:max-w-[320px] py-2 sm:py-3 px-2 sm:px-4 sticky left-0 bg-emerald-100  z-20 text-emerald-800  border-r-2 border-emerald-300  shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
+                      <div className="flex items-center gap-1 sm:gap-2">
+                        <ArrowUpRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-emerald-600 shrink-0" />
+                        <span className="truncate text-[11px] sm:text-xs">{t("Total Incomes", "Príjmy spolu", "Összes bevétel")}{tableSearchTotalSuffix}</span>
                       </div>
                     </td>
                     {overviewTableData.columns.map((col) => {
                       const val = overviewTableData.totalIncomesByCol[col.id];
                       return (
-                        <td key={"sub-inc-" + col.id} className="py-3 px-3 text-right">
+                        <td key={"sub-inc-" + col.id} className="py-2 sm:py-3 px-2 sm:px-3 text-right">
                           {renderTableCellValue(val, "income")}
                         </td>
                       );
                     })}
-                    <td className="py-3 px-4 text-right font-extrabold bg-emerald-100  border-l border-slate-200  sticky right-0 z-20">
+                    <td className="py-2 sm:py-3 px-2.5 sm:px-4 text-right font-extrabold bg-emerald-100  border-l border-slate-200  relative sm:sticky sm:right-0 z-20 min-w-[100px] sm:min-w-[130px]">
                       {renderTableCellValue(overviewTableData.totalIncomeSummary, "income")}
                     </td>
                   </tr>
@@ -5690,32 +5703,36 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   {/* SECTION 3: SUMMARY (NET FLOW & BALANCE) AT TABLE END */}
                   {/* ======================================================== */}
                   <tr className="bg-slate-100  border-y-2 border-slate-300 ">
-                    <td className="w-[320px] min-w-[320px] max-w-[320px] py-2.5 px-4 sticky left-0 z-20 bg-slate-100  border-r-2 border-slate-300  shadow-[2px_0_4px_rgba(0,0,0,0.04)]">
-                      <div className="flex items-center gap-2 text-xs font-black uppercase tracking-wider text-slate-800  whitespace-nowrap">
-                        <Landmark className="h-4 w-4 text-purple-600 shrink-0" />
-                        <span>{t("📊 FINANCIAL SUMMARY", "📊 FINANČNÉ ZHRNUTIE", "📊 PÉNZÜGYI ÖSSZESÍTŐ")}</span>
+                    <td className="w-[140px] min-w-[140px] max-w-[140px] sm:w-[320px] sm:min-w-[320px] sm:max-w-[320px] py-2 sm:py-2.5 px-2 sm:px-4 sticky left-0 z-20 bg-slate-100  border-r-2 border-slate-300  shadow-[2px_0_4px_rgba(0,0,0,0.04)]">
+                      <div className="flex items-center gap-1 sm:gap-2 text-[11px] sm:text-xs font-black uppercase tracking-wider text-slate-800 ">
+                        <Landmark className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-purple-600 shrink-0" />
+                        <span className="truncate">{t("Summary", "Zhrnutie", "Összesítő")}</span>
                       </div>
                     </td>
-                    <td colSpan={overviewTableData.columns.length + 1} className="py-2.5 px-4 bg-slate-100/80 " />
+                    <td colSpan={overviewTableData.columns.length + 1} className="py-2 sm:py-2.5 px-2 sm:px-4 bg-slate-100/80 " />
                   </tr>
 
                   {/* Row: Net Profit / Cash Flow (Income - Expense) */}
                   <tr className="bg-purple-50/50  font-black border-b border-slate-200 ">
-                    <td className="w-[320px] min-w-[320px] max-w-[320px] py-3 px-4 sticky left-0 bg-purple-50  z-20 text-purple-900  border-r-2 border-purple-300  shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
-                      <div className="flex items-center gap-2 whitespace-nowrap">
-                        <Coins className="h-4 w-4 text-purple-600 shrink-0" />
-                        <span>{t("Net Cash Flow (Diff = Income − Expense)", "Čistý rozdiel (Príjmy − Výdavky)", "Nettó eredmény (Bevétel − Kiadás)")}{tableSearchTotalSuffix}</span>
+                    <td className="w-[140px] min-w-[140px] max-w-[140px] sm:w-[320px] sm:min-w-[320px] sm:max-w-[320px] py-2 sm:py-3 px-2 sm:px-4 sticky left-0 bg-purple-50  z-20 text-purple-900  border-r-2 border-purple-300  shadow-[2px_0_4px_rgba(0,0,0,0.05)]">
+                      <div className="flex items-center gap-1 sm:gap-2">
+                        <Coins className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-purple-600 shrink-0" />
+                        <span className="truncate text-[11px] sm:text-xs">
+                          <span className="hidden sm:inline">{t("Net Cash Flow (Diff = Income − Expense)", "Čistý rozdiel (Príjmy − Výdavky)", "Nettó eredmény (Bevétel − Kiadás)")}</span>
+                          <span className="sm:hidden">{t("Net Flow (Diff)", "Čistý rozdiel", "Nettó diff")}</span>
+                          {tableSearchTotalSuffix}
+                        </span>
                       </div>
                     </td>
                     {overviewTableData.columns.map((col) => {
                       const net = overviewTableData.netCashFlowByCol[col.id];
                       return (
-                        <td key={"net-" + col.id} className="py-3 px-3 text-right">
+                        <td key={"net-" + col.id} className="py-2 sm:py-3 px-2 sm:px-3 text-right">
                           {renderTableCellValue(net, "net")}
                         </td>
                       );
                     })}
-                    <td className="py-3 px-4 text-right font-black bg-purple-100  border-l border-slate-200  sticky right-0 z-20">
+                    <td className="py-2 sm:py-3 px-2.5 sm:px-4 text-right font-black bg-purple-100  border-l border-slate-200  relative sm:sticky sm:right-0 z-20 min-w-[100px] sm:min-w-[130px]">
                       {renderTableCellValue(overviewTableData.netSummary, "net")}
                     </td>
                   </tr>
