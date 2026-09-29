@@ -350,6 +350,82 @@ const TaskCardSwitch: React.FC<{
     </button>
 );
 
+/** Header bar with discreet toggle switch and configurable days number input to show closed tasks */
+const ClosedTasksToggleBar: React.FC<{
+    showClosedTasks: boolean;
+    onToggleShowClosed: (next: boolean) => void;
+    days: number;
+    onChangeDays: (days: number) => void;
+    t: (en: string, sk: string, hu: string) => string;
+}> = ({ showClosedTasks, onToggleShowClosed, days, onChangeDays, t }) => {
+    const daysLabel = t(
+        days === 1 ? "day)" : "days)",
+        days === 1 ? "deň)" : (days >= 2 && days <= 4 ? "dni)" : "dní)"),
+        "nap)",
+    );
+
+    return (
+        <div className="px-4 py-2 bg-slate-50/50 border-b border-slate-100 flex items-center justify-end gap-2.5 select-none">
+            <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-400">
+                <span
+                    onClick={() => onToggleShowClosed(!showClosedTasks)}
+                    className="hover:text-slate-600 transition-colors cursor-pointer"
+                >
+                    {t(
+                        "Show closed tasks (<",
+                        "Zobraziť dokončené (<",
+                        "Lezárt feladatok (<",
+                    )}
+                </span>
+                <input
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={days}
+                    onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === "") {
+                            onChangeDays(1);
+                            return;
+                        }
+                        const val = parseInt(raw, 10);
+                        if (!isNaN(val)) {
+                            onChangeDays(val);
+                        }
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    title={t(
+                        "Days threshold for closed tasks",
+                        "Počet dní pre zobrazenie dokončených úloh",
+                        "Napok száma lezárt feladatokhoz",
+                    )}
+                    aria-label={t(
+                        "Days threshold for closed tasks",
+                        "Počet dní pre zobrazenie dokončených úloh",
+                        "Napok száma lezárt feladatokhoz",
+                    )}
+                    className="w-10 h-5 px-1 py-0 text-center font-bold text-slate-700 bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs text-[11px] select-text"
+                />
+                <span
+                    onClick={() => onToggleShowClosed(!showClosedTasks)}
+                    className="hover:text-slate-600 transition-colors cursor-pointer"
+                >
+                    {daysLabel}
+                </span>
+            </div>
+            <TaskCardSwitch
+                checked={showClosedTasks}
+                onChange={onToggleShowClosed}
+                label={t(
+                    "Show closed tasks",
+                    "Zobraziť dokončené úlohy",
+                    "Lezárt feladatok mutatása",
+                )}
+            />
+        </div>
+    );
+};
+
 export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     tasks,
     setTasks,
@@ -393,8 +469,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             if (!isNaN(d.getTime())) compTime = d.getTime();
         }
         if (!compTime) return true;
-        const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
-        return Date.now() - compTime <= TWO_DAYS_MS;
+        const DAYS_MS = closedTasksDays * 24 * 60 * 60 * 1000;
+        return Date.now() - compTime <= DAYS_MS;
     };
 
     // Fallback owner/assignee name when none is selected — the logged-in user,
@@ -626,7 +702,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const [archiveDateEnd, setArchiveDateEnd] = useState<Date | null>(null);
     const [archiveTagFilter, setArchiveTagFilter] = useState<string | null>(null);
 
-    // Toggle switch to show closed tasks less than 2 days old on the tasks card
+    // Toggle switch & days threshold to show closed tasks on the tasks card
     const [showClosedTasks, setShowClosedTasks] = useState<boolean>(() => {
         try {
             return localStorage.getItem("ccrm_show_closed_tasks") === "true";
@@ -638,6 +714,28 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         setShowClosedTasks(next);
         try {
             localStorage.setItem("ccrm_show_closed_tasks", String(next));
+        } catch {
+            // ignore
+        }
+    };
+
+    const [closedTasksDays, setClosedTasksDays] = useState<number>(() => {
+        try {
+            const stored = localStorage.getItem("ccrm_closed_tasks_days");
+            if (stored) {
+                const parsed = parseInt(stored, 10);
+                if (!isNaN(parsed) && parsed > 0) return parsed;
+            }
+        } catch {
+            // ignore
+        }
+        return 2;
+    });
+    const handleClosedTasksDaysChange = (days: number) => {
+        const val = Math.max(1, Math.min(365, days));
+        setClosedTasksDays(val);
+        try {
+            localStorage.setItem("ccrm_closed_tasks_days", String(val));
         } catch {
             // ignore
         }
@@ -1218,7 +1316,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             isActiveTask(task, isDoneState) || (showClosedTasks && isClosedRecentTask(task))
         );
         return activeTasks.filter(matchesGlobalFilters);
-    }, [canSeeAllTasks, tasks, myTasks, matchesGlobalFilters, showClosedTasks]);
+    }, [canSeeAllTasks, tasks, myTasks, matchesGlobalFilters, showClosedTasks, closedTasksDays]);
 
     const visibleTasksInCurrentView = useMemo(() => {
         if (viewMode === "calendar") {
@@ -3287,28 +3385,14 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     {/* LEFT: MISSED / TODAY / UPCOMING */}
                     <div className="flex flex-col min-w-0 min-h-0 h-auto overflow-visible lg:h-full lg:overflow-y-auto lg:pr-2 pb-2 lg:pb-8 scrollbar-thin">
                         <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden shrink-0">
-                            {/* Header bar with discreet toggle switch to show closed tasks */}
-                            <div className="px-4 py-2 bg-slate-50/50 border-b border-slate-100 flex items-center justify-end gap-2.5 select-none">
-                                <span
-                                    onClick={() => handleToggleShowClosedTasks(!showClosedTasks)}
-                                    className="text-[11px] font-medium text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-                                >
-                                    {t(
-                                        "Show closed tasks (< 2 days)",
-                                        "Zobraziť dokončené úlohy (< 2 dni)",
-                                        "Lezárt feladatok (< 2 nap)",
-                                    )}
-                                </span>
-                                <TaskCardSwitch
-                                    checked={showClosedTasks}
-                                    onChange={handleToggleShowClosedTasks}
-                                    label={t(
-                                        "Show closed tasks",
-                                        "Zobraziť dokončené úlohy",
-                                        "Lezárt feladatok mutatása",
-                                    )}
-                                />
-                            </div>
+                            {/* Header bar with discreet toggle switch & number input to show closed tasks */}
+                            <ClosedTasksToggleBar
+                                showClosedTasks={showClosedTasks}
+                                onToggleShowClosed={handleToggleShowClosedTasks}
+                                days={closedTasksDays}
+                                onChangeDays={handleClosedTasksDaysChange}
+                                t={t}
+                            />
                             {renderTaskBucket({
                                 tone: "rose",
                                 icon: <AlertCircle className="h-4 w-4" />,
@@ -3763,28 +3847,14 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
             {/* One unified card for all task sections (including delegated tasks grouped in the same divisions) */}
             <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden shrink-0">
-                {/* Header bar with discreet toggle switch to show closed tasks */}
-                <div className="px-4 py-2 bg-slate-50/50 border-b border-slate-100 flex items-center justify-end gap-2.5 select-none">
-                    <span
-                        onClick={() => handleToggleShowClosedTasks(!showClosedTasks)}
-                        className="text-[11px] font-medium text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-                    >
-                        {t(
-                            "Show closed tasks (< 2 days)",
-                            "Zobraziť dokončené úlohy (< 2 dni)",
-                            "Lezárt feladatok (< 2 nap)",
-                        )}
-                    </span>
-                    <TaskCardSwitch
-                        checked={showClosedTasks}
-                        onChange={handleToggleShowClosedTasks}
-                        label={t(
-                            "Show closed tasks",
-                            "Zobraziť dokončené úlohy",
-                            "Lezárt feladatok mutatása",
-                        )}
-                    />
-                </div>
+                {/* Header bar with discreet toggle switch & number input to show closed tasks */}
+                <ClosedTasksToggleBar
+                    showClosedTasks={showClosedTasks}
+                    onToggleShowClosed={handleToggleShowClosedTasks}
+                    days={closedTasksDays}
+                    onChangeDays={handleClosedTasksDaysChange}
+                    t={t}
+                />
 
                 {/* Overdue / Missed — always visible */}
                 {renderTaskBucket({
