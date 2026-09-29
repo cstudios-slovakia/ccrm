@@ -3174,8 +3174,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     right. Below lg the two stack into a single column. */}
                 <div className="flex-1 min-h-0 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,480px)_minmax(0,1fr)]">
                     {/* LEFT: MISSED / TODAY / UPCOMING */}
-                    <div className="flex flex-col min-w-0 min-h-0 h-auto overflow-visible lg:h-full lg:overflow-y-auto lg:pr-2 pb-2 lg:pb-0">
-                        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden flex flex-col">
+                    <div className="flex flex-col min-w-0 min-h-0 h-auto overflow-visible lg:h-full lg:overflow-y-auto lg:pr-2 pb-2 lg:pb-8 scrollbar-thin">
+                        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden shrink-0">
                             {renderTaskBucket({
                                 tone: "rose",
                                 icon: <AlertCircle className="h-4 w-4" />,
@@ -3372,10 +3372,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // If isCentered is true (when calendarScope === "hide"), it expands with max-w-3xl for optimal readability.
     const renderMyTaskListColumn = (isCentered: boolean = false) => (
         <div
-            className={`flex flex-col space-y-6 ${
+            className={`flex flex-col space-y-6 min-h-0 ${
                 isCentered
                     ? "w-full max-w-3xl mx-auto p-2"
-                    : "lg:h-full lg:overflow-y-auto overflow-visible h-auto pr-2 pb-6 lg:pb-0"
+                    : "lg:h-full lg:overflow-y-auto overflow-visible h-auto pr-2 pb-8 scrollbar-thin"
             }`}
         >
             {/* Create New Task Section: Inline card matching column width */}
@@ -3627,7 +3627,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             )}
 
             {/* One unified card for all task sections (including delegated tasks grouped in the same divisions) */}
-            <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden flex flex-col">
+            <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden shrink-0">
                 {/* Overdue / Missed — always visible */}
                 {renderTaskBucket({
                     tone: "rose",
