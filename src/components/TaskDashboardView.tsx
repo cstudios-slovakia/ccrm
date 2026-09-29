@@ -322,7 +322,33 @@ interface TaskDashboardViewProps {
     taskAccess?: TaskAccess;
     /** False when no outgoing mail server is set up; task e-mail reminders then warn. */
     mailConfigured?: boolean;
-}
+};
+
+/** A compact toggle switch used on task cards. */
+const TaskCardSwitch: React.FC<{
+    checked: boolean;
+    onChange: (next: boolean) => void;
+    disabled?: boolean;
+    label: string;
+}> = ({ checked, onChange, disabled, label }) => (
+    <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        disabled={disabled}
+        onClick={() => onChange(!checked)}
+        className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-all duration-150 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 focus-visible:ring-offset-2 ${
+            checked ? "bg-indigo-600" : "bg-slate-300"
+        } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:opacity-90"}`}
+    >
+        <span
+            className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
+                checked ? "translate-x-4" : "translate-x-0.5"
+            }`}
+        />
+    </button>
+);
 
 export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     tasks,
@@ -351,6 +377,24 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             (taskStates.length > 0 &&
                 status === taskStates[taskStates.length - 1])
         );
+    };
+
+    const isClosedRecentTask = (t: Task): boolean => {
+        if (t.archived) return false;
+        if (!isDoneState(t.status)) return false;
+        const raw = t.completedAt || (t as any).completed_at || (t as any).updatedAt || (t as any).updated_at;
+        let compTime: number | null = null;
+        if (raw) {
+            const d = new Date(typeof raw === "string" ? raw.replace(" ", "T") : raw);
+            if (!isNaN(d.getTime())) compTime = d.getTime();
+        }
+        if (!compTime && t.deadline) {
+            const d = new Date(t.deadline + "T23:59:59");
+            if (!isNaN(d.getTime())) compTime = d.getTime();
+        }
+        if (!compTime) return true;
+        const TWO_DAYS_MS = 2 * 24 * 60 * 60 * 1000;
+        return Date.now() - compTime <= TWO_DAYS_MS;
     };
 
     // Fallback owner/assignee name when none is selected — the logged-in user,
@@ -581,6 +625,23 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const [archiveDateStart, setArchiveDateStart] = useState<Date | null>(null);
     const [archiveDateEnd, setArchiveDateEnd] = useState<Date | null>(null);
     const [archiveTagFilter, setArchiveTagFilter] = useState<string | null>(null);
+
+    // Toggle switch to show closed tasks less than 2 days old on the tasks card
+    const [showClosedTasks, setShowClosedTasks] = useState<boolean>(() => {
+        try {
+            return localStorage.getItem("ccrm_show_closed_tasks") === "true";
+        } catch {
+            return false;
+        }
+    });
+    const handleToggleShowClosedTasks = (next: boolean) => {
+        setShowClosedTasks(next);
+        try {
+            localStorage.setItem("ccrm_show_closed_tasks", String(next));
+        } catch {
+            // ignore
+        }
+    };
 
     // Add Task Inline Card State
     const [isAddDrawerOpen, setIsAddDrawerOpen] = useState(false);
@@ -826,7 +887,12 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // Item 11: only the logged-in user's tasks.
     const myTasksForDate = (dateStr: string) =>
         myTasks
-            .filter((t) => t.deadline === dateStr && !isDoneState(t.status))
+            .filter((t) => {
+                if (t.deadline !== dateStr) return false;
+                if (!isDoneState(t.status)) return true;
+                if (showClosedTasks && isClosedRecentTask(t)) return true;
+                return false;
+            })
             .sort(byDeadlineTime);
 
     const calculateOverdueDays = (
@@ -1149,10 +1215,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     const filteredGlobalTasks = useMemo(() => {
         const activeTasks = (canSeeAllTasks ? tasks : myTasks).filter((task) =>
-            isActiveTask(task, isDoneState)
+            isActiveTask(task, isDoneState) || (showClosedTasks && isClosedRecentTask(task))
         );
         return activeTasks.filter(matchesGlobalFilters);
-    }, [canSeeAllTasks, tasks, myTasks, matchesGlobalFilters]);
+    }, [canSeeAllTasks, tasks, myTasks, matchesGlobalFilters, showClosedTasks]);
 
     const visibleTasksInCurrentView = useMemo(() => {
         if (viewMode === "calendar") {
@@ -2290,20 +2356,41 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     const tomorrowStr = toLocalDateStr(new Date(today.getTime() + 86400000));
     // All personal and delegated tasks are grouped together in the same time divisions:
-    const overdueTasks = myTasks.filter((t) => isTaskOverdue(t)).sort(byDeadline);
+    const overdueTasks = myTasks
+        .filter((t) => {
+            if (isTaskOverdue(t)) return true;
+            if (showClosedTasks && isClosedRecentTask(t)) {
+                return t.deadline < todayStr;
+            }
+            return false;
+        })
+        .sort(byDeadline);
     const todayTasks = myTasks
-        .filter(
-            (t) =>
-                t.deadline === todayStr &&
-                !isTaskOverdue(t) &&
-                !isDoneState(t.status),
-        )
+        .filter((t) => {
+            if (t.deadline === todayStr && !isTaskOverdue(t) && !isDoneState(t.status)) return true;
+            if (showClosedTasks && isClosedRecentTask(t)) {
+                return t.deadline === todayStr || !t.deadline;
+            }
+            return false;
+        })
         .sort(byDeadlineTime);
     const tomorrowTasks = myTasks
-        .filter((t) => t.deadline === tomorrowStr && !isDoneState(t.status))
+        .filter((t) => {
+            if (t.deadline === tomorrowStr && !isDoneState(t.status)) return true;
+            if (showClosedTasks && isClosedRecentTask(t)) {
+                return t.deadline === tomorrowStr;
+            }
+            return false;
+        })
         .sort(byDeadlineTime);
     const futureTasks = myTasks
-        .filter((t) => t.deadline > tomorrowStr && !isDoneState(t.status))
+        .filter((t) => {
+            if (t.deadline > tomorrowStr && !isDoneState(t.status)) return true;
+            if (showClosedTasks && isClosedRecentTask(t)) {
+                return t.deadline > tomorrowStr;
+            }
+            return false;
+        })
         .sort(byDeadline);
 
     // The lead a task is linked to, as a link straight to that lead's detail —
@@ -2369,6 +2456,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     const renderTaskCard = (task: Task) => {
         const isSelected = selectedTaskIds.has(task.id);
+        const isClosed = isDoneState(task.status);
 
         return (
             <div
@@ -2453,7 +2541,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             {/* Desktop-only Title: inline with status dropdown */}
                             <span
                                 onClick={() => setEditingTask(task)}
-                                className="hidden sm:inline font-bold text-slate-800 truncate cursor-pointer hover:text-indigo-600 transition-colors"
+                                className={`hidden sm:inline font-bold truncate cursor-pointer transition-colors ${
+                                    isClosed
+                                        ? "text-slate-400 line-through decoration-slate-400 hover:text-slate-600"
+                                        : "text-slate-800 hover:text-indigo-600"
+                                }`}
                                 title={task.title}
                             >
                                 <TaskPillText
@@ -2518,7 +2610,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     <div className="sm:hidden w-full">
                         <span
                             onClick={() => setEditingTask(task)}
-                            className="font-bold text-slate-900 text-xs leading-snug cursor-pointer hover:text-indigo-600 transition-colors break-words line-clamp-3 block"
+                            className={`font-bold text-xs leading-snug cursor-pointer transition-colors break-words line-clamp-3 block ${
+                                isClosed
+                                    ? "text-slate-400 line-through decoration-slate-400 hover:text-slate-600"
+                                    : "text-slate-900 hover:text-indigo-600"
+                            }`}
                             title={task.title}
                         >
                             <TaskPillText
@@ -2897,16 +2993,31 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         // the team board answers "what is late / due now / still coming",
         // and a dedicated Tomorrow bucket only splits that last group in two.
         const globalOverdue = filteredTasks
-            .filter((task) => isTaskOverdue(task))
+            .filter((task) => {
+                if (isTaskOverdue(task)) return true;
+                if (showClosedTasks && isClosedRecentTask(task)) {
+                    return task.deadline < todayStr;
+                }
+                return false;
+            })
             .sort(byDeadline);
         const globalToday = filteredTasks
-            .filter(
-                (task) =>
-                    task.deadline === todayStr && !isTaskOverdue(task),
-            )
+            .filter((task) => {
+                if (task.deadline === todayStr && !isTaskOverdue(task) && !isDoneState(task.status)) return true;
+                if (showClosedTasks && isClosedRecentTask(task)) {
+                    return task.deadline === todayStr || !task.deadline;
+                }
+                return false;
+            })
             .sort(byDeadlineTime);
         const globalUpcoming = filteredTasks
-            .filter((task) => task.deadline > todayStr)
+            .filter((task) => {
+                if (task.deadline > todayStr && !isDoneState(task.status)) return true;
+                if (showClosedTasks && isClosedRecentTask(task)) {
+                    return task.deadline > todayStr;
+                }
+                return false;
+            })
             .sort(byDeadline);
 
         // Who a card collects. On the team-wide board that is the assignee, so a
@@ -3176,6 +3287,35 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     {/* LEFT: MISSED / TODAY / UPCOMING */}
                     <div className="flex flex-col min-w-0 min-h-0 h-auto overflow-visible lg:h-full lg:overflow-y-auto lg:pr-2 pb-2 lg:pb-8 scrollbar-thin">
                         <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden shrink-0">
+                            {/* Header bar with toggle switch to show closed tasks */}
+                            <div className="px-4 py-2.5 bg-slate-50/70 border-b border-slate-200/80 flex items-center justify-between gap-3 select-none">
+                                <div className="flex items-center gap-2 min-w-0">
+                                    <CheckCircle2
+                                        className={`h-4 w-4 shrink-0 transition-colors ${
+                                            showClosedTasks ? "text-emerald-500" : "text-slate-400"
+                                        }`}
+                                    />
+                                    <span className="text-xs font-black uppercase tracking-wider text-slate-700 truncate">
+                                        {t(
+                                            "Show closed tasks",
+                                            "Zobraziť dokončené úlohy",
+                                            "Lezárt feladatok mutatása",
+                                        )}
+                                    </span>
+                                    <span className="hidden sm:inline-block text-[10px] font-semibold text-slate-400">
+                                        ({t("< 2 days old", "< 2 dni", "< 2 napos")})
+                                    </span>
+                                </div>
+                                <TaskCardSwitch
+                                    checked={showClosedTasks}
+                                    onChange={handleToggleShowClosedTasks}
+                                    label={t(
+                                        "Show closed tasks",
+                                        "Zobraziť dokončené úlohy",
+                                        "Lezárt feladatok mutatása",
+                                    )}
+                                />
+                            </div>
                             {renderTaskBucket({
                                 tone: "rose",
                                 icon: <AlertCircle className="h-4 w-4" />,
@@ -3630,6 +3770,36 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
             {/* One unified card for all task sections (including delegated tasks grouped in the same divisions) */}
             <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden shrink-0">
+                {/* Header bar with toggle switch to show closed tasks */}
+                <div className="px-4 py-2.5 bg-slate-50/70 border-b border-slate-200/80 flex items-center justify-between gap-3 select-none">
+                    <div className="flex items-center gap-2 min-w-0">
+                        <CheckCircle2
+                            className={`h-4 w-4 shrink-0 transition-colors ${
+                                showClosedTasks ? "text-emerald-500" : "text-slate-400"
+                            }`}
+                        />
+                        <span className="text-xs font-black uppercase tracking-wider text-slate-700 truncate">
+                            {t(
+                                "Show closed tasks",
+                                "Zobraziť dokončené úlohy",
+                                "Lezárt feladatok mutatása",
+                            )}
+                        </span>
+                        <span className="hidden sm:inline-block text-[10px] font-semibold text-slate-400">
+                            ({t("< 2 days old", "< 2 dni", "< 2 napos")})
+                        </span>
+                    </div>
+                    <TaskCardSwitch
+                        checked={showClosedTasks}
+                        onChange={handleToggleShowClosedTasks}
+                        label={t(
+                            "Show closed tasks",
+                            "Zobraziť dokončené úlohy",
+                            "Lezárt feladatok mutatása",
+                        )}
+                    />
+                </div>
+
                 {/* Overdue / Missed — always visible */}
                 {renderTaskBucket({
                     tone: "rose",
@@ -4528,7 +4698,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                             <div className="flex items-center gap-2 flex-wrap">
                                                                 <span
                                                                     onClick={() => setEditingTask(task)}
-                                                                    className="font-extrabold text-slate-700 truncate cursor-pointer hover:text-indigo-600"
+                                                                    className={`font-extrabold truncate cursor-pointer transition-colors ${
+                                                                        isDoneState(task.status)
+                                                                            ? "text-slate-400 line-through decoration-slate-400 hover:text-slate-600"
+                                                                            : "text-slate-700 hover:text-indigo-600"
+                                                                    }`}
                                                                 >
                                                                     <TaskPillText
                                                                         text={task.title}
