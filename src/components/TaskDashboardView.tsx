@@ -892,6 +892,18 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const closeAddDrawer = () => {
         setIsAddDrawerOpen(false);
     };
+
+    React.useEffect(() => {
+        if (!isAddDrawerOpen) return;
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape") {
+                closeAddDrawer();
+            }
+        };
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [isAddDrawerOpen]);
+
     const [newTitle, setNewTitle] = useState("");
     const [newPriority, setNewPriority] = useState<"low" | "medium" | "high">(
         "medium",
@@ -1987,8 +1999,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         );
     };
 
-    const handleCreateTask = (e: React.FormEvent) => {
-        e.preventDefault();
+    const handleCreateTask = (e?: React.FormEvent, closeAfterCreate: boolean = true) => {
+        if (e) e.preventDefault();
         if (!taskAccess.create) {
             closeAddDrawer();
             return;
@@ -1999,13 +2011,16 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             .filter((line) => line.length > 0);
 
         if (lines.length === 0) {
-            (window as any).showToast(
-                t(
-                    "Please enter a task title!",
-                    "Prosím zadajte názov úlohy!",
-                    "Kérjük, adja meg a feladat címét!",
-                ),
-            );
+            if (typeof (window as any).showToast === "function") {
+                (window as any).showToast(
+                    t(
+                        "Please enter a task title!",
+                        "Prosím zadajte názov úlohy!",
+                        "Kérjük, adja meg a feladat címét!",
+                    ),
+                    "warning",
+                );
+            }
             return;
         }
 
@@ -2030,8 +2045,34 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
         setTasks((prev) => [...createdTasks, ...prev]);
 
-        // Reset Form & Close Card
-        resetNewTaskForm();
+        // Success notification
+        if (typeof (window as any).showToast === "function") {
+            const successMsg =
+                createdTasks.length > 1
+                    ? t(
+                          `${createdTasks.length} tasks created successfully!`,
+                          `${createdTasks.length} úloh bolo úspešne vytvorených!`,
+                          `${createdTasks.length} feladat sikeresen létrehozva!`,
+                      )
+                    : t(
+                          "Task created successfully!",
+                          "Úloha bola úspešne vytvorená!",
+                          "Feladat sikeresen létrehozva!",
+                      );
+            (window as any).showToast(successMsg);
+        }
+
+        if (closeAfterCreate) {
+            resetNewTaskForm();
+            closeAddDrawer();
+        } else {
+            // Keep the form open for the next task: clear title and re-focus
+            setNewTitle("");
+            setTimeout(() => {
+                const textarea = document.querySelector('form textarea') as HTMLTextAreaElement | null;
+                if (textarea) textarea.focus();
+            }, 50);
+        }
     };
 
     // --- RENDERING ---
@@ -3645,7 +3686,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         </button>
                     </div>
 
-                    <form onSubmit={handleCreateTask} className="p-3.5 space-y-3 text-xs font-bold">
+                    <form onSubmit={(e) => handleCreateTask(e, true)} className="p-3.5 space-y-3 text-xs font-bold">
                         <div className="space-y-1">
                             <label className="text-[9px] font-black text-slate-500 uppercase flex items-center justify-between">
                                 <span>{t("Task Title(s)", "Názov úlohy / úloh", "Feladat címe(i)")}</span>
@@ -3663,7 +3704,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 onKeyDown={(e) => {
                                     if (e.key === "Enter" && !e.shiftKey) {
                                         e.preventDefault();
-                                        handleCreateTask(e);
+                                        handleCreateTask(e, true);
                                     } else if (e.key === "Escape") {
                                         e.preventDefault();
                                         closeAddDrawer();
@@ -3829,16 +3870,28 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             <button
                                 type="button"
                                 onClick={closeAddDrawer}
-                                className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-black text-xs uppercase tracking-wider transition-colors cursor-pointer"
+                                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-black text-xs uppercase tracking-wider transition-colors cursor-pointer shrink-0"
                             >
                                 {t("Cancel", "Zrušiť", "Mégse")}
                             </button>
-                            <button
-                                type="submit"
-                                className="flex-1 py-2 bg-[#ff5d00] hover:bg-[#e05200] text-white rounded-xl font-black text-xs uppercase tracking-wider shadow-lg shadow-orange-500/25 transition-all active:scale-[0.99] cursor-pointer"
-                            >
-                                {t("Save Task(s)", "Uložiť úlohu(y)", "Mentés")}
-                            </button>
+                            <div className="flex-1 flex items-stretch rounded-xl overflow-hidden shadow-lg shadow-orange-500/25 bg-[#ff5d00] transition-all">
+                                <button
+                                    type="submit"
+                                    className="w-2/3 py-2.5 px-3 bg-[#ff5d00] hover:bg-[#e05200] active:bg-[#c94a00] text-white font-black text-[11px] sm:text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors cursor-pointer text-center truncate"
+                                    title={t("Create task & close form", "Vytvoriť úlohu a zatvoriť formulár", "Feladat létrehozása és bezárás")}
+                                >
+                                    {t("Create task", "Vytvoriť úlohu", "Feladat létrehozása")}
+                                </button>
+                                <div className="w-[1px] bg-white/30 self-stretch my-2 shrink-0" />
+                                <button
+                                    type="button"
+                                    onClick={(e) => handleCreateTask(e, false)}
+                                    className="w-1/3 py-2.5 px-3 bg-[#ff5d00] hover:bg-[#e05200] active:bg-[#c94a00] text-white font-black text-[11px] sm:text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors cursor-pointer text-center truncate"
+                                    title={t("Create task & add another", "Vytvoriť úlohu a pridať ďalšiu", "Létrehozás és újabb hozzáadása")}
+                                >
+                                    {t("Add another", "Pridať ďalšiu", "Újabb hozzáadása")}
+                                </button>
+                            </div>
                         </div>
                     </form>
                 </div>
