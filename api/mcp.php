@@ -579,6 +579,7 @@ function mcp_get_tool_definitions(): array {
                     'status' => ['type' => 'string', 'description' => 'Filter by status: active, completed, on_hold'],
                     'client_id' => ['type' => 'string', 'description' => 'Filter by client ID'],
                     'search' => ['type' => 'string', 'description' => 'Search project names'],
+                    'include_archived' => ['type' => 'boolean', 'description' => 'Include archived projects (default false)'],
                     'limit' => ['type' => 'integer', 'description' => 'Limit (default 50)']
                 ]
             ]
@@ -1388,10 +1389,13 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
                 $where[] = "name LIKE ?";
                 $params[] = '%' . $args['search'] . '%';
             }
+            if (empty($args['include_archived'])) {
+                $where[] = "(p.archived = 0 OR p.archived IS NULL)";
+            }
 
             $limit = min(max(1, (int)($args['limit'] ?? 50)), 100);
 
-            $sql = "SELECT p.id, p.name, p.status, p.budget, p.deadline, p.start_date, p.lead_id, p.client_id, l.name as client_name, p.created_at
+            $sql = "SELECT p.id, p.name, p.status, p.budget, p.deadline, p.start_date, p.lead_id, p.client_id, l.name as client_name, p.archived, p.created_at
                     FROM projects p
                     LEFT JOIN leads l ON (p.client_id = l.id OR p.lead_id = l.id)
                     WHERE " . implode(' AND ', $where) . "
@@ -1442,14 +1446,14 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
         case 'update_project':
             $id = $args['id'];
-            $allowedFields = ['name', 'status', 'budget', 'start_date', 'deadline'];
+            $allowedFields = ['name', 'status', 'budget', 'start_date', 'deadline', 'archived'];
             $updates = [];
             $params = [];
 
             foreach ($allowedFields as $f) {
                 if (array_key_exists($f, $args)) {
                     $updates[] = "`$f` = ?";
-                    $params[] = $args[$f];
+                    $params[] = $f === 'archived' ? (!empty($args[$f]) ? 1 : 0) : $args[$f];
                 }
             }
 

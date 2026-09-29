@@ -319,3 +319,10 @@ test("a missing delay reason reads as empty, never as \"null\"", () => {
   assert.equal(projectDelayReason(project({ delayReason: null })), "");
   assert.equal(projectDelayReason(undefined), "");
 });
+
+test("project archived state defaults to falsy and preserves boolean value", () => {
+  const p = project();
+  assert.equal(Boolean(p.archived), false);
+  const pArchived = project({ archived: true });
+  assert.equal(pArchived.archived, true);
+});

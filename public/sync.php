@@ -1314,6 +1314,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'createdAt' => $pRow['created_at'] ?? null,
                 'budget' => isset($pRow['budget']) ? (float)$pRow['budget'] : null,
                 'customFileFields' => json_decode($pRow['custom_files_json'] ?? '[]', true) ?: [],
+                'archived' => isset($pRow['archived']) && (int)$pRow['archived'] === 1,
                 'managers' => $managersByProject[$projId] ?? [],
                 'data' => [],
                 'timeline' => [],
@@ -2738,7 +2739,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $existingProjIds = $pdo->query("SELECT `id` FROM `projects`")->fetchAll(PDO::FETCH_COLUMN);
             $processedProjIds = [];
 
-            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `division`, `rating`, `deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`, `custom_files_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `division`=VALUES(`division`), `rating`=COALESCE(VALUES(`rating`), `rating`), `deadline`=VALUES(`deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`), `custom_files_json`=COALESCE(VALUES(`custom_files_json`), `custom_files_json`)");
+            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `division`, `rating`, `deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`, `custom_files_json`, `archived`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `division`=VALUES(`division`), `rating`=COALESCE(VALUES(`rating`), `rating`), `deadline`=VALUES(`deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`), `custom_files_json`=COALESCE(VALUES(`custom_files_json`), `custom_files_json`), `archived`=COALESCE(VALUES(`archived`), `archived`)");
 
             // Manager assignments are replaced per project, never globally. The old
             // unconditional `DELETE FROM project_managers` assumed every push carried
@@ -2808,6 +2809,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $projCustomFiles = json_encode($cleanCustom);
                 }
 
+                $projArchived = null;
+                if (array_key_exists('archived', $p)) {
+                    $projArchived = !empty($p['archived']) ? 1 : 0;
+                }
+
                 $insProj->execute([
                     $projId,
                     $p['projectTypeId'],
@@ -2822,7 +2828,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $projStart,
                     $projFinished,
                     $projBudget,
-                    $projCustomFiles
+                    $projCustomFiles,
+                    $projArchived
                 ]);
 
                 // Only rewrite this project's managers when the payload actually carries

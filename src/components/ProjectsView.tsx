@@ -292,11 +292,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   const overdueIds = useMemo(() => {
     const ids = new Set<string>();
     projects.forEach(p => {
+      if (p.archived && selectedArchiveFilter === "active") return;
+      if (!p.archived && selectedArchiveFilter === "archived") return;
       const dl = evaluateProjectDeadline(p, projectTypes.find(pt => pt.id === p.projectTypeId), today);
       if (dl?.isOverdue) ids.add(p.id);
     });
     return ids;
-  }, [projects, projectTypes, today]);
+  }, [projects, projectTypes, today, selectedArchiveFilter]);
 
   /* Projects past their deadline with nobody having written down why — the red
      flag. Counted here so the flag filter and the badges on the rows are the
@@ -304,20 +306,33 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   const unexplainedIds = useMemo(() => {
     const ids = new Set<string>();
     projects.forEach(p => {
+      if (p.archived && selectedArchiveFilter === "active") return;
+      if (!p.archived && selectedArchiveFilter === "archived") return;
       const dl = evaluateProjectDeadline(p, projectTypes.find(pt => pt.id === p.projectTypeId), today);
       if (projectNeedsDelayReason(p, dl)) ids.add(p.id);
     });
     return ids;
-  }, [projects, projectTypes, today]);
+  }, [projects, projectTypes, today, selectedArchiveFilter]);
 
   // Counts behind the summary strip. One chip per real project status, so the
   // strip and the (now hidden) status dropdown can never offer different lists.
-  const totalProjects = projects.length;
+  const visibleProjectsForStats = useMemo(() => {
+    return projects.filter(p => {
+      const isArchived = Boolean(p.archived);
+      return selectedArchiveFilter === "all"
+        ? true
+        : selectedArchiveFilter === "archived"
+        ? isArchived
+        : !isArchived;
+    });
+  }, [projects, selectedArchiveFilter]);
+
+  const totalProjects = visibleProjectsForStats.length;
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    projects.forEach(p => { counts[p.status] = (counts[p.status] || 0) + 1; });
+    visibleProjectsForStats.forEach(p => { counts[p.status] = (counts[p.status] || 0) + 1; });
     return counts;
-  }, [projects]);
+  }, [visibleProjectsForStats]);
   const overdueCount = overdueIds.size;
 
   /* Who the list can be narrowed to. Projects store manager NAMES, not ids (see
@@ -511,6 +526,19 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
     setProjects(prev => prev.filter(p => p.id !== id));
     (window as any).showToast(t("Project deleted.", "Projekt bol vymazaný.", "Projekt törölve."));
+  };
+
+  const handleArchiveProject = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!canEdit) return;
+    const target = projects.find(p => p.id === id);
+    if (!target) return;
+    const nextArchived = !target.archived;
+    setProjects(prev => prev.map(p => (p.id === id ? { ...p, archived: nextArchived } : p)));
+    const msg = nextArchived
+      ? t("Project archived.", "Projekt bol archivovaný.", "Projekt archiválva.")
+      : t("Project restored.", "Projekt bol obnovený.", "Projekt visszaállítva.");
+    (window as any).showToast?.(msg);
   };
 
   /**
@@ -910,6 +938,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
   const handleBulkArchive = (archive: boolean) => {
     if (!canEdit || selectedProjectIds.size === 0) return;
+    const count = selectedProjectIds.size;
     setProjects(prev =>
       prev.map(p => {
         if (!selectedProjectIds.has(p.id)) return p;
@@ -921,6 +950,18 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     );
     setActiveBulkMenu(null);
     setSelectedProjectIds(new Set());
+    const msg = archive
+      ? (userLanguage === "sk"
+          ? `${count} ${count === 1 ? "projekt bol archivovaný" : count < 5 ? "projekty boli archivované" : "projektov bolo archivovaných"}.`
+          : userLanguage === "hu"
+          ? `${count} projekt archiválva.`
+          : `${count} ${count === 1 ? "project" : "projects"} archived.`)
+      : (userLanguage === "sk"
+          ? `${count} ${count === 1 ? "projekt bol obnovený" : count < 5 ? "projekty boli obnovené" : "projektov bolo obnovených"}.`
+          : userLanguage === "hu"
+          ? `${count} projekt visszaállítva.`
+          : `${count} ${count === 1 ? "project" : "projects"} restored.`);
+    (window as any).showToast?.(msg);
   };
 
   const renderBulkActionToolbar = () => {
@@ -2155,16 +2196,28 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                             </td>
                           ))}
                           <td className="hidden lg:table-cell px-4 py-3">
-                            {canDelete && (
-                              <button
-                                type="button"
-                                onClick={(e) => handleDeleteProject(p.id, e)}
-                                className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
-                                title={t("Delete Project", "Vymazať projekt", "Projekt törlése")}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            )}
+                            <div className="flex items-center gap-1 justify-end">
+                              {canEdit && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleArchiveProject(p.id, e)}
+                                  className="p-1.5 text-slate-300 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-all cursor-pointer"
+                                  title={p.archived ? t("Restore Project", "Obnoviť projekt", "Projekt visszaállítása") : t("Archive Project", "Archivovať projekt", "Projekt archiválása")}
+                                >
+                                  {p.archived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+                                </button>
+                              )}
+                              {canDelete && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleDeleteProject(p.id, e)}
+                                  className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
+                                  title={t("Delete Project", "Vymazať projekt", "Projekt törlése")}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              )}
+                            </div>
                           </td>
 
                           {/* ============================================================ */}
@@ -2224,6 +2277,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                                   >
                                     <Edit3 className="h-3.5 w-3.5" />
                                   </button>
+                                  {canEdit && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => handleArchiveProject(p.id, e)}
+                                      className="h-6 w-6 rounded-md text-slate-400 hover:text-amber-500 hover:bg-amber-50 flex items-center justify-center transition-colors cursor-pointer"
+                                      title={p.archived ? t("Restore Project", "Obnoviť projekt", "Projekt visszaállítása") : t("Archive Project", "Archivovať projekt", "Projekt archiválása")}
+                                    >
+                                      {p.archived ? <ArchiveRestore className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
+                                    </button>
+                                  )}
                                   {canDelete && (
                                     <button
                                       type="button"
@@ -2534,6 +2597,18 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           />
                         </div>
                       </div>
+                    )}
+
+                    {/* Hover archive trigger */}
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleArchiveProject(p.id, e)}
+                        className="absolute right-12 top-14 opacity-0 group-hover:opacity-100 p-2 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-xl transition-all cursor-pointer z-10"
+                        title={p.archived ? t("Restore Project", "Obnoviť projekt", "Projekt visszaállítása") : t("Archive Project", "Archivovať projekt", "Projekt archiválása")}
+                      >
+                        {p.archived ? <ArchiveRestore className="h-4.5 w-4.5" /> : <Archive className="h-4.5 w-4.5" />}
+                      </button>
                     )}
 
                     {/* Hover delete trigger */}

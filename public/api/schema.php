@@ -366,6 +366,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `finished_at` DATE NULL,
               `budget` DECIMAL(14,2) NULL,
               `custom_files_json` LONGTEXT NULL,
+              `archived` TINYINT(1) NOT NULL DEFAULT 0,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               FOREIGN KEY (`project_type_id`) REFERENCES `project_types` (`id`) ON DELETE CASCADE
@@ -988,6 +989,10 @@ if (!function_exists('ccrm_schema_statements')) {
         // shows as an empty row of stars rather than as one star.
         if (!ccrm_column_exists($pdo, 'projects', 'rating')) {
             $pdo->exec("ALTER TABLE `projects` ADD COLUMN `rating` TINYINT NULL AFTER `status`");
+        }
+        // 1.11.87: Project archiving from active projects register
+        if (!ccrm_column_exists($pdo, 'projects', 'archived')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `archived` TINYINT(1) NOT NULL DEFAULT 0 AFTER `custom_files_json`");
         }
         if (!ccrm_column_exists($pdo, 'tasks', 'deadline_time')) {
             $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `deadline_time` VARCHAR(5) NULL AFTER `deadline`");

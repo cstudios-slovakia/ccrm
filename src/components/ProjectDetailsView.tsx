@@ -3,7 +3,8 @@ import * as Icons from "lucide-react";
 import {
   Plus, Trash2, Upload, FileText, ArrowLeft, Mail, Phone,
   Coins, TrendingUp, TrendingDown, DollarSign, Receipt,
-  PieChart, X, Edit3, Wallet, Check, Paperclip, CircleCheck, CircleAlert
+  PieChart, X, Edit3, Wallet, Check, Paperclip, CircleCheck, CircleAlert,
+  Archive, ArchiveRestore
 } from "lucide-react";
 import type {
   Project, ProjectType, Lead, UserProfile,
@@ -1497,6 +1498,26 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2 self-start md:self-auto">
+          {/* Archive / Restore Button */}
+          {canEdit && !isNew && (
+            <button
+              type="button"
+              onClick={() => {
+                const nextArchived = !project.archived;
+                handleSave({ archived: nextArchived });
+                const msg = nextArchived
+                  ? t("Project archived.", "Projekt bol archivovaný.", "Projekt archiválva.")
+                  : t("Project restored.", "Projekt bol obnovený.", "Projekt visszaállítva.");
+                (window as any).showToast?.(msg);
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-amber-600 font-heading font-bold text-xs uppercase tracking-wider hover:bg-amber-50 hover:text-amber-800 transition-all active:scale-95 cursor-pointer"
+              title={project.archived ? t("Restore Project", "Obnoviť projekt", "Projekt visszaállítása") : t("Archive Project", "Archivovať projekt", "Projekt archiválása")}
+            >
+              {project.archived ? <ArchiveRestore className="h-4 w-4 shrink-0" /> : <Archive className="h-4 w-4 shrink-0" />}
+              <span className="hidden sm:inline">{project.archived ? t("Restore", "Obnoviť", "Visszaállítás") : t("Archive", "Archivovať", "Archiválás")}</span>
+            </button>
+          )}
+
           {/* Deleting a project that has never been saved would delete nothing,
               so the button only appears once the project exists. */}
           {canDelete && !isNew && onDelete && (
