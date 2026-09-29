@@ -3372,15 +3372,16 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // If isCentered is true (when calendarScope === "hide"), it expands with max-w-3xl for optimal readability.
     const renderMyTaskListColumn = (isCentered: boolean = false) => (
         <div
-            className={`flex flex-col space-y-6 min-h-0 ${
+            className={`flex flex-col space-y-4 min-h-0 ${
                 isCentered
                     ? "w-full max-w-3xl mx-auto p-2"
                     : "lg:h-full lg:overflow-y-auto overflow-visible h-auto pr-2 pb-8 scrollbar-thin"
             }`}
         >
-            {/* Create New Task Section: Inline card matching column width */}
-            {!isAddDrawerOpen ? (
-                <div className="w-full">
+            {/* Create New Task Section: Sticky action bar matching column width */}
+            <div className="sticky top-0 z-20 w-full shrink-0 pt-1.5 pb-2.5 bg-slate-50/90 dark:bg-slate-900/90 backdrop-blur-md">
+                {!isAddDrawerOpen ? (
+                    <div className="w-full">
                     <VoiceTaskActionBar
                         canCreate={taskAccess.create}
                         systemLanguage={systemLanguage}
@@ -3403,7 +3404,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     />
                 </div>
             ) : (
-                <div className="w-full bg-white rounded-3xl border-2 border-orange-200/90 shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-3 duration-200">
+                <div className="w-full bg-white rounded-3xl border-2 border-orange-200/90 shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-3 duration-200 max-h-[calc(100vh-8rem)] overflow-y-auto">
                     <div className="p-4 bg-gradient-to-r from-orange-50/80 via-white to-orange-50/40 border-b border-orange-100 flex items-center justify-between">
                         <div className="flex items-center gap-2">
                             <span className="p-1.5 rounded-xl bg-[#ff5d00] text-white shadow-sm">
@@ -3625,6 +3626,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     </form>
                 </div>
             )}
+            </div>
 
             {/* One unified card for all task sections (including delegated tasks grouped in the same divisions) */}
             <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden shrink-0">
