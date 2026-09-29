@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { 
   Users, MapPin, Search, Clock, User, Briefcase, Handshake, 
   Euro, UserCheck, Check, Layers, Phone, Mail, Globe, 
-  Calendar, ArrowLeft, Plus, TrendingUp, PencilLine, FileText,
+  Calendar, ArrowLeft, ArrowUp, ArrowDown, ArrowUpDown, Plus, TrendingUp, PencilLine, FileText,
   X, FolderOpen, Download, Trash2, SlidersHorizontal,
   CornerDownLeft, CornerLeftDown, Loader2, Brain,
   ChevronLeft, ChevronRight, Milestone, Coins, Archive, ArchiveRestore, Settings,
@@ -50,6 +50,16 @@ import { mergeFinancialRecord, derivePaidDate, FINANCIAL_STATUS_OPTIONS } from "
 import { splitRecordAmounts } from "../utils/financialOverviewTable";
 import { categoryBreadcrumbs } from "../utils/financialCategoryTree";
 import { isOutgoingMail } from "../utils/mailTimeline";
+
+export type ClientSortKey = "name" | "phone" | "email" | "city" | "clientType" | "owner" | "leadsCount" | "totalValue";
+export type ClientSortDirection = "asc" | "desc";
+
+export interface ClientSortConfig {
+  key: ClientSortKey;
+  direction: ClientSortDirection;
+}
+
+const CLIENTS_SORT_STORAGE_KEY = "ccrm_clients_sort_config";
 
 interface ClientsViewProps {
   leads: Lead[];
@@ -459,10 +469,66 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   // The categories manager takes the list's place while it is open.
   const [clientsSubView, setClientsSubView] = useState<"list" | "settings">("list");
 
-  // Reset pagination to page 1 on filter changes
+  // Clients table column sort configuration
+  const [sortConfig, setSortConfig] = useState<ClientSortConfig | null>(() => {
+    try {
+      const raw = localStorage.getItem(CLIENTS_SORT_STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.key === "string" && (parsed.direction === "asc" || parsed.direction === "desc")) {
+        return parsed as ClientSortConfig;
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  });
+
+  useEffect(() => {
+    try {
+      if (sortConfig) {
+        localStorage.setItem(CLIENTS_SORT_STORAGE_KEY, JSON.stringify(sortConfig));
+      } else {
+        localStorage.removeItem(CLIENTS_SORT_STORAGE_KEY);
+      }
+    } catch {
+      // ignore
+    }
+  }, [sortConfig]);
+
+  const handleSort = (key: ClientSortKey, keepDirection = false) => {
+    setSortConfig(current => {
+      if (keepDirection && current) {
+        return { key, direction: current.direction };
+      }
+      if (!current || current.key !== key) {
+        const defaultDirection: ClientSortDirection = (key === "totalValue" || key === "leadsCount") ? "desc" : "asc";
+        return { key, direction: defaultDirection };
+      }
+      if (current.direction === ((key === "totalValue" || key === "leadsCount") ? "desc" : "asc")) {
+        return { key, direction: current.direction === "asc" ? "desc" : "asc" };
+      }
+      return null;
+    });
+  };
+
+  const renderSortIcon = (columnKey: ClientSortKey) => {
+    if (sortConfig?.key !== columnKey) {
+      return (
+        <ArrowUpDown className="h-3 w-3 text-slate-300 opacity-60 group-hover/sort:opacity-100 group-hover/sort:text-emerald-600 transition-all shrink-0" />
+      );
+    }
+    return sortConfig.direction === "asc" ? (
+      <ArrowUp className="h-3.5 w-3.5 text-emerald-600 animate-in fade-in zoom-in-75 duration-150 stroke-[2.5] shrink-0" />
+    ) : (
+      <ArrowDown className="h-3.5 w-3.5 text-emerald-600 animate-in fade-in zoom-in-75 duration-150 stroke-[2.5] shrink-0" />
+    );
+  };
+
+  // Reset pagination to page 1 on filter or sort changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedType, filterCity, filterPM, clientArchiveScope, filterClientCategory]);
+  }, [searchQuery, selectedType, filterCity, filterPM, clientArchiveScope, filterClientCategory, sortConfig]);
   
   // State hook to toggle detail card edit mode
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -2731,9 +2797,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     return counts;
   }, [clientProfiles]);
 
-  // Filter clients list
+  // Filter & sort clients list
   const processedClients = useMemo(() => {
-    return clientProfiles
+    const filtered = clientProfiles
       .filter(client => {
         const matchesSearch = 
           searchQuery === "" ||
@@ -2760,7 +2826,67 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
         return matchesSearch && matchesType && matchesCity && matchesPM && matchesArchive && matchesCategory;
       });
-  }, [clientProfiles, searchQuery, selectedType, filterCity, filterPM, clientArchiveScope, filterClientCategory, categoryFilterIds, clientCategories]);
+
+    if (!sortConfig) return filtered;
+
+    const { key, direction } = sortConfig;
+    const sign = direction === "desc" ? -1 : 1;
+    const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+
+    return [...filtered].sort((a, b) => {
+      let valA: string | number | null | undefined;
+      let valB: string | number | null | undefined;
+
+      switch (key) {
+        case "name":
+          valA = a.name;
+          valB = b.name;
+          break;
+        case "phone":
+          valA = a.phone;
+          valB = b.phone;
+          break;
+        case "email":
+          valA = a.email;
+          valB = b.email;
+          break;
+        case "city":
+          valA = a.city;
+          valB = b.city;
+          break;
+        case "clientType":
+          valA = a.clientType;
+          valB = b.clientType;
+          break;
+        case "owner":
+          valA = a.owner;
+          valB = b.owner;
+          break;
+        case "leadsCount":
+          valA = Number(a.leadsCount) || 0;
+          valB = Number(b.leadsCount) || 0;
+          break;
+        case "totalValue":
+          valA = Number(a.totalValue) || 0;
+          valB = Number(b.totalValue) || 0;
+          break;
+        default:
+          return 0;
+      }
+
+      if (typeof valA === "number" && typeof valB === "number") {
+        return (valA - valB) * sign;
+      }
+
+      const aEmpty = valA === null || valA === undefined || valA === "";
+      const bEmpty = valB === null || valB === undefined || valB === "";
+      if (aEmpty || bEmpty) {
+        return aEmpty === bEmpty ? 0 : aEmpty ? 1 : -1;
+      }
+
+      return collator.compare(String(valA), String(valB)) * sign;
+    });
+  }, [clientProfiles, searchQuery, selectedType, filterCity, filterPM, clientArchiveScope, filterClientCategory, categoryFilterIds, clientCategories, sortConfig]);
 
   // Paginated subset of clients
   const paginatedClients = useMemo(() => {
@@ -5533,9 +5659,72 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
       </div>
 
-      {/* Active clients or the archive — aligned to the right */}
-      <div className="flex justify-end">
-        <div className="flex items-center gap-1 p-1 w-fit rounded-2xl bg-slate-100 border border-slate-200 select-none">
+      {/* Table controls row: Quick sort selector & Active/Archive scope toggle */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        {/* Sort Controls (Quick selector, especially powerful on mobile where table headers are hidden) */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 bg-white border-2 border-emerald-100 rounded-2xl px-3.5 py-1.5 text-xs text-slate-700 shadow-sm">
+            <ArrowUpDown className="h-3.5 w-3.5 text-emerald-600 shrink-0 stroke-[2.5]" />
+            <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+              {t("Sort:", "Zoradiť:", "Rendezés:")}
+            </span>
+            <select
+              value={sortConfig?.key || ""}
+              onChange={(e) => {
+                const val = e.target.value as ClientSortKey | "";
+                if (!val) {
+                  setSortConfig(null);
+                } else {
+                  handleSort(val, true);
+                }
+              }}
+              className="bg-transparent text-xs font-black text-slate-800 focus:outline-none cursor-pointer pr-1"
+            >
+              <option value="">{t("Default", "Predvolené", "Alapértelmezett")}</option>
+              <option value="name">{getTranslation(systemLanguage, "leads.table.client")}</option>
+              <option value="totalValue">{getTranslation(systemLanguage, "clients.card.total_value")}</option>
+              <option value="leadsCount">{getTranslation(systemLanguage, "clients.card.leads_count")}</option>
+              <option value="city">{getTranslation(systemLanguage, "leads.table.city")}</option>
+              <option value="clientType">{getTranslation(systemLanguage, "leads.table.type")}</option>
+              <option value="owner">{getTranslation(systemLanguage, "leads.table.pm")}</option>
+              <option value="phone">{t("Contact Phone", "Kontaktný telefón", "Kapcsolattartó telefon")}</option>
+              <option value="email">{getTranslation(systemLanguage, "login.email")}</option>
+            </select>
+            {sortConfig && (
+              <button
+                type="button"
+                onClick={() => setSortConfig(prev => prev ? { ...prev, direction: prev.direction === "asc" ? "desc" : "asc" } : null)}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors cursor-pointer font-bold text-[10px]"
+                title={sortConfig.direction === "asc" ? t("Ascending (click to switch to descending)", "Vzostupne (kliknite pre zostupné)", "Növekvő (kattintson a csökkenőhöz)") : t("Descending (click to switch to ascending)", "Zostupne (kliknite pre vzostupné)", "Csökkenő (kattintson a növekvőhöz)")}
+              >
+                {sortConfig.direction === "asc" ? (
+                  <>
+                    <ArrowUp className="h-3 w-3 stroke-[2.5]" />
+                    <span>ASC</span>
+                  </>
+                ) : (
+                  <>
+                    <ArrowDown className="h-3 w-3 stroke-[2.5]" />
+                    <span>DESC</span>
+                  </>
+                )}
+              </button>
+            )}
+            {sortConfig && (
+              <button
+                type="button"
+                onClick={() => setSortConfig(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                title={t("Clear sort", "Zrušiť zoradenie", "Rendezés törlése")}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Active clients or the archive */}
+        <div className="flex items-center gap-1 p-1 w-fit rounded-2xl bg-slate-100 border border-slate-200 select-none self-end sm:self-auto">
           {([
             { scope: "active" as const, Icon: Users, label: t("Active clients", "Aktívni klienti", "Aktív ügyfelek"), count: clientProfiles.length - archivedClientsCount },
             { scope: "archived" as const, Icon: Archive, label: t("Archived", "Archivovaní", "Archivált"), count: archivedClientsCount },
@@ -5564,16 +5753,128 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         <div className="overflow-x-auto lg:overflow-x-auto scrollbar-thin">
           <table className="w-full border-collapse text-left block lg:table">
             <thead className="hidden lg:table-header-group">
-              <tr className="bg-white text-emerald-700 text-[10px] font-black uppercase tracking-wider">
-                <th className="sticky top-0 bg-white z-10 py-4 px-6 rounded-tl-[24px] border-b-2 border-slate-100">{getTranslation(systemLanguage, "leads.table.client")}</th>
-                <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{t("Contact Phone", "Kontaktný telefón", "Kapcsolattartó telefon")}</th>
-                <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "login.email")}</th>
-                <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "leads.table.city")}</th>
-                <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "leads.table.type")}</th>
-                <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "leads.table.pm")}</th>
-                <th className="sticky top-0 bg-white z-10 py-4 px-4 text-center border-b-2 border-slate-100">{getTranslation(systemLanguage, "clients.card.leads_count")}</th>
-                <th className="sticky top-0 bg-white z-10 py-4 px-6 text-right border-b-2 border-slate-100">{getTranslation(systemLanguage, "clients.card.total_value")}</th>
-                <th className="sticky top-0 bg-white z-10 py-4 px-4 rounded-tr-[24px] border-b-2 border-slate-100 w-12">
+              <tr className="bg-white text-emerald-700 text-[10px] font-black uppercase tracking-wider select-none">
+                <th
+                  className={`sticky top-0 bg-white z-10 py-3.5 px-6 rounded-tl-[24px] border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "name" ? "bg-emerald-50/40" : ""}`}
+                  aria-sort={sortConfig?.key === "name" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleSort("name")}
+                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-black cursor-pointer transition-colors ${
+                      sortConfig?.key === "name" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
+                    }`}
+                  >
+                    <span>{getTranslation(systemLanguage, "leads.table.client")}</span>
+                    {renderSortIcon("name")}
+                  </button>
+                </th>
+                <th
+                  className={`sticky top-0 bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "phone" ? "bg-emerald-50/40" : ""}`}
+                  aria-sort={sortConfig?.key === "phone" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleSort("phone")}
+                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-black cursor-pointer transition-colors ${
+                      sortConfig?.key === "phone" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
+                    }`}
+                  >
+                    <span>{t("Contact Phone", "Kontaktný telefón", "Kapcsolattartó telefon")}</span>
+                    {renderSortIcon("phone")}
+                  </button>
+                </th>
+                <th
+                  className={`sticky top-0 bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "email" ? "bg-emerald-50/40" : ""}`}
+                  aria-sort={sortConfig?.key === "email" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleSort("email")}
+                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-black cursor-pointer transition-colors ${
+                      sortConfig?.key === "email" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
+                    }`}
+                  >
+                    <span>{getTranslation(systemLanguage, "login.email")}</span>
+                    {renderSortIcon("email")}
+                  </button>
+                </th>
+                <th
+                  className={`sticky top-0 bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "city" ? "bg-emerald-50/40" : ""}`}
+                  aria-sort={sortConfig?.key === "city" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleSort("city")}
+                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-black cursor-pointer transition-colors ${
+                      sortConfig?.key === "city" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
+                    }`}
+                  >
+                    <span>{getTranslation(systemLanguage, "leads.table.city")}</span>
+                    {renderSortIcon("city")}
+                  </button>
+                </th>
+                <th
+                  className={`sticky top-0 bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "clientType" ? "bg-emerald-50/40" : ""}`}
+                  aria-sort={sortConfig?.key === "clientType" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleSort("clientType")}
+                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-black cursor-pointer transition-colors ${
+                      sortConfig?.key === "clientType" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
+                    }`}
+                  >
+                    <span>{getTranslation(systemLanguage, "leads.table.type")}</span>
+                    {renderSortIcon("clientType")}
+                  </button>
+                </th>
+                <th
+                  className={`sticky top-0 bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "owner" ? "bg-emerald-50/40" : ""}`}
+                  aria-sort={sortConfig?.key === "owner" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleSort("owner")}
+                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-black cursor-pointer transition-colors ${
+                      sortConfig?.key === "owner" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
+                    }`}
+                  >
+                    <span>{getTranslation(systemLanguage, "leads.table.pm")}</span>
+                    {renderSortIcon("owner")}
+                  </button>
+                </th>
+                <th
+                  className={`sticky top-0 bg-white z-10 py-3.5 px-4 text-center border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "leadsCount" ? "bg-emerald-50/40" : ""}`}
+                  aria-sort={sortConfig?.key === "leadsCount" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleSort("leadsCount")}
+                    className={`group/sort inline-flex items-center justify-center gap-1.5 uppercase tracking-wider font-black cursor-pointer transition-colors ${
+                      sortConfig?.key === "leadsCount" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
+                    }`}
+                  >
+                    <span>{getTranslation(systemLanguage, "clients.card.leads_count")}</span>
+                    {renderSortIcon("leadsCount")}
+                  </button>
+                </th>
+                <th
+                  className={`sticky top-0 bg-white z-10 py-3.5 px-6 text-right border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "totalValue" ? "bg-emerald-50/40" : ""}`}
+                  aria-sort={sortConfig?.key === "totalValue" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleSort("totalValue")}
+                    className={`group/sort inline-flex items-center justify-end gap-1.5 uppercase tracking-wider font-black cursor-pointer transition-colors ${
+                      sortConfig?.key === "totalValue" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
+                    }`}
+                  >
+                    <span>{getTranslation(systemLanguage, "clients.card.total_value")}</span>
+                    {renderSortIcon("totalValue")}
+                  </button>
+                </th>
+                <th className="sticky top-0 bg-white z-10 py-3.5 px-4 rounded-tr-[24px] border-b-2 border-slate-100 w-12">
                   <span className="sr-only">{t("Actions", "Akcie", "Műveletek")}</span>
                 </th>
               </tr>
