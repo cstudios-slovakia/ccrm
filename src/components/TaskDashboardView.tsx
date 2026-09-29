@@ -324,7 +324,7 @@ interface TaskDashboardViewProps {
     mailConfigured?: boolean;
 };
 
-/** A compact toggle switch used on task cards. */
+/** A compact micro-switch used on task cards. */
 const TaskCardSwitch: React.FC<{
     checked: boolean;
     onChange: (next: boolean) => void;
@@ -338,13 +338,13 @@ const TaskCardSwitch: React.FC<{
         aria-label={label}
         disabled={disabled}
         onClick={() => onChange(!checked)}
-        className={`relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-all duration-150 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 focus-visible:ring-offset-2 ${
+        className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-all duration-150 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 focus-visible:ring-offset-1 ${
             checked ? "bg-indigo-600" : "bg-slate-300"
         } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:opacity-90"}`}
     >
         <span
-            className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform duration-200 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
-                checked ? "translate-x-4" : "translate-x-0.5"
+            className={`inline-block h-3 w-3 transform rounded-full bg-white shadow-xs transition-transform duration-200 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
+                checked ? "translate-x-3.5" : "translate-x-0.5"
             }`}
         />
     </button>
@@ -3287,25 +3287,18 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     {/* LEFT: MISSED / TODAY / UPCOMING */}
                     <div className="flex flex-col min-w-0 min-h-0 h-auto overflow-visible lg:h-full lg:overflow-y-auto lg:pr-2 pb-2 lg:pb-8 scrollbar-thin">
                         <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden shrink-0">
-                            {/* Header bar with toggle switch to show closed tasks */}
-                            <div className="px-4 py-2.5 bg-slate-50/70 border-b border-slate-200/80 flex items-center justify-between gap-3 select-none">
-                                <div className="flex items-center gap-2 min-w-0">
-                                    <CheckCircle2
-                                        className={`h-4 w-4 shrink-0 transition-colors ${
-                                            showClosedTasks ? "text-emerald-500" : "text-slate-400"
-                                        }`}
-                                    />
-                                    <span className="text-xs font-black uppercase tracking-wider text-slate-700 truncate">
-                                        {t(
-                                            "Show closed tasks",
-                                            "Zobraziť dokončené úlohy",
-                                            "Lezárt feladatok mutatása",
-                                        )}
-                                    </span>
-                                    <span className="hidden sm:inline-block text-[10px] font-semibold text-slate-400">
-                                        ({t("< 2 days old", "< 2 dni", "< 2 napos")})
-                                    </span>
-                                </div>
+                            {/* Header bar with discreet toggle switch to show closed tasks */}
+                            <div className="px-4 py-2 bg-slate-50/50 border-b border-slate-100 flex items-center justify-end gap-2.5 select-none">
+                                <span
+                                    onClick={() => handleToggleShowClosedTasks(!showClosedTasks)}
+                                    className="text-[11px] font-medium text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                                >
+                                    {t(
+                                        "Show closed tasks (< 2 days)",
+                                        "Zobraziť dokončené úlohy (< 2 dni)",
+                                        "Lezárt feladatok (< 2 nap)",
+                                    )}
+                                </span>
                                 <TaskCardSwitch
                                     checked={showClosedTasks}
                                     onChange={handleToggleShowClosedTasks}
@@ -3770,25 +3763,18 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
             {/* One unified card for all task sections (including delegated tasks grouped in the same divisions) */}
             <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden shrink-0">
-                {/* Header bar with toggle switch to show closed tasks */}
-                <div className="px-4 py-2.5 bg-slate-50/70 border-b border-slate-200/80 flex items-center justify-between gap-3 select-none">
-                    <div className="flex items-center gap-2 min-w-0">
-                        <CheckCircle2
-                            className={`h-4 w-4 shrink-0 transition-colors ${
-                                showClosedTasks ? "text-emerald-500" : "text-slate-400"
-                            }`}
-                        />
-                        <span className="text-xs font-black uppercase tracking-wider text-slate-700 truncate">
-                            {t(
-                                "Show closed tasks",
-                                "Zobraziť dokončené úlohy",
-                                "Lezárt feladatok mutatása",
-                            )}
-                        </span>
-                        <span className="hidden sm:inline-block text-[10px] font-semibold text-slate-400">
-                            ({t("< 2 days old", "< 2 dni", "< 2 napos")})
-                        </span>
-                    </div>
+                {/* Header bar with discreet toggle switch to show closed tasks */}
+                <div className="px-4 py-2 bg-slate-50/50 border-b border-slate-100 flex items-center justify-end gap-2.5 select-none">
+                    <span
+                        onClick={() => handleToggleShowClosedTasks(!showClosedTasks)}
+                        className="text-[11px] font-medium text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                    >
+                        {t(
+                            "Show closed tasks (< 2 days)",
+                            "Zobraziť dokončené úlohy (< 2 dni)",
+                            "Lezárt feladatok (< 2 nap)",
+                        )}
+                    </span>
                     <TaskCardSwitch
                         checked={showClosedTasks}
                         onChange={handleToggleShowClosedTasks}
