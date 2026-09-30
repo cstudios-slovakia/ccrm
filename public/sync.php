@@ -925,6 +925,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'status' => $row['status'],
             'owner' => $row['owner'],
             'createdBy' => $row['created_by'] ?? null,
+            'createdAt' => $row['created_at'] ?? null,
             'relatedLeadId' => $row['related_lead_id'] ?? null,
             'relatedProjectId' => $row['related_project_id'] ?? null,
             'isLocking' => intval($row['is_locking']) === 1,

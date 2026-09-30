@@ -283,6 +283,7 @@ export interface Task {
   deadlineTime?: string; // HH:MM (overdue time)
   owner: string;    // Primary assignee (empty when unassigned; kept for DB compatibility)
   createdBy?: string; // Immutable creator name; absent on legacy tasks
+  createdAt?: string; // timestamp or date when task was created
   assignedUsers: string[]; // names of assigned team members
   relatedLeadId?: string; // linked lead or client id (optional)
   /**

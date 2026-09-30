@@ -2,6 +2,7 @@ import React, { useMemo, useRef, useState } from "react";
 import {
   AlignLeft,
   Archive as ArchiveIcon,
+  Calendar,
   Check,
   ChevronDown,
   Clock,
@@ -23,12 +24,14 @@ import { VoiceTaskActionBar } from "./VoiceTaskActionBar";
 import {
   buildProjectTasks,
   computeTaskDateRange,
+  getTaskCreationDate,
   isDoneTaskState,
   localDateStr,
   localStampStr,
   parseTaskLines,
   splitFilteredTasks,
   toggleTaskDone,
+  type TaskDateBasis,
   type TaskDateFilter,
 } from "../utils/projectTasks";
 import { taskPriorityLabel, taskStateLabel, type Translate } from "../utils/taskLabels";
@@ -120,6 +123,7 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
 
   // Date interval filter state
   const [dateFilter, setDateFilter] = useState<TaskDateFilter>("all");
+  const [dateBasis, setDateBasis] = useState<TaskDateBasis>("due");
   const [customStart, setCustomStart] = useState("");
   const [customEnd, setCustomEnd] = useState("");
 
@@ -160,8 +164,9 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
       customStart,
       customEnd,
       new Date(),
+      dateBasis,
     );
-  }, [visibleTasks, taskStates, dateFilter, customStart, customEnd]);
+  }, [visibleTasks, taskStates, dateFilter, customStart, customEnd, dateBasis]);
 
   const activeRange = useMemo(() => {
     if (dateFilter === "all") return null;
@@ -287,6 +292,18 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
     return task.deadlineTime ? `${day} · ${task.deadlineTime}` : day;
   };
 
+  const formatCreated = (task: Task) => {
+    const raw = getTaskCreationDate(task);
+    const [y, m, d] = (raw || "").split("-").map(Number);
+    if (!y || !m || !d) return raw || "—";
+    const date = new Date(y, m - 1, d);
+    return date.toLocaleDateString(locale, {
+      day: "numeric",
+      month: "short",
+      ...(y !== new Date().getFullYear() ? { year: "numeric" } : {}),
+    });
+  };
+
   const nowStamp = localStampStr(new Date());
 
   if (!taskAccess.view) {
@@ -404,14 +421,38 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
             >
               {taskStateLabel(task.status, t)}
             </span>
-            <span
-              className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md tabular-nums ${
-                overdue ? "bg-rose-50 text-rose-600 font-extrabold" : "bg-slate-100 text-slate-600"
-              }`}
-            >
-              <Clock className="h-2.5 w-2.5" />
-              {formatDue(task)}
-            </span>
+            {dateBasis === "created" ? (
+              <>
+                <span
+                  className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md tabular-nums bg-sky-50 text-sky-700 font-semibold border border-sky-200/60"
+                  title={t("Creation date", "Dátum vytvorenia", "Létrehozás dátuma")}
+                >
+                  <Calendar className="h-2.5 w-2.5 text-sky-500" />
+                  <span>{t("Created", "Vytvorené", "Létrehozva")}: {formatCreated(task)}</span>
+                </span>
+                {task.deadline && (
+                  <span
+                    className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md tabular-nums ${
+                      overdue ? "bg-rose-50 text-rose-600 font-extrabold" : "bg-slate-100 text-slate-600"
+                    }`}
+                    title={t("Due date", "Termín", "Határidő")}
+                  >
+                    <Clock className="h-2.5 w-2.5" />
+                    {formatDue(task)}
+                  </span>
+                )}
+              </>
+            ) : (
+              <span
+                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md tabular-nums ${
+                  overdue ? "bg-rose-50 text-rose-600 font-extrabold" : "bg-slate-100 text-slate-600"
+                }`}
+                title={t("Due date", "Termín", "Határidő")}
+              >
+                <Clock className="h-2.5 w-2.5" />
+                {formatDue(task)}
+              </span>
+            )}
             {task.assignedUsers?.length > 0 && (
               <span className="px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-600 truncate max-w-[140px]">
                 {task.assignedUsers.join(", ")}
@@ -586,11 +627,50 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
       {/* FILTER BAR: All, Last week, Last month, Last quarter, Last year to date, Custom interval */}
       <div className="rounded-2xl border border-slate-200/90 bg-slate-50/70 p-2.5 flex flex-col gap-2">
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-slate-500">
-            <Filter className="h-3 w-3" />
-            <span>{t("Filter tasks", "Filtrovať úlohy", "Feladatok szűrése")}</span>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-slate-500">
+              <Filter className="h-3 w-3" />
+              <span>{t("Filter tasks", "Filtrovať úlohy", "Feladatok szűrése")}</span>
+            </div>
+
+            {/* LIGHTSWITCH: Due date vs Creation date */}
+            <div
+              role="radiogroup"
+              aria-label={t("Filter by date type", "Filtrovať podľa typu dátumu", "Szűrés dátumtípus szerint")}
+              className="inline-flex items-center p-0.5 rounded-xl bg-slate-200/80 border border-slate-300/70 shadow-inner"
+            >
+              <button
+                type="button"
+                role="radio"
+                aria-checked={dateBasis === "due"}
+                onClick={() => setDateBasis("due")}
+                className={`flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[10px] font-extrabold uppercase tracking-wider transition-all duration-150 cursor-pointer ${
+                  dateBasis === "due"
+                    ? "bg-white text-slate-900 shadow-xs"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <Clock className="w-2.5 h-2.5" />
+                <span>{t("Due date", "Termín", "Határidő")}</span>
+              </button>
+              <button
+                type="button"
+                role="radio"
+                aria-checked={dateBasis === "created"}
+                onClick={() => setDateBasis("created")}
+                className={`flex items-center gap-1 px-2.5 py-0.5 rounded-lg text-[10px] font-extrabold uppercase tracking-wider transition-all duration-150 cursor-pointer ${
+                  dateBasis === "created"
+                    ? "bg-white text-slate-900 shadow-xs"
+                    : "text-slate-500 hover:text-slate-800"
+                }`}
+              >
+                <Calendar className="w-2.5 h-2.5" />
+                <span>{t("Creation date", "Dátum vytvorenia", "Létrehozás")}</span>
+              </button>
+            </div>
+
             {activeRange && (
-              <span className="hidden sm:inline-block ml-1 px-2 py-0.5 rounded-full bg-slate-200/80 text-slate-700 text-[9px] font-bold">
+              <span className="hidden sm:inline-block px-2 py-0.5 rounded-full bg-slate-200/80 text-slate-700 text-[9px] font-bold">
                 {formatDateRangeLabel(activeRange)}
               </span>
             )}
@@ -674,11 +754,17 @@ export const EntityTasksPanel: React.FC<EntityTasksPanelProps> = ({
         ) : (
           <div className="rounded-2xl border-2 border-dashed border-slate-200 px-4 py-6 text-center text-xs font-semibold text-slate-400">
             {allFiltered.length === 0 && dateFilter !== "all"
-              ? t(
-                  "No tasks match this date filter.",
-                  "Tomuto filtru termínov nezodpovedajú žiadne úlohy.",
-                  "Nincsenek feladatok a kiválasztott időszakban.",
-                )
+              ? dateBasis === "created"
+                ? t(
+                    "No tasks match this creation date filter.",
+                    "Tomuto filtru dátumu vytvorenia nezodpovedajú žiadne úlohy.",
+                    "Nincsenek feladatok a kiválasztott létrehozási időszakban.",
+                  )
+                : t(
+                    "No tasks match this date filter.",
+                    "Tomuto filtru termínov nezodpovedajú žiadne úlohy.",
+                    "Nincsenek feladatok a kiválasztott időszakban.",
+                  )
               : finished.length > 0
                 ? t("All tasks in this view are completed.", "Všetky úlohy v tomto zobrazení sú hotové.", "Minden feladat befejeződött ebben a nézetben.")
                 : canCreate

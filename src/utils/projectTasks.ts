@@ -84,6 +84,7 @@ export const buildProjectTasks = (
     deadlineTime: defaults.deadlineTime || undefined,
     owner: defaults.assignee,
     createdBy: defaults.createdBy,
+    createdAt: localStampStr(new Date(now)),
     assignedUsers: defaults.assignee ? [defaults.assignee] : [],
     relatedProjectId: defaults.projectId,
   }));
@@ -135,10 +136,44 @@ export type TaskDateFilter =
   | "last_year_to_date"
   | "custom";
 
+export type TaskDateBasis = "due" | "created";
+
 export interface TaskDateRange {
   start: string | null;
   end: string | null;
 }
+
+/**
+ * Safely extracts or infers the creation date (YYYY-MM-DD) of a task.
+ * 1. Checks `task.createdAt` (from MariaDB created_at or client stamp)
+ * 2. Checks `task.id` timestamp pattern (`task-${timestamp}`)
+ * 3. Falls back to `task.startDate` or `task.deadline`, then today's date.
+ */
+export const getTaskCreationDate = (
+  task: Pick<Task, "deadline"> & Partial<Pick<Task, "createdAt" | "id" | "startDate">>,
+): string => {
+  if (task.createdAt) {
+    const s = task.createdAt.slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  }
+  if (task.id) {
+    const match = task.id.match(/^task-(?:ai-)?(\d{10,13})/);
+    if (match) {
+      let ts = parseInt(match[1], 10);
+      if (ts < 10000000000) ts *= 1000;
+      if (ts > 1000000000000 && ts < 3000000000000) {
+        return localDateStr(new Date(ts));
+      }
+    }
+  }
+  if (task.startDate && /^\d{4}-\d{2}-\d{2}$/.test(task.startDate.slice(0, 10))) {
+    return task.startDate.slice(0, 10);
+  }
+  if (task.deadline && /^\d{4}-\d{2}-\d{2}$/.test(task.deadline.slice(0, 10))) {
+    return task.deadline.slice(0, 10);
+  }
+  return localDateStr(new Date());
+};
 
 /**
  * Computes ISO date bounds [start, end] for preset filter options.
@@ -192,15 +227,17 @@ export const computeTaskDateRange = (
 
 /**
  * Checks whether a task falls within the specified date filter range.
- * A task matches if its deadline, completedAt date, or startDate falls within [start, end].
+ * When dateBasis === "due": matches if deadline, completedAt, or startDate falls within [start, end].
+ * When dateBasis === "created": matches if task creation date falls within [start, end].
  * If filter is 'all', always returns true.
  */
 export const isTaskInDateRange = (
-  task: Pick<Task, "deadline"> & Partial<Pick<Task, "completedAt" | "startDate">>,
+  task: Pick<Task, "deadline"> & Partial<Pick<Task, "completedAt" | "startDate" | "createdAt" | "id">>,
   filter: TaskDateFilter,
   customStart?: string,
   customEnd?: string,
   now: Date = new Date(),
+  dateBasis: TaskDateBasis = "due",
 ): boolean => {
   if (filter === "all") return true;
 
@@ -218,6 +255,14 @@ export const isTaskInDateRange = (
 
   // If no date bounds are specified in custom filter, show all
   if (!start && !end) return true;
+
+  if (dateBasis === "created") {
+    const createdDate = getTaskCreationDate(task);
+    if (!createdDate) return false;
+    if (start && createdDate < start) return false;
+    if (end && createdDate > end) return false;
+    return true;
+  }
 
   const dates: string[] = [];
   if (task.deadline) {
@@ -245,6 +290,7 @@ export const isTaskInDateRange = (
 
 /**
  * Filters and splits tasks into open and finished buckets based on date interval.
+ * Supports dateBasis = "due" (sorted by deadline) or "created" (sorted newest created first).
  */
 export const splitFilteredTasks = (
   tasks: Task[],
@@ -253,8 +299,21 @@ export const splitFilteredTasks = (
   customStart?: string,
   customEnd?: string,
   now: Date = new Date(),
+  dateBasis: TaskDateBasis = "due",
 ): { open: Task[]; finished: Task[]; allFiltered: Task[]; totalCount: number } => {
-  const filtered = tasks.filter((t) => isTaskInDateRange(t, filter, customStart, customEnd, now));
+  const filtered = tasks.filter((t) => isTaskInDateRange(t, filter, customStart, customEnd, now, dateBasis));
+
+  if (dateBasis === "created") {
+    const createdKey = (task: Task) => task.createdAt || getTaskCreationDate(task);
+    const open = filtered
+      .filter((task) => !task.archived && !isDoneTaskState(task.status, taskStates))
+      .sort((a, b) => createdKey(b).localeCompare(createdKey(a)));
+    const finished = filtered
+      .filter((task) => task.archived || isDoneTaskState(task.status, taskStates))
+      .sort((a, b) => createdKey(b).localeCompare(createdKey(a)));
+    return { open, finished, allFiltered: filtered, totalCount: filtered.length };
+  }
+
   const due = (task: Task) => `${task.deadline || "9999-99-99"} ${task.deadlineTime || "23:59"}`;
   const open = filtered
     .filter((task) => !task.archived && !isDoneTaskState(task.status, taskStates))
