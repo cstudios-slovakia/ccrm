@@ -55,7 +55,8 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
   setErrorSidebarEnabled,
   initialSubTab
 }) => {
-  const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+  const activeLang = userLanguage || systemLanguage;
+  const t = (en: string, sk: string, hu: string) => activeLang === "sk" ? sk : activeLang === "hu" ? hu : en;
 
   const [activeSubTab, setActiveSubTab] = useState<SubTab>(
     (SUB_TABS as readonly string[]).includes(initialSubTab ?? "") ? (initialSubTab as SubTab) : "profile"
@@ -593,7 +594,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
               </div>
 
               <ThemeSettings
-                systemLanguage={systemLanguage}
+                systemLanguage={activeLang}
                 userTheme={userTheme}
                 setUserTheme={setUserTheme}
                 themeMode={themeMode}
@@ -601,7 +602,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                 appearance={appearance}
               />
 
-              <SidebarSettings systemLanguage={systemLanguage} />
+              <SidebarSettings systemLanguage={activeLang} />
 
               {/* Notification Settings */}
               <div className="space-y-2 border-t border-slate-200/80 pt-4">
@@ -864,7 +865,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                               <SecretInput
                                 required
                                 mono={false}
-                                language={systemLanguage}
+                                language={activeLang}
                                 value={emailSettings.imapPassword}
                                 onChange={(next) => setEmailSettings((prev: any) => ({ ...prev, imapPassword: next }))}
                                 placeholder={t("IMAP password", "Heslo IMAP", "IMAP jelszó")}
@@ -933,7 +934,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                               <SecretInput
                                 required
                                 mono={false}
-                                language={systemLanguage}
+                                language={activeLang}
                                 value={emailSettings.smtpPassword}
                                 onChange={(next) => setEmailSettings((prev: any) => ({ ...prev, smtpPassword: next }))}
                                 placeholder={t("SMTP password", "Heslo SMTP", "SMTP jelszó")}
@@ -977,7 +978,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                         <SecretInput
                           required
                           mono={false}
-                          language={systemLanguage}
+                          language={activeLang}
                           value={emailSettings.password}
                           onChange={(next) => setEmailSettings((prev: any) => ({ ...prev, password: next }))}
                           placeholder={t("Account or app password", "Heslo k účtu alebo App Password", "Fiók- vagy alkalmazásjelszó")}

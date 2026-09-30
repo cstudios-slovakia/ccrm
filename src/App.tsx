@@ -3225,7 +3225,7 @@ ${log.payload || ''}
             currentUser={activeUser}
             users={users}
             setUsers={updateUsersAndSync}
-            systemLanguage={systemLanguage}
+            systemLanguage={userLanguage}
             userLanguage={userLanguage}
             setUserLanguage={changeUserLanguage}
             userTheme={userTheme}
