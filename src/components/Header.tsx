@@ -723,11 +723,12 @@ export const Header: React.FC<HeaderProps> = ({
                         </h1>
                     </div>
 
-                    {/* Universal Search bar in the center (Desktop & Tablet) */}
-                    <div
-                        ref={searchContainerRef}
-                        className="relative hidden sm:block sm:w-48 md:w-72 lg:w-96 mx-2 sm:mx-4"
-                    >
+                    {/* Universal Search bar & Favorites in the center (Desktop & Tablet) */}
+                    <div className="hidden sm:flex items-center gap-1.5 sm:gap-2 mx-2 sm:mx-4">
+                        <div
+                            ref={searchContainerRef}
+                            className="relative sm:w-48 md:w-72 lg:w-96"
+                        >
                         <div className="relative">
                             <div className="absolute inset-y-0 left-0 pl-2.5 sm:pl-3 flex items-center pointer-events-none">
                                 {isSearching ? (
@@ -754,7 +755,7 @@ export const Header: React.FC<HeaderProps> = ({
                                           ? "Keresés... (Cmd + K)"
                                           : "Search... (Cmd + K)"
                                 }
-                                className="w-full pl-7 sm:pl-9 pr-6 sm:pr-10 py-1.5 sm:py-2 text-[11px] sm:text-xs font-semibold rounded-xl bg-white/70 border border-slate-200 focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-slate-800"
+                                className="w-full h-9 sm:h-10 pl-7 sm:pl-9 pr-6 sm:pr-10 py-1.5 sm:py-2 text-[11px] sm:text-xs font-semibold rounded-xl bg-white/70 border border-slate-200 focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-slate-800"
                             />
                             {searchQuery && (
                                 <button
@@ -828,6 +829,36 @@ export const Header: React.FC<HeaderProps> = ({
                                 )}
                             </div>
                         )}
+                    </div>
+
+                        {/* Desktop Favorites Button - right next to searchbar */}
+                        <div className="relative shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => setIsFavoritesOpen(!isFavoritesOpen)}
+                                aria-expanded={isFavoritesOpen}
+                                aria-label={t("Favorites", "Obľúbené položky", "Kedvencek")}
+                                className={`h-9 sm:h-10 w-9 sm:w-10 rounded-xl border flex items-center justify-center transition-all shadow-sm cursor-pointer relative ${
+                                    isFavoritesOpen
+                                        ? "bg-[#0b1329] border-[#0b1329] text-rose-500 shadow-inner"
+                                        : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-rose-300 hover:bg-rose-50/50"
+                                }`}
+                                title={t("Favorites", "Obľúbené položky", "Kedvencek")}
+                            >
+                                <Heart
+                                    className={`h-4.5 w-4.5 sm:h-5 sm:w-5 transition-colors ${
+                                        favoritesCount > 0
+                                            ? "text-rose-500 fill-rose-500"
+                                            : "hover:text-rose-500"
+                                    }`}
+                                />
+                                {favoritesCount > 0 && (
+                                    <span className="absolute -top-1 -right-1 flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-rose-500 text-[9px] font-black text-white shadow-xs">
+                                        {favoritesCount}
+                                    </span>
+                                )}
+                            </button>
+                        </div>
                     </div>
 
                     {/* Utilities */}
@@ -1052,34 +1083,6 @@ export const Header: React.FC<HeaderProps> = ({
                         </div>
                         )}
 
-                        {/* Desktop Favorites Button */}
-                        <div className="relative hidden sm:block">
-                            <button
-                                type="button"
-                                onClick={() => setIsFavoritesOpen(!isFavoritesOpen)}
-                                aria-expanded={isFavoritesOpen}
-                                aria-label={t("Favorites", "Obľúbené položky", "Kedvencek")}
-                                className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-all shadow-sm cursor-pointer relative ${
-                                    isFavoritesOpen
-                                        ? "bg-[#0b1329] border-[#0b1329] text-rose-500 shadow-inner"
-                                        : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-rose-300 hover:bg-rose-50/50"
-                                }`}
-                                title={t("Favorites", "Obľúbené položky", "Kedvencek")}
-                            >
-                                <Heart
-                                    className={`h-5 w-5 transition-colors ${
-                                        favoritesCount > 0
-                                            ? "text-rose-500 fill-rose-500"
-                                            : "hover:text-rose-500"
-                                    }`}
-                                />
-                                {favoritesCount > 0 && (
-                                    <span className="absolute -top-1 -right-1 flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-rose-500 text-[9px] font-black text-white shadow-xs">
-                                        {favoritesCount}
-                                    </span>
-                                )}
-                            </button>
-                        </div>
 
                         {/* Desktop Automation Toolbox Button */}
                         {canRunWorkflows && (
