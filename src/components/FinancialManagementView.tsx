@@ -5566,7 +5566,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               <span className="font-bold text-slate-700">{tableGranularity.toUpperCase()} • {tableYear}</span>
             </div>
 
-            <div className="overflow-x-auto scrollbar-thin overscroll-x-contain touch-pan-x">
+            <div className="overflow-x-auto scrollbar-thin overscroll-x-contain">
               <table className="w-full text-left text-xs border-collapse">
                 {/* Sticky Header */}
                 <thead className="bg-slate-50  sticky top-0 z-30 shadow-xs border-b border-slate-200 ">
