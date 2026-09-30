@@ -514,7 +514,7 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
                 </button>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+              <div className="space-y-2.5 pt-1">
                 {salaryTypes.map((st, idx) => (
                   <div
                     key={st.id}
@@ -573,7 +573,7 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
               </button>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
+            <div className="space-y-3 pt-1">
               {vacationTypes.map((vt, idx) => (
                 <div
                   key={vt.id}
