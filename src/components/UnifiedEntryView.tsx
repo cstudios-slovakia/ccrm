@@ -11,6 +11,7 @@ import { CURRENCY_OPTIONS, currencyForRegion, formatMoney } from "../utils/curre
 import { CustomSelect } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
+import { FavoriteHeartButton } from "./ui/FavoriteHeartButton";
 
 interface UnifiedEntryViewProps {
   registry: UnifiedEntryRegistry;
@@ -645,6 +646,19 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
               {editingEntryRow.title || t("Untitled", "Bez názvu", "Névtelen")}
             </p>
           </div>
+          <FavoriteHeartButton
+            entityId={editingEntryRow.id}
+            type="entry"
+            title={editingEntryRow.title || t("Untitled", "Bez názvu", "Névtelen")}
+            subtitle={registry.name}
+            color={registry.color}
+            icon={registry.icon}
+            url={`#ue_${registry.id}/${editingEntryRow.id}`}
+            parentId={registry.id}
+            showLabel
+            systemLanguage={systemLanguage}
+            className="bg-white border border-slate-200 hover:border-rose-300 px-3.5 py-2 rounded-xl shadow-xs"
+          />
           {!canEdit && (
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider shrink-0">
               <Lock className="h-3.5 w-3.5" />
@@ -829,6 +843,18 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2 shrink-0 flex-wrap">
+          <FavoriteHeartButton
+            entityId={`ue_reg_${registry.id}`}
+            type="entry"
+            title={registry.name}
+            subtitle={t(`Custom Entity`, `Vlastná entita`, `Egyéni entitás`)}
+            color={registry.color}
+            icon={registry.icon}
+            url={`#ue_${registry.id}`}
+            showLabel
+            systemLanguage={systemLanguage}
+            className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white hover:border-rose-300 text-xs font-heading font-bold uppercase tracking-wider shadow-2xs"
+          />
           {!canEdit && (
             <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider">
               <Lock className="h-3.5 w-3.5" />
@@ -1049,7 +1075,19 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                         {row.isFolder ? (() => {
                           const IconComponent = (Icons as any)[registry.icon] || Icons.Folder;
                           return (
-                            <div className="flex items-center gap-3 text-indigo-600 hover:text-indigo-800 font-black uppercase tracking-wider">
+                            <div className="flex items-center gap-2.5 text-indigo-600 hover:text-indigo-800 font-black uppercase tracking-wider">
+                              <FavoriteHeartButton
+                                entityId={row.id}
+                                type="entry"
+                                title={row.title || t("Untitled", "Bez názvu", "Névtelen")}
+                                subtitle={registry.name}
+                                color={registry.color}
+                                icon={registry.icon}
+                                url={`#ue_${registry.id}/${row.id}`}
+                                parentId={registry.id}
+                                size="xs"
+                                systemLanguage={systemLanguage}
+                              />
                               <div className="h-8 w-8 rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-600 shrink-0 shadow-sm">
                                 <IconComponent className="h-4 w-4" />
                               </div>
@@ -1059,6 +1097,18 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                           );
                         })() : (
                           <div className="flex items-center gap-2 text-slate-800">
+                            <FavoriteHeartButton
+                              entityId={row.id}
+                              type="entry"
+                              title={row.title || t("Untitled", "Bez názvu", "Névtelen")}
+                              subtitle={registry.name}
+                              color={registry.color}
+                              icon={registry.icon}
+                              url={`#ue_${registry.id}/${row.id}`}
+                              parentId={registry.id}
+                              size="xs"
+                              systemLanguage={systemLanguage}
+                            />
                             <FileText className="h-4.5 w-4.5 text-slate-400 shrink-0" />
                             <span>{row.title || t("Untitled", "Bez názvu", "Névtelen")}</span>
                           </div>

@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 import type { StartMenuLayout } from "./startMenuLayout";
-import type { ProjectListColumn } from "../types";
+import type { ProjectListColumn, FavoriteItem } from "../types";
 
 /**
  * Per-user interface preferences.
@@ -123,6 +123,8 @@ export interface UserPrefs {
   sidebarGroups: Array<{ id: string; title: string; items: string[] }> | null;
   /** Default startup screen / landing page route id. */
   defaultPage: string | null;
+  /** Pinned/favorited entities across projects, clients, leads, and custom entries. */
+  favorites: FavoriteItem[];
 }
 
 export const DEFAULT_USER_PREFS: UserPrefs = {
@@ -149,6 +151,7 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   sidebarUnpinnedStyle: "overlay",
   sidebarGroups: null,
   defaultPage: null,
+  favorites: [],
 };
 
 /** Anything with a metadata_json blob — UserProfile, or a raw sync.php row. */

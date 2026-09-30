@@ -27,6 +27,7 @@ import { CustomSelect } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { PipelineStrip } from "./ui/PipelineStrip";
 import { StarRating } from "./ui/StarRating";
+import { FavoriteHeartButton } from "./ui/FavoriteHeartButton";
 import { ratingValue } from "../utils/rating";
 import { missingChecklistItems, readChecklistValue, writeChecklistValue } from "../utils/projectColumns";
 import { ProjectTasksPanel } from "./ProjectTasksPanel";
@@ -1498,6 +1499,22 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2 self-start md:self-auto">
+          {/* Favorite Button */}
+          {!isNew && (
+            <FavoriteHeartButton
+              entityId={project.id}
+              type="project"
+              title={projectName || projectDisplayName({ name: projectName, leadId: associatedLeadId }, leads, t("Untitled project", "Projekt bez názvu", "Névtelen projekt"))}
+              subtitle={projectType.name}
+              color={projectType.color}
+              icon={projectType.icon}
+              url={`#projects/${project.id}`}
+              showLabel
+              systemLanguage={userLanguage}
+              className="bg-white border border-slate-200 hover:border-rose-300 px-3.5 py-2.5 rounded-2xl shadow-xs"
+            />
+          )}
+
           {/* Archive / Restore Button */}
           {canEdit && !isNew && (
             <button

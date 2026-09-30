@@ -22,6 +22,7 @@ import {
     ChevronRight,
     Bell,
     Volume2,
+    Heart,
 } from "lucide-react";
 import * as Icons from "lucide-react";
 import type { UserProfile } from "../types";
@@ -29,6 +30,8 @@ import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import type { UpdateEntry } from "./UpdateNotesModal";
 import { useUserPref } from "../utils/userPrefs";
+import { useFavorites } from "../utils/favorites";
+import { FavoritesDrawer } from "./FavoritesDrawer";
 import { SidebarSettings } from "./SidebarSettings";
 import {
     requestBrowserNotificationPermission,
@@ -81,6 +84,8 @@ export const Header: React.FC<HeaderProps> = ({
     const [isProfileOpen, setIsProfileOpen] = React.useState(false);
     const [isClosing, setIsClosing] = React.useState(false);
     const [isMeetingsOpen, setIsMeetingsOpen] = React.useState(false);
+    const [isFavoritesOpen, setIsFavoritesOpen] = React.useState(false);
+    const { favoritesCount } = useFavorites();
     const [isMobileSearchOpen, setIsMobileSearchOpen] = React.useState(false);
     const [isMobileSliderOpen, setIsMobileSliderOpen] = React.useState(false);
     const [isMobileSliderClosing, setIsMobileSliderClosing] = React.useState(false);
@@ -1017,6 +1022,35 @@ export const Header: React.FC<HeaderProps> = ({
                         </div>
                         )}
 
+                        {/* Desktop Favorites Button */}
+                        <div className="relative hidden sm:block">
+                            <button
+                                type="button"
+                                onClick={() => setIsFavoritesOpen(!isFavoritesOpen)}
+                                aria-expanded={isFavoritesOpen}
+                                aria-label={t("Favorites", "Obľúbené položky", "Kedvencek")}
+                                className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-all shadow-sm cursor-pointer relative ${
+                                    isFavoritesOpen
+                                        ? "bg-[#0b1329] border-[#0b1329] text-rose-500"
+                                        : "bg-white/80 border-slate-200 text-slate-700 hover:border-rose-300 hover:bg-rose-50/50"
+                                }`}
+                                title={t("Favorites", "Obľúbené položky", "Kedvencek")}
+                            >
+                                <Heart
+                                    className={`h-5 w-5 transition-colors ${
+                                        favoritesCount > 0
+                                            ? "text-rose-500 fill-rose-500"
+                                            : "text-slate-600 hover:text-rose-500"
+                                    }`}
+                                />
+                                {favoritesCount > 0 && (
+                                    <span className="absolute -top-1 -right-1 flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-rose-500 text-[9px] font-black text-white shadow-xs">
+                                        {favoritesCount}
+                                    </span>
+                                )}
+                            </button>
+                        </div>
+
                         {/* Desktop Automation Toolbox Button */}
                         {canRunWorkflows && (
                         <div className="relative hidden sm:block" ref={toolboxDropdownRef}>
@@ -1265,6 +1299,23 @@ export const Header: React.FC<HeaderProps> = ({
                                         )}
                                     </button>
                                 )}
+
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        handleCloseMobileSlider();
+                                        setIsFavoritesOpen(true);
+                                    }}
+                                    className="flex items-center justify-center gap-1.5 py-3 px-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 text-xs font-bold active:scale-98 transition-all cursor-pointer relative shrink-0"
+                                >
+                                    <Heart className={`h-4 w-4 ${favoritesCount > 0 ? "fill-rose-500 text-rose-500" : "text-rose-500"}`} />
+                                    <span>{t("Favorites", "Obľúbené", "Kedvencek")}</span>
+                                    {favoritesCount > 0 && (
+                                        <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-[10px] font-black text-white">
+                                            {favoritesCount}
+                                        </span>
+                                    )}
+                                </button>
 
                                 <button
                                     type="button"
@@ -1683,6 +1734,13 @@ export const Header: React.FC<HeaderProps> = ({
                                 document.body,
                             ),
                         ])}
+
+            {/* Top Roll-Down Favorites Drawer */}
+            <FavoritesDrawer
+                isOpen={isFavoritesOpen}
+                onClose={() => setIsFavoritesOpen(false)}
+                systemLanguage={systemLanguage}
+            />
         </header>
     );
 };

@@ -1210,4 +1210,16 @@ export interface EmployeeSettings {
     clockifyWorkspaceId?: string;
   };
 }
+export interface FavoriteItem {
+  id: string;
+  type: FavoriteEntityType;
+  title: string;
+  subtitle?: string;
+  color?: string;
+  icon?: string;
+  url: string;
+  parentId?: string;
+  addedAt: string;
+}
 
+export type FavoriteEntityType = "project" | "client" | "lead" | "entry";

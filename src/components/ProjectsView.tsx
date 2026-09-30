@@ -10,6 +10,7 @@ import { ProjectSettings } from "./ProjectSettings";
 import { ProjectListViewMenu } from "./ProjectListViewMenu";
 import { CustomSelect } from "./ui/CustomSelect";
 import { StarRating } from "./ui/StarRating";
+import { FavoriteHeartButton } from "./ui/FavoriteHeartButton";
 import { getTranslation, type Language } from "../utils/translations";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import type { ModuleAccess } from "../utils/permissions";
@@ -1372,7 +1373,18 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     switch (col.key) {
       case "name":
         return (
-          <div className="flex items-center gap-2.5 min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <FavoriteHeartButton
+              entityId={p.id}
+              type="project"
+              title={title}
+              subtitle={pType.name}
+              color={pType.color}
+              icon={pType.icon}
+              url={`#projects/${p.id}`}
+              size="xs"
+              systemLanguage={userLanguage as any}
+            />
             <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: pType.color }} />
             <span className="font-heading font-bold text-[13px] text-slate-800 group-hover:text-indigo-600 transition-colors truncate">
               {title}
@@ -2512,10 +2524,23 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                         )}
                       </div>
 
-                      {/* Status badge */}
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${projectStatusBadgeClass(p.status)}`}>
-                        {projectStatusLabel(p.status, t)}
-                      </span>
+                      {/* Status badge & Favorite */}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <FavoriteHeartButton
+                          entityId={p.id}
+                          type="project"
+                          title={title}
+                          subtitle={pType.name}
+                          color={pType.color}
+                          icon={pType.icon}
+                          url={`#projects/${p.id}`}
+                          size="sm"
+                          systemLanguage={userLanguage as any}
+                        />
+                        <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${projectStatusBadgeClass(p.status)}`}>
+                          {projectStatusLabel(p.status, t)}
+                        </span>
+                      </div>
                     </div>
 
                     {/* The project's own name, or the client it is paired with. */}

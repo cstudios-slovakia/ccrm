@@ -6,6 +6,7 @@ import { liftAccent } from "../utils/accentColor";
 import { isOutgoingMail, mergeLeadTimeline, withTimelineEvent } from "../utils/mailTimeline";
 import { useConfirmDialog } from "./ui/ConfirmDialog";
 import { createPortal } from "react-dom";
+import { FavoriteHeartButton } from "./ui/FavoriteHeartButton";
 import {
     Users,
     MapPin,
@@ -4950,6 +4951,18 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             <ArrowLeft className="h-4 w-4 stroke-[2.5] shrink-0" />
                             {getTranslation(systemLanguage, "common.back_to_leads")}
                         </button>
+                        <FavoriteHeartButton
+                            entityId={activeLead.id}
+                            type="lead"
+                            title={activeLead.name}
+                            subtitle={activeLead.city || activeLead.status || undefined}
+                            color={getSafeStateColor(activeLead.status)}
+                            icon="UserCheck"
+                            url={`#leads/${activeLead.id}`}
+                            showLabel
+                            systemLanguage={systemLanguage}
+                            className="h-11 px-4 bg-white border border-slate-200 hover:border-rose-300 rounded-xl shadow-sm text-xs font-bold uppercase tracking-wider"
+                        />
                         {readOnlyNotice}
                     </div>
 
@@ -10529,6 +10542,17 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                                                                                         {/* FULL-WIDTH NAME ROW: Name (Its Own Line) + Rating */}
                                                                                         <div className="flex items-center gap-2 min-w-0 py-0.5">
+                                                                                            <FavoriteHeartButton
+                                                                                                entityId={lead.id}
+                                                                                                type="lead"
+                                                                                                title={lead.name}
+                                                                                                subtitle={lead.city || lead.status || undefined}
+                                                                                                color={getSafeStateColor(lead.status)}
+                                                                                                icon="UserCheck"
+                                                                                                url={`#leads/${lead.id}`}
+                                                                                                size="xs"
+                                                                                                systemLanguage={systemLanguage}
+                                                                                            />
                                                                                             <span className="font-bold text-slate-900 text-sm sm:text-base leading-snug break-words">
                                                                                                 {lead.name}
                                                                                             </span>
@@ -11845,6 +11869,17 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                                                                             {/* Card quick actions on hover */}
                                                                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                                                <FavoriteHeartButton
+                                                                                    entityId={lead.id}
+                                                                                    type="lead"
+                                                                                    title={lead.name}
+                                                                                    subtitle={lead.city || lead.status || undefined}
+                                                                                    color={getSafeStateColor(lead.status)}
+                                                                                    icon="UserCheck"
+                                                                                    url={`#leads/${lead.id}`}
+                                                                                    size="xs"
+                                                                                    systemLanguage={systemLanguage}
+                                                                                />
                                                                                 <button
                                                                                     onClick={(
                                                                                         e,

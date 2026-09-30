@@ -16,6 +16,7 @@ import type { ModuleAccess } from "../utils/permissions";
 import { ClientCategoryBadge, ClientCategoryManager, ClientCategorySelect } from "./ClientCategories";
 import { clientCategoryFilterIds, clientCategoryPath } from "../utils/clientCategoryTree";
 import { cn } from "../utils/cn";
+import { FavoriteHeartButton } from "./ui/FavoriteHeartButton";
 import { BlockEditor } from "./BlockEditor";
 import { VoiceRecorderCard } from "./VoiceRecorderCard";
 import { CustomSelect } from "./ui/CustomSelect";
@@ -2935,6 +2936,18 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               ? t("Restore client", "Obnoviť klienta", "Ügyfél visszaállítása")
               : t("Archive client", "Archivovať klienta", "Ügyfél archiválása")}
           </button>
+          <FavoriteHeartButton
+            entityId={`client_${encodeURIComponent(activeClient.name)}`}
+            type="client"
+            title={activeClient.name}
+            subtitle={activeClient.city || activeClient.clientType || undefined}
+            color={clientCategories.find(c => c.id === activeClient.clientCategoryId)?.color || "#10b981"}
+            icon="Building2"
+            url={`#client-${encodeURIComponent(activeClient.name)}`}
+            showLabel
+            systemLanguage={systemLanguage}
+            className="px-4 py-3 rounded-2xl bg-white border-2 border-slate-200 hover:border-rose-300 text-xs font-extrabold uppercase tracking-wider shadow-sm"
+          />
           </div>
 
           <div className="flex items-center gap-3">
@@ -5486,6 +5499,17 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     {/* Client Name & initials */}
                     <td className="block lg:table-cell py-1.5 lg:py-3.5 px-0 lg:px-6 font-bold text-slate-900 mb-2 lg:mb-0 w-full lg:w-auto">
                       <div className="flex items-center gap-2.5">
+                        <FavoriteHeartButton
+                          entityId={`client_${encodeURIComponent(client.name)}`}
+                          type="client"
+                          title={client.name}
+                          subtitle={client.city || client.clientType || undefined}
+                          color={clientCategories.find(c => c.id === client.clientCategoryId)?.color || "#10b981"}
+                          icon="Building2"
+                          url={`#client-${encodeURIComponent(client.name)}`}
+                          size="xs"
+                          systemLanguage={systemLanguage}
+                        />
                         <div className="h-7 w-7 rounded-lg bg-emerald-600 text-white border border-emerald-700 font-heading font-black text-[9px] flex items-center justify-center shrink-0 shadow">
                           {getInitials(client.name)}
                         </div>
