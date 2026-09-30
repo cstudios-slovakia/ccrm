@@ -281,7 +281,7 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
         </div>
 
         {/* Content Body / Cards Grid */}
-        <div className="p-4 sm:p-6 overflow-y-auto max-h-[60vh]">
+        <div className="p-3.5 sm:p-5 overflow-y-auto max-h-[65vh]">
           {filteredFavorites.length === 0 ? (
             <div className="py-12 px-4 text-center flex flex-col items-center justify-center">
               <div className="h-16 w-16 rounded-full bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-500 mb-3 animate-pulse">
@@ -316,7 +316,7 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
               )}
             </div>
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3.5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-2.5">
               {filteredFavorites.map((item) => {
                 const entityColor = item.color || DEFAULT_ENTITY_COLORS[item.type] || "#4f46e5";
                 const dark = isColorDark(entityColor);
@@ -329,29 +329,29 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
                     key={`${item.type}-${item.id}`}
                     onClick={() => handleCardClick(item.url)}
                     style={{ backgroundColor: entityColor }}
-                    className={`group relative rounded-2xl p-4 transition-all duration-200 cursor-pointer flex flex-col justify-between shadow-md hover:shadow-xl hover:-translate-y-1 active:scale-[0.98] border select-none overflow-hidden ${
+                    className={`group relative rounded-xl p-2.5 sm:p-3 transition-all duration-200 cursor-pointer flex flex-col justify-between shadow-xs hover:shadow-md hover:-translate-y-0.5 active:scale-[0.98] border select-none overflow-hidden ${
                       dark
                         ? "text-white border-white/20 shadow-slate-900/20"
                         : "text-slate-900 border-black/10 shadow-slate-400/20"
                     }`}
                   >
                     {/* Top glass sheen & decorative circle */}
-                    <div className="absolute -top-12 -right-12 w-28 h-28 rounded-full bg-white/10 blur-xl pointer-events-none" />
+                    <div className="absolute -top-8 -right-8 w-20 h-20 rounded-full bg-white/10 blur-lg pointer-events-none" />
 
                     {/* Card Header: Type Badge + Icon + Remove Button */}
-                    <div className="flex items-center justify-between gap-2 mb-3 relative z-10">
-                      <div className="flex items-center gap-2 min-w-0">
+                    <div className="flex items-center justify-between gap-1.5 mb-2 relative z-10">
+                      <div className="flex items-center gap-1.5 min-w-0">
                         <div
-                          className={`p-1.5 rounded-xl backdrop-blur-md flex items-center justify-center shrink-0 ${
+                          className={`p-1 rounded-lg backdrop-blur-md flex items-center justify-center shrink-0 ${
                             dark
                               ? "bg-white/20 text-white"
                               : "bg-black/10 text-slate-900"
                           }`}
                         >
-                          <IconComponent className="h-4 w-4" />
+                          <IconComponent className="h-3 w-3" />
                         </div>
                         <span
-                          className={`text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded-md truncate backdrop-blur-md ${
+                          className={`text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded backdrop-blur-md truncate ${
                             dark
                               ? "bg-black/25 text-white/90"
                               : "bg-white/40 text-slate-900"
@@ -368,28 +368,28 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
                           e.stopPropagation();
                           removeFavorite(item.id);
                         }}
-                        className={`p-1.5 rounded-xl transition-all duration-200 cursor-pointer shrink-0 opacity-80 group-hover:opacity-100 hover:scale-110 active:scale-95 ${
+                        className={`p-1 rounded-lg transition-all duration-200 cursor-pointer shrink-0 opacity-80 group-hover:opacity-100 hover:scale-110 active:scale-95 ${
                           dark
                             ? "bg-black/20 hover:bg-rose-600 text-white"
                             : "bg-white/40 hover:bg-rose-500 hover:text-white text-slate-800"
                         }`}
                         title={t("Remove from favorites", "Odstrániť z obľúbených", "Eltávolítás a kedvencek közül")}
                       >
-                        <Heart className="h-3.5 w-3.5 fill-current" />
+                        <Heart className="h-3 w-3 fill-current" />
                       </button>
                     </div>
 
                     {/* Card Body: Title & Subtitle */}
-                    <div className="mb-4 relative z-10 text-left">
+                    <div className="mb-2 relative z-10 text-left">
                       <h4
-                        className="font-heading font-extrabold text-sm leading-snug line-clamp-2 drop-shadow-xs"
+                        className="font-heading font-extrabold text-xs leading-snug line-clamp-2 drop-shadow-xs"
                         title={item.title}
                       >
                         {item.title}
                       </h4>
                       {item.subtitle && (
                         <p
-                          className={`text-[11px] font-medium mt-1 line-clamp-1 ${
+                          className={`text-[10px] font-medium mt-0.5 line-clamp-1 ${
                             dark ? "text-white/80" : "text-slate-700 font-semibold"
                           }`}
                           title={item.subtitle}
@@ -401,7 +401,7 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
 
                     {/* Card Footer: Open link prompt */}
                     <div
-                      className={`pt-2.5 border-t flex items-center justify-between text-[10px] font-bold uppercase tracking-wider relative z-10 ${
+                      className={`pt-1.5 border-t flex items-center justify-between text-[9px] font-bold uppercase tracking-wider relative z-10 ${
                         dark
                           ? "border-white/20 text-white/90"
                           : "border-black/10 text-slate-800"
@@ -410,7 +410,7 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
                       <span className="flex items-center gap-1 group-hover:underline">
                         {t("Open", "Otvoriť", "Megnyitás")}
                       </span>
-                      <ChevronRight className="h-3.5 w-3.5 transform group-hover:translate-x-1 transition-transform" />
+                      <ChevronRight className="h-3 w-3 transform group-hover:translate-x-0.5 transition-transform" />
                     </div>
                   </div>
                 );
