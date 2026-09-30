@@ -77,14 +77,51 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
     );
   }, [settings.togglApiKey, settings.timeTracking?.togglApiToken]);
 
-  const [activeTab, setActiveTab] = useState<"hours" | "salaries" | "vacations" | "files">(() => {
+  const getInitialTab = (): "hours" | "salaries" | "vacations" | "files" => {
+    const raw = typeof window !== "undefined" ? window.location.hash : "";
+    const params = new URLSearchParams(raw.split("?")[1] || "");
+    const tabParam = params.get("tab");
+    if (tabParam === "salaries" || tabParam === "vacations" || tabParam === "files") {
+      return tabParam;
+    }
+    if (tabParam === "hours" && hasTogglKey) {
+      return "hours";
+    }
     return hasTogglKey ? "hours" : "salaries";
-  });
+  };
+
+  const [activeTab, setActiveTab] = useState<"hours" | "salaries" | "vacations" | "files">(getInitialTab);
+
+  const handleTabClick = (newTab: "hours" | "salaries" | "vacations" | "files") => {
+    setActiveTab(newTab);
+    if (typeof window !== "undefined") {
+      const raw = window.location.hash;
+      const [path, query] = raw.split("?");
+      const params = new URLSearchParams(query || "");
+      params.set("tab", newTab);
+      window.location.hash = `${path}?${params.toString()}`;
+    }
+  };
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const raw = window.location.hash;
+      const params = new URLSearchParams(raw.split("?")[1] || "");
+      const tabParam = params.get("tab");
+      if (tabParam === "salaries" || tabParam === "vacations" || tabParam === "files") {
+        setActiveTab(tabParam);
+      } else if (tabParam === "hours" && hasTogglKey) {
+        setActiveTab("hours");
+      }
+    };
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, [hasTogglKey]);
 
   // If Toggl key is not set up, don't stay on hours tab
   useEffect(() => {
     if (!hasTogglKey && activeTab === "hours") {
-      setActiveTab("salaries");
+      handleTabClick("salaries");
     }
   }, [hasTogglKey, activeTab]);
 
@@ -513,7 +550,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
             <div className="pt-4 border-t border-slate-100">
               <button
                 type="button"
-                onClick={() => setActiveTab("files")}
+                onClick={() => handleTabClick("files")}
                 className={`w-full flex items-center justify-between p-3 rounded-2xl border transition cursor-pointer ${
                   activeTab === "files"
                     ? "bg-[#c29b62]/15 border-[#c29b62]/40 text-[#9e7638] dark:text-[#d4af7a]"
@@ -541,7 +578,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
           <div className="flex items-center gap-2 p-1.5 glass-panel rounded-2xl border border-white/60 bg-white/80 shadow-sm">
             {hasTogglKey && (
               <button
-                onClick={() => setActiveTab("hours")}
+                onClick={() => handleTabClick("hours")}
                 className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-bold transition shadow-sm ${
                   activeTab === "hours"
                     ? "bg-[#c29b62] text-white shadow-md shadow-[#c29b62]/20"
@@ -554,7 +591,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
             )}
 
             <button
-              onClick={() => setActiveTab("salaries")}
+              onClick={() => handleTabClick("salaries")}
               className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-bold transition shadow-sm ${
                 activeTab === "salaries"
                   ? "bg-[#c29b62] text-white shadow-md shadow-[#c29b62]/20"
@@ -566,7 +603,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
             </button>
 
             <button
-              onClick={() => setActiveTab("vacations")}
+              onClick={() => handleTabClick("vacations")}
               className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-bold transition shadow-sm ${
                 activeTab === "vacations"
                   ? "bg-[#c29b62] text-white shadow-md shadow-[#c29b62]/20"
@@ -578,7 +615,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
             </button>
 
             <button
-              onClick={() => setActiveTab("files")}
+              onClick={() => handleTabClick("files")}
               className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-bold transition shadow-sm ${
                 activeTab === "files"
                   ? "bg-[#c29b62] text-white shadow-md shadow-[#c29b62]/20"

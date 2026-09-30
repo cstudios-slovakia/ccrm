@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Users,
   Coins,
@@ -44,6 +44,62 @@ interface EmployeesViewProps {
   financialCategories: FinancialCategory[];
 }
 
+// Helper to parse view & parameters from URL hash
+const parseEmployeesUrlState = (
+  allEmployees: Employee[]
+): {
+  view: "list" | "detail" | "matrix" | "form" | "settings";
+  employeeId: string | null;
+  editEmployee: Employee | null;
+} => {
+  const raw = typeof window !== "undefined" ? window.location.hash.replace(/^#/, "") : "";
+  const [pathPart, queryPart] = raw.split("?");
+  const parts = (pathPart || "").split("/");
+  const base = (parts[0] || "").toLowerCase();
+  const sub = (parts[1] || "").toLowerCase();
+  const params = new URLSearchParams(queryPart || "");
+
+  // Hash: #salaries or #employees/salaries or #employees/matrix
+  if (base === "salaries" || (base === "employees" && (sub === "salaries" || sub === "matrix" || sub === "mzdy" || sub === "berek"))) {
+    return { view: "matrix", employeeId: null, editEmployee: null };
+  }
+
+  // Hash: #employees/settings
+  if (base === "employees" && (sub === "settings" || sub === "nastavenia" || sub === "beallitasok")) {
+    return { view: "settings", employeeId: null, editEmployee: null };
+  }
+
+  // Hash: #employees/new or #employees/create or #employees/add
+  if (base === "employees" && (sub === "new" || sub === "create" || sub === "add")) {
+    return { view: "form", employeeId: null, editEmployee: null };
+  }
+
+  // Hash: #employees/edit?id=xxx
+  if (base === "employees" && sub === "edit") {
+    const id = params.get("id") || parts[2] || null;
+    const emp = id ? allEmployees.find((e) => e.id === id) || null : null;
+    return { view: "form", employeeId: id, editEmployee: emp };
+  }
+
+  // Hash: #employees/detail?id=xxx or #employees?id=xxx
+  const queryId = params.get("id");
+  if (base === "employees" && (sub === "detail" || queryId)) {
+    const id = queryId || parts[2] || null;
+    return { view: id ? "detail" : "list", employeeId: id, editEmployee: null };
+  }
+
+  // Hash: #employees/<empId>
+  if (base === "employees" && sub && sub !== "directory" && sub !== "list") {
+    const emp = allEmployees.find((e) => e.id === sub || e.id.toLowerCase() === sub);
+    if (emp) {
+      return { view: "detail", employeeId: emp.id, editEmployee: null };
+    }
+  }
+
+  // Default: directory list (#employees or #employees/directory)
+  return { view: "list", employeeId: null, editEmployee: null };
+};
+
 export const EmployeesView: React.FC<EmployeesViewProps> = ({
   access: _access,
   systemLanguage = "sk",
@@ -59,13 +115,49 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
   setEmployeeSettings,
   financialCategories = []
 }) => {
-  // Navigation inside Employees Module: list, detail, matrix, dedicated form screen, or settings screen
-  const [currentView, setCurrentView] = useState<"list" | "detail" | "matrix" | "form" | "settings">("list");
-  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
-
-  // Form & Modals state
-  const [employeeToEdit, setEmployeeToEdit] = useState<Employee | null>(null);
+  // Navigation state derived from URL hash
+  const initialUrlState = useMemo(() => parseEmployeesUrlState(employees), []);
+  const [currentView, setCurrentView] = useState<"list" | "detail" | "matrix" | "form" | "settings">(initialUrlState.view);
+  const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(initialUrlState.employeeId);
+  const [employeeToEdit, setEmployeeToEdit] = useState<Employee | null>(initialUrlState.editEmployee);
   const [confirmAction, confirmDialog] = useConfirmDialog();
+
+  // Navigation helpers that update URL hash
+  const navigateToTab = (tab: "list" | "matrix" | "settings") => {
+    if (tab === "matrix") {
+      window.location.hash = "employees/salaries";
+    } else if (tab === "settings") {
+      window.location.hash = "employees/settings";
+    } else {
+      window.location.hash = "employees";
+    }
+  };
+
+  const navigateToEmployeeDetail = (empId: string) => {
+    window.location.hash = `employees/detail?id=${encodeURIComponent(empId)}`;
+  };
+
+  const navigateToAddEmployee = () => {
+    window.location.hash = "employees/new";
+  };
+
+  const navigateToEditEmployee = (empId: string) => {
+    window.location.hash = `employees/edit?id=${encodeURIComponent(empId)}`;
+  };
+
+  // Synchronize view state with URL hash (supports browser back/forward and deep links)
+  useEffect(() => {
+    const handleHashChange = () => {
+      const state = parseEmployeesUrlState(employees);
+      setCurrentView(state.view);
+      setSelectedEmployeeId(state.employeeId);
+      setEmployeeToEdit(state.editEmployee);
+    };
+
+    window.addEventListener("hashchange", handleHashChange);
+    handleHashChange();
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, [employees]);
 
   const t = (en: string, sk: string, hu: string) => {
     if (systemLanguage === "hu") return hu;
@@ -132,8 +224,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
     if (ok) {
       setEmployees((prev) => prev.filter((e) => e.id !== empId));
       if (selectedEmployeeId === empId) {
-        setSelectedEmployeeId(null);
-        setCurrentView("list");
+        navigateToTab("list");
       }
     }
   };
@@ -184,10 +275,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             <div className="glass-panel p-1 rounded-2xl flex items-center gap-1.5 border border-white/60 bg-white/95 shadow-glass">
               <button
                 type="button"
-                onClick={() => {
-                  setSelectedEmployeeId(null);
-                  setCurrentView("list");
-                }}
+                onClick={() => navigateToTab("list")}
                 className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-heading font-bold transition-all cursor-pointer ${
                   currentView === "list"
                     ? "bg-[#c29b62] text-white shadow-md shadow-[#c29b62]/25"
@@ -200,10 +288,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
 
               <button
                 type="button"
-                onClick={() => {
-                  setSelectedEmployeeId(null);
-                  setCurrentView("matrix");
-                }}
+                onClick={() => navigateToTab("matrix")}
                 className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-heading font-bold transition-all cursor-pointer ${
                   currentView === "matrix"
                     ? "bg-[#c29b62] text-white shadow-md shadow-[#c29b62]/25"
@@ -216,10 +301,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
 
               <button
                 type="button"
-                onClick={() => {
-                  setSelectedEmployeeId(null);
-                  setCurrentView("settings");
-                }}
+                onClick={() => navigateToTab("settings")}
                 className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-heading font-bold transition-all cursor-pointer ${
                   currentView === "settings"
                     ? "bg-[#c29b62] text-white shadow-md shadow-[#c29b62]/25"
@@ -265,21 +347,12 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             salaries={salaries}
             vacations={vacations}
             settings={resolvedSettings}
-            onSelectEmployee={(empId) => {
-              setSelectedEmployeeId(empId);
-              setCurrentView("detail");
-            }}
-            onAddEmployee={() => {
-              setEmployeeToEdit(null);
-              setCurrentView("form");
-            }}
-            onEditEmployee={(emp) => {
-              setEmployeeToEdit(emp);
-              setCurrentView("form");
-            }}
+            onSelectEmployee={(empId) => navigateToEmployeeDetail(empId)}
+            onAddEmployee={() => navigateToAddEmployee()}
+            onEditEmployee={(emp) => navigateToEditEmployee(emp.id)}
             onDeleteEmployee={handleDeleteEmployee}
-            onOpenSettings={() => setCurrentView("settings")}
-            onOpenMatrix={() => setCurrentView("matrix")}
+            onOpenSettings={() => navigateToTab("settings")}
+            onOpenMatrix={() => navigateToTab("matrix")}
             onSeedMockData={handleSeedMockData}
             systemLanguage={systemLanguage}
             systemCurrency={systemCurrency}
@@ -294,15 +367,9 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             vacations={vacations}
             settings={resolvedSettings}
             financialCategories={financialCategories}
-            onBack={() => {
-              setSelectedEmployeeId(null);
-              setCurrentView("list");
-            }}
+            onBack={() => navigateToTab("list")}
             onUpdateEmployee={handleSaveEmployee}
-            onEditEmployee={(emp) => {
-              setEmployeeToEdit(emp);
-              setCurrentView("form");
-            }}
+            onEditEmployee={(emp) => navigateToEditEmployee(emp.id)}
             onSaveSalary={handleSaveSalary}
             onSaveVacation={handleSaveVacation}
             onDeleteVacation={handleDeleteVacation}
@@ -319,10 +386,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             onSaveSalary={handleSaveSalary}
             systemLanguage={systemLanguage}
             systemCurrency={systemCurrency}
-            onSelectEmployee={(empId) => {
-              setSelectedEmployeeId(empId);
-              setCurrentView("detail");
-            }}
+            onSelectEmployee={(empId) => navigateToEmployeeDetail(empId)}
           />
         )}
 
@@ -335,17 +399,14 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             systemCurrency={systemCurrency}
             onSave={(emp) => {
               handleSaveEmployee(emp);
-              setSelectedEmployeeId(emp.id);
-              setCurrentView("detail");
-              setEmployeeToEdit(null);
+              navigateToEmployeeDetail(emp.id);
             }}
             onCancel={() => {
-              if (employeeToEdit && selectedEmployeeId) {
-                setCurrentView("detail");
+              if (selectedEmployeeId) {
+                navigateToEmployeeDetail(selectedEmployeeId);
               } else {
-                setCurrentView("list");
+                navigateToTab("list");
               }
-              setEmployeeToEdit(null);
             }}
           />
         )}
@@ -358,7 +419,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
               handleSaveSettings(updated);
             }}
             onCancel={() => {
-              setCurrentView("list");
+              navigateToTab("list");
             }}
             systemLanguage={systemLanguage}
           />

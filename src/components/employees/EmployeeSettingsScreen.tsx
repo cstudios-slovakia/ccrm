@@ -34,7 +34,41 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
   financialCategories,
   systemLanguage = "sk"
 }) => {
-  const [activeTab, setActiveTab] = useState<"payroll" | "vacation" | "toggl">("payroll");
+  const getInitialTab = (): "payroll" | "vacation" | "toggl" => {
+    const raw = typeof window !== "undefined" ? window.location.hash : "";
+    const params = new URLSearchParams(raw.split("?")[1] || "");
+    const tabParam = params.get("tab");
+    if (tabParam === "vacation" || tabParam === "toggl" || tabParam === "payroll") {
+      return tabParam;
+    }
+    return "payroll";
+  };
+
+  const [activeTab, setActiveTab] = useState<"payroll" | "vacation" | "toggl">(getInitialTab);
+
+  const handleTabClick = (tab: "payroll" | "vacation" | "toggl") => {
+    setActiveTab(tab);
+    if (typeof window !== "undefined") {
+      const raw = window.location.hash;
+      const [path, query] = raw.split("?");
+      const params = new URLSearchParams(query || "");
+      params.set("tab", tab);
+      window.location.hash = `${path}?${params.toString()}`;
+    }
+  };
+
+  useEffect(() => {
+    const handleHashChange = () => {
+      const raw = window.location.hash;
+      const params = new URLSearchParams(raw.split("?")[1] || "");
+      const tabParam = params.get("tab");
+      if (tabParam === "vacation" || tabParam === "toggl" || tabParam === "payroll") {
+        setActiveTab(tabParam);
+      }
+    };
+    window.addEventListener("hashchange", handleHashChange);
+    return () => window.removeEventListener("hashchange", handleHashChange);
+  }, []);
 
   // Local state initialized from settings
   const [salaryPeriod, setSalaryPeriod] = useState<"monthly" | "weekly">(settings.salaryPeriod || "monthly");
@@ -272,7 +306,7 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
         <div className="glass-panel p-1 rounded-2xl flex items-center gap-1 border border-white/60 bg-white/95 shadow-glass self-start md:self-auto">
           <button
             type="button"
-            onClick={() => setActiveTab("payroll")}
+            onClick={() => handleTabClick("payroll")}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-heading font-bold transition-all cursor-pointer ${
               activeTab === "payroll"
                 ? "bg-[#c29b62] text-white shadow-md shadow-[#c29b62]/25"
@@ -285,7 +319,7 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
 
           <button
             type="button"
-            onClick={() => setActiveTab("vacation")}
+            onClick={() => handleTabClick("vacation")}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-heading font-bold transition-all cursor-pointer ${
               activeTab === "vacation"
                 ? "bg-[#c29b62] text-white shadow-md shadow-[#c29b62]/25"
@@ -298,7 +332,7 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
 
           <button
             type="button"
-            onClick={() => setActiveTab("toggl")}
+            onClick={() => handleTabClick("toggl")}
             className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-heading font-bold transition-all cursor-pointer ${
               activeTab === "toggl"
                 ? "bg-[#c29b62] text-white shadow-md shadow-[#c29b62]/25"
