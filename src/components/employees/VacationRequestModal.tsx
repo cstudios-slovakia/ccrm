@@ -131,27 +131,27 @@ export const VacationRequestModal: React.FC<VacationRequestModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200 dark:border-slate-800 overflow-hidden flex flex-col">
+      <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-200 overflow-hidden flex flex-col">
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 dark:border-slate-800 bg-[#c29b62]/10 dark:bg-[#c29b62]/15">
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-200 bg-[#c29b62]/10">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-[#c29b62] text-white flex items-center justify-center shadow-md shadow-[#c29b62]/30">
+            <div className="w-10 h-10 rounded-2xl bg-[#c29b62] text-white flex items-center justify-center shadow-md shadow-[#c29b62]/30">
               <Calendar className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-base font-bold text-slate-900 dark:text-white">
+              <h2 className="text-base font-bold text-slate-900">
                 {vacationToEdit
                   ? t("Edit Vacation Record", "Úprava záznamu voľna", "Szabadság módosítása")
                   : t("Request / Record Vacation", "Zadať dovolenku / voľno", "Szabadság rögzítése")}
               </h2>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
+              <p className="text-xs text-slate-500">
                 {t("Record days off, sick leaves, doctor visits", "Evidencia čerpania dovolenky, PN alebo lekára", "Szabadság, betegszabadság, orvosi igazolás")}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+            className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition"
           >
             <X className="w-5 h-5" />
           </button>
@@ -161,14 +161,14 @@ export const VacationRequestModal: React.FC<VacationRequestModalProps> = ({
         <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {/* Employee selector */}
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
               {t("Employee", "Zamestnanec", "Alkalmazott")}
             </label>
             <select
               value={employeeId}
               onChange={(e) => setEmployeeId(e.target.value)}
               disabled={!!selectedEmployeeId && !vacationToEdit}
-              className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+              className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
             >
               {employees.map((emp) => (
                 <option key={emp.id} value={emp.id}>
@@ -180,7 +180,7 @@ export const VacationRequestModal: React.FC<VacationRequestModalProps> = ({
 
           {/* Vacation Type */}
           <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1">
               {t("Leave Type", "Typ voľna", "Szabadság típusa")}
             </label>
             <div className="grid grid-cols-2 gap-2">
@@ -193,8 +193,8 @@ export const VacationRequestModal: React.FC<VacationRequestModalProps> = ({
                     onClick={() => setVacationTypeId(vt.id)}
                     className={`flex items-center gap-2 p-2.5 rounded-xl border text-xs font-medium transition text-left ${
                       isSelected
-                        ? "border-[#c29b62] bg-[#c29b62]/10 text-slate-900 dark:text-white ring-1 ring-[#c29b62]"
-                        : "border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:border-slate-300"
+                        ? "border-[#c29b62] bg-[#c29b62]/10 text-slate-900 ring-1 ring-[#c29b62]"
+                        : "border-slate-200 bg-slate-50 text-slate-600 hover:border-slate-300"
                     }`}
                   >
                     <span
@@ -211,7 +211,7 @@ export const VacationRequestModal: React.FC<VacationRequestModalProps> = ({
           {/* Date range */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+              <label className="block text-xs font-medium text-slate-700 mb-1">
                 {t("From Date", "Od dátumu", "Kezdő dátum")}
               </label>
               <input
@@ -219,11 +219,11 @@ export const VacationRequestModal: React.FC<VacationRequestModalProps> = ({
                 required
                 value={startDate}
                 onChange={(e) => handleStartDateChange(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+              <label className="block text-xs font-medium text-slate-700 mb-1">
                 {t("To Date", "Do dátumu", "Befejező dátum")}
               </label>
               <input
@@ -232,7 +232,7 @@ export const VacationRequestModal: React.FC<VacationRequestModalProps> = ({
                 value={endDate}
                 min={startDate}
                 onChange={(e) => handleEndDateChange(e.target.value)}
-                className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
               />
             </div>
           </div>
@@ -240,7 +240,7 @@ export const VacationRequestModal: React.FC<VacationRequestModalProps> = ({
           {/* Days count & status */}
           <div className="grid grid-cols-2 gap-3">
             <div>
-              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+              <label className="block text-xs font-medium text-slate-700 mb-1">
                 {t("Working Days", "Počet pracovných dní", "Munkanapok száma")}
               </label>
               <input
@@ -249,18 +249,18 @@ export const VacationRequestModal: React.FC<VacationRequestModalProps> = ({
                 min="0.5"
                 value={daysCount}
                 onChange={(e) => setDaysCount(parseFloat(e.target.value) || 1)}
-                className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+              <label className="block text-xs font-medium text-slate-700 mb-1">
                 {t("Approval Status", "Stav schválenia", "Jóváhagyási állapot")}
               </label>
               <select
                 value={status}
                 onChange={(e) => setStatus(e.target.value as any)}
-                className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
               >
                 <option value="approved">{t("Approved", "Schválené", "Jóváhagyva")}</option>
                 <option value="pending">{t("Pending Approval", "Čaká na schválenie", "Függőben")}</option>
@@ -271,7 +271,7 @@ export const VacationRequestModal: React.FC<VacationRequestModalProps> = ({
 
           {/* Note */}
           <div>
-            <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+            <label className="block text-xs font-medium text-slate-700 mb-1">
               {t("Note / Reason (optional)", "Poznámka / Dôvod", "Megjegyzés / Indoklás")}
             </label>
             <input
@@ -279,16 +279,16 @@ export const VacationRequestModal: React.FC<VacationRequestModalProps> = ({
               value={note}
               onChange={(e) => setNote(e.target.value)}
               placeholder={t("e.g. Summer holiday with family", "napr. Letná rodinná dovolenka", "pl. Családi nyaralás")}
-              className="w-full px-3 py-2 text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+              className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
             />
           </div>
 
           {/* Footer buttons */}
-          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200 dark:border-slate-800">
+          <div className="flex items-center justify-end gap-3 pt-3 border-t border-slate-200">
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 text-sm font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition"
+              className="px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100 rounded-xl transition"
             >
               {t("Cancel", "Zrušiť", "Mégse")}
             </button>

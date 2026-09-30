@@ -15,7 +15,8 @@ import {
   Clock,
   FileText,
   Mail,
-  Phone
+  Phone,
+  Sparkles
 } from "lucide-react";
 import type {
   Employee,
@@ -36,6 +37,7 @@ interface EmployeeListViewProps {
   onDeleteEmployee: (employeeId: string) => void;
   onOpenSettings: () => void;
   onOpenMatrix: () => void;
+  onSeedMockData?: () => void;
   systemLanguage?: string;
   systemCurrency?: string;
 }
@@ -50,7 +52,8 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
   onEditEmployee,
   onDeleteEmployee,
   onOpenSettings,
-  onOpenMatrix,
+  onOpenMatrix: _onOpenMatrix,
+  onSeedMockData,
   systemLanguage = "sk",
   systemCurrency = "€"
 }) => {
@@ -118,13 +121,13 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
       {/* Top Action Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-xl bg-[#c29b62] text-white flex items-center justify-center shadow-md shadow-[#c29b62]/30">
+          <h1 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-3">
+            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#c29b62] to-[#9e7638] text-white flex items-center justify-center shadow-lg shadow-[#c29b62]/25">
               <EmployeeTieIcon className="w-5 h-5" color="#ffffff" />
             </div>
             <span>{t("Employees & Payroll", "Zamestnanci a mzdy", "Alkalmazottak és bérek")}</span>
           </h1>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+          <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
             {t(
               "Staff directory, salary structures, Toggl time tracking & vacation planner",
               "Prehľad zamestnancov, štruktúra miezd, meranie času a plánovač dovoleniek",
@@ -134,25 +137,30 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2.5">
-          <button
-            onClick={onOpenMatrix}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition shadow-sm"
-          >
-            <Coins className="w-4 h-4 text-[#c29b62]" />
-            <span>{t("Salaries Matrix", "Matica miezd", "Bérmátrix")}</span>
-          </button>
+          {employees.length === 0 && onSeedMockData && (
+            <button
+              type="button"
+              onClick={onSeedMockData}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-700 font-heading font-bold text-xs uppercase tracking-wider hover:bg-amber-500/20 transition-all cursor-pointer"
+            >
+              <Sparkles className="w-4 h-4 text-amber-600" />
+              <span>{t("Seed Mock Data", "Naplniť vzorovými dátami", "Minta adatok")}</span>
+            </button>
+          )}
 
           <button
+            type="button"
             onClick={onOpenSettings}
-            className="p-2 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl transition shadow-sm"
+            className="p-2.5 text-slate-500 hover:text-slate-800 glass-panel border border-white/60 bg-white/95 rounded-2xl transition shadow-glass cursor-pointer"
             title={t("Settings", "Nastavenia", "Beállítások")}
           >
             <Settings className="w-4 h-4" />
           </button>
 
           <button
+            type="button"
             onClick={onAddEmployee}
-            className="flex items-center gap-1.5 px-4 py-2 text-xs font-semibold rounded-xl bg-[#c29b62] text-white hover:bg-[#b58b4c] transition shadow-md shadow-[#c29b62]/30"
+            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white font-heading font-bold text-xs uppercase tracking-wider shadow-lg shadow-[#c29b62]/25 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>{t("Add Employee", "Nový zamestnanec", "Új alkalmazott")}</span>
@@ -160,84 +168,84 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
         </div>
       </div>
 
-      {/* KPI Cards Row with Sand Theme Accents */}
+      {/* KPI Cards Row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {/* Total Staff */}
-        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
+        <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-5 flex items-center justify-between hover:shadow-lg transition-all">
           <div>
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
               {t("Total Staff", "Celkom zamestnancov", "Összes alkalmazott")}
             </span>
-            <span className="text-2xl font-bold font-mono text-slate-900 dark:text-white mt-0.5 block">
+            <span className="text-3xl font-heading font-black text-slate-900 tracking-tight mt-1 block">
               {stats.total}
             </span>
-            <span className="text-[10px] text-slate-400">
+            <span className="text-[10px] text-slate-400 font-medium">
               {stats.active} {t("active employees", "aktívnych", "aktív")}
             </span>
           </div>
-          <div className="w-11 h-11 rounded-xl bg-[#c29b62]/10 text-[#9e7638] dark:text-[#d4af7a] flex items-center justify-center">
-            <Users className="w-5 h-5" />
+          <div className="w-12 h-12 rounded-2xl bg-[#c29b62]/15 text-[#9e7638] flex items-center justify-center shadow-xs">
+            <Users className="w-6 h-6" />
           </div>
         </div>
 
         {/* Active Rate */}
-        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
+        <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-5 flex items-center justify-between hover:shadow-lg transition-all">
           <div>
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
               {t("Active Status", "Aktívny stav", "Aktív állapot")}
             </span>
-            <span className="text-2xl font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-0.5 block">
+            <span className="text-3xl font-heading font-black text-emerald-600 tracking-tight mt-1 block">
               {stats.total > 0 ? Math.round((stats.active / stats.total) * 100) : 0}%
             </span>
-            <span className="text-[10px] text-slate-400">
+            <span className="text-[10px] text-slate-400 font-medium">
               {stats.total - stats.active} {t("inactive / left", "neaktívnych", "inaktív")}
             </span>
           </div>
-          <div className="w-11 h-11 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
-            <UserCheck className="w-5 h-5" />
+          <div className="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shadow-xs">
+            <UserCheck className="w-6 h-6" />
           </div>
         </div>
 
         {/* Monthly Payroll Base */}
-        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
+        <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-5 flex items-center justify-between hover:shadow-lg transition-all">
           <div>
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
               {t("Est. Monthly Payroll", "Mesačný objem miezd", "Havi bérköltség")}
             </span>
-            <span className="text-xl font-bold font-mono text-slate-900 dark:text-white mt-0.5 block">
+            <span className="text-2xl sm:text-3xl font-heading font-black text-slate-900 tracking-tight mt-1 block">
               {stats.totalMonthlyPayroll.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}{" "}
-              {systemCurrency}
+              <span className="text-sm font-bold text-slate-400">{systemCurrency}</span>
             </span>
-            <span className="text-[10px] text-slate-400">
+            <span className="text-[10px] text-slate-400 font-medium">
               {t("Due around", "Splatnosť okolo", "Esedékes:")} {settings.salaryDueDay ?? 15}. {t("of month", "v mesiaci", "")}
             </span>
           </div>
-          <div className="w-11 h-11 rounded-xl bg-[#c29b62]/10 text-[#9e7638] dark:text-[#d4af7a] flex items-center justify-center">
-            <Coins className="w-5 h-5" />
+          <div className="w-12 h-12 rounded-2xl bg-[#c29b62]/15 text-[#9e7638] flex items-center justify-center shadow-xs">
+            <Coins className="w-6 h-6" />
           </div>
         </div>
 
         {/* On Leave Today */}
-        <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between">
+        <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-5 flex items-center justify-between hover:shadow-lg transition-all">
           <div>
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 block">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
               {t("On Leave Today", "Dnes na dovolenke / PN", "Ma távol lévők")}
             </span>
-            <span className="text-2xl font-bold font-mono text-amber-600 dark:text-amber-400 mt-0.5 block">
+            <span className="text-3xl font-heading font-black text-amber-600 tracking-tight mt-1 block">
               {stats.onLeaveToday}
             </span>
-            <span className="text-[10px] text-slate-400">
+            <span className="text-[10px] text-slate-400 font-medium">
               {t("Absence calendar tracked", "Evidované v kalendári", "Naptárban rögzítve")}
             </span>
           </div>
-          <div className="w-11 h-11 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 flex items-center justify-center">
-            <Calendar className="w-5 h-5" />
+          <div className="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shadow-xs">
+            <Calendar className="w-6 h-6" />
           </div>
         </div>
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+      <div className="glass-panel rounded-2xl border border-white/60 bg-white/95 shadow-glass p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3 flex-1">
           <div className="relative flex-1 max-w-md">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -246,38 +254,41 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t("Search by name, PIN, email or phone...", "Hľadať podľa mena, RČ, emailu...", "Keresés név, személyi szám szerint...")}
-              className="w-full pl-9 pr-3 py-1.5 text-xs bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+              className="w-full pl-9 pr-3.5 py-2 text-xs bg-slate-100/70 border border-slate-200/60 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#c29b62]/40 focus:bg-white transition"
             />
           </div>
 
           {/* Status Segmented Buttons */}
-          <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-xs">
+          <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl text-xs border border-slate-200/40">
             <button
+              type="button"
               onClick={() => setStatusFilter("all")}
-              className={`px-3 py-1 rounded-lg font-medium transition ${
+              className={`px-3 py-1 rounded-lg font-heading text-xs transition cursor-pointer ${
                 statusFilter === "all"
-                  ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm"
-                  : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                  ? "bg-white text-slate-900 shadow-xs font-bold"
+                  : "text-slate-500 hover:text-slate-900 font-medium"
               }`}
             >
               {t("All", "Všetci", "Mind")}
             </button>
             <button
+              type="button"
               onClick={() => setStatusFilter("active")}
-              className={`px-3 py-1 rounded-lg font-medium transition ${
+              className={`px-3 py-1 rounded-lg font-heading text-xs transition cursor-pointer ${
                 statusFilter === "active"
-                  ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm"
-                  : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                  ? "bg-white text-slate-900 shadow-xs font-bold"
+                  : "text-slate-500 hover:text-slate-900 font-medium"
               }`}
             >
               {t("Active", "Aktívni", "Aktív")}
             </button>
             <button
+              type="button"
               onClick={() => setStatusFilter("inactive")}
-              className={`px-3 py-1 rounded-lg font-medium transition ${
+              className={`px-3 py-1 rounded-lg font-heading text-xs transition cursor-pointer ${
                 statusFilter === "inactive"
-                  ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm"
-                  : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                  ? "bg-white text-slate-900 shadow-xs font-bold"
+                  : "text-slate-500 hover:text-slate-900 font-medium"
               }`}
             >
               {t("Inactive", "Neaktívni", "Inaktív")}
@@ -286,20 +297,22 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
         </div>
 
         {/* View Mode Switcher */}
-        <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-slate-500">
+        <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl text-slate-500 border border-slate-200/40">
           <button
+            type="button"
             onClick={() => setViewMode("table")}
-            className={`p-1.5 rounded-lg transition ${
-              viewMode === "table" ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : ""
+            className={`p-1.5 rounded-lg transition cursor-pointer ${
+              viewMode === "table" ? "bg-white text-slate-900 shadow-xs font-bold" : "hover:text-slate-800"
             }`}
             title={t("Table View", "Tabuľka", "Táblázat")}
           >
             <List className="w-4 h-4" />
           </button>
           <button
+            type="button"
             onClick={() => setViewMode("cards")}
-            className={`p-1.5 rounded-lg transition ${
-              viewMode === "cards" ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm" : ""
+            className={`p-1.5 rounded-lg transition cursor-pointer ${
+              viewMode === "cards" ? "bg-white text-slate-900 shadow-xs font-bold" : "hover:text-slate-800"
             }`}
             title={t("Card View", "Karty", "Kártyák")}
           >
@@ -308,157 +321,198 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
         </div>
       </div>
 
-      {/* TABLE VIEW */}
-      {viewMode === "table" ? (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
+      {/* EMPTY STATE */}
+      {filteredEmployees.length === 0 ? (
+        <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-12 text-center space-y-4">
+          <div className="w-16 h-16 rounded-3xl bg-[#c29b62]/15 text-[#9e7638] mx-auto flex items-center justify-center shadow-inner">
+            <EmployeeTieIcon className="w-8 h-8" color="#c29b62" />
+          </div>
+          <div className="max-w-md mx-auto space-y-1.5">
+            <h3 className="text-base font-heading font-extrabold text-slate-900">
+              {t("No employees found", "Žiadni zamestnanci", "Nincsenek alkalmazottak")}
+            </h3>
+            <p className="text-xs text-slate-500 leading-relaxed">
+              {employees.length === 0
+                ? t(
+                    "Start by adding your first team member or quickly load sample employee profiles with salaries and vacations.",
+                    "Začnite pridaním prvého zamestnanca alebo jedným klikom načítajte pripravené vzorové profily s platmi a dovolenkami.",
+                    "Adja hozzá első alkalmazottját, vagy töltsön be minta profilokat bér- és szabadságadatokkal."
+                  )
+                : t("Try changing your search query or filter options.", "Skúste upraviť vyhľadávací dotaz alebo filter.", "Próbálja módosítani a keresési feltételeket.")}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
+            {employees.length === 0 && onSeedMockData && (
+              <button
+                type="button"
+                onClick={onSeedMockData}
+                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 text-white font-heading font-bold text-xs uppercase tracking-wider shadow-lg shadow-amber-500/25 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>{t("Load Demo Staff", "Naplniť vzorovými dátami", "Minta adatok betöltése")}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={onAddEmployee}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white font-heading font-bold text-xs uppercase tracking-wider shadow-lg shadow-[#c29b62]/25 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>{t("Add Employee", "Nový zamestnanec", "Új alkalmazott")}</span>
+            </button>
+          </div>
+        </div>
+      ) : viewMode === "table" ? (
+        /* TABLE VIEW */
+        <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs">
+            <table className="w-full text-left text-xs border-collapse">
               <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/75 dark:bg-slate-800/50 text-slate-500 font-semibold uppercase tracking-wider">
-                  <th className="py-3 px-4">{t("Employee", "Zamestnanec", "Alkalmazott")}</th>
-                  <th className="py-3 px-4">{t("Contact", "Kontakt", "Elérhetőség")}</th>
-                  <th className="py-3 px-4">{t("Salary & Terms", "Mzda a podmienky", "Bér és feltételek")}</th>
-                  <th className="py-3 px-4">{t("Time Tracking", "Meranie času", "Időkövetés")}</th>
-                  <th className="py-3 px-4">{t("Contracts", "Zmluvy", "Szerződések")}</th>
-                  <th className="py-3 px-4 text-center">{t("Status", "Stav", "Állapot")}</th>
-                  <th className="py-3 px-4 text-right">{t("Actions", "Akcie", "Műveletek")}</th>
+                <tr className="border-b border-slate-200/80 bg-slate-50/75 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
+                  <th className="py-3.5 px-4">{t("Employee", "Zamestnanec", "Alkalmazott")}</th>
+                  <th className="py-3.5 px-4">{t("Contact", "Kontakt", "Elérhetőség")}</th>
+                  <th className="py-3.5 px-4">{t("Salary & Terms", "Mzda a podmienky", "Bér és feltételek")}</th>
+                  <th className="py-3.5 px-4">{t("Time Tracking", "Meranie času", "Időkövetés")}</th>
+                  <th className="py-3.5 px-4">{t("Contracts", "Zmluvy", "Szerződések")}</th>
+                  <th className="py-3.5 px-4 text-center">{t("Status", "Stav", "Állapot")}</th>
+                  <th className="py-3.5 px-4 text-right">{t("Actions", "Akcie", "Műveletek")}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {filteredEmployees.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="py-12 text-center text-slate-400">
-                      {t("No employees found.", "Neboli nájdení žiadni zamestnanci.", "Nem található alkalmazott.")}
-                    </td>
-                  </tr>
-                ) : (
-                  filteredEmployees.map((emp) => {
-                    const initials = emp.name
-                      .split(" ")
-                      .map((n) => n[0])
-                      .slice(0, 2)
-                      .join("")
-                      .toUpperCase();
+              <tbody className="divide-y divide-slate-100">
+                {filteredEmployees.map((emp) => {
+                  const initials = emp.name
+                    .split(" ")
+                    .map((n) => n[0])
+                    .slice(0, 2)
+                    .join("")
+                    .toUpperCase();
 
-                    return (
-                      <tr
-                        key={emp.id}
-                        onClick={() => onSelectEmployee(emp.id)}
-                        className="hover:bg-slate-50/70 dark:hover:bg-slate-800/40 cursor-pointer transition group"
-                      >
-                        {/* Employee Name & PIN */}
-                        <td className="py-3 px-4">
-                          <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-xl bg-[#c29b62]/15 text-[#9e7638] dark:text-[#d4af7a] flex items-center justify-center font-bold text-xs shrink-0">
-                              {initials}
-                            </div>
-                            <div className="min-w-0">
-                              <span className="font-semibold text-slate-900 dark:text-white block group-hover:text-[#c29b62] transition truncate">
-                                {emp.name}
-                              </span>
-                              {emp.pin ? (
-                                <span className="text-[10px] font-mono text-slate-400 block">{emp.pin}</span>
-                              ) : (
-                                <span className="text-[10px] text-slate-400 block">{emp.addressCity || "—"}</span>
+                  return (
+                    <tr
+                      key={emp.id}
+                      onClick={() => onSelectEmployee(emp.id)}
+                      className="hover:bg-slate-500/5 cursor-pointer transition group"
+                    >
+                      {/* Employee Name & Role / PIN */}
+                      <td className="py-3.5 px-4">
+                        <div className="flex items-center gap-3">
+                          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#c29b62]/20 to-[#9e7638]/20 border border-[#c29b62]/30 text-[#9e7638] flex items-center justify-center font-heading font-black text-xs shrink-0 shadow-xs">
+                            {initials}
+                          </div>
+                          <div className="min-w-0">
+                            <span className="font-heading font-bold text-slate-900 block group-hover:text-[#c29b62] transition truncate text-sm">
+                              {emp.name}
+                            </span>
+                            <div className="flex items-center gap-2 mt-0.5">
+                              {emp.role && (
+                                <span className="text-[11px] font-medium text-slate-500 truncate block">
+                                  {emp.role}
+                                </span>
+                              )}
+                              {emp.pin && (
+                                <span className="text-[10px] font-mono text-slate-400">
+                                  • {emp.pin}
+                                </span>
                               )}
                             </div>
                           </div>
-                        </td>
+                        </div>
+                      </td>
 
-                        {/* Contact */}
-                        <td className="py-3 px-4 text-slate-600 dark:text-slate-300">
-                          {emp.email && <div className="truncate">{emp.email}</div>}
-                          {emp.phone && <div className="text-[10px] text-slate-400">{emp.phone}</div>}
-                        </td>
+                      {/* Contact */}
+                      <td className="py-3.5 px-4 text-slate-600">
+                        {emp.email && <div className="truncate font-medium">{emp.email}</div>}
+                        {emp.phone && <div className="text-[10px] text-slate-400 mt-0.5">{emp.phone}</div>}
+                      </td>
 
-                        {/* Compensation */}
-                        <td className="py-3 px-4">
-                          <span className="font-mono font-semibold text-slate-900 dark:text-white block">
-                            {(emp.salaryAmount || 0).toLocaleString()} {systemCurrency}
+                      {/* Compensation */}
+                      <td className="py-3.5 px-4">
+                        <span className="font-mono font-bold text-slate-900 block text-xs">
+                          {(emp.salaryAmount || 0).toLocaleString()} {systemCurrency}
+                        </span>
+                        <span className="text-[10px] text-slate-400 block mt-0.5">
+                          {emp.salaryType === "hourly"
+                            ? t("hourly", "hodinová", "órabér")
+                            : emp.salaryType === "daily"
+                            ? t("daily", "denná", "napibér")
+                            : t("monthly", "mesačná", "havibér")}{" "}
+                          • {t("Due", "Splatnosť", "Esedékes")}: {emp.salaryDueDay || (settings.salaryDueDay ?? 15)}.
+                        </span>
+                      </td>
+
+                      {/* Time tracking mapping */}
+                      <td className="py-3.5 px-4">
+                        {emp.timeTrackingUserId ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-[#c29b62]/10 text-[#9e7638] border border-[#c29b62]/25">
+                            <Clock className="w-3 h-3 text-[#c29b62]" />
+                            <span className="truncate max-w-[120px]">{emp.timeTrackingUserName || emp.timeTrackingUserId}</span>
                           </span>
-                          <span className="text-[10px] text-slate-400 block">
-                            {emp.salaryType === "hourly"
-                              ? t("hourly", "hodinová", "órabér")
-                              : emp.salaryType === "daily"
-                              ? t("daily", "denná", "napibér")
-                              : t("monthly", "mesačná", "havibér")}{" "}
-                            • {t("Due", "Splatnosť", "Esedékes")}: {emp.salaryDueDay || (settings.salaryDueDay ?? 15)}.
+                        ) : (
+                          <span className="text-slate-400 text-[10px]">—</span>
+                        )}
+                      </td>
+
+                      {/* Contracts count */}
+                      <td className="py-3.5 px-4">
+                        {emp.files && emp.files.length > 0 ? (
+                          <span className="inline-flex items-center gap-1 text-[11px] text-slate-700 font-semibold">
+                            <FileText className="w-3.5 h-3.5 text-[#c29b62]" />
+                            <span>{emp.files.length}</span>
                           </span>
-                        </td>
+                        ) : (
+                          <span className="text-slate-400 text-[10px]">0</span>
+                        )}
+                      </td>
 
-                        {/* Time tracking mapping */}
-                        <td className="py-3 px-4">
-                          {emp.timeTrackingUserId ? (
-                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#c29b62]/10 text-[#9e7638] dark:text-[#d4af7a] border border-[#c29b62]/20">
-                              <Clock className="w-3 h-3" />
-                              <span>{emp.timeTrackingUserName || emp.timeTrackingUserId}</span>
-                            </span>
-                          ) : (
-                            <span className="text-slate-400 text-[10px]">—</span>
-                          )}
-                        </td>
+                      {/* Status badge */}
+                      <td className="py-3.5 px-4 text-center">
+                        <span
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase ${
+                            emp.isActive !== false
+                              ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                              : "bg-slate-100 text-slate-500 border border-slate-200"
+                          }`}
+                        >
+                          <span className={`w-1.5 h-1.5 rounded-full ${emp.isActive !== false ? "bg-emerald-500 animate-pulse" : "bg-slate-400"}`} />
+                          {emp.isActive !== false ? t("Active", "Aktívny", "Aktív") : t("Inactive", "Neaktívny", "Inaktív")}
+                        </span>
+                      </td>
 
-                        {/* Contracts count */}
-                        <td className="py-3 px-4">
-                          {emp.files && emp.files.length > 0 ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] text-slate-600 dark:text-slate-300">
-                              <FileText className="w-3.5 h-3.5 text-[#c29b62]" />
-                              <span>{emp.files.length}</span>
-                            </span>
-                          ) : (
-                            <span className="text-slate-400 text-[10px]">0</span>
-                          )}
-                        </td>
-
-                        {/* Status badge */}
-                        <td className="py-3 px-4 text-center">
-                          <span
-                            className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
-                              emp.isActive !== false
-                                ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
-                                : "bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700"
-                            }`}
+                      {/* Actions */}
+                      <td className="py-3.5 px-4 text-right">
+                        <div
+                          className="flex items-center justify-end gap-1.5"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => onEditEmployee(emp)}
+                            className="p-1.5 text-slate-400 hover:text-slate-700 rounded-lg hover:bg-slate-100 transition cursor-pointer"
+                            title={t("Edit", "Upraviť", "Szerkesztés")}
                           >
-                            {emp.isActive !== false ? t("Active", "Aktívny", "Aktív") : t("Inactive", "Neaktívny", "Inaktív")}
-                          </span>
-                        </td>
-
-                        {/* Actions */}
-                        <td className="py-3 px-4 text-right">
-                          <div
-                            className="flex items-center justify-end gap-1"
-                            onClick={(e) => e.stopPropagation()}
+                            <Edit3 className="w-3.5 h-3.5" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => onDeleteEmployee(emp.id)}
+                            className="p-1.5 text-slate-400 hover:text-rose-600 rounded-lg hover:bg-rose-50 transition cursor-pointer"
+                            title={t("Delete", "Zmazať", "Törlés")}
                           >
-                            <button
-                              type="button"
-                              onClick={() => onEditEmployee(emp)}
-                              className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
-                              title={t("Edit", "Upraviť", "Szerkesztés")}
-                            >
-                              <Edit3 className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => onDeleteEmployee(emp.id)}
-                              className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 transition"
-                              title={t("Delete", "Zmazať", "Törlés")}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                            <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-500 transition ml-1" />
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
-                )}
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                          <ChevronRight className="w-4 h-4 text-slate-300 group-hover:text-slate-600 transition ml-1" />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </div>
       ) : (
         /* CARDS GRID VIEW */
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {filteredEmployees.map((emp) => {
             const initials = emp.name
               .split(" ")
@@ -471,19 +525,23 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
               <div
                 key={emp.id}
                 onClick={() => onSelectEmployee(emp.id)}
-                className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm hover:shadow-md transition cursor-pointer flex flex-col justify-between space-y-4 group"
+                className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 hover:shadow-xl hover:-translate-y-1 transition-all duration-200 flex flex-col justify-between space-y-4 group cursor-pointer relative"
               >
                 <div>
-                  <div className="flex items-start justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className="w-11 h-11 rounded-xl bg-[#c29b62]/15 text-[#9e7638] dark:text-[#d4af7a] flex items-center justify-center font-bold text-sm shrink-0">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#c29b62]/20 to-[#9e7638]/20 border border-[#c29b62]/30 text-[#9e7638] flex items-center justify-center font-heading font-black text-sm shrink-0 shadow-xs">
                         {initials}
                       </div>
                       <div className="min-w-0">
-                        <h3 className="font-semibold text-sm text-slate-900 dark:text-white group-hover:text-[#c29b62] transition truncate">
+                        <h3 className="font-heading font-bold text-sm text-slate-900 group-hover:text-[#c29b62] transition truncate">
                           {emp.name}
                         </h3>
-                        {emp.pin ? (
+                        {emp.role ? (
+                          <span className="text-[11px] font-medium text-slate-500 truncate block">
+                            {emp.role}
+                          </span>
+                        ) : emp.pin ? (
                           <span className="text-[10px] font-mono text-slate-400 block">{emp.pin}</span>
                         ) : (
                           <span className="text-[10px] text-slate-400 block">{emp.addressCity || "—"}</span>
@@ -492,38 +550,39 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                     </div>
 
                     <span
-                      className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase shrink-0 ${
                         emp.isActive !== false
-                          ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800"
-                          : "bg-slate-100 dark:bg-slate-800 text-slate-500 border border-slate-200 dark:border-slate-700"
+                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                          : "bg-slate-100 text-slate-500 border border-slate-200"
                       }`}
                     >
+                      <span className={`w-1.5 h-1.5 rounded-full ${emp.isActive !== false ? "bg-emerald-500" : "bg-slate-400"}`} />
                       {emp.isActive !== false ? t("Active", "Aktívny", "Aktív") : t("Inactive", "Neaktívny", "Inaktív")}
                     </span>
                   </div>
 
-                  <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800/80 space-y-2 text-xs text-slate-600 dark:text-slate-400">
+                  <div className="mt-4 pt-3 border-t border-slate-100 space-y-2 text-xs text-slate-600">
                     {emp.email && (
                       <div className="flex items-center gap-2 truncate">
                         <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span className="truncate">{emp.email}</span>
+                        <span className="truncate font-medium">{emp.email}</span>
                       </div>
                     )}
                     {emp.phone && (
                       <div className="flex items-center gap-2">
                         <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                        <span>{emp.phone}</span>
+                        <span className="text-slate-500">{emp.phone}</span>
                       </div>
                     )}
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs">
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
                   <div>
-                    <span className="font-mono font-bold text-slate-900 dark:text-white block">
+                    <span className="font-mono font-bold text-slate-900 block text-sm">
                       {(emp.salaryAmount || 0).toLocaleString()} {systemCurrency}
                     </span>
-                    <span className="text-[10px] text-slate-400">
+                    <span className="text-[10px] text-slate-400 font-medium">
                       {emp.salaryType === "hourly"
                         ? t("hourly", "hodinová", "órabér")
                         : emp.salaryType === "daily"
@@ -533,13 +592,13 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                   </div>
 
                   <div
-                    className="flex items-center gap-1"
+                    className="flex items-center gap-1.5"
                     onClick={(e) => e.stopPropagation()}
                   >
                     <button
                       type="button"
                       onClick={() => onEditEmployee(emp)}
-                      className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition"
+                      className="p-2 text-slate-400 hover:text-slate-700 rounded-xl hover:bg-slate-100 transition cursor-pointer"
                       title={t("Edit", "Upraviť", "Szerkesztés")}
                     >
                       <Edit3 className="w-3.5 h-3.5" />
@@ -547,7 +606,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                     <button
                       type="button"
                       onClick={() => onDeleteEmployee(emp.id)}
-                      className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg hover:bg-red-50 dark:hover:bg-red-950/30 transition"
+                      className="p-2 text-slate-400 hover:text-rose-600 rounded-xl hover:bg-rose-50 transition cursor-pointer"
                       title={t("Delete", "Zmazať", "Törlés")}
                     >
                       <Trash2 className="w-3.5 h-3.5" />

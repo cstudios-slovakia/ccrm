@@ -1241,6 +1241,7 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_quantity_precision($pdo);
         ccrm_backfill_task_completion_attribution($pdo);
         ccrm_seed_default_financial_categories($pdo);
+        ccrm_seed_default_employees($pdo);
         ccrm_migrate_user_role_varchar($pdo);
     }
 
@@ -1941,6 +1942,92 @@ if (!function_exists('ccrm_schema_statements')) {
             }
         } catch (\Throwable $e) {
             error_log('[ccrm schema] financial categories seed skipped: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Seeds sample employees, salaries, and vacation records into empty employee tables
+     * for demo installations.
+     */
+    function ccrm_seed_default_employees(PDO $pdo): void {
+        try {
+            $hasTable = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees'")->fetchColumn();
+            if ($hasTable === 0) return;
+
+            $count = (int)$pdo->query("SELECT COUNT(*) FROM `employees`")->fetchColumn();
+            if ($count > 0) return;
+
+            // 1. Insert employees
+            $insEmp = $pdo->prepare("INSERT INTO `employees` (`id`, `name`, `pin`, `email`, `phone`, `address_street`, `address_city`, `address_zip`, `address_country`, `salary_type`, `salary_amount`, `salary_due_day`, `vacation_allowances_json`, `time_tracking_provider`, `time_tracking_user_id`, `time_tracking_user_name`, `auto_expense`, `expense_category_id`, `is_active`, `notes`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+
+            $emps = [
+                ['emp-1', 'Ing. Michal Kováč', '880415/7231', 'michal.kovac@cstudios.sk', '+421 905 442 811', 'Dunajská 24', 'Bratislava', '811 08', 'Slovakia', 'monthly', 3600.00, 15, json_encode(['annual' => 25, 'sick' => 10, 'doctor' => 7, 'unpaid' => 0]), 'toggl', '849102', 'Michal Kováč (Toggl)', 1, 'fc-exp-pay-salaries', 1, 'Lead architectural director for enterprise contracts. Authorised chamber architect.'],
+                ['emp-2', 'Mgr. Zuzana Horváthová', '925708/6519', 'zuzana.horvath@cstudios.sk', '+421 918 631 904', 'Hlavná 48', 'Trnava', '917 01', 'Slovakia', 'monthly', 2850.00, 15, json_encode(['annual' => 25, 'sick' => 10, 'doctor' => 7, 'unpaid' => 0]), 'toggl', '849103', 'Zuzana Horváthová (Toggl)', 1, 'fc-exp-pay-salaries', 1, 'Product design lead for CRM, design systems, and client brand identities.'],
+                ['emp-3', 'Bc. Peter Varga', '950122/8104', 'peter.varga@cstudios.sk', '+421 944 205 789', 'Štefánikova 12', 'Nitra', '949 01', 'Slovakia', 'monthly', 3100.00, 15, json_encode(['annual' => 20, 'sick' => 10, 'doctor' => 7, 'unpaid' => 0]), 'toggl', '849104', 'Peter Varga (Toggl)', 1, 'fc-exp-pay-salaries', 1, 'Core platform architect. Maintains API services, container pipelines and MariaDB cluster.'],
+                ['emp-4', 'Kristína Balážová', '975319/7820', 'kristina.balaz@cstudios.sk', '+421 907 334 112', 'Záhradnícka 62', 'Bratislava', '821 08', 'Slovakia', 'monthly', 2200.00, 15, json_encode(['annual' => 22, 'sick' => 10, 'doctor' => 7, 'unpaid' => 0]), 'toggl', '849105', 'Kristína Balážová (Toggl)', 1, 'fc-exp-pay-salaries', 1, 'Manages client contracts, monthly invoicing schedules, office operations and procurement.']
+            ];
+
+            foreach ($emps as $e) {
+                $insEmp->execute($e);
+            }
+
+            // 2. Insert Salaries for 2026
+            $insSal = $pdo->prepare("INSERT INTO `employee_salaries` (`id`, `employee_id`, `period_type`, `period_key`, `year`, `period_number`, `items_json`, `total_salary`, `total_paid`, `status`, `due_date`, `payment_date`, `payment_method`, `note`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+
+            $year = 2026;
+            foreach ($emps as $e) {
+                $empId = $e[0];
+                $base = $e[10];
+                for ($m = 1; $m <= 12; $m++) {
+                    $mStr = str_pad((string)$m, 2, '0', STR_PAD_LEFT);
+                    $periodKey = "{$year}-{$mStr}";
+                    $bonus = ($m === 6) ? 500.00 : (($m === 12) ? 800.00 : 0.00);
+                    $total = $base + $bonus;
+                    $isPaid = ($m <= 9);
+                    $paidAmount = $isPaid ? $total : 0.00;
+                    $status = $isPaid ? 'paid' : 'pending';
+                    $dueDate = "{$year}-{$mStr}-15";
+                    $payDate = $isPaid ? "{$year}-{$mStr}-14" : null;
+                    $items = [
+                        ['categoryId' => 'base', 'categoryName' => 'Základná mzda', 'salary' => $base, 'paid' => $isPaid ? $base : 0.00]
+                    ];
+                    if ($bonus > 0) {
+                        $items[] = ['categoryId' => 'bonus', 'categoryName' => 'Polročné prémie', 'salary' => $bonus, 'paid' => $isPaid ? $bonus : 0.00];
+                    }
+                    $insSal->execute([
+                        "sal-{$empId}-{$periodKey}",
+                        $empId,
+                        'monthly',
+                        $periodKey,
+                        $year,
+                        $m,
+                        json_encode($items),
+                        $total,
+                        $paidAmount,
+                        $status,
+                        $dueDate,
+                        $payDate,
+                        'bank_transfer',
+                        $isPaid ? 'Úhrada cez SEPA prevod' : 'Plánovaný náklad mzdy'
+                    ]);
+                }
+            }
+
+            // 3. Insert Vacations
+            $insVac = $pdo->prepare("INSERT INTO `employee_vacations` (`id`, `employee_id`, `vacation_type_id`, `start_date`, `end_date`, `days_count`, `status`, `note`, `approved_by`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $vacs = [
+                ['vac-1', 'emp-1', 'annual', '2026-07-13', '2026-07-24', 10, 'taken', 'Letná rodinná dovolenka (Chorvátsko)', 'Vedenie'],
+                ['vac-2', 'emp-1', 'annual', '2026-12-23', '2026-12-31', 6, 'approved', 'Vianočné sviatky', 'Vedenie'],
+                ['vac-3', 'emp-2', 'annual', '2026-08-03', '2026-08-07', 5, 'taken', 'Letná dovolenka', 'Vedenie'],
+                ['vac-4', 'emp-2', 'doctor', '2026-09-18', '2026-09-18', 1, 'taken', 'Preventívna prehliadka u lekára', 'Vedenie'],
+                ['vac-5', 'emp-3', 'annual', '2026-08-17', '2026-08-21', 5, 'taken', 'Turistika Vysoké Tatry', 'Vedenie'],
+                ['vac-6', 'emp-4', 'annual', '2026-10-12', '2026-10-16', 5, 'approved', 'Predĺžený jesenný víkend a oddych', 'Vedenie']
+            ];
+            foreach ($vacs as $v) {
+                $insVac->execute($v);
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] employees seed skipped: ' . $e->getMessage());
         }
     }
 
