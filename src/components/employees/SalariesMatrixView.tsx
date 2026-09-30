@@ -10,6 +10,7 @@ import type {
   EmployeeSettings
 } from "../../types";
 import { SalaryCellDrawer } from "./SalaryCellDrawer";
+import { formatNumber } from "../../utils/currency";
 
 interface SalariesMatrixViewProps {
   employees: Employee[];
@@ -185,7 +186,7 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
               {t("Total Planned Salaries", "Plánované mzdy", "Tervezett bérek")} ({selectedYear})
             </span>
             <span className="text-sm font-bold font-mono text-slate-800">
-              {grandTotal.totalSalary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {systemCurrency}
+              {formatNumber(grandTotal.totalSalary, systemLanguage, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {systemCurrency}
             </span>
           </div>
 
@@ -194,7 +195,7 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
               {t("Total Paid Out", "Vyplatené", "Kifizetve")} ({selectedYear})
             </span>
             <span className="text-sm font-bold font-mono text-[#9e7638]">
-              {grandTotal.totalPaid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {systemCurrency}
+              {formatNumber(grandTotal.totalPaid, systemLanguage, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {systemCurrency}
             </span>
           </div>
         </div>
@@ -290,7 +291,7 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
                                 }`}
                               >
                                 <span className="block font-mono font-bold leading-tight">
-                                  {Math.round(sal!.totalSalary).toLocaleString()}
+                                  {formatNumber(Math.round(sal!.totalSalary), systemLanguage)}
                                 </span>
                                 <div className="flex items-center justify-center gap-1 mt-0.5 text-[10px]">
                                   {isFullyPaid ? (
@@ -299,7 +300,7 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
                                     </span>
                                   ) : (
                                     <span className="font-mono text-[9px] opacity-75">
-                                      {Math.round(sal!.totalPaid || 0)} {t("pd", "vyp", "kif")}
+                                      {formatNumber(Math.round(sal!.totalPaid || 0), systemLanguage)} {t("pd", "vyp", "kif")}
                                     </span>
                                   )}
                                 </div>
@@ -316,10 +317,10 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
                       {/* Year Row Total */}
                       <td className="py-3 px-4 text-right bg-slate-50/50 font-mono font-bold text-slate-800">
                         <span className="block">
-                          {empYearSalary.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} {systemCurrency}
+                          {formatNumber(empYearSalary, systemLanguage, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} {systemCurrency}
                         </span>
                         <span className="text-[10px] font-normal text-[#9e7638] block">
-                          {t("Paid", "Vyp.", "Kif.")}: {empYearPaid.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                          {t("Paid", "Vyp.", "Kif.")}: {formatNumber(empYearPaid, systemLanguage, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
                         </span>
                       </td>
                     </tr>
@@ -337,15 +338,15 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
                 {columnTotals.map((col, idx) => (
                   <td key={idx} className="py-3 px-1 text-center border-r border-slate-200/60 font-mono">
                     <span className="block text-slate-800">
-                      {Math.round(col.totalSalary).toLocaleString()}
+                      {formatNumber(Math.round(col.totalSalary), systemLanguage)}
                     </span>
                     <span className="text-[9px] text-[#9e7638] font-normal block">
-                      {Math.round(col.totalPaid).toLocaleString()}
+                      {formatNumber(Math.round(col.totalPaid), systemLanguage)}
                     </span>
                   </td>
                 ))}
                 <td className="py-3.5 px-4 text-right font-mono text-sm text-[#9e7638]">
-                  {grandTotal.totalSalary.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} {systemCurrency}
+                  {formatNumber(grandTotal.totalSalary, systemLanguage, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} {systemCurrency}
                 </td>
               </tr>
             </tfoot>

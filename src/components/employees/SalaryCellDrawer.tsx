@@ -14,6 +14,7 @@ import type {
   SalaryCategoryItem,
   SalaryTypeConfig
 } from "../../types";
+import { formatNumber } from "../../utils/currency";
 
 export interface SalaryCellDrawerProps {
   employee: Employee;
@@ -442,10 +443,10 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
                       {t("Total", "Spolu celkom", "Összesen")}
                     </td>
                     <td className="py-2.5 px-3 text-right font-mono text-[#c29b62]">
-                      {totalSalary.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {systemCurrency}
+                      {formatNumber(totalSalary, systemLanguage, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {systemCurrency}
                     </td>
                     <td className="py-2.5 px-3 text-right font-mono text-emerald-600">
-                      {totalPaid.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {systemCurrency}
+                      {formatNumber(totalPaid, systemLanguage, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {systemCurrency}
                     </td>
                     <td></td>
                   </tr>
@@ -530,7 +531,7 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
           <div className="text-xs">
             <span className="text-slate-400">{t("Balance Remaining:", "Zostáva uhradiť:", "Fennmaradó összeg:")} </span>
             <span className="font-mono font-bold text-slate-900">
-              {balanceDue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {systemCurrency}
+              {formatNumber(balanceDue, systemLanguage, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {systemCurrency}
             </span>
           </div>
 

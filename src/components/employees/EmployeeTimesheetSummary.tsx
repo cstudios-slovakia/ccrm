@@ -15,6 +15,7 @@ import {
   UserX,
 } from "lucide-react";
 import type { Employee } from "../../types";
+import { formatNumber } from "../../utils/currency";
 
 export interface DayData {
   date: string;
@@ -89,6 +90,7 @@ interface EmployeeTimesheetSummaryProps {
   onPrevMonth: () => void;
   onNextMonth: () => void;
   onCurrentMonth: () => void;
+  systemLanguage?: string;
   systemCurrency: string;
   t: (en: string, sk: string, hu: string) => string;
   onLinkTogglUser?: () => void;
@@ -106,6 +108,7 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
   onPrevMonth,
   onNextMonth,
   onCurrentMonth,
+  systemLanguage = "sk",
   systemCurrency,
   t,
   onLinkTogglUser,
@@ -265,9 +268,9 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
     const total = hoursData?.totalHours || 0;
     const base = employee.salaryAmount || 0;
     if (employee.salaryType === "hourly") {
-      return (total * base).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      return formatNumber(total * base, systemLanguage, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
-    return base.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    return formatNumber(base, systemLanguage, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }, [hoursData?.totalHours, employee.salaryAmount, employee.salaryType]);
 
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
@@ -506,7 +509,7 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
           </div>
           <span className="text-[10px] text-stone-500 dark:text-stone-400 mt-1 block truncate">
             {employee.salaryType === "hourly"
-              ? `${(employee.salaryAmount || 0).toLocaleString()} ${systemCurrency} / h`
+              ? `${formatNumber(employee.salaryAmount, systemLanguage)} ${systemCurrency} / h`
               : t("Fixed monthly compensation", "Pevná mesačná odmena", "Havi fix juttatás")}
           </span>
         </div>

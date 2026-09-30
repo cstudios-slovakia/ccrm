@@ -33,6 +33,7 @@ import type {
   FinancialCategory
 } from "../../types";
 import { VacationRequestModal } from "./VacationRequestModal";
+import { formatNumber } from "../../utils/currency";
 import { SalaryCellDrawer } from "./SalaryCellDrawer";
 import { EmployeeTimesheetSummary, type TimesheetHoursData } from "./EmployeeTimesheetSummary";
 
@@ -1088,7 +1089,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                         </span>
                       ) : (
                         <span>
-                          {(employee.salaryAmount || 0).toLocaleString()} {systemCurrency} / {salaryTypeLabel}
+                          {formatNumber(employee.salaryAmount, systemLanguage)} {systemCurrency} / {salaryTypeLabel}
                         </span>
                       )}
                     </div>
@@ -1302,7 +1303,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                     </span>
                   ) : (
                     <span className="font-bold text-slate-800 font-mono">
-                      {(employee.salaryAmount || 0).toLocaleString()} {systemCurrency} / {salaryTypeLabel}
+                      {formatNumber(employee.salaryAmount, systemLanguage)} {systemCurrency} / {salaryTypeLabel}
                     </span>
                   )}
                 </div>
@@ -1494,6 +1495,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                 setTogglYear(now.getFullYear());
                 setTogglMonth(now.getMonth() + 1);
               }}
+              systemLanguage={systemLanguage}
               systemCurrency={systemCurrency}
               t={t}
               onLinkTogglUser={handleStartEdit}
@@ -1587,10 +1589,10 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                                 {sal.dueDate ? new Date(sal.dueDate).toLocaleDateString() : "—"}
                               </td>
                               <td className="py-2.5 px-3 text-right font-mono font-semibold text-slate-900">
-                                {sal.totalSalary.toLocaleString(undefined, { minimumFractionDigits: 2 })} {systemCurrency}
+                                {formatNumber(sal.totalSalary, systemLanguage, { minimumFractionDigits: 2 })} {systemCurrency}
                               </td>
                               <td className="py-2.5 px-3 text-right font-mono font-semibold text-emerald-600">
-                                {sal.totalPaid.toLocaleString(undefined, { minimumFractionDigits: 2 })} {systemCurrency}
+                                {formatNumber(sal.totalPaid, systemLanguage, { minimumFractionDigits: 2 })} {systemCurrency}
                               </td>
                               <td className="py-2.5 px-3 text-center">
                                 <span

@@ -25,6 +25,7 @@ import type {
   EmployeeVacation
 } from "../../types";
 import { EmployeeTieIcon } from "../icons/EmployeeTieIcon";
+import { formatNumber } from "../../utils/currency";
 
 interface EmployeeListViewProps {
   employees: Employee[];
@@ -213,7 +214,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
               {t("Est. Monthly Payroll", "Mesačný objem miezd", "Havi bérköltség")}
             </span>
             <span className="text-2xl sm:text-3xl font-heading font-black text-slate-900 tracking-tight mt-1 block">
-              {stats.totalMonthlyPayroll.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}{" "}
+              {formatNumber(stats.totalMonthlyPayroll, systemLanguage, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}{" "}
               <span className="text-sm font-bold text-slate-400">{systemCurrency}</span>
             </span>
             <span className="text-[10px] text-slate-400 font-medium">
@@ -435,7 +436,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                       {/* Compensation */}
                       <td className="py-3.5 px-4">
                         <span className="font-mono font-bold text-slate-900 block text-xs">
-                          {(emp.salaryAmount || 0).toLocaleString()} {systemCurrency}
+                          {formatNumber(emp.salaryAmount, systemLanguage)} {systemCurrency}
                         </span>
                         <span className="text-[10px] text-slate-400 block mt-0.5">
                           {emp.salaryType === "hourly"
@@ -594,7 +595,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                 <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
                   <div>
                     <span className="font-mono font-bold text-slate-900 block text-sm">
-                      {(emp.salaryAmount || 0).toLocaleString()} {systemCurrency}
+                      {formatNumber(emp.salaryAmount, systemLanguage)} {systemCurrency}
                     </span>
                     <span className="text-[10px] text-slate-400 font-medium">
                       {emp.salaryType === "hourly"
