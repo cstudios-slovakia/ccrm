@@ -5031,23 +5031,35 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               const N = trendData.length;
               if (N === 0) return null;
 
-              const svgHeight = 360;
+              const svgHeight = 315;
               const startX = 65;
               const topY = 45;
-              const graphHeight = 245;
+              const graphHeight = 205;
               const bottomY = topY + graphHeight;
 
-              // Step width & bar size adapted for weekly vs monthly resolution
-              const stepX = activeResolution === "month"
-                ? (N <= 8 ? 95 : N <= 12 ? 75 : 60)
-                : (N <= 20 ? 50 : N <= 36 ? 34 : 26);
-              const graphWidth = N * stepX;
-              const svgWidth = startX + graphWidth + 30;
-              const barWidth = activeResolution === "month"
-                ? Math.max(8, Math.min(24, (stepX - 16) / 2))
-                : Math.max(3, Math.min(15, (stepX - 8) / 2));
+              // Base standard chart width to preserve sleek, compact aspect ratio on desktop
+              const baseSvgWidth = 1060;
 
-              const minChartWidth = svgWidth;
+              let stepX: number;
+              let svgWidth: number;
+              let minChartWidth: number;
+              let barWidth: number;
+
+              if (activeResolution === "month") {
+                svgWidth = Math.max(baseSvgWidth, startX + N * 70 + 35);
+                const availableWidth = svgWidth - startX - 35;
+                stepX = availableWidth / N;
+                // Keep monthly bars sleek, modern and proportional (not huge fat slabs)
+                barWidth = N <= 8 ? 16 : N <= 12 ? 14 : 11;
+                minChartWidth = N <= 8 ? 680 : N <= 12 ? 800 : 920;
+              } else {
+                const naturalStep = N <= 20 ? 52 : N <= 36 ? 34 : 26;
+                const naturalWidth = startX + N * naturalStep + 30;
+                svgWidth = Math.max(baseSvgWidth, naturalWidth);
+                stepX = (svgWidth - startX - 30) / N;
+                barWidth = Math.max(3, Math.min(13, (stepX - 8) / 2));
+                minChartWidth = Math.min(svgWidth, naturalWidth);
+              }
 
               const labelStride = activeResolution === "month" ? 1 : (stepX >= 34 ? 1 : 2);
               const showDateSubLabel = true;
@@ -5073,9 +5085,12 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 return { x: cx, y: cy, bucket: b, index: idx, value: getPlotTarget(b) };
               });
 
-              // Index of current week or month
+              // Index of current week or month & first future period
               const currentPeriodIdx = trendData.findIndex((b) => b.isCurrent);
-              const futureStartX = currentPeriodIdx >= 0 ? startX + currentPeriodIdx * stepX : startX + 4 * stepX;
+              const firstFutureIdx = trendData.findIndex((b) => b.isFuture);
+              const futureStartX = firstFutureIdx >= 0
+                ? startX + firstFutureIdx * stepX
+                : (currentPeriodIdx >= 0 ? startX + (currentPeriodIdx + 1) * stepX : startX + 4 * stepX);
 
               // Hovered bucket details
               const activeHoveredBucket = hoveredWeekIdx !== null ? trendData[hoveredWeekIdx] : null;
@@ -5086,7 +5101,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                     <svg
                       viewBox={`0 0 ${svgWidth} ${svgHeight}`}
                       style={{ minWidth: `${minChartWidth}px` }}
-                      className="w-full h-auto font-sans"
+                      className="w-full h-auto max-h-[350px] font-sans"
                     >
                       <defs>
                         {/* Gradient for future projection window */}
@@ -5139,32 +5154,58 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                       </defs>
 
                       {/* 1. Future Projection Window Background Area */}
-                      <rect
-                        x={futureStartX}
-                        y={topY}
-                        width={svgWidth - startX - (futureStartX - startX) - 20}
-                        height={graphHeight}
-                        fill="url(#futureZoneGrad)"
-                        rx="16"
-                      />
+                      {svgWidth - futureStartX > 20 && (
+                        <rect
+                          x={futureStartX}
+                          y={topY}
+                          width={Math.max(0, svgWidth - futureStartX - 20)}
+                          height={graphHeight}
+                          fill="url(#futureZoneGrad)"
+                          rx="16"
+                        />
+                      )}
 
                       {/* 2. Today / Present Vertical Divider Line */}
-                      <line
-                        x1={futureStartX}
-                        y1={topY - 15}
-                        x2={futureStartX}
-                        y2={bottomY}
-                        stroke="#6366f1"
-                        strokeWidth="2"
-                        strokeDasharray="4 4"
-                      />
+                      {futureStartX > startX && (
+                        <line
+                          x1={futureStartX}
+                          y1={topY - 15}
+                          x2={futureStartX}
+                          y2={bottomY}
+                          stroke="#6366f1"
+                          strokeWidth="2"
+                          strokeDasharray="4 4"
+                        />
+                      )}
                       {/* Label for Future Window */}
-                      <g transform={`translate(${futureStartX + 12}, ${topY - 8})`}>
-                        <rect x="0" y="-14" width="200" height="22" rx="11" fill="#6366f1" fillOpacity="0.15" stroke="#6366f1" strokeWidth="1" />
-                        <text x="100" y="1" textAnchor="middle" fill="#6366f1" fontSize="10" fontWeight="900" letterSpacing="0.05em">
-                          {t(`🔮 ${projectionMonths}-MONTH FUTURE FORECAST`, `🔮 ${projectionMonths}-MESAČNÁ PROGNÓZA`, `🔮 ${projectionMonths} HÓNAPOS ELŐREJELZÉS`)}
-                        </text>
-                      </g>
+                      {svgWidth - futureStartX >= 140 && (
+                        <g transform={`translate(${futureStartX + 12}, ${topY - 8})`}>
+                          <rect
+                            x="0"
+                            y="-14"
+                            width={svgWidth - futureStartX >= 220 ? "190" : "130"}
+                            height="20"
+                            rx="10"
+                            fill="#6366f1"
+                            fillOpacity="0.15"
+                            stroke="#6366f1"
+                            strokeWidth="1"
+                          />
+                          <text
+                            x={svgWidth - futureStartX >= 220 ? "95" : "65"}
+                            y="0.5"
+                            textAnchor="middle"
+                            fill="#6366f1"
+                            fontSize="9"
+                            fontWeight="900"
+                            letterSpacing="0.04em"
+                          >
+                            {svgWidth - futureStartX >= 220
+                              ? t(`🔮 ${projectionMonths}-MONTH FUTURE FORECAST`, `🔮 ${projectionMonths}-MESAČNÁ PROGNÓZA`, `🔮 ${projectionMonths} HÓNAPOS ELŐREJELZÉS`)
+                              : t(`🔮 +${projectionMonths}M`, `🔮 +${projectionMonths}M`, `🔮 +${projectionMonths}H`)}
+                          </text>
+                        </g>
+                      )}
 
                       {/* 3. Horizontal Gridlines & Y-Axis Scale */}
                       {[1, 0.75, 0.5, 0.25, 0, -0.25].map((fraction) => {
@@ -5178,7 +5219,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                             <line
                               x1={startX}
                               y1={y}
-                              x2={svgWidth - 30}
+                              x2={svgWidth - 25}
                               y2={y}
                               stroke={isZero ? "#64748b" : "#cbd5e1"}
                               strokeWidth={isZero ? "1.5" : "0.75"}
@@ -5187,10 +5228,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                             />
                             <text
                               x={startX - 10}
-                              y={y + 4}
+                              y={y + 3.5}
                               textAnchor="end"
-                              className="fill-slate-400  font-bold"
-                              fontSize="9"
+                              className="fill-slate-400 font-bold"
+                              fontSize="8.5"
                             >
                               {val >= 0 ? `+${(val / 1000).toFixed(val >= 10000 ? 0 : 1)}k` : `${(val / 1000).toFixed(val <= -10000 ? 0 : 1)}k`} €
                             </text>
@@ -5283,10 +5324,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                   textAnchor="middle"
                                   className={`text-[9px] font-black uppercase ${
                                     b.isCurrent
-                                      ? "fill-indigo-600  font-extrabold"
+                                      ? "fill-indigo-600 font-extrabold"
                                       : b.isFuture
-                                      ? "fill-purple-600 "
-                                      : "fill-slate-600 "
+                                      ? "fill-purple-600"
+                                      : "fill-slate-600"
                                   }`}
                                 >
                                   {b.weekLabel}
@@ -5347,7 +5388,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                         d={generateSmoothPath(points)}
                         fill="none"
                         stroke={trendMode === "cumulative" ? "url(#cumulativeLineGrad)" : "url(#netLineGrad)"}
-                        strokeWidth="3.5"
+                        strokeWidth={activeResolution === "month" ? "3" : "2.75"}
                         strokeLinecap="round"
                         strokeLinejoin="round"
                         filter="url(#plotShadow)"
@@ -5371,7 +5412,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                               <circle
                                 cx={pt.x}
                                 cy={pt.y}
-                                r={pt.bucket.isManuallyCalibrated ? 10 : 12}
+                                r={pt.bucket.isManuallyCalibrated ? 8 : 10}
                                 fill={pt.bucket.isManuallyCalibrated ? "#f59e0b" : isPositive ? "#10b981" : "#f43f5e"}
                                 fillOpacity="0.3"
                                 style={{ transformOrigin: "center", transformBox: "fill-box" }}
@@ -5384,7 +5425,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                               <circle
                                 cx={pt.x}
                                 cy={pt.y}
-                                r={9}
+                                r={8}
                                 fill="none"
                                 stroke="#f59e0b"
                                 strokeWidth="1.5"
@@ -5397,10 +5438,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                             <circle
                               cx={pt.x}
                               cy={pt.y}
-                              r={isHovered ? 7 : pt.bucket.isManuallyCalibrated ? 6 : 4}
+                              r={isHovered ? 6 : pt.bucket.isManuallyCalibrated ? 5 : 3.5}
                               fill={pt.bucket.isManuallyCalibrated ? "#f59e0b" : isPositive ? "#10b981" : "#f43f5e"}
                               stroke="#ffffff"
-                              strokeWidth={pt.bucket.isManuallyCalibrated ? "2.5" : "2"}
+                              strokeWidth={pt.bucket.isManuallyCalibrated ? "2" : "1.75"}
                               className="transition-all duration-150"
                             />
                           </g>
