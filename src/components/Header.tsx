@@ -856,6 +856,36 @@ export const Header: React.FC<HeaderProps> = ({
                             </a>
                         )}
 
+                        {/* Mobile Favorites Button (Always visible outside the menu drawer) */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (isMobileSliderOpen) handleCloseMobileSlider();
+                                setIsFavoritesOpen(!isFavoritesOpen);
+                            }}
+                            aria-expanded={isFavoritesOpen}
+                            aria-label={t("Favorites", "Obľúbené položky", "Kedvencek")}
+                            className={`h-8.5 w-8.5 xs:h-9 xs:w-9 sm:hidden rounded-xl border flex items-center justify-center transition-all shadow-sm cursor-pointer relative shrink-0 ${
+                                isFavoritesOpen
+                                    ? "bg-[#0b1329] border-[#0b1329] text-rose-500 shadow-inner"
+                                    : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-rose-300 hover:bg-rose-50/50"
+                            }`}
+                            title={t("Favorites", "Obľúbené položky", "Kedvencek")}
+                        >
+                            <Heart
+                                className={`h-4 w-4 transition-colors ${
+                                    favoritesCount > 0
+                                        ? "text-rose-500 fill-rose-500"
+                                        : "text-slate-600 hover:text-rose-500"
+                                }`}
+                            />
+                            {favoritesCount > 0 && (
+                                <span className="absolute -top-1 -right-1 flex h-3.5 min-w-3.5 px-0.5 items-center justify-center rounded-full bg-rose-500 text-[8px] font-black text-white shadow-xs">
+                                    {favoritesCount}
+                                </span>
+                            )}
+                        </button>
+
                         {/* Mobile Down Caret Trigger Button */}
                         <button
                             type="button"
