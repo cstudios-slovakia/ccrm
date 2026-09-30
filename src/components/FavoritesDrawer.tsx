@@ -131,11 +131,11 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.22 }}
-          className="fixed inset-0 z-50 pointer-events-auto"
+          className="fixed inset-0 z-50 pointer-events-none"
         >
           {/* Backdrop scrim */}
           <div
-            className="fixed inset-0 top-[57px] sm:top-[65px] bg-slate-950/60 backdrop-blur-xs"
+            className="fixed inset-0 top-[57px] sm:top-[65px] bg-slate-950/60 backdrop-blur-xs pointer-events-auto"
             onClick={onClose}
             aria-hidden="true"
           />
@@ -155,7 +155,7 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
               stiffness: 300,
               mass: 0.8,
             }}
-            className="fixed top-[62px] sm:top-[72px] inset-x-3 sm:inset-x-6 lg:inset-x-8 max-w-7xl mx-auto z-50 rounded-2xl sm:rounded-3xl bg-white/95 backdrop-blur-2xl border border-slate-200/80 shadow-2xl flex flex-col overflow-hidden max-h-[calc(100vh-85px)] sm:max-h-[calc(100vh-100px)]"
+            className="fixed top-[62px] sm:top-[72px] inset-x-3 sm:inset-x-6 lg:inset-x-8 max-w-7xl mx-auto z-50 rounded-2xl sm:rounded-3xl bg-white/95 backdrop-blur-2xl border border-slate-200/80 shadow-2xl flex flex-col overflow-hidden max-h-[calc(100vh-85px)] sm:max-h-[calc(100vh-100px)] pointer-events-auto"
           >
         {/* Top Control Bar */}
         <div className="px-4 sm:px-7 py-3.5 sm:py-4 border-b border-slate-200/60 flex flex-col md:flex-row md:items-center justify-between gap-3.5 shrink-0 bg-slate-50/70">
