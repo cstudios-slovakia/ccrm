@@ -1139,6 +1139,34 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     return null;
   }, [clientProfiles, initialSelectedClient]);
 
+  // Fallback: If not found in clientProfiles (e.g. contact is an active sales lead, or saved from an older favorite),
+  // search the leads list so the user is never stuck at a dead-end 404.
+  const matchingLeadForClient = useMemo(() => {
+    if (!initialSelectedClient || activeClient) return null;
+    const rawLookup = decodeURIComponent(initialSelectedClient.split("?")[0]).trim();
+    if (!rawLookup) return null;
+    const lookupLower = rawLookup.toLowerCase();
+    const cleanLookup = lookupLower.replace(/[,.\-_]/g, " ").replace(/\s+/g, " ").trim();
+
+    return (
+      leads.find(l => (l.name || "").trim().toLowerCase() === lookupLower) ||
+      leads.find(l => (l.name || "").toLowerCase().replace(/[,.\-_]/g, " ").replace(/\s+/g, " ").trim() === cleanLookup) ||
+      leads.find(l => l.id === rawLookup || l.id === `lead-${rawLookup}` || (rawLookup.startsWith("lead-") && l.id === rawLookup.replace(/^lead-/, ""))) ||
+      leads.find(l => {
+        const lName = (l.name || "").toLowerCase();
+        return lName.length > 3 && (lName.includes(lookupLower) || lookupLower.includes(lName));
+      }) ||
+      null
+    );
+  }, [initialSelectedClient, activeClient, leads]);
+
+  // Seamless auto-redirect when a matching lead is found
+  useEffect(() => {
+    if (!activeClient && matchingLeadForClient) {
+      window.location.hash = `leads/${matchingLeadForClient.id}`;
+    }
+  }, [activeClient, matchingLeadForClient]);
+
   // RegisterUZ dynamically loaded statement list states
   const [registryStatements, setRegistryStatements] = useState<any[]>([]);
   const [isLoadingRegistryStatements, setIsLoadingRegistryStatements] = useState(false);
@@ -2896,6 +2924,38 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   // ----------------------------------------------------
   if (initialSelectedClient) {
     if (!activeClient) {
+      if (matchingLeadForClient) {
+        return (
+          <div className="p-8 glass-panel rounded-[28px] border-2 border-amber-400 bg-white shadow-glass text-center space-y-4 animate-fade-in">
+            <div className="text-4xl text-amber-500 animate-pulse">💼</div>
+            <h2 className="text-xl font-heading font-black text-slate-900 uppercase tracking-wide">
+              {t("Redirecting to Lead Record...", "Presmerovanie na záznam leadu...", "Átirányítás a lead rekordra...")}
+            </h2>
+            <p className="text-xs text-slate-600 font-semibold max-w-lg mx-auto">
+              {t(
+                `'${matchingLeadForClient.name}' is currently tracked in the Sales Pipeline. Opening lead details now.`,
+                `'${matchingLeadForClient.name}' je momentálne evidovaný v pipeline leadov. Otváram detail leadu.`,
+                `'${matchingLeadForClient.name}' jelenleg az értékesítési leadek között található. Megnyitás folyamatban.`
+              )}
+            </p>
+            <div className="flex items-center justify-center gap-3 pt-2">
+              <button
+                onClick={() => { window.location.hash = `leads/${matchingLeadForClient.id}`; }}
+                className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-2xl text-xs uppercase tracking-wider transition-all active:scale-95 shadow-md flex items-center gap-2 cursor-pointer"
+              >
+                {t("Open Lead Details", "Otvoriť detail leadu", "Lead megnyitása")}
+              </button>
+              <button
+                onClick={() => { window.location.hash = "clients"; }}
+                className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl text-xs uppercase tracking-wider transition-all active:scale-95 cursor-pointer"
+              >
+                {t("Back to Clients List", "Späť na zoznam klientov", "Vissza az ügyféllistához")}
+              </button>
+            </div>
+          </div>
+        );
+      }
+
       return (
         <div className="p-8 glass-panel rounded-[28px] border-2 border-red-400 bg-white shadow-glass text-center space-y-4">
           <div className="text-4xl text-rose-600 animate-bounce">⚠️</div>
@@ -2903,7 +2963,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           <p className="text-xs text-slate-600 font-semibold">{t(`The profile name '${initialSelectedClient}' could not be resolved in the active database.`, `Názov profilu '${initialSelectedClient}' sa nepodarilo nájsť v aktívnej databáze.`, `A(z) '${initialSelectedClient}' profilnév nem feloldható az aktív adatbázisban.`)}</p>
           <button
             onClick={() => { window.location.hash = "clients"; }}
-            className="px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all active:scale-95 shadow-md"
+            className="px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all active:scale-95 shadow-md cursor-pointer"
           >
             {t("Back to Clients List", "Späť na zoznam klientov", "Vissza az ügyféllistához")}
           </button>

@@ -15,9 +15,9 @@ export function useCurrentScreenContext(activeTab: string, language: Language = 
     const { route, params } = parseAppHash(activeTab || (typeof window !== "undefined" ? window.location.hash : ""));
     const rawRoute = route.toLowerCase();
 
-    // 1. Client Detail (#client-<name>)
-    if (rawRoute.startsWith("client-")) {
-      const clientName = decodeURIComponent(route.substring(7)).replace(/_/g, " ");
+    // 1. Client Detail (#client-<name> or #clients/<name>)
+    if (rawRoute.startsWith("client-") || (rawRoute.startsWith("clients/") && rawRoute.length > "clients/".length)) {
+      const clientName = decodeURIComponent(rawRoute.startsWith("clients/") ? route.substring(8) : route.substring(7)).replace(/_/g, " ");
       const subTab = params.get("tab") || "overview";
       return {
         route,
@@ -28,9 +28,9 @@ export function useCurrentScreenContext(activeTab: string, language: Language = 
       };
     }
 
-    // 2. Lead Detail (#lead-<id>)
-    if (rawRoute.startsWith("lead-")) {
-      const leadId = decodeURIComponent(route.substring(5));
+    // 2. Lead Detail (#lead-<id> or #leads/<id>)
+    if (rawRoute.startsWith("lead-") || (rawRoute.startsWith("leads/") && rawRoute.length > "leads/".length)) {
+      const leadId = decodeURIComponent(rawRoute.startsWith("leads/") ? route.substring(6) : route.substring(5));
       return {
         route,
         category: "lead",

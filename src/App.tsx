@@ -2899,8 +2899,12 @@ ${log.payload || ''}
       );
     }
 
-    if (activeRoute.startsWith("client-")) {
-      const clientName = decodeURIComponent(activeRoute.replace("client-", ""));
+    if (activeRoute.startsWith("client-") || (activeRoute.startsWith("clients/") && activeRoute.length > "clients/".length)) {
+      const clientName = decodeURIComponent(
+        activeRoute.startsWith("client-")
+          ? activeRoute.slice("client-".length)
+          : activeRoute.slice("clients/".length)
+      );
       return (
         <ClientsView 
           leads={leads}
@@ -2934,8 +2938,19 @@ ${log.payload || ''}
       );
     }
 
-    if (activeRoute.startsWith("lead-")) {
-      const leadId = activeRoute.replace("lead-", "");
+    if (activeRoute.startsWith("lead-") || (activeRoute.startsWith("leads/") && activeRoute.length > "leads/".length)) {
+      const rawLeadId = decodeURIComponent(
+        activeRoute.startsWith("leads/")
+          ? activeRoute.slice("leads/".length)
+          : activeRoute.slice("lead-".length)
+      );
+      const matchedLead =
+        leads.find(l => l.id === rawLeadId) ||
+        leads.find(l => l.id === `lead-${rawLeadId}`) ||
+        leads.find(l => rawLeadId.startsWith("lead-") && l.id === rawLeadId.replace(/^lead-/, "")) ||
+        leads.find(l => (l.name || "").trim().toLowerCase() === rawLeadId.toLowerCase()) ||
+        null;
+      const leadId = matchedLead ? matchedLead.id : rawLeadId;
       return (
         <LeadsDatagrid 
           systemName={systemName}
@@ -2950,6 +2965,8 @@ ${log.payload || ''}
           access={access.module("leads")}
           projectManagerColors={projectManagerColors}
           leadCategories={leadCategories}
+          divisions={divisions}
+          divisionColors={divisionColors}
           leadSourceColors={leadSourceColors}
           leadCategoryColors={leadCategoryColors}
           systemLanguage={userLanguage}
@@ -2968,6 +2985,7 @@ ${log.payload || ''}
           leadStateSla={leadStateSla}
           leadAssignment={leadAssignment}
           currencyCode={currencyCode}
+          taskAccess={taskAccess}
         />
       );
     }
@@ -3056,7 +3074,10 @@ ${log.payload || ''}
     const rawBaseTab = activeRoute.split("/")[0];
     const baseTab = rawBaseTab === "social_media" && !SOCIAL_MEDIA_ENABLED ? "dashboard" : rawBaseTab;
     switch (baseTab) {
-      case "leads":
+      case "leads": {
+        const subLeadId = (activeRoute.startsWith("leads/") && activeRoute.length > "leads/".length)
+          ? decodeURIComponent(activeRoute.slice("leads/".length))
+          : undefined;
         return (
           <LeadsDatagrid 
             systemName={systemName}
@@ -3091,8 +3112,10 @@ ${log.payload || ''}
             leadAssignment={leadAssignment}
             currencyCode={currencyCode}
             taskAccess={taskAccess}
+            initialSelectedLeadId={subLeadId}
           />
         );
+      }
       case "projects":
         return (
           <ProjectsView
@@ -3126,7 +3149,10 @@ ${log.payload || ''}
             mailConfigured={isSystemMailConfigured(integrationsConfig)}
           />
         );
-      case "clients":
+      case "clients": {
+        const subClient = (activeRoute.startsWith("clients/") && activeRoute.length > "clients/".length)
+          ? decodeURIComponent(activeRoute.slice("clients/".length))
+          : undefined;
         return (
           <ClientsView
             leads={leads}
@@ -3137,6 +3163,7 @@ ${log.payload || ''}
             projectManagers={projectManagers}
             projectManagerColors={projectManagerColors}
             leadSources={leadSources}
+            initialSelectedClient={subClient}
             systemLanguage={userLanguage}
             tasks={tasks}
             setTasks={updateTasksAndSync}
@@ -3157,6 +3184,7 @@ ${log.payload || ''}
             taskStateColors={taskStateColors}
           />
         );
+      }
       case "financial":
         return (
           <FinancialManagementView

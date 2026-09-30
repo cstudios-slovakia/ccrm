@@ -1787,7 +1787,17 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     // --- LEAD DETAIL VIEW STATES ---
     const activeLead = useMemo(() => {
         if (!initialSelectedLeadId) return null;
-        return leads.find((l) => l.id === initialSelectedLeadId) || null;
+        const raw = decodeURIComponent(initialSelectedLeadId).trim();
+        const rawLower = raw.toLowerCase();
+        const cleanLookup = rawLower.replace(/[,.\-_]/g, " ").replace(/\s+/g, " ").trim();
+        return (
+            leads.find((l) => l.id === raw) ||
+            leads.find((l) => l.id === `lead-${raw}`) ||
+            leads.find((l) => raw.startsWith("lead-") && l.id === raw.replace(/^lead-/, "")) ||
+            leads.find((l) => (l.name || "").trim().toLowerCase() === rawLower) ||
+            leads.find((l) => (l.name || "").toLowerCase().replace(/[,.\-_]/g, " ").replace(/\s+/g, " ").trim() === cleanLookup) ||
+            null
+        );
     }, [leads, initialSelectedLeadId]);
 
     const [isEditingLead, setIsEditingLead] = useState(false);
