@@ -25,7 +25,7 @@ import { EmployeeListView } from "./EmployeeListView";
 import { EmployeeDetailView } from "./EmployeeDetailView";
 import { SalariesMatrixView } from "./SalariesMatrixView";
 import { EmployeeFormScreen } from "./EmployeeFormScreen";
-import { EmployeeSettingsModal } from "./EmployeeSettingsModal";
+import { EmployeeSettingsScreen } from "./EmployeeSettingsScreen";
 import { useConfirmDialog } from "../ui/ConfirmDialog";
 
 interface EmployeesViewProps {
@@ -59,13 +59,12 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
   setEmployeeSettings,
   financialCategories = []
 }) => {
-  // Navigation inside Employees Module: list, detail, matrix, or dedicated form screen
-  const [currentView, setCurrentView] = useState<"list" | "detail" | "matrix" | "form">("list");
+  // Navigation inside Employees Module: list, detail, matrix, dedicated form screen, or settings screen
+  const [currentView, setCurrentView] = useState<"list" | "detail" | "matrix" | "form" | "settings">("list");
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
 
   // Form & Modals state
   const [employeeToEdit, setEmployeeToEdit] = useState<Employee | null>(null);
-  const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [confirmAction, confirmDialog] = useConfirmDialog();
 
   const t = (en: string, sk: string, hu: string) => {
@@ -177,7 +176,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
 
   return (
     <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
-      {/* Top Module Sub-Navigation Bar (hidden when in full-screen form) */}
+      {/* Top Module Sub-Navigation Bar (hidden when in full-screen employee form) */}
       {currentView !== "form" && (
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/60 pb-3">
           {/* Sub-view switcher tabs */}
@@ -214,6 +213,22 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
                 <Coins className="w-3.5 h-3.5" />
                 <span>{t("Salaries Matrix", "Matica miezd", "Bérmátrix")}</span>
               </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedEmployeeId(null);
+                  setCurrentView("settings");
+                }}
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-heading font-bold transition-all cursor-pointer ${
+                  currentView === "settings"
+                    ? "bg-[#c29b62] text-white shadow-md shadow-[#c29b62]/25"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                }`}
+              >
+                <SettingsIcon className="w-3.5 h-3.5" />
+                <span>{t("Settings", "Nastavenia", "Beállítások")}</span>
+              </button>
             </div>
 
             {currentView === "detail" && selectedEmployee && (
@@ -226,7 +241,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             )}
           </div>
 
-          {/* Quick Toolbar (Demo Seed if empty, Settings) */}
+          {/* Quick Toolbar (Demo Seed if empty) */}
           <div className="flex items-center gap-2">
             {employees.length === 0 && (
               <button
@@ -238,16 +253,6 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
                 <span>{t("Load Demo Staff", "Vzorové dáta", "Minta adatok")}</span>
               </button>
             )}
-
-            <button
-              type="button"
-              onClick={() => setIsSettingsOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl glass-panel border border-white/60 bg-white/95 shadow-glass text-xs font-bold text-slate-600 hover:text-slate-900 transition cursor-pointer"
-              title={t("Module Settings", "Nastavenia modulu", "Modul beállítások")}
-            >
-              <SettingsIcon className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">{t("Settings", "Nastavenia", "Beállítások")}</span>
-            </button>
           </div>
         </div>
       )}
@@ -273,7 +278,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
               setCurrentView("form");
             }}
             onDeleteEmployee={handleDeleteEmployee}
-            onOpenSettings={() => setIsSettingsOpen(true)}
+            onOpenSettings={() => setCurrentView("settings")}
             onOpenMatrix={() => setCurrentView("matrix")}
             onSeedMockData={handleSeedMockData}
             systemLanguage={systemLanguage}
@@ -344,19 +349,21 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             }}
           />
         )}
-      </div>
 
-      {/* Global Module Settings Modal */}
-      {isSettingsOpen && (
-        <EmployeeSettingsModal
-          isOpen={isSettingsOpen}
-          onClose={() => setIsSettingsOpen(false)}
-          settings={resolvedSettings}
-          onSave={handleSaveSettings}
-          financialCategories={financialCategories}
-          systemLanguage={systemLanguage}
-        />
-      )}
+        {currentView === "settings" && (
+          <EmployeeSettingsScreen
+            settings={resolvedSettings}
+            financialCategories={financialCategories}
+            onSave={(updated) => {
+              handleSaveSettings(updated);
+            }}
+            onCancel={() => {
+              setCurrentView("list");
+            }}
+            systemLanguage={systemLanguage}
+          />
+        )}
+      </div>
 
       {/* Delete Confirmation Dialog */}
       {confirmDialog}
