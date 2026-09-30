@@ -130,15 +130,15 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
         aria-hidden="true"
       />
 
-      {/* Top Roll-Down Card / Drawer */}
+      {/* Top Roll-Down Card / Drawer with rounded corners and margins */}
       <div
         role="dialog"
         aria-modal="true"
         aria-label={t("Favorites Drawer", "Panel obľúbených položiek", "Kedvencek panel")}
-        className="fixed top-[57px] sm:top-[65px] left-0 right-0 z-50 bg-white/95 backdrop-blur-xl border-b border-slate-200/80 shadow-2xl animate-in slide-in-from-top-6 fade-in duration-300 max-h-[85vh] flex flex-col overflow-hidden"
+        className="fixed top-[62px] sm:top-[72px] inset-x-3 sm:inset-x-6 lg:inset-x-8 max-w-7xl mx-auto z-50 rounded-2xl sm:rounded-3xl bg-white/95 backdrop-blur-2xl border border-slate-200/80 shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-top-4 fade-in duration-300 max-h-[calc(100vh-85px)] sm:max-h-[calc(100vh-100px)]"
       >
         {/* Top Control Bar */}
-        <div className="px-4 sm:px-8 py-4 border-b border-slate-200/60 flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0 bg-slate-50/70">
+        <div className="px-4 sm:px-7 py-3.5 sm:py-4 border-b border-slate-200/60 flex flex-col md:flex-row md:items-center justify-between gap-3.5 shrink-0 bg-slate-50/70">
           {/* Title & Count */}
           <div className="flex items-center gap-3 shrink-0">
             <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-rose-500 to-pink-600 flex items-center justify-center text-white shadow-md shadow-rose-500/20">
