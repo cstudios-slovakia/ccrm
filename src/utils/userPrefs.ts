@@ -83,12 +83,12 @@ export interface UserPrefs {
    * utils/financialTrend.ts.
    */
   financialTrendMode: "relative" | "cumulative";
-  /**
-   * Finance trend chart: how many months the forecast runs past the current
-   * week — 3, 6 or 12. Per user for the same reason as the curve choice: it is
-   * how someone likes to read the chart, not a fact about the workspace.
-   */
   financialProjectionMonths: 3 | 6 | 12;
+  /**
+   * Finance trend chart: aggregation resolution — "week" or "month".
+   * Per user preference like curve choice and projection horizon.
+   */
+  financialTrendResolution: "week" | "month";
   /**
    * Start Menu launcher: the user's own groups, what sits in each and what
    * they hid. `null` means "never customised", which is not the same as an
@@ -141,6 +141,7 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   projectsVisibleStatuses: null,
   financialTrendMode: "relative",
   financialProjectionMonths: 3,
+  financialTrendResolution: "week",
   startMenuLayout: null,
   seenUpdateId: null,
   licenseNoticeSuppressed: null,
@@ -263,6 +264,9 @@ export const readLegacyPrefs = (): Partial<UserPrefs> => {
 
   const trendMode = read("crm_financial_trend_mode");
   if (trendMode === "relative" || trendMode === "cumulative") legacy.financialTrendMode = trendMode;
+
+  const trendRes = read("crm_financial_trend_resolution");
+  if (trendRes === "week" || trendRes === "month") legacy.financialTrendResolution = trendRes;
 
   const seenUpdateId = read("ccrm_seen_update_id");
   if (seenUpdateId) legacy.seenUpdateId = seenUpdateId;

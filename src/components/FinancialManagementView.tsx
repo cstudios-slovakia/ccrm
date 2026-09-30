@@ -103,6 +103,7 @@ const PROJECTION_HORIZONS: { months: ProjectionMonths; futureWeeks: number }[] =
 ];
 
 const TREND_PAST_WEEKS = 4;
+const TREND_PAST_MONTHS = 3;
 
 const futureWeeksFor = (months: ProjectionMonths) =>
   PROJECTION_HORIZONS.find((h) => h.months === months)?.futureWeeks ?? 13;
@@ -2125,6 +2126,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   // DB-backed for the same reason as trendMode above.
   const [projectionMonths, setProjectionMonths] = useUserPref("financialProjectionMonths");
 
+  // Resolution of the trend chart: "week" (weekly buckets) vs "month" (monthly buckets).
+  const [trendResolution, setTrendResolution] = useUserPref("financialTrendResolution");
+  const activeResolution = trendResolution === "month" ? "month" : "week";
+
   // Bank balances reconciled against the real statement, one per week, keyed by
   // the week's Monday ("2026-08-17").
   //
@@ -2197,10 +2202,16 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     setProjectionMonths(months);
   };
 
-  // Weeks the forecast covers, and the width of the whole dataset:
-  // 4 past weeks + the current one + the horizon's future weeks.
+  const handleSetTrendResolution = (res: "week" | "month") => {
+    setHoveredWeekIdx(null);
+    setTrendResolution(res);
+  };
+
+  // Weeks/Months the forecast covers, and the width of the whole dataset:
+  // past periods + the current one + the horizon's future periods.
   const projectionFutureWeeks = futureWeeksFor(projectionMonths);
   const projectionTotalWeeks = TREND_PAST_WEEKS + 1 + projectionFutureWeeks;
+  const projectionTotalMonths = TREND_PAST_MONTHS + 1 + projectionMonths;
 
   // Weekly dataset: 4 past weeks + current week + the selected forecast horizon
   const weeklyTrendData = useMemo(() => {
@@ -2478,6 +2489,261 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
     return buckets;
   }, [financialRecords, weeklyBankBalances, defaultBankBalance, projectionFutureWeeks]);
+
+  // Monthly dataset: TREND_PAST_MONTHS past months + current month + projectionMonths future months
+  const monthlyTrendData = useMemo(() => {
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const toYMD = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+    const todayIso = toYMD(now);
+
+    const monthNames = [
+      t("Jan", "Jan", "Jan"),
+      t("Feb", "Feb", "Feb"),
+      t("Mar", "Mar", "Már"),
+      t("Apr", "Apr", "Ápr"),
+      t("May", "Máj", "Máj"),
+      t("Jun", "Jún", "Jún"),
+      t("Jul", "Júl", "Júl"),
+      t("Aug", "Aug", "Aug"),
+      t("Sep", "Sep", "Sze"),
+      t("Oct", "Okt", "Okt"),
+      t("Nov", "Nov", "Nov"),
+      t("Dec", "Dec", "Dec")
+    ];
+
+    const currentYear = now.getFullYear();
+    const currentMonth = now.getMonth();
+
+    const buckets: {
+      index: number;
+      weekNum: number;
+      year: number;
+      weekLabel: string;
+      dateRangeLabel: string;
+      startIso: string;
+      endIso: string;
+      isPast: boolean;
+      isCurrent: boolean;
+      isFuture: boolean;
+      incomeReal: number;
+      incomePlanned: number;
+      incomeProjected: number;
+      totalIncome: number;
+      expenseReal: number;
+      expensePlanned: number;
+      expenseProjected: number;
+      totalExpense: number;
+      netDifference: number;
+      cumulativeBalance: number;
+      isManuallyCalibrated: boolean;
+      manualCalibratedAmount?: number;
+      items: {
+        title: string;
+        amount: number;
+        type: "income" | "expense";
+        isRecurring: boolean;
+        frequency?: string;
+      }[];
+    }[] = [];
+
+    for (let i = -TREND_PAST_MONTHS; i <= projectionMonths; i++) {
+      const monthStart = new Date(currentYear, currentMonth + i, 1, 0, 0, 0, 0);
+      const monthEnd = new Date(currentYear, currentMonth + i + 1, 0, 23, 59, 59, 999);
+
+      const isPast = i < 0;
+      const isCurrent = i === 0;
+      const isFuture = i > 0;
+
+      const startIso = toYMD(monthStart);
+      const endIso = toYMD(monthEnd);
+      const mIdx = monthStart.getMonth();
+      const yr = monthStart.getFullYear();
+      const weekLabel = `${monthNames[mIdx]}`;
+      const startStr = `${pad(monthStart.getDate())}.${pad(monthStart.getMonth() + 1)}`;
+      const endStr = `${pad(monthEnd.getDate())}.${pad(monthEnd.getMonth() + 1)}`;
+      const dateRangeLabel = `${startStr} - ${endStr}`;
+
+      buckets.push({
+        index: i,
+        weekNum: mIdx + 1,
+        year: yr,
+        weekLabel,
+        dateRangeLabel,
+        startIso,
+        endIso,
+        isPast,
+        isCurrent,
+        isFuture,
+        incomeReal: 0,
+        incomePlanned: 0,
+        incomeProjected: 0,
+        totalIncome: 0,
+        expenseReal: 0,
+        expensePlanned: 0,
+        expenseProjected: 0,
+        totalExpense: 0,
+        netDifference: 0,
+        cumulativeBalance: 0,
+        isManuallyCalibrated: false,
+        items: []
+      });
+    }
+
+    // 1. Distribute Single (Non-recurring) Records
+    financialRecords.forEach((rec) => {
+      if (rec.isRecurring) return;
+
+      const recDateStr = overviewRecordDate(rec);
+      if (!recDateStr) return;
+
+      buckets.forEach((b) => {
+        if (recDateStr >= b.startIso && recDateStr <= b.endIso) {
+          const { real, estimated } = splitRecordAmounts(rec);
+
+          if (rec.type === "income") {
+            b.incomeReal += real;
+            if (b.isFuture) b.incomeProjected += estimated;
+            else b.incomePlanned += estimated;
+          } else {
+            b.expenseReal += real;
+            if (b.isFuture) b.expenseProjected += estimated;
+            else b.expensePlanned += estimated;
+          }
+
+          b.items.push({
+            title: rec.title,
+            amount: rec.amountPlanned || rec.amountReal,
+            type: rec.type,
+            isRecurring: false
+          });
+        }
+      });
+    });
+
+    // 2. Project Recurring Movements across the months
+    financialRecords.forEach((rec) => {
+      if (!rec.isRecurring) return;
+      const freq = rec.recurringFrequency || "monthly";
+
+      buckets.forEach((b) => {
+        recurringCharges(rec, b.startIso, b.endIso).forEach(({ date, amount: amt }) => {
+          if (!amt) return;
+          const settled = isRecurringChargeSettled(date, todayIso);
+
+          if (rec.type === "income") {
+            if (settled) {
+              b.incomeReal += amt;
+            } else {
+              b.incomeProjected += amt;
+            }
+          } else {
+            if (settled) {
+              b.expenseReal += amt;
+            } else {
+              b.expenseProjected += amt;
+            }
+          }
+
+          b.items.push({
+            title: `🔄 ${rec.title}`,
+            amount: amt,
+            type: rec.type,
+            isRecurring: true,
+            frequency: freq
+          });
+        });
+      });
+
+      const ownRow = recurringOwnRowCharge(rec);
+      const ownBucket = ownRow && buckets.find((b) => ownRow.date >= b.startIso && ownRow.date <= b.endIso);
+      if (ownRow && ownBucket) {
+        if (rec.type === "income") {
+          ownBucket.incomeReal += ownRow.real;
+          if (ownBucket.isFuture) ownBucket.incomeProjected += ownRow.estimated;
+          else ownBucket.incomePlanned += ownRow.estimated;
+        } else {
+          ownBucket.expenseReal += ownRow.real;
+          if (ownBucket.isFuture) ownBucket.expenseProjected += ownRow.estimated;
+          else ownBucket.expensePlanned += ownRow.estimated;
+        }
+        ownBucket.items.push({
+          title: `🔄 ${rec.title}`,
+          amount: ownRow.real + ownRow.estimated,
+          type: rec.type,
+          isRecurring: true,
+          frequency: freq
+        });
+      }
+    });
+
+    // 3. Final totals & Net Difference per month
+    buckets.forEach((b) => {
+      b.totalIncome = b.incomeReal + b.incomePlanned + b.incomeProjected;
+      b.totalExpense = b.expenseReal + b.expensePlanned + b.expenseProjected;
+      b.netDifference = b.totalIncome - b.totalExpense;
+    });
+
+    // 4. Calculate Cumulative Running Bank Account Balance across Months
+    const explicitAnchors: number[] = [];
+    buckets.forEach((b, idx) => {
+      if (weeklyBankBalances[b.startIso] !== undefined) {
+        b.isManuallyCalibrated = true;
+        b.manualCalibratedAmount = weeklyBankBalances[b.startIso];
+        b.cumulativeBalance = weeklyBankBalances[b.startIso];
+        explicitAnchors.push(idx);
+      } else {
+        b.isManuallyCalibrated = false;
+      }
+    });
+
+    const currentIdx = buckets.findIndex((b) => b.isCurrent);
+
+    if (explicitAnchors.length === 0) {
+      // Fallback: If weekly balances has an anchor for the current week, or from weeklyTrendData
+      const currentWeeklyCumulative = weeklyTrendData.find((w) => w.isCurrent)?.cumulativeBalance;
+      const startingBalance = currentWeeklyCumulative !== undefined ? currentWeeklyCumulative : defaultBankBalance;
+
+      const anchorIdx = currentIdx !== -1 ? currentIdx : 0;
+      buckets[anchorIdx].cumulativeBalance = startingBalance;
+
+      // Forward into future months
+      for (let i = anchorIdx + 1; i < buckets.length; i++) {
+        buckets[i].cumulativeBalance = buckets[i - 1].cumulativeBalance + buckets[i].netDifference;
+      }
+
+      // Backward into past months
+      for (let i = anchorIdx - 1; i >= 0; i--) {
+        buckets[i].cumulativeBalance = buckets[i + 1].cumulativeBalance - buckets[i + 1].netDifference;
+      }
+    } else {
+      // 1. Process backward before the earliest anchor
+      const firstAnchor = explicitAnchors[0];
+      for (let i = firstAnchor - 1; i >= 0; i--) {
+        buckets[i].cumulativeBalance = buckets[i + 1].cumulativeBalance - buckets[i + 1].netDifference;
+      }
+
+      // 2. Process between anchors
+      for (let a = 0; a < explicitAnchors.length - 1; a++) {
+        const fromIdx = explicitAnchors[a];
+        const toIdx = explicitAnchors[a + 1];
+        for (let i = fromIdx + 1; i < toIdx; i++) {
+          buckets[i].cumulativeBalance = buckets[i - 1].cumulativeBalance + buckets[i].netDifference;
+        }
+      }
+
+      // 3. Process forward after the latest anchor
+      const lastAnchor = explicitAnchors[explicitAnchors.length - 1];
+      for (let i = lastAnchor + 1; i < buckets.length; i++) {
+        buckets[i].cumulativeBalance = buckets[i - 1].cumulativeBalance + buckets[i].netDifference;
+      }
+    }
+
+    return buckets;
+  }, [financialRecords, weeklyBankBalances, defaultBankBalance, projectionMonths, userLanguage, weeklyTrendData]);
+
+  // Active dataset for the trend visualization (either weekly or monthly resolution)
+  const trendData = activeResolution === "month" ? monthlyTrendData : weeklyTrendData;
 
   // Smooth Bezier path generator for SVG plotline
   const generateSmoothPath = (pts: { x: number; y: number }[]) => {
@@ -4555,23 +4821,35 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         <div className="space-y-6 animate-in fade-in duration-200">
           {/* HYBRID WEEKLY TREND & FORWARD PROJECTION CHART (3 / 6 / 12 months) */}
           <div className="bg-white  p-6 rounded-3xl border border-slate-200/80  shadow-sm space-y-6">
-            {/* 1. Header with Mode Toggle & Bank Balance Calibrators */}
+            {/* 1. Header with Mode Toggle, Resolution Switcher & Bank Balance Calibrators */}
             <div className="flex flex-col xl:flex-row xl:items-center xl:justify-between gap-4 pb-4 border-b border-slate-100 ">
               <div className="space-y-1">
                 <div className="flex items-center gap-2">
                   <h3 className="text-base font-bold text-slate-900  flex items-center gap-2">
                     <BarChart3 className="h-5 w-5 text-emerald-500" />
-                    {trendMode === "cumulative"
-                      ? t(
-                          `Weekly Trend & ${projectionMonths}-Month Projection (Cumulative Bank Balance)`,
-                          `Týždenný vývoj a ${projectionMonths}-mesačná prognóza (Kumulatívny stav na účte)`,
-                          `Heti trend és ${projectionMonths} hónapos előrejelzés (Kumulált bankszámla egyenleg)`
-                        )
-                      : t(
-                          `Weekly Trend & ${projectionMonths}-Month Projection (Relative Cash Flow)`,
-                          `Týždenný vývoj a ${projectionMonths}-mesačná prognóza (Relatívny cash flow)`,
-                          `Heti trend és ${projectionMonths} hónapos előrejelzés (Relatív pénzáramlás)`
-                        )}
+                    {activeResolution === "month"
+                      ? (trendMode === "cumulative"
+                          ? t(
+                              `Monthly Trend & ${projectionMonths}-Month Projection (Cumulative Bank Balance)`,
+                              `Mesačný vývoj a ${projectionMonths}-mesačná prognóza (Kumulatívny stav na účte)`,
+                              `Havi trend és ${projectionMonths} hónapos előrejelzés (Kumulált bankszámla egyenleg)`
+                            )
+                          : t(
+                              `Monthly Trend & ${projectionMonths}-Month Projection (Relative Cash Flow)`,
+                              `Mesačný vývoj a ${projectionMonths}-mesačná prognóza (Relatívny cash flow)`,
+                              `Havi trend és ${projectionMonths} hónapos előrejelzés (Relatív pénzáramlás)`
+                            ))
+                      : (trendMode === "cumulative"
+                          ? t(
+                              `Weekly Trend & ${projectionMonths}-Month Projection (Cumulative Bank Balance)`,
+                              `Týždenný vývoj a ${projectionMonths}-mesačná prognóza (Kumulatívny stav na účte)`,
+                              `Heti trend és ${projectionMonths} hónapos előrejelzés (Kumulált bankszámla egyenleg)`
+                            )
+                          : t(
+                              `Weekly Trend & ${projectionMonths}-Month Projection (Relative Cash Flow)`,
+                              `Týždenný vývoj a ${projectionMonths}-mesačná prognóza (Relatívny cash flow)`,
+                              `Heti trend és ${projectionMonths} hónapos előrejelzés (Relatív pénzáramlás)`
+                            ))}
                   </h3>
                   <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
                     trendMode === "cumulative" 
@@ -4582,22 +4860,66 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 ">
-                  {trendMode === "cumulative"
-                    ? t(
-                        `Bars display weekly income & expense. The continuous plotline projects running Bank Account Balance (cumulative cash reserves) forward for the next ${projectionMonths} months. Click any week to calibrate its balance independently.`,
-                        `Stĺpce zobrazujú týždenné príjmy a výdavky. Spojitá krivka zobrazuje projektovaný stav na bankovom účte na ${skNextMonths(projectionMonths)}. Kliknutím na ľubovoľný týždeň môžete nezávisle nastaviť jeho zostatok.`,
-                        `Az oszlopok a heti bevételeket és kiadásokat mutatják. A folytonos vonal a következő ${projectionMonths} hónap várható bankszámla egyenlegét jelzi. Kattintson bármelyik hétre az egyenleg független beállításához.`
-                      )
-                    : t(
-                        "Bars display cumulative weekly income & expense. The continuous plotline traces weekly net difference and future projected revenue (projected income − projected expense).",
-                        "Stĺpce zobrazujú týždenné kumulatívne príjmy a výdavky. Spojitá krivka zobrazuje čistý rozdiel a budúce projektované tržby po odpočítaní výdavkov.",
-                        "Az oszlopok a heti kumulált bevételeket és kiadásokat mutatják. A folytonos vonal a heti nettó különbözetet és a jövőbeli tervezett nyereséget jelzi."
-                      )}
+                  {activeResolution === "month"
+                    ? (trendMode === "cumulative"
+                        ? t(
+                            `Bars display monthly income & expense. The continuous plotline projects running Bank Account Balance forward for the next ${projectionMonths} months. Click any month to calibrate its balance independently.`,
+                            `Stĺpce zobrazujú mesačné príjmy a výdavky. Spojitá krivka zobrazuje projektovaný stav na bankovom účte na ${skNextMonths(projectionMonths)}. Kliknutím na ľubovoľný mesiac môžete nezávisle nastaviť jeho zostatok.`,
+                            `Az oszlopok a havi bevételeket és kiadásokat mutatják. A folytonos vonal a következő ${projectionMonths} hónap várható bankszámla egyenlegét jelzi. Kattintson bármelyik hónapra az egyenleg független beállításához.`
+                          )
+                        : t(
+                            "Bars display cumulative monthly income & expense. The continuous plotline traces monthly net difference and future projected revenue (projected income − projected expense).",
+                            "Stĺpce zobrazujú mesačné kumulatívne príjmy a výdavky. Spojitá krivka zobrazuje čistý rozdiel a budúce projektované tržby po odpočítaní výdavkov.",
+                            "Az oszlopok a havi kumulált bevételeket és kiadásokat mutatják. A folytonos vonal a havi nettó különbözetet és a jövőbeli tervezett nyereséget jelzi."
+                          ))
+                    : (trendMode === "cumulative"
+                        ? t(
+                            `Bars display weekly income & expense. The continuous plotline projects running Bank Account Balance (cumulative cash reserves) forward for the next ${projectionMonths} months. Click any week to calibrate its balance independently.`,
+                            `Stĺpce zobrazujú týždenné príjmy a výdavky. Spojitá krivka zobrazuje projektovaný stav na bankovom účte na ${skNextMonths(projectionMonths)}. Kliknutím na ľubovoľný týždeň môžete nezávisle nastaviť jeho zostatok.`,
+                            `Az oszlopok a heti bevételeket és kiadásokat mutatják. A folytonos vonal a következő ${projectionMonths} hónap várható bankszámla egyenlegét jelzi. Kattintson bármelyik hétre az egyenleg független beállításához.`
+                          )
+                        : t(
+                            "Bars display cumulative weekly income & expense. The continuous plotline traces weekly net difference and future projected revenue (projected income − projected expense).",
+                            "Stĺpce zobrazujú týždenné kumulatívne príjmy a výdavky. Spojitá krivka zobrazuje čistý rozdiel a budúce projektované tržby po odpočítaní výdavkov.",
+                            "Az oszlopok a heti kumulált bevételeket és kiadásokat mutatják. A folytonos vonal a heti nettó különbözetet és a jövőbeli tervezett nyereséget jelzi."
+                          ))}
                 </p>
               </div>
 
-              {/* Controls: Mode Switcher Pill */}
+              {/* Controls: Mode Switcher, Horizon, and Resolution */}
               <div className="flex flex-wrap items-center gap-3">
+                {/* Resolution Pill: Weeks vs. Months */}
+                <div className="bg-slate-100  p-1 rounded-2xl flex items-center gap-1 border border-slate-200/80 ">
+                  <span className="pl-2 pr-1 text-[10px] font-black uppercase tracking-wider text-slate-400  flex items-center gap-1">
+                    <Calendar className="h-3.5 w-3.5" />
+                    {t("Resolution", "Rozlíšenie", "Felbontás")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleSetTrendResolution("week")}
+                    aria-pressed={activeResolution === "week"}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      activeResolution === "week"
+                        ? "bg-white  text-indigo-600  shadow-sm border border-slate-200/80 "
+                        : "text-slate-600  hover:text-slate-900 "
+                    }`}
+                  >
+                    {t("Weeks", "Týždne", "Hetek")}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleSetTrendResolution("month")}
+                    aria-pressed={activeResolution === "month"}
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                      activeResolution === "month"
+                        ? "bg-white  text-indigo-600  shadow-sm border border-slate-200/80 "
+                        : "text-slate-600  hover:text-slate-900 "
+                    }`}
+                  >
+                    {t("Months", "Mesiace", "Hónapok")}
+                  </button>
+                </div>
+
                 {/* Mode Switcher Pill */}
                 <div className="bg-slate-100  p-1 rounded-2xl flex items-center gap-1 border border-slate-200/80 ">
                   <button
@@ -4675,12 +4997,20 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 ) : (
                   <div className="flex items-center gap-1.5 px-2.5 py-1 bg-purple-50  text-purple-700  rounded-lg border border-purple-200  shadow-sm">
                     <span className="h-3 w-3 rounded-full bg-purple-600 ring-2 ring-purple-300 " />
-                    <span>{t("Weekly Net Difference / Flow (Plotline)", "Týždenný čistý zisk / Tok (Krivka)", "Heti nettó különbözet (Vonal)")}</span>
+                    <span>
+                      {activeResolution === "month"
+                        ? t("Monthly Net Difference / Flow (Plotline)", "Mesačný čistý zisk / Tok (Krivka)", "Havi nettó különbözet (Vonal)")
+                        : t("Weekly Net Difference / Flow (Plotline)", "Týždenný čistý zisk / Tok (Krivka)", "Heti nettó különbözet (Vonal)")}
+                    </span>
                   </div>
                 )}
                 <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50  text-amber-700  rounded-lg border border-amber-200 ">
                   <Target className="h-3.5 w-3.5 text-amber-500" />
-                  <span>{t("🎯 Reconciled Weekly Anchor", "🎯 Manuálne overený stav", "🎯 Manuálisan rögzített hét")}</span>
+                  <span>
+                    {activeResolution === "month"
+                      ? t("🎯 Reconciled Monthly Anchor", "🎯 Manuálne overený mesačný stav", "🎯 Manuálisan rögzített hónap")
+                      : t("🎯 Reconciled Weekly Anchor", "🎯 Manuálne overený stav", "🎯 Manuálisan rögzített hét")}
+                  </span>
                 </div>
                 <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-100  text-slate-600  rounded-lg border border-slate-200 ">
                   <span className="h-2.5 w-2.5 rounded-full bg-indigo-400 animate-ping" />
@@ -4690,13 +5020,15 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
               {/* Quick interactive hint */}
               <span className="text-[10px] text-slate-400 italic">
-                {t("💡 Click on any week column or node to calibrate its bank balance independently", "💡 Kliknutím na stĺpec alebo bod ľubovoľného týždňa nastavíte jeho zostatok na účte", "💡 Kattintson bármelyik hét oszlopára vagy pontjára a heti egyenleg beállításához")}
+                {activeResolution === "month"
+                  ? t("💡 Click on any month column or node to calibrate its bank balance independently", "💡 Kliknutím na stĺpec alebo bod ľubovoľného mesiaca nastavíte jeho zostatok na účte", "💡 Kattintson bármelyik hónap oszlopára vagy pontjára a havi egyenleg beállításához")
+                  : t("💡 Click on any week column or node to calibrate its bank balance independently", "💡 Kliknutím na stĺpec alebo bod ľubovoľného týždňa nastavíte jeho zostatok na účte", "💡 Kattintson bármelyik hét oszlopára alebo pontjára a heti egyenleg beállításához")}
               </span>
             </div>
 
             {/* 3. Interactive SVG Hybrid Visualization */}
             {(() => {
-              const N = weeklyTrendData.length;
+              const N = trendData.length;
               if (N === 0) return null;
 
               const svgHeight = 360;
@@ -4705,34 +5037,27 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               const graphHeight = 245;
               const bottomY = topY + graphHeight;
 
-              // Every week gets a fixed slice of the drawing area, so bars and labels
-              // stay the same size whatever the horizon: a longer forecast widens the
-              // chart and scrolls rather than squeezing 57 weeks onto one screen.
-              // Past three months the slice narrows a little to keep that scrolling
-              // tolerable. (18 weeks x 50 reproduces the original 905-unit graph.)
-              const weekUnits = N <= 20 ? 50 : N <= 36 ? 34 : 26;
-              const graphWidth = N * weekUnits;
+              // Step width & bar size adapted for weekly vs monthly resolution
+              const stepX = activeResolution === "month"
+                ? (N <= 8 ? 95 : N <= 12 ? 75 : 60)
+                : (N <= 20 ? 50 : N <= 36 ? 34 : 26);
+              const graphWidth = N * stepX;
               const svgWidth = startX + graphWidth + 30;
-              const stepX = weekUnits;
-              const barWidth = Math.max(3, Math.min(15, (stepX - 8) / 2));
+              const barWidth = activeResolution === "month"
+                ? Math.max(8, Math.min(24, (stepX - 16) / 2))
+                : Math.max(3, Math.min(15, (stepX - 8) / 2));
 
-              // Never render a user unit below a pixel; anything wider than the card
-              // scrolls horizontally instead of shrinking.
               const minChartWidth = svgWidth;
 
-              // At the narrowest slice the week labels would touch, so every other
-              // one is drawn -- counted out from the current week, so "today" is
-              // always labelled and never crowds its neighbour -- and the date line
-              // underneath is dropped.
-              const labelStride = weekUnits >= 34 ? 1 : 2;
-              const showDateSubLabel = weekUnits >= 34;
+              const labelStride = activeResolution === "month" ? 1 : (stepX >= 34 ? 1 : 2);
+              const showDateSubLabel = true;
 
               // Target value based on active mode
-              const getPlotTarget = (b: typeof weeklyTrendData[0]) => trendMode === "cumulative" ? b.cumulativeBalance : b.netDifference;
+              const getPlotTarget = (b: typeof trendData[0]) => trendMode === "cumulative" ? b.cumulativeBalance : b.netDifference;
 
               // Calculate range & scale
-              const maxVal = Math.max(1000, ...weeklyTrendData.map((b) => Math.max(b.totalIncome, b.totalExpense, getPlotTarget(b))));
-              const minVal = Math.min(0, ...weeklyTrendData.map((b) => Math.min(0, getPlotTarget(b))));
+              const maxVal = Math.max(1000, ...trendData.map((b) => Math.max(b.totalIncome, b.totalExpense, getPlotTarget(b))));
+              const minVal = Math.min(0, ...trendData.map((b) => Math.min(0, getPlotTarget(b))));
               const valSpan = (maxVal - minVal) * 1.15 || 1000;
               const scaledMax = maxVal + valSpan * 0.08;
               const scaledMin = minVal - valSpan * 0.07;
@@ -4742,18 +5067,18 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               const zeroY = getY(0);
 
               // Calculate points for the active plotline
-              const points = weeklyTrendData.map((b, idx) => {
+              const points = trendData.map((b, idx) => {
                 const cx = startX + idx * stepX + stepX / 2;
                 const cy = getY(getPlotTarget(b));
                 return { x: cx, y: cy, bucket: b, index: idx, value: getPlotTarget(b) };
               });
 
-              // Index of current week
-              const currentWeekIdx = weeklyTrendData.findIndex((b) => b.isCurrent);
-              const futureStartX = currentWeekIdx >= 0 ? startX + currentWeekIdx * stepX : startX + 4 * stepX;
+              // Index of current week or month
+              const currentPeriodIdx = trendData.findIndex((b) => b.isCurrent);
+              const futureStartX = currentPeriodIdx >= 0 ? startX + currentPeriodIdx * stepX : startX + 4 * stepX;
 
               // Hovered bucket details
-              const activeHoveredBucket = hoveredWeekIdx !== null ? weeklyTrendData[hoveredWeekIdx] : null;
+              const activeHoveredBucket = hoveredWeekIdx !== null ? trendData[hoveredWeekIdx] : null;
 
               return (
                 <div className="relative select-none">
@@ -4813,7 +5138,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                         </filter>
                       </defs>
 
-                      {/* 1. Future 3-Month Projection Window Background Area */}
+                      {/* 1. Future Projection Window Background Area */}
                       <rect
                         x={futureStartX}
                         y={topY}
@@ -4873,8 +5198,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                         );
                       })}
 
-                      {/* 4. Weekly Bar Groups (Income & Expense Columns) */}
-                      {weeklyTrendData.map((b, idx) => {
+                      {/* 4. Bar Groups (Income & Expense Columns) */}
+                      {trendData.map((b, idx) => {
                         const cx = startX + idx * stepX + stepX / 2;
                         const isHovered = hoveredWeekIdx === idx;
 
@@ -4932,7 +5257,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                               />
                             )}
 
-                            {/* Reconciled Anchor Marker above week */}
+                            {/* Reconciled Anchor Marker above period */}
                             {b.isManuallyCalibrated && (
                               <g transform={`translate(${cx}, ${topY + 6})`}>
                                 <circle r="5" fill="#f59e0b" />
@@ -4949,8 +5274,8 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                               </g>
                             )}
 
-                            {/* X-Axis Week Labels */}
-                            {(idx - currentWeekIdx) % labelStride === 0 && (
+                            {/* X-Axis Labels */}
+                            {(idx - currentPeriodIdx) % labelStride === 0 && (
                               <>
                                 <text
                                   x={cx}
@@ -4975,19 +5300,19 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                       b.isCurrent ? "fill-indigo-600 font-bold" : "fill-slate-400"
                                     }`}
                                   >
-                                    {b.dateRangeLabel.split(" - ")[0]}
+                                    {activeResolution === "month" ? b.year : b.dateRangeLabel.split(" - ")[0]}
                                   </text>
                                 )}
                               </>
                             )}
 
-                            {/* Current week highlight badge pill */}
+                            {/* Current period highlight badge pill */}
                             {b.isCurrent && (
                               <g transform={`translate(${cx}, ${bottomY + 41})`}>
                                 <rect
-                                  x="-19"
+                                  x={activeResolution === "month" ? "-25" : "-19"}
                                   y="-7"
-                                  width="38"
+                                  width={activeResolution === "month" ? "50" : "38"}
                                   height="14"
                                   rx="7"
                                   fill="#6366f1"
@@ -5000,7 +5325,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                   fontWeight="900"
                                   letterSpacing="0.04em"
                                 >
-                                  {t("TODAY", "DNES", "MA")}
+                                  {activeResolution === "month" ? t("THIS MO", "TENTO M.", "EZ A HÓ") : t("TODAY", "DNES", "MA")}
                                 </text>
                               </g>
                             )}
@@ -5097,7 +5422,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                     </svg>
                   </div>
 
-                  {/* Dynamic Hover Tooltip Card with Week-Specific Calibrator Action */}
+                  {/* Dynamic Hover Tooltip Card with Period-Specific Calibrator Action */}
                   {activeHoveredBucket && (
                     <div className="mt-3 p-4 rounded-2xl bg-white text-slate-900 shadow-xl border border-slate-200/80 flex flex-col md:flex-row md:items-center md:justify-between gap-4 animate-in fade-in slide-in-from-bottom-2 duration-150">
                       <div className="space-y-1">
@@ -5113,10 +5438,16 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                           </span>
                           <span className="text-xs text-slate-500 font-semibold">
                             {activeHoveredBucket.isCurrent
-                              ? t("Current Week (Reference)", "Aktuálny týždeň (Referenčný)", "Aktuális hét (Referencia)")
+                              ? (activeResolution === "month"
+                                  ? t("Current Month (Reference)", "Aktuálny mesiac (Referenčný)", "Aktuális hónap (Referencia)")
+                                  : t("Current Week (Reference)", "Aktuálny týždeň (Referenčný)", "Aktuális hét (Referencia)"))
                               : activeHoveredBucket.isFuture
-                              ? t("🔮 Future Projected Week", "🔮 Budúci projektovaný týždeň", "🔮 Jövőbeli tervezett hét")
-                              : t("Historical Week", "História", "Múltbéli hét")}
+                              ? (activeResolution === "month"
+                                  ? t("🔮 Future Projected Month", "🔮 Budúci projektovaný mesiac", "🔮 Jövőbeli tervezett hónap")
+                                  : t("🔮 Future Projected Week", "🔮 Budúci projektovaný týždeň", "🔮 Jövőbeli tervezett hét"))
+                              : (activeResolution === "month"
+                                  ? t("Historical Month", "História (mesiac)", "Múltbéli hónap")
+                                  : t("Historical Week", "História", "Múltbéli hét"))}
                           </span>
                           {activeHoveredBucket.isManuallyCalibrated && (
                             <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-700 border border-amber-200 text-[10px] font-bold flex items-center gap-1">
@@ -5127,7 +5458,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                         </div>
                         <div className="text-xs text-slate-500">
                           {activeHoveredBucket.items.length}{" "}
-                          {t("financial movement(s) in this week", "finančných pohybov v tomto týždni", "pénzügyi tétel ezen a héten")}
+                          {activeResolution === "month"
+                            ? t("financial movement(s) in this month", "finančných pohybov v tomto mesiaci", "pénzügyi tétel ebben a hónapban")
+                            : t("financial movement(s) in this week", "finančných pohybov v tomto týždni", "pénzügyi tétel ezen a héten")}
                         </div>
                       </div>
 
@@ -5148,10 +5481,12 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                           </div>
                         </div>
 
-                        {/* Weekly Net Difference */}
+                        {/* Net Difference */}
                         <div className="space-y-0.5 pl-3 border-l border-slate-200">
                           <span className="text-[10px] font-bold text-purple-600 uppercase tracking-wider">
-                            {activeHoveredBucket.isFuture ? t("Weekly Net Rev", "Týždenný zisk", "Heti nettó") : t("Weekly Net", "Týždenná zmena", "Heti egyenleg")}
+                            {activeHoveredBucket.isFuture
+                              ? (activeResolution === "month" ? t("Monthly Net Rev", "Mesačný zisk", "Havi nettó") : t("Weekly Net Rev", "Týždenný zisk", "Heti nettó"))
+                              : (activeResolution === "month" ? t("Monthly Net", "Mesačná zmena", "Havi egyenleg") : t("Weekly Net", "Týždenná zmena", "Heti egyenleg"))}
                           </span>
                           <div className={`text-sm font-black ${activeHoveredBucket.netDifference >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
                             {activeHoveredBucket.netDifference >= 0 ? "+" : ""}{money(activeHoveredBucket.netDifference)}
@@ -5183,7 +5518,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                     </div>
                   )}
 
-                  {/* Expand / Collapse Weekly Data Breakdown Table */}
+                  {/* Expand / Collapse Data Breakdown Table */}
                   <div className="mt-4 pt-2 border-t border-slate-100  flex justify-between items-center">
                     <button
                       type="button"
@@ -5191,46 +5526,64 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                       className="flex items-center gap-2 text-xs font-bold text-indigo-600  hover:text-indigo-700 cursor-pointer"
                     >
                       <CalendarDays className="h-4 w-4" />
-                      {isWeeklyTableOpen
-                        ? t(
-                            `Hide ${projectionTotalWeeks}-Week Projection Table`,
-                            `Skryť ${projectionTotalWeeks}-týždňovú tabuľku prognózy`,
-                            `${projectionTotalWeeks} hetes előrejelzési táblázat elrejtése`
-                          )
-                        : t(
-                            `Inspect Full ${projectionTotalWeeks}-Week Weekly Breakdown (${TREND_PAST_WEEKS} Past + ${projectionFutureWeeks} Future Weeks)`,
-                            `Zobraziť podrobnú ${projectionTotalWeeks}-týždňovú tabuľku (${TREND_PAST_WEEKS} minulé + ${projectionFutureWeeks} budúcich týždňov)`,
-                            `Részletes ${projectionTotalWeeks} hetes lebontás megtekintése (${TREND_PAST_WEEKS} múltbéli + ${projectionFutureWeeks} jövőbeli hét)`
-                          )}
+                      {activeResolution === "month"
+                        ? (isWeeklyTableOpen
+                            ? t(
+                                `Hide ${projectionTotalMonths}-Month Projection Table`,
+                                `Skryť ${projectionTotalMonths}-mesačnú tabuľku prognózy`,
+                                `${projectionTotalMonths} hónapos előrejelzési táblázat elrejtése`
+                              )
+                            : t(
+                                `Inspect Full ${projectionTotalMonths}-Month Breakdown (${TREND_PAST_MONTHS} Past + ${projectionMonths} Future Months)`,
+                                `Zobraziť podrobnú ${projectionTotalMonths}-mesačnú tabuľku (${TREND_PAST_MONTHS} minulé + ${projectionMonths} budúcich mesiacov)`,
+                                `Részletes ${projectionTotalMonths} hónapos lebontás megtekintése (${TREND_PAST_MONTHS} múltbéli + ${projectionMonths} jövőbeli hónap)`
+                              ))
+                        : (isWeeklyTableOpen
+                            ? t(
+                                `Hide ${projectionTotalWeeks}-Week Projection Table`,
+                                `Skryť ${projectionTotalWeeks}-týždňovú tabuľku prognózy`,
+                                `${projectionTotalWeeks} hetes előrejelzési táblázat elrejtése`
+                              )
+                            : t(
+                                `Inspect Full ${projectionTotalWeeks}-Week Weekly Breakdown (${TREND_PAST_WEEKS} Past + ${projectionFutureWeeks} Future Weeks)`,
+                                `Zobraziť podrobnú ${projectionTotalWeeks}-týždňovú tabuľku (${TREND_PAST_WEEKS} minulé + ${projectionFutureWeeks} budúcich týždňov)`,
+                                `Részletes ${projectionTotalWeeks} hetes lebontás megtekintése (${TREND_PAST_WEEKS} múltbéli + ${projectionFutureWeeks} jövőbeli hét)`
+                              ))}
                       {isWeeklyTableOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                     </button>
                     <span className="text-[11px] text-slate-400">
-                      {t(
-                        `Total Horizon: ${projectionTotalWeeks} Weeks (${projectionMonths} Months Forward)`,
-                        `Časový horizont: ${projectionTotalWeeks} týždňov (${skMonths(projectionMonths)} dopredu)`,
-                        `Teljes időtáv: ${projectionTotalWeeks} hét (${projectionMonths} hónap előre)`
-                      )}
+                      {activeResolution === "month"
+                        ? t(
+                            `Total Horizon: ${projectionTotalMonths} Months (${projectionMonths} Months Forward)`,
+                            `Časový horizont: ${projectionTotalMonths} mesiacov (${skMonths(projectionMonths)} dopredu)`,
+                            `Teljes időtáv: ${projectionTotalMonths} hónap (${projectionMonths} hónap előre)`
+                          )
+                        : t(
+                            `Total Horizon: ${projectionTotalWeeks} Weeks (${projectionMonths} Months Forward)`,
+                            `Časový horizont: ${projectionTotalWeeks} týždňov (${skMonths(projectionMonths)} dopredu)`,
+                            `Teljes időtáv: ${projectionTotalWeeks} hét (${projectionMonths} hónap előre)`
+                          )}
                     </span>
                   </div>
 
-                  {/* Weekly Data Table (4 past weeks + the selected forecast horizon) */}
+                  {/* Data Table (Breakdown of past + future periods) */}
                   {isWeeklyTableOpen && (
                     <div className="mt-3 overflow-x-auto rounded-2xl border border-slate-200  animate-in fade-in duration-200">
                       <table className="w-full text-left text-xs">
                         <thead className="bg-slate-50  text-[10px] font-black uppercase tracking-wider text-slate-500  border-b border-slate-200 ">
                           <tr>
-                            <th className="py-3 px-4">{t("Week / Period", "Týždeň / Obdobie", "Hét / Időszak")}</th>
+                            <th className="py-3 px-4">{activeResolution === "month" ? t("Month / Period", "Mesiac / Obdobie", "Hónap / Időszak") : t("Week / Period", "Týždeň / Obdobie", "Hét / Időszak")}</th>
                             <th className="py-3 px-4">{t("Type", "Typ", "Típus")}</th>
                             <th className="py-3 px-4 text-right">{t("Cumulative Income", "Príjmy", "Bevételek")}</th>
                             <th className="py-3 px-4 text-right">{t("Cumulative Expense", "Výdavky", "Kiadások")}</th>
-                            <th className="py-3 px-4 text-right">{t("Weekly Net Flow", "Týždenný čistý tok", "Heti nettó folyam")}</th>
+                            <th className="py-3 px-4 text-right">{activeResolution === "month" ? t("Monthly Net Flow", "Mesačný čistý tok", "Havi nettó folyam") : t("Weekly Net Flow", "Týždenný čistý tok", "Heti nettó folyam")}</th>
                             <th className="py-3 px-4 text-right text-emerald-600 ">{t("🏦 Bank Account Balance", "🏦 Stav na účte", "🏦 Bankszámla egyenleg")}</th>
                             <th className="py-3 px-4 text-center">{t("Calibration", "Nastavenie", "Kalibráció")}</th>
                             <th className="py-3 px-4 text-center">{t("Movements", "Pohyby", "Tételek")}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100  font-medium">
-                          {weeklyTrendData.map((w) => (
+                          {trendData.map((w) => (
                             <tr
                               key={w.weekLabel + w.startIso}
                               className={`hover:bg-slate-50  transition-colors ${
@@ -5242,13 +5595,13 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                               }`}
                             >
                               <td className="py-2.5 px-4">
-                                <div className="font-bold text-slate-800 ">{w.weekLabel}</div>
+                                <div className="font-bold text-slate-800 ">{w.weekLabel} {activeResolution === "month" ? w.year : ""}</div>
                                 <div className="text-[10px] text-slate-400">{w.dateRangeLabel} ({w.year})</div>
                               </td>
                               <td className="py-2.5 px-4">
                                 {w.isCurrent ? (
                                   <span className="px-2 py-0.5 rounded-md bg-indigo-100  text-indigo-700  text-[10px] font-bold">
-                                    {t("Current Week", "Tento týždeň", "Aktuális hét")}
+                                    {activeResolution === "month" ? t("Current Month", "Tento mesiac", "Aktuális hónap") : t("Current Week", "Tento týždeň", "Aktuális hét")}
                                   </span>
                                 ) : w.isFuture ? (
                                   <span className="px-2 py-0.5 rounded-md bg-purple-100  text-purple-700  text-[10px] font-bold">
@@ -5307,7 +5660,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             })()}
           </div>
 
-          {/* 4. WEEK-SPECIFIC BANK BALANCE CALIBRATION DIALOG */}
+          {/* 4. PERIOD-SPECIFIC BANK BALANCE CALIBRATION DIALOG */}
           {calibratingWeek && (
             <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-in fade-in duration-200">
               <div className="bg-white  rounded-3xl border border-slate-200  shadow-2xl w-full max-w-md p-6 space-y-5 animate-in zoom-in-95 duration-150">
@@ -5318,7 +5671,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                     </div>
                     <div>
                       <h4 className="text-sm font-bold text-slate-900 ">
-                        {t(`Calibrate Bank Balance for ${calibratingWeek.weekLabel}`, `Nastaviť zostatok na účte pre ${calibratingWeek.weekLabel}`, `Heti egyenleg beállítása: ${calibratingWeek.weekLabel}`)}
+                        {activeResolution === "month"
+                          ? t(`Calibrate Bank Balance for ${calibratingWeek.weekLabel} ${calibratingWeek.year}`, `Nastaviť zostatok na účte pre ${calibratingWeek.weekLabel} ${calibratingWeek.year}`, `Havi egyenleg beállítása: ${calibratingWeek.weekLabel} ${calibratingWeek.year}`)
+                          : t(`Calibrate Bank Balance for ${calibratingWeek.weekLabel}`, `Nastaviť zostatok na účte pre ${calibratingWeek.weekLabel}`, `Heti egyenleg beállítása: ${calibratingWeek.weekLabel}`)}
                       </h4>
                       <p className="text-[11px] text-slate-500 ">
                         {calibratingWeek.dateRangeLabel} ({calibratingWeek.year})
@@ -5336,7 +5691,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-slate-700  block">
-                    {t("Real Verified Bank Balance at this Week (€)", "Skutočný stav na účte v tomto týždni (€)", "Valós bankszámla egyenleg ezen a héten (€)")}
+                    {activeResolution === "month"
+                      ? t("Real Verified Bank Balance at this Month (€)", "Skutočný stav na účte v tomto mesiaci (€)", "Valós bankszámla egyenleg ebben a hónapban (€)")
+                      : t("Real Verified Bank Balance at this Week (€)", "Skutočný stav na účte v tomto týždni (€)", "Valós bankszámla egyenleg ezen a héten (€)")}
                   </label>
                   <div className="relative">
                     <input
@@ -5351,9 +5708,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   </div>
                   <p className="text-[11px] text-slate-500 ">
                     {t(
-                      "Setting this anchor will recalculate the entire timeline: subsequent weeks will add cash flow starting from this sum, and preceding weeks will back-calculate.",
-                      "Nastavenie tejto kotvy prepočíta celú časovú os: nasledujúce týždne budú pripočítavať zmeny k tejto sume.",
-                      "A rögzítés újraszámolja a teljes idővonalat: a következő hetek ebből az összegből építkeznek."
+                      "Setting this anchor will recalculate the entire timeline: subsequent periods will add cash flow starting from this sum, and preceding periods will back-calculate.",
+                      "Nastavenie tejto kotvy prepočíta celú časovú os: nasledujúce obdobia budú pripočítavať zmeny k tejto sume.",
+                      "A rögzítés újraszámolja a teljes idővonalat: a következő időszakok ebből az összegből építkeznek."
                     )}
                   </p>
                 </div>
