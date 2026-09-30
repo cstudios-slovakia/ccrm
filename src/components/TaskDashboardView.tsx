@@ -668,15 +668,17 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const [archiveTimingFilter, setArchiveTimingFilter] = useState("all");
 
     // Expand/collapse states for task buckets.
-    // Missed (Overdue) and Today are always visible (no collapse) — only Tomorrow and
-    // Future stay collapsible.
+    // Missed (Overdue) and Today are always visible (no collapse) — only Tomorrow,
+    // Future, and Done tasks stay collapsible.
     const [isTomorrowExpanded, setIsTomorrowExpanded] = useState(false);
     const [isFutureExpanded, setIsFutureExpanded] = useState(false);
+    const [isDoneExpanded, setIsDoneExpanded] = useState(true);
 
     // Global Tasks: the left panel keeps the same convention — Missed and Today
-    // are always open, Upcoming (tomorrow and later) folds away.
+    // are always open, Upcoming (tomorrow and later) and Done tasks fold away.
     const [isGlobalUpcomingExpanded, setIsGlobalUpcomingExpanded] =
         useState(false);
+    const [isGlobalDoneExpanded, setIsGlobalDoneExpanded] = useState(true);
     // Global Tasks: which member rows on the right are folded shut. Stacking the
     // whole team vertically makes a long page, so each card can be collapsed to
     // its header; they all start open.
@@ -991,6 +993,14 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         const dateComp = a.deadline.localeCompare(b.deadline);
         if (dateComp !== 0) return dateComp;
         return byDeadlineTime(a, b);
+    };
+
+    const byCompletionDesc = (a: Task, b: Task) => {
+        const timeA = a.completedAt || (a.deadline ? a.deadline + " 23:59" : "");
+        const timeB = b.completedAt || (b.deadline ? b.deadline + " 23:59" : "");
+        const comp = timeB.localeCompare(timeA);
+        if (comp !== 0) return comp;
+        return a.title.localeCompare(b.title);
     };
 
     // Item 12: the dashboard calendar shows ONLY tasks (no lead timeline events).
@@ -2496,41 +2506,22 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const tomorrowStr = toLocalDateStr(new Date(today.getTime() + 86400000));
     // All personal and delegated tasks are grouped together in the same time divisions:
     const overdueTasks = myTasks
-        .filter((t) => {
-            if (isTaskOverdue(t)) return true;
-            if (showClosedTasks && isClosedRecentTask(t)) {
-                return t.deadline < todayStr;
-            }
-            return false;
-        })
+        .filter((t) => isTaskOverdue(t))
         .sort(byDeadline);
     const todayTasks = myTasks
-        .filter((t) => {
-            if (t.deadline === todayStr && !isTaskOverdue(t) && !isDoneState(t.status)) return true;
-            if (showClosedTasks && isClosedRecentTask(t)) {
-                return t.deadline === todayStr || !t.deadline;
-            }
-            return false;
-        })
+        .filter((t) => t.deadline === todayStr && !isTaskOverdue(t) && !isDoneState(t.status))
         .sort(byDeadlineTime);
     const tomorrowTasks = myTasks
-        .filter((t) => {
-            if (t.deadline === tomorrowStr && !isDoneState(t.status)) return true;
-            if (showClosedTasks && isClosedRecentTask(t)) {
-                return t.deadline === tomorrowStr;
-            }
-            return false;
-        })
+        .filter((t) => t.deadline === tomorrowStr && !isDoneState(t.status))
         .sort(byDeadlineTime);
     const futureTasks = myTasks
-        .filter((t) => {
-            if (t.deadline > tomorrowStr && !isDoneState(t.status)) return true;
-            if (showClosedTasks && isClosedRecentTask(t)) {
-                return t.deadline > tomorrowStr;
-            }
-            return false;
-        })
+        .filter((t) => t.deadline > tomorrowStr && !isDoneState(t.status))
         .sort(byDeadline);
+    const doneTasks = showClosedTasks
+        ? myTasks
+              .filter((t) => isClosedRecentTask(t))
+              .sort(byCompletionDesc)
+        : [];
 
     // The lead a task is linked to, as a link straight to that lead's detail —
     // so a task on the calendar can be followed to its client without leaving
@@ -3132,32 +3123,19 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         // the team board answers "what is late / due now / still coming",
         // and a dedicated Tomorrow bucket only splits that last group in two.
         const globalOverdue = filteredTasks
-            .filter((task) => {
-                if (isTaskOverdue(task)) return true;
-                if (showClosedTasks && isClosedRecentTask(task)) {
-                    return task.deadline < todayStr;
-                }
-                return false;
-            })
+            .filter((task) => isTaskOverdue(task))
             .sort(byDeadline);
         const globalToday = filteredTasks
-            .filter((task) => {
-                if (task.deadline === todayStr && !isTaskOverdue(task) && !isDoneState(task.status)) return true;
-                if (showClosedTasks && isClosedRecentTask(task)) {
-                    return task.deadline === todayStr || !task.deadline;
-                }
-                return false;
-            })
+            .filter((task) => task.deadline === todayStr && !isTaskOverdue(task) && !isDoneState(task.status))
             .sort(byDeadlineTime);
         const globalUpcoming = filteredTasks
-            .filter((task) => {
-                if (task.deadline > todayStr && !isDoneState(task.status)) return true;
-                if (showClosedTasks && isClosedRecentTask(task)) {
-                    return task.deadline > todayStr;
-                }
-                return false;
-            })
+            .filter((task) => task.deadline > todayStr && !isDoneState(task.status))
             .sort(byDeadline);
+        const globalDone = showClosedTasks
+            ? filteredTasks
+                  .filter((task) => isClosedRecentTask(task))
+                  .sort(byCompletionDesc)
+            : [];
 
         // Who a card collects. On the team-wide board that is the assignee, so a
         // task hangs under whoever has to do it. On the restricted board there is
@@ -3469,6 +3447,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 expanded: isGlobalUpcomingExpanded,
                                 onToggle: () =>
                                     setIsGlobalUpcomingExpanded((open) => !open),
+                            })}
+                            {showClosedTasks && globalDone.length > 0 && renderTaskBucket({
+                                tone: "emerald",
+                                icon: <CheckCircle2 className="h-4 w-4" />,
+                                title: t("Done tasks", "Hotové úlohy", "Kész feladatok"),
+                                tasks: globalDone,
+                                emptyLabel: t(
+                                    "No done tasks.",
+                                    "Žiadne hotové úlohy.",
+                                    "Nincsenek kész feladatok.",
+                                ),
+                                expanded: isGlobalDoneExpanded,
+                                onToggle: () =>
+                                    setIsGlobalDoneExpanded((open) => !open),
                             })}
                         </div>
                     </div>
@@ -3965,6 +3957,22 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     expanded: isFutureExpanded,
                     onToggle: () =>
                         setIsFutureExpanded(!isFutureExpanded),
+                })}
+
+                {/* Done tasks */}
+                {showClosedTasks && doneTasks.length > 0 && renderTaskBucket({
+                    tone: "emerald",
+                    icon: <CheckCircle2 className="h-4 w-4" />,
+                    title: t("Done tasks", "Hotové úlohy", "Kész feladatok"),
+                    tasks: doneTasks,
+                    emptyLabel: t(
+                        "No done tasks.",
+                        "Žiadne hotové úlohy.",
+                        "Nincsenek kész feladatok.",
+                    ),
+                    expanded: isDoneExpanded,
+                    onToggle: () =>
+                        setIsDoneExpanded(!isDoneExpanded),
                 })}
             </div>
         </div>
