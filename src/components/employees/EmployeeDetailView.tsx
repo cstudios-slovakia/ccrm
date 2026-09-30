@@ -64,7 +64,28 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
   systemLanguage = "sk",
   systemCurrency = "€"
 }) => {
-  const [activeTab, setActiveTab] = useState<"hours" | "salaries" | "vacations">("hours");
+  // Check if Toggl API key is configured
+  const hasTogglKey = useMemo(() => {
+    const rawKey = settings.togglApiKey || settings.timeTracking?.togglApiToken;
+    if (!rawKey || typeof rawKey !== "string") return false;
+    const trimmed = rawKey.trim();
+    return (
+      trimmed.length > 0 &&
+      trimmed !== "9c8a1b2e3d4f5g6h7i8j9k0l" &&
+      trimmed !== "test_dummy_token"
+    );
+  }, [settings.togglApiKey, settings.timeTracking?.togglApiToken]);
+
+  const [activeTab, setActiveTab] = useState<"hours" | "salaries" | "vacations">(() => {
+    return hasTogglKey ? "hours" : "salaries";
+  });
+
+  // If Toggl key is not set up, don't stay on hours tab
+  useEffect(() => {
+    if (!hasTogglKey && activeTab === "hours") {
+      setActiveTab("salaries");
+    }
+  }, [hasTogglKey, activeTab]);
 
   // Edit employee modal
   const [isEditModalOpen, setIsEditModalOpen] = useState<boolean>(false);
@@ -132,7 +153,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
 
   // Fetch Toggl hours when month/year changes or tab is hours
   useEffect(() => {
-    if (activeTab !== "hours") return;
+    if (!hasTogglKey || activeTab !== "hours") return;
     if (!employee.timeTrackingUserId && !settings.togglApiKey) {
       setHoursData(null);
       return;
@@ -169,7 +190,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [activeTab, employee.id, employee.timeTrackingUserId, togglYear, togglMonth, settings.togglApiKey]);
+  }, [hasTogglKey, activeTab, employee.id, employee.timeTrackingUserId, togglYear, togglMonth, settings.togglApiKey]);
 
   // Employee Salaries history sorted by year/month DESC
   const employeeSalaries = useMemo(() => {
@@ -539,17 +560,19 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
         <div className="lg:col-span-8 space-y-6">
           {/* Sub-Tabs Navigation */}
           <div className="flex items-center gap-2 p-1.5 glass-panel rounded-2xl border border-white/60 bg-white/80 shadow-sm">
-            <button
-              onClick={() => setActiveTab("hours")}
-              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-bold transition shadow-sm ${
-                activeTab === "hours"
-                  ? "bg-[#c29b62] text-white shadow-md shadow-[#c29b62]/20"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/60"
-              }`}
-            >
-              <Clock className="w-4 h-4" />
-              <span>{t("Worked Hours (Toggl)", "Odpracované hodiny (Toggl)", "Ledolgozott órák (Toggl)")}</span>
-            </button>
+            {hasTogglKey && (
+              <button
+                onClick={() => setActiveTab("hours")}
+                className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-bold transition shadow-sm ${
+                  activeTab === "hours"
+                    ? "bg-[#c29b62] text-white shadow-md shadow-[#c29b62]/20"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/60"
+                }`}
+              >
+                <Clock className="w-4 h-4" />
+                <span>{t("Worked Hours (Toggl)", "Odpracované hodiny (Toggl)", "Ledolgozott órák (Toggl)")}</span>
+              </button>
+            )}
 
             <button
               onClick={() => setActiveTab("salaries")}
@@ -577,7 +600,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
           </div>
 
           {/* TAB 1: WORKED HOURS (TOGGL) */}
-          {activeTab === "hours" && (
+          {hasTogglKey && activeTab === "hours" && (
             <div className="space-y-6 animate-in fade-in duration-150">
               {/* Month / Year Filter Header */}
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass">

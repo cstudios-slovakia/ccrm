@@ -86,6 +86,9 @@ $apiToken = trim((string)(
     ($timeTrackingConfig['togglApiToken'] ??
     ($timeTrackingConfig['togglApiKey'] ?? ''))))
 ));
+if ($apiToken === '9c8a1b2e3d4f5g6h7i8j9k0l' || $apiToken === 'test_dummy_token') {
+    $apiToken = '';
+}
 $workspaceId = trim((string)(
     $data['workspace_id'] ??
     $data['workspaceId'] ??

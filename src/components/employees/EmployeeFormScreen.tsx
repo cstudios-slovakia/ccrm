@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   ArrowLeft,
   User,
@@ -158,9 +158,21 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
     }
   }, [employee, settings]);
 
+  // Check if Toggl API key is configured
+  const hasTogglKey = useMemo(() => {
+    const rawKey = settings.togglApiKey || settings.timeTracking?.togglApiToken;
+    if (!rawKey || typeof rawKey !== "string") return false;
+    const trimmed = rawKey.trim();
+    return (
+      trimmed.length > 0 &&
+      trimmed !== "9c8a1b2e3d4f5g6h7i8j9k0l" &&
+      trimmed !== "test_dummy_token"
+    );
+  }, [settings.togglApiKey, settings.timeTracking?.togglApiToken]);
+
   // Fetch Toggl workspace users if credentials exist
   useEffect(() => {
-    if (!settings.togglApiKey) return;
+    if (!hasTogglKey) return;
 
     let isMounted = true;
     setLoadingTogglUsers(true);
@@ -187,7 +199,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [settings.togglApiKey]);
+  }, [hasTogglKey]);
 
   // Keyboard shortcut: Cmd/Ctrl + Enter to save, Escape to cancel
   useEffect(() => {
@@ -824,7 +836,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
               ) : (
                 <div className="space-y-2">
                   <div className="text-xs text-slate-500">
-                    {settings.togglApiKey
+                    {hasTogglKey
                       ? t(
                           "Manual user mapping (or workspace users not loaded):",
                           "Manuálne zadanie Toggl User ID:",

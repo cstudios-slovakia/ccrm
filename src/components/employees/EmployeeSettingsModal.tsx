@@ -55,8 +55,17 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
     { id: "unpaid", name: "Neplatené voľno", defaultAllowance: 0, color: "#8b5cf6" }
   ]);
 
-  const [togglApiKey, setTogglApiKey] = useState<string>(settings.togglApiKey || "");
-  const [togglWorkspaceId, setTogglWorkspaceId] = useState<string>(settings.togglWorkspaceId || "");
+  const sanitizeKey = (k?: string) => {
+    if (!k || k === "9c8a1b2e3d4f5g6h7i8j9k0l" || k === "test_dummy_token") return "";
+    return k;
+  };
+
+  const [togglApiKey, setTogglApiKey] = useState<string>(() =>
+    sanitizeKey(settings.togglApiKey || settings.timeTracking?.togglApiToken)
+  );
+  const [togglWorkspaceId, setTogglWorkspaceId] = useState<string>(
+    settings.togglWorkspaceId || settings.timeTracking?.togglWorkspaceId || ""
+  );
   const [showApiKey, setShowApiKey] = useState<boolean>(false);
 
   // Toggl test connection state
@@ -159,7 +168,12 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
       salaryTypes,
       vacationTypes,
       togglApiKey: togglApiKey.trim() || undefined,
-      togglWorkspaceId: togglWorkspaceId.trim() || undefined
+      togglWorkspaceId: togglWorkspaceId.trim() || undefined,
+      timeTracking: togglApiKey.trim() ? {
+        provider: "toggl",
+        togglApiToken: togglApiKey.trim(),
+        togglWorkspaceId: togglWorkspaceId.trim()
+      } : undefined
     };
     onSave(updated);
     onClose();

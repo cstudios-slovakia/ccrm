@@ -22,8 +22,6 @@ export const DEFAULT_MOCK_EMPLOYEES: Employee[] = [
       unpaid: 0
     },
     timeTrackingProvider: "toggl",
-    timeTrackingUserId: "849102",
-    timeTrackingUserName: "Michal Kováč (Toggl)",
     autoExpense: true,
     expenseCategoryId: "fc-exp-pay-salaries",
     isActive: true,
@@ -52,8 +50,6 @@ export const DEFAULT_MOCK_EMPLOYEES: Employee[] = [
       unpaid: 0
     },
     timeTrackingProvider: "toggl",
-    timeTrackingUserId: "849103",
-    timeTrackingUserName: "Zuzana Horváthová (Toggl)",
     autoExpense: true,
     expenseCategoryId: "fc-exp-pay-salaries",
     isActive: true,
@@ -82,8 +78,6 @@ export const DEFAULT_MOCK_EMPLOYEES: Employee[] = [
       unpaid: 0
     },
     timeTrackingProvider: "toggl",
-    timeTrackingUserId: "849104",
-    timeTrackingUserName: "Peter Varga (Toggl)",
     autoExpense: true,
     expenseCategoryId: "fc-exp-pay-salaries",
     isActive: true,
@@ -112,8 +106,6 @@ export const DEFAULT_MOCK_EMPLOYEES: Employee[] = [
       unpaid: 0
     },
     timeTrackingProvider: "toggl",
-    timeTrackingUserId: "849105",
-    timeTrackingUserName: "Kristína Balážová (Toggl)",
     autoExpense: true,
     expenseCategoryId: "fc-exp-pay-salaries",
     isActive: true,
@@ -256,7 +248,7 @@ export const DEFAULT_MOCK_SETTINGS: EmployeeSettings = {
   ],
   timeTracking: {
     provider: "toggl",
-    togglApiToken: "9c8a1b2e3d4f5g6h7i8j9k0l",
-    togglWorkspaceId: "5421980"
+    togglApiToken: "",
+    togglWorkspaceId: ""
   }
 };

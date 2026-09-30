@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   X,
   User,
@@ -150,16 +150,28 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
     }
   }, [employee, settings, isOpen]);
 
+  // Check if Toggl API key is configured
+  const hasTogglKey = useMemo(() => {
+    const rawKey = settings.togglApiKey || settings.timeTracking?.togglApiToken;
+    if (!rawKey || typeof rawKey !== "string") return false;
+    const trimmed = rawKey.trim();
+    return (
+      trimmed.length > 0 &&
+      trimmed !== "9c8a1b2e3d4f5g6h7i8j9k0l" &&
+      trimmed !== "test_dummy_token"
+    );
+  }, [settings.togglApiKey, settings.timeTracking?.togglApiToken]);
+
   // Fetch Toggl workspace users if credentials exist
   useEffect(() => {
     if (!isOpen) return;
-    if (!settings.togglApiKey) return;
+    if (!hasTogglKey) return;
 
     let isMounted = true;
     setLoadingTogglUsers(true);
     setTogglFetchError(null);
 
-    fetch(`/api/time_tracking.php?action=fetch_workspace_users`)
+    fetch(`/api/time_tracking.php?action=fetch_workspace_users`, { credentials: "include" })
       .then((res) => res.json())
       .then((data) => {
         if (!isMounted) return;
@@ -179,7 +191,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [isOpen, settings.togglApiKey]);
+  }, [isOpen, hasTogglKey]);
 
   if (!isOpen) return null;
 
@@ -556,7 +568,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
               ) : (
                 <div className="flex items-center justify-between">
                   <div className="text-xs text-slate-500 dark:text-slate-400">
-                    {settings.togglApiKey
+                    {hasTogglKey
                       ? t(
                           "No users loaded or manual mapping:",
                           "Žiadni používatelia alebo manuálne zadanie:",
