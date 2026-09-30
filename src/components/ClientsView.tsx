@@ -1093,12 +1093,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     });
 
     // A profile in the Clients registry must either have an explicit client record
-    // (id starts with 'client-') or non-zero client/adjustment value. Un-won pipeline
-    // leads with zero value belong strictly to the Sales Pipeline (#leads).
+    // (id starts with 'client-') or a confirmed positive adjustment. Un-won pipeline
+    // leads belong strictly to the Sales Pipeline (#leads).
     return Object.values(profilesMap).filter(profile => {
       const hasClientRecord = profile.associatedLeads.some(l => (l.id || "").startsWith("client-"));
-      const hasValue = (Number(profile.totalValue) || 0) > 0 || (Number(profile.adjustment) || 0) > 0;
-      return hasClientRecord || hasValue;
+      const hasAdjustment = (Number(profile.adjustment) || 0) > 0;
+      return hasClientRecord || hasAdjustment;
     });
   }, [leads, leadSources]);
 

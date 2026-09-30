@@ -1721,11 +1721,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             }
         > = {};
         leads.forEach((lead) => {
-            // Only actual clients (explicit client-* record or non-zero adjustment/value)
+            // Only actual clients (explicit client-* record or non-zero adjustment)
             const isClient =
                 (lead.id || "").startsWith("client-") ||
-                (Number(lead.adjustment) || 0) > 0 ||
-                (Number(lead.value) || 0) > 0;
+                (Number(lead.adjustment) || 0) > 0;
             if (!isClient) return;
 
             const key = lead.name.trim().toLowerCase();
@@ -2104,12 +2103,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         );
 
         // Check if there is an actual client record or client association for this name:
-        // A client exists if there is an explicit client-* record or non-zero adjustment/value
+        // A client exists if there is an explicit client-* record or non-zero adjustment
         const clientRecord = matchingLeads.find(
             (l) =>
                 (l.id || "").startsWith("client-") ||
-                (Number(l.adjustment) || 0) > 0 ||
-                (Number(l.value) || 0) > 0,
+                (Number(l.adjustment) || 0) > 0,
         );
 
         if (!clientRecord) {
