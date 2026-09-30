@@ -333,6 +333,7 @@ const paint = (appearance: Appearance, palette: string): void => {
   // Read by CSS that needs the appearance without caring which light palette is
   // active, and by the QA suite to assert what is on screen.
   root.setAttribute("data-appearance", appearance);
+  root.classList.toggle("dark", appearance === "dark");
   // Tells the browser to render native widgets — scrollbars, date pickers,
   // <select> popups, autofill — in the matching scheme. Without it they stay
   // light and punch white holes into a dark screen.

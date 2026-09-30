@@ -17,6 +17,18 @@ import {
 import type { Employee } from "../../types";
 import { formatNumber } from "../../utils/currency";
 
+/**
+ * Format fractional hours into "X h Y m" format without decimals.
+ * e.g., 6.5 -> "6 h 30 m", 32.2 -> "32 h 12 m", 7.0 -> "7 h 0 m", 0 -> "0 h 0 m"
+ */
+export const formatDurationHoursMinutes = (hours: number): string => {
+  if (!hours || isNaN(hours) || hours <= 0) return "0 h 0 m";
+  const totalMinutes = Math.round(hours * 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return `${h} h ${m} m`;
+};
+
 export interface DayData {
   date: string;
   day_number: number;
@@ -431,10 +443,9 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
             </div>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-black font-mono text-slate-900 dark:text-white">
-              {formatNumber(hoursData?.totalHours || 0, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
+            <span className="text-xl sm:text-2xl font-black font-mono text-slate-900 dark:text-white">
+              {formatDurationHoursMinutes(hoursData?.totalHours || 0)}
             </span>
-            <span className="text-sm font-bold text-slate-500 dark:text-slate-400">h</span>
           </div>
           <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 block">
             {t("For selected month", "Pre zvolený mesiac", "A kiválasztott hónapban")}
@@ -461,7 +472,7 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
           </div>
           <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 block">
             {avgDailyHours > 0
-              ? `Ø ${formatNumber(avgDailyHours, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h / ${t("active day", "aktívny deň", "aktív nap")}`
+              ? `Ø ${formatDurationHoursMinutes(avgDailyHours)} / ${t("active day", "aktívny deň", "aktív nap")}`
               : "—"}
           </span>
         </div>
@@ -527,41 +538,41 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
 
       {/* 3. VIEW 1: TIMESHEET CALENDAR MATRIX (Adapted to CCRM Brand Theme) */}
       {viewMode === "matrix" && (
-        <div className="glass-panel rounded-3xl border border-slate-200/80 dark:border-slate-800/80 bg-white/95 dark:bg-slate-900/95 shadow-glass overflow-hidden">
+        <div className="glass-panel rounded-3xl border border-slate-200/80 dark:border-white/10 bg-white/95 dark:bg-[#12161f]/95 shadow-glass overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] border-collapse text-left">
               {/* Table Header */}
               <thead>
-                <tr className="bg-slate-50/90 dark:bg-slate-800/80 border-b border-slate-200/90 dark:border-slate-700/80 text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
-                  <th className="py-3.5 px-3 text-center w-[11.5%]">
+                <tr className="bg-slate-50/90 dark:bg-black/40 border-b border-slate-200/90 dark:border-white/10 text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                  <th className="py-3.5 px-3 text-center w-[11.5%] text-slate-700 dark:text-slate-300">
                     {t("MON", "PO", "HÉ")}
                   </th>
-                  <th className="py-3.5 px-3 text-center w-[11.5%]">
+                  <th className="py-3.5 px-3 text-center w-[11.5%] text-slate-700 dark:text-slate-300">
                     {t("TUE", "UT", "KE")}
                   </th>
-                  <th className="py-3.5 px-3 text-center w-[11.5%]">
+                  <th className="py-3.5 px-3 text-center w-[11.5%] text-slate-700 dark:text-slate-300">
                     {t("WED", "ST", "SZE")}
                   </th>
-                  <th className="py-3.5 px-3 text-center w-[11.5%]">
+                  <th className="py-3.5 px-3 text-center w-[11.5%] text-slate-700 dark:text-slate-300">
                     {t("THU", "ŠT", "CSÜ")}
                   </th>
-                  <th className="py-3.5 px-3 text-center w-[11.5%]">
+                  <th className="py-3.5 px-3 text-center w-[11.5%] text-slate-700 dark:text-slate-300">
                     {t("FRI", "PI", "PÉ")}
                   </th>
-                  <th className="py-3.5 px-3 text-center text-slate-400 dark:text-slate-500 bg-slate-100/50 dark:bg-slate-800/40 w-[11.5%]">
+                  <th className="py-3.5 px-3 text-center text-slate-400 dark:text-slate-400 bg-slate-100/50 dark:bg-black/25 w-[11.5%]">
                     {t("SAT", "SO", "SZO")}
                   </th>
-                  <th className="py-3.5 px-3 text-center text-slate-400 dark:text-slate-500 bg-slate-100/50 dark:bg-slate-800/40 w-[11.5%]">
+                  <th className="py-3.5 px-3 text-center text-slate-400 dark:text-slate-400 bg-slate-100/50 dark:bg-black/25 w-[11.5%]">
                     {t("SUN", "NE", "VAS")}
                   </th>
-                  <th className="py-3.5 px-4 text-center bg-gradient-to-r from-slate-100/90 to-[#c29b62]/10 dark:from-slate-800/90 dark:to-[#c29b62]/15 text-[#9e7638] dark:text-[#d4af7a] border-l border-slate-200/90 dark:border-slate-700/80 w-[19.5%]">
+                  <th className="py-3.5 px-4 text-center bg-gradient-to-r from-slate-100/90 to-[#c29b62]/10 dark:from-black/40 dark:to-[#c29b62]/20 text-[#9e7638] dark:text-[#d4af7a] border-l border-slate-200/90 dark:border-white/10 w-[19.5%]">
                     {t("WEEK TOTAL", "SPOLU TÝŽDEŇ", "HETI ÖSSZESEN")}
                   </th>
                 </tr>
               </thead>
 
               {/* Table Body (Weeks) */}
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+              <tbody className="divide-y divide-slate-100 dark:divide-white/[0.07]">
                 {calendarWeeks.map((week) => {
                   const weekHours = week.total_hours ?? week.hours ?? 0;
                   const weekActiveDays = week.active_days ?? week.activeDays ?? week.days.filter((d) => d.hours > 0).length;
@@ -569,7 +580,7 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
                   return (
                     <tr
                       key={week.week_number}
-                      className="hover:bg-slate-500/5 transition-colors"
+                      className="hover:bg-slate-500/5 dark:hover:bg-white/[0.03] transition-colors"
                     >
                       {/* 7 Days of the week */}
                       {week.days.map((day) => {
@@ -584,13 +595,13 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
                             key={day.date}
                             onMouseEnter={() => setHoveredDayDate(day.date)}
                             onMouseLeave={() => setHoveredDayDate(null)}
-                            className={`p-2.5 sm:p-3.5 align-top border-r border-slate-100 dark:border-slate-800/70 relative min-h-[76px] transition-colors ${
+                            className={`p-2 sm:p-2.5 align-top border-r border-slate-100 dark:border-white/[0.07] relative min-h-[76px] transition-colors ${
                               !isCurrent
-                                ? "bg-slate-50/40 dark:bg-slate-950/20"
+                                ? "bg-slate-50/40 dark:bg-black/30"
                                 : isToday
-                                ? "bg-[#c29b62]/[0.06] dark:bg-[#c29b62]/[0.10]"
+                                ? "bg-[#c29b62]/[0.06] dark:bg-[#c29b62]/[0.18]"
                                 : isWeekend
-                                ? "bg-slate-50/25 dark:bg-slate-900/25"
+                                ? "bg-slate-50/25 dark:bg-black/15"
                                 : "bg-transparent"
                             }`}
                           >
@@ -603,7 +614,7 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
                                       ? "bg-gradient-to-br from-[#c29b62] to-[#9e7638] text-white ring-2 ring-[#c29b62]/30 font-black shadow-xs"
                                       : !isCurrent
                                       ? "text-slate-300 dark:text-slate-600 font-medium"
-                                      : "text-slate-700 dark:text-slate-200 bg-slate-100/80 dark:bg-slate-800/80 font-bold"
+                                      : "text-slate-700 dark:text-slate-200 bg-slate-100/80 dark:bg-white/10 font-bold"
                                   }`}
                                 >
                                   {day.day_number ?? day.dayNumber}
@@ -620,15 +631,15 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
                               {hasHours ? (
                                 <div className="w-full flex items-center justify-center">
                                   <span
-                                    className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-lg text-xs font-bold font-mono transition-transform duration-150 ${
+                                    className={`inline-flex items-center justify-center px-2 py-0.5 rounded-lg text-[11px] sm:text-xs font-bold font-mono transition-transform duration-150 ${
                                       isHovered ? "scale-105" : ""
                                     } ${
                                       isCurrent
-                                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200/90 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30 shadow-2xs"
-                                        : "bg-slate-100/70 text-slate-400 dark:bg-slate-800 dark:text-slate-500 border border-slate-200/50 dark:border-slate-700/50"
+                                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200/90 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/40 shadow-xs"
+                                        : "bg-slate-100/70 text-slate-400 dark:bg-white/5 dark:text-slate-500 border border-slate-200/50 dark:border-white/10"
                                     }`}
                                   >
-                                    {formatNumber(day.hours, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h
+                                    {formatDurationHoursMinutes(day.hours)}
                                   </span>
                                 </div>
                               ) : (
@@ -638,11 +649,11 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
 
                             {/* Floating Day Project Breakdown Tooltip */}
                             {isHovered && day.projects && Object.keys(day.projects).length > 0 && (
-                              <div className="absolute z-30 bottom-full left-1/2 -translate-x-1/2 mb-2 w-52 p-3 rounded-2xl bg-slate-900/95 dark:bg-slate-950/95 text-white text-[11px] shadow-2xl border border-slate-700/80 backdrop-blur-md pointer-events-none animate-in fade-in zoom-in-95 duration-100">
-                                <div className="font-bold text-[#d4af7a] mb-1.5 border-b border-slate-800 pb-1.5 flex justify-between">
+                              <div className="absolute z-30 bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-3 rounded-2xl bg-slate-900/95 dark:bg-[#0d1117] text-white text-[11px] shadow-2xl border border-slate-700/80 dark:border-white/10 backdrop-blur-md pointer-events-none animate-in fade-in zoom-in-95 duration-100">
+                                <div className="font-bold text-[#d4af7a] mb-1.5 border-b border-slate-800 dark:border-white/10 pb-1.5 flex justify-between">
                                   <span>{day.date}</span>
                                   <span className="font-mono text-emerald-400 font-bold">
-                                    {formatNumber(day.hours, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h
+                                    {formatDurationHoursMinutes(day.hours)}
                                   </span>
                                 </div>
                                 <div className="space-y-1">
@@ -650,7 +661,7 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
                                     <div key={pName} className="flex justify-between items-center text-[10px]">
                                       <span className="truncate max-w-[125px] text-slate-300">{pName}</span>
                                       <span className="font-mono text-emerald-400 font-bold">
-                                        {formatNumber(pHours, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}h
+                                        {formatDurationHoursMinutes(pHours)}
                                       </span>
                                     </div>
                                   ))}
@@ -662,10 +673,10 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
                       })}
 
                       {/* 8th Column: WEEK TOTAL */}
-                      <td className="p-3 text-center align-middle bg-slate-50/50 dark:bg-slate-800/30 border-l border-slate-200/80 dark:border-slate-800">
+                      <td className="p-3 text-center align-middle bg-slate-50/50 dark:bg-black/20 border-l border-slate-200/80 dark:border-white/10">
                         <div className="flex flex-col items-center justify-center space-y-0.5">
-                          <span className="text-base sm:text-lg font-black font-mono text-slate-900 dark:text-white tracking-tight">
-                            {formatNumber(weekHours, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h
+                          <span className="text-sm sm:text-base font-black font-mono text-slate-900 dark:text-white tracking-tight">
+                            {formatDurationHoursMinutes(weekHours)}
                           </span>
                           <span className="text-[11px] font-bold text-[#9e7638] dark:text-[#d4af7a]">
                             {formatNumber(weekActiveDays, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}{" "}
@@ -680,22 +691,22 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
 
               {/* Table Footer: MONTHLY TOTAL WORKED TIME (CCRM executive table footer) */}
               <tfoot>
-                <tr className="border-t-2 border-slate-200 dark:border-slate-700 bg-slate-100/90 dark:bg-slate-800/90 text-slate-800 dark:text-slate-100">
+                <tr className="border-t-2 border-slate-200 dark:border-white/10 bg-slate-100/90 dark:bg-black/40 text-slate-800 dark:text-slate-100">
                   <td
                     colSpan={7}
-                    className="py-4 px-6 text-right font-extrabold text-xs sm:text-sm uppercase tracking-wider text-slate-700 dark:text-slate-200"
+                    className="py-4 px-6 text-right font-extrabold text-xs sm:text-sm uppercase tracking-wider text-slate-700 dark:text-slate-300"
                   >
                     <div className="flex items-center justify-end gap-2">
                       <Clock className="w-4 h-4 text-[#9e7638] dark:text-[#d4af7a]" />
                       <span>{t("MONTHLY TOTAL WORKED TIME:", "CELKOVÝ ODPRACOVANÝ ČAS:", "HAVI ÖSSZES LEDOLGOZOTT IDŐ:")}</span>
                     </div>
                   </td>
-                  <td className="py-4 px-4 text-center bg-[#c29b62]/10 dark:bg-[#c29b62]/15 border-l border-slate-200 dark:border-slate-700">
+                  <td className="py-4 px-4 text-center bg-[#c29b62]/10 dark:bg-[#c29b62]/20 border-l border-slate-200 dark:border-white/10">
                     <div className="flex flex-col items-center justify-center">
-                      <span className="text-lg sm:text-xl font-black font-mono text-[#9e7638] dark:text-[#d4af7a] tracking-tight">
-                        {formatNumber(hoursData?.totalHours || 0, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h
+                      <span className="text-base sm:text-lg font-black font-mono text-[#9e7638] dark:text-[#d4af7a] tracking-tight">
+                        {formatDurationHoursMinutes(hoursData?.totalHours || 0)}
                       </span>
-                      <span className="text-xs font-bold text-slate-600 dark:text-slate-300 mt-0.5">
+                      <span className="text-xs font-bold text-slate-600 dark:text-slate-400 mt-0.5">
                         {formatNumber(activeDaysCount, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}{" "}
                         {t("Days", "Dní", "Nap")}
                       </span>
@@ -734,8 +745,8 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
                       </span>
                     </div>
                     <div className="text-right">
-                      <span className="text-xl font-bold font-mono text-slate-900 dark:text-white block">
-                        {formatNumber(weekHours, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h
+                      <span className="text-lg sm:text-xl font-bold font-mono text-slate-900 dark:text-white block">
+                        {formatDurationHoursMinutes(weekHours)}
                       </span>
                       <span className="text-[10px] text-slate-500 font-semibold">
                         {activeCount} {t("active days", "aktívnych dní", "aktív nap")} ({formatNumber(pct, systemLanguage, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}%)
@@ -758,7 +769,7 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
                             {/* Hover tooltip */}
                             {day.hours > 0 && (
                               <div className="absolute bottom-full mb-1 hidden group-hover:block bg-slate-900 text-white text-[9px] font-mono px-1.5 py-0.5 rounded shadow pointer-events-none whitespace-nowrap z-10">
-                                {formatNumber(day.hours, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}h
+                                {formatDurationHoursMinutes(day.hours)}
                               </div>
                             )}
                             <div className="w-full bg-slate-100 dark:bg-slate-800/80 rounded-t-sm h-12 flex items-end overflow-hidden">
@@ -894,8 +905,8 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
                       </td>
                       <td className="py-3 px-3 text-right font-mono font-bold whitespace-nowrap">
                         {isWorked ? (
-                          <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30 font-bold">
-                            {formatNumber(day.hours, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h
+                          <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-300 dark:border-emerald-500/40 font-bold">
+                            {formatDurationHoursMinutes(day.hours)}
                           </span>
                         ) : (
                           <span className="text-slate-400 dark:text-slate-600 font-normal">—</span>
@@ -913,8 +924,8 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
                                 className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-medium border border-slate-200/50 dark:border-slate-700/50"
                               >
                                 <span className="font-semibold">{pName}:</span>
-                                <span className="font-mono text-emerald-600 dark:text-emerald-400">
-                                  {formatNumber(pHours, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}h
+                                <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold">
+                                  {formatDurationHoursMinutes(pHours)}
                                 </span>
                               </span>
                             ))}
@@ -974,7 +985,7 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
                         </div>
                         <div className="flex items-center gap-3 shrink-0">
                           <span className="font-mono font-bold text-slate-900 dark:text-white">
-                            {formatNumber(pHours, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h
+                            {formatDurationHoursMinutes(pHours)}
                           </span>
                           <span className="font-mono text-slate-500 text-[11px] min-w-[45px] text-right">
                             {formatNumber(pct, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%

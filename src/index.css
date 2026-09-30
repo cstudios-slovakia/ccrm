@@ -10,7 +10,7 @@
    This app ships light palettes selected by `data-theme` (see below), so the
    variant is re-pointed at that same mechanism: `dark:` utilities are inert
    until a real dark theme is added, instead of half-applying from the OS. */
-@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+@custom-variant dark (&:is([data-theme="dark"], [data-theme="dark"] *, [data-appearance="dark"], [data-appearance="dark"] *, .dark, .dark *));
 
 @theme {
   --color-border: rgb(var(--border));
