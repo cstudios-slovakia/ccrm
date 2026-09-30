@@ -125,7 +125,7 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
     <div className="fixed inset-0 z-50 pointer-events-auto">
       {/* Backdrop scrim */}
       <div
-        className="fixed inset-0 top-[57px] sm:top-[65px] bg-slate-900/40 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
+        className="fixed inset-0 top-[57px] sm:top-[65px] bg-slate-950/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
         onClick={onClose}
         aria-hidden="true"
       />
@@ -135,10 +135,10 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
         role="dialog"
         aria-modal="true"
         aria-label={t("Favorites Drawer", "Panel obľúbených položiek", "Kedvencek panel")}
-        className="fixed top-[57px] sm:top-[65px] left-0 right-0 z-50 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-b border-slate-200/80 dark:border-slate-800 shadow-2xl animate-in slide-in-from-top-6 fade-in duration-300 max-h-[85vh] flex flex-col overflow-hidden"
+        className="fixed top-[57px] sm:top-[65px] left-0 right-0 z-50 bg-white/95 backdrop-blur-xl border-b border-slate-200/80 shadow-2xl animate-in slide-in-from-top-6 fade-in duration-300 max-h-[85vh] flex flex-col overflow-hidden"
       >
         {/* Top Control Bar */}
-        <div className="px-4 sm:px-8 py-4 border-b border-slate-200/60 dark:border-slate-800/80 flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0 bg-slate-50/50 dark:bg-slate-900/40">
+        <div className="px-4 sm:px-8 py-4 border-b border-slate-200/60 flex flex-col md:flex-row md:items-center justify-between gap-4 shrink-0 bg-slate-50/70">
           {/* Title & Count */}
           <div className="flex items-center gap-3 shrink-0">
             <div className="h-10 w-10 rounded-2xl bg-gradient-to-br from-rose-500 to-pink-600 flex items-center justify-center text-white shadow-md shadow-rose-500/20">
@@ -146,10 +146,10 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h3 className="text-base sm:text-lg font-heading font-extrabold text-slate-900 dark:text-white tracking-tight">
+                <h3 className="text-base sm:text-lg font-heading font-extrabold text-slate-900 tracking-tight">
                   {t("Favorites", "Moje obľúbené", "Kedvenceim")}
                 </h3>
-                <span className="px-2 py-0.5 rounded-full text-xs font-black bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300">
+                <span className="px-2 py-0.5 rounded-full text-xs font-black bg-rose-100 text-rose-700">
                   {favorites.length}
                 </span>
               </div>
@@ -170,8 +170,8 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
               onClick={() => setSelectedFilter("all")}
               className={`px-3 py-1.5 rounded-xl text-xs font-heading font-bold uppercase tracking-wider transition-all cursor-pointer shrink-0 ${
                 selectedFilter === "all"
-                  ? "bg-[#0b1329] text-white shadow-xs"
-                  : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200/60 dark:border-slate-700"
+                  ? "bg-slate-900 text-white shadow-xs"
+                  : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/60"
               }`}
             >
               {t("All", "Všetko", "Összes")} ({counts.all})
@@ -182,7 +182,7 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
               className={`px-3 py-1.5 rounded-xl text-xs font-heading font-bold uppercase tracking-wider transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${
                 selectedFilter === "project"
                   ? "bg-blue-600 text-white shadow-xs"
-                  : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200/60 dark:border-slate-700"
+                  : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/60"
               }`}
             >
               <FolderKanban className="h-3.5 w-3.5" />
@@ -194,7 +194,7 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
               className={`px-3 py-1.5 rounded-xl text-xs font-heading font-bold uppercase tracking-wider transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${
                 selectedFilter === "client"
                   ? "bg-emerald-600 text-white shadow-xs"
-                  : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200/60 dark:border-slate-700"
+                  : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/60"
               }`}
             >
               <Building2 className="h-3.5 w-3.5" />
@@ -206,7 +206,7 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
               className={`px-3 py-1.5 rounded-xl text-xs font-heading font-bold uppercase tracking-wider transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${
                 selectedFilter === "lead"
                   ? "bg-amber-600 text-white shadow-xs"
-                  : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200/60 dark:border-slate-700"
+                  : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/60"
               }`}
             >
               <UserCheck className="h-3.5 w-3.5" />
@@ -218,7 +218,7 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
               className={`px-3 py-1.5 rounded-xl text-xs font-heading font-bold uppercase tracking-wider transition-all cursor-pointer shrink-0 flex items-center gap-1.5 ${
                 selectedFilter === "entry"
                   ? "bg-purple-600 text-white shadow-xs"
-                  : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200/60 dark:border-slate-700"
+                  : "bg-white text-slate-600 hover:bg-slate-100 border border-slate-200/60"
               }`}
             >
               <FileBox className="h-3.5 w-3.5" />
@@ -236,7 +236,7 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={t("Filter favorites...", "Filtrovať...", "Keresés...")}
-                className="w-full pl-8 pr-7 py-1.5 text-xs font-semibold rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-200 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all"
+                className="w-full pl-8 pr-7 py-1.5 text-xs font-semibold rounded-xl bg-white border border-slate-200 text-slate-800 placeholder:text-slate-400 focus:outline-none focus:border-rose-500 focus:ring-1 focus:ring-rose-500 transition-all"
               />
               {searchQuery && (
                 <button
@@ -252,7 +252,7 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
             <button
               type="button"
               onClick={onClose}
-              className="h-8.5 w-8.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-500 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-700 flex items-center justify-center transition-colors cursor-pointer shrink-0"
+              className="h-8.5 w-8.5 rounded-xl border border-slate-200 bg-white text-slate-500 hover:text-slate-800 hover:bg-slate-100 flex items-center justify-center transition-colors cursor-pointer shrink-0"
               title={t("Close", "Zavrieť", "Bezárás")}
             >
               <X className="h-4 w-4" />
@@ -264,12 +264,12 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
         <div className="p-4 sm:p-6 overflow-y-auto max-h-[60vh]">
           {filteredFavorites.length === 0 ? (
             <div className="py-12 px-4 text-center flex flex-col items-center justify-center">
-              <div className="h-16 w-16 rounded-full bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 flex items-center justify-center text-rose-500 mb-3 animate-pulse">
+              <div className="h-16 w-16 rounded-full bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-500 mb-3 animate-pulse">
                 <Heart className="h-8 w-8" />
               </div>
               {favorites.length === 0 ? (
                 <>
-                  <h4 className="text-sm font-heading font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                  <h4 className="text-sm font-heading font-extrabold text-slate-800 uppercase tracking-wider">
                     {t("No favorites yet", "Zatiaľ žiadne obľúbené", "Még nincsenek kedvencek")}
                   </h4>
                   <p className="text-xs text-slate-400 max-w-sm mt-1 leading-relaxed">
@@ -282,7 +282,7 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
                 </>
               ) : (
                 <>
-                  <h4 className="text-sm font-heading font-extrabold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                  <h4 className="text-sm font-heading font-extrabold text-slate-800 uppercase tracking-wider">
                     {t("No matches found", "Žiadna zhoda", "Nincs találat")}
                   </h4>
                   <p className="text-xs text-slate-400 max-w-sm mt-1">

@@ -1031,8 +1031,8 @@ export const Header: React.FC<HeaderProps> = ({
                                 aria-label={t("Favorites", "Obľúbené položky", "Kedvencek")}
                                 className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-all shadow-sm cursor-pointer relative ${
                                     isFavoritesOpen
-                                        ? "bg-[#0b1329] border-[#0b1329] text-rose-500"
-                                        : "bg-white/80 border-slate-200 text-slate-700 hover:border-rose-300 hover:bg-rose-50/50"
+                                        ? "bg-[#0b1329] border-[#0b1329] text-rose-500 shadow-inner"
+                                        : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-rose-300 hover:bg-rose-50/50"
                                 }`}
                                 title={t("Favorites", "Obľúbené položky", "Kedvencek")}
                             >
@@ -1040,7 +1040,7 @@ export const Header: React.FC<HeaderProps> = ({
                                     className={`h-5 w-5 transition-colors ${
                                         favoritesCount > 0
                                             ? "text-rose-500 fill-rose-500"
-                                            : "text-slate-600 hover:text-rose-500"
+                                            : "hover:text-rose-500"
                                     }`}
                                 />
                                 {favoritesCount > 0 && (
