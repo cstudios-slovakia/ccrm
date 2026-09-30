@@ -196,6 +196,16 @@ export function useCurrentScreenContext(activeTab: string, language: Language = 
           summary: "The user is on the System Updates view browsing release notes, product updates, and version changelog loaded from Craft CMS."
         };
 
+      case "employees":
+      case "employee":
+      case "salaries":
+        return {
+          route,
+          category: "employees",
+          title: language === "sk" ? "Zamestnanci a mzdy" : language === "hu" ? "Alkalmazottak és bérek" : "Employees & Payroll",
+          summary: "The user is in the Employees & Payroll module managing staff directory, salary structures, Toggl time tracking, absence planner, and payroll matrix."
+        };
+
       default:
         if (rawRoute.startsWith("settings") || rawRoute === "personal-settings") {
           return {

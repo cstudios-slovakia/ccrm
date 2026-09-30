@@ -405,6 +405,6 @@ export const buildAccess = (user: UserProfile | null | undefined, roles: RolePer
 
 /** The first route the user may open, for a landing page or a denied redirect. */
 export const firstAllowedRoute = (accessResolver: AccessResolver): string | null => {
-  const candidates = ["dashboard", "tasks", "leads", "clients", "projects", "invoices", "warehouse", "financial", "meetings", "files", "email", "automation", "overview", "updates", "settings", "personal-settings"];
+  const candidates = ["dashboard", "tasks", "leads", "clients", "projects", "invoices", "warehouse", "financial", "employees", "meetings", "files", "email", "automation", "overview", "updates", "settings", "personal-settings"];
   return candidates.find((r) => accessResolver.canOpenRoute(r)) ?? null;
 };

@@ -71,6 +71,26 @@ const TAB_COLOR_MAP: Record<string, ThemeColors> = {
     secondary: "rgba(15, 118, 110, 0.20)", // Teal
     accent: "rgba(22, 163, 74, 0.18)", // Green
   },
+  employees: {
+    primary: "rgba(194, 155, 98, 0.28)", // Sand / Warm Bronze (#c29b62)
+    secondary: "rgba(245, 158, 11, 0.22)", // Warm Amber / Honey
+    accent: "rgba(16, 185, 129, 0.18)", // Emerald
+  },
+  employee: {
+    primary: "rgba(194, 155, 98, 0.28)", // Sand / Warm Bronze (#c29b62)
+    secondary: "rgba(245, 158, 11, 0.22)", // Warm Amber / Honey
+    accent: "rgba(16, 185, 129, 0.18)", // Emerald
+  },
+  salaries: {
+    primary: "rgba(194, 155, 98, 0.28)",
+    secondary: "rgba(245, 158, 11, 0.22)",
+    accent: "rgba(16, 185, 129, 0.18)",
+  },
+  vacations: {
+    primary: "rgba(194, 155, 98, 0.28)",
+    secondary: "rgba(245, 158, 11, 0.22)",
+    accent: "rgba(16, 185, 129, 0.18)",
+  },
   meetings: {
     primary: "rgba(79, 70, 229, 0.26)", // Indigo
     secondary: "rgba(2, 132, 199, 0.20)", // Sky
@@ -136,8 +156,8 @@ export const AuroraBackground: React.FC<AuroraBackgroundProps> = ({
   transitionDurationMs = 230,
 }) => {
   const targetColors = useMemo<ThemeColors>(() => {
-    const rawTab = (activeTab || "dashboard").toLowerCase();
-    const baseTab = rawTab.split(/[/?]/)[0];
+    const rawTab = (activeTab || "dashboard").replace(/^#/, "").toLowerCase();
+    const baseTab = rawTab.split(/[/?#]/)[0];
 
     // Check direct tab map
     if (TAB_COLOR_MAP[baseTab]) {
