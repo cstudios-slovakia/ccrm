@@ -30,6 +30,7 @@ import type {
 } from "../../types";
 import { EmployeeFormModal } from "./EmployeeFormModal";
 import { VacationRequestModal } from "./VacationRequestModal";
+import { SalaryCellDrawer } from "./SalaryCellDrawer";
 
 interface EmployeeDetailViewProps {
   employee: Employee;
@@ -58,7 +59,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
   onBack,
   onUpdateEmployee,
   onEditEmployee,
-  onSaveSalary: _onSaveSalary,
+  onSaveSalary,
   onSaveVacation,
   onDeleteVacation,
   systemLanguage = "sk",
@@ -89,6 +90,10 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
 
   // Edit employee modal
   const [isEditModalOpen, setIsEditModalOpen] = useState<boolean>(false);
+
+  // Salary modal
+  const [isSalaryModalOpen, setIsSalaryModalOpen] = useState<boolean>(false);
+  const [salaryToEdit, setSalaryToEdit] = useState<EmployeeSalary | null>(null);
 
   // Vacation modal
   const [isVacationModalOpen, setIsVacationModalOpen] = useState<boolean>(false);
@@ -792,7 +797,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
           {activeTab === "salaries" && (
             <div className="space-y-6 animate-in fade-in duration-150">
               <div className="p-6 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                   <div>
                     <h3 className="text-sm font-bold text-slate-900">
                       {t("Payroll & Compensation Records", "Evidencia výplat zamestnanca", "Bér- és kifizetési nyilvántartás")}
@@ -805,15 +810,40 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                       )}
                     </p>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSalaryToEdit(null);
+                      setIsSalaryModalOpen(true);
+                    }}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white text-xs font-bold shadow-md shadow-[#c29b62]/20 hover:shadow-lg transition cursor-pointer self-start sm:self-auto shrink-0"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    <span>{t("Add Salary", "Pridať mzdu", "Bér hozzáadása")}</span>
+                  </button>
                 </div>
 
                 {employeeSalaries.length === 0 ? (
-                  <div className="p-8 text-center text-xs text-slate-400 border border-slate-200/80 rounded-2xl bg-slate-50/50">
-                    {t(
-                      "No salary records created for this employee yet. Use the Salaries Matrix to view and generate monthly periods.",
-                      "Pre tohto zamestnanca zatiaľ neboli zaevidované žiadne mzdy. Otvorte Matica miezd pre zadanie.",
-                      "Még nincsenek rögzített bérek ehhez az alkalmazotthoz. Használja a Bérmátrixot."
-                    )}
+                  <div className="p-8 text-center text-xs text-slate-400 border border-slate-200/80 rounded-2xl bg-slate-50/50 flex flex-col items-center justify-center gap-3">
+                    <p className="max-w-md">
+                      {t(
+                        "No salary records created for this employee yet. You can add a salary payout here or use the Salaries Matrix.",
+                        "Pre tohto zamestnanca zatiaľ neboli zaevidované žiadne mzdy. Môžete pridať mzdu priamo tu alebo v Matici miezd.",
+                        "Még nincsenek rögzített bérek ehhez az alkalmazotthoz. Itt hozzáadhat egy kifizetést vagy használhatja a Bérmátrixot."
+                      )}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSalaryToEdit(null);
+                        setIsSalaryModalOpen(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-[#c29b62] hover:bg-[#b58b4c] text-white text-xs font-bold shadow transition cursor-pointer"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      {t("Add First Salary", "Pridať prvú mzdu", "Első bér hozzáadása")}
+                    </button>
                   </div>
                 ) : (
                   <div className="border border-slate-200 rounded-2xl overflow-hidden shadow-sm">
@@ -826,6 +856,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                           <th className="py-2.5 px-3 text-right">{t("Paid", "Vyplatené", "Kifizetve")}</th>
                           <th className="py-2.5 px-3 text-center">{t("Status", "Stav", "Állapot")}</th>
                           <th className="py-2.5 px-3">{t("Payment Date", "Dátum úhrady", "Fizetés dátuma")}</th>
+                          <th className="py-2.5 px-3 text-right">{t("Actions", "Akcie", "Műveletek")}</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100">
@@ -834,7 +865,14 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                           const isPartial = sal.totalPaid > 0 && !isFullyPaid;
 
                           return (
-                            <tr key={sal.id} className="hover:bg-slate-50/70 transition">
+                            <tr
+                              key={sal.id}
+                              onClick={() => {
+                                setSalaryToEdit(sal);
+                                setIsSalaryModalOpen(true);
+                              }}
+                              className="hover:bg-slate-50/70 transition cursor-pointer group"
+                            >
                               <td className="py-2.5 px-3 font-semibold text-slate-900">
                                 {sal.periodKey} ({monthNames[(sal.periodNumber || 1) - 1]} {sal.year})
                               </td>
@@ -866,6 +904,20 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                               </td>
                               <td className="py-2.5 px-3 text-slate-500">
                                 {sal.paymentDate ? new Date(sal.paymentDate).toLocaleDateString() : "—"}
+                              </td>
+                              <td className="py-2.5 px-3 text-right">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setSalaryToEdit(sal);
+                                    setIsSalaryModalOpen(true);
+                                  }}
+                                  title={t("Edit Salary", "Upraviť mzdu", "Bér szerkesztése")}
+                                  className="p-1.5 text-slate-400 group-hover:text-[#c29b62] hover:bg-[#c29b62]/10 rounded-lg transition cursor-pointer inline-flex items-center justify-center"
+                                >
+                                  <Edit3 className="w-3.5 h-3.5" />
+                                </button>
                               </td>
                             </tr>
                           );
@@ -1298,6 +1350,29 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
             setVacationToEdit(null);
           }}
           systemLanguage={systemLanguage}
+        />
+      )}
+
+      {/* Salary Modal */}
+      {isSalaryModalOpen && (
+        <SalaryCellDrawer
+          employee={employee}
+          existingRecord={salaryToEdit}
+          settings={settings}
+          canChangePeriod={true}
+          onClose={() => {
+            setIsSalaryModalOpen(false);
+            setSalaryToEdit(null);
+          }}
+          onSave={(savedSalary) => {
+            if (onSaveSalary) {
+              onSaveSalary(savedSalary);
+            }
+            setIsSalaryModalOpen(false);
+            setSalaryToEdit(null);
+          }}
+          systemLanguage={systemLanguage}
+          systemCurrency={systemCurrency}
         />
       )}
     </div>
