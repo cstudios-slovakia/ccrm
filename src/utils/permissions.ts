@@ -338,6 +338,7 @@ export const permissionKeyForRoute = (routeId: string): string | null => {
   if (base.startsWith("ue_")) return "unified_entries";
   if (base.startsWith("lead-")) return "leads";
   if (base.startsWith("client-")) return "clients";
+  if (base.startsWith("project-")) return "projects";
   if (base === "" || base === "tasks") return "tasks";
   if (PERMISSION_DEFS[base]) return base;
   return "tasks";

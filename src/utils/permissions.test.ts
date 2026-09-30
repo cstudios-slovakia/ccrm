@@ -169,6 +169,8 @@ test("routes map to their guarding key", () => {
   assert.equal(permissionKeyForRoute("client-Acme"), "clients");
   assert.equal(permissionKeyForRoute("user-Ann"), "pm_managers");
   assert.equal(permissionKeyForRoute("projects?id=1"), "projects");
+  assert.equal(permissionKeyForRoute("projects/123"), "projects");
+  assert.equal(permissionKeyForRoute("project-123"), "projects");
   assert.equal(permissionKeyForRoute("personal-settings"), null);
   assert.equal(permissionKeyForRoute(""), "tasks");
   assert.equal(permissionKeyForRoute("something-else"), "tasks");

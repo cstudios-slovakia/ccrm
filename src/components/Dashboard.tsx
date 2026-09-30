@@ -413,7 +413,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
           invoiced: pInvoiced,
           invoicable: pInvoicable,
           type: "project",
-          url: `#projects?edit=${encodeURIComponent(p.id)}`,
+          url: `#projects/${encodeURIComponent(p.id)}`,
         });
       });
 

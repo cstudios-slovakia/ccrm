@@ -722,7 +722,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
                       <td className="py-3.5 px-4 font-black text-slate-700">
                         {file.projectId ? (
                           <a
-                            href={`#projects?edit=${encodeURIComponent(file.projectId)}`}
+                            href={`#projects/${encodeURIComponent(file.projectId)}`}
                             onClick={(e) => e.stopPropagation()}
                             className="flex items-center gap-1.5 text-indigo-700 hover:text-indigo-900 transition-colors duration-150"
                             title={t("Open assigned project", "Otvoriť priradený projekt", "Hozzárendelt projekt megnyitása")}
@@ -781,7 +781,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
                           )}
                           {file.projectId && (
                             <a
-                              href={`#projects?edit=${encodeURIComponent(file.projectId)}`}
+                              href={`#projects/${encodeURIComponent(file.projectId)}`}
                               className="px-2.5 py-1.5 rounded-xl border border-indigo-200 hover:border-indigo-500 hover:text-indigo-800 transition-all duration-150 text-[8px] font-black uppercase text-indigo-700 flex items-center gap-1 bg-indigo-50 shadow-sm active:scale-[0.98]"
                               title={t("Open assigned project", "Otvoriť priradený projekt", "Hozzárendelt projekt megnyitása")}
                             >

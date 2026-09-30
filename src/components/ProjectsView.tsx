@@ -113,6 +113,7 @@ const SHOW_STATUS_DROPDOWN = false;
 const UNASSIGNED_MANAGER = "__unassigned__";
 
 interface ProjectsViewProps {
+  initialSelectedProjectId?: string;
   projects: Project[];
   setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
   projectTypes: ProjectType[];
@@ -165,6 +166,7 @@ interface ProjectsViewProps {
 }
 
 export const ProjectsView: React.FC<ProjectsViewProps> = ({
+  initialSelectedProjectId,
   projects,
   setProjects,
   projectTypes,
@@ -403,31 +405,53 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
 
 
-  /* Deep link: `#projects?edit=<projectId>` opens that project directly.
-     "Convert to Project" on a lead has always navigated here with that query,
-     and the lead's "Linked projects" card does too — but nothing read it, so
-     both landed on the plain list and read as the action having done nothing.
-     The parameter is consumed once it has been honoured, otherwise saving the
-     project (which re-renders this list) would immediately re-open it. */
+  const handleOpenProject = (p: Project, pType?: ProjectType) => {
+    const type = pType || projectTypes.find(pt => pt.id === p.projectTypeId);
+    if (!type) return;
+    setEditingProjectType(type);
+    setEditingProject(p);
+    window.location.hash = `projects/${p.id}`;
+  };
+
+  /* Deep link: `#projects/<id>`, `#project-<id>`, or `#projects?id=<id>` opens that project directly. */
   useEffect(() => {
     const openFromHash = () => {
+      const rawHash = (window.location.hash || "").replace(/^#/, "");
       const { route, params } = parseAppHash(window.location.hash);
-      if (route !== "projects") return;
-      const id = params.get("edit") || params.get("id") || params.get("project");
-      if (!id) return;
 
-      const normalizedTarget = id.toLowerCase().trim();
+      let targetId: string | null = null;
+      if (initialSelectedProjectId) {
+        targetId = initialSelectedProjectId;
+      } else if (route.startsWith("projects/") && route.length > "projects/".length) {
+        targetId = decodeURIComponent(route.slice("projects/".length));
+      } else if (route.startsWith("project-") && route.length > "project-".length) {
+        targetId = decodeURIComponent(route.slice("project-".length));
+      } else if (rawHash.startsWith("project-") && rawHash.length > "project-".length) {
+        targetId = decodeURIComponent(rawHash.slice("project-".length));
+      } else {
+        targetId = params.get("edit") || params.get("id") || params.get("project");
+      }
+
+      if (!targetId) {
+        // When user navigates back to #projects (no subpath or query), close the open project
+        if ((route === "projects" || rawHash === "projects") && !params.get("edit") && !params.get("id") && !params.get("project")) {
+          setEditingProject(cur => (cur && !projects.some(p => p.id === cur.id) ? cur : null));
+        }
+        return;
+      }
+
+      if (targetId === "new") return;
+
+      const normalizedTarget = targetId.toLowerCase().trim();
       const project = projects.find(p => 
-        p.id === id || 
+        p.id === targetId || 
+        p.id.toLowerCase() === normalizedTarget ||
         (p.name && p.name.toLowerCase() === normalizedTarget) ||
         (p.name && p.name.toLowerCase().includes(normalizedTarget))
       );
       const type = project ? projectTypes.find(pt => pt.id === project.projectTypeId) : undefined;
-      // A project that has not arrived yet (or whose type was deleted) leaves
-      // the parameter in place, so the next render can still honour it.
       if (!project || !type) return;
 
-      window.history.replaceState(null, "", "#projects");
       setEditingProjectType(type);
       setEditingProject(project);
     };
@@ -435,7 +459,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     openFromHash();
     window.addEventListener("hashchange", openFromHash);
     return () => window.removeEventListener("hashchange", openFromHash);
-  }, [projects, projectTypes]);
+  }, [projects, projectTypes, initialSelectedProjectId]);
 
   /* The create dropdown had no way of closing other than the button that opened
      it: clicking anywhere else left it hanging over the list. */
@@ -509,6 +533,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     if (close) {
       setEditingProject(null);
       setEditingProjectType(null);
+      window.location.hash = "projects";
       (window as any).showToast(t("Project saved successfully!", "Projekt bol úspešne uložený!", "Projekt sikeresen mentve!"));
     } else {
       // Staying open: hand the card what was just saved, or the next save
@@ -516,6 +541,9 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       // while that project is still the open one — the view writes out its
       // last edit as it closes, and that must not open it again.
       setEditingProject(cur => (cur && cur.id === updatedProject.id ? updatedProject : cur));
+      if (window.location.hash !== `#projects/${updatedProject.id}`) {
+        window.location.hash = `projects/${updatedProject.id}`;
+      }
     }
   };
 
@@ -710,7 +738,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           invoiced: fin.invoiced,
           invoicable: fin.invoicable,
           type: "project",
-          url: `#projects?edit=${encodeURIComponent(p.id)}`,
+          url: `#projects/${encodeURIComponent(p.id)}`,
         });
       });
 
@@ -2149,10 +2177,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           key={p.id}
                           data-project-row={p.id}
                           {...projectDrag.rowProps(p.id)}
-                          onClick={() => {
-                            setEditingProjectType(pType);
-                            setEditingProject(p);
-                          }}
+                          onClick={() => handleOpenProject(p, pType)}
                           className={`border-b border-slate-200/70 lg:border-slate-100 last:border-0 hover:bg-indigo-50/40 transition-[background-color,opacity] duration-150 cursor-pointer group block lg:table-row ${
                             isSelected ? "bg-indigo-50/70" : ""
                           } ${
@@ -2287,10 +2312,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                                 >
                                   <button
                                     type="button"
-                                    onClick={() => {
-                                      setEditingProjectType(pType);
-                                      setEditingProject(p);
-                                    }}
+                                    onClick={() => handleOpenProject(p, pType)}
                                     className="h-6 w-6 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-slate-200/60 flex items-center justify-center transition-colors cursor-pointer"
                                     title={t("Edit project", "Upraviť projekt", "Projekt szerkesztése")}
                                   >
@@ -2467,10 +2489,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     data-flip={p.id}
                     data-project-card={p.id}
                     {...projectDrag.rowProps(p.id)}
-                    onClick={() => {
-                      setEditingProjectType(pType);
-                      setEditingProject(p);
-                    }}
+                    onClick={() => handleOpenProject(p, pType)}
                     className={`glass-panel p-5 rounded-3xl border transition-all duration-300 cursor-pointer flex flex-col text-left group relative ${
                       isSelected
                         ? "border-indigo-400/80 bg-indigo-50/40 ring-2 ring-indigo-500/30 shadow-md"

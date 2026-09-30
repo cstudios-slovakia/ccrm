@@ -424,7 +424,7 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
         cleanTarget !== "projektek" &&
         cleanTarget !== "projekty"
       ) {
-        targetHash = cleanTarget.startsWith("#") ? cleanTarget : `#projects?id=${encodeURIComponent(cleanTarget)}`;
+        targetHash = cleanTarget.startsWith("#") ? cleanTarget : `#projects/${encodeURIComponent(cleanTarget)}`;
       } else {
         targetHash = "#projects";
       }

@@ -1871,8 +1871,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             ),
         );
 
-        setActiveTab("projects");
-        window.location.hash = `projects?edit=${newProj.id}`;
+        window.location.hash = `projects/${newProj.id}`;
+        setActiveTab(`projects/${newProj.id}`);
     };
 
     /* ── LEAD ↔ PROJECT PAIRING ──────────────────────────────────────────
@@ -1886,8 +1886,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     const openProject = (projectId: string) => {
         if (!setActiveTab) return;
-        setActiveTab("projects");
-        window.location.hash = `projects?edit=${projectId}`;
+        window.location.hash = `projects/${projectId}`;
+        setActiveTab(`projects/${projectId}`);
     };
 
     const handlePairProject = (projectId: string) => {

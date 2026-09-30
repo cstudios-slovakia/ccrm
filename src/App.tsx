@@ -420,7 +420,7 @@ function App() {
 
     const resolvedBase = aliasMap[hashLower] || hashLower;
 
-    if (resolvedBase.startsWith("client-") || resolvedBase.startsWith("lead-") || resolvedBase.startsWith("user-") || resolvedBase.startsWith("employee-") || resolvedBase.startsWith("ue_") || resolvedBase.startsWith("dash_") || resolvedBase.startsWith("settings") || resolvedBase.startsWith("warehouse") || resolvedBase.startsWith("financial") || resolvedBase.startsWith("invoices") || resolvedBase.startsWith("sai") || resolvedBase.startsWith("automation") || resolvedBase.startsWith("employees")) {
+    if (resolvedBase.startsWith("client-") || resolvedBase.startsWith("lead-") || resolvedBase.startsWith("user-") || resolvedBase.startsWith("project-") || resolvedBase.startsWith("employee-") || resolvedBase.startsWith("ue_") || resolvedBase.startsWith("dash_") || resolvedBase.startsWith("settings") || resolvedBase.startsWith("warehouse") || resolvedBase.startsWith("financial") || resolvedBase.startsWith("invoices") || resolvedBase.startsWith("sai") || resolvedBase.startsWith("automation") || resolvedBase.startsWith("employees")) {
       // An alias maps to its canonical tab; anything else keeps its original case.
       const route = (aliasMap[hashLower] || baseRaw) + subPath;
       return queryRaw ? `${route}?${queryRaw}` : route;
@@ -3072,7 +3072,7 @@ ${log.payload || ''}
     }
 
     const rawBaseTab = activeRoute.split("/")[0];
-    const baseTab = rawBaseTab === "social_media" && !SOCIAL_MEDIA_ENABLED ? "dashboard" : rawBaseTab;
+    const baseTab = rawBaseTab.startsWith("project-") ? "projects" : (rawBaseTab === "social_media" && !SOCIAL_MEDIA_ENABLED ? "dashboard" : rawBaseTab);
     switch (baseTab) {
       case "leads": {
         const subLeadId = (activeRoute.startsWith("leads/") && activeRoute.length > "leads/".length)
@@ -3116,9 +3116,15 @@ ${log.payload || ''}
           />
         );
       }
-      case "projects":
+      case "projects": {
+        const subProjectId = (activeRoute.startsWith("projects/") && activeRoute.length > "projects/".length)
+          ? decodeURIComponent(activeRoute.slice("projects/".length))
+          : (activeRoute.startsWith("project-") && activeRoute.length > "project-".length)
+          ? decodeURIComponent(activeRoute.slice("project-".length))
+          : undefined;
         return (
           <ProjectsView
+            initialSelectedProjectId={subProjectId}
             projects={projects}
             setProjects={updateProjectsAndSync}
             projectTypes={projectTypes}
@@ -3149,6 +3155,7 @@ ${log.payload || ''}
             mailConfigured={isSystemMailConfigured(integrationsConfig)}
           />
         );
+      }
       case "clients": {
         const subClient = (activeRoute.startsWith("clients/") && activeRoute.length > "clients/".length)
           ? decodeURIComponent(activeRoute.slice("clients/".length))
@@ -3201,8 +3208,8 @@ ${log.payload || ''}
             userLanguage={userLanguage}
             currencyCode={currencyCode}
             onOpenProject={(projId) => {
-              window.location.hash = `projects?id=${projId}`;
-              setActiveTab("projects");
+              window.location.hash = `projects/${projId}`;
+              setActiveTab(`projects/${projId}`);
             }}
             onOpenClient={(clientId) => {
               const cl = leads.find(l => l.id === clientId);

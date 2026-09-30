@@ -56,6 +56,17 @@ export function useCurrentScreenContext(activeTab: string, language: Language = 
       };
     }
 
+    // 2c. Project Detail (#projects/<id> or #project-<id>)
+    if (rawRoute.startsWith("project-") || (rawRoute.startsWith("projects/") && rawRoute.length > "projects/".length)) {
+      const projId = decodeURIComponent(rawRoute.startsWith("projects/") ? route.substring(9) : route.substring(8));
+      return {
+        route,
+        category: "project",
+        title: `Project: ${projId}`,
+        summary: `The user is currently viewing the detail view of Project "${projId}", including timeline, gantt, tasks, files, and financial status.`
+      };
+    }
+
     // 3. Main Views
     switch (rawRoute) {
       case "sai":
