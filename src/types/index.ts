@@ -659,6 +659,11 @@ export interface Project {
    */
   budget?: number | null;
   /**
+   * Project contract value / total invoicable amount, in the default currency.
+   * Invoices are billed against this amount on the finance tab. Stored in `projects.value`.
+   */
+  value?: number | null;
+  /**
    * File slots added on this project alone, each carrying its own uploads.
    * Stored whole in `projects.custom_files_json`; absent from a payload means
    * "unchanged", so an older client cannot wipe them.

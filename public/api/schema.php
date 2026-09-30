@@ -365,6 +365,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `start_date` DATE NULL,
               `finished_at` DATE NULL,
               `budget` DECIMAL(14,2) NULL,
+              `value` DECIMAL(14,2) NULL COMMENT 'Project Contract Value / Invoicable',
               `custom_files_json` LONGTEXT NULL,
               `archived` TINYINT(1) NOT NULL DEFAULT 0,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -910,6 +911,10 @@ if (!function_exists('ccrm_schema_statements')) {
      * run on every install/update without relying on try/catch swallowing.
      */
     function ccrm_apply_migrations(PDO $pdo): void {
+        // Project contract / invoicable value
+        if (!ccrm_column_exists($pdo, 'projects', 'value')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `value` DECIMAL(14,2) NULL COMMENT 'Project Contract Value / Invoicable' AFTER `budget`");
+        }
         // Sessions established before this timestamp are rejected, so a password
         // change can retire every session the old password could reach. NULL means
         // "no password change recorded yet" and lets existing sessions continue.

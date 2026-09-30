@@ -682,6 +682,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const firstMoneyAttr = useMemo(() => (projectType?.attributes || []).find((a) => a.type === "money"), [projectType]);
 
   const projectTotalValue = useMemo(() => {
+    if (project?.value !== undefined && project?.value !== null && Number.isFinite(Number(project.value)) && Number(project.value) > 0) {
+      return Number(project.value);
+    }
     if (firstMoneyAttr && dynamicData[firstMoneyAttr.id] !== undefined && dynamicData[firstMoneyAttr.id] !== null) {
       const parsed = parseMoneyValue(dynamicData[firstMoneyAttr.id], defaultCurrency);
       if (parsed.amount) return parsed.amount;
@@ -693,7 +696,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       return Number(pairedLead.value);
     }
     return 0;
-  }, [firstMoneyAttr, dynamicData, defaultCurrency, pairedLead]);
+  }, [project?.value, firstMoneyAttr, dynamicData, defaultCurrency, pairedLead]);
 
   const invoicableAnalysis = useMemo(() => {
     const total = projectTotalValue;
@@ -737,7 +740,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       nextDynamic[firstMoneyAttr.id] = { amount: rounded, currency: defaultCurrency };
     }
     setDynamicData(nextDynamic);
-    handleSave({ data: nextDynamic });
+    // Lives on the project, written directly to the database
+    handleSave({ value: rounded > 0 ? rounded : null, data: nextDynamic });
     setContractValueDraft(null);
   };
 

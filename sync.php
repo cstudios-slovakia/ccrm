@@ -1314,6 +1314,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 'finishedAt' => $pRow['finished_at'] ?? null,
                 'createdAt' => $pRow['created_at'] ?? null,
                 'budget' => isset($pRow['budget']) ? (float)$pRow['budget'] : null,
+                'value' => isset($pRow['value']) ? (float)$pRow['value'] : null,
                 'customFileFields' => json_decode($pRow['custom_files_json'] ?? '[]', true) ?: [],
                 'archived' => isset($pRow['archived']) && (int)$pRow['archived'] === 1,
                 'managers' => $managersByProject[$projId] ?? [],
@@ -2825,10 +2826,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
 
         if (isset($payload['projects']) && is_array($payload['projects']) && !$ccrm_skip_writes('projects', 'projects')) {
+            if (!ccrm_column_exists($pdo, 'projects', 'value')) {
+                $pdo->exec("ALTER TABLE `projects` ADD COLUMN `value` DECIMAL(14,2) NULL COMMENT 'Project Contract Value / Invoicable' AFTER `budget`");
+            }
             $existingProjIds = $pdo->query("SELECT `id` FROM `projects`")->fetchAll(PDO::FETCH_COLUMN);
             $processedProjIds = [];
 
-            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `division`, `rating`, `deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`, `custom_files_json`, `archived`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `division`=VALUES(`division`), `rating`=COALESCE(VALUES(`rating`), `rating`), `deadline`=VALUES(`deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`), `custom_files_json`=COALESCE(VALUES(`custom_files_json`), `custom_files_json`), `archived`=VALUES(`archived`)");
+            $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `division`, `rating`, `deadline`, `delay_reason`, `start_date`, `finished_at`, `budget`, `value`, `custom_files_json`, `archived`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) ON DUPLICATE KEY UPDATE `project_type_id`=VALUES(`project_type_id`), `name`=VALUES(`name`), `lead_id`=VALUES(`lead_id`), `client_id`=VALUES(`client_id`), `status`=VALUES(`status`), `division`=VALUES(`division`), `rating`=COALESCE(VALUES(`rating`), `rating`), `deadline`=VALUES(`deadline`), `delay_reason`=VALUES(`delay_reason`), `start_date`=VALUES(`start_date`), `finished_at`=VALUES(`finished_at`), `budget`=VALUES(`budget`), `value`=VALUES(`value`), `custom_files_json`=COALESCE(VALUES(`custom_files_json`), `custom_files_json`), `archived`=VALUES(`archived`)");
 
             // Manager assignments are replaced per project, never globally. The old
             // unconditional `DELETE FROM project_managers` assumed every push carried
@@ -2869,6 +2873,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // amount — "", null, 0, garbage — means "no budget set".
                 $projBudget = (isset($p['budget']) && is_numeric($p['budget']) && (float)$p['budget'] > 0)
                     ? round(min((float)$p['budget'], 999999999999.99), 2)
+                    : null;
+
+                // Total project / contract value from which invoices are billed.
+                $projValue = (isset($p['value']) && is_numeric($p['value']) && (float)$p['value'] > 0)
+                    ? round(min((float)$p['value'], 999999999999.99), 2)
                     : null;
 
                 // Star priority, 1-5, with 0 meaning "not rated". A client that
@@ -2915,6 +2924,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $projStart,
                     $projFinished,
                     $projBudget,
+                    $projValue,
                     $projCustomFiles,
                     $projArchived
                 ]);

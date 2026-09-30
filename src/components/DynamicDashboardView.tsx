@@ -506,17 +506,23 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
           pType?.attributes?.filter((a) => a.type === "money") || [];
         let pVal = 0;
         let hasMoneyVal = false;
-        for (const attr of moneyAttrs) {
-          const raw = p.data?.[attr.id];
-          if (
-            raw !== undefined &&
-            raw !== null &&
-            !isMoneyValueEmpty(raw, defaultCurrency)
-          ) {
-            const parsed = parseMoneyValue(raw, defaultCurrency);
-            if (parsed.amount) {
-              pVal += parsed.amount;
-              hasMoneyVal = true;
+        if (p.value !== undefined && p.value !== null && Number.isFinite(Number(p.value)) && Number(p.value) > 0) {
+          pVal = Number(p.value);
+          hasMoneyVal = true;
+        }
+        if (!hasMoneyVal) {
+          for (const attr of moneyAttrs) {
+            const raw = p.data?.[attr.id];
+            if (
+              raw !== undefined &&
+              raw !== null &&
+              !isMoneyValueEmpty(raw, defaultCurrency)
+            ) {
+              const parsed = parseMoneyValue(raw, defaultCurrency);
+              if (parsed.amount) {
+                pVal += parsed.amount;
+                hasMoneyVal = true;
+              }
             }
           }
         }

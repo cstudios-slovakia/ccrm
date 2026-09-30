@@ -575,18 +575,24 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     let pVal = 0;
     let pCurrency = defaultCurrency;
     let hasMoneyVal = false;
-    for (const attr of moneyAttrs) {
-      const raw = p.data?.[attr.id];
-      if (
-        raw !== undefined &&
-        raw !== null &&
-        !isMoneyValueEmpty(raw, defaultCurrency)
-      ) {
-        const parsed = parseMoneyValue(raw, defaultCurrency);
-        if (parsed.amount) {
-          pVal += parsed.amount;
-          if (parsed.currency) pCurrency = parsed.currency;
-          hasMoneyVal = true;
+    if (p.value !== undefined && p.value !== null && Number.isFinite(Number(p.value)) && Number(p.value) > 0) {
+      pVal = Number(p.value);
+      hasMoneyVal = true;
+    }
+    if (!hasMoneyVal) {
+      for (const attr of moneyAttrs) {
+        const raw = p.data?.[attr.id];
+        if (
+          raw !== undefined &&
+          raw !== null &&
+          !isMoneyValueEmpty(raw, defaultCurrency)
+        ) {
+          const parsed = parseMoneyValue(raw, defaultCurrency);
+          if (parsed.amount) {
+            pVal += parsed.amount;
+            if (parsed.currency) pCurrency = parsed.currency;
+            hasMoneyVal = true;
+          }
         }
       }
     }
