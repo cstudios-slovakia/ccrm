@@ -76,7 +76,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
     );
   }, [settings.togglApiKey, settings.timeTracking?.togglApiToken]);
 
-  const [activeTab, setActiveTab] = useState<"hours" | "salaries" | "vacations">(() => {
+  const [activeTab, setActiveTab] = useState<"hours" | "salaries" | "vacations" | "files">(() => {
     return hasTogglKey ? "hours" : "salaries";
   });
 
@@ -285,14 +285,10 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
     return days;
   }, [calYear, calMonth, employeeVacations, vacationTypes]);
 
-  // Handle direct file upload for contracts
-  const handleUploadContract = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const fileList = e.target.files;
-    if (!fileList || fileList.length === 0) return;
-
+  // Handle file upload for contracts and documents
+  const uploadSingleFile = async (file: File) => {
     setIsUploading(true);
     try {
-      const file = fileList[0];
       const formData = new FormData();
       formData.append("file", file);
       formData.append("module", "employees");
@@ -323,7 +319,20 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
       console.error("Contract upload failed", err);
     } finally {
       setIsUploading(false);
-      e.target.value = "";
+    }
+  };
+
+  const handleUploadContract = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+    await uploadSingleFile(fileList[0]);
+    e.target.value = "";
+  };
+
+  const handleDropFile = async (e: React.DragEvent) => {
+    e.preventDefault();
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      await uploadSingleFile(e.dataTransfer.files[0]);
     }
   };
 
@@ -484,75 +493,30 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                 </p>
               </div>
             )}
-          </div>
 
-          {/* Contracts & Attachments Card */}
-          <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 space-y-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-                <FileCheck className="w-4 h-4 text-[#c29b62]" />
-                <span>{t("Contracts & Files", "Pracovné zmluvy a súbory", "Szerződések és fájlok")}</span>
-              </h3>
-
-              <label className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 cursor-pointer transition">
-                {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
-                <span>{isUploading ? t("Uploading...", "Nahrávam...", "Feltöltés...") : t("Add File", "Pridať", "Hozzáadás")}</span>
-                <input
-                  type="file"
-                  onChange={handleUploadContract}
-                  disabled={isUploading}
-                  className="hidden"
-                />
-              </label>
+            {/* Quick Link to Contracts & Documents */}
+            <div className="pt-4 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setActiveTab("files")}
+                className={`w-full flex items-center justify-between p-3 rounded-2xl border transition cursor-pointer ${
+                  activeTab === "files"
+                    ? "bg-[#c29b62]/15 border-[#c29b62]/40 text-[#9e7638] dark:text-[#d4af7a]"
+                    : "bg-slate-50/80 hover:bg-slate-100 border-slate-200/80 text-slate-700"
+                }`}
+              >
+                <div className="flex items-center gap-2.5 text-xs font-bold">
+                  <FileCheck className="w-4 h-4 text-[#c29b62]" />
+                  <span>{t("Contracts & Files", "Pracovné zmluvy a súbory", "Szerződések és fájlok")}</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-xs font-bold">
+                  <span className="px-2 py-0.5 rounded-full bg-white border border-slate-200/80 text-slate-600 text-[11px]">
+                    {employee.files?.length || 0}
+                  </span>
+                  <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                </div>
+              </button>
             </div>
-
-            {!employee.files || employee.files.length === 0 ? (
-              <div className="p-6 text-center border-2 border-dashed border-slate-200 rounded-2xl text-xs text-slate-400">
-                {t("No contracts uploaded.", "Žiadne nahraté zmluvy.", "Nincsenek feltöltött szerződések.")}
-              </div>
-            ) : (
-              <div className="space-y-2">
-                {employee.files.map((file) => (
-                  <div
-                    key={file.id}
-                    className="flex items-center justify-between p-3 rounded-2xl bg-slate-50/80 border border-slate-200/80"
-                  >
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <div className="w-8 h-8 rounded-xl bg-[#c29b62]/15 text-[#9e7638] dark:text-[#d4af7a] flex items-center justify-center shrink-0">
-                        <FileText className="w-4 h-4" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-xs font-semibold text-slate-900 truncate">{file.name}</p>
-                        <p className="text-[10px] text-slate-400">
-                          {file.size ? `${(file.size / 1024).toFixed(1)} KB` : ""} •{" "}
-                          {file.uploadedAt ? new Date(file.uploadedAt).toLocaleDateString() : ""}
-                        </p>
-                      </div>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <a
-                        href={file.url || file.filePath || "#"}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg transition"
-                        title={t("Download", "Stiahnuť", "Letöltés")}
-                      >
-                        <Download className="w-4 h-4" />
-                      </a>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveContract(file.id)}
-                        className="p-1.5 text-slate-400 hover:text-red-500 rounded-lg transition"
-                        title={t("Remove", "Odstrániť", "Törlés")}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
         </div>
 
@@ -596,6 +560,29 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
             >
               <Calendar className="w-4 h-4" />
               <span>{t("Vacation & Absences", "Dovolenka a absencie", "Szabadság és távollét")}</span>
+            </button>
+
+            <button
+              onClick={() => setActiveTab("files")}
+              className={`flex-1 flex items-center justify-center gap-2 py-2 px-3 rounded-xl text-xs font-bold transition shadow-sm ${
+                activeTab === "files"
+                  ? "bg-[#c29b62] text-white shadow-md shadow-[#c29b62]/20"
+                  : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/60"
+              }`}
+            >
+              <FileCheck className="w-4 h-4" />
+              <span>{t("Contracts & Files", "Zmluvy a dokumenty", "Szerződések és iratok")}</span>
+              {employee.files && employee.files.length > 0 && (
+                <span
+                  className={`px-1.5 py-0.5 rounded-full text-[10px] font-bold ${
+                    activeTab === "files"
+                      ? "bg-white/30 text-white"
+                      : "bg-slate-200/80 text-slate-700"
+                  }`}
+                >
+                  {employee.files.length}
+                </span>
+              )}
             </button>
           </div>
 
@@ -1096,6 +1083,171 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                   </div>
                 )}
               </div>
+            </div>
+          )}
+          {/* TAB 4: CONTRACTS & DOCUMENTS (FILES) */}
+          {activeTab === "files" && (
+            <div className="space-y-6 animate-in fade-in duration-150">
+              {/* Header card with upload CTA */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-5 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass">
+                <div className="flex items-center gap-3.5">
+                  <div className="w-11 h-11 rounded-2xl bg-[#c29b62]/15 text-[#9e7638] dark:text-[#d4af7a] flex items-center justify-center shrink-0 shadow-sm border border-[#c29b62]/25">
+                    <FileCheck className="w-5 h-5 text-[#c29b62]" />
+                  </div>
+                  <div>
+                    <h3 className="text-sm font-bold text-slate-900">
+                      {t("Contracts & Employee Documents", "Pracovné zmluvy a dokumenty zamestnanca", "Szerződések és iratok")}
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      {employee.files && employee.files.length > 0
+                        ? `${employee.files.length} ${t("file(s) attached", "súborov pripojených", "csatolt fájl")} • ${(
+                            employee.files.reduce((acc, f) => acc + (f.size || 0), 0) /
+                            (1024 * 1024)
+                          ).toFixed(2)} MB`
+                        : t("No documents uploaded yet", "Zatiaľ žiadne nahraté dokumenty", "Még nincsenek feltöltött dokumentumok")}
+                    </p>
+                  </div>
+                </div>
+
+                <label className="flex items-center gap-2 px-4 py-2.5 text-xs font-bold rounded-2xl bg-[#c29b62] hover:bg-[#b58b4c] text-white cursor-pointer transition shadow-md shadow-[#c29b62]/20">
+                  {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                  <span>
+                    {isUploading
+                      ? t("Uploading...", "Nahrávam...", "Feltöltés...")
+                      : t("Upload Document", "Nahrať dokument", "Dokumentum feltöltése")}
+                  </span>
+                  <input
+                    type="file"
+                    onChange={handleUploadContract}
+                    disabled={isUploading}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+
+              {/* Document List / Empty state */}
+              {!employee.files || employee.files.length === 0 ? (
+                <div
+                  onDragOver={(e) => e.preventDefault()}
+                  onDrop={handleDropFile}
+                  className="p-12 text-center glass-panel rounded-3xl border-2 border-dashed border-slate-200/90 bg-white/70 hover:bg-white/95 transition space-y-4"
+                >
+                  <div className="w-14 h-14 rounded-2xl bg-[#c29b62]/10 border border-[#c29b62]/20 text-[#c29b62] flex items-center justify-center mx-auto shadow-sm">
+                    <FileText className="w-7 h-7" />
+                  </div>
+                  <div className="max-w-md mx-auto space-y-1">
+                    <h4 className="text-sm font-bold text-slate-800">
+                      {t("No contracts or documents attached", "Žiadne zmluvy ani dokumenty", "Nincsenek csatolt szerződések")}
+                    </h4>
+                    <p className="text-xs text-slate-500">
+                      {t(
+                        "Upload employment agreements, NDAs, identification scans, certifications, or tax declarations. Drag and drop files here or click below to browse.",
+                        "Nahrajte pracovnú zmluvu, dohodu, NDA, certifikáty alebo daňové vyhlásenia. Presuňte súbor sem alebo kliknite na tlačidlo.",
+                        "Töltsön fel munkaszerződést, titoktartási nyilatkozatot, adóigazolást vagy tanúsítványokat."
+                      )}
+                    </p>
+                  </div>
+
+                  <label className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-bold rounded-2xl bg-[#c29b62] hover:bg-[#b58b4c] text-white cursor-pointer transition shadow-md shadow-[#c29b62]/25">
+                    {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                    <span>{t("Select File to Upload", "Vybrať súbor z počítača", "Fájl kiválasztása")}</span>
+                    <input
+                      type="file"
+                      onChange={handleUploadContract}
+                      disabled={isUploading}
+                      className="hidden"
+                    />
+                  </label>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    {employee.files.map((file) => {
+                      const ext = (file.name.split(".").pop() || "").toLowerCase();
+                      const isPdf = ext === "pdf";
+                      const isImg = ["png", "jpg", "jpeg", "webp"].includes(ext);
+
+                      return (
+                        <div
+                          key={file.id}
+                          className="flex items-center justify-between p-4 glass-panel rounded-2xl border border-white/60 bg-white/95 shadow-sm hover:shadow-md transition group"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div
+                              className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 font-bold text-xs uppercase shadow-sm ${
+                                isPdf
+                                  ? "bg-red-500/15 text-red-600 border border-red-500/20"
+                                  : isImg
+                                  ? "bg-purple-500/15 text-purple-600 border border-purple-500/20"
+                                  : "bg-[#c29b62]/15 text-[#9e7638] dark:text-[#d4af7a] border border-[#c29b62]/20"
+                              }`}
+                            >
+                              {isPdf ? "PDF" : isImg ? "IMG" : <FileText className="w-5 h-5" />}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-bold text-slate-900 truncate" title={file.name}>
+                                {file.name}
+                              </p>
+                              <p className="text-[11px] text-slate-400 mt-0.5">
+                                {file.size ? `${(file.size / 1024).toFixed(1)} KB` : ""}
+                                {file.uploadedAt ? ` • ${new Date(file.uploadedAt).toLocaleDateString()}` : ""}
+                              </p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0 ml-3">
+                            <a
+                              href={file.url || file.filePath || "#"}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="p-2 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-xl transition"
+                              title={t("Download / View", "Stiahnuť / Zobraziť", "Letöltés")}
+                            >
+                              <Download className="w-4 h-4" />
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveContract(file.id)}
+                              className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition"
+                              title={t("Delete Document", "Zmazať dokument", "Törlés")}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  {/* Dropzone bar for quick subsequent uploads */}
+                  <div
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={handleDropFile}
+                    className="p-4 border-2 border-dashed border-slate-200/80 rounded-2xl text-center bg-slate-50/50 hover:bg-slate-50 transition"
+                  >
+                    <label className="inline-flex items-center gap-2 text-xs font-semibold text-slate-500 hover:text-[#c29b62] cursor-pointer transition">
+                      {isUploading ? (
+                        <Loader2 className="w-4 h-4 animate-spin text-[#c29b62]" />
+                      ) : (
+                        <Upload className="w-4 h-4 text-[#c29b62]" />
+                      )}
+                      <span>
+                        {t(
+                          "Drop files here or click to upload additional documents",
+                          "Presuňte súbory sem alebo kliknite pre nahratie ďalších",
+                          "Húzza ide a fájlokat további dokumentumok feltöltéséhez"
+                        )}
+                      </span>
+                      <input
+                        type="file"
+                        onChange={handleUploadContract}
+                        disabled={isUploading}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
