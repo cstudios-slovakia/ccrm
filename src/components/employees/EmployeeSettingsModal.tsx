@@ -82,24 +82,37 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
     setTestingToggl(true);
     setTogglStatus(null);
     try {
-      const res = await fetch(`/api/time_tracking.php?action=test_connection&api_key=${encodeURIComponent(togglApiKey)}&workspace_id=${encodeURIComponent(togglWorkspaceId)}`);
-      const data = await res.json();
+      const res = await fetch("/api/time_tracking.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({
+          action: "test_connection",
+          api_token: togglApiKey.trim(),
+          api_key: togglApiKey.trim(),
+          workspace_id: togglWorkspaceId.trim(),
+          provider: "toggl"
+        })
+      });
+      const data = await res.json().catch(() => ({}));
       if (data.success) {
+        const userName = data.user?.name || data.data?.fullname || data.data?.user?.name || "OK";
+        const wsList = data.workspaces || data.data?.workspaces || [];
         setTogglStatus({
           success: true,
-          message: t(
-            `Connected! User: ${data.data?.fullname || data.data?.email || "OK"} (${data.data?.workspaces?.length || 0} workspaces)`,
-            `Pripojené! Používateľ: ${data.data?.fullname || data.data?.email || "OK"} (${data.data?.workspaces?.length || 0} pracovných priestorov)`,
-            `Kapcsolódva! Felhasználó: ${data.data?.fullname || data.data?.email || "OK"} (${data.data?.workspaces?.length || 0} munkaterület)`
+          message: data.message || t(
+            `Connected! User: ${userName} (${wsList.length} workspaces)`,
+            `Pripojené! Používateľ: ${userName} (${wsList.length} pracovných priestorov)`,
+            `Kapcsolódva! Felhasználó: ${userName} (${wsList.length} munkaterület)`
           )
         });
-        if (!togglWorkspaceId && data.data?.defaultWorkspaceId) {
-          setTogglWorkspaceId(String(data.data.defaultWorkspaceId));
+        if (!togglWorkspaceId && (data.user?.default_workspace_id || data.data?.defaultWorkspaceId)) {
+          setTogglWorkspaceId(String(data.user?.default_workspace_id || data.data?.defaultWorkspaceId));
         }
       } else {
         setTogglStatus({
           success: false,
-          message: data.error || t("Connection failed", "Pripojenie zlyhalo", "Kapcsolódási hiba")
+          message: data.error || data.message || t("Connection failed", "Pripojenie zlyhalo", "Kapcsolódási hiba")
         });
       }
     } catch (err: any) {

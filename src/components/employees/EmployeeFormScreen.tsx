@@ -166,14 +166,15 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
     setLoadingTogglUsers(true);
     setTogglFetchError(null);
 
-    fetch(`/api/time_tracking.php?action=fetch_workspace_users`)
-      .then((res) => res.json())
+    fetch(`/api/time_tracking.php?action=fetch_workspace_users`, { credentials: "include" })
+      .then((res) => res.json().catch(() => ({})))
       .then((data) => {
         if (!isMounted) return;
-        if (data.success && Array.isArray(data.data)) {
-          setTogglUsers(data.data);
+        const usersList = Array.isArray(data.data) ? data.data : (Array.isArray(data.users) ? data.users : []);
+        if (data.success && usersList.length > 0) {
+          setTogglUsers(usersList);
         } else {
-          setTogglFetchError(data.error || null);
+          setTogglFetchError(data.error || data.message || null);
         }
       })
       .catch((err) => {

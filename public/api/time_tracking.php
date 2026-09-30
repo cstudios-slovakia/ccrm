@@ -9,12 +9,10 @@
 require_once __DIR__ . '/auth.php';
 
 header('Content-Type: application/json');
-ccrm_send_cors('POST, OPTIONS');
+ccrm_send_cors('GET, POST, OPTIONS');
 
 if (php_sapi_name() !== 'cli') {
-    if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
-        http_response_code(405);
-        echo json_encode(['success' => false, 'message' => 'Method Not Allowed']);
+    if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
         exit;
     }
     ccrm_require_auth();
@@ -32,15 +30,29 @@ try {
     $pdo = function_exists('get_db_connection') ? get_db_connection() : ccrm_auth_pdo();
 } catch (\Throwable $e) {
     http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Database connection failed: ' . $e->getMessage()]);
+    echo json_encode([
+        'success' => false,
+        'error' => 'Database connection failed: ' . $e->getMessage(),
+        'message' => 'Database connection failed: ' . $e->getMessage()
+    ]);
     exit;
 }
 
-$input = file_get_contents('php://input');
-$data = json_decode($input, true);
-if (!is_array($data) || empty($data['action'])) {
+// Support JSON body, $_POST, and $_GET
+$rawInput = file_get_contents('php://input');
+$jsonInput = json_decode($rawInput, true);
+if (!is_array($jsonInput)) {
+    $jsonInput = [];
+}
+$data = array_merge($_GET, $_POST, $jsonInput);
+
+if (empty($data['action'])) {
     http_response_code(400);
-    echo json_encode(['success' => false, 'message' => 'Missing action parameter']);
+    echo json_encode([
+        'success' => false,
+        'error' => 'Missing action parameter',
+        'message' => 'Missing action parameter'
+    ]);
     exit;
 }
 
@@ -64,8 +76,25 @@ $settings = get_stored_employee_settings($pdo);
 $timeTrackingConfig = $settings['timeTracking'] ?? [];
 
 $provider = $data['provider'] ?? ($timeTrackingConfig['provider'] ?? 'toggl');
-$apiToken = trim((string)($data['api_token'] ?? ($data['togglApiToken'] ?? ($timeTrackingConfig['togglApiToken'] ?? ''))));
-$workspaceId = trim((string)($data['workspace_id'] ?? ($data['togglWorkspaceId'] ?? ($timeTrackingConfig['togglWorkspaceId'] ?? ''))));
+$apiToken = trim((string)(
+    $data['api_token'] ??
+    $data['api_key'] ??
+    $data['togglApiToken'] ??
+    $data['togglApiKey'] ??
+    ($settings['togglApiKey'] ??
+    ($settings['togglApiToken'] ??
+    ($timeTrackingConfig['togglApiToken'] ??
+    ($timeTrackingConfig['togglApiKey'] ?? ''))))
+));
+$workspaceId = trim((string)(
+    $data['workspace_id'] ??
+    $data['workspaceId'] ??
+    $data['togglWorkspaceId'] ??
+    $data['toggl_workspace_id'] ??
+    ($settings['togglWorkspaceId'] ??
+    ($timeTrackingConfig['togglWorkspaceId'] ??
+    ($timeTrackingConfig['toggl_workspace_id'] ?? '')))
+));
 
 function toggl_curl(string $url, string $apiToken, string $method = 'GET', ?array $postData = null): array {
     $ch = curl_init();
@@ -101,23 +130,42 @@ function toggl_curl(string $url, string $apiToken, string $method = 'GET', ?arra
 // -------------------------------------------------------------------------
 if ($action === 'test_connection') {
     if (empty($apiToken)) {
-        echo json_encode(['success' => false, 'message' => 'API Token is empty.']);
+        echo json_encode([
+            'success' => false,
+            'error' => 'API Token is empty. Please enter your Toggl Track API token.',
+            'message' => 'API Token is empty. Please enter your Toggl Track API token.'
+        ]);
         exit;
     }
 
     if ($provider === 'toggl') {
         $res = toggl_curl('https://api.track.toggl.com/api/v9/me', $apiToken);
         if (!$res['ok']) {
+            $errDetail = $res['error'] ?? '';
+            if (isset($res['data']['error'])) {
+                $errDetail = is_string($res['data']['error']) ? $res['data']['error'] : json_encode($res['data']['error']);
+            } elseif (!empty($res['raw'])) {
+                $errDetail = is_string($res['raw']) ? substr($res['raw'], 0, 200) : '';
+            }
+
+            if ($res['code'] === 401 || $res['code'] === 403) {
+                $msg = 'Invalid Toggl API token (HTTP ' . $res['code'] . '). Please verify your token in Toggl Track Profile Settings.';
+            } else {
+                $msg = 'Toggl API error (HTTP ' . $res['code'] . '): ' . ($errDetail ?: 'Failed to connect');
+            }
+
             echo json_encode([
                 'success' => false,
-                'message' => 'Toggl API error (' . $res['code'] . '): ' . ($res['data']['error'] ?? $res['raw'] ?? 'Failed to connect')
+                'error' => $msg,
+                'message' => $msg,
+                'code' => $res['code']
             ]);
             exit;
         }
 
         $userData = $res['data'] ?? [];
         $defaultWsId = $userData['default_workspace_id'] ?? null;
-        
+
         // Fetch workspaces
         $wsRes = toggl_curl('https://api.track.toggl.com/api/v9/workspaces', $apiToken);
         $workspaces = [];
@@ -131,21 +179,36 @@ if ($action === 'test_connection') {
             }
         }
 
+        $userObj = [
+            'id' => $userData['id'] ?? null,
+            'name' => $userData['fullname'] ?? ($userData['email'] ?? 'User'),
+            'fullname' => $userData['fullname'] ?? ($userData['email'] ?? 'User'),
+            'email' => $userData['email'] ?? '',
+            'default_workspace_id' => $defaultWsId,
+            'defaultWorkspaceId' => $defaultWsId
+        ];
+
         echo json_encode([
             'success' => true,
-            'message' => 'Connected successfully to Toggl Track as ' . ($userData['fullname'] ?? $userData['email'] ?? 'User'),
-            'user' => [
-                'id' => $userData['id'] ?? null,
-                'name' => $userData['fullname'] ?? '',
-                'email' => $userData['email'] ?? '',
-                'default_workspace_id' => $defaultWsId
+            'message' => 'Connected successfully to Toggl Track as ' . $userObj['name'],
+            'user' => $userObj,
+            'data' => [
+                'user' => $userObj,
+                'fullname' => $userObj['name'],
+                'email' => $userObj['email'],
+                'defaultWorkspaceId' => $defaultWsId,
+                'workspaces' => $workspaces
             ],
             'workspaces' => $workspaces
         ]);
         exit;
     }
 
-    echo json_encode(['success' => false, 'message' => 'Unsupported provider: ' . htmlspecialchars($provider)]);
+    echo json_encode([
+        'success' => false,
+        'error' => 'Unsupported provider: ' . htmlspecialchars($provider),
+        'message' => 'Unsupported provider: ' . htmlspecialchars($provider)
+    ]);
     exit;
 }
 
@@ -154,7 +217,11 @@ if ($action === 'test_connection') {
 // -------------------------------------------------------------------------
 if ($action === 'fetch_workspace_users') {
     if (empty($apiToken)) {
-        echo json_encode(['success' => false, 'message' => 'Missing API token.']);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Missing API token.',
+            'message' => 'Missing API token.'
+        ]);
         exit;
     }
     if (empty($workspaceId)) {
@@ -165,7 +232,11 @@ if ($action === 'fetch_workspace_users') {
         }
     }
     if (empty($workspaceId)) {
-        echo json_encode(['success' => false, 'message' => 'Workspace ID is required.']);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Workspace ID is required.',
+            'message' => 'Workspace ID is required.'
+        ]);
         exit;
     }
 
@@ -215,12 +286,17 @@ if ($action === 'fetch_workspace_users') {
         echo json_encode([
             'success' => true,
             'workspace_id' => $workspaceId,
+            'data' => $users,
             'users' => $users
         ]);
         exit;
     }
 
-    echo json_encode(['success' => false, 'message' => 'Unsupported provider']);
+    echo json_encode([
+        'success' => false,
+        'error' => 'Unsupported provider',
+        'message' => 'Unsupported provider'
+    ]);
     exit;
 }
 
@@ -232,6 +308,18 @@ if ($action === 'fetch_employee_hours') {
     $year = (int)($data['year'] ?? date('Y'));
     $month = (int)($data['month'] ?? date('n'));
 
+    // Automatically resolve Toggl User ID from employee record if employee_id was passed
+    if (empty($extUserId) && !empty($data['employee_id'])) {
+        try {
+            $stmt = $pdo->prepare("SELECT `time_tracking_user_id` FROM `employees` WHERE `id` = ?");
+            $stmt->execute([$data['employee_id']]);
+            $foundUserId = $stmt->fetchColumn();
+            if ($foundUserId) {
+                $extUserId = (string)$foundUserId;
+            }
+        } catch (\Throwable $e) {}
+    }
+
     if ($year < 2000 || $year > 2100) $year = (int)date('Y');
     if ($month < 1 || $month > 12) $month = (int)date('n');
 
@@ -242,7 +330,8 @@ if ($action === 'fetch_employee_hours') {
     if (empty($apiToken)) {
         echo json_encode([
             'success' => false,
-            'message' => 'Toggl API token is not configured in Global Settings.'
+            'error' => 'Toggl API token is not configured in Settings.',
+            'message' => 'Toggl API token is not configured in Settings.'
         ]);
         exit;
     }
@@ -255,7 +344,11 @@ if ($action === 'fetch_employee_hours') {
     }
 
     if (empty($workspaceId)) {
-        echo json_encode(['success' => false, 'message' => 'Toggl Workspace ID is missing.']);
+        echo json_encode([
+            'success' => false,
+            'error' => 'Toggl Workspace ID is missing.',
+            'message' => 'Toggl Workspace ID is missing.'
+        ]);
         exit;
     }
 
@@ -315,6 +408,7 @@ if ($action === 'fetch_employee_hours') {
 
     // Compute weekly breakdown (Week 1 through Week 5/6)
     $weeks = [];
+    $weeklyMap = [];
     $currentWeekIndex = 1;
     $weekStartDay = 1;
 
@@ -341,16 +435,23 @@ if ($action === 'fetch_employee_hours') {
             $startLabel = sprintf('%02d', $weekStartDay);
             $endLabel = sprintf('%02d', $d);
             $monthName = date('M', strtotime($startDateStr));
+            $wHours = round($weekSec / 3600, 2);
 
-            $weeks[] = [
+            $weekItem = [
                 'week_number' => $currentWeekIndex,
+                'weekNum' => $currentWeekIndex,
                 'label' => "Week {$currentWeekIndex} ({$monthName} {$startLabel} – {$endLabel})",
                 'start_date' => sprintf('%04d-%02d-%02d', $year, $month, $weekStartDay),
+                'startDate' => sprintf('%04d-%02d-%02d', $year, $month, $weekStartDay),
                 'end_date' => sprintf('%04d-%02d-%02d', $year, $month, $d),
+                'endDate' => sprintf('%04d-%02d-%02d', $year, $month, $d),
                 'seconds' => $weekSec,
-                'hours' => round($weekSec / 3600, 2),
+                'hours' => $wHours,
                 'days' => $dayList
             ];
+
+            $weeks[] = $weekItem;
+            $weeklyMap["w{$currentWeekIndex}"] = $weekItem;
 
             $currentWeekIndex++;
             $weekStartDay = $d + 1;
@@ -358,19 +459,27 @@ if ($action === 'fetch_employee_hours') {
     }
 
     $projectBreakdown = [];
+    $projectMap = [];
     foreach ($projectSeconds as $pName => $pSec) {
+        $pHours = round($pSec / 3600, 2);
         $projectBreakdown[] = [
             'name' => $pName,
             'seconds' => $pSec,
-            'hours' => round($pSec / 3600, 2),
+            'hours' => $pHours,
             'percentage' => $totalSeconds > 0 ? round(($pSec / $totalSeconds) * 100, 1) : 0
         ];
+        $projectMap[$pName] = $pHours;
     }
     usort($projectBreakdown, fn($a, $b) => $b['seconds'] <=> $a['seconds']);
 
     $totalHours = round($totalSeconds / 3600, 2);
     $numWeeks = max(1, count($weeks));
     $avgHoursPerWeek = round($totalHours / $numWeeks, 2);
+
+    $dailyHoursMap = [];
+    foreach ($dailySeconds as $dKey => $sec) {
+        $dailyHoursMap[$dKey] = round($sec / 3600, 2);
+    }
 
     echo json_encode([
         'success' => true,
@@ -381,9 +490,19 @@ if ($action === 'fetch_employee_hours') {
         'average_weekly_hours' => $avgHoursPerWeek,
         'weeks' => $weeks,
         'projects' => $projectBreakdown,
-        'entry_count' => count($rawEntries)
+        'entry_count' => count($rawEntries),
+        'data' => [
+            'totalHours' => $totalHours,
+            'weekly' => $weeklyMap,
+            'daily' => $dailyHoursMap,
+            'projects' => $projectMap
+        ]
     ]);
     exit;
 }
 
-echo json_encode(['success' => false, 'message' => 'Unknown action: ' . htmlspecialchars($action)]);
+echo json_encode([
+    'success' => false,
+    'error' => 'Unknown action: ' . htmlspecialchars($action),
+    'message' => 'Unknown action: ' . htmlspecialchars($action)
+]);
