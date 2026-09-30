@@ -355,28 +355,102 @@ if ($action === 'fetch_employee_hours') {
         exit;
     }
 
-    // Try fetching reports API v3
+    // Fetch workspace projects map for human-readable project naming
+    $wsProjectMap = [];
+    if (!empty($workspaceId)) {
+        $wsKey = preg_replace('/[^a-zA-Z0-9_-]/', '', (string)$workspaceId);
+        $cacheFile = sys_get_temp_dir() . '/ccrm_toggl_projects_' . $wsKey . '.json';
+        if (file_exists($cacheFile) && (time() - filemtime($cacheFile) < 3600)) {
+            $wsProjectMap = json_decode((string)file_get_contents($cacheFile), true) ?: [];
+        }
+
+        if (empty($wsProjectMap)) {
+            for ($pPage = 1; $pPage <= 5; $pPage++) {
+                $pRes = toggl_curl("https://api.track.toggl.com/api/v9/workspaces/{$workspaceId}/projects?per_page=500&page={$pPage}", $apiToken);
+                if ($pRes['ok'] && is_array($pRes['data']) && !empty($pRes['data'])) {
+                    foreach ($pRes['data'] as $p) {
+                        if (isset($p['id'], $p['name'])) {
+                            $wsProjectMap[(string)$p['id']] = (string)$p['name'];
+                        }
+                    }
+                    if (count($pRes['data']) < 500) {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+            if (!empty($wsProjectMap)) {
+                @file_put_contents($cacheFile, json_encode($wsProjectMap));
+            }
+        }
+    }
+
+    // Try fetching reports API v3 with pagination
     // POST https://api.track.toggl.com/reports/api/v3/workspace/{workspace_id}/search/time_entries
     $postPayload = [
         'start_date' => $startDateStr,
         'end_date' => $endDateStr,
+        'page_size' => 50,
     ];
     if (!empty($extUserId) && is_numeric($extUserId)) {
         $postPayload['user_ids'] = [(int)$extUserId];
     }
 
     $reportsUrl = "https://api.track.toggl.com/reports/api/v3/workspace/{$workspaceId}/search/time_entries";
-    $reportRes = toggl_curl($reportsUrl, $apiToken, 'POST', $postPayload);
-
     $rawEntries = [];
-    if ($reportRes['ok'] && is_array($reportRes['data'])) {
-        $rawEntries = $reportRes['data'];
-    } else {
-        // Fallback: use /me/time_entries
+    $firstRowNumber = 1;
+    $maxPages = 40; // cap at 2000 entries safety limit
+
+    for ($pageIdx = 0; $pageIdx < $maxPages; $pageIdx++) {
+        $pagePayload = $postPayload;
+        $pagePayload['first_row_number'] = $firstRowNumber;
+        $reportRes = toggl_curl($reportsUrl, $apiToken, 'POST', $pagePayload);
+
+        if ($reportRes['ok'] && is_array($reportRes['data']) && !empty($reportRes['data'])) {
+            $batch = $reportRes['data'];
+            foreach ($batch as $row) {
+                $rawEntries[] = $row;
+            }
+            if (count($batch) < 50) {
+                break;
+            }
+            $firstRowNumber += count($batch);
+        } else {
+            break;
+        }
+    }
+
+    // Fallback: if reports API v3 didn't return anything or failed, try /me/time_entries
+    if (empty($rawEntries)) {
         $fallbackUrl = "https://api.track.toggl.com/api/v9/me/time_entries?start_date={$startDateStr}T00:00:00Z&end_date={$endDateStr}T23:59:59Z";
         $fallbackRes = toggl_curl($fallbackUrl, $apiToken);
         if ($fallbackRes['ok'] && is_array($fallbackRes['data'])) {
             $rawEntries = $fallbackRes['data'];
+        }
+    }
+
+    // If any project_ids in rawEntries are missing from $wsProjectMap, attempt to fetch them individually
+    if (!empty($workspaceId) && !empty($rawEntries)) {
+        $missingPids = [];
+        foreach ($rawEntries as $re) {
+            $pid = (string)($re['project_id'] ?? '');
+            if ($pid !== '' && !isset($wsProjectMap[$pid])) {
+                $missingPids[$pid] = true;
+            }
+        }
+        if (!empty($missingPids)) {
+            $fetchedNew = false;
+            foreach (array_slice(array_keys($missingPids), 0, 15) as $missingPid) {
+                $pRes = toggl_curl("https://api.track.toggl.com/api/v9/workspaces/{$workspaceId}/projects/{$missingPid}", $apiToken);
+                if ($pRes['ok'] && !empty($pRes['data']['name'])) {
+                    $wsProjectMap[$missingPid] = (string)$pRes['data']['name'];
+                    $fetchedNew = true;
+                }
+            }
+            if ($fetchedNew && !empty($cacheFile)) {
+                @file_put_contents($cacheFile, json_encode($wsProjectMap));
+            }
         }
     }
 
@@ -392,21 +466,50 @@ if ($action === 'fetch_employee_hours') {
     }
 
     foreach ($rawEntries as $entry) {
-        $dur = (int)($entry['seconds'] ?? ($entry['duration'] ?? 0));
-        if ($dur <= 0) continue;
+        $pid = (string)($entry['project_id'] ?? '');
+        $projName = $wsProjectMap[$pid] ?? (
+            !empty($entry['project_name']) ? (string)$entry['project_name'] : (
+                !empty($entry['project']) ? (string)$entry['project'] : (
+                    !empty($entry['description']) ? (string)$entry['description'] : 'General / Untagged'
+                )
+            )
+        );
 
-        $startStr = $entry['start'] ?? ($entry['time_entries'][0]['start'] ?? '');
-        $dateKey = substr((string)$startStr, 0, 10);
-        if (isset($dailySeconds[$dateKey])) {
-            $dailySeconds[$dateKey] += $dur;
-            $totalSeconds += $dur;
-        }
+        // Sub-case 1: Reports API v3 has nested time_entries array
+        if (!empty($entry['time_entries']) && is_array($entry['time_entries'])) {
+            foreach ($entry['time_entries'] as $subEntry) {
+                $dur = (int)($subEntry['seconds'] ?? ($subEntry['duration'] ?? 0));
+                if ($dur <= 0) continue;
 
-        $projName = $entry['project_name'] ?? ($entry['project'] ?? 'General / Untagged');
-        if (!isset($projectSeconds[$projName])) {
-            $projectSeconds[$projName] = 0;
+                $startStr = (string)($subEntry['start'] ?? '');
+                $dateKey = substr($startStr, 0, 10);
+                if (isset($dailySeconds[$dateKey])) {
+                    $dailySeconds[$dateKey] += $dur;
+                    $totalSeconds += $dur;
+                }
+
+                if (!isset($projectSeconds[$projName])) {
+                    $projectSeconds[$projName] = 0;
+                }
+                $projectSeconds[$projName] += $dur;
+            }
+        } else {
+            // Sub-case 2: Flat entry structure (e.g. /me/time_entries)
+            $dur = (int)($entry['seconds'] ?? ($entry['duration'] ?? 0));
+            if ($dur <= 0) continue;
+
+            $startStr = (string)($entry['start'] ?? '');
+            $dateKey = substr($startStr, 0, 10);
+            if (isset($dailySeconds[$dateKey])) {
+                $dailySeconds[$dateKey] += $dur;
+                $totalSeconds += $dur;
+            }
+
+            if (!isset($projectSeconds[$projName])) {
+                $projectSeconds[$projName] = 0;
+            }
+            $projectSeconds[$projName] += $dur;
         }
-        $projectSeconds[$projName] += $dur;
     }
 
     // Compute weekly breakdown (Week 1 through Week 5/6)
@@ -474,6 +577,7 @@ if ($action === 'fetch_employee_hours') {
         $projectMap[$pName] = $pHours;
     }
     usort($projectBreakdown, fn($a, $b) => $b['seconds'] <=> $a['seconds']);
+    arsort($projectMap);
 
     $totalHours = round($totalSeconds / 3600, 2);
     $numWeeks = max(1, count($weeks));

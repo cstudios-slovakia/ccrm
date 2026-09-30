@@ -209,7 +209,8 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
     setHoursError(null);
 
     const empIdParam = encodeURIComponent(employee.id);
-    fetch(`/api/time_tracking.php?action=fetch_employee_hours&employee_id=${empIdParam}&year=${togglYear}&month=${togglMonth}`, {
+    const userIdParam = encodeURIComponent(employee.timeTrackingUserId || "");
+    fetch(`/api/time_tracking.php?action=fetch_employee_hours&employee_id=${empIdParam}&user_id=${userIdParam}&year=${togglYear}&month=${togglMonth}`, {
       credentials: "include",
     })
       .then((res) => res.json())
