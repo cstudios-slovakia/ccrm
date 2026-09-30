@@ -5124,6 +5124,44 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 ) : null}
                 </div>
 
+                {/* Entity Title Header */}
+                <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-200/80 pb-4">
+                    <div className="flex items-center gap-3.5 min-w-0">
+                        <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white border-2 border-blue-700 flex items-center justify-center font-heading font-black text-lg shadow-md shrink-0">
+                            {getInitials(leadName || activeLead.name)}
+                        </div>
+                        <div className="min-w-0">
+                            <h1 className="text-3xl lg:text-4xl font-heading font-black text-slate-900 tracking-tight truncate">
+                                {leadName || activeLead.name}
+                            </h1>
+                            <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 font-semibold flex-wrap">
+                                <span
+                                    className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider text-white"
+                                    style={{ backgroundColor: getSafeStateColor(activeLead.status) }}
+                                >
+                                    {activeLead.status}
+                                </span>
+                                {activeLead.clientType && (
+                                    <span className="capitalize px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-600 border border-slate-200">
+                                        {activeLead.clientType}
+                                    </span>
+                                )}
+                                {activeLead.city && (
+                                    <span className="text-slate-600 font-medium flex items-center gap-1">
+                                        <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                                        {activeLead.city}
+                                    </span>
+                                )}
+                                {activeLead.owner && (
+                                    <span className="text-slate-400 font-medium">
+                                        • {activeLead.owner}
+                                    </span>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 {/* Master Dual-Panel Dashboard Grid */}
                 <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                     {/* LEFT PANEL: Client Card & Lead Details Form */}

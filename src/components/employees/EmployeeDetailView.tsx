@@ -638,6 +638,37 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
         </div>
       </div>
 
+      {/* Entity Title Header */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-200/80 pb-4">
+        <div className="flex items-center gap-3.5 min-w-0">
+          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#c29b62] to-[#9e7638] text-white flex items-center justify-center font-heading font-black text-lg shadow-md shrink-0">
+            {employee.name ? employee.name.split(" ").map(n => n[0]).slice(0, 2).join("").toUpperCase() : "EM"}
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-3xl lg:text-4xl font-heading font-black text-slate-900 tracking-tight truncate">
+              {employee.name}
+            </h1>
+            <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 font-semibold flex-wrap">
+              {employee.role && (
+                <span className="text-slate-800 font-bold bg-amber-50 text-amber-900 border border-amber-200/80 px-2.5 py-0.5 rounded-full text-[10px] uppercase tracking-wider">
+                  {employee.role}
+                </span>
+              )}
+              {employee.addressCity && (
+                <span className="text-slate-600 font-medium">
+                  {employee.addressCity}
+                </span>
+              )}
+              {employee.email && (
+                <span className="text-slate-400 font-medium">
+                  • {employee.email}
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Main Split Layout: Left Profile & Documents, Right 3 Sub-Tabs */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* LEFT COLUMN: Profile Info & Contracts (4 cols) */}

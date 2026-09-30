@@ -302,20 +302,25 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
             <div
                 className={`relative w-full max-w-md bg-white shadow-2xl h-full flex flex-col p-6 overflow-y-auto ${isClosing ? "animate-slide-out-right" : "animate-slide-in-right"}`}
             >
-                <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-                    <h2 className="text-sm font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                        <CheckSquare className="h-5 w-5 text-indigo-600" />
-                        {canEdit
-                            ? t("Edit Task", "Upraviť úlohu", "Feladat szerkesztése")
-                            : t("View Task", "Zobraziť úlohu", "Feladat megtekintése")}
-                    </h2>
-                    <button
-                        type="button"
-                        onClick={requestClose}
-                        className="p-1 hover:bg-slate-100 active:scale-95 rounded-lg text-slate-400 transition-all cursor-pointer"
-                    >
-                        <X className="h-5 w-5" />
-                    </button>
+                <div className="pb-4 border-b border-slate-100 space-y-2">
+                    <div className="flex items-center justify-between">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2.5 py-0.5 rounded-full flex items-center gap-1.5">
+                            <CheckSquare className="h-3.5 w-3.5 text-indigo-600" />
+                            {canEdit
+                                ? t("Edit Task", "Upraviť úlohu", "Feladat szerkesztése")
+                                : t("View Task", "Zobraziť úlohu", "Feladat megtekintése")}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={requestClose}
+                            className="p-1 hover:bg-slate-100 active:scale-95 rounded-lg text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+                        >
+                            <X className="h-5 w-5" />
+                        </button>
+                    </div>
+                    <h1 className="text-2xl font-heading font-black text-slate-900 tracking-tight leading-snug break-words">
+                        {draft.title || t("Untitled Task", "Úloha bez názvu", "Névtelen feladat")}
+                    </h1>
                 </div>
 
                 <form

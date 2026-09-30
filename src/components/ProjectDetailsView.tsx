@@ -1446,9 +1446,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div className="flex flex-col min-w-0 flex-1">
-            <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2 min-w-0">
+            <h1 className="text-3xl lg:text-4xl font-heading font-black text-slate-900 tracking-tight flex items-center gap-2.5 min-w-0">
               <span className="shrink-0" style={{ color: projectType.color }}>
-                {renderIcon(projectType.icon, "h-6 w-6")}
+                {renderIcon(projectType.icon, "h-8 w-8")}
               </span>
               {/* Project name, edited in place. Projects used to have none and
                   simply wore the paired lead's, which left a project paired with
@@ -1466,7 +1466,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   autoFocus
                   maxLength={200}
                   placeholder={t("e.g. Roof replacement, Kosice", "napr. Výmena strechy, Košice", "pl. Tetőcsere, Kassa")}
-                  className="select-text min-w-0 flex-1 max-w-xl px-2 py-0.5 -my-1 rounded-xl border border-indigo-300 bg-white text-2xl font-heading font-extrabold text-slate-900 tracking-tight focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  className="select-text min-w-0 flex-1 max-w-xl px-2 py-0.5 -my-1 rounded-xl border border-indigo-300 bg-white text-3xl lg:text-4xl font-heading font-black text-slate-900 tracking-tight focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                 />
               ) : (
                 <>
@@ -1484,12 +1484,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       className="shrink-0 p-1.5 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all active:scale-95 cursor-pointer"
                       title={t("Rename project", "Premenovať projekt", "Projekt átnevezése")}
                     >
-                      <Edit3 className="h-4 w-4" />
+                      <Edit3 className="h-5 w-5" />
                     </button>
                   )}
                 </>
               )}
-            </h2>
+            </h1>
             <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1 truncate">
               {isEditingName && !nameDraft.trim()
                 ? t(

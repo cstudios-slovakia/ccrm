@@ -2992,6 +2992,43 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           </div>
         </div>
 
+        {/* Entity Title Header */}
+        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-200/80 pb-4">
+          <div className="flex items-center gap-3.5 min-w-0">
+            <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-2 border-emerald-700 flex items-center justify-center font-heading font-black text-lg shadow-md shrink-0">
+              {getInitials(profileName || activeClient.name)}
+            </div>
+            <div className="min-w-0">
+              <h1 className="text-3xl lg:text-4xl font-heading font-black text-slate-900 tracking-tight truncate">
+                {profileName || activeClient.name}
+              </h1>
+              <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 font-semibold flex-wrap">
+                {activeClient.clientType && (
+                  <span className="capitalize px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300">
+                    {activeClient.clientType}
+                  </span>
+                )}
+                {activeClient.companyId && (
+                  <span className="font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md border border-slate-200 text-[11px]">
+                    IČO: {activeClient.companyId}
+                  </span>
+                )}
+                {activeClient.city && (
+                  <span className="text-slate-600 font-medium flex items-center gap-1">
+                    <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                    {activeClient.city}
+                  </span>
+                )}
+                {activeClient.owner && (
+                  <span className="text-slate-400 font-medium">
+                    • {activeClient.owner}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+
         {activeClient.archived && (
           <div className="flex items-center gap-2.5 px-5 py-3 rounded-2xl border-2 border-amber-300 bg-amber-50 text-amber-800 text-xs font-bold animate-in fade-in slide-in-from-top-2 duration-200">
             <Archive className="h-4 w-4 shrink-0 stroke-[2.5]" />
