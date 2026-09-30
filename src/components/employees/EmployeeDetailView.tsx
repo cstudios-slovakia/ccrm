@@ -18,7 +18,12 @@ import {
   ChevronRight,
   Plus,
   Loader2,
-  FileCheck
+  FileCheck,
+  Eye,
+  EyeOff,
+  User,
+  X,
+  Save
 } from "lucide-react";
 import type {
   Employee,
@@ -28,7 +33,6 @@ import type {
   EmployeeVacation,
   FinancialCategory
 } from "../../types";
-import { EmployeeFormModal } from "./EmployeeFormModal";
 import { VacationRequestModal } from "./VacationRequestModal";
 import { SalaryCellDrawer } from "./SalaryCellDrawer";
 
@@ -42,6 +46,7 @@ interface EmployeeDetailViewProps {
   onBack: () => void;
   onUpdateEmployee: (updated: Employee) => void;
   onEditEmployee?: (employee: Employee) => void;
+  initialEditMode?: boolean;
   onSaveSalary: (salary: EmployeeSalary) => void;
   onSaveVacation: (vacation: EmployeeVacation) => void;
   onDeleteVacation: (vacationId: string) => void;
@@ -58,7 +63,8 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
   financialCategories,
   onBack,
   onUpdateEmployee,
-  onEditEmployee,
+  onEditEmployee: _onEditEmployee,
+  initialEditMode = false,
   onSaveSalary,
   onSaveVacation,
   onDeleteVacation,
@@ -124,9 +130,6 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
       handleTabClick("salaries");
     }
   }, [hasTogglKey, activeTab]);
-
-  // Edit employee modal
-  const [isEditModalOpen, setIsEditModalOpen] = useState<boolean>(false);
 
   // Salary modal
   const [isSalaryModalOpen, setIsSalaryModalOpen] = useState<boolean>(false);
@@ -282,6 +285,224 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
     return stats;
   }, [vacationTypes, employee.vacationAllowances, employeeVacations, calYear]);
 
+  // Salary type label helper
+  const salaryTypeLabel = useMemo(() => {
+    if (employee.salaryType === "hourly") return t("hour", "hodina", "óra");
+    if (employee.salaryType === "daily") return t("day", "deň", "nap");
+    return t("month", "mesiac", "hónap");
+  }, [employee.salaryType, systemLanguage]);
+
+  // Sensitive data visibility toggle (saved in localStorage)
+  const [isSensitiveHidden, setIsSensitiveHidden] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return localStorage.getItem("ccrm_employee_hide_sensitive") === "true";
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleSensitiveHidden = () => {
+    setIsSensitiveHidden((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("ccrm_employee_hide_sensitive", String(next));
+      } catch {}
+      return next;
+    });
+  };
+
+  // Check if URL currently has /edit
+  const isUrlEdit = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    const raw = window.location.hash.toLowerCase();
+    return raw.includes("/edit");
+  }, []);
+
+  // Card in-place edit mode state
+  const [isEditingCard, setIsEditingCard] = useState<boolean>(() => !!initialEditMode || isUrlEdit);
+
+  useEffect(() => {
+    if (initialEditMode) {
+      setIsEditingCard(true);
+    }
+  }, [initialEditMode]);
+
+  // Form field states for in-place editing
+  const [editName, setEditName] = useState<string>(employee.name || "");
+  const [editRole, setEditRole] = useState<string>(employee.role || "");
+  const [editPin, setEditPin] = useState<string>(employee.pin || "");
+  const [editEmail, setEditEmail] = useState<string>(employee.email || "");
+  const [editPhone, setEditPhone] = useState<string>(employee.phone || "");
+  const [editIsActive, setEditIsActive] = useState<boolean>(employee.isActive !== false);
+
+  const [editStreet, setEditStreet] = useState<string>(employee.addressStreet || "");
+  const [editCity, setEditCity] = useState<string>(employee.addressCity || "");
+  const [editZip, setEditZip] = useState<string>(employee.addressZip || "");
+  const [editCountry, setEditCountry] = useState<string>(employee.addressCountry || "Slovakia");
+
+  const [editSalaryType, setEditSalaryType] = useState<"monthly" | "daily" | "hourly">(employee.salaryType || "monthly");
+  const [editSalaryAmount, setEditSalaryAmount] = useState<number | string>(employee.salaryAmount || 0);
+  const [editSalaryDueDay, setEditSalaryDueDay] = useState<string>(
+    employee.salaryDueDay !== null && employee.salaryDueDay !== undefined ? String(employee.salaryDueDay) : ""
+  );
+
+  const [editTimeTrackingUserId, setEditTimeTrackingUserId] = useState<string>(
+    employee.timeTrackingUserId ? String(employee.timeTrackingUserId) : ""
+  );
+  const [editTimeTrackingUserName, setEditTimeTrackingUserName] = useState<string>(employee.timeTrackingUserName || "");
+  const [editAutoExpense, setEditAutoExpense] = useState<boolean>(
+    employee.autoExpense !== undefined ? !!employee.autoExpense : !!settings.autoExpense
+  );
+  const [editExpenseCategoryId, setEditExpenseCategoryId] = useState<string>(
+    employee.expenseCategoryId || settings.expenseCategoryId || ""
+  );
+
+  const [editVacationAllowances, setEditVacationAllowances] = useState<Record<string, number>>(() => {
+    const map: Record<string, number> = {};
+    vacationTypes.forEach((vt) => {
+      map[vt.id] =
+        employee.vacationAllowances?.[vt.id] !== undefined
+          ? employee.vacationAllowances[vt.id]
+          : (vt.defaultAllowance ?? vt.defaultDays ?? 25);
+    });
+    return map;
+  });
+
+  const [editNotes, setEditNotes] = useState<string>(employee.notes || "");
+  const [cardSaveError, setCardSaveError] = useState<string | null>(null);
+  const [isSavingCard, setIsSavingCard] = useState<boolean>(false);
+
+  // Sync form fields when employee prop changes
+  const resetEditFields = () => {
+    setEditName(employee.name || "");
+    setEditRole(employee.role || "");
+    setEditPin(employee.pin || "");
+    setEditEmail(employee.email || "");
+    setEditPhone(employee.phone || "");
+    setEditIsActive(employee.isActive !== false);
+
+    setEditStreet(employee.addressStreet || "");
+    setEditCity(employee.addressCity || "");
+    setEditZip(employee.addressZip || "");
+    setEditCountry(employee.addressCountry || "Slovakia");
+
+    setEditSalaryType(employee.salaryType || "monthly");
+    setEditSalaryAmount(employee.salaryAmount || 0);
+    setEditSalaryDueDay(
+      employee.salaryDueDay !== null && employee.salaryDueDay !== undefined ? String(employee.salaryDueDay) : ""
+    );
+
+    setEditTimeTrackingUserId(employee.timeTrackingUserId ? String(employee.timeTrackingUserId) : "");
+    setEditTimeTrackingUserName(employee.timeTrackingUserName || "");
+    setEditAutoExpense(employee.autoExpense !== undefined ? !!employee.autoExpense : !!settings.autoExpense);
+    setEditExpenseCategoryId(employee.expenseCategoryId || settings.expenseCategoryId || "");
+
+    const map: Record<string, number> = {};
+    vacationTypes.forEach((vt) => {
+      map[vt.id] =
+        employee.vacationAllowances?.[vt.id] !== undefined
+          ? employee.vacationAllowances[vt.id]
+          : (vt.defaultAllowance ?? vt.defaultDays ?? 25);
+    });
+    setEditVacationAllowances(map);
+
+    setEditNotes(employee.notes || "");
+    setCardSaveError(null);
+  };
+
+  useEffect(() => {
+    resetEditFields();
+  }, [employee, vacationTypes]);
+
+  // Fetch Toggl workspace users if credentials exist and card is in edit mode
+  const [togglUsers, setTogglUsers] = useState<Array<{ id: number; name: string; email: string }>>([]);
+  useEffect(() => {
+    if (!isEditingCard || !hasTogglKey) return;
+    let isMounted = true;
+    fetch(`/api/time_tracking.php?action=fetch_workspace_users`, { credentials: "include" })
+      .then((res) => res.json())
+      .then((data) => {
+        if (!isMounted) return;
+        if (data.success && Array.isArray(data.data)) {
+          setTogglUsers(data.data);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, [isEditingCard, hasTogglKey]);
+
+  const handleStartEdit = () => {
+    setIsEditingCard(true);
+    setCardSaveError(null);
+    if (typeof window !== "undefined") {
+      const raw = window.location.hash;
+      const [path, query] = raw.split("?");
+      if (!path.endsWith("/edit")) {
+        const q = query ? `?${query}` : "";
+        window.location.hash = `${path}/edit${q}`;
+      }
+    }
+  };
+
+  const handleCancelCard = () => {
+    resetEditFields();
+    setIsEditingCard(false);
+    if (typeof window !== "undefined" && window.location.hash.includes("/edit")) {
+      const [path, query] = window.location.hash.split("?");
+      const cleanPath = path.replace(/\/edit\b/i, "");
+      const q = query ? `?${query}` : "";
+      window.location.hash = `${cleanPath}${q}`;
+    }
+  };
+
+  const handleSaveCard = () => {
+    if (!editName.trim()) {
+      setCardSaveError(t("Employee name is required", "Meno zamestnanca je povinné", "A munkatárs neve kötelező"));
+      return;
+    }
+    setIsSavingCard(true);
+    try {
+      const updated: Employee = {
+        ...employee,
+        name: editName.trim(),
+        role: editRole.trim() || undefined,
+        pin: editPin.trim() || null,
+        email: editEmail.trim() || null,
+        phone: editPhone.trim() || null,
+        isActive: editIsActive,
+        addressStreet: editStreet.trim() || null,
+        addressCity: editCity.trim() || null,
+        addressZip: editZip.trim() || null,
+        addressCountry: editCountry.trim() || null,
+        salaryType: editSalaryType,
+        salaryAmount: Number(editSalaryAmount) || 0,
+        salaryDueDay: editSalaryDueDay ? Number(editSalaryDueDay) : null,
+        timeTrackingUserId: editTimeTrackingUserId || null,
+        timeTrackingUserName: editTimeTrackingUserName || null,
+        autoExpense: editAutoExpense,
+        expenseCategoryId: editExpenseCategoryId || null,
+        vacationAllowances: editVacationAllowances,
+        notes: editNotes.trim() || null,
+        updatedAt: new Date().toISOString()
+      };
+
+      onUpdateEmployee(updated);
+      setIsEditingCard(false);
+
+      if (typeof window !== "undefined" && window.location.hash.includes("/edit")) {
+        const [path, query] = window.location.hash.split("?");
+        const cleanPath = path.replace(/\/edit\b/i, "");
+        const q = query ? `?${query}` : "";
+        window.location.hash = `${cleanPath}${q}`;
+      }
+    } finally {
+      setIsSavingCard(false);
+    }
+  };
+
   // Calendar dates matrix for vacation calendar tab
   const calendarGrid = useMemo(() => {
     const firstDay = new Date(calYear, calMonth - 1, 1);
@@ -418,158 +639,761 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* LEFT COLUMN: Profile Info & Contracts (4 cols) */}
         <div className="lg:col-span-4 space-y-6">
-          {/* Profile Card */}
-          <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 space-y-5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-start gap-3.5 min-w-0 flex-1">
-                <div className="w-14 h-14 rounded-2xl bg-[#c29b62]/15 border border-[#c29b62]/30 text-[#9e7638] dark:text-[#d4af7a] flex items-center justify-center font-bold text-xl shrink-0 shadow-sm">
-                  {employee.name
-                    .split(" ")
-                    .map((n) => n[0])
-                    .slice(0, 2)
-                    .join("")
-                    .toUpperCase()}
-                </div>
-                <div className="min-w-0 flex-1">
-                  <h2 className="text-lg font-bold text-slate-900 truncate">
-                    {employee.name}
-                  </h2>
-                  {employee.pin && (
-                    <p className="text-xs font-mono text-slate-500 mt-0.5">
-                      {t("PIN / RČ:", "Rodné číslo:", "Személyi szám:")} {employee.pin}
-                    </p>
-                  )}
-                  {employee.role && (
-                    <p className="text-xs text-slate-500 font-medium truncate mt-0.5">
-                      {employee.role}
-                    </p>
-                  )}
-                  <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#c29b62]/10 border border-[#c29b62]/20 text-[#9e7638] dark:text-[#d4af7a] text-xs font-semibold">
-                    <Coins className="w-3.5 h-3.5 text-[#c29b62]" />
-                    <span>
-                      {(employee.salaryAmount || 0).toLocaleString()} {systemCurrency} /{" "}
-                      {employee.salaryType === "hourly"
-                        ? t("hour", "hodina", "óra")
-                        : employee.salaryType === "daily"
-                        ? t("day", "deň", "nap")
-                        : t("month", "mesiac", "hónap")}
-                    </span>
+          {/* Profile Card (Display Mode or In-Place Edit Mode) */}
+          {isEditingCard ? (
+            /* IN-PLACE EDIT MODE */
+            <div className="glass-panel rounded-3xl border-2 border-[#c29b62]/40 bg-white/95 shadow-glass p-5 space-y-4 animate-in fade-in duration-200">
+              {/* Edit Mode Header */}
+              <div className="flex items-center justify-between gap-2 pb-3 border-b border-slate-200/80">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-[#c29b62]/15 border border-[#c29b62]/30 text-[#9e7638] flex items-center justify-center font-bold text-sm shrink-0">
+                    <Edit3 className="w-4 h-4 text-[#c29b62]" />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-xs font-bold text-slate-900 leading-tight truncate">
+                      {t("Edit Employee", "Upraviť zamestnanca", "Alkalmazott szerkesztése")}
+                    </h3>
+                    <p className="text-[10px] text-slate-400 truncate">{employee.name}</p>
                   </div>
                 </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleCancelCard}
+                    className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs font-bold transition cursor-pointer"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                    <span>{t("Cancel", "Zrušiť", "Mégse")}</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleSaveCard}
+                    disabled={isSavingCard}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white text-xs font-bold shadow-sm hover:shadow transition cursor-pointer disabled:opacity-50"
+                  >
+                    {isSavingCard ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                    <span>{t("Save", "Uložiť", "Mentés")}</span>
+                  </button>
+                </div>
               </div>
 
-              {/* Profile Edit button with pencil icon */}
-              <button
-                type="button"
-                onClick={() => (onEditEmployee ? onEditEmployee(employee) : setIsEditModalOpen(true))}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100/90 hover:bg-[#c29b62]/15 text-slate-600 hover:text-[#9e7638] dark:hover:text-[#d4af7a] border border-slate-200/80 hover:border-[#c29b62]/30 transition cursor-pointer shrink-0 shadow-sm group"
-                title={t("Edit Profile", "Upraviť profil", "Profil szerkesztése")}
-              >
-                <Edit3 className="w-3.5 h-3.5 text-[#c29b62] group-hover:scale-110 transition-transform" />
-                <span className="text-xs font-bold">{t("Edit", "Upraviť", "Szerkesztés")}</span>
-              </button>
+              {cardSaveError && (
+                <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 text-xs text-red-600 flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{cardSaveError}</span>
+                </div>
+              )}
+
+              <div className="space-y-4 max-h-[calc(100vh-280px)] overflow-y-auto pr-1">
+                {/* 1. Personal & Contact Information (Edit) */}
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between pb-1 border-b border-slate-100">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+                      <User className="w-3 h-3 text-[#c29b62]" />
+                      {t("Personal & Contact Information", "Osobné a kontaktné údaje", "Személyes és kapcsolat")}
+                    </span>
+                    <label className="flex items-center gap-1.5 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={editIsActive}
+                        onChange={(e) => setEditIsActive(e.target.checked)}
+                        className="w-3.5 h-3.5 accent-[#c29b62] rounded"
+                      />
+                      <span className="text-[11px] font-bold text-slate-700">{t("Active", "Aktívny", "Aktív")}</span>
+                    </label>
+                  </div>
+
+                  <div className="space-y-2 text-xs">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">
+                        {t("Full Name", "Celé meno", "Teljes név")} *
+                      </label>
+                      <input
+                        type="text"
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none"
+                        placeholder="Bc. Peter Varga"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">
+                          {t("Role / Position", "Pozícia", "Pozíció")}
+                        </label>
+                        <input
+                          type="text"
+                          value={editRole}
+                          onChange={(e) => setEditRole(e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none"
+                          placeholder="Developer"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">
+                          {t("PIN / RČ", "Rodné číslo", "Személyi szám")}
+                        </label>
+                        <input
+                          type="text"
+                          value={editPin}
+                          onChange={(e) => setEditPin(e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none font-mono"
+                          placeholder="950122/8104"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">
+                          {t("Email", "Email", "Email")}
+                        </label>
+                        <input
+                          type="email"
+                          value={editEmail}
+                          onChange={(e) => setEditEmail(e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none"
+                          placeholder="peter@cstudios.sk"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">
+                          {t("Phone", "Telefón", "Telefonszám")}
+                        </label>
+                        <input
+                          type="tel"
+                          value={editPhone}
+                          onChange={(e) => setEditPhone(e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none"
+                          placeholder="+421 9..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* 2. Vacation Quotas (Edit) */}
+                <div className="space-y-2 pt-2.5 border-t border-slate-100">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5 pb-1 border-b border-slate-100">
+                    <Calendar className="w-3 h-3 text-[#c29b62]" />
+                    {t("Vacation Quotas (Annual Days)", "Dovolenkové kvóty (ročné nároky v dňoch)", "Szabadság kvóták (éves napok)")}
+                  </span>
+
+                  <div className="grid grid-cols-2 gap-2">
+                    {vacationTypes.map((vt) => (
+                      <div key={vt.id} className="p-2 rounded-xl bg-slate-50 border border-slate-200/80 space-y-1">
+                        <label className="text-[10px] font-bold text-slate-700 flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: vt.color || "#c29b62" }} />
+                          <span className="truncate">{vt.name}</span>
+                        </label>
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="number"
+                            min="0"
+                            max="365"
+                            value={editVacationAllowances[vt.id] ?? vt.defaultAllowance ?? 0}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setEditVacationAllowances((prev) => ({ ...prev, [vt.id]: val }));
+                            }}
+                            className="w-full px-2 py-1 text-xs bg-white border border-slate-200 rounded-lg text-slate-800 font-mono font-bold focus:border-[#c29b62] focus:outline-none"
+                          />
+                          <span className="text-[10px] text-slate-400 font-medium shrink-0">{t("days", "dní", "nap")}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* 3. Permanent Residence & Address (Edit) */}
+                <div className="space-y-2 pt-2.5 border-t border-slate-100">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5 pb-1 border-b border-slate-100">
+                    <MapPin className="w-3 h-3 text-[#c29b62]" />
+                    {t("Permanent Residence & Address", "Trvalé bydlisko a adresa", "Állandó lakcím és cím")}
+                  </span>
+
+                  <div className="space-y-2 text-xs">
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">
+                        {t("Street & Number", "Ulica a číslo", "Utca és házszám")}
+                      </label>
+                      <input
+                        type="text"
+                        value={editStreet}
+                        onChange={(e) => setEditStreet(e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none"
+                        placeholder="Štefánikova 12"
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">
+                          {t("City", "Mesto", "Város")}
+                        </label>
+                        <input
+                          type="text"
+                          value={editCity}
+                          onChange={(e) => setEditCity(e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none"
+                          placeholder="Nitra"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">
+                          {t("ZIP Code", "PSČ", "Irányítószám")}
+                        </label>
+                        <input
+                          type="text"
+                          value={editZip}
+                          onChange={(e) => setEditZip(e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none font-mono"
+                          placeholder="949 01"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">
+                        {t("Country", "Krajina", "Ország")}
+                      </label>
+                      <input
+                        type="text"
+                        value={editCountry}
+                        onChange={(e) => setEditCountry(e.target.value)}
+                        className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none"
+                        placeholder="Slovakia"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* 4. Salary & Compensation Terms (Edit) */}
+                <div className="space-y-2 pt-2.5 border-t border-slate-100">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5 pb-1 border-b border-slate-100">
+                    <Coins className="w-3 h-3 text-[#c29b62]" />
+                    {t("Salary & Compensation Terms", "Mzdové a kompenzačné podmienky", "Bérezési feltételek")}
+                  </span>
+
+                  <div className="space-y-2 text-xs">
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">
+                          {t("Salary Amount", "Výška mzdy", "Bér összege")} ({systemCurrency})
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="50"
+                          value={editSalaryAmount}
+                          onChange={(e) => setEditSalaryAmount(e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none font-mono font-bold"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">
+                          {t("Period", "Perióda", "Időszak")}
+                        </label>
+                        <select
+                          value={editSalaryType}
+                          onChange={(e) => setEditSalaryType(e.target.value as any)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none font-medium"
+                        >
+                          <option value="monthly">{t("Monthly", "Mesačne", "Havonta")}</option>
+                          <option value="daily">{t("Daily", "Denne", "Naponta")}</option>
+                          <option value="hourly">{t("Hourly", "Hodinovo", "Óránként")}</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">
+                          {t("Salary Due Day", "Výplatný deň", "Kifizetési nap")}
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          max="31"
+                          value={editSalaryDueDay}
+                          onChange={(e) => setEditSalaryDueDay(e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none font-mono"
+                          placeholder={String(settings.salaryDueDay ?? 15)}
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">
+                          {t("Toggl User Link", "Prepojenie Toggl", "Toggl kapcsolat")}
+                        </label>
+                        {togglUsers.length > 0 ? (
+                          <select
+                            value={editTimeTrackingUserId}
+                            onChange={(e) => {
+                              const val = e.target.value;
+                              setEditTimeTrackingUserId(val);
+                              const found = togglUsers.find((u) => String(u.id) === val);
+                              if (found) {
+                                setEditTimeTrackingUserName(found.name || found.email);
+                              } else if (!val) {
+                                setEditTimeTrackingUserName("");
+                              }
+                            }}
+                            className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none truncate"
+                          >
+                            <option value="">{t("Not mapped", "Neprepojené", "Nincs összerendelve")}</option>
+                            {togglUsers.map((u) => (
+                              <option key={u.id} value={String(u.id)}>
+                                {u.name || u.email}
+                              </option>
+                            ))}
+                          </select>
+                        ) : (
+                          <input
+                            type="text"
+                            value={editTimeTrackingUserName || editTimeTrackingUserId}
+                            onChange={(e) => {
+                              setEditTimeTrackingUserName(e.target.value);
+                              setEditTimeTrackingUserId(e.target.value);
+                            }}
+                            className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none"
+                            placeholder={t("User ID or name", "ID alebo meno", "ID vagy név")}
+                          />
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={editAutoExpense}
+                          onChange={(e) => setEditAutoExpense(e.target.checked)}
+                          className="w-3.5 h-3.5 accent-[#c29b62] rounded"
+                        />
+                        <span className="text-[11px] font-semibold text-slate-700">
+                          {t("Auto-sync salary to financial expenses", "Auto výdavok do financií", "Auto kiadás szinkron")}
+                        </span>
+                      </label>
+                    </div>
+
+                    {financialCategories.length > 0 && (
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block mb-0.5">
+                          {t("Expense Category", "Kategória výdavku", "Kiadási kategória")}
+                        </label>
+                        <select
+                          value={editExpenseCategoryId}
+                          onChange={(e) => setEditExpenseCategoryId(e.target.value)}
+                          className="w-full px-2.5 py-1.5 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none"
+                        >
+                          <option value="">{t("Select Category...", "Vyberte kategóriu...", "Kategória kiválasztása...")}</option>
+                          {financialCategories.map((c) => (
+                            <option key={c.id} value={c.id}>
+                              {c.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* 5. Internal Notes & Observations (Edit) */}
+                <div className="space-y-1.5 pt-2.5 border-t border-slate-100">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5 pb-1 border-b border-slate-100">
+                    <FileText className="w-3 h-3 text-[#c29b62]" />
+                    {t("Internal Notes & Observations", "Interné poznámky a postrehy", "Belső feljegyzések")}
+                  </span>
+                  <textarea
+                    value={editNotes}
+                    onChange={(e) => setEditNotes(e.target.value)}
+                    rows={3}
+                    className="w-full p-2 text-xs bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none resize-none leading-relaxed"
+                    placeholder={t(
+                      "Internal notes, contract milestones, observations...",
+                      "Interné poznámky k zamestnancovi...",
+                      "Belső megjegyzések..."
+                    )}
+                  />
+                </div>
+              </div>
+
+              {/* Bottom Actions in Edit Mode */}
+              <div className="pt-3 border-t border-slate-100 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handleCancelCard}
+                  className="flex-1 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition cursor-pointer"
+                >
+                  {t("Cancel", "Zrušiť", "Mégse")}
+                </button>
+                <button
+                  type="button"
+                  onClick={handleSaveCard}
+                  disabled={isSavingCard}
+                  className="flex-[2] py-2 rounded-xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white text-xs font-bold shadow-md shadow-[#c29b62]/20 hover:shadow-lg transition cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  {isSavingCard ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+                  <span>{t("Save Changes", "Uložiť zmeny", "Módosítások mentése")}</span>
+                </button>
+              </div>
             </div>
+          ) : (
+            /* DISPLAY MODE (5 Sections + Header with Eye & Edit + Files Shortcut) */
+            <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 space-y-5">
+              {/* Header: Avatar, Name, Status, Eye Toggle & Edit Buttons */}
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3.5 min-w-0 flex-1">
+                  <div className="w-14 h-14 rounded-2xl bg-[#c29b62]/15 border border-[#c29b62]/30 text-[#9e7638] dark:text-[#d4af7a] flex items-center justify-center font-bold text-xl shrink-0 shadow-sm">
+                    {employee.name
+                      .split(" ")
+                      .map((n) => n[0])
+                      .slice(0, 2)
+                      .join("")
+                      .toUpperCase()}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h2 className="text-lg font-bold text-slate-900 truncate">
+                        {employee.name}
+                      </h2>
+                      <span
+                        className={`px-2 py-0.5 text-[10px] font-bold rounded-full ${
+                          employee.isActive !== false
+                            ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
+                            : "bg-slate-100 text-slate-500 border border-slate-200"
+                        }`}
+                      >
+                        {employee.isActive !== false ? t("Active", "Aktívny", "Aktív") : t("Inactive", "Neaktívny", "Inaktív")}
+                      </span>
+                    </div>
 
-            {/* Contact Details List */}
-            <div className="pt-4 border-t border-slate-100 space-y-3 text-xs">
-              {employee.email && (
-                <div className="flex items-center gap-2.5 text-slate-600">
-                  <Mail className="w-4 h-4 text-slate-400 shrink-0" />
-                  <a href={`mailto:${employee.email}`} className="hover:text-[#c29b62] truncate">
-                    {employee.email}
-                  </a>
+                    {employee.role && (
+                      <p className="text-xs text-slate-500 font-medium truncate mt-0.5">
+                        {employee.role}
+                      </p>
+                    )}
+
+                    {/* Salary badge pill */}
+                    <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#c29b62]/10 border border-[#c29b62]/20 text-[#9e7638] dark:text-[#d4af7a] text-xs font-semibold">
+                      <Coins className="w-3.5 h-3.5 text-[#c29b62]" />
+                      {isSensitiveHidden ? (
+                        <span className="font-mono tracking-widest text-slate-400 select-none">
+                          •••••• / {salaryTypeLabel}
+                        </span>
+                      ) : (
+                        <span>
+                          {(employee.salaryAmount || 0).toLocaleString()} {systemCurrency} / {salaryTypeLabel}
+                        </span>
+                      )}
+                    </div>
+                  </div>
                 </div>
-              )}
 
-              {employee.phone && (
-                <div className="flex items-center gap-2.5 text-slate-600">
-                  <Phone className="w-4 h-4 text-slate-400 shrink-0" />
-                  <a href={`tel:${employee.phone}`} className="hover:text-[#c29b62]">
-                    {employee.phone}
-                  </a>
+                {/* Header Action Buttons: Eye Toggle (Sensitive Data) & Edit Profile */}
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={toggleSensitiveHidden}
+                    className={`flex items-center gap-1 px-2.5 py-1.5 rounded-xl border transition cursor-pointer shrink-0 shadow-sm ${
+                      isSensitiveHidden
+                        ? "bg-amber-500/10 border-amber-500/30 text-amber-700 hover:bg-amber-500/20"
+                        : "bg-slate-100/90 hover:bg-[#c29b62]/15 text-slate-600 hover:text-[#9e7638] dark:hover:text-[#d4af7a] border-slate-200/80 hover:border-[#c29b62]/30"
+                    }`}
+                    title={
+                      isSensitiveHidden
+                        ? t("Show sensitive data (salary, vacations, notes)", "Zobraziť citlivé údaje", "Érzékeny adatok megjelenítése")
+                        : t("Hide sensitive data (salary, vacations, notes)", "Skryť citlivé údaje", "Érzékeny adatok elrejtése")
+                    }
+                  >
+                    {isSensitiveHidden ? (
+                      <>
+                        <EyeOff className="w-3.5 h-3.5 text-amber-600" />
+                        <span className="text-[11px] font-bold text-amber-700">{t("Hidden", "Skryté", "Rejtett")}</span>
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="w-3.5 h-3.5 text-slate-500" />
+                        <span className="text-[11px] font-bold">{t("Hide", "Skryť", "Elrejtés")}</span>
+                      </>
+                    )}
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={handleStartEdit}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100/90 hover:bg-[#c29b62]/15 text-slate-600 hover:text-[#9e7638] dark:hover:text-[#d4af7a] border border-slate-200/80 hover:border-[#c29b62]/30 transition cursor-pointer shrink-0 shadow-sm group"
+                    title={t("Edit Profile", "Upraviť profil", "Profil szerkesztése")}
+                  >
+                    <Edit3 className="w-3.5 h-3.5 text-[#c29b62] group-hover:scale-110 transition-transform" />
+                    <span className="text-xs font-bold">{t("Edit", "Upraviť", "Szerkesztés")}</span>
+                  </button>
                 </div>
-              )}
+              </div>
 
-              {(employee.addressStreet || employee.addressCity) && (
-                <div className="flex items-start gap-2.5 text-slate-600">
-                  <MapPin className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" />
-                  <span>
-                    {employee.addressStreet}
-                    {employee.addressCity ? `, ${employee.addressCity}` : ""}
-                    {employee.addressZip ? ` ${employee.addressZip}` : ""}
-                    {employee.addressCountry ? ` (${employee.addressCountry})` : ""}
+              {/* 1. PERSONAL & CONTACT INFORMATION */}
+              <div className="pt-4 border-t border-slate-100 space-y-2.5 text-xs">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                  <User className="w-3.5 h-3.5 text-[#c29b62]" />
+                  <span>{t("Personal & Contact Information", "Osobné a kontaktné údaje", "Személyes és kapcsolat adatok")}</span>
+                </div>
+
+                {employee.pin && (
+                  <div className="flex items-center justify-between pl-5">
+                    <span className="text-slate-400">{t("PIN / RČ", "Rodné číslo", "Személyi szám")}:</span>
+                    {isSensitiveHidden ? (
+                      <span className="font-mono text-slate-400 tracking-widest font-bold select-none">
+                        ••••••/••••
+                      </span>
+                    ) : (
+                      <span className="font-mono text-slate-800 font-semibold">{employee.pin}</span>
+                    )}
+                  </div>
+                )}
+
+                {employee.email && (
+                  <div className="flex items-center gap-2.5 text-slate-600 pl-5">
+                    <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <a href={`mailto:${employee.email}`} className="hover:text-[#c29b62] truncate">
+                      {employee.email}
+                    </a>
+                  </div>
+                )}
+
+                {employee.phone && (
+                  <div className="flex items-center gap-2.5 text-slate-600 pl-5">
+                    <Phone className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    <a href={`tel:${employee.phone}`} className="hover:text-[#c29b62]">
+                      {employee.phone}
+                    </a>
+                  </div>
+                )}
+
+                {!employee.pin && !employee.email && !employee.phone && (
+                  <p className="text-xs text-slate-400 italic pl-5">
+                    {t("No contact details specified", "Kontaktné údaje nezadané", "Nincsenek megadott elérhetőségek")}
+                  </p>
+                )}
+              </div>
+
+              {/* 2. VACATION QUOTAS - AND THEIR USAGE */}
+              <div className="pt-4 border-t border-slate-100 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                    <Calendar className="w-3.5 h-3.5 text-[#c29b62]" />
+                    <span>{t("Vacation Quotas & Usage", "Dovolenkové kvóty a čerpanie", "Szabadság kvóták és felhasználás")}</span>
+                  </div>
+                  <span className="text-[10px] font-mono font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-md">
+                    {calYear}
                   </span>
                 </div>
-              )}
-            </div>
 
-            {/* Compensation & Schedule Details */}
-            <div className="pt-4 border-t border-slate-100 space-y-2.5 text-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-400">{t("Salary Due Day", "Výplatný deň", "Kifizetési nap")}:</span>
-                <span className="font-semibold text-slate-800">
-                  {employee.salaryDueDay
-                    ? `${employee.salaryDueDay}. ${t("of month", "v mesiaci", "a hónapban")}`
-                    : `${settings.salaryDueDay ?? 15}. ${t("(default)", "(predvolený)", "(alapértelmezett)")}`}
-                </span>
+                <div className="space-y-2 pt-1">
+                  {vacationTypes.map((vt) => {
+                    const stats = vacationStats[vt.id] || {
+                      used: 0,
+                      allowance: employee.vacationAllowances?.[vt.id] ?? vt.defaultAllowance ?? 25,
+                      name: vt.name,
+                      color: vt.color || "#c29b62"
+                    };
+                    const allowance = stats.allowance || 0;
+                    const used = stats.used || 0;
+                    const remaining = Math.max(0, allowance - used);
+                    const percent = allowance > 0 ? Math.min(100, Math.round((used / allowance) * 100)) : 0;
+
+                    return (
+                      <div key={vt.id} className="p-2.5 rounded-xl bg-slate-50/70 border border-slate-200/60 space-y-1.5">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-semibold text-slate-700 flex items-center gap-1.5">
+                            <span
+                              className="w-2 h-2 rounded-full shrink-0"
+                              style={{ backgroundColor: vt.color || "#c29b62" }}
+                            />
+                            {vt.name}
+                          </span>
+                          <div className="flex items-center gap-2">
+                            {isSensitiveHidden ? (
+                              <span className="font-mono text-slate-400 tracking-widest text-[11px] select-none">
+                                •• / •• {t("days", "dní", "nap")}
+                              </span>
+                            ) : (
+                              <span className="font-mono text-slate-800 font-bold text-[11px]">
+                                {used} / {allowance} {t("days", "dní", "nap")}
+                              </span>
+                            )}
+                            {isSensitiveHidden ? (
+                              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-200/60 text-slate-500 select-none">
+                                ••
+                              </span>
+                            ) : (
+                              <span
+                                className={`text-[10px] font-bold px-1.5 py-0.5 rounded ${
+                                  remaining === 0
+                                    ? "bg-red-500/10 text-red-600 border border-red-500/20"
+                                    : "bg-[#c29b62]/10 text-[#9e7638] dark:text-[#d4af7a] border border-[#c29b62]/20"
+                                }`}
+                              >
+                                {remaining} {t("left", "zostáva", "maradt")}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Usage Progress Bar */}
+                        {isSensitiveHidden ? (
+                          <div className="w-full h-1.5 bg-slate-200/50 rounded-full" />
+                        ) : (
+                          <div className="w-full h-1.5 bg-slate-200/70 rounded-full overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all duration-300"
+                              style={{
+                                width: `${percent}%`,
+                                backgroundColor: vt.color || "#c29b62"
+                              }}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
 
-              <div className="flex items-center justify-between">
-                <span className="text-slate-400">{t("Time Tracking", "Meranie času", "Időkövetés")}:</span>
-                <span className="font-semibold text-slate-800 flex items-center gap-1.5">
-                  <Clock className="w-3.5 h-3.5 text-[#c29b62]" />
-                  {employee.timeTrackingUserName ||
-                    (employee.timeTrackingUserId ? `ID: ${employee.timeTrackingUserId}` : t("Not mapped", "Neprepojené", "Nincs összerendelve"))}
-                </span>
+              {/* 3. PERMANENT RESIDENCE & ADDRESS */}
+              <div className="pt-4 border-t border-slate-100 space-y-2">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  <MapPin className="w-3.5 h-3.5 text-[#c29b62]" />
+                  <span>{t("Permanent Residence & Address", "Trvalé bydlisko a adresa", "Állandó lakcím és cím")}</span>
+                </div>
+
+                {employee.addressStreet || employee.addressCity || employee.addressZip ? (
+                  <div className="text-xs text-slate-700 pl-5 space-y-0.5">
+                    {employee.addressStreet && <p className="font-medium text-slate-800">{employee.addressStreet}</p>}
+                    <p className="text-slate-600">
+                      {employee.addressZip ? `${employee.addressZip} ` : ""}
+                      {employee.addressCity || ""}
+                      {employee.addressCountry ? ` (${employee.addressCountry})` : ""}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="text-xs text-slate-400 italic pl-5">
+                    {t("Address not specified", "Adresa nezadaná", "Cím nincs megadva")}
+                  </p>
+                )}
               </div>
 
-              <div className="flex items-center justify-between">
-                <span className="text-slate-400">{t("Auto-Expense Sync", "Auto výdavok do financií", "Auto kiadás szinkron")}:</span>
-                <span
-                  className={`font-semibold ${
-                    employee.autoExpense ? "text-emerald-600" : "text-slate-400"
+              {/* 4. SALARY & COMPENSATION TERMS */}
+              <div className="pt-4 border-t border-slate-100 space-y-2.5 text-xs">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400 mb-1">
+                  <Coins className="w-3.5 h-3.5 text-[#c29b62]" />
+                  <span>{t("Salary & Compensation Terms", "Mzdové a kompenzačné podmienky", "Bérezési feltételek")}</span>
+                </div>
+
+                <div className="flex items-center justify-between pl-5">
+                  <span className="text-slate-400">{t("Base Rate", "Základná sadzba", "Alapbér")}:</span>
+                  {isSensitiveHidden ? (
+                    <span className="font-mono text-slate-400 tracking-widest font-bold select-none">
+                      •••••• / {salaryTypeLabel}
+                    </span>
+                  ) : (
+                    <span className="font-bold text-slate-800 font-mono">
+                      {(employee.salaryAmount || 0).toLocaleString()} {systemCurrency} / {salaryTypeLabel}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between pl-5">
+                  <span className="text-slate-400">{t("Salary Due Day", "Výplatný deň", "Kifizetési nap")}:</span>
+                  {isSensitiveHidden ? (
+                    <span className="font-mono text-slate-400 tracking-widest font-bold select-none">
+                      ••. {t("of month", "v mesiaci", "a hónapban")}
+                    </span>
+                  ) : (
+                    <span className="font-semibold text-slate-800">
+                      {employee.salaryDueDay
+                        ? `${employee.salaryDueDay}. ${t("of month", "v mesiaci", "a hónapban")}`
+                        : `${settings.salaryDueDay ?? 15}. ${t("(default)", "(predvolený)", "(alapértelmezett)")}`}
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between pl-5">
+                  <span className="text-slate-400">{t("Time Tracking", "Meranie času", "Időkövetés")}:</span>
+                  <span className="font-semibold text-slate-800 flex items-center gap-1.5 truncate max-w-[190px]">
+                    <Clock className="w-3.5 h-3.5 text-[#c29b62] shrink-0" />
+                    <span className="truncate">
+                      {employee.timeTrackingUserName ||
+                        (employee.timeTrackingUserId ? `ID: ${employee.timeTrackingUserId}` : t("Not mapped", "Neprepojené", "Nincs összerendelve"))}
+                    </span>
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between pl-5">
+                  <span className="text-slate-400">{t("Auto-Expense Sync", "Auto výdavok do financií", "Auto kiadás szinkron")}:</span>
+                  <span
+                    className={`font-semibold px-2 py-0.5 rounded-md text-[11px] ${
+                      employee.autoExpense ? "bg-emerald-500/10 text-emerald-600" : "bg-slate-100 text-slate-500"
+                    }`}
+                  >
+                    {employee.autoExpense ? t("Active", "Aktívny", "Aktív") : t("Disabled", "Vypnuté", "Kikapcsolva")}
+                  </span>
+                </div>
+              </div>
+
+              {/* 5. INTERNAL NOTES & OBSERVATIONS */}
+              <div className="pt-4 border-t border-slate-100 space-y-2">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  <FileText className="w-3.5 h-3.5 text-[#c29b62]" />
+                  <span>{t("Internal Notes & Observations", "Interné poznámky a postrehy", "Belső feljegyzések")}</span>
+                </div>
+
+                {isSensitiveHidden ? (
+                  <div className="space-y-1.5 py-1 select-none pl-5">
+                    <div className="font-mono text-xs text-slate-400/90 tracking-widest select-none break-all leading-relaxed">
+                      ••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••••
+                    </div>
+                    <div className="h-2 bg-slate-200/70 rounded-full w-4/5" />
+                    <div className="h-2 bg-slate-200/50 rounded-full w-3/5" />
+                  </div>
+                ) : employee.notes ? (
+                  <p className="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed pl-5">
+                    {employee.notes}
+                  </p>
+                ) : (
+                  <p className="text-xs text-slate-400 italic pl-5">
+                    {t("No notes recorded", "Žiadne poznámky", "Nincsenek feljegyzések")}
+                  </p>
+                )}
+              </div>
+
+              {/* Quick Link to Contracts & Documents */}
+              <div className="pt-4 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => handleTabClick("files")}
+                  className={`w-full flex items-center justify-between p-3 rounded-2xl border transition cursor-pointer ${
+                    activeTab === "files"
+                      ? "bg-[#c29b62]/15 border-[#c29b62]/40 text-[#9e7638] dark:text-[#d4af7a]"
+                      : "bg-slate-50/80 hover:bg-slate-100 border-slate-200/80 text-slate-700"
                   }`}
                 >
-                  {employee.autoExpense ? t("Active", "Aktívny", "Aktív") : t("Disabled", "Vypnuté", "Kikapcsolva")}
-                </span>
+                  <div className="flex items-center gap-2.5 text-xs font-bold">
+                    <FileCheck className="w-4 h-4 text-[#c29b62]" />
+                    <span>{t("Contracts & Files", "Pracovné zmluvy a súbory", "Szerződések és fájlok")}</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs font-bold">
+                    <span className="px-2 py-0.5 rounded-full bg-white border border-slate-200/80 text-slate-600 text-[11px]">
+                      {employee.files?.length || 0}
+                    </span>
+                    <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                  </div>
+                </button>
               </div>
             </div>
-
-            {employee.notes && (
-              <div className="pt-4 border-t border-slate-100">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-                  {t("Notes", "Poznámky", "Jegyzetek")}
-                </span>
-                <p className="text-xs text-slate-600 whitespace-pre-wrap leading-relaxed">
-                  {employee.notes}
-                </p>
-              </div>
-            )}
-
-            {/* Quick Link to Contracts & Documents */}
-            <div className="pt-4 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => handleTabClick("files")}
-                className={`w-full flex items-center justify-between p-3 rounded-2xl border transition cursor-pointer ${
-                  activeTab === "files"
-                    ? "bg-[#c29b62]/15 border-[#c29b62]/40 text-[#9e7638] dark:text-[#d4af7a]"
-                    : "bg-slate-50/80 hover:bg-slate-100 border-slate-200/80 text-slate-700"
-                }`}
-              >
-                <div className="flex items-center gap-2.5 text-xs font-bold">
-                  <FileCheck className="w-4 h-4 text-[#c29b62]" />
-                  <span>{t("Contracts & Files", "Pracovné zmluvy a súbory", "Szerződések és fájlok")}</span>
-                </div>
-                <div className="flex items-center gap-1.5 text-xs font-bold">
-                  <span className="px-2 py-0.5 rounded-full bg-white border border-slate-200/80 text-slate-600 text-[11px]">
-                    {employee.files?.length || 0}
-                  </span>
-                  <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-                </div>
-              </button>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* RIGHT COLUMN: 3 SUB-TABS (8 cols) */}
@@ -715,7 +1539,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                     )}
                   </p>
                   <button
-                    onClick={() => (onEditEmployee ? onEditEmployee(employee) : setIsEditModalOpen(true))}
+                    onClick={handleStartEdit}
                     className="px-4 py-2 text-xs font-semibold rounded-2xl bg-[#c29b62] text-white hover:bg-[#b08b53] transition shadow-md shadow-[#c29b62]/20 cursor-pointer"
                   >
                     {t("Link Toggl User", "Prepojiť používateľa", "Toggl felhasználó összerendelése")}
@@ -1352,22 +2176,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
         </div>
       </div>
 
-      {/* Edit Employee Profile Modal */}
-      {isEditModalOpen && (
-        <EmployeeFormModal
-          isOpen={isEditModalOpen}
-          onClose={() => setIsEditModalOpen(false)}
-          employee={employee}
-          onSave={(updated) => {
-            onUpdateEmployee(updated);
-            setIsEditModalOpen(false);
-          }}
-          settings={settings}
-          financialCategories={financialCategories}
-          systemLanguage={systemLanguage}
-          systemCurrency={systemCurrency}
-        />
-      )}
+
 
       {/* Vacation Request Modal */}
       {isVacationModalOpen && (

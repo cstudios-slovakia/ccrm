@@ -88,6 +88,7 @@ const parseEmployeesUrlState = (
   view: "list" | "detail" | "matrix" | "form" | "settings";
   employeeId: string | null;
   editEmployee: Employee | null;
+  isEditMode?: boolean;
 } => {
   const raw = typeof window !== "undefined" ? window.location.hash.replace(/^#/, "") : "";
   const [pathPart, queryPart] = raw.split("?");
@@ -122,16 +123,16 @@ const parseEmployeesUrlState = (
     return { view: "form", employeeId: null, editEmployee: null };
   }
 
-  // 5. Hash: #employees/edit?id=xxx or #employees/edit/<id> or #employees/<id>/edit
+  // 5. Hash: #employees/edit?id=xxx or #employees/edit/<id> or #employees/<id>/edit -> opens detail view with in-place card editing
   if (base === "employees" && sub === "edit") {
     const id = params.get("id") || parts[2] || null;
     const emp = findEmployeeByIdOrSlug(allEmployees, id);
-    return { view: "form", employeeId: emp ? emp.id : id, editEmployee: emp };
+    return { view: "detail", employeeId: emp ? emp.id : id, editEmployee: emp, isEditMode: true };
   }
-  if (base === "employees" && parts[2] && parts[2].toLowerCase() === "edit") {
+  if ((base === "employees" || base === "employee") && parts[2] && parts[2].toLowerCase() === "edit") {
     const id = parts[1];
     const emp = findEmployeeByIdOrSlug(allEmployees, id);
-    return { view: "form", employeeId: emp ? emp.id : id, editEmployee: emp };
+    return { view: "detail", employeeId: emp ? emp.id : id, editEmployee: emp, isEditMode: true };
   }
 
   // 6. Hash: #employees/detail?id=xxx or #employees?id=xxx
@@ -179,6 +180,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
   const [currentView, setCurrentView] = useState<"list" | "detail" | "matrix" | "form" | "settings">(initialUrlState.view);
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(initialUrlState.employeeId);
   const [employeeToEdit, setEmployeeToEdit] = useState<Employee | null>(initialUrlState.editEmployee);
+  const [isEditMode, setIsEditMode] = useState<boolean>(!!initialUrlState.isEditMode);
   const [confirmAction, confirmDialog] = useConfirmDialog();
 
   // Navigation helpers that update URL hash
@@ -212,6 +214,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
       setCurrentView(state.view);
       setSelectedEmployeeId(state.employeeId);
       setEmployeeToEdit(state.editEmployee);
+      setIsEditMode(!!state.isEditMode);
     };
 
     window.addEventListener("hashchange", handleHashChange);
@@ -430,6 +433,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             onBack={() => navigateToTab("list")}
             onUpdateEmployee={handleSaveEmployee}
             onEditEmployee={(emp) => navigateToEditEmployee(emp.id)}
+            initialEditMode={isEditMode}
             onSaveSalary={handleSaveSalary}
             onSaveVacation={handleSaveVacation}
             onDeleteVacation={handleDeleteVacation}
