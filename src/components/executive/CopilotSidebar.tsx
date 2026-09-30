@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import {
   RotateCcw,
   Sparkles,
@@ -6,7 +7,7 @@ import {
   Mic,
   MicOff,
   PhoneOff,
-  ChevronRight
+  X
 } from "lucide-react";
 import { BlobatarAvatar } from "../common/BlobatarAvatar";
 import { Markdown } from "../../utils/markdown";
@@ -56,7 +57,34 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
     }
     return DEFAULT_WIDTH;
   });
+  // Mobile detection (< 1024px)
+  const [isMobile, setIsMobile] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      return window.innerWidth < 1024;
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 1024);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
   const [isResizing, setIsResizing] = useState(false);
+
+  // Prevent background scrolling on mobile when Copilot is open
+  useEffect(() => {
+    if (isMobile && isOpen) {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = prevOverflow;
+      };
+    }
+  }, [isMobile, isOpen]);
+
 
   // Chat State
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -162,16 +190,16 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
     }
   }, [hasIntroduced]);
 
-  // Auto-focus input bar when opening chat
+  // Auto-focus input bar when opening chat (desktop only to prevent mobile keyboard layout jumps)
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    if (isOpen && !isVoiceMode) {
+    if (isOpen && !isVoiceMode && !isMobile) {
       const timer = setTimeout(() => {
         inputRef.current?.focus();
       }, 150);
       return () => clearTimeout(timer);
     }
-  }, [isOpen, isVoiceMode]);
+  }, [isOpen, isVoiceMode, isMobile]);
 
   // Fetch initial chat history on mount and ensure welcome message is present
   useEffect(() => {
@@ -482,6 +510,19 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
     setIsUserSpeaking(false);
     setUserAudioLevel(0);
   };
+
+  // Close on Escape key
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (isVoiceMode) cleanupVoiceCall();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, isVoiceMode, onClose]);
 
   // Start Realtime WebRTC Voice Call
   const startVoiceCall = async () => {
@@ -1014,48 +1055,52 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
 
   if (!isOpen) return null;
 
-  return (
+  const asideContent = (
     <aside
-      style={{ width: `${sidebarWidth}px` }}
-      className={`h-screen flex flex-col bg-white border-l border-slate-200/90 shadow-2xl relative z-[1000] shrink-0 min-w-[360px] transition-[width] duration-75 select-text ${
-        isResizing ? "cursor-ew-resize select-none" : ""
-      }`}
+      style={isMobile ? undefined : { width: `${sidebarWidth}px` }}
+      className={`flex flex-col bg-white border-slate-200/90 shadow-2xl select-text transition-[width] duration-75 ${
+        isMobile
+          ? "fixed inset-0 z-[25000] w-full h-[100dvh] max-w-full overflow-hidden border-0"
+          : "h-screen border-l relative z-[1000] shrink-0 min-w-[360px]"
+      } ${isResizing && !isMobile ? "cursor-ew-resize select-none" : ""}`}
       aria-label="AI Executive Copilot"
     >
-      {/* Left-edge Resize Drag Handle */}
-      <div
-        onPointerDown={handleResizePointerDown}
-        className="absolute top-0 left-0 -translate-x-1.5 w-3.5 h-full cursor-ew-resize hover:bg-purple-500/20 active:bg-purple-600/30 transition-colors z-50 flex items-center justify-center group"
-        title={t("Drag to resize sidebar (Min 360px)", "Potiahnutím zmeňte šírku (Min 360px)", "Húzással méretezhető (Min 360px)")}
-      >
-        <div className="w-1 h-8 rounded-full bg-slate-300 group-hover:bg-purple-600 transition-colors" />
-      </div>
+      {/* Left-edge Resize Drag Handle (Desktop only) */}
+      {!isMobile && (
+        <div
+          onPointerDown={handleResizePointerDown}
+          className="absolute top-0 left-0 -translate-x-1.5 w-3.5 h-full cursor-ew-resize hover:bg-purple-500/20 active:bg-purple-600/30 transition-colors z-50 flex items-center justify-center group"
+          title={t("Drag to resize sidebar (Min 360px)", "Potiahnutím zmeňte šírku (Min 360px)", "Húzással méretezhető (Min 360px)")}
+        >
+          <div className="w-1 h-8 rounded-full bg-slate-300 group-hover:bg-purple-600 transition-colors" />
+        </div>
+      )}
 
       {/* TOP HEADER */}
-      <div className="p-3.5 border-b border-slate-200/80 bg-gradient-to-r from-purple-50/70 via-indigo-50/40 to-white flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3 min-w-0">
+      <div className="p-3 sm:p-3.5 border-b border-slate-200/80 bg-gradient-to-r from-purple-50/70 via-indigo-50/40 to-white flex items-center justify-between shrink-0 gap-2">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
           <div className="relative shrink-0">
             <BlobatarAvatar
               name={`Executive Leader (${VERSION_CODENAME})`}
               roleColor="purple"
-              size={40}
+              size={isMobile ? 36 : 40}
               rounded="2xl"
               animate="always"
               expression={isAiSpeaking ? "happy" : isLoading ? "thinking" : "idle"}
             />
-            <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 ring-2 ring-white" />
+            <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 sm:h-3.5 sm:w-3.5 rounded-full bg-emerald-500 ring-2 ring-white" />
           </div>
 
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              <h3 className="font-heading font-extrabold text-xs text-slate-900 truncate">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
+              <h3 className="font-heading font-extrabold text-xs sm:text-sm text-slate-900 truncate">
                 Executive Copilot
               </h3>
-              <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded-full bg-purple-100 text-purple-700 border border-purple-200 uppercase tracking-wider">
+              <span className="text-[8.5px] sm:text-[9px] font-extrabold px-1.5 py-0.2 rounded-full bg-purple-100 text-purple-700 border border-purple-200 uppercase tracking-wider shrink-0">
                 {VERSION_CODENAME}
               </span>
             </div>
-            <p className="text-[9.5px] text-slate-500 font-semibold truncate flex items-center gap-1 mt-0.5" title={screenContext.summary}>
+            <p className="text-[9px] sm:text-[9.5px] text-slate-500 font-semibold truncate flex items-center gap-1 mt-0.5" title={screenContext.summary}>
               <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 shrink-0" />
               <span className="truncate">{screenContext.title}</span>
             </p>
@@ -1063,12 +1108,12 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
         </div>
 
         {/* Header Action Buttons */}
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
           {/* Talk / Voice Mode Toggle Button */}
           <button
             type="button"
             onClick={handleToggleVoice}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[10.5px] font-black transition-all cursor-pointer shadow-xs active:scale-95 ${
+            className={`flex items-center gap-1 sm:gap-1.5 px-2.5 py-1.5 rounded-xl text-[10px] sm:text-[10.5px] font-black transition-all cursor-pointer shadow-xs active:scale-95 ${
               isVoiceMode
                 ? "bg-rose-500 hover:bg-rose-600 text-white shadow-rose-500/25"
                 : "bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-purple-500/25"
@@ -1099,10 +1144,11 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
               if (isVoiceMode) cleanupVoiceCall();
               onClose();
             }}
-            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-all cursor-pointer"
+            className="p-1.5 sm:p-1.5 rounded-xl text-slate-500 hover:text-slate-900 bg-slate-100/90 hover:bg-slate-200 transition-all cursor-pointer active:scale-95 flex items-center justify-center border border-slate-200/80"
             title={t("Close Copilot", "Zavrieť copilot", "Copilot bezárása")}
+            aria-label={t("Close Copilot", "Zavrieť copilot", "Copilot bezárása")}
           >
-            <ChevronRight className="h-4 w-4" />
+            <X className="h-4 w-4 text-slate-600" />
           </button>
         </div>
       </div>
@@ -1350,33 +1396,33 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
               e.preventDefault();
               handleSendText();
             }}
-            className="p-3.5 sm:p-4 bg-white/95 backdrop-blur-md border-t-2 border-purple-200/90 shadow-[0_-12px_32px_rgba(124,58,237,0.12)] shrink-0 z-20"
+            className="p-2.5 sm:p-4 pb-[max(0.65rem,env(safe-area-inset-bottom))] bg-white/95 backdrop-blur-md border-t border-purple-200/90 shadow-[0_-12px_32px_rgba(124,58,237,0.12)] shrink-0 z-20"
           >
-            <div className="relative flex items-center bg-slate-50/90 hover:bg-slate-50 focus-within:bg-white rounded-2xl border-2 border-purple-400/90 hover:border-purple-500 focus-within:border-purple-600 focus-within:ring-4 focus-within:ring-purple-500/20 p-2 transition-all shadow-sm">
-              <Sparkles className="h-4 w-4 text-purple-600 ml-1.5 shrink-0 animate-pulse" />
+            <div className="relative flex items-center bg-slate-50/90 hover:bg-slate-50 focus-within:bg-white rounded-2xl border-2 border-purple-400/90 hover:border-purple-500 focus-within:border-purple-600 focus-within:ring-4 focus-within:ring-purple-500/20 p-1.5 sm:p-2 transition-all shadow-sm">
+              <Sparkles className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-purple-600 ml-1 sm:ml-1.5 shrink-0 animate-pulse" />
               <input
                 ref={inputRef}
                 type="text"
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 placeholder={t(
-                  `Ask ${VERSION_CODENAME} about ${screenContext.title}...`,
-                  `Opýtajte sa na ${screenContext.title}...`,
-                  `Kérdezzen a(z) ${screenContext.title} témában...`
+                  `Ask ${VERSION_CODENAME}...`,
+                  `Opýtajte sa ${VERSION_CODENAME}...`,
+                  `Kérdezzen: ${VERSION_CODENAME}...`
                 )}
                 disabled={isLoading}
-                className="flex-1 bg-transparent px-3 py-1.5 text-xs sm:text-sm text-slate-900 font-semibold placeholder:text-slate-400 placeholder:font-normal focus:outline-none disabled:opacity-50 min-w-0"
+                className="flex-1 bg-transparent px-2 sm:px-3 py-1 sm:py-1.5 text-xs sm:text-sm text-slate-900 font-semibold placeholder:text-slate-400 placeholder:font-normal focus:outline-none disabled:opacity-50 min-w-0"
               />
 
-              <div className="flex items-center gap-2 shrink-0 pr-1">
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 pr-0.5 sm:pr-1">
                 {/* Voice Call Quick Launch Button */}
                 <button
                   type="button"
                   onClick={startVoiceCall}
-                  className="h-9 px-3 rounded-xl bg-purple-100 hover:bg-purple-200/90 text-purple-800 hover:text-purple-950 font-bold border border-purple-300 flex items-center gap-1.5 text-xs transition-all shadow-2xs active:scale-95 cursor-pointer"
+                  className="h-8 sm:h-9 px-2 sm:px-3 rounded-xl bg-purple-100 hover:bg-purple-200/90 text-purple-800 hover:text-purple-950 font-bold border border-purple-300 flex items-center gap-1.5 text-xs transition-all shadow-2xs active:scale-95 cursor-pointer"
                   title={t("Start Voice Call", "Spustiť hlasový hovor", "Hanghívás indítása")}
                 >
-                  <Mic className="h-4 w-4 text-purple-700" />
+                  <Mic className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-purple-700" />
                   <span className="hidden sm:inline font-bold text-[11.5px]">{t("Talk", "Hovor", "Beszéd")}</span>
                 </button>
 
@@ -1384,24 +1430,24 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
                 <button
                   type="submit"
                   disabled={!inputText.trim() || isLoading}
-                  className="h-9 px-4 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-700 hover:to-indigo-800 disabled:opacity-30 disabled:cursor-not-allowed text-white flex items-center justify-center gap-1.5 text-xs font-black shadow-md shadow-purple-600/35 transition-all active:scale-95 cursor-pointer"
+                  className="h-8 sm:h-9 px-3 sm:px-4 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-700 hover:to-indigo-800 disabled:opacity-30 disabled:cursor-not-allowed text-white flex items-center justify-center gap-1 sm:gap-1.5 text-xs font-black shadow-md shadow-purple-600/35 transition-all active:scale-95 cursor-pointer"
                   title={t("Send Message", "Odoslať správu", "Üzenet küldése")}
                 >
                   <span>{t("Send", "Odoslať", "Küldés")}</span>
-                  <Send className="h-3.5 w-3.5" />
+                  <Send className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                 </button>
               </div>
             </div>
 
             {/* Grounding & Help Subtext */}
-            <div className="flex items-center justify-between px-1.5 pt-2 text-[10px] text-slate-400 font-medium">
-              <span className="flex items-center gap-1.5 truncate max-w-[70%]">
+            <div className="flex items-center justify-between px-1 pt-1.5 sm:pt-2 text-[9px] sm:text-[10px] text-slate-400 font-medium">
+              <span className="flex items-center gap-1.5 truncate max-w-[80%] sm:max-w-[70%]">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                 <span className="truncate">
                   {t("Grounded in:", "Kontext:", "Kontextus:")} <strong className="text-slate-700 font-semibold">{screenContext.title}</strong>
                 </span>
               </span>
-              <span className="text-[9.5px] text-slate-400 shrink-0">
+              <span className="hidden sm:inline text-[9.5px] text-slate-400 shrink-0">
                 ↵ {t("Enter to send", "Enter pre odoslanie", "Enter a küldéshez")}
               </span>
             </div>
@@ -1410,4 +1456,8 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
       )}
     </aside>
   );
+
+  return isMobile && typeof document !== "undefined"
+    ? createPortal(asideContent, document.body)
+    : asideContent;
 };
