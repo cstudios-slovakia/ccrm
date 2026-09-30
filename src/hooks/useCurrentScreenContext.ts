@@ -39,6 +39,23 @@ export function useCurrentScreenContext(activeTab: string, language: Language = 
       };
     }
 
+    // 2b. Employee Detail (#employees/<id> or #employee-<id>)
+    if (rawRoute.startsWith("employees/") || rawRoute.startsWith("employee-") || rawRoute.startsWith("employee/")) {
+      const empId = rawRoute.startsWith("employees/")
+        ? route.slice(10)
+        : rawRoute.startsWith("employee/")
+        ? route.slice(9)
+        : route.slice(9);
+      const subTab = params.get("tab") || "overview";
+      return {
+        route,
+        category: "employee",
+        title: `Employee: ${decodeURIComponent(empId)}`,
+        detail: `Section: ${subTab}`,
+        summary: `The user is viewing the detail profile of employee "${decodeURIComponent(empId)}" (Section: ${subTab}), including logged hours, salary records, leave requests, and employee documents.`
+      };
+    }
+
     // 3. Main Views
     switch (rawRoute) {
       case "sai":

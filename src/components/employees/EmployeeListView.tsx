@@ -400,9 +400,16 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                             {initials}
                           </div>
                           <div className="min-w-0">
-                            <span className="font-heading font-bold text-slate-900 block group-hover:text-[#c29b62] transition truncate text-sm">
+                            <a
+                              href={`#employees/${encodeURIComponent(emp.id)}`}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                onSelectEmployee(emp.id);
+                              }}
+                              className="font-heading font-bold text-slate-900 block group-hover:text-[#c29b62] transition truncate text-sm"
+                            >
                               {emp.name}
-                            </span>
+                            </a>
                             <div className="flex items-center gap-2 mt-0.5">
                               {emp.role && (
                                 <span className="text-[11px] font-medium text-slate-500 truncate block">
@@ -534,9 +541,16 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                         {initials}
                       </div>
                       <div className="min-w-0">
-                        <h3 className="font-heading font-bold text-sm text-slate-900 group-hover:text-[#c29b62] transition truncate">
+                        <a
+                          href={`#employees/${encodeURIComponent(emp.id)}`}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            onSelectEmployee(emp.id);
+                          }}
+                          className="font-heading font-bold text-sm text-slate-900 group-hover:text-[#c29b62] transition truncate block"
+                        >
                           {emp.name}
-                        </h3>
+                        </a>
                         {emp.role ? (
                           <span className="text-[11px] font-medium text-slate-500 truncate block">
                             {emp.role}

@@ -4,7 +4,8 @@ import {
   Coins,
   Sparkles,
   Settings as SettingsIcon,
-  ChevronRight
+  ChevronRight,
+  Loader2
 } from "lucide-react";
 import type {
   Employee,
@@ -44,6 +45,42 @@ interface EmployeesViewProps {
   financialCategories: FinancialCategory[];
 }
 
+// Helper to resolve an employee by ID, case-insensitive ID, name, or name slug
+export const findEmployeeByIdOrSlug = (
+  allEmployees: Employee[],
+  rawIdentifier: string | null | undefined
+): Employee | null => {
+  if (!rawIdentifier || !allEmployees.length) return null;
+  const decoded = decodeURIComponent(rawIdentifier).trim().toLowerCase();
+  if (!decoded) return null;
+
+  // 1. Exact ID or case-insensitive ID
+  const byId = allEmployees.find(
+    (e) => e.id === rawIdentifier || e.id.toLowerCase() === decoded
+  );
+  if (byId) return byId;
+
+  // Helper to generate a clean URL slug from name
+  const slugify = (text: string) =>
+    text
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-|-$/g, "");
+
+  // 2. Slug match (e.g. "peter-kovac" matches "Peter Kováč")
+  const targetSlug = slugify(decoded);
+  const bySlug = allEmployees.find((e) => slugify(e.name) === targetSlug);
+  if (bySlug) return bySlug;
+
+  // 3. Name match (case-insensitive)
+  const byName = allEmployees.find((e) => e.name.toLowerCase() === decoded);
+  if (byName) return byName;
+
+  return null;
+};
+
 // Helper to parse view & parameters from URL hash
 const parseEmployeesUrlState = (
   allEmployees: Employee[]
@@ -54,45 +91,67 @@ const parseEmployeesUrlState = (
 } => {
   const raw = typeof window !== "undefined" ? window.location.hash.replace(/^#/, "") : "";
   const [pathPart, queryPart] = raw.split("?");
-  const parts = (pathPart || "").split("/");
+  const parts = (pathPart || "").split("/").filter(Boolean);
   const base = (parts[0] || "").toLowerCase();
   const sub = (parts[1] || "").toLowerCase();
   const params = new URLSearchParams(queryPart || "");
 
-  // Hash: #salaries or #employees/salaries or #employees/matrix
+  // 1. #employee-<idOrSlug> (e.g. #employee-emp_1 or #employee-peter-kovac)
+  if (base.startsWith("employee-")) {
+    const rawId = parts[0].slice(9);
+    const emp = findEmployeeByIdOrSlug(allEmployees, rawId);
+    return {
+      view: "detail",
+      employeeId: emp ? emp.id : rawId,
+      editEmployee: null
+    };
+  }
+
+  // 2. Hash: #salaries or #employees/salaries or #employees/matrix
   if (base === "salaries" || (base === "employees" && (sub === "salaries" || sub === "matrix" || sub === "mzdy" || sub === "berek"))) {
     return { view: "matrix", employeeId: null, editEmployee: null };
   }
 
-  // Hash: #employees/settings
+  // 3. Hash: #employees/settings
   if (base === "employees" && (sub === "settings" || sub === "nastavenia" || sub === "beallitasok")) {
     return { view: "settings", employeeId: null, editEmployee: null };
   }
 
-  // Hash: #employees/new or #employees/create or #employees/add
+  // 4. Hash: #employees/new or #employees/create or #employees/add
   if (base === "employees" && (sub === "new" || sub === "create" || sub === "add")) {
     return { view: "form", employeeId: null, editEmployee: null };
   }
 
-  // Hash: #employees/edit?id=xxx
+  // 5. Hash: #employees/edit?id=xxx or #employees/edit/<id> or #employees/<id>/edit
   if (base === "employees" && sub === "edit") {
     const id = params.get("id") || parts[2] || null;
-    const emp = id ? allEmployees.find((e) => e.id === id) || null : null;
-    return { view: "form", employeeId: id, editEmployee: emp };
+    const emp = findEmployeeByIdOrSlug(allEmployees, id);
+    return { view: "form", employeeId: emp ? emp.id : id, editEmployee: emp };
+  }
+  if (base === "employees" && parts[2] && parts[2].toLowerCase() === "edit") {
+    const id = parts[1];
+    const emp = findEmployeeByIdOrSlug(allEmployees, id);
+    return { view: "form", employeeId: emp ? emp.id : id, editEmployee: emp };
   }
 
-  // Hash: #employees/detail?id=xxx or #employees?id=xxx
+  // 6. Hash: #employees/detail?id=xxx or #employees?id=xxx
   const queryId = params.get("id");
   if (base === "employees" && (sub === "detail" || queryId)) {
     const id = queryId || parts[2] || null;
-    return { view: id ? "detail" : "list", employeeId: id, editEmployee: null };
+    const emp = findEmployeeByIdOrSlug(allEmployees, id);
+    return { view: id ? "detail" : "list", employeeId: emp ? emp.id : id, editEmployee: null };
   }
 
-  // Hash: #employees/<empId>
-  if (base === "employees" && sub && sub !== "directory" && sub !== "list") {
-    const emp = allEmployees.find((e) => e.id === sub || e.id.toLowerCase() === sub);
-    if (emp) {
-      return { view: "detail", employeeId: emp.id, editEmployee: null };
+  // 7. Direct employee route: #employees/<idOrSlug> or #employee/<idOrSlug>
+  if ((base === "employees" || base === "employee") && parts[1]) {
+    const rawId = parts[1];
+    if (rawId !== "directory" && rawId !== "list") {
+      const emp = findEmployeeByIdOrSlug(allEmployees, rawId);
+      return {
+        view: "detail",
+        employeeId: emp ? emp.id : rawId,
+        editEmployee: null
+      };
     }
   }
 
@@ -133,8 +192,9 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
     }
   };
 
-  const navigateToEmployeeDetail = (empId: string) => {
-    window.location.hash = `employees/detail?id=${encodeURIComponent(empId)}`;
+  const navigateToEmployeeDetail = (empId: string, subTab?: string) => {
+    const tabSuffix = subTab ? `?tab=${encodeURIComponent(subTab)}` : "";
+    window.location.hash = `employees/${encodeURIComponent(empId)}${tabSuffix}`;
   };
 
   const navigateToAddEmployee = () => {
@@ -142,7 +202,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
   };
 
   const navigateToEditEmployee = (empId: string) => {
-    window.location.hash = `employees/edit?id=${encodeURIComponent(empId)}`;
+    window.location.hash = `employees/${encodeURIComponent(empId)}/edit`;
   };
 
   // Synchronize view state with URL hash (supports browser back/forward and deep links)
@@ -170,10 +230,10 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
     return employeeSettings || DEFAULT_MOCK_SETTINGS;
   }, [employeeSettings]);
 
-  // Selected Employee object
+  // Selected Employee object (matches ID or slug)
   const selectedEmployee = useMemo(() => {
     if (!selectedEmployeeId) return null;
-    return employees.find((e) => e.id === selectedEmployeeId) || null;
+    return findEmployeeByIdOrSlug(employees, selectedEmployeeId);
   }, [employees, selectedEmployeeId]);
 
   // Handle Seed Mock Data
@@ -376,6 +436,44 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             systemLanguage={systemLanguage}
             systemCurrency={systemCurrency}
           />
+        )}
+
+        {currentView === "detail" && !selectedEmployee && (
+          <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-12 text-center space-y-4 animate-fade-in">
+            {employees.length === 0 ? (
+              <div className="flex flex-col items-center gap-3">
+                <Loader2 className="w-8 h-8 animate-spin text-[#c29b62]" />
+                <p className="text-sm font-medium text-slate-500">
+                  {t("Loading employee profile...", "Načítavam profil zamestnanca...", "Alkalmazotti profil betöltése...")}
+                </p>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center gap-4 max-w-md mx-auto">
+                <div className="w-14 h-14 rounded-3xl bg-amber-500/10 border border-amber-500/20 text-amber-600 flex items-center justify-center font-bold text-xl">
+                  !
+                </div>
+                <div>
+                  <h3 className="text-base font-heading font-bold text-slate-900">
+                    {t("Employee Not Found", "Zamestnanec sa nenašiel", "Az alkalmazott nem található")}
+                  </h3>
+                  <p className="text-xs text-slate-500 mt-1">
+                    {t(
+                      "The requested employee does not exist or may have been removed.",
+                      "Požadovaný zamestnanec neexistuje alebo bol odstránený.",
+                      "A keresett alkalmazott nem létezik vagy törölve lett."
+                    )}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigateToTab("list")}
+                  className="px-4 py-2 rounded-2xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white text-xs font-heading font-bold shadow-sm hover:shadow transition cursor-pointer"
+                >
+                  {t("Back to Directory", "Späť do zoznamu", "Vissza a listához")}
+                </button>
+              </div>
+            )}
+          </div>
         )}
 
         {currentView === "matrix" && (

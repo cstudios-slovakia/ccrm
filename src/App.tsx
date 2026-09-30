@@ -420,7 +420,7 @@ function App() {
 
     const resolvedBase = aliasMap[hashLower] || hashLower;
 
-    if (resolvedBase.startsWith("client-") || resolvedBase.startsWith("lead-") || resolvedBase.startsWith("user-") || resolvedBase.startsWith("ue_") || resolvedBase.startsWith("dash_") || resolvedBase.startsWith("settings") || resolvedBase.startsWith("warehouse") || resolvedBase.startsWith("financial") || resolvedBase.startsWith("invoices") || resolvedBase.startsWith("sai") || resolvedBase.startsWith("automation") || resolvedBase.startsWith("employees")) {
+    if (resolvedBase.startsWith("client-") || resolvedBase.startsWith("lead-") || resolvedBase.startsWith("user-") || resolvedBase.startsWith("employee-") || resolvedBase.startsWith("ue_") || resolvedBase.startsWith("dash_") || resolvedBase.startsWith("settings") || resolvedBase.startsWith("warehouse") || resolvedBase.startsWith("financial") || resolvedBase.startsWith("invoices") || resolvedBase.startsWith("sai") || resolvedBase.startsWith("automation") || resolvedBase.startsWith("employees")) {
       // An alias maps to its canonical tab; anything else keeps its original case.
       const route = (aliasMap[hashLower] || baseRaw) + subPath;
       return queryRaw ? `${route}?${queryRaw}` : route;
@@ -2877,6 +2877,26 @@ ${log.payload || ''}
           />
         );
       }
+    }
+
+    if (activeRoute.startsWith("employee-")) {
+      return (
+        <EmployeesView
+          access={access.module("employees")}
+          systemLanguage={userLanguage}
+          systemCurrency={currencyCode}
+          currentUser={activeUser}
+          employees={employees}
+          setEmployees={updateEmployeesAndSync}
+          salaries={employeeSalaries}
+          setSalaries={updateEmployeeSalariesAndSync}
+          vacations={employeeVacations}
+          setVacations={updateEmployeeVacationsAndSync}
+          employeeSettings={employeeSettings}
+          setEmployeeSettings={updateEmployeeSettingsAndSync}
+          financialCategories={financialCategories}
+        />
+      );
     }
 
     if (activeRoute.startsWith("client-")) {

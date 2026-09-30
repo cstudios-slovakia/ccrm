@@ -242,16 +242,19 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
                       {/* Employee Fixed Name Column */}
                       <td className="py-3 px-4 sticky left-0 z-10 bg-white group-hover:bg-slate-50/90 border-r border-slate-200 transition">
                         <div className="flex items-center justify-between">
-                          <button
-                            type="button"
-                            onClick={() => onSelectEmployee && onSelectEmployee(emp.id)}
-                            className="text-left font-semibold text-slate-900 hover:text-[#c29b62] transition truncate cursor-pointer"
+                          <a
+                            href={`#employees/${encodeURIComponent(emp.id)}`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              onSelectEmployee && onSelectEmployee(emp.id);
+                            }}
+                            className="text-left font-semibold text-slate-900 hover:text-[#c29b62] transition truncate cursor-pointer block"
                           >
                             <span className="block truncate">{emp.name}</span>
                             <span className="text-[10px] font-normal text-slate-400 block">
                               {emp.pin || `${emp.salaryAmount} ${systemCurrency}/${emp.salaryType === "hourly" ? "h" : emp.salaryType === "daily" ? "d" : "m"}`}
                             </span>
-                          </button>
+                          </a>
                         </div>
                       </td>
 
