@@ -40,6 +40,7 @@ interface EmployeeDetailViewProps {
   financialCategories: FinancialCategory[];
   onBack: () => void;
   onUpdateEmployee: (updated: Employee) => void;
+  onEditEmployee?: (employee: Employee) => void;
   onSaveSalary: (salary: EmployeeSalary) => void;
   onSaveVacation: (vacation: EmployeeVacation) => void;
   onDeleteVacation: (vacationId: string) => void;
@@ -56,6 +57,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
   financialCategories,
   onBack,
   onUpdateEmployee,
+  onEditEmployee,
   onSaveSalary: _onSaveSalary,
   onSaveVacation,
   onDeleteVacation,
@@ -338,8 +340,8 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
         </div>
 
         <button
-          onClick={() => setIsEditModalOpen(true)}
-          className="flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-2xl bg-[#c29b62] text-white hover:bg-[#b08b53] transition shadow-md shadow-[#c29b62]/20"
+          onClick={() => (onEditEmployee ? onEditEmployee(employee) : setIsEditModalOpen(true))}
+          className="flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-2xl bg-[#c29b62] text-white hover:bg-[#b08b53] transition shadow-md shadow-[#c29b62]/20 cursor-pointer"
         >
           <Edit3 className="w-3.5 h-3.5" />
           <span>{t("Edit Profile", "Upraviť profil", "Profil szerkesztése")}</span>
@@ -649,8 +651,8 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                     )}
                   </p>
                   <button
-                    onClick={() => setIsEditModalOpen(true)}
-                    className="px-4 py-2 text-xs font-semibold rounded-2xl bg-[#c29b62] text-white hover:bg-[#b08b53] transition shadow-md shadow-[#c29b62]/20"
+                    onClick={() => (onEditEmployee ? onEditEmployee(employee) : setIsEditModalOpen(true))}
+                    className="px-4 py-2 text-xs font-semibold rounded-2xl bg-[#c29b62] text-white hover:bg-[#b08b53] transition shadow-md shadow-[#c29b62]/20 cursor-pointer"
                   >
                     {t("Link Toggl User", "Prepojiť používateľa", "Toggl felhasználó összerendelése")}
                   </button>

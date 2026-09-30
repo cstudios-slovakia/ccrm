@@ -24,7 +24,7 @@ import {
 import { EmployeeListView } from "./EmployeeListView";
 import { EmployeeDetailView } from "./EmployeeDetailView";
 import { SalariesMatrixView } from "./SalariesMatrixView";
-import { EmployeeFormModal } from "./EmployeeFormModal";
+import { EmployeeFormScreen } from "./EmployeeFormScreen";
 import { EmployeeSettingsModal } from "./EmployeeSettingsModal";
 import { useConfirmDialog } from "../ui/ConfirmDialog";
 
@@ -59,12 +59,11 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
   setEmployeeSettings,
   financialCategories = []
 }) => {
-  // Navigation inside Employees Module
-  const [currentView, setCurrentView] = useState<"list" | "detail" | "matrix">("list");
+  // Navigation inside Employees Module: list, detail, matrix, or dedicated form screen
+  const [currentView, setCurrentView] = useState<"list" | "detail" | "matrix" | "form">("list");
   const [selectedEmployeeId, setSelectedEmployeeId] = useState<string | null>(null);
 
-  // Modals state
-  const [isAddModalOpen, setIsAddModalOpen] = useState<boolean>(false);
+  // Form & Modals state
   const [employeeToEdit, setEmployeeToEdit] = useState<Employee | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [confirmAction, confirmDialog] = useConfirmDialog();
@@ -178,78 +177,80 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
 
   return (
     <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
-      {/* Top Module Sub-Navigation Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/60 pb-3">
-        {/* Sub-view switcher tabs */}
-        <div className="flex items-center gap-2">
-          <div className="glass-panel p-1 rounded-2xl flex items-center gap-1.5 border border-white/60 bg-white/95 shadow-glass">
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedEmployeeId(null);
-                setCurrentView("list");
-              }}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-heading font-bold transition-all cursor-pointer ${
-                currentView === "list"
-                  ? "bg-[#c29b62] text-white shadow-md shadow-[#c29b62]/25"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
-              }`}
-            >
-              <Users className="w-3.5 h-3.5" />
-              <span>{t("Employees Directory", "Zoznam zamestnancov", "Munkatársak négyzete")}</span>
-            </button>
+      {/* Top Module Sub-Navigation Bar (hidden when in full-screen form) */}
+      {currentView !== "form" && (
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/60 pb-3">
+          {/* Sub-view switcher tabs */}
+          <div className="flex items-center gap-2">
+            <div className="glass-panel p-1 rounded-2xl flex items-center gap-1.5 border border-white/60 bg-white/95 shadow-glass">
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedEmployeeId(null);
+                  setCurrentView("list");
+                }}
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-heading font-bold transition-all cursor-pointer ${
+                  currentView === "list"
+                    ? "bg-[#c29b62] text-white shadow-md shadow-[#c29b62]/25"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>{t("Employees Directory", "Zoznam zamestnancov", "Munkatársak négyzete")}</span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                setSelectedEmployeeId(null);
-                setCurrentView("matrix");
-              }}
-              className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-heading font-bold transition-all cursor-pointer ${
-                currentView === "matrix"
-                  ? "bg-[#c29b62] text-white shadow-md shadow-[#c29b62]/25"
-                  : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
-              }`}
-            >
-              <Coins className="w-3.5 h-3.5" />
-              <span>{t("Salaries Matrix", "Matica miezd", "Bérmátrix")}</span>
-            </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedEmployeeId(null);
+                  setCurrentView("matrix");
+                }}
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-heading font-bold transition-all cursor-pointer ${
+                  currentView === "matrix"
+                    ? "bg-[#c29b62] text-white shadow-md shadow-[#c29b62]/25"
+                    : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
+                }`}
+              >
+                <Coins className="w-3.5 h-3.5" />
+                <span>{t("Salaries Matrix", "Matica miezd", "Bérmátrix")}</span>
+              </button>
+            </div>
+
+            {currentView === "detail" && selectedEmployee && (
+              <div className="flex items-center gap-2 pl-2">
+                <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+                <span className="text-xs font-heading font-bold text-[#b58b4c]">
+                  {selectedEmployee.name}
+                </span>
+              </div>
+            )}
           </div>
 
-          {currentView === "detail" && selectedEmployee && (
-            <div className="flex items-center gap-2 pl-2">
-              <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-              <span className="text-xs font-heading font-bold text-[#b58b4c]">
-                {selectedEmployee.name}
-              </span>
-            </div>
-          )}
-        </div>
+          {/* Quick Toolbar (Demo Seed if empty, Settings) */}
+          <div className="flex items-center gap-2">
+            {employees.length === 0 && (
+              <button
+                type="button"
+                onClick={handleSeedMockData}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 text-xs font-bold hover:bg-amber-500/20 transition cursor-pointer"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                <span>{t("Load Demo Staff", "Vzorové dáta", "Minta adatok")}</span>
+              </button>
+            )}
 
-        {/* Quick Toolbar (Demo Seed if empty, Settings) */}
-        <div className="flex items-center gap-2">
-          {employees.length === 0 && (
             <button
               type="button"
-              onClick={handleSeedMockData}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 text-xs font-bold hover:bg-amber-500/20 transition cursor-pointer"
+              onClick={() => setIsSettingsOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl glass-panel border border-white/60 bg-white/95 shadow-glass text-xs font-bold text-slate-600 hover:text-slate-900 transition cursor-pointer"
+              title={t("Module Settings", "Nastavenia modulu", "Modul beállítások")}
             >
-              <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-              <span>{t("Load Demo Staff", "Vzorové dáta", "Minta adatok")}</span>
+              <SettingsIcon className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">{t("Settings", "Nastavenia", "Beállítások")}</span>
             </button>
-          )}
-
-          <button
-            type="button"
-            onClick={() => setIsSettingsOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl glass-panel border border-white/60 bg-white/95 shadow-glass text-xs font-bold text-slate-600 hover:text-slate-900 transition cursor-pointer"
-            title={t("Module Settings", "Nastavenia modulu", "Modul beállítások")}
-          >
-            <SettingsIcon className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">{t("Settings", "Nastavenia", "Beállítások")}</span>
-          </button>
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Main Content Area */}
       <div>
@@ -265,11 +266,11 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             }}
             onAddEmployee={() => {
               setEmployeeToEdit(null);
-              setIsAddModalOpen(true);
+              setCurrentView("form");
             }}
             onEditEmployee={(emp) => {
               setEmployeeToEdit(emp);
-              setIsAddModalOpen(true);
+              setCurrentView("form");
             }}
             onDeleteEmployee={handleDeleteEmployee}
             onOpenSettings={() => setIsSettingsOpen(true)}
@@ -293,6 +294,10 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
               setCurrentView("list");
             }}
             onUpdateEmployee={handleSaveEmployee}
+            onEditEmployee={(emp) => {
+              setEmployeeToEdit(emp);
+              setCurrentView("form");
+            }}
             onSaveSalary={handleSaveSalary}
             onSaveVacation={handleSaveVacation}
             onDeleteVacation={handleDeleteVacation}
@@ -315,28 +320,31 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             }}
           />
         )}
-      </div>
 
-      {/* Add / Edit Employee Modal */}
-      {isAddModalOpen && (
-        <EmployeeFormModal
-          isOpen={isAddModalOpen}
-          onClose={() => {
-            setIsAddModalOpen(false);
-            setEmployeeToEdit(null);
-          }}
-          employee={employeeToEdit}
-          onSave={(emp) => {
-            handleSaveEmployee(emp);
-            setIsAddModalOpen(false);
-            setEmployeeToEdit(null);
-          }}
-          settings={resolvedSettings}
-          financialCategories={financialCategories}
-          systemLanguage={systemLanguage}
-          systemCurrency={systemCurrency}
-        />
-      )}
+        {currentView === "form" && (
+          <EmployeeFormScreen
+            employee={employeeToEdit}
+            settings={resolvedSettings}
+            financialCategories={financialCategories}
+            systemLanguage={systemLanguage}
+            systemCurrency={systemCurrency}
+            onSave={(emp) => {
+              handleSaveEmployee(emp);
+              setSelectedEmployeeId(emp.id);
+              setCurrentView("detail");
+              setEmployeeToEdit(null);
+            }}
+            onCancel={() => {
+              if (employeeToEdit && selectedEmployeeId) {
+                setCurrentView("detail");
+              } else {
+                setCurrentView("list");
+              }
+              setEmployeeToEdit(null);
+            }}
+          />
+        )}
+      </div>
 
       {/* Global Module Settings Modal */}
       {isSettingsOpen && (
