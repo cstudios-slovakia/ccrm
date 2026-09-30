@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
+import { AnimatePresence, motion } from "framer-motion";
 import {
   Heart,
   X,
@@ -117,26 +118,45 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
     }
   };
 
-  if (!isOpen || typeof document === "undefined") {
+  if (typeof document === "undefined") {
     return null;
   }
 
   return createPortal(
-    <div className="fixed inset-0 z-50 pointer-events-auto">
-      {/* Backdrop scrim */}
-      <div
-        className="fixed inset-0 top-[57px] sm:top-[65px] bg-slate-950/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
-        onClick={onClose}
-        aria-hidden="true"
-      />
+    <AnimatePresence>
+      {isOpen && (
+        <motion.div
+          key="favorites-drawer-root"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.22 }}
+          className="fixed inset-0 z-50 pointer-events-auto"
+        >
+          {/* Backdrop scrim */}
+          <div
+            className="fixed inset-0 top-[57px] sm:top-[65px] bg-slate-950/60 backdrop-blur-xs"
+            onClick={onClose}
+            aria-hidden="true"
+          />
 
-      {/* Top Roll-Down Card / Drawer with rounded corners and margins */}
-      <div
-        role="dialog"
-        aria-modal="true"
-        aria-label={t("Favorites Drawer", "Panel obľúbených položiek", "Kedvencek panel")}
-        className="fixed top-[62px] sm:top-[72px] inset-x-3 sm:inset-x-6 lg:inset-x-8 max-w-7xl mx-auto z-50 rounded-2xl sm:rounded-3xl bg-white/95 backdrop-blur-2xl border border-slate-200/80 shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-top-4 fade-in duration-300 max-h-[calc(100vh-85px)] sm:max-h-[calc(100vh-100px)]"
-      >
+          {/* Top Roll-Down Card / Drawer with rounded corners and margins */}
+          <motion.div
+            key="favorites-card"
+            role="dialog"
+            aria-modal="true"
+            aria-label={t("Favorites Drawer", "Panel obľúbených položiek", "Kedvencek panel")}
+            initial={{ opacity: 0, y: -120, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -120, scale: 0.98 }}
+            transition={{
+              type: "spring",
+              damping: 28,
+              stiffness: 300,
+              mass: 0.8,
+            }}
+            className="fixed top-[62px] sm:top-[72px] inset-x-3 sm:inset-x-6 lg:inset-x-8 max-w-7xl mx-auto z-50 rounded-2xl sm:rounded-3xl bg-white/95 backdrop-blur-2xl border border-slate-200/80 shadow-2xl flex flex-col overflow-hidden max-h-[calc(100vh-85px)] sm:max-h-[calc(100vh-100px)]"
+          >
         {/* Top Control Bar */}
         <div className="px-4 sm:px-7 py-3.5 sm:py-4 border-b border-slate-200/60 flex flex-col md:flex-row md:items-center justify-between gap-3.5 shrink-0 bg-slate-50/70">
           {/* Title & Count */}
@@ -398,8 +418,10 @@ export const FavoritesDrawer: React.FC<FavoritesDrawerProps> = ({
             </div>
           )}
         </div>
-      </div>
-    </div>,
-    document.body
-  );
+      </motion.div>
+    </motion.div>
+  )}
+</AnimatePresence>,
+document.body
+);
 };
