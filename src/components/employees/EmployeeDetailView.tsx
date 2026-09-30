@@ -370,14 +370,6 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
             <span className="text-xs text-slate-400">• ID: {employee.id}</span>
           </div>
         </div>
-
-        <button
-          onClick={() => (onEditEmployee ? onEditEmployee(employee) : setIsEditModalOpen(true))}
-          className="flex items-center gap-2 px-4 py-2 text-xs font-semibold rounded-2xl bg-[#c29b62] text-white hover:bg-[#b08b53] transition shadow-md shadow-[#c29b62]/20 cursor-pointer"
-        >
-          <Edit3 className="w-3.5 h-3.5" />
-          <span>{t("Edit Profile", "Upraviť profil", "Profil szerkesztése")}</span>
-        </button>
       </div>
 
       {/* Main Split Layout: Left Profile & Documents, Right 3 Sub-Tabs */}
@@ -386,36 +378,54 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
         <div className="lg:col-span-4 space-y-6">
           {/* Profile Card */}
           <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 space-y-5">
-            <div className="flex items-start gap-4">
-              <div className="w-14 h-14 rounded-2xl bg-[#c29b62]/15 border border-[#c29b62]/30 text-[#9e7638] dark:text-[#d4af7a] flex items-center justify-center font-bold text-xl shrink-0 shadow-sm">
-                {employee.name
-                  .split(" ")
-                  .map((n) => n[0])
-                  .slice(0, 2)
-                  .join("")
-                  .toUpperCase()}
-              </div>
-              <div className="min-w-0 flex-1">
-                <h2 className="text-lg font-bold text-slate-900 truncate">
-                  {employee.name}
-                </h2>
-                {employee.pin && (
-                  <p className="text-xs font-mono text-slate-500 mt-0.5">
-                    {t("PIN / RČ:", "Rodné číslo:", "Személyi szám:")} {employee.pin}
-                  </p>
-                )}
-                <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#c29b62]/10 border border-[#c29b62]/20 text-[#9e7638] dark:text-[#d4af7a] text-xs font-semibold">
-                  <Coins className="w-3.5 h-3.5 text-[#c29b62]" />
-                  <span>
-                    {(employee.salaryAmount || 0).toLocaleString()} {systemCurrency} /{" "}
-                    {employee.salaryType === "hourly"
-                      ? t("hour", "hodina", "óra")
-                      : employee.salaryType === "daily"
-                      ? t("day", "deň", "nap")
-                      : t("month", "mesiac", "hónap")}
-                  </span>
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-start gap-3.5 min-w-0 flex-1">
+                <div className="w-14 h-14 rounded-2xl bg-[#c29b62]/15 border border-[#c29b62]/30 text-[#9e7638] dark:text-[#d4af7a] flex items-center justify-center font-bold text-xl shrink-0 shadow-sm">
+                  {employee.name
+                    .split(" ")
+                    .map((n) => n[0])
+                    .slice(0, 2)
+                    .join("")
+                    .toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-lg font-bold text-slate-900 truncate">
+                    {employee.name}
+                  </h2>
+                  {employee.pin && (
+                    <p className="text-xs font-mono text-slate-500 mt-0.5">
+                      {t("PIN / RČ:", "Rodné číslo:", "Személyi szám:")} {employee.pin}
+                    </p>
+                  )}
+                  {employee.role && (
+                    <p className="text-xs text-slate-500 font-medium truncate mt-0.5">
+                      {employee.role}
+                    </p>
+                  )}
+                  <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#c29b62]/10 border border-[#c29b62]/20 text-[#9e7638] dark:text-[#d4af7a] text-xs font-semibold">
+                    <Coins className="w-3.5 h-3.5 text-[#c29b62]" />
+                    <span>
+                      {(employee.salaryAmount || 0).toLocaleString()} {systemCurrency} /{" "}
+                      {employee.salaryType === "hourly"
+                        ? t("hour", "hodina", "óra")
+                        : employee.salaryType === "daily"
+                        ? t("day", "deň", "nap")
+                        : t("month", "mesiac", "hónap")}
+                    </span>
+                  </div>
                 </div>
               </div>
+
+              {/* Profile Edit button with pencil icon */}
+              <button
+                type="button"
+                onClick={() => (onEditEmployee ? onEditEmployee(employee) : setIsEditModalOpen(true))}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100/90 hover:bg-[#c29b62]/15 text-slate-600 hover:text-[#9e7638] dark:hover:text-[#d4af7a] border border-slate-200/80 hover:border-[#c29b62]/30 transition cursor-pointer shrink-0 shadow-sm group"
+                title={t("Edit Profile", "Upraviť profil", "Profil szerkesztése")}
+              >
+                <Edit3 className="w-3.5 h-3.5 text-[#c29b62] group-hover:scale-110 transition-transform" />
+                <span className="text-xs font-bold">{t("Edit", "Upraviť", "Szerkesztés")}</span>
+              </button>
             </div>
 
             {/* Contact Details List */}
