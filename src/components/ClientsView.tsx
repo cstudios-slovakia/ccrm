@@ -948,7 +948,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
    * unified Client Profile entities. It accumulates financial values, groups timeline activities,
    * compiles corporate registers, and sorts events chronologically (newest first).
    */
-  const clientProfiles = useMemo(() => {
+  const allClientProfiles = useMemo(() => {
     const profilesMap: Record<string, {
       name: string;
       city: string;
@@ -1092,17 +1092,21 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       profile.timeline.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
     });
 
-    // A profile in the Clients registry must either have an explicit client record
-    // (id starts with 'client-') or a confirmed positive adjustment. Un-won pipeline
-    // leads belong strictly to the Sales Pipeline (#leads).
-    return Object.values(profilesMap).filter(profile => {
+    return Object.values(profilesMap);
+  }, [leads, leadSources]);
+
+  // A profile in the Clients registry must either have an explicit client record
+  // (id starts with 'client-') or a confirmed positive adjustment. Un-won pipeline
+  // leads belong strictly to the Sales Pipeline (#leads).
+  const clientProfiles = useMemo(() => {
+    return allClientProfiles.filter(profile => {
       const hasClientRecord = profile.associatedLeads.some(l => (l.id || "").startsWith("client-"));
       const hasAdjustment = (Number(profile.adjustment) || 0) > 0;
       return hasClientRecord || hasAdjustment;
     });
-  }, [leads, leadSources]);
+  }, [allClientProfiles]);
 
-  // Find active client details based on URL deep routing (resilient matching)
+  // Find active client details based on URL deep routing (resilient matching across all client profiles)
   const activeClient = useMemo(() => {
     if (!initialSelectedClient) return null;
     const rawLookup = decodeURIComponent(initialSelectedClient.split("?")[0]).trim();
@@ -1110,26 +1114,26 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     const lookupLower = rawLookup.toLowerCase();
 
     // 1. Exact match (case-insensitive)
-    const exact = clientProfiles.find(c => c.name.trim().toLowerCase() === lookupLower);
+    const exact = allClientProfiles.find(c => c.name.trim().toLowerCase() === lookupLower);
     if (exact) return exact;
 
     // 2. Normalized match (strip punctuation, dots, commas, underscores, dashes)
     const cleanLookup = lookupLower.replace(/[,.\-_]/g, " ").replace(/\s+/g, " ").trim();
-    const cleanMatch = clientProfiles.find(c => {
+    const cleanMatch = allClientProfiles.find(c => {
       const cClean = c.name.toLowerCase().replace(/[,.\-_]/g, " ").replace(/\s+/g, " ").trim();
       return cClean === cleanLookup;
     });
     if (cleanMatch) return cleanMatch;
 
     // 3. Prefix or inclusion match (e.g. "Cstudios" matches "Cstudios, s.r.o.")
-    const fuzzyMatch = clientProfiles.find(c => {
+    const fuzzyMatch = allClientProfiles.find(c => {
       const cLower = c.name.toLowerCase();
       return cLower.startsWith(lookupLower) || lookupLower.startsWith(cLower) || cLower.includes(lookupLower) || lookupLower.includes(cLower);
     });
     if (fuzzyMatch) return fuzzyMatch;
 
     // 4. Match by companyId, taxId, or associated lead ID
-    const idMatch = clientProfiles.find(c => 
+    const idMatch = allClientProfiles.find(c => 
       (c.companyId && c.companyId === rawLookup) || 
       (c.taxId && c.taxId === rawLookup) ||
       c.associatedLeads.some(l => l.id === rawLookup)
@@ -1137,35 +1141,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     if (idMatch) return idMatch;
 
     return null;
-  }, [clientProfiles, initialSelectedClient]);
-
-  // Fallback: If not found in clientProfiles (e.g. contact is an active sales lead, or saved from an older favorite),
-  // search the leads list so the user is never stuck at a dead-end 404.
-  const matchingLeadForClient = useMemo(() => {
-    if (!initialSelectedClient || activeClient) return null;
-    const rawLookup = decodeURIComponent(initialSelectedClient.split("?")[0]).trim();
-    if (!rawLookup) return null;
-    const lookupLower = rawLookup.toLowerCase();
-    const cleanLookup = lookupLower.replace(/[,.\-_]/g, " ").replace(/\s+/g, " ").trim();
-
-    return (
-      leads.find(l => (l.name || "").trim().toLowerCase() === lookupLower) ||
-      leads.find(l => (l.name || "").toLowerCase().replace(/[,.\-_]/g, " ").replace(/\s+/g, " ").trim() === cleanLookup) ||
-      leads.find(l => l.id === rawLookup || l.id === `lead-${rawLookup}` || (rawLookup.startsWith("lead-") && l.id === rawLookup.replace(/^lead-/, ""))) ||
-      leads.find(l => {
-        const lName = (l.name || "").toLowerCase();
-        return lName.length > 3 && (lName.includes(lookupLower) || lookupLower.includes(lName));
-      }) ||
-      null
-    );
-  }, [initialSelectedClient, activeClient, leads]);
-
-  // Seamless auto-redirect when a matching lead is found
-  useEffect(() => {
-    if (!activeClient && matchingLeadForClient) {
-      window.location.hash = `leads/${matchingLeadForClient.id}`;
-    }
-  }, [activeClient, matchingLeadForClient]);
+  }, [allClientProfiles, initialSelectedClient]);
 
   // RegisterUZ dynamically loaded statement list states
   const [registryStatements, setRegistryStatements] = useState<any[]>([]);
@@ -2924,38 +2900,6 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   // ----------------------------------------------------
   if (initialSelectedClient) {
     if (!activeClient) {
-      if (matchingLeadForClient) {
-        return (
-          <div className="p-8 glass-panel rounded-[28px] border-2 border-amber-400 bg-white shadow-glass text-center space-y-4 animate-fade-in">
-            <div className="text-4xl text-amber-500 animate-pulse">💼</div>
-            <h2 className="text-xl font-heading font-black text-slate-900 uppercase tracking-wide">
-              {t("Redirecting to Lead Record...", "Presmerovanie na záznam leadu...", "Átirányítás a lead rekordra...")}
-            </h2>
-            <p className="text-xs text-slate-600 font-semibold max-w-lg mx-auto">
-              {t(
-                `'${matchingLeadForClient.name}' is currently tracked in the Sales Pipeline. Opening lead details now.`,
-                `'${matchingLeadForClient.name}' je momentálne evidovaný v pipeline leadov. Otváram detail leadu.`,
-                `'${matchingLeadForClient.name}' jelenleg az értékesítési leadek között található. Megnyitás folyamatban.`
-              )}
-            </p>
-            <div className="flex items-center justify-center gap-3 pt-2">
-              <button
-                onClick={() => { window.location.hash = `leads/${matchingLeadForClient.id}`; }}
-                className="px-6 py-3 bg-amber-500 hover:bg-amber-600 text-slate-950 font-black rounded-2xl text-xs uppercase tracking-wider transition-all active:scale-95 shadow-md flex items-center gap-2 cursor-pointer"
-              >
-                {t("Open Lead Details", "Otvoriť detail leadu", "Lead megnyitása")}
-              </button>
-              <button
-                onClick={() => { window.location.hash = "clients"; }}
-                className="px-6 py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-2xl text-xs uppercase tracking-wider transition-all active:scale-95 cursor-pointer"
-              >
-                {t("Back to Clients List", "Späť na zoznam klientov", "Vissza az ügyféllistához")}
-              </button>
-            </div>
-          </div>
-        );
-      }
-
       return (
         <div className="p-8 glass-panel rounded-[28px] border-2 border-red-400 bg-white shadow-glass text-center space-y-4">
           <div className="text-4xl text-rose-600 animate-bounce">⚠️</div>
