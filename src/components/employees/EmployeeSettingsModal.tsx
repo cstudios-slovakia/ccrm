@@ -15,6 +15,8 @@ import {
   Briefcase
 } from "lucide-react";
 import type { EmployeeSettings, FinancialCategory, SalaryTypeConfig, VacationTypeConfig } from "../../types";
+import { ColorPicker } from "../ui/ColorPicker";
+import { nextDiscreetColor } from "../../utils/color";
 
 interface EmployeeSettingsModalProps {
   isOpen: boolean;
@@ -148,9 +150,15 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
 
   const handleAddVacationType = () => {
     const newId = `vac_${Date.now()}`;
+    const usedColors = vacationTypes.map((v) => v.color).filter(Boolean);
     setVacationTypes([
       ...vacationTypes,
-      { id: newId, name: t("New Leave Type", "Nový typ voľna", "Új szabadságtípus"), defaultAllowance: 0, color: "#64748b" }
+      {
+        id: newId,
+        name: t("New Leave Type", "Nový typ voľna", "Új szabadságtípus"),
+        defaultAllowance: 0,
+        color: nextDiscreetColor(usedColors)
+      }
     ]);
   };
 
@@ -442,15 +450,15 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
                     className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-2xl bg-white border border-slate-200 shadow-sm"
                   >
                     <div className="flex items-center gap-2 flex-1">
-                      <input
-                        type="color"
+                      <ColorPicker
+                        variant="pill"
                         value={vt.color || "#c29b62"}
-                        onChange={(e) => {
+                        fallback="#c29b62"
+                        onChange={(color) => {
                           const updated = [...vacationTypes];
-                          updated[idx] = { ...updated[idx], color: e.target.value };
+                          updated[idx] = { ...updated[idx], color };
                           setVacationTypes(updated);
                         }}
-                        className="w-7 h-7 rounded-lg cursor-pointer border-0 bg-transparent p-0"
                         title={t("Pick color", "Vybrať farbu", "Szín kiválasztása")}
                       />
                       <input

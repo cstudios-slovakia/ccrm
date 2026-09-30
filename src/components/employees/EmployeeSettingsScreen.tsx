@@ -18,6 +18,8 @@ import {
   ChevronRight
 } from "lucide-react";
 import type { EmployeeSettings, FinancialCategory, SalaryTypeConfig, VacationTypeConfig } from "../../types";
+import { ColorPicker } from "../ui/ColorPicker";
+import { nextDiscreetColor } from "../../utils/color";
 
 interface EmployeeSettingsScreenProps {
   settings: EmployeeSettings;
@@ -197,9 +199,15 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
 
   const handleAddVacationType = () => {
     const newId = `vac_${Date.now()}`;
+    const usedColors = vacationTypes.map((v) => v.color).filter(Boolean);
     setVacationTypes([
       ...vacationTypes,
-      { id: newId, name: t("New Leave Type", "Nový typ voľna", "Új szabadságtípus"), defaultAllowance: 0, color: "#64748b" }
+      {
+        id: newId,
+        name: t("New Leave Type", "Nový typ voľna", "Új szabadságtípus"),
+        defaultAllowance: 0,
+        color: nextDiscreetColor(usedColors)
+      }
     ]);
   };
 
@@ -580,15 +588,15 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
                   className="flex items-center gap-3 p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 hover:bg-slate-100/60 transition shadow-sm"
                 >
                   <div className="flex items-center gap-2 flex-1 min-w-0">
-                    <input
-                      type="color"
+                    <ColorPicker
+                      variant="pill"
                       value={vt.color || "#c29b62"}
-                      onChange={(e) => {
+                      fallback="#c29b62"
+                      onChange={(color) => {
                         const updated = [...vacationTypes];
-                        updated[idx] = { ...updated[idx], color: e.target.value };
+                        updated[idx] = { ...updated[idx], color };
                         setVacationTypes(updated);
                       }}
-                      className="w-8 h-8 rounded-xl cursor-pointer border border-slate-200 bg-white p-0.5 shadow-sm shrink-0"
                       title={t("Pick color", "Vybrať farbu", "Szín kiválasztása")}
                     />
                     <input

@@ -8,6 +8,42 @@ export const COLOR_PRESETS = [
 ] as const;
 
 /**
+ * Curated palette of discreet, muted, and sophisticated tones.
+ * Ideal for leave/absence types, project tags, and executive badges where
+ * neon or overly saturated primary colors would be jarring.
+ */
+export const DISCREET_COLOR_PRESETS = [
+  // Row 1: Warm Gold, Amber, Terracotta, Coral & Earth tones
+  "#c29b62", "#b58b4c", "#d4a373", "#e0a96d", "#c86d51", "#d9826c", "#a67c52", "#8c6239",
+  // Row 2: Soft Rose, Blush, Mauve, Vintage Purple & Plum tones
+  "#f28482", "#b5757d", "#c08497", "#9e6b75", "#826a9b", "#7b6d8d", "#6d597a", "#5c5065",
+  // Row 3: Olive, Sage, Eucalyptus, Forest, Slate Ocean & Charcoal tones
+  "#789262", "#8da399", "#52796f", "#3d8b7a", "#4a7c9f", "#5c6b9c", "#64748b", "#475569",
+] as const;
+
+/**
+ * The next discreet colour for a newly created item: the first discreet preset none of `used` has,
+ * else the one used least.
+ */
+export function nextDiscreetColor(used: readonly (string | null | undefined)[]): string {
+  const counts = new Map<string, number>();
+  used.forEach((color) => {
+    const hex = normalizeHex(color);
+    if (hex) counts.set(hex, (counts.get(hex) ?? 0) + 1);
+  });
+  let best: string = DISCREET_COLOR_PRESETS[0];
+  let bestCount = Infinity;
+  for (const hex of DISCREET_COLOR_PRESETS) {
+    const count = counts.get(hex) ?? 0;
+    if (count < bestCount) {
+      best = hex;
+      bestCount = count;
+    }
+  }
+  return best;
+}
+
+/**
  * The order new main categories are coloured in — all picker presets, sequenced
  * so neighbours differ in hue, which keeps the first few categories distinct.
  */
