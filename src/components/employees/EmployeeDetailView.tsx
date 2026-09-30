@@ -12,7 +12,6 @@ import {
   Download,
   Trash2,
   Edit3,
-  CheckCircle2,
   AlertCircle,
   ChevronLeft,
   ChevronRight,
@@ -35,6 +34,7 @@ import type {
 } from "../../types";
 import { VacationRequestModal } from "./VacationRequestModal";
 import { SalaryCellDrawer } from "./SalaryCellDrawer";
+import { EmployeeTimesheetSummary, type TimesheetHoursData } from "./EmployeeTimesheetSummary";
 
 interface EmployeeDetailViewProps {
   employee: Employee;
@@ -146,12 +146,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
 
   // Toggl hours data state
   const [loadingHours, setLoadingHours] = useState<boolean>(false);
-  const [hoursData, setHoursData] = useState<{
-    totalHours: number;
-    weekly: Record<string, { weekNum: number; hours: number; startDate: string; endDate: string }>;
-    daily: Record<string, number>;
-    projects: Record<string, number>;
-  } | null>(null);
+  const [hoursData, setHoursData] = useState<TimesheetHoursData | null>(null);
   const [hoursError, setHoursError] = useState<string | null>(null);
 
   // Calendar month state for vacation tab
@@ -1465,194 +1460,38 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
 
           {/* TAB 1: WORKED HOURS (TOGGL) */}
           {hasTogglKey && activeTab === "hours" && (
-            <div className="space-y-6 animate-in fade-in duration-150">
-              {/* Month / Year Filter Header */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass">
-                <div className="flex items-center gap-2">
-                  <div className="flex items-center gap-1 bg-slate-100 p-1 rounded-xl">
-                    <button
-                      onClick={() => {
-                        if (togglMonth === 1) {
-                          setTogglMonth(12);
-                          setTogglYear((y) => y - 1);
-                        } else {
-                          setTogglMonth((m) => m - 1);
-                        }
-                      }}
-                      className="p-1 rounded-lg text-slate-500 hover:text-slate-900 transition"
-                    >
-                      <ChevronLeft className="w-4 h-4" />
-                    </button>
-                    <span className="px-3 text-xs font-bold text-slate-800">
-                      {monthNames[togglMonth - 1]} {togglYear}
-                    </span>
-                    <button
-                      onClick={() => {
-                        if (togglMonth === 12) {
-                          setTogglMonth(1);
-                          setTogglYear((y) => y + 1);
-                        } else {
-                          setTogglMonth((m) => m + 1);
-                        }
-                      }}
-                      className="p-1 rounded-lg text-slate-500 hover:text-slate-900 transition"
-                    >
-                      <ChevronRight className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Status indicator */}
-                <div className="flex items-center gap-2 text-xs">
-                  {loadingHours ? (
-                    <div className="flex items-center gap-1.5 text-slate-500">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin text-[#c29b62]" />
-                      <span>{t("Fetching from Toggl...", "Sťahujem z Toggl...", "Letöltés a Toggl-ből...")}</span>
-                    </div>
-                  ) : employee.timeTrackingUserId ? (
-                    <div className="flex items-center gap-1.5 text-emerald-600 font-medium">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>
-                        {t("Connected", "Prepojené s Toggl", "Kapcsolódva")}: {employee.timeTrackingUserName || employee.timeTrackingUserId}
-                      </span>
-                    </div>
-                  ) : (
-                    <div className="flex items-center gap-1.5 text-amber-600 font-medium">
-                      <AlertCircle className="w-3.5 h-3.5" />
-                      <span>{t("No Toggl user mapped", "Chýba priradený Toggl používateľ", "Nincs hozzárendelt Toggl fiók")}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* If no user mapped or error */}
-              {!employee.timeTrackingUserId ? (
-                <div className="p-8 text-center glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-3">
-                  <Clock className="w-10 h-10 text-slate-300 mx-auto" />
-                  <h4 className="text-sm font-bold text-slate-800">
-                    {t("Toggl Time Tracking Not Linked", "Toggl meranie času nie je prepojené", "A Toggl időkövetés nincs összerendelve")}
-                  </h4>
-                  <p className="text-xs text-slate-500 max-w-md mx-auto">
-                    {t(
-                      "To automatically view worked hours for this employee, edit their profile and link their Toggl Track account from the dropdown.",
-                      "Pre zobrazenie odpracovaných hodín prepojte tohto zamestnanca s jeho účtom v Toggl Track.",
-                      "Az órák megtekintéséhez rendelje hozzá az alkalmazottat a Toggl Track fiókjához."
-                    )}
-                  </p>
-                  <button
-                    onClick={handleStartEdit}
-                    className="px-4 py-2 text-xs font-semibold rounded-2xl bg-[#c29b62] text-white hover:bg-[#b08b53] transition shadow-md shadow-[#c29b62]/20 cursor-pointer"
-                  >
-                    {t("Link Toggl User", "Prepojiť používateľa", "Toggl felhasználó összerendelése")}
-                  </button>
-                </div>
-              ) : hoursError ? (
-                <div className="p-6 bg-red-500/10 rounded-2xl border border-red-500/20 text-xs text-red-600 space-y-1">
-                  <p className="font-semibold">{t("Failed to load Toggl hours", "Nepodarilo sa načítať hodiny z Toggl", "Nem sikerült betölteni az órákat")}</p>
-                  <p>{hoursError}</p>
-                </div>
-              ) : (
-                <div className="space-y-6">
-                  {/* Hours KPI Cards */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                    <div className="p-5 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass flex items-center justify-between">
-                      <div>
-                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 block">
-                          {t("Total Worked Hours", "Celkovo odpracované", "Összes ledolgozott óra")}
-                        </span>
-                        <span className="text-2xl font-bold font-mono text-slate-900 mt-1 block">
-                          {(hoursData?.totalHours || 0).toFixed(1)} h
-                        </span>
-                      </div>
-                      <div className="w-12 h-12 rounded-2xl bg-[#c29b62]/10 text-[#9e7638] dark:text-[#d4af7a] flex items-center justify-center">
-                        <Clock className="w-6 h-6" />
-                      </div>
-                    </div>
-
-                    <div className="p-5 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass flex items-center justify-between">
-                      <div>
-                        <span className="text-xs font-semibold uppercase tracking-wider text-slate-400 block">
-                          {employee.salaryType === "hourly"
-                            ? t("Calculated Compensation", "Vypočítaná odmena", "Számított juttatás")
-                            : t("Expected Monthly Base", "Základná mesačná sadzba", "Alapbér")}
-                        </span>
-                        <span className="text-2xl font-bold font-mono text-[#9e7638] dark:text-[#d4af7a] mt-1 block">
-                          {employee.salaryType === "hourly"
-                            ? `${((hoursData?.totalHours || 0) * (employee.salaryAmount || 0)).toLocaleString(undefined, { minimumFractionDigits: 2 })} ${systemCurrency}`
-                            : `${(employee.salaryAmount || 0).toLocaleString()} ${systemCurrency}`}
-                        </span>
-                      </div>
-                      <div className="w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-600 flex items-center justify-center">
-                        <Coins className="w-6 h-6" />
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Weekly Breakdown Cards */}
-                  <div className="p-6 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4">
-                    <h4 className="text-xs font-bold uppercase tracking-wider text-[#b58b4c] dark:text-[#d4af7a]">
-                      {t("Weekly Hours Breakdown", "Týždenný rozpis odpracovaných hodín", "Heti órabontás")}
-                    </h4>
-
-                    {hoursData?.weekly && Object.keys(hoursData.weekly).length > 0 ? (
-                      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-                        {Object.entries(hoursData.weekly).map(([wKey, wVal]) => (
-                          <div
-                            key={wKey}
-                            className="p-3.5 rounded-2xl bg-slate-50/80 border border-slate-200/80 text-center"
-                          >
-                            <span className="text-[10px] font-bold uppercase text-slate-400 block">
-                              {t("Week", "Týždeň", "Hét")} {wVal.weekNum}
-                            </span>
-                            <span className="text-base font-bold font-mono text-slate-900 my-1 block">
-                              {wVal.hours.toFixed(1)} h
-                            </span>
-                            <span className="text-[10px] text-slate-400 block truncate">
-                              {wVal.startDate.split("-").slice(1).join("/")} - {wVal.endDate.split("-").slice(1).join("/")}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="text-xs text-slate-400 text-center py-4">
-                        {t("No hours recorded for this period in Toggl.", "Žiadne záznamy v Toggl pre tento mesiac.", "Nincs rögzített óra a Toggl-ben.")}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Project Distribution */}
-                  {hoursData?.projects && Object.keys(hoursData.projects).length > 0 && (
-                    <div className="p-6 glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-3">
-                      <h4 className="text-xs font-bold uppercase tracking-wider text-[#b58b4c] dark:text-[#d4af7a]">
-                        {t("Projects Breakdown", "Rozdelenie hodín podľa projektov", "Projektek szerinti megoszlás")}
-                      </h4>
-
-                      <div className="space-y-2">
-                        {Object.entries(hoursData.projects).map(([projName, pHours]) => {
-                          const pct = hoursData.totalHours > 0 ? (pHours / hoursData.totalHours) * 100 : 0;
-                          return (
-                            <div key={projName} className="space-y-1">
-                              <div className="flex items-center justify-between text-xs">
-                                <span className="font-semibold text-slate-800">{projName}</span>
-                                <span className="font-mono text-slate-500">
-                                  {pHours.toFixed(1)} h ({pct.toFixed(0)}%)
-                                </span>
-                              </div>
-                              <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
-                                <div
-                                  className="h-full bg-[#c29b62] rounded-full transition-all duration-300"
-                                  style={{ width: `${pct}%` }}
-                                />
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
+            <EmployeeTimesheetSummary
+              employee={employee}
+              hoursData={hoursData}
+              loading={loadingHours}
+              error={hoursError}
+              togglYear={togglYear}
+              togglMonth={togglMonth}
+              onPrevMonth={() => {
+                if (togglMonth === 1) {
+                  setTogglMonth(12);
+                  setTogglYear((y) => y - 1);
+                } else {
+                  setTogglMonth((m) => m - 1);
+                }
+              }}
+              onNextMonth={() => {
+                if (togglMonth === 12) {
+                  setTogglMonth(1);
+                  setTogglYear((y) => y + 1);
+                } else {
+                  setTogglMonth((m) => m + 1);
+                }
+              }}
+              onCurrentMonth={() => {
+                const now = new Date();
+                setTogglYear(now.getFullYear());
+                setTogglMonth(now.getMonth() + 1);
+              }}
+              systemCurrency={systemCurrency}
+              t={t}
+              onLinkTogglUser={handleStartEdit}
+            />
           )}
 
           {/* TAB 2: SALARIES & PAYMENTS HISTORY */}

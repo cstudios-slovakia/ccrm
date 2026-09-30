@@ -326,9 +326,15 @@ if ($action === 'fetch_employee_hours') {
     if ($year < 2000 || $year > 2100) $year = (int)date('Y');
     if ($month < 1 || $month > 12) $month = (int)date('n');
 
-    $startDateStr = sprintf('%04d-%02d-01', $year, $month);
-    $lastDay = (int)date('t', strtotime($startDateStr));
-    $endDateStr = sprintf('%04d-%02d-%02d', $year, $month, $lastDay);
+    $firstDayOfMonth = sprintf('%04d-%02d-01', $year, $month);
+    $lastDay = (int)date('t', strtotime($firstDayOfMonth));
+    $lastDayOfMonth = sprintf('%04d-%02d-%02d', $year, $month, $lastDay);
+
+    // Compute complete calendar start (Monday) and end (Sunday) to cover all calendar rows
+    $firstDow = (int)date('N', strtotime($firstDayOfMonth)); // 1=Mon, 7=Sun
+    $calStartDateStr = date('Y-m-d', strtotime($firstDayOfMonth . ' -' . ($firstDow - 1) . ' days'));
+    $lastDow = (int)date('N', strtotime($lastDayOfMonth));
+    $calEndDateStr = date('Y-m-d', strtotime($lastDayOfMonth . ' +' . (7 - $lastDow) . ' days'));
 
     if (empty($apiToken)) {
         echo json_encode([
@@ -386,11 +392,10 @@ if ($action === 'fetch_employee_hours') {
         }
     }
 
-    // Try fetching reports API v3 with pagination
-    // POST https://api.track.toggl.com/reports/api/v3/workspace/{workspace_id}/search/time_entries
+    // Fetch reports API v3 with pagination covering the entire calendar range
     $postPayload = [
-        'start_date' => $startDateStr,
-        'end_date' => $endDateStr,
+        'start_date' => $calStartDateStr,
+        'end_date' => $calEndDateStr,
         'page_size' => 50,
     ];
     if (!empty($extUserId) && is_numeric($extUserId)) {
@@ -423,7 +428,7 @@ if ($action === 'fetch_employee_hours') {
 
     // Fallback: if reports API v3 didn't return anything or failed, try /me/time_entries
     if (empty($rawEntries)) {
-        $fallbackUrl = "https://api.track.toggl.com/api/v9/me/time_entries?start_date={$startDateStr}T00:00:00Z&end_date={$endDateStr}T23:59:59Z";
+        $fallbackUrl = "https://api.track.toggl.com/api/v9/me/time_entries?start_date={$calStartDateStr}T00:00:00Z&end_date={$calEndDateStr}T23:59:59Z";
         $fallbackRes = toggl_curl($fallbackUrl, $apiToken);
         if ($fallbackRes['ok'] && is_array($fallbackRes['data'])) {
             $rawEntries = $fallbackRes['data'];
@@ -455,15 +460,62 @@ if ($action === 'fetch_employee_hours') {
     }
 
     // Process & Aggregate entries
-    $totalSeconds = 0;
-    $dailySeconds = [];
+    $monthTotalSeconds = 0;
+    $monthDailySeconds = [];
+    $allDailySeconds = [];
     $projectSeconds = [];
+    $dailyProjects = [];
 
-    // Initialize days of month
+    // Initialize days of the month (1..$lastDay)
     for ($d = 1; $d <= $lastDay; $d++) {
         $dateKey = sprintf('%04d-%02d-%02d', $year, $month, $d);
-        $dailySeconds[$dateKey] = 0;
+        $monthDailySeconds[$dateKey] = 0;
     }
+
+    // Initialize all days in the calendar grid
+    $curCal = strtotime($calStartDateStr);
+    $endCal = strtotime($calEndDateStr);
+    while ($curCal <= $endCal) {
+        $allDailySeconds[date('Y-m-d', $curCal)] = 0;
+        $curCal = strtotime('+1 day', $curCal);
+    }
+
+    $processTimeEntry = function(int $dur, string $startStr, string $projName) use (
+        &$monthTotalSeconds, &$monthDailySeconds, &$allDailySeconds,
+        &$projectSeconds, &$dailyProjects,
+        $firstDayOfMonth, $lastDayOfMonth
+    ) {
+        if ($dur <= 0) return;
+        $dateKey = substr($startStr, 0, 10);
+        if (empty($dateKey)) return;
+
+        if (isset($allDailySeconds[$dateKey])) {
+            $allDailySeconds[$dateKey] += $dur;
+        } else {
+            $allDailySeconds[$dateKey] = $dur;
+        }
+
+        if (!isset($dailyProjects[$dateKey])) {
+            $dailyProjects[$dateKey] = [];
+        }
+        if (!isset($dailyProjects[$dateKey][$projName])) {
+            $dailyProjects[$dateKey][$projName] = 0;
+        }
+        $dailyProjects[$dateKey][$projName] += $dur;
+
+        // Month-specific totals
+        if ($dateKey >= $firstDayOfMonth && $dateKey <= $lastDayOfMonth) {
+            if (isset($monthDailySeconds[$dateKey])) {
+                $monthDailySeconds[$dateKey] += $dur;
+            }
+            $monthTotalSeconds += $dur;
+
+            if (!isset($projectSeconds[$projName])) {
+                $projectSeconds[$projName] = 0;
+            }
+            $projectSeconds[$projName] += $dur;
+        }
+    };
 
     foreach ($rawEntries as $entry) {
         $pid = (string)($entry['project_id'] ?? '');
@@ -475,134 +527,208 @@ if ($action === 'fetch_employee_hours') {
             )
         );
 
-        // Sub-case 1: Reports API v3 has nested time_entries array
         if (!empty($entry['time_entries']) && is_array($entry['time_entries'])) {
             foreach ($entry['time_entries'] as $subEntry) {
                 $dur = (int)($subEntry['seconds'] ?? ($subEntry['duration'] ?? 0));
-                if ($dur <= 0) continue;
-
-                $startStr = (string)($subEntry['start'] ?? '');
-                $dateKey = substr($startStr, 0, 10);
-                if (isset($dailySeconds[$dateKey])) {
-                    $dailySeconds[$dateKey] += $dur;
-                    $totalSeconds += $dur;
-                }
-
-                if (!isset($projectSeconds[$projName])) {
-                    $projectSeconds[$projName] = 0;
-                }
-                $projectSeconds[$projName] += $dur;
+                $processTimeEntry($dur, (string)($subEntry['start'] ?? ''), $projName);
             }
         } else {
-            // Sub-case 2: Flat entry structure (e.g. /me/time_entries)
             $dur = (int)($entry['seconds'] ?? ($entry['duration'] ?? 0));
-            if ($dur <= 0) continue;
-
-            $startStr = (string)($entry['start'] ?? '');
-            $dateKey = substr($startStr, 0, 10);
-            if (isset($dailySeconds[$dateKey])) {
-                $dailySeconds[$dateKey] += $dur;
-                $totalSeconds += $dur;
-            }
-
-            if (!isset($projectSeconds[$projName])) {
-                $projectSeconds[$projName] = 0;
-            }
-            $projectSeconds[$projName] += $dur;
+            $processTimeEntry($dur, (string)($entry['start'] ?? ''), $projName);
         }
     }
 
-    // Compute weekly breakdown (Week 1 through Week 5/6)
-    $weeks = [];
+    // Build 7-day calendar matrix weeks (Monday through Sunday)
+    $calendarWeeks = [];
     $weeklyMap = [];
-    $currentWeekIndex = 1;
-    $weekStartDay = 1;
+    $curCal = strtotime($calStartDateStr);
+    $wIdx = 1;
 
-    for ($d = 1; $d <= $lastDay; $d++) {
-        $curDateStr = sprintf('%04d-%02d-%02d', $year, $month, $d);
-        $dayOfWeek = (int)date('N', strtotime($curDateStr)); // 1 (Mon) - 7 (Sun)
+    while ($curCal <= $endCal) {
+        $wStartStr = date('Y-m-d', $curCal);
+        $wEndStr = date('Y-m-d', strtotime('+6 days', $curCal));
+        $weekTotalSec = 0;
+        $weekMonthSec = 0;
+        $weekActiveDays = 0;
+        $daysInWeek = [];
 
-        // If Sunday or last day of month, close the current week
-        if ($dayOfWeek === 7 || $d === $lastDay) {
-            $weekSec = 0;
-            $dayList = [];
-            for ($k = $weekStartDay; $k <= $d; $k++) {
-                $kDate = sprintf('%04d-%02d-%02d', $year, $month, $k);
-                $s = $dailySeconds[$kDate] ?? 0;
-                $weekSec += $s;
-                $dayList[$kDate] = [
-                    'day_number' => $k,
-                    'weekday' => date('D', strtotime($kDate)),
-                    'hours' => round($s / 3600, 2),
-                    'seconds' => $s
-                ];
+        for ($dayOffset = 0; $dayOffset < 7; $dayOffset++) {
+            $dStr = date('Y-m-d', $curCal);
+            $daySec = $allDailySeconds[$dStr] ?? 0;
+            $dayHours = round($daySec / 3600, 2);
+            $isCurMonth = ($dStr >= $firstDayOfMonth && $dStr <= $lastDayOfMonth);
+            $isWeekend = ((int)date('N', $curCal) >= 6);
+
+            $weekTotalSec += $daySec;
+            if ($isCurMonth) {
+                $weekMonthSec += $daySec;
+            }
+            if ($daySec > 0) {
+                $weekActiveDays++;
             }
 
-            $startLabel = sprintf('%02d', $weekStartDay);
-            $endLabel = sprintf('%02d', $d);
-            $monthName = date('M', strtotime($startDateStr));
-            $wHours = round($weekSec / 3600, 2);
+            // Project breakdown for this specific day
+            $dayProjHours = [];
+            if (!empty($dailyProjects[$dStr])) {
+                foreach ($dailyProjects[$dStr] as $pName => $pSec) {
+                    $dayProjHours[$pName] = round($pSec / 3600, 2);
+                }
+                arsort($dayProjHours);
+            }
 
-            $weekItem = [
-                'week_number' => $currentWeekIndex,
-                'weekNum' => $currentWeekIndex,
-                'label' => "Week {$currentWeekIndex} ({$monthName} {$startLabel} – {$endLabel})",
-                'start_date' => sprintf('%04d-%02d-%02d', $year, $month, $weekStartDay),
-                'startDate' => sprintf('%04d-%02d-%02d', $year, $month, $weekStartDay),
-                'end_date' => sprintf('%04d-%02d-%02d', $year, $month, $d),
-                'endDate' => sprintf('%04d-%02d-%02d', $year, $month, $d),
-                'seconds' => $weekSec,
-                'hours' => $wHours,
-                'days' => $dayList
+            $daysInWeek[] = [
+                'date' => $dStr,
+                'day_number' => (int)date('j', $curCal),
+                'dayNumber' => (int)date('j', $curCal),
+                'weekday' => date('D', $curCal),
+                'is_current_month' => $isCurMonth,
+                'isCurrentMonth' => $isCurMonth,
+                'is_weekend' => $isWeekend,
+                'isWeekend' => $isWeekend,
+                'seconds' => $daySec,
+                'hours' => $dayHours,
+                'worked_days' => $dayHours >= 6 ? 1.0 : ($dayHours > 0 ? 0.5 : 0),
+                'projects' => $dayProjHours
             ];
 
-            $weeks[] = $weekItem;
-            $weeklyMap["w{$currentWeekIndex}"] = $weekItem;
-
-            $currentWeekIndex++;
-            $weekStartDay = $d + 1;
+            $curCal = strtotime('+1 day', $curCal);
         }
+
+        $wTotalHours = round($weekTotalSec / 3600, 2);
+        $wMonthHours = round($weekMonthSec / 3600, 2);
+
+        $weekItem = [
+            'week_number' => $wIdx,
+            'weekNum' => $wIdx,
+            'label' => "Week {$wIdx} (" . date('M d', strtotime($wStartStr)) . " – " . date('M d', strtotime($wEndStr)) . ")",
+            'start_date' => $wStartStr,
+            'startDate' => $wStartStr,
+            'end_date' => $wEndStr,
+            'endDate' => $wEndStr,
+            'total_seconds' => $weekTotalSec,
+            'total_hours' => $wTotalHours,
+            'seconds' => $weekTotalSec,
+            'hours' => $wTotalHours,
+            'month_seconds' => $weekMonthSec,
+            'month_hours' => $wMonthHours,
+            'active_days' => $weekActiveDays,
+            'activeDays' => $weekActiveDays,
+            'worked_days' => round($weekTotalSec / (8 * 3600), 1),
+            'workedDays' => round($weekTotalSec / (8 * 3600), 1),
+            'days' => $daysInWeek
+        ];
+
+        $calendarWeeks[] = $weekItem;
+        $weeklyMap["w{$wIdx}"] = $weekItem;
+        $wIdx++;
     }
 
+    // Build chronological daily log for all days in the month (1..$lastDay)
+    $dailyLog = [];
+    $activeDaysCount = 0;
+    for ($d = 1; $d <= $lastDay; $d++) {
+        $dKey = sprintf('%04d-%02d-%02d', $year, $month, $d);
+        $dSec = $monthDailySeconds[$dKey] ?? 0;
+        $dHours = round($dSec / 3600, 2);
+        $isWknd = ((int)date('N', strtotime($dKey)) >= 6);
+        if ($dSec > 0) {
+            $activeDaysCount++;
+        }
+
+        $dProj = [];
+        if (!empty($dailyProjects[$dKey])) {
+            foreach ($dailyProjects[$dKey] as $pName => $pSec) {
+                $dProj[$pName] = round($pSec / 3600, 2);
+            }
+            arsort($dProj);
+        }
+
+        $status = 'off';
+        if ($dSec > 0) {
+            $status = 'worked';
+        } elseif ($isWknd) {
+            $status = 'weekend';
+        }
+
+        $dailyLog[] = [
+            'date' => $dKey,
+            'day_number' => $d,
+            'dayNumber' => $d,
+            'weekday' => date('D', strtotime($dKey)),
+            'is_weekend' => $isWknd,
+            'isWeekend' => $isWknd,
+            'seconds' => $dSec,
+            'hours' => $dHours,
+            'worked_days' => round($dSec / (8 * 3600), 2),
+            'status' => $status,
+            'projects' => $dProj
+        ];
+    }
+
+    // Build project breakdown
     $projectBreakdown = [];
-    $projectMap = [];
+    $projectHoursMap = [];
     foreach ($projectSeconds as $pName => $pSec) {
         $pHours = round($pSec / 3600, 2);
         $projectBreakdown[] = [
             'name' => $pName,
             'seconds' => $pSec,
             'hours' => $pHours,
-            'percentage' => $totalSeconds > 0 ? round(($pSec / $totalSeconds) * 100, 1) : 0
+            'percentage' => $monthTotalSeconds > 0 ? round(($pSec / $monthTotalSeconds) * 100, 1) : 0
         ];
-        $projectMap[$pName] = $pHours;
+        $projectHoursMap[$pName] = $pHours;
     }
     usort($projectBreakdown, fn($a, $b) => $b['seconds'] <=> $a['seconds']);
-    arsort($projectMap);
+    arsort($projectHoursMap);
 
-    $totalHours = round($totalSeconds / 3600, 2);
-    $numWeeks = max(1, count($weeks));
+    $totalHours = round($monthTotalSeconds / 3600, 2);
+    $standardDays = round($monthTotalSeconds / (8 * 3600), 1);
+    $avgDailyHours = $activeDaysCount > 0 ? round($totalHours / $activeDaysCount, 2) : 0;
+    $numWeeks = max(1, count($calendarWeeks));
     $avgHoursPerWeek = round($totalHours / $numWeeks, 2);
 
-    $dailyHoursMap = [];
-    foreach ($dailySeconds as $dKey => $sec) {
-        $dailyHoursMap[$dKey] = round($sec / 3600, 2);
+    $monthDailyHoursMap = [];
+    foreach ($monthDailySeconds as $dKey => $sec) {
+        $monthDailyHoursMap[$dKey] = round($sec / 3600, 2);
+    }
+
+    // Format daily projects with hours
+    $dailyProjectsHoursMap = [];
+    foreach ($dailyProjects as $dKey => $pList) {
+        $dailyProjectsHoursMap[$dKey] = [];
+        foreach ($pList as $pName => $pSec) {
+            $dailyProjectsHoursMap[$dKey][$pName] = round($pSec / 3600, 2);
+        }
+        arsort($dailyProjectsHoursMap[$dKey]);
     }
 
     echo json_encode([
         'success' => true,
         'year' => $year,
         'month' => $month,
-        'total_seconds' => $totalSeconds,
+        'total_seconds' => $monthTotalSeconds,
         'total_hours' => $totalHours,
+        'active_days' => $activeDaysCount,
+        'standard_days' => $standardDays,
+        'average_daily_hours' => $avgDailyHours,
         'average_weekly_hours' => $avgHoursPerWeek,
-        'weeks' => $weeks,
+        'calendar_weeks' => $calendarWeeks,
+        'weeks' => $calendarWeeks, // maintain backward compatibility
         'projects' => $projectBreakdown,
+        'daily_log' => $dailyLog,
         'entry_count' => count($rawEntries),
         'data' => [
             'totalHours' => $totalHours,
+            'activeDays' => $activeDaysCount,
+            'standardDays' => $standardDays,
+            'avgDailyHours' => $avgDailyHours,
+            'avgWeeklyHours' => $avgHoursPerWeek,
             'weekly' => $weeklyMap,
-            'daily' => $dailyHoursMap,
-            'projects' => $projectMap
+            'calendarWeeks' => $calendarWeeks,
+            'daily' => $monthDailyHoursMap,
+            'dailyProjects' => $dailyProjectsHoursMap,
+            'dailyLog' => $dailyLog,
+            'projects' => $projectHoursMap
         ]
     ]);
     exit;
