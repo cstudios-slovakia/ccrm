@@ -284,15 +284,15 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
 
   if (!hasAttachedUser) {
     return (
-      <div className="p-8 sm:p-12 text-center glass-panel rounded-3xl border border-stone-200/80 dark:border-stone-800/80 bg-white/95 dark:bg-stone-900/95 shadow-glass space-y-4 animate-in fade-in duration-200">
+      <div className="p-8 sm:p-12 text-center glass-panel rounded-3xl border border-slate-200/80 dark:border-slate-800/80 bg-white/95 dark:bg-slate-900/95 shadow-glass space-y-4 animate-in fade-in duration-200">
         <div className="w-16 h-16 rounded-3xl bg-amber-500/10 text-[#c29b62] dark:text-[#d4af7a] flex items-center justify-center mx-auto shadow-inner">
           <UserX className="w-8 h-8" />
         </div>
         <div className="space-y-1.5 max-w-md mx-auto">
-          <h4 className="text-base font-heading font-extrabold text-stone-900 dark:text-stone-100">
+          <h4 className="text-base font-heading font-extrabold text-slate-900 dark:text-slate-100">
             {t("No Selected User", "Nie je vybraný používateľ", "Nincs kiválasztott felhasználó")}
           </h4>
-          <p className="text-xs text-stone-500 dark:text-stone-400 leading-relaxed">
+          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
             {t(
               "This employee has no Toggl Track or external user account attached. Link a user account in the employee profile to automatically view and track their worked hours.",
               "Tento zamestnanec nemá priradeného žiadneho používateľa pre meranie času. V profile zamestnanca priraďte účet Toggl Track, aby sa zobrazovali jeho odpracované hodiny a výkaz.",
@@ -319,25 +319,25 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
   return (
     <div className="space-y-6 animate-in fade-in duration-200">
       {/* 1. Header controls: Month navigation & View Switcher */}
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-5 glass-panel rounded-3xl border border-stone-200/70 dark:border-stone-800/70 bg-white/90 dark:bg-stone-900/90 shadow-glass">
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 p-5 glass-panel rounded-3xl border border-slate-200/70 dark:border-slate-800/70 bg-white/90 dark:bg-slate-900/90 shadow-glass">
         {/* Month Selector */}
         <div className="flex items-center flex-wrap gap-3">
-          <div className="flex items-center rounded-2xl border border-stone-200/80 dark:border-stone-800 bg-stone-50/80 dark:bg-stone-950/60 p-1 shadow-inner">
+          <div className="flex items-center rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-950/60 p-1 shadow-inner">
             <button
               onClick={onPrevMonth}
-              className="p-2 rounded-xl text-stone-600 dark:text-stone-300 hover:bg-white dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-white transition shadow-xs cursor-pointer"
+              className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition shadow-xs cursor-pointer"
               title={t("Previous month", "Predchádzajúci mesiac", "Előző hónap")}
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
             <div className="px-3.5 py-1 text-center min-w-[150px]">
-              <span className="text-xs font-bold text-stone-800 dark:text-stone-100 tracking-wide uppercase">
+              <span className="text-xs font-bold text-slate-800 dark:text-slate-100 tracking-wide uppercase">
                 {monthName} {togglYear}
               </span>
             </div>
             <button
               onClick={onNextMonth}
-              className="p-2 rounded-xl text-stone-600 dark:text-stone-300 hover:bg-white dark:hover:bg-stone-800 hover:text-stone-900 dark:hover:text-white transition shadow-xs cursor-pointer"
+              className="p-2 rounded-xl text-slate-600 dark:text-slate-300 hover:bg-white dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white transition shadow-xs cursor-pointer"
               title={t("Next month", "Nasledujúci mesiac", "Következő hónap")}
             >
               <ChevronRight className="w-4 h-4" />
@@ -346,7 +346,7 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
 
           <button
             onClick={onCurrentMonth}
-            className="px-3 py-2 text-xs font-semibold rounded-2xl border border-stone-200 dark:border-stone-800 text-stone-600 dark:text-stone-300 hover:bg-stone-100 dark:hover:bg-stone-800 transition cursor-pointer"
+            className="px-3 py-2 text-xs font-semibold rounded-2xl border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
           >
             {t("Today", "Dnes", "Ma")}
           </button>
@@ -367,16 +367,16 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
         </div>
 
         {/* View Mode Segmented Controls */}
-        <div className="flex items-center rounded-2xl border border-stone-200/80 dark:border-stone-800 bg-stone-100/70 dark:bg-stone-950/60 p-1 shadow-inner self-start lg:self-auto overflow-x-auto max-w-full">
+        <div className="flex items-center rounded-2xl border border-slate-200/80 dark:border-slate-800 bg-slate-100/70 dark:bg-slate-950/60 p-1 shadow-inner self-start lg:self-auto overflow-x-auto max-w-full">
           <button
             onClick={() => setViewMode("matrix")}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl transition cursor-pointer whitespace-nowrap ${
               viewMode === "matrix"
-                ? "bg-white dark:bg-stone-800 text-stone-900 dark:text-white shadow-xs"
-                : "text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white"
+                ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs"
+                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
             }`}
           >
-            <Calendar className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+            <Calendar className="w-3.5 h-3.5 text-[#c29b62] dark:text-[#d4af7a]" />
             <span>{t("Timesheet Matrix", "Mesačný kalendár", "Havi mátrix")}</span>
           </button>
 
@@ -384,8 +384,8 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
             onClick={() => setViewMode("weekly")}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl transition cursor-pointer whitespace-nowrap ${
               viewMode === "weekly"
-                ? "bg-white dark:bg-stone-800 text-stone-900 dark:text-white shadow-xs"
-                : "text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white"
+                ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs"
+                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
             }`}
           >
             <BarChart3 className="w-3.5 h-3.5 text-purple-600 dark:text-purple-400" />
@@ -396,8 +396,8 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
             onClick={() => setViewMode("daily")}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl transition cursor-pointer whitespace-nowrap ${
               viewMode === "daily"
-                ? "bg-white dark:bg-stone-800 text-stone-900 dark:text-white shadow-xs"
-                : "text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white"
+                ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs"
+                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
             }`}
           >
             <ListFilter className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
@@ -408,8 +408,8 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
             onClick={() => setViewMode("projects")}
             className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-xl transition cursor-pointer whitespace-nowrap ${
               viewMode === "projects"
-                ? "bg-white dark:bg-stone-800 text-stone-900 dark:text-white shadow-xs"
-                : "text-stone-600 dark:text-stone-400 hover:text-stone-900 dark:hover:text-white"
+                ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-xs"
+                : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
             }`}
           >
             <Briefcase className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
@@ -421,8 +421,8 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
       {/* 2. Top Summary KPI Cards */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {/* Total Worked Hours */}
-        <div className="p-5 glass-panel rounded-3xl border border-stone-200/70 dark:border-stone-800/70 bg-white/95 dark:bg-stone-900/95 shadow-glass flex flex-col justify-between">
-          <div className="flex items-center justify-between text-stone-500 dark:text-stone-400 mb-2">
+        <div className="p-5 glass-panel rounded-3xl border border-slate-200/70 dark:border-slate-800/70 bg-white/95 dark:bg-slate-900/95 shadow-glass flex flex-col justify-between">
+          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
             <span className="text-[11px] font-bold uppercase tracking-wider">
               {t("Total Worked Hours", "Celkovo odpracované", "Összes ledolgozott óra")}
             </span>
@@ -431,19 +431,19 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
             </div>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl sm:text-3xl font-black font-mono text-stone-900 dark:text-white">
-              {(hoursData?.totalHours || 0).toFixed(1)}
+            <span className="text-2xl sm:text-3xl font-black font-mono text-slate-900 dark:text-white">
+              {formatNumber(hoursData?.totalHours || 0, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
             </span>
-            <span className="text-sm font-bold text-stone-500 dark:text-stone-400">h</span>
+            <span className="text-sm font-bold text-slate-500 dark:text-slate-400">h</span>
           </div>
-          <span className="text-[10px] text-stone-500 dark:text-stone-400 mt-1 block">
+          <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 block">
             {t("For selected month", "Pre zvolený mesiac", "A kiválasztott hónapban")}
           </span>
         </div>
 
         {/* Active Days Worked */}
-        <div className="p-5 glass-panel rounded-3xl border border-stone-200/70 dark:border-stone-800/70 bg-white/95 dark:bg-stone-900/95 shadow-glass flex flex-col justify-between">
-          <div className="flex items-center justify-between text-stone-500 dark:text-stone-400 mb-2">
+        <div className="p-5 glass-panel rounded-3xl border border-slate-200/70 dark:border-slate-800/70 bg-white/95 dark:bg-slate-900/95 shadow-glass flex flex-col justify-between">
+          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
             <span className="text-[11px] font-bold uppercase tracking-wider">
               {t("Active Days Worked", "Aktívne odpracované dni", "Ledolgozott napok száma")}
             </span>
@@ -453,20 +453,22 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-2xl sm:text-3xl font-black font-mono text-emerald-600 dark:text-emerald-400">
-              {activeDaysCount}
+              {formatNumber(activeDaysCount, systemLanguage, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
             </span>
-            <span className="text-sm font-bold text-stone-500 dark:text-stone-400">
+            <span className="text-sm font-bold text-slate-500 dark:text-slate-400">
               {t("days", "dní", "nap")}
             </span>
           </div>
-          <span className="text-[10px] text-stone-500 dark:text-stone-400 mt-1 block">
-            {avgDailyHours > 0 ? `Ø ${avgDailyHours} h / ${t("active day", "aktívny deň", "aktív nap")}` : "—"}
+          <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 block">
+            {avgDailyHours > 0
+              ? `Ø ${formatNumber(avgDailyHours, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h / ${t("active day", "aktívny deň", "aktív nap")}`
+              : "—"}
           </span>
         </div>
 
         {/* Standard Days Equivalent (8h) */}
-        <div className="p-5 glass-panel rounded-3xl border border-stone-200/70 dark:border-stone-800/70 bg-white/95 dark:bg-stone-900/95 shadow-glass flex flex-col justify-between">
-          <div className="flex items-center justify-between text-stone-500 dark:text-stone-400 mb-2">
+        <div className="p-5 glass-panel rounded-3xl border border-slate-200/70 dark:border-slate-800/70 bg-white/95 dark:bg-slate-900/95 shadow-glass flex flex-col justify-between">
+          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
             <span className="text-[11px] font-bold uppercase tracking-wider">
               {t("Standard 8h Days", "Ekvivalent 8h dní", "8 órás munkanapok")}
             </span>
@@ -476,26 +478,26 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
           </div>
           <div className="flex items-baseline gap-2">
             <span className="text-2xl sm:text-3xl font-black font-mono text-purple-700 dark:text-purple-300">
-              {standardDays.toFixed(1)}
+              {formatNumber(standardDays, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}
             </span>
-            <span className="text-sm font-bold text-stone-500 dark:text-stone-400">
+            <span className="text-sm font-bold text-slate-500 dark:text-slate-400">
               {t("days", "dní", "nap")}
             </span>
           </div>
-          <span className="text-[10px] text-stone-500 dark:text-stone-400 mt-1 block">
+          <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 block">
             {t("Hours ÷ 8.0 standard shift", "Hodiny ÷ 8.0 štandardná zmena", "Órák ÷ 8.0 normaidő")}
           </span>
         </div>
 
         {/* Calculated Monthly Compensation */}
-        <div className="p-5 glass-panel rounded-3xl border border-stone-200/70 dark:border-stone-800/70 bg-white/95 dark:bg-stone-900/95 shadow-glass flex flex-col justify-between">
-          <div className="flex items-center justify-between text-stone-500 dark:text-stone-400 mb-2">
+        <div className="p-5 glass-panel rounded-3xl border border-slate-200/70 dark:border-slate-800/70 bg-white/95 dark:bg-slate-900/95 shadow-glass flex flex-col justify-between">
+          <div className="flex items-center justify-between text-slate-500 dark:text-slate-400 mb-2">
             <span className="text-[11px] font-bold uppercase tracking-wider truncate">
               {employee.salaryType === "hourly"
                 ? t("Calculated Pay", "Vypočítaná odmena", "Számított bér")
                 : t("Expected Monthly Base", "Základná mesačná sadzba", "Alapbér")}
             </span>
-            <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-amber-700 dark:text-amber-300 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-xl bg-amber-500/10 text-[#c29b62] dark:text-[#d4af7a] flex items-center justify-center">
               <Coins className="w-4 h-4" />
             </div>
           </div>
@@ -503,11 +505,11 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
             <span className="text-xl sm:text-2xl font-black font-mono text-[#9e7638] dark:text-[#d4af7a] truncate">
               {calculatedComp}
             </span>
-            <span className="text-xs font-bold text-stone-500 dark:text-stone-400">
+            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
               {systemCurrency}
             </span>
           </div>
-          <span className="text-[10px] text-stone-500 dark:text-stone-400 mt-1 block truncate">
+          <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 block truncate">
             {employee.salaryType === "hourly"
               ? `${formatNumber(employee.salaryAmount, systemLanguage)} ${systemCurrency} / h`
               : t("Fixed monthly compensation", "Pevná mesačná odmena", "Havi fix juttatás")}
@@ -523,43 +525,43 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
         </div>
       )}
 
-      {/* 3. VIEW 1: TIMESHEET CALENDAR MATRIX (Screenshot replica in CCRM design language) */}
+      {/* 3. VIEW 1: TIMESHEET CALENDAR MATRIX (Adapted to CCRM Brand Theme) */}
       {viewMode === "matrix" && (
-        <div className="glass-panel rounded-3xl border border-stone-200/80 dark:border-stone-800/80 bg-white/95 dark:bg-stone-900/95 shadow-glass overflow-hidden">
+        <div className="glass-panel rounded-3xl border border-slate-200/80 dark:border-slate-800/80 bg-white/95 dark:bg-slate-900/95 shadow-glass overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[760px] border-collapse text-left">
               {/* Table Header */}
               <thead>
-                <tr className="bg-stone-900 text-white dark:bg-stone-950 border-b border-stone-800">
-                  <th className="py-3.5 px-3 text-center text-xs font-bold uppercase tracking-wider text-stone-300 w-[11.5%]">
+                <tr className="bg-slate-50/90 dark:bg-slate-800/80 border-b border-slate-200/90 dark:border-slate-700/80 text-xs font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300">
+                  <th className="py-3.5 px-3 text-center w-[11.5%]">
                     {t("MON", "PO", "HÉ")}
                   </th>
-                  <th className="py-3.5 px-3 text-center text-xs font-bold uppercase tracking-wider text-stone-300 w-[11.5%]">
+                  <th className="py-3.5 px-3 text-center w-[11.5%]">
                     {t("TUE", "UT", "KE")}
                   </th>
-                  <th className="py-3.5 px-3 text-center text-xs font-bold uppercase tracking-wider text-stone-300 w-[11.5%]">
+                  <th className="py-3.5 px-3 text-center w-[11.5%]">
                     {t("WED", "ST", "SZE")}
                   </th>
-                  <th className="py-3.5 px-3 text-center text-xs font-bold uppercase tracking-wider text-stone-300 w-[11.5%]">
+                  <th className="py-3.5 px-3 text-center w-[11.5%]">
                     {t("THU", "ŠT", "CSÜ")}
                   </th>
-                  <th className="py-3.5 px-3 text-center text-xs font-bold uppercase tracking-wider text-stone-300 w-[11.5%]">
+                  <th className="py-3.5 px-3 text-center w-[11.5%]">
                     {t("FRI", "PI", "PÉ")}
                   </th>
-                  <th className="py-3.5 px-3 text-center text-xs font-bold uppercase tracking-wider text-stone-400 w-[11.5%]">
+                  <th className="py-3.5 px-3 text-center text-slate-400 dark:text-slate-500 bg-slate-100/50 dark:bg-slate-800/40 w-[11.5%]">
                     {t("SAT", "SO", "SZO")}
                   </th>
-                  <th className="py-3.5 px-3 text-center text-xs font-bold uppercase tracking-wider text-stone-400 w-[11.5%]">
+                  <th className="py-3.5 px-3 text-center text-slate-400 dark:text-slate-500 bg-slate-100/50 dark:bg-slate-800/40 w-[11.5%]">
                     {t("SUN", "NE", "VAS")}
                   </th>
-                  <th className="py-3.5 px-4 text-center text-xs font-bold uppercase tracking-wider bg-[#221239] dark:bg-[#180a2a] text-purple-200 dark:text-purple-300 border-l border-white/10 w-[19.5%]">
+                  <th className="py-3.5 px-4 text-center bg-gradient-to-r from-slate-100/90 to-[#c29b62]/10 dark:from-slate-800/90 dark:to-[#c29b62]/15 text-[#9e7638] dark:text-[#d4af7a] border-l border-slate-200/90 dark:border-slate-700/80 w-[19.5%]">
                     {t("WEEK TOTAL", "SPOLU TÝŽDEŇ", "HETI ÖSSZESEN")}
                   </th>
                 </tr>
               </thead>
 
               {/* Table Body (Weeks) */}
-              <tbody className="divide-y divide-stone-200/70 dark:divide-stone-800/70">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
                 {calendarWeeks.map((week) => {
                   const weekHours = week.total_hours ?? week.hours ?? 0;
                   const weekActiveDays = week.active_days ?? week.activeDays ?? week.days.filter((d) => d.hours > 0).length;
@@ -567,7 +569,7 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
                   return (
                     <tr
                       key={week.week_number}
-                      className="hover:bg-stone-50/50 dark:hover:bg-stone-800/20 transition-colors"
+                      className="hover:bg-slate-500/5 transition-colors"
                     >
                       {/* 7 Days of the week */}
                       {week.days.map((day) => {
@@ -582,13 +584,13 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
                             key={day.date}
                             onMouseEnter={() => setHoveredDayDate(day.date)}
                             onMouseLeave={() => setHoveredDayDate(null)}
-                            className={`p-2.5 sm:p-3.5 align-top border-r border-stone-200/60 dark:border-stone-800/60 relative min-h-[76px] transition-colors ${
+                            className={`p-2.5 sm:p-3.5 align-top border-r border-slate-100 dark:border-slate-800/70 relative min-h-[76px] transition-colors ${
                               !isCurrent
-                                ? "bg-stone-50/40 dark:bg-stone-950/20"
+                                ? "bg-slate-50/40 dark:bg-slate-950/20"
                                 : isToday
-                                ? "bg-amber-500/[0.04] dark:bg-amber-500/[0.07]"
+                                ? "bg-[#c29b62]/[0.06] dark:bg-[#c29b62]/[0.10]"
                                 : isWeekend
-                                ? "bg-stone-50/20 dark:bg-stone-900/30"
+                                ? "bg-slate-50/25 dark:bg-slate-900/25"
                                 : "bg-transparent"
                             }`}
                           >
@@ -596,37 +598,37 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
                               {/* Day Number Header */}
                               <div className="w-full flex items-center justify-between">
                                 <span
-                                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-all ${
+                                  className={`w-6 h-6 rounded-full flex items-center justify-center text-xs transition-all ${
                                     isToday
-                                      ? "bg-amber-500 text-white ring-2 ring-amber-500/30 font-black shadow-xs"
+                                      ? "bg-gradient-to-br from-[#c29b62] to-[#9e7638] text-white ring-2 ring-[#c29b62]/30 font-black shadow-xs"
                                       : !isCurrent
-                                      ? "text-stone-300 dark:text-stone-600 font-medium"
-                                      : "text-stone-700 dark:text-stone-200 bg-stone-100/90 dark:bg-stone-800/90"
+                                      ? "text-slate-300 dark:text-slate-600 font-medium"
+                                      : "text-slate-700 dark:text-slate-200 bg-slate-100/80 dark:bg-slate-800/80 font-bold"
                                   }`}
                                 >
                                   {day.day_number ?? day.dayNumber}
                                 </span>
 
                                 {isToday && (
-                                  <span className="text-[9px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-tighter">
+                                  <span className="text-[9px] font-extrabold text-[#9e7638] dark:text-[#d4af7a] uppercase tracking-wider bg-[#c29b62]/10 dark:bg-[#c29b62]/20 px-1.5 py-0.5 rounded-md">
                                     {t("Today", "Dnes", "Ma")}
                                   </span>
                                 )}
                               </div>
 
-                              {/* Worked Hours Pill (matching screenshot emerald badge) */}
+                              {/* Worked Hours Pill (CCRM emerald badge) */}
                               {hasHours ? (
                                 <div className="w-full flex items-center justify-center">
                                   <span
-                                    className={`inline-flex items-center justify-center px-2 py-0.5 rounded-lg text-xs font-bold font-mono transition-transform duration-150 ${
+                                    className={`inline-flex items-center justify-center px-2.5 py-0.5 rounded-lg text-xs font-bold font-mono transition-transform duration-150 ${
                                       isHovered ? "scale-105" : ""
                                     } ${
                                       isCurrent
-                                        ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/25 shadow-2xs"
-                                        : "bg-stone-200/50 text-stone-500 dark:bg-stone-800 dark:text-stone-400 border border-stone-300/40 dark:border-stone-700/40"
+                                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200/90 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30 shadow-2xs"
+                                        : "bg-slate-100/70 text-slate-400 dark:bg-slate-800 dark:text-slate-500 border border-slate-200/50 dark:border-slate-700/50"
                                     }`}
                                   >
-                                    {day.hours.toFixed(1)} h
+                                    {formatNumber(day.hours, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h
                                   </span>
                                 </div>
                               ) : (
@@ -636,16 +638,20 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
 
                             {/* Floating Day Project Breakdown Tooltip */}
                             {isHovered && day.projects && Object.keys(day.projects).length > 0 && (
-                              <div className="absolute z-30 bottom-full left-1/2 -translate-x-1/2 mb-2 w-48 p-2.5 rounded-xl bg-stone-900 text-white text-[11px] shadow-2xl border border-stone-700 pointer-events-none animate-in fade-in zoom-in-95 duration-100">
-                                <div className="font-bold text-amber-400 mb-1 border-b border-stone-800 pb-1 flex justify-between">
+                              <div className="absolute z-30 bottom-full left-1/2 -translate-x-1/2 mb-2 w-52 p-3 rounded-2xl bg-slate-900/95 dark:bg-slate-950/95 text-white text-[11px] shadow-2xl border border-slate-700/80 backdrop-blur-md pointer-events-none animate-in fade-in zoom-in-95 duration-100">
+                                <div className="font-bold text-[#d4af7a] mb-1.5 border-b border-slate-800 pb-1.5 flex justify-between">
                                   <span>{day.date}</span>
-                                  <span>{day.hours.toFixed(1)} h</span>
+                                  <span className="font-mono text-emerald-400 font-bold">
+                                    {formatNumber(day.hours, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h
+                                  </span>
                                 </div>
                                 <div className="space-y-1">
                                   {Object.entries(day.projects).map(([pName, pHours]) => (
                                     <div key={pName} className="flex justify-between items-center text-[10px]">
-                                      <span className="truncate max-w-[110px] text-stone-300">{pName}</span>
-                                      <span className="font-mono text-emerald-400 font-bold">{pHours.toFixed(1)}h</span>
+                                      <span className="truncate max-w-[125px] text-slate-300">{pName}</span>
+                                      <span className="font-mono text-emerald-400 font-bold">
+                                        {formatNumber(pHours, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}h
+                                      </span>
                                     </div>
                                   ))}
                                 </div>
@@ -655,14 +661,15 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
                         );
                       })}
 
-                      {/* 8th Column: WEEK TOTAL (Matching screenshot) */}
-                      <td className="p-3 text-center align-middle bg-purple-500/[0.04] dark:bg-purple-500/[0.07] border-l border-stone-200/70 dark:border-stone-800/70">
+                      {/* 8th Column: WEEK TOTAL */}
+                      <td className="p-3 text-center align-middle bg-slate-50/50 dark:bg-slate-800/30 border-l border-slate-200/80 dark:border-slate-800">
                         <div className="flex flex-col items-center justify-center space-y-0.5">
-                          <span className="text-base sm:text-lg font-bold font-mono text-purple-700 dark:text-purple-300 tracking-tight">
-                            {weekHours.toFixed(1)} h
+                          <span className="text-base sm:text-lg font-black font-mono text-slate-900 dark:text-white tracking-tight">
+                            {formatNumber(weekHours, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h
                           </span>
-                          <span className="text-[11px] font-semibold text-purple-600/80 dark:text-purple-400/80">
-                            {weekActiveDays.toFixed(1)} {t("days", "dní", "nap")}
+                          <span className="text-[11px] font-bold text-[#9e7638] dark:text-[#d4af7a]">
+                            {formatNumber(weekActiveDays, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}{" "}
+                            {t("days", "dní", "nap")}
                           </span>
                         </div>
                       </td>
@@ -671,22 +678,26 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
                 })}
               </tbody>
 
-              {/* Table Footer: MONTHLY TOTAL WORKED TIME (Matching screenshot) */}
+              {/* Table Footer: MONTHLY TOTAL WORKED TIME (CCRM executive table footer) */}
               <tfoot>
-                <tr className="bg-stone-900 dark:bg-stone-950 text-white border-t-2 border-stone-800">
+                <tr className="border-t-2 border-slate-200 dark:border-slate-700 bg-slate-100/90 dark:bg-slate-800/90 text-slate-800 dark:text-slate-100">
                   <td
                     colSpan={7}
-                    className="py-4 px-6 text-right font-bold text-xs sm:text-sm uppercase tracking-widest text-stone-300"
+                    className="py-4 px-6 text-right font-extrabold text-xs sm:text-sm uppercase tracking-wider text-slate-700 dark:text-slate-200"
                   >
-                    {t("MONTHLY TOTAL WORKED TIME:", "CELKOVÝ ODPRACOVANÝ ČAS:", "HAVI ÖSSZES LEDOLGOZOTT IDŐ:")}
+                    <div className="flex items-center justify-end gap-2">
+                      <Clock className="w-4 h-4 text-[#9e7638] dark:text-[#d4af7a]" />
+                      <span>{t("MONTHLY TOTAL WORKED TIME:", "CELKOVÝ ODPRACOVANÝ ČAS:", "HAVI ÖSSZES LEDOLGOZOTT IDŐ:")}</span>
+                    </div>
                   </td>
-                  <td className="py-4 px-4 text-center bg-[#221239] dark:bg-[#180a2a] border-l border-white/10">
+                  <td className="py-4 px-4 text-center bg-[#c29b62]/10 dark:bg-[#c29b62]/15 border-l border-slate-200 dark:border-slate-700">
                     <div className="flex flex-col items-center justify-center">
-                      <span className="text-lg sm:text-xl font-black font-mono text-emerald-400 tracking-tight">
-                        {(hoursData?.totalHours || 0).toFixed(1)} h
+                      <span className="text-lg sm:text-xl font-black font-mono text-[#9e7638] dark:text-[#d4af7a] tracking-tight">
+                        {formatNumber(hoursData?.totalHours || 0, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h
                       </span>
-                      <span className="text-xs font-semibold text-emerald-300/80 mt-0.5">
-                        {activeDaysCount.toFixed(1)} {t("Days", "Dní", "Nap")}
+                      <span className="text-xs font-bold text-slate-600 dark:text-slate-300 mt-0.5">
+                        {formatNumber(activeDaysCount, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}{" "}
+                        {t("Days", "Dní", "Nap")}
                       </span>
                     </div>
                   </td>
@@ -711,30 +722,30 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
               return (
                 <div
                   key={week.week_number}
-                  className="p-5 glass-panel rounded-3xl border border-stone-200/70 dark:border-stone-800/70 bg-white/95 dark:bg-stone-900/95 shadow-glass flex flex-col justify-between space-y-4"
+                  className="p-5 glass-panel rounded-3xl border border-slate-200/70 dark:border-slate-800/70 bg-white/95 dark:bg-slate-900/95 shadow-glass flex flex-col justify-between space-y-4"
                 >
-                  <div className="flex items-center justify-between border-b border-stone-100 dark:border-stone-800/60 pb-3">
+                  <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/60 pb-3">
                     <div>
                       <span className="text-xs font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400 block">
                         {t("Week", "Týždeň", "Hét")} {week.week_number}
                       </span>
-                      <span className="text-[11px] text-stone-500 dark:text-stone-400">
+                      <span className="text-[11px] text-slate-500 dark:text-slate-400">
                         {week.start_date.slice(5)} – {week.end_date.slice(5)}
                       </span>
                     </div>
                     <div className="text-right">
-                      <span className="text-xl font-bold font-mono text-stone-900 dark:text-white block">
-                        {weekHours.toFixed(1)} h
+                      <span className="text-xl font-bold font-mono text-slate-900 dark:text-white block">
+                        {formatNumber(weekHours, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h
                       </span>
-                      <span className="text-[10px] text-stone-500 font-semibold">
-                        {activeCount} {t("active days", "aktívnych dní", "aktív nap")} ({pct.toFixed(0)}%)
+                      <span className="text-[10px] text-slate-500 font-semibold">
+                        {activeCount} {t("active days", "aktívnych dní", "aktív nap")} ({formatNumber(pct, systemLanguage, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}%)
                       </span>
                     </div>
                   </div>
 
                   {/* 7-day mini bar chart */}
                   <div className="space-y-1.5">
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-stone-500 block">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-500 block">
                       {t("Daily Distribution", "Rozdelenie po dňoch", "Napi eloszlás")}
                     </span>
                     <div className="grid grid-cols-7 gap-1.5 items-end h-16 pt-2">
@@ -746,23 +757,23 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
                           <div key={day.date} className="flex flex-col items-center h-full justify-end group relative">
                             {/* Hover tooltip */}
                             {day.hours > 0 && (
-                              <div className="absolute bottom-full mb-1 hidden group-hover:block bg-stone-900 text-white text-[9px] font-mono px-1.5 py-0.5 rounded shadow pointer-events-none whitespace-nowrap z-10">
-                                {day.hours.toFixed(1)}h
+                              <div className="absolute bottom-full mb-1 hidden group-hover:block bg-slate-900 text-white text-[9px] font-mono px-1.5 py-0.5 rounded shadow pointer-events-none whitespace-nowrap z-10">
+                                {formatNumber(day.hours, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}h
                               </div>
                             )}
-                            <div className="w-full bg-stone-100 dark:bg-stone-800/80 rounded-t-sm h-12 flex items-end overflow-hidden">
+                            <div className="w-full bg-slate-100 dark:bg-slate-800/80 rounded-t-sm h-12 flex items-end overflow-hidden">
                               <div
                                 className={`w-full rounded-t-sm transition-all duration-300 ${
                                   day.hours > 0
                                     ? isCur
                                       ? "bg-emerald-500 dark:bg-emerald-400"
-                                      : "bg-stone-400 dark:bg-stone-600"
+                                      : "bg-slate-400 dark:bg-slate-600"
                                     : "bg-transparent"
                                 }`}
                                 style={{ height: `${Math.max(day.hours > 0 ? 12 : 0, hPct)}%` }}
                               />
                             </div>
-                            <span className="text-[9px] font-semibold text-stone-500 dark:text-stone-400 mt-1">
+                            <span className="text-[9px] font-semibold text-slate-500 dark:text-slate-400 mt-1">
                               {day.weekday[0]}
                             </span>
                           </div>
@@ -772,12 +783,12 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
                   </div>
 
                   {/* Progress bar of month total */}
-                  <div className="space-y-1 pt-2 border-t border-stone-100 dark:border-stone-800/60">
-                    <div className="flex justify-between text-[10px] text-stone-500 font-semibold">
+                  <div className="space-y-1 pt-2 border-t border-slate-100 dark:border-slate-800/60">
+                    <div className="flex justify-between text-[10px] text-slate-500 font-semibold">
                       <span>{t("Share of Monthly Total", "Podiel na mesiaci", "Havi részesedés")}</span>
-                      <span>{pct.toFixed(1)}%</span>
+                      <span>{formatNumber(pct, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%</span>
                     </div>
-                    <div className="w-full h-1.5 bg-stone-100 dark:bg-stone-800 rounded-full overflow-hidden">
+                    <div className="w-full h-1.5 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                       <div
                         className="h-full bg-purple-600 dark:bg-purple-500 rounded-full transition-all duration-500"
                         style={{ width: `${Math.min(100, pct)}%` }}
@@ -793,21 +804,21 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
 
       {/* 5. VIEW 3: CHRONOLOGICAL DAILY LOG TABLE */}
       {viewMode === "daily" && (
-        <div className="glass-panel rounded-3xl border border-stone-200/80 dark:border-stone-800/80 bg-white/95 dark:bg-stone-900/95 shadow-glass overflow-hidden space-y-4 p-5">
+        <div className="glass-panel rounded-3xl border border-slate-200/80 dark:border-slate-800/80 bg-white/95 dark:bg-slate-900/95 shadow-glass overflow-hidden space-y-4 p-5">
           {/* Daily Table Filters */}
-          <div className="flex items-center justify-between flex-wrap gap-2 border-b border-stone-100 dark:border-stone-800 pb-3">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-stone-800 dark:text-stone-200 flex items-center gap-2">
+          <div className="flex items-center justify-between flex-wrap gap-2 border-b border-slate-100 dark:border-slate-800 pb-3">
+            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
               <ListFilter className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
               <span>{t("Daily Hours Log", "Denný záznam odpracovaných hodín", "Napi óranapló")}</span>
             </h4>
 
-            <div className="flex items-center gap-1.5 bg-stone-100 dark:bg-stone-800 p-1 rounded-xl text-xs">
+            <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl text-xs">
               <button
                 onClick={() => setDailyFilter("all")}
                 className={`px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer ${
                   dailyFilter === "all"
-                    ? "bg-white dark:bg-stone-700 text-stone-900 dark:text-white shadow-xs"
-                    : "text-stone-600 dark:text-stone-400"
+                    ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs"
+                    : "text-slate-600 dark:text-slate-400"
                 }`}
               >
                 {t("All Days", "Všetky dni", "Összes nap")} ({dailyLog.length})
@@ -816,8 +827,8 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
                 onClick={() => setDailyFilter("worked")}
                 className={`px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer ${
                   dailyFilter === "worked"
-                    ? "bg-white dark:bg-stone-700 text-stone-900 dark:text-white shadow-xs"
-                    : "text-stone-600 dark:text-stone-400"
+                    ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs"
+                    : "text-slate-600 dark:text-slate-400"
                 }`}
               >
                 {t("Worked Only", "Iba odpracované", "Csak ledolgozott")} ({activeDaysCount})
@@ -826,8 +837,8 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
                 onClick={() => setDailyFilter("weekdays")}
                 className={`px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer ${
                   dailyFilter === "weekdays"
-                    ? "bg-white dark:bg-stone-700 text-stone-900 dark:text-white shadow-xs"
-                    : "text-stone-600 dark:text-stone-400"
+                    ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs"
+                    : "text-slate-600 dark:text-slate-400"
                 }`}
               >
                 {t("Weekdays Only", "Iba pracovné dni", "Csak munkanapok")}
@@ -838,7 +849,7 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-stone-200/80 dark:border-stone-800 text-[11px] font-bold text-stone-500 uppercase tracking-wider">
+                <tr className="border-b border-slate-200/80 dark:border-slate-800 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
                   <th className="py-2.5 px-3">{t("Date", "Dátum", "Dátum")}</th>
                   <th className="py-2.5 px-3">{t("Weekday", "Deň", "Nap")}</th>
                   <th className="py-2.5 px-3">{t("Status", "Stav", "Állapot")}</th>
@@ -847,7 +858,7 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
                   <th className="py-2.5 px-3">{t("Projects & Tasks", "Projekty a úlohy", "Projektek & Feladatok")}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-stone-100 dark:divide-stone-800/60 text-xs">
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60 text-xs">
                 {filteredDailyLog.map((day) => {
                   const isWknd = day.is_weekend ?? day.isWeekend;
                   const isWorked = day.hours > 0;
@@ -855,14 +866,14 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
                   return (
                     <tr
                       key={day.date}
-                      className={`hover:bg-stone-50/60 dark:hover:bg-stone-800/30 transition-colors ${
-                        day.date === todayStr ? "bg-amber-500/[0.04] dark:bg-amber-500/[0.08]" : ""
+                      className={`hover:bg-slate-50/60 dark:hover:bg-slate-800/30 transition-colors ${
+                        day.date === todayStr ? "bg-[#c29b62]/[0.05] dark:bg-[#c29b62]/[0.10]" : ""
                       }`}
                     >
-                      <td className="py-3 px-3 font-mono font-medium text-stone-800 dark:text-stone-200 whitespace-nowrap">
+                      <td className="py-3 px-3 font-mono font-medium text-slate-800 dark:text-slate-200 whitespace-nowrap">
                         {day.date}
                       </td>
-                      <td className="py-3 px-3 text-stone-600 dark:text-stone-400 font-semibold whitespace-nowrap">
+                      <td className="py-3 px-3 text-slate-600 dark:text-slate-400 font-semibold whitespace-nowrap">
                         {day.weekday}
                       </td>
                       <td className="py-3 px-3 whitespace-nowrap">
@@ -872,26 +883,26 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
                             {t("Worked", "Odpracované", "Ledolgozva")}
                           </span>
                         ) : isWknd ? (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-stone-100 text-stone-500 dark:bg-stone-800 dark:text-stone-400">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
                             {t("Weekend", "Víkend", "Hétvége")}
                           </span>
                         ) : (
-                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-stone-50 text-stone-400 dark:bg-stone-900 dark:text-stone-500">
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-50 text-slate-400 dark:bg-slate-900 dark:text-slate-500">
                             {t("Off", "Voľno", "Pihenő")}
                           </span>
                         )}
                       </td>
                       <td className="py-3 px-3 text-right font-mono font-bold whitespace-nowrap">
                         {isWorked ? (
-                          <span className="px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 font-bold">
-                            {day.hours.toFixed(1)} h
+                          <span className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-500/15 dark:text-emerald-300 dark:border-emerald-500/30 font-bold">
+                            {formatNumber(day.hours, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h
                           </span>
                         ) : (
-                          <span className="text-stone-400 dark:text-stone-600 font-normal">—</span>
+                          <span className="text-slate-400 dark:text-slate-600 font-normal">—</span>
                         )}
                       </td>
-                      <td className="py-3 px-3 text-right font-mono text-stone-500 whitespace-nowrap">
-                        {isWorked ? `${(day.hours / 8).toFixed(2)} d` : "—"}
+                      <td className="py-3 px-3 text-right font-mono text-slate-500 whitespace-nowrap">
+                        {isWorked ? `${formatNumber(day.hours / 8, systemLanguage, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} d` : "—"}
                       </td>
                       <td className="py-3 px-3">
                         {day.projects && Object.keys(day.projects).length > 0 ? (
@@ -899,17 +910,17 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
                             {Object.entries(day.projects).map(([pName, pHours]) => (
                               <span
                                 key={pName}
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 text-[10px] font-medium border border-stone-200/50 dark:border-stone-700/50"
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-[10px] font-medium border border-slate-200/50 dark:border-slate-700/50"
                               >
                                 <span className="font-semibold">{pName}:</span>
                                 <span className="font-mono text-emerald-600 dark:text-emerald-400">
-                                  {pHours.toFixed(1)}h
+                                  {formatNumber(pHours, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}h
                                 </span>
                               </span>
                             ))}
                           </div>
                         ) : (
-                          <span className="text-stone-400 dark:text-stone-600 text-[11px]">—</span>
+                          <span className="text-slate-400 dark:text-slate-600 text-[11px]">—</span>
                         )}
                       </td>
                     </tr>
@@ -925,13 +936,13 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
       {viewMode === "projects" && (
         <div className="space-y-6">
           {/* Projects Breakdown Card */}
-          <div className="p-6 glass-panel rounded-3xl border border-stone-200/80 dark:border-stone-800/80 bg-white/95 dark:bg-stone-900/95 shadow-glass space-y-4">
-            <div className="flex items-center justify-between border-b border-stone-100 dark:border-stone-800 pb-3">
+          <div className="p-6 glass-panel rounded-3xl border border-slate-200/80 dark:border-slate-800/80 bg-white/95 dark:bg-slate-900/95 shadow-glass space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-3">
               <h4 className="text-xs font-bold uppercase tracking-wider text-[#b58b4c] dark:text-[#d4af7a] flex items-center gap-2">
                 <Briefcase className="w-4 h-4" />
                 <span>{t("Projects Breakdown", "Rozdelenie hodín podľa projektov", "Projektek szerinti megoszlás")}</span>
               </h4>
-              <span className="text-xs font-mono text-stone-500">
+              <span className="text-xs font-mono text-slate-500">
                 {Object.keys(hoursData?.projects || {}).length} {t("projects", "projektov", "projekt")}
               </span>
             </div>
@@ -942,7 +953,7 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
                   const total = hoursData.totalHours > 0 ? hoursData.totalHours : 1;
                   const pct = (pHours / total) * 100;
                   const paletteColors = [
-                    "bg-amber-500",
+                    "bg-[#c29b62]",
                     "bg-emerald-500",
                     "bg-blue-500",
                     "bg-purple-500",
@@ -953,24 +964,24 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
                   const barColor = paletteColors[idx % paletteColors.length];
 
                   return (
-                    <div key={projName} className="space-y-1.5 p-3 rounded-2xl bg-stone-50/70 dark:bg-stone-800/40 border border-stone-200/50 dark:border-stone-800/50">
+                    <div key={projName} className="space-y-1.5 p-3 rounded-2xl bg-slate-50/70 dark:bg-slate-800/40 border border-slate-200/50 dark:border-slate-800/50">
                       <div className="flex items-center justify-between text-xs">
                         <div className="flex items-center gap-2 min-w-0">
                           <span className={`w-2 h-2 rounded-full ${barColor} shrink-0`} />
-                          <span className="font-bold text-stone-800 dark:text-stone-100 truncate">
+                          <span className="font-bold text-slate-800 dark:text-slate-100 truncate">
                             {projName}
                           </span>
                         </div>
                         <div className="flex items-center gap-3 shrink-0">
-                          <span className="font-mono font-bold text-stone-900 dark:text-white">
-                            {pHours.toFixed(1)} h
+                          <span className="font-mono font-bold text-slate-900 dark:text-white">
+                            {formatNumber(pHours, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })} h
                           </span>
-                          <span className="font-mono text-stone-500 text-[11px] min-w-[45px] text-right">
-                            {pct.toFixed(1)}%
+                          <span className="font-mono text-slate-500 text-[11px] min-w-[45px] text-right">
+                            {formatNumber(pct, systemLanguage, { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%
                           </span>
                         </div>
                       </div>
-                      <div className="w-full h-2 rounded-full bg-stone-200/60 dark:bg-stone-800 overflow-hidden">
+                      <div className="w-full h-2 rounded-full bg-slate-200/60 dark:bg-slate-800 overflow-hidden">
                         <div
                           className={`h-full ${barColor} rounded-full transition-all duration-500`}
                           style={{ width: `${Math.min(100, Math.max(2, pct))}%` }}
@@ -981,7 +992,7 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
                 })}
               </div>
             ) : (
-              <p className="text-xs text-stone-400 text-center py-6">
+              <p className="text-xs text-slate-400 text-center py-6">
                 {t("No project data recorded.", "Žiadne projektové dáta.", "Nincsenek projektadatok.")}
               </p>
             )}
