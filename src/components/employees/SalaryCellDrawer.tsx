@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import {
   Coins,
   X,
@@ -56,6 +56,25 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
 
   const [activeYear, setActiveYear] = useState<number>(defaultYear);
   const [activeMonthNum, setActiveMonthNum] = useState<number>(defaultMonth);
+  const [isClosing, setIsClosing] = useState<boolean>(false);
+
+  const handleClose = () => {
+    if (isClosing) return;
+    setIsClosing(true);
+    setTimeout(() => {
+      onClose();
+    }, 320);
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        handleClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isClosing]);
 
   const monthNames = useMemo(() => [
     t("January", "Január", "Január"),
@@ -212,8 +231,29 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="relative w-full max-w-2xl glass-panel bg-white/95 rounded-3xl shadow-2xl border border-white/60 overflow-hidden flex flex-col max-h-[92vh]">
+    <div
+      className={`fixed inset-0 z-50 bg-slate-900/40 backdrop-blur-xs flex flex-col justify-end ${
+        isClosing ? "animate-fade-out" : "animate-fade-in"
+      }`}
+    >
+      {/* Backdrop click dismiss */}
+      <div className="flex-1" onClick={handleClose} />
+
+      {/* Drawer Container sliding up from the bottom */}
+      <div
+        className={`w-full max-w-3xl mx-auto glass-panel bg-white/95 rounded-t-[32px] sm:rounded-t-[36px] shadow-2xl border-t-2 border-x border-[#c29b62]/60 overflow-hidden flex flex-col max-h-[90vh] relative z-10 ${
+          isClosing ? "animate-slide-out-bottom" : "animate-slide-in-bottom"
+        }`}
+      >
+        {/* Subtle Pull Indicator */}
+        <div className="pt-2.5 pb-1 flex justify-center shrink-0 bg-[#c29b62]/10">
+          <div
+            className="w-12 h-1.5 bg-[#c29b62]/30 rounded-full cursor-pointer hover:bg-[#c29b62]/60 transition"
+            onClick={handleClose}
+            title={t("Close", "Zavrieť", "Bezárás")}
+          />
+        </div>
+
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 bg-[#c29b62]/10">
           <div className="flex items-center gap-3 min-w-0">
@@ -235,7 +275,7 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
           </div>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleClose}
             className="p-2 text-slate-400 hover:text-slate-600 rounded-xl hover:bg-slate-100 transition cursor-pointer shrink-0"
           >
             <X className="w-5 h-5" />
@@ -497,7 +537,7 @@ export const SalaryCellDrawer: React.FC<SalaryCellDrawerProps> = ({
           <div className="flex items-center gap-3">
             <button
               type="button"
-              onClick={onClose}
+              onClick={handleClose}
               className="px-4 py-2 text-sm font-semibold text-slate-600 hover:bg-slate-200/60 rounded-xl transition cursor-pointer"
             >
               {t("Cancel", "Zrušiť", "Mégse")}
