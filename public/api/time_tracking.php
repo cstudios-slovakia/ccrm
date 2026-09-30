@@ -323,6 +323,16 @@ if ($action === 'fetch_employee_hours') {
         } catch (\Throwable $e) {}
     }
 
+    if (empty($extUserId) || $extUserId === '0' || $extUserId === 'none') {
+        echo json_encode([
+            'success' => true,
+            'no_user_attached' => true,
+            'data' => null,
+            'message' => 'No time tracking user account attached to this employee.'
+        ]);
+        exit;
+    }
+
     if ($year < 2000 || $year > 2100) $year = (int)date('Y');
     if ($month < 1 || $month > 12) $month = (int)date('n');
 

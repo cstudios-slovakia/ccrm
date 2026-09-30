@@ -194,8 +194,11 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
   // Fetch Toggl hours when month/year changes or tab is hours
   useEffect(() => {
     if (!hasTogglKey || activeTab !== "hours") return;
-    if (!employee.timeTrackingUserId && !settings.togglApiKey) {
+    const cleanUserId = (employee.timeTrackingUserId || "").trim();
+    if (!cleanUserId || cleanUserId === "0" || cleanUserId === "none") {
       setHoursData(null);
+      setHoursError(null);
+      setLoadingHours(false);
       return;
     }
 
@@ -204,14 +207,17 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
     setHoursError(null);
 
     const empIdParam = encodeURIComponent(employee.id);
-    const userIdParam = encodeURIComponent(employee.timeTrackingUserId || "");
+    const userIdParam = encodeURIComponent(cleanUserId);
     fetch(`/api/time_tracking.php?action=fetch_employee_hours&employee_id=${empIdParam}&user_id=${userIdParam}&year=${togglYear}&month=${togglMonth}`, {
       credentials: "include",
     })
       .then((res) => res.json())
       .then((data) => {
         if (!isMounted) return;
-        if (data.success && data.data) {
+        if (data.no_user_attached) {
+          setHoursData(null);
+          setHoursError(null);
+        } else if (data.success && data.data) {
           setHoursData(data.data);
         } else {
           setHoursError(data.error || data.message || "No data");
@@ -231,7 +237,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
     return () => {
       isMounted = false;
     };
-  }, [hasTogglKey, activeTab, employee.id, employee.timeTrackingUserId, togglYear, togglMonth, settings.togglApiKey]);
+  }, [hasTogglKey, activeTab, employee.id, employee.timeTrackingUserId, togglYear, togglMonth]);
 
   // Employee Salaries history sorted by year/month DESC
   const employeeSalaries = useMemo(() => {

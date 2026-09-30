@@ -12,6 +12,7 @@ import {
   AlertCircle,
   Layers,
   CheckCircle2,
+  UserX,
 } from "lucide-react";
 import type { Employee } from "../../types";
 
@@ -271,27 +272,42 @@ export const EmployeeTimesheetSummary: React.FC<EmployeeTimesheetSummaryProps> =
 
   const todayStr = useMemo(() => new Date().toISOString().slice(0, 10), []);
 
-  if (!employee.timeTrackingUserId) {
+  const hasAttachedUser = Boolean(
+    employee.timeTrackingUserId &&
+    String(employee.timeTrackingUserId).trim() !== "" &&
+    String(employee.timeTrackingUserId).trim() !== "0" &&
+    String(employee.timeTrackingUserId).trim() !== "none"
+  );
+
+  if (!hasAttachedUser) {
     return (
-      <div className="p-8 text-center glass-panel rounded-3xl border border-stone-200/80 dark:border-stone-800/80 bg-white/95 dark:bg-stone-900/95 shadow-glass space-y-3">
-        <Clock className="w-10 h-10 text-stone-300 dark:text-stone-600 mx-auto" />
-        <h4 className="text-sm font-bold text-stone-800 dark:text-stone-200">
-          {t("Toggl Time Tracking Not Linked", "Toggl meranie času nie je prepojené", "A Toggl időkövetés nincs összerendelve")}
-        </h4>
-        <p className="text-xs text-stone-500 dark:text-stone-400 max-w-md mx-auto">
-          {t(
-            "To automatically view worked hours for this employee, edit their profile and link their Toggl Track account from the dropdown.",
-            "Pre zobrazenie odpracovaných hodín prepojte tohto zamestnanca s jeho účtom v Toggl Track.",
-            "Az órák megtekintéséhez rendelje hozzá az alkalmazottat a Toggl Track fiókjához."
-          )}
-        </p>
+      <div className="p-8 sm:p-12 text-center glass-panel rounded-3xl border border-stone-200/80 dark:border-stone-800/80 bg-white/95 dark:bg-stone-900/95 shadow-glass space-y-4 animate-in fade-in duration-200">
+        <div className="w-16 h-16 rounded-3xl bg-amber-500/10 text-[#c29b62] dark:text-[#d4af7a] flex items-center justify-center mx-auto shadow-inner">
+          <UserX className="w-8 h-8" />
+        </div>
+        <div className="space-y-1.5 max-w-md mx-auto">
+          <h4 className="text-base font-heading font-extrabold text-stone-900 dark:text-stone-100">
+            {t("No Selected User", "Nie je vybraný používateľ", "Nincs kiválasztott felhasználó")}
+          </h4>
+          <p className="text-xs text-stone-500 dark:text-stone-400 leading-relaxed">
+            {t(
+              "This employee has no Toggl Track or external user account attached. Link a user account in the employee profile to automatically view and track their worked hours.",
+              "Tento zamestnanec nemá priradeného žiadneho používateľa pre meranie času. V profile zamestnanca priraďte účet Toggl Track, aby sa zobrazovali jeho odpracované hodiny a výkaz.",
+              "Ehhez az alkalmazotthoz nincs hozzárendelve Toggl Track vagy más felhasználói fiók. A munkaidő és az elszámolás megtekintéséhez válasszon ki egy fiókot az alkalmazott profiljában."
+            )}
+          </p>
+        </div>
         {onLinkTogglUser && (
-          <button
-            onClick={onLinkTogglUser}
-            className="px-4 py-2 text-xs font-semibold rounded-2xl bg-[#c29b62] text-white hover:bg-[#b08b53] transition shadow-md shadow-[#c29b62]/20 cursor-pointer"
-          >
-            {t("Link Toggl User", "Prepojiť používateľa", "Toggl felhasználó összerendelése")}
-          </button>
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={onLinkTogglUser}
+              className="inline-flex items-center gap-2 px-5 py-2.5 text-xs font-heading font-bold rounded-2xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white hover:shadow-lg hover:shadow-[#c29b62]/25 hover:scale-[1.02] active:scale-[0.98] transition cursor-pointer"
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>{t("Select User Account", "Vybrať používateľský účet", "Felhasználó kiválasztása")}</span>
+            </button>
+          </div>
         )}
       </div>
     );
