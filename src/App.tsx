@@ -3588,13 +3588,13 @@ ${log.payload || ''}
             <OrganicNodeDatabaseLoader size={155} />
           </div>
           
-          <h2 className="text-xl font-heading font-black tracking-widest text-slate-900 dark:text-white uppercase drop-shadow-sm">
+          <h2 className="text-title font-heading font-bold text-slate-900 dark:text-white drop-shadow-sm">
             {systemName || "CCRM"}
           </h2>
           
           <div className="flex items-center gap-2 mt-3.5 px-4 py-1.5 rounded-full bg-white/50 dark:bg-slate-900/50 border border-white/60 dark:border-white/10 backdrop-blur-md shadow-sm">
             <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shadow-sm shadow-emerald-500/50"></span>
-            <p className="text-[10px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">
+            <p className="type-overline text-slate-800 dark:text-slate-200">
               {t("Syncing database connection...", "Pripájam sa k databáze...", "Kapcsolódás az adatbázishoz...")}
             </p>
           </div>
@@ -3768,10 +3768,10 @@ ${log.payload || ''}
                       <Bell className="h-5 w-5 text-white animate-pulse" />
                     </div>
                     <div>
-                      <p className="text-xs font-black tracking-wide uppercase">
+                      <p className="text-ui font-bold">
                         {t("Enable Desktop Notifications", "Zapnúť upozornenia na ploche", "Asztali értesítések engedélyezése")}
                       </p>
-                      <p className="text-[11px] text-blue-100 font-medium">
+                      <p className="text-caption text-blue-100 font-medium">
                         {t(
                           "Get instant alerts when tasks are assigned to you or marked as completed.",
                           "Dostávajte okamžité hlásenia pri priradení novej úlohy alebo jej dokončení.",
@@ -3794,7 +3794,7 @@ ${log.payload || ''}
                           });
                         }
                       }}
-                      className="px-3.5 py-1.5 bg-white text-blue-700 hover:bg-blue-50 text-xs font-black rounded-xl shadow-sm transition active:scale-95"
+                      className="px-3.5 py-1.5 bg-white text-blue-700 hover:bg-blue-50 text-ui font-bold rounded-xl shadow-sm transition active:scale-95"
                     >
                       {t("Enable", "Povoliť", "Engedélyezés")}
                     </button>
@@ -3851,7 +3851,7 @@ ${log.payload || ''}
                 </Suspense>
               </ErrorBoundary>
             </div>
-            <footer className="mt-12 pt-4 border-t border-slate-200/50 flex justify-end items-center text-[10px] text-slate-400 select-none font-semibold uppercase tracking-wider">
+            <footer className="mt-12 pt-4 border-t border-slate-200/50 flex justify-end items-center type-overline text-slate-400 select-none">
               <span>v{VERSION}</span>
             </footer>
           </main>
@@ -3899,14 +3899,14 @@ ${log.payload || ''}
         {isSyncIndicatorVisible && (
           <div className="pointer-events-auto flex items-center gap-2 px-3.5 py-2 rounded-full bg-slate-900/90 text-white shadow-lg backdrop-blur-sm animate-in fade-in slide-in-from-bottom duration-200 select-none">
             <span className="h-3.5 w-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" aria-hidden="true" />
-            <span className="text-[11px] font-black uppercase tracking-wider">
+            <span className="type-overline">
               {userLanguage === "sk" ? "Ukladá sa…" : userLanguage === "hu" ? "Mentés…" : "Saving…"}
             </span>
           </div>
         )}
         {toast && (
           <div className="pointer-events-auto animate-in slide-in-from-bottom duration-300">
-            <div className={`bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-4 text-xs font-black uppercase tracking-wider border ${
+            <div className={`bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-4 text-ui font-bold border ${
               toast.variant === "error" ? "border-rose-500/70" : toast.variant === "warning" ? "border-amber-500/70" : "border-slate-800"
             }`}>
               <span>{toast.message}</span>
@@ -3916,14 +3916,14 @@ ${log.payload || ''}
                     toast.action?.onClick();
                     setToast(null);
                   }}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold cursor-pointer transition-all active:scale-95 text-[10px]"
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold cursor-pointer transition-all active:scale-95 text-micro"
                 >
                   {toast.action.label}
                 </button>
               )}
               <button
                 onClick={() => setToast(null)}
-                className="text-slate-400 hover:text-white font-black ml-2 cursor-pointer"
+                className="text-slate-400 hover:text-white font-bold ml-2 cursor-pointer"
               >
                 ✕
               </button>
@@ -3942,8 +3942,8 @@ ${log.payload || ''}
             {/* Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
               <div className="min-w-0 pr-4">
-                <span className="text-[10px] font-black uppercase text-amber-700 tracking-wider">{t("File Preview", "Náhľad súboru", "Fájl előnézet")}</span>
-                <h3 className="text-sm font-heading font-black uppercase tracking-tight truncate">{previewFile.name}</h3>
+                <span className="type-overline text-amber-700">{t("File Preview", "Náhľad súboru", "Fájl előnézet")}</span>
+                <h3 className="text-body font-heading font-bold truncate">{previewFile.name}</h3>
               </div>
               <div className="flex items-center gap-2">
                 {/* The browser's own viewer reports why a document failed to open,
@@ -3952,14 +3952,14 @@ ${log.payload || ''}
                   href={previewFile.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-[10px] font-black uppercase flex items-center gap-1 transition-all"
+                  className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 type-overline flex items-center gap-1 transition-all"
                 >
                   {t("Open in a new tab", "Otvoriť na novej karte", "Megnyitás új lapon")}
                 </a>
                 <a
                   href={previewFile.url}
                   download={previewFile.name}
-                  className="px-3 py-1.5 rounded-xl bg-amber-700 hover:bg-amber-600 border border-amber-800 text-white text-[10px] font-black uppercase flex items-center gap-1 transition-all"
+                  className="px-3 py-1.5 rounded-xl bg-amber-700 hover:bg-amber-600 border border-amber-800 text-white type-overline flex items-center gap-1 transition-all"
                 >
                   {t("Download", "Stiahnuť", "Letöltés")}
                 </a>
@@ -3988,11 +3988,11 @@ ${log.payload || ''}
 
       {/* Right Error Sidebar */}
       {errorSidebarEnabled && (
-        <div className="w-[300px] bg-white border-l border-slate-200 flex flex-col h-full shrink-0 animate-in slide-in-from-right duration-300 text-left">
+        <div className="w-75 bg-white border-l border-slate-200 flex flex-col h-full shrink-0 animate-in slide-in-from-right duration-300 text-left">
           <div className="p-4.5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
             <div className="flex items-center gap-1.5 text-red-600">
               <AlertOctagon className="h-4.5 w-4.5 text-red-500 animate-pulse" />
-              <span className="font-heading font-extrabold text-slate-900 uppercase tracking-wider text-[10.5px]">
+              <span className="font-heading text-slate-900 type-overline">
                 {t("Background Errors", "Chyby na pozadí", "Háttérhibák")}
               </span>
             </div>
@@ -4022,7 +4022,7 @@ ${log.payload || ''}
                 <RefreshCw className="h-5 w-5 animate-spin text-slate-400" />
               </div>
             ) : errorLogs.length === 0 ? (
-              <div className="text-center py-12 text-slate-400 font-bold text-[10.5px]">
+              <div className="text-center py-12 text-slate-400 font-bold text-micro">
                 {t("No background errors", "Žiadne chyby na pozadí", "Nincsenek háttérhibák")}
               </div>
             ) : (
@@ -4030,17 +4030,17 @@ ${log.payload || ''}
                 <div
                   key={log.id}
                   onClick={() => setSelectedLog(log)}
-                  className="p-3 bg-white hover:bg-red-50/10 rounded-2xl border border-slate-200 hover:border-red-200/60 transition-all cursor-pointer shadow-sm flex flex-col gap-1.5 text-[10.5px]"
+                  className="p-3 bg-white hover:bg-red-50/10 rounded-2xl border border-slate-200 hover:border-red-200/60 transition-all cursor-pointer shadow-sm flex flex-col gap-1.5 text-micro"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-mono text-[8.5px] text-slate-400">{log.created_at}</span>
-                    <span className={`px-1.5 py-0.5 rounded-md font-black text-[7.5px] uppercase ${
+                    <span className="font-mono text-micro text-slate-400">{log.created_at}</span>
+                    <span className={`px-1.5 py-0.5 rounded-md type-overline ${
                       log.request_method === 'POST' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-700'
                     }`}>
                       {log.request_method}
                     </span>
                   </div>
-                  <div className="font-mono text-[8.5px] text-slate-500 truncate">
+                  <div className="font-mono text-micro text-slate-500 truncate">
                     {log.request_uri}
                   </div>
                   <div className="font-bold text-red-600 line-clamp-2 leading-relaxed">
@@ -4060,7 +4060,7 @@ ${log.payload || ''}
             <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <div className="flex items-center gap-2 text-red-600">
                 <AlertOctagon className="h-5 w-5 shrink-0" />
-                <h3 className="font-heading font-extrabold text-slate-900 uppercase tracking-wider text-xs">
+                <h3 className="font-heading font-extrabold text-slate-900 text-ui">
                   {t("Exception / Error Details", "Detail výnimky / chyby", "Kivétel / hiba részletei")}
                 </h3>
               </div>
@@ -4068,7 +4068,7 @@ ${log.payload || ''}
                 <button
                   type="button"
                   onClick={() => handleCopyLogDetails(selectedLog)}
-                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 font-bold"
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl type-overline flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
                 >
                   <Copy className="h-3.5 w-3.5" />
                   {t("Copy", "Kopírovať", "Másolás")}
@@ -4076,39 +4076,39 @@ ${log.payload || ''}
                 <button
                   type="button"
                   onClick={() => setSelectedLog(null)}
-                  className="text-slate-400 hover:text-slate-800 p-1.5 hover:bg-slate-100 rounded-xl transition-all cursor-pointer font-bold text-sm"
+                  className="text-slate-400 hover:text-slate-800 p-1.5 hover:bg-slate-100 rounded-xl transition-all cursor-pointer font-bold text-body"
                 >
                   ✕
                 </button>
               </div>
             </div>
-            <div className="p-6 overflow-y-auto space-y-4 font-medium text-slate-700 text-xs">
+            <div className="p-6 overflow-y-auto space-y-4 font-medium text-slate-700 text-ui">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b border-slate-100 pb-4">
                 <div>
-                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Date & Time", "Dátum a čas", "Dátum és idő")}</span>
-                  <span className="font-mono text-[10.5px] text-slate-700 font-bold">{selectedLog.created_at}</span>
+                  <span className="type-overline text-slate-400 block">{t("Date & Time", "Dátum a čas", "Dátum és idő")}</span>
+                  <span className="font-mono text-micro text-slate-700 font-bold">{selectedLog.created_at}</span>
                 </div>
                 <div>
-                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Method & URI", "Metóda a URI", "Metódus és URI")}</span>
-                  <span className="font-mono text-[10.5px] text-slate-700 font-bold">{selectedLog.request_method} {selectedLog.request_uri}</span>
+                  <span className="type-overline text-slate-400 block">{t("Method & URI", "Metóda a URI", "Metódus és URI")}</span>
+                  <span className="font-mono text-micro text-slate-700 font-bold">{selectedLog.request_method} {selectedLog.request_uri}</span>
                 </div>
                 <div>
-                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("File & Line", "Súbor a riadok", "Fájl és sor")}</span>
-                  <span className="font-mono text-[10.5px] text-slate-700 font-bold">{selectedLog.file ? `${selectedLog.file.split('/').pop()}:${selectedLog.line}` : 'N/A'}</span>
+                  <span className="type-overline text-slate-400 block">{t("File & Line", "Súbor a riadok", "Fájl és sor")}</span>
+                  <span className="font-mono text-micro text-slate-700 font-bold">{selectedLog.file ? `${selectedLog.file.split('/').pop()}:${selectedLog.line}` : 'N/A'}</span>
                 </div>
               </div>
 
               <div className="space-y-1">
-                <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Error Message", "Chybová správa", "Hibaüzenet")}</span>
-                <div className="p-3 bg-red-50 text-red-800 rounded-xl font-mono text-[11px] font-bold border border-red-100 whitespace-pre-wrap leading-relaxed">
+                <span className="type-overline text-slate-400 block">{t("Error Message", "Chybová správa", "Hibaüzenet")}</span>
+                <div className="p-3 bg-red-50 text-red-800 rounded-xl font-mono text-caption font-bold border border-red-100 whitespace-pre-wrap leading-relaxed">
                   {selectedLog.message}
                 </div>
               </div>
 
               {selectedLog.file && (
                 <div className="space-y-1">
-                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Full File Path", "Úplná cesta k súboru", "Teljes fájlútvonal")}</span>
-                  <div className="p-2.5 bg-slate-50 text-slate-600 rounded-xl font-mono text-[10.5px] border border-slate-100">
+                  <span className="type-overline text-slate-400 block">{t("Full File Path", "Úplná cesta k súboru", "Teljes fájlútvonal")}</span>
+                  <div className="p-2.5 bg-slate-50 text-slate-600 rounded-xl font-mono text-micro border border-slate-100">
                     {selectedLog.file} (Line {selectedLog.line})
                   </div>
                 </div>
@@ -4116,8 +4116,8 @@ ${log.payload || ''}
 
               {selectedLog.trace && (
                 <div className="space-y-1">
-                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Stack Trace", "Výpis zásobníka", "Hívási verem")}</span>
-                  <pre className="p-4 bg-slate-900 text-slate-100 rounded-2xl font-mono text-[10px] overflow-x-auto whitespace-pre leading-relaxed border border-slate-800 max-h-64">
+                  <span className="type-overline text-slate-400 block">{t("Stack Trace", "Výpis zásobníka", "Hívási verem")}</span>
+                  <pre className="p-4 bg-slate-900 text-slate-100 rounded-2xl font-mono text-micro overflow-x-auto whitespace-pre leading-relaxed border border-slate-800 max-h-64">
                     {selectedLog.trace}
                   </pre>
                 </div>
@@ -4125,8 +4125,8 @@ ${log.payload || ''}
 
               {selectedLog.payload && (
                 <div className="space-y-1">
-                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Request Payload", "Telo požiadavky", "Kérés tartalma")}</span>
-                  <pre className="p-4 bg-slate-900 text-slate-100 rounded-2xl font-mono text-[10px] overflow-x-auto whitespace-pre leading-relaxed border border-slate-800 max-h-48">
+                  <span className="type-overline text-slate-400 block">{t("Request Payload", "Telo požiadavky", "Kérés tartalma")}</span>
+                  <pre className="p-4 bg-slate-900 text-slate-100 rounded-2xl font-mono text-micro overflow-x-auto whitespace-pre leading-relaxed border border-slate-800 max-h-48">
                     {selectedLog.payload}
                   </pre>
                 </div>

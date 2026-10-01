@@ -18,6 +18,7 @@ import {
   uploadDiskName,
   type RegistryFileType,
 } from "../utils/projectDocuments";
+import { PageHeader } from "./layout";
 
 interface QueuedFile {
   id: string;
@@ -535,54 +536,52 @@ export const FilesView: React.FC<FilesViewProps> = ({
     <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
       
       {/* Title Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4">
-        <div className="flex flex-col">
-          <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-            <FolderOpen className="h-6 w-6 text-amber-600" /> {getTranslation(systemLanguage, "files.title")}
-          </h2>
-          <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">{getTranslation(systemLanguage, "files.subtitle")}</p>
-        </div>
-
-        {/* Upload Documents Trigger Button — a read-only role sees a notice instead */}
-        {canEdit ? (
-          <button
-            type="button"
-            onClick={() => setIsUploadDrawerOpen(true)}
-            className="px-4 py-2 rounded-xl bg-amber-700 hover:bg-amber-600 border border-amber-800 text-white transition-all text-xs font-black uppercase flex items-center gap-2 shadow-md shadow-amber-700/20 active:scale-[0.98] cursor-pointer"
-          >
-            <Plus className="h-4 w-4 stroke-[3]" />
-            <span>
-              {systemLanguage === "sk"
-                ? "Nahrať dokumenty"
-                : systemLanguage === "hu"
-                  ? "Dokumentumok feltöltése"
-                  : "Upload Documents"}
+      <PageHeader
+        icon={<FolderOpen className="h-6 w-6 text-amber-600" />}
+        title={getTranslation(systemLanguage, "files.title")}
+        subtitle={getTranslation(systemLanguage, "files.subtitle")}
+        actions={<>
+          {/* Upload Documents Trigger Button — a read-only role sees a notice instead */}
+          {canEdit ? (
+            <button
+              type="button"
+              onClick={() => setIsUploadDrawerOpen(true)}
+              className="px-4 py-2 rounded-xl bg-amber-700 hover:bg-amber-600 border border-amber-800 text-white transition-all text-ui font-bold flex items-center gap-2 shadow-md shadow-amber-700/20 active:scale-[0.98] cursor-pointer"
+            >
+              <Plus className="h-4 w-4 stroke-[3]" />
+              <span>
+                {systemLanguage === "sk"
+                  ? "Nahrať dokumenty"
+                  : systemLanguage === "hu"
+                    ? "Dokumentumok feltöltése"
+                    : "Upload Documents"}
+              </span>
+            </button>
+          ) : (
+            <span
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 type-overline shadow-inner"
+              title={t("Your role can browse and download documents but not change them.", "Vaša rola môže dokumenty prezerať a sťahovať, ale nie meniť.", "A szerepköre böngészheti és letöltheti a dokumentumokat, de nem módosíthatja őket.")}
+            >
+              <Lock className="h-3.5 w-3.5 stroke-[2.5]" />
+              {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
             </span>
-          </button>
-        ) : (
-          <span
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider shadow-inner"
-            title={t("Your role can browse and download documents but not change them.", "Vaša rola môže dokumenty prezerať a sťahovať, ale nie meniť.", "A szerepköre böngészheti és letöltheti a dokumentumokat, de nem módosíthatja őket.")}
-          >
-            <Lock className="h-3.5 w-3.5 stroke-[2.5]" />
-            {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
-          </span>
-        )}
-      </div>
+          )}
+        </>}
+      />
 
       {/* 2. Amber Control Filter Bar with Always-Visible File Type Switcher */}
       <div className="glass-panel p-6 rounded-[28px] border-2 border-amber-400 bg-white shadow-lg space-y-4">
         
         {/* Always-visible file type pill selector */}
         <div className="space-y-1.5">
-          <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{getTranslation(systemLanguage, "files.filter_label")}</label>
+          <label className="type-overline text-slate-500">{getTranslation(systemLanguage, "files.filter_label")}</label>
           <div className="flex flex-wrap gap-2 bg-slate-100 p-1.5 rounded-2xl border-2 border-slate-200">
             {(["all", "offer", "contract", "invoice", "project"] as const).map(type => (
               <button
                 key={type}
                 type="button"
                 onClick={() => setSelectedTypeFilter(type)}
-                className={`flex-1 min-w-[8.5rem] py-2 px-2 rounded-xl font-black text-[9px] uppercase tracking-wider transition-all duration-150 text-center flex items-center justify-center gap-1.5 active:scale-[0.98] ${
+                className={`flex-1 min-w-[8.5rem] py-2 px-2 rounded-xl type-overline transition-all duration-150 text-center flex items-center justify-center gap-1.5 active:scale-[0.98] ${
                   selectedTypeFilter === type 
                     ? "bg-amber-700 text-white border border-amber-800 shadow-md shadow-amber-700/20" 
                     : "text-slate-500 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
@@ -616,7 +615,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
         </div>
 
         {/* Live Search and Client Filter grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 border-t border-slate-100 pt-4">
+        <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4 border-t border-slate-100 pt-4">
           <div className="relative w-full">
             <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4.5 w-4.5 text-amber-700 stroke-[2.5]" />
             <input
@@ -624,7 +623,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={getTranslation(systemLanguage, "files.search_placeholder")}
-              className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-amber-50/10 border-2 border-amber-200 text-xs text-slate-800 placeholder:text-slate-400 font-bold focus:outline-none focus:bg-white focus:border-amber-700 focus:ring-1 focus:ring-amber-500"
+              className="w-full pl-10 pr-4 py-2.5 rounded-2xl bg-amber-50/10 border-2 border-amber-200 text-ui text-slate-800 placeholder:text-slate-400 font-bold focus:outline-none focus:bg-white focus:border-amber-700 focus:ring-1 focus:ring-amber-500"
             />
           </div>
 
@@ -648,9 +647,9 @@ export const FilesView: React.FC<FilesViewProps> = ({
       {/* 3. Files Datagrid Table (Amber Light Brown styled) */}
       <div className="glass-panel rounded-[28px] border-2 border-amber-400 bg-white shadow-xl overflow-hidden">
         <div className="overflow-x-auto overflow-y-auto max-h-[75vh] scrollbar-thin">
-          <table className="w-full border-collapse text-left min-w-[780px]">
+          <table className="w-full border-collapse text-left min-w-195">
             <thead>
-              <tr className="bg-white text-amber-800 text-[10px] font-black uppercase tracking-wider">
+              <tr className="bg-white text-amber-800 type-overline">
                 <th className="sticky top-0 bg-white z-10 py-4 px-6 rounded-tl-[24px] border-b-2 border-slate-100">{getTranslation(systemLanguage, "files.th_filename")}</th>
                 <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "files.th_type")}</th>
                 <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "files.th_client")}</th>
@@ -662,13 +661,13 @@ export const FilesView: React.FC<FilesViewProps> = ({
               </tr>
             </thead>
 
-            <tbody className="divide-y divide-amber-100 text-xs">
+            <tbody className="divide-y divide-amber-100 text-ui">
               {filteredFiles.length === 0 ? (
                 <tr>
                   <td colSpan={8} className="py-16 px-6 text-center text-slate-400">
-                    <div className="text-2xl mb-2 animate-bounce">📁</div>
-                    <div className="font-black text-slate-700 uppercase tracking-wider">{getTranslation(systemLanguage, "files.no_docs")}</div>
-                    <div className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider mt-0.5">{getTranslation(systemLanguage, "files.no_docs_desc")}</div>
+                    <div className="text-heading mb-2 animate-bounce">📁</div>
+                    <div className="font-bold text-slate-700 uppercase tracking-wider">{getTranslation(systemLanguage, "files.no_docs")}</div>
+                    <div className="type-overline text-slate-400 mt-0.5">{getTranslation(systemLanguage, "files.no_docs_desc")}</div>
                   </td>
                 </tr>
               ) : (
@@ -684,13 +683,13 @@ export const FilesView: React.FC<FilesViewProps> = ({
                       {/* File Name */}
                       <td className="py-3.5 px-6 font-bold text-slate-900">
                         <div className="flex items-start gap-2.5">
-                          <div className={`h-7 w-7 rounded-lg text-white border font-heading font-black text-[9px] flex items-center justify-center shrink-0 shadow ${typeProps.iconContainer} mt-0.5`}>
+                          <div className={`h-7 w-7 rounded-lg text-white border font-heading font-bold text-micro flex items-center justify-center shrink-0 shadow ${typeProps.iconContainer} mt-0.5`}>
                             <FileText className="h-4 w-4" />
                           </div>
                           <div className="flex flex-col min-w-0">
-                            <span className="line-clamp-1 font-black text-slate-800 group-hover:text-amber-800 transition-colors">{file.fileName}</span>
+                            <span className="line-clamp-1 font-bold text-slate-800 group-hover:text-amber-800 transition-colors">{file.fileName}</span>
                             {file.summary && (
-                              <span className="text-[10px] text-slate-400 font-semibold truncate max-w-sm lg:max-w-md mt-0.5" title={file.summary}>
+                              <span className="text-micro text-slate-400 font-semibold truncate max-w-sm ws-lg:max-w-md mt-0.5" title={file.summary}>
                                 {file.summary}
                               </span>
                             )}
@@ -700,14 +699,14 @@ export const FilesView: React.FC<FilesViewProps> = ({
 
                       {/* File Type Badge */}
                       <td className="py-3.5 px-4">
-                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[9px] font-black uppercase border shadow-inner ${typeProps.badgeClass}`}>
+                        <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full type-overline border shadow-inner ${typeProps.badgeClass}`}>
                           {typeProps.icon}
                           <span>{typeProps.textLabel}</span>
                         </span>
                       </td>
 
                       {/* Associated Client */}
-                      <td className="py-3.5 px-4 font-black text-slate-700">
+                      <td className="py-3.5 px-4 font-bold text-slate-700">
                         {file.clientName ? (
                           <div className="flex items-center gap-1.5">
                             <User className="h-3.5 w-3.5 text-amber-700" />
@@ -719,7 +718,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
                       </td>
 
                       {/* Assigned project */}
-                      <td className="py-3.5 px-4 font-black text-slate-700">
+                      <td className="py-3.5 px-4 font-bold text-slate-700">
                         {file.projectId ? (
                           <a
                             href={`#projects/${encodeURIComponent(file.projectId)}`}
@@ -736,7 +735,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
                       </td>
 
                       {/* Uploaded date */}
-                      <td className="py-3.5 px-4 text-slate-700 font-black">
+                      <td className="py-3.5 px-4 text-slate-700 font-bold">
                         {file.uploadedAt ? (
                           <div className="flex items-center gap-1">
                             <Clock className="h-3.5 w-3.5 text-amber-700" />
@@ -753,7 +752,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
                       </td>
 
                       {/* Offer Value */}
-                      <td className="py-3.5 px-4 font-heading font-black text-amber-800 text-xs">
+                      <td className="py-3.5 px-4 font-heading font-bold text-amber-800 text-ui">
                         {file.offerValue > 0 ? (
                           <span>{money(file.offerValue)}</span>
                         ) : (
@@ -772,7 +771,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
                           ) && (
                             <a 
                               href={`#client-${encodeURIComponent(file.clientName)}`}
-                              className="px-2.5 py-1.5 rounded-xl border border-slate-300 hover:border-amber-700 hover:text-amber-800 transition-all duration-150 text-[8px] font-black uppercase text-slate-600 flex items-center gap-1 bg-white shadow-sm active:scale-[0.98]"
+                              className="px-2.5 py-1.5 rounded-xl border border-slate-300 hover:border-amber-700 hover:text-amber-800 transition-all duration-150 type-overline text-slate-600 flex items-center gap-1 bg-white shadow-sm active:scale-[0.98]"
                               title={t("Open Client details sheet", "Otvoriť kartu klienta", "Ügyfél adatlap megnyitása")}
                             >
                               <span>{getTranslation(systemLanguage, "files.btn_client")}</span>
@@ -782,7 +781,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
                           {file.projectId && (
                             <a
                               href={`#projects/${encodeURIComponent(file.projectId)}`}
-                              className="px-2.5 py-1.5 rounded-xl border border-indigo-200 hover:border-indigo-500 hover:text-indigo-800 transition-all duration-150 text-[8px] font-black uppercase text-indigo-700 flex items-center gap-1 bg-indigo-50 shadow-sm active:scale-[0.98]"
+                              className="px-2.5 py-1.5 rounded-xl border border-indigo-200 hover:border-indigo-500 hover:text-indigo-800 transition-all duration-150 type-overline text-indigo-700 flex items-center gap-1 bg-indigo-50 shadow-sm active:scale-[0.98]"
                               title={t("Open assigned project", "Otvoriť priradený projekt", "Hozzárendelt projekt megnyitása")}
                             >
                               <span>{getTranslation(systemLanguage, "files.btn_project")}</span>
@@ -792,7 +791,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
                           <button
                             type="button"
                             onClick={() => previewRegistryFile(file)}
-                            className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100/80 border border-indigo-200 text-indigo-700 transition-all duration-150 text-[8px] font-black uppercase flex items-center gap-1 shadow-sm cursor-pointer active:scale-[0.98]"
+                            className="px-2.5 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100/80 border border-indigo-200 text-indigo-700 transition-all duration-150 type-overline flex items-center gap-1 shadow-sm cursor-pointer active:scale-[0.98]"
                             title={t("Preview file", "Náhľad súboru", "Fájl előnézete")}
                           >
                             <Eye className="h-3 w-3 stroke-[2.5]" />
@@ -803,7 +802,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
                             download={file.fileName}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="px-2.5 py-1.5 rounded-xl bg-amber-700 hover:bg-amber-600 border border-amber-800 text-white transition-all duration-150 text-[8px] font-black uppercase flex items-center gap-1 shadow-sm inline-flex items-center cursor-pointer active:scale-[0.98]"
+                            className="px-2.5 py-1.5 rounded-xl bg-amber-700 hover:bg-amber-600 border border-amber-800 text-white transition-all duration-150 type-overline flex items-center gap-1 shadow-sm inline-flex items-center cursor-pointer active:scale-[0.98]"
                             title={t("Download offer document", "Stiahnuť dokument ponuky", "Ajánlati dokumentum letöltése")}
                           >
                             <Download className="h-3 w-3 stroke-[2.5]" />
@@ -829,7 +828,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
           </table>
         </div>
 
-        <div className="bg-amber-50/10 border-t-2 border-amber-100 p-4 flex items-center justify-between text-[10px] text-slate-500 font-black uppercase tracking-wider">
+        <div className="bg-amber-50/10 border-t-2 border-amber-100 p-4 flex items-center justify-between type-overline text-slate-500">
           <div className="flex items-center gap-1.5">
             <Clock className="h-3.5 w-3.5 text-amber-700 stroke-[2.5]" />
             <span>{getTranslation(systemLanguage, "files.footer_note")}</span>
@@ -851,10 +850,10 @@ export const FilesView: React.FC<FilesViewProps> = ({
             {/* Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
               <div>
-                <span className="text-[10px] font-black uppercase text-amber-600 tracking-wider">
+                <span className="type-overline text-amber-600">
                   {systemLanguage === "sk" ? "Systém správy dokumentov" : systemLanguage === "hu" ? "Dokumentumkezelő Rendszer" : "CRM Document Management"}
                 </span>
-                <h3 className="text-sm font-heading font-black uppercase tracking-tight">
+                <h3 className="text-body font-heading font-bold">
                   {systemLanguage === "sk" ? "Nahrať nové dokumenty" : systemLanguage === "hu" ? "Új dokumentumok feltöltése" : "Upload New Documents"}
                 </h3>
               </div>
@@ -868,9 +867,9 @@ export const FilesView: React.FC<FilesViewProps> = ({
             </div>
 
             {/* Body: Drag and Drop & Files Queue */}
-            <div className="flex-1 flex flex-col md:flex-row gap-6 mt-6 overflow-hidden min-h-0">
+            <div className="flex-1 flex flex-col ws-md:flex-row gap-6 mt-6 overflow-hidden min-h-0">
               {/* Drag & Drop Area */}
-              <div className="w-full md:w-2/5 flex flex-col">
+              <div className="w-full ws-md:w-2/5 flex flex-col">
                 <div
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
@@ -890,22 +889,22 @@ export const FilesView: React.FC<FilesViewProps> = ({
                     onChange={handleFileSelect}
                   />
                   <UploadCloud className={`h-12 w-12 text-amber-700 mb-3 ${isDragging ? "animate-bounce" : ""}`} />
-                  <p className="text-xs font-black text-slate-800 uppercase tracking-wide">
+                  <p className="text-ui font-bold text-slate-800">
                     {systemLanguage === "sk" ? "Presuňte súbory sem" : systemLanguage === "hu" ? "Húzza ide a fájlokat" : "Drag & Drop files here"}
                   </p>
-                  <p className="text-[10px] text-slate-500 font-extrabold uppercase mt-1">
+                  <p className="type-overline text-slate-500 mt-1">
                     {systemLanguage === "sk" ? "alebo kliknite pre výber" : systemLanguage === "hu" ? "vagy kattintson a tallózáshoz" : "or click to browse"}
                   </p>
-                  <p className="text-[8px] text-slate-400 font-extrabold uppercase mt-4 max-w-[200px]">
+                  <p className="type-overline text-slate-400 mt-4 max-w-50">
                     {systemLanguage === "sk" ? "Podporuje PDF, DOC, faktúry a iné súbory" : systemLanguage === "hu" ? "Támogatja a PDF, DOC, számlákat és más fájlokat" : "Supports PDF, DOC, invoices & general files"}
                   </p>
                 </div>
               </div>
 
               {/* Files Queue List */}
-              <div className="w-full md:w-3/5 flex flex-col border border-slate-200/80 rounded-[20px] overflow-hidden bg-slate-50/40">
+              <div className="w-full ws-md:w-3/5 flex flex-col border border-slate-200/80 rounded-[20px] overflow-hidden bg-slate-50/40">
                 <div className="bg-slate-100/80 px-4 py-2.5 border-b border-slate-200 flex items-center justify-between shrink-0">
-                  <span className="text-[10px] font-black text-slate-600 uppercase tracking-wider">
+                  <span className="type-overline text-slate-600">
                     {systemLanguage === "sk" 
                       ? `Čakajúce súbory (${uploadQueue.length})` 
                       : systemLanguage === "hu" 
@@ -916,7 +915,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setUploadQueue([])}
-                      className="text-[8px] font-black uppercase text-rose-600 hover:text-rose-800 transition-colors"
+                      className="type-overline text-rose-600 hover:text-rose-800 transition-colors"
                     >
                       {systemLanguage === "sk" ? "Vyčistiť frontu" : systemLanguage === "hu" ? "Sor kiürítése" : "Clear queue"}
                     </button>
@@ -927,7 +926,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
                   {uploadQueue.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-slate-400 py-12">
                       <File className="h-8 w-8 text-slate-300 mb-2 stroke-[1.5]" />
-                      <span className="text-[9px] font-black text-slate-500 uppercase tracking-wider">
+                      <span className="type-overline text-slate-500">
                         {systemLanguage === "sk" ? "Žiadne súbory vo fronte" : systemLanguage === "hu" ? "Nincsenek fájlok a sorban" : "No files queued yet"}
                       </span>
                     </div>
@@ -942,8 +941,8 @@ export const FilesView: React.FC<FilesViewProps> = ({
                                 <File className="h-4 w-4" />
                               </div>
                               <div className="min-w-0">
-                                <p className="text-xs font-black text-slate-800 truncate" title={item.file.name}>{item.file.name}</p>
-                                <p className="text-[9px] text-slate-400 font-extrabold uppercase mt-0.5">{formatBytes(item.file.size)}</p>
+                                <p className="text-ui font-bold text-slate-800 truncate" title={item.file.name}>{item.file.name}</p>
+                                <p className="type-overline text-slate-400 mt-0.5">{formatBytes(item.file.size)}</p>
                               </div>
                             </div>
                             <button
@@ -959,12 +958,12 @@ export const FilesView: React.FC<FilesViewProps> = ({
                           <div className="grid grid-cols-2 gap-3 text-left">
                             {/* Client Dropdown with suggestions search and tags */}
                             <div className="space-y-1 relative">
-                              <label className="text-[8px] font-black text-slate-500 uppercase tracking-wider">
+                              <label className="type-overline text-slate-500">
                                 {systemLanguage === "sk" ? "Klient / lead" : systemLanguage === "hu" ? "Ügyfél / lead" : "Client / Lead"}
                               </label>
                               {item.clientId ? (
                                 <div className="flex items-center">
-                                  <div className="w-full inline-flex items-center justify-between gap-1.5 px-3 py-1.5 bg-amber-50/50 border border-amber-300/60 rounded-xl text-[10px] font-bold text-slate-700">
+                                  <div className="w-full inline-flex items-center justify-between gap-1.5 px-3 py-1.5 bg-amber-50/50 border border-amber-300/60 rounded-xl text-micro font-bold text-slate-700">
                                     <div className="flex items-center gap-1.5 min-w-0">
                                       <User className="h-3.5 w-3.5 text-amber-700 shrink-0" />
                                       <span className="truncate">{leads.find(l => l.id === item.clientId)?.name || item.clientId}</span>
@@ -987,11 +986,11 @@ export const FilesView: React.FC<FilesViewProps> = ({
                                     onChange={(e) => handleSearchInputChange(item.id, e.target.value)}
                                     onFocus={() => handleSearchInputFocus(item.id)}
                                     onBlur={handleSearchInputBlur}
-                                    className="w-full px-2.5 py-1.5 border border-slate-200 rounded-xl text-[10px] font-bold bg-white focus:outline-none focus:border-amber-700"
+                                    className="w-full px-2.5 py-1.5 border border-slate-200 rounded-xl text-micro font-bold bg-white focus:outline-none focus:border-amber-700"
                                   />
                                   {/* Suggestions dropdown */}
                                   {focusedQueueInputId === item.id && (
-                                    <div className="absolute left-0 right-0 mt-1 max-h-40 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl z-50 divide-y divide-slate-100 text-[10px]">
+                                    <div className="absolute left-0 right-0 mt-1 max-h-40 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-xl z-50 divide-y divide-slate-100 text-micro">
                                       {getSuggestions(item.id).length === 0 ? (
                                         <div className="p-2.5 text-slate-400 italic">
                                           {systemLanguage === "sk" ? "Žiadne výsledky" : systemLanguage === "hu" ? "Nincs találat" : "No results found"}
@@ -1016,7 +1015,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
 
                             {/* Category Dropdown */}
                             <div className="space-y-1">
-                              <label className="text-[8px] font-black text-slate-500 uppercase tracking-wider">
+                              <label className="type-overline text-slate-500">
                                 {systemLanguage === "sk" ? "Kategória *" : systemLanguage === "hu" ? "Kategória *" : "Category *"}
                               </label>
                               <CustomSelect
@@ -1044,28 +1043,28 @@ export const FilesView: React.FC<FilesViewProps> = ({
                           <div className="grid grid-cols-3 gap-3 text-left">
                             {/* Description */}
                             <div className="col-span-2 space-y-1">
-                              <label className="text-[8px] font-black text-slate-500 uppercase tracking-wider">
+                              <label className="type-overline text-slate-500">
                                 {systemLanguage === "sk" ? "Popis / Poznámka" : systemLanguage === "hu" ? "Leírás / Megjegyzés" : "Description / Note"}
                               </label>
                               <input
                                 type="text"
                                 value={item.description}
                                 onChange={(e) => handleQueueChange(item.id, "description", e.target.value)}
-                                className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-[10px] font-bold focus:outline-none focus:border-amber-700"
+                                className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-micro font-bold focus:outline-none focus:border-amber-700"
                                 placeholder={systemLanguage === "sk" ? "Stručný popis súboru" : systemLanguage === "hu" ? "Rövid leírás a fájlról" : "Brief file description"}
                               />
                             </div>
 
                             {/* Amount (only makes sense if offer/invoice, but show it optional anyway) */}
                             <div className="space-y-1">
-                              <label className="text-[8px] font-black text-slate-500 uppercase tracking-wider">
+                              <label className="type-overline text-slate-500">
                                 {systemLanguage === "sk" ? "Hodnota (€)" : systemLanguage === "hu" ? "Érték (€)" : "Value (€)"}
                               </label>
                               <input
                                 type="number"
                                 value={item.amount}
                                 onChange={(e) => handleQueueChange(item.id, "amount", e.target.value)}
-                                className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-[10px] font-bold focus:outline-none focus:border-amber-700"
+                                className="w-full px-2.5 py-1.5 border border-slate-200 rounded-lg text-micro font-bold focus:outline-none focus:border-amber-700"
                                 placeholder={t("e.g. 5200", "napr. 5200", "pl. 5200")}
                               />
                             </div>
@@ -1084,7 +1083,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
                 type="button"
                 onClick={closeUploadDrawer}
                 disabled={isUploading}
-                className="px-4 py-2 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-xs font-black uppercase transition-all duration-150 active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+                className="px-4 py-2 border border-slate-200 text-slate-600 hover:bg-slate-50 rounded-xl text-ui font-bold transition-all duration-150 active:scale-[0.98] disabled:opacity-50 cursor-pointer"
               >
                 {systemLanguage === "sk" ? "Zrušiť" : systemLanguage === "hu" ? "Mégse" : "Cancel"}
               </button>
@@ -1093,7 +1092,7 @@ export const FilesView: React.FC<FilesViewProps> = ({
                 type="button"
                 onClick={handleUploadSubmit}
                 disabled={uploadQueue.length === 0 || isUploading}
-                className="px-5 py-2.5 rounded-xl bg-amber-700 hover:bg-amber-600 border border-amber-800 text-white transition-all text-xs font-black uppercase flex items-center gap-2 shadow-lg shadow-amber-700/20 active:scale-[0.98] disabled:opacity-50 cursor-pointer"
+                className="px-5 py-2.5 rounded-xl bg-amber-700 hover:bg-amber-600 border border-amber-800 text-white transition-all text-ui font-bold flex items-center gap-2 shadow-lg shadow-amber-700/20 active:scale-[0.98] disabled:opacity-50 cursor-pointer"
               >
                 {isUploading ? (
                   <>

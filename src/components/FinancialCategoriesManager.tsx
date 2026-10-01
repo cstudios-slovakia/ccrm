@@ -30,24 +30,24 @@ const CATEGORY_ROW_STYLES = {
   1: {
     row: "p-3.5 bg-slate-50/80 border-b border-slate-100",
     swatch: "h-3.5 w-3.5",
-    name: "font-bold text-xs text-slate-900 uppercase tracking-wider",
-    badge: "px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-200 text-slate-600",
+    name: "font-bold text-ui text-slate-900",
+    badge: "px-2 py-0.5 rounded-full text-micro font-semibold bg-slate-200 text-slate-600",
     badgeText: "Level 1",
     trash: "h-3.5 w-3.5"
   },
   2: {
     row: "p-2 rounded-xl bg-white border border-slate-100",
     swatch: "h-3 w-3",
-    name: "font-semibold text-xs text-slate-800",
-    badge: "px-1.5 py-0.2 rounded text-[10px] bg-slate-100 text-slate-500",
+    name: "font-semibold text-ui text-slate-800",
+    badge: "px-1.5 py-0.2 rounded text-micro bg-slate-100 text-slate-500",
     badgeText: "Level 2",
     trash: "h-3 w-3"
   },
   3: {
-    row: "p-1.5 px-3 rounded-lg bg-slate-50 border border-slate-100 text-xs",
+    row: "p-1.5 px-3 rounded-lg bg-slate-50 border border-slate-100 text-ui",
     swatch: "h-2.5 w-2.5",
     name: "text-slate-700 font-medium",
-    badge: "text-[10px] text-slate-400",
+    badge: "text-micro text-slate-400",
     badgeText: "(Level 3)",
     trash: "h-3 w-3"
   }
@@ -352,13 +352,13 @@ export const FinancialCategoriesManager: React.FC<FinancialCategoriesManagerProp
 
   return (
     <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-6 space-y-6 animate-in fade-in duration-200">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100 pb-4">
+      <div className="flex flex-col ws-sm:flex-row ws-sm:items-center ws-sm:justify-between gap-3 border-b border-slate-100 pb-4">
         <div>
-          <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+          <h3 className="text-body font-bold text-slate-900 flex items-center gap-2">
             <Layers className="h-4 w-4 text-indigo-500" />
             {t("Movement Categories", "Kategórie finančných pohybov", "Mozgási kategóriák")}
           </h3>
-          <p className="text-xs text-slate-400 mt-0.5">
+          <p className="text-ui text-slate-400 mt-0.5">
             {t("Organize your financial movement categories across Main Category (L1) ➔ Subcategory (L2) ➔ Sub-subcategory (L3).", "Organizácia finančných tokov a nákladov v 3 úrovniach: Hlavná kategória (L1) ➔ Podkategória (L2) ➔ Pod-podkategória (L3).", "Pénzügyi tételek 3 szintű rendszerezése: Főkategória (L1) ➔ Alkategória (L2) ➔ Al-alkategória (L3).")}
           </p>
         </div>
@@ -376,7 +376,7 @@ export const FinancialCategoriesManager: React.FC<FinancialCategoriesManagerProp
               setCatTreeType("expense");
               setNewCatParentId("");
             }}
-            className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`px-4 py-1.5 rounded-xl text-ui font-bold transition-all cursor-pointer ${
               catTreeType === "expense" ? "bg-white text-rose-600 shadow-sm" : "text-slate-500"
             }`}
           >
@@ -388,7 +388,7 @@ export const FinancialCategoriesManager: React.FC<FinancialCategoriesManagerProp
               setCatTreeType("income");
               setNewCatParentId("");
             }}
-            className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`px-4 py-1.5 rounded-xl text-ui font-bold transition-all cursor-pointer ${
               catTreeType === "income" ? "bg-white text-emerald-600 shadow-sm" : "text-slate-500"
             }`}
           >
@@ -400,8 +400,8 @@ export const FinancialCategoriesManager: React.FC<FinancialCategoriesManagerProp
       {/* Quick Add Category Form */}
       {canEdit && (
         <form onSubmit={handleCreateCategory} className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-wrap items-end gap-3">
-          <div className="flex-1 min-w-[200px]">
-            <label className="text-[11px] font-bold text-slate-500 block mb-1">
+          <div className="flex-1 min-w-50">
+            <label className="text-caption font-bold text-slate-500 block mb-1">
               {t("Category Name", "Názov kategórie", "Kategória neve")}
             </label>
             <input
@@ -410,12 +410,12 @@ export const FinancialCategoriesManager: React.FC<FinancialCategoriesManagerProp
               value={newCatName}
               onChange={(e) => setNewCatName(e.target.value)}
               placeholder={t("e.g. Meta Ads, Truck Transport, LAM 5+...", "napr. Meta Ads, Preprava, LAM 5+...", "pl. Google Ads, Szállítás...")}
-              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none"
+              className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-ui text-slate-800 focus:outline-none"
             />
           </div>
 
-          <div className="min-w-[220px]">
-            <label className="text-[11px] font-bold text-slate-500 block mb-1">
+          <div className="min-w-55">
+            <label className="text-caption font-bold text-slate-500 block mb-1">
               {t("Parent Category (optional)", "Nadradená kategória (voliteľné)", "Szülő kategória (opcionális)")}
             </label>
             <CustomSelect
@@ -429,12 +429,12 @@ export const FinancialCategoriesManager: React.FC<FinancialCategoriesManagerProp
                 ]),
               ]}
               size="sm"
-              className="w-full text-xs font-semibold rounded-xl bg-white border-slate-200"
+              className="w-full text-ui font-semibold rounded-xl bg-white border-slate-200"
             />
           </div>
 
           <div>
-            <label className="text-[11px] font-bold text-slate-500 block mb-1">
+            <label className="text-caption font-bold text-slate-500 block mb-1">
               {newCatParentId && !newCatColorTouched ? t("Color (inherited)", "Farba (zdedená)", "Szín (örökölt)") : t("Color", "Farba", "Szín")}
             </label>
             <ColorPicker
@@ -449,7 +449,7 @@ export const FinancialCategoriesManager: React.FC<FinancialCategoriesManagerProp
 
           <button
             type="submit"
-            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl cursor-pointer shadow-sm"
+            className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-ui font-semibold rounded-xl cursor-pointer shadow-sm"
           >
             {t("Add Category", "Pridať kategóriu", "Kategória hozzáadása")}
           </button>
@@ -458,7 +458,7 @@ export const FinancialCategoriesManager: React.FC<FinancialCategoriesManagerProp
 
       {/* Tree: every row drags — onto a row's edge to sit beside it, onto its middle to go under it */}
       {canEdit && (
-        <p className="-mt-3 text-[11px] text-slate-400 flex items-center gap-1.5">
+        <p className="-mt-3 text-caption text-slate-400 flex items-center gap-1.5">
           <GripVertical className="h-3.5 w-3.5 shrink-0" />
           {t(
             "Drag a category to reorder it or move it under another one; click its colour dot to recolour it.",
@@ -504,7 +504,7 @@ export const FinancialCategoriesManager: React.FC<FinancialCategoriesManagerProp
           <div
             onDragOver={(e) => handleCategoryDragOver(e, null)}
             onDrop={handleCategoryDrop}
-            className={`animate-in fade-in slide-in-from-bottom-1 duration-200 rounded-2xl border-2 border-dashed px-4 py-3 text-center text-xs font-semibold transition-colors ${
+            className={`animate-in fade-in slide-in-from-bottom-1 duration-200 rounded-2xl border-2 border-dashed px-4 py-3 text-center text-ui font-semibold transition-colors ${
               categoryDropTarget?.targetId === null
                 ? "border-indigo-400 bg-indigo-50 text-indigo-600"
                 : "border-slate-200 text-slate-400"

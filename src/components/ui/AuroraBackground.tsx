@@ -250,7 +250,7 @@ export const AuroraBackground: React.FC<AuroraBackgroundProps> = ({
     >
       {/* Aurora Ambient Blob 1 (Top Left / Upper Canvas) */}
       <div
-        className="absolute -top-[12%] -left-[10%] w-[580px] h-[580px] md:w-[800px] md:h-[800px] rounded-full blur-[110px] md:blur-[140px] opacity-90 will-change-transform animate-aurora-pulse-1"
+        className="absolute -top-[12%] -left-[10%] w-145 h-145 md:w-200 md:h-200 rounded-full blur-[110px] md:blur-[140px] opacity-90 will-change-transform animate-aurora-pulse-1"
         style={{
           background: `radial-gradient(circle at center, ${colors.primary} 0%, ${colors.secondary} 45%, transparent 75%)`,
         }}
@@ -258,7 +258,7 @@ export const AuroraBackground: React.FC<AuroraBackgroundProps> = ({
 
       {/* Aurora Ambient Blob 2 (Top Right / Middle Right Canvas) */}
       <div
-        className="absolute top-[8%] -right-[12%] w-[500px] h-[500px] md:w-[720px] md:h-[720px] rounded-full blur-[110px] md:blur-[140px] opacity-80 will-change-transform animate-aurora-pulse-2"
+        className="absolute top-[8%] -right-[12%] w-125 h-125 md:w-180 md:h-180 rounded-full blur-[110px] md:blur-[140px] opacity-80 will-change-transform animate-aurora-pulse-2"
         style={{
           background: `radial-gradient(circle at center, ${colors.secondary} 0%, ${colors.accent} 50%, transparent 75%)`,
         }}
@@ -266,7 +266,7 @@ export const AuroraBackground: React.FC<AuroraBackgroundProps> = ({
 
       {/* Aurora Ambient Blob 3 (Bottom Center / Left subtle glow) */}
       <div
-        className="absolute -bottom-[15%] left-[20%] w-[450px] h-[450px] md:w-[650px] md:h-[650px] rounded-full blur-[120px] md:blur-[150px] opacity-70 will-change-transform animate-aurora-pulse-3"
+        className="absolute -bottom-[15%] left-[20%] w-112.5 h-112.5 md:w-162.5 md:h-162.5 rounded-full blur-[120px] md:blur-[150px] opacity-70 will-change-transform animate-aurora-pulse-3"
         style={{
           background: `radial-gradient(circle at center, ${colors.accent} 0%, ${colors.primary} 45%, transparent 75%)`,
         }}

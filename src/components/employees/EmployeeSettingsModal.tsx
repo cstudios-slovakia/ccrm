@@ -197,10 +197,10 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
               <Settings className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-900">
+              <h2 className="text-title font-bold text-slate-900">
                 {t("Employee & Payroll Settings", "Nastavenia zamestnancov a miezd", "Alkalmazotti és bérbeállítások")}
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-ui text-slate-500">
                 {t("Configure salary cycles, leave types, and Toggl integration", "Konfigurácia cyklov miezd, typov voľna a Toggl prepojenia", "Bérciklusok, szabadságtípusok és Toggl integráció")}
               </p>
             </div>
@@ -217,7 +217,7 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
         <div className="flex items-center gap-2 px-6 pt-4 border-b border-slate-200 bg-slate-50/70">
           <button
             onClick={() => setActiveTab("payroll")}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-t-xl transition-all border-b-2 ${
+            className={`flex items-center gap-2 px-4 py-2.5 text-body font-semibold rounded-t-xl transition-all border-b-2 ${
               activeTab === "payroll"
                 ? "border-[#c29b62] text-[#9e7638] dark:text-[#d4af7a] bg-white"
                 : "border-transparent text-slate-500 hover:text-slate-700"
@@ -229,7 +229,7 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
 
           <button
             onClick={() => setActiveTab("vacation")}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-t-xl transition-all border-b-2 ${
+            className={`flex items-center gap-2 px-4 py-2.5 text-body font-semibold rounded-t-xl transition-all border-b-2 ${
               activeTab === "vacation"
                 ? "border-[#c29b62] text-[#9e7638] dark:text-[#d4af7a] bg-white"
                 : "border-transparent text-slate-500 hover:text-slate-700"
@@ -241,7 +241,7 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
 
           <button
             onClick={() => setActiveTab("toggl")}
-            className={`flex items-center gap-2 px-4 py-2.5 text-sm font-semibold rounded-t-xl transition-all border-b-2 ${
+            className={`flex items-center gap-2 px-4 py-2.5 text-body font-semibold rounded-t-xl transition-all border-b-2 ${
               activeTab === "toggl"
                 ? "border-[#c29b62] text-[#9e7638] dark:text-[#d4af7a] bg-white"
                 : "border-transparent text-slate-500 hover:text-slate-700"
@@ -257,17 +257,17 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
           {/* TAB 1: PAYROLL */}
           {activeTab === "payroll" && (
             <div className="space-y-6 animate-in fade-in duration-150">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4">
                 {/* Salary Period */}
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
+                  <label className="block text-ui font-semibold text-slate-500 mb-2">
                     {t("Company Salary Period", "Perióda vyplácania miezd", "Bérfizetési időszak")}
                   </label>
                   <div className="grid grid-cols-2 gap-2">
                     <button
                       type="button"
                       onClick={() => setSalaryPeriod("monthly")}
-                      className={`px-3 py-2 rounded-xl text-sm font-medium border transition ${
+                      className={`px-3 py-2 rounded-xl text-body font-medium border transition ${
                         salaryPeriod === "monthly"
                           ? "bg-[#c29b62] text-white border-[#c29b62] shadow-sm"
                           : "bg-white text-slate-700 border-slate-200"
@@ -278,7 +278,7 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
                     <button
                       type="button"
                       onClick={() => setSalaryPeriod("weekly")}
-                      className={`px-3 py-2 rounded-xl text-sm font-medium border transition ${
+                      className={`px-3 py-2 rounded-xl text-body font-medium border transition ${
                         salaryPeriod === "weekly"
                           ? "bg-[#c29b62] text-white border-[#c29b62] shadow-sm"
                           : "bg-white text-slate-700 border-slate-200"
@@ -291,7 +291,7 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
 
                 {/* Default Salary Due Day */}
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
+                  <label className="block text-ui font-semibold text-slate-500 mb-2">
                     {t("Default Salary Due Day", "Predvolený výplatný deň v mesiaci", "Alapértelmezett kifizetési nap")}
                   </label>
                   <div className="flex items-center gap-3">
@@ -301,9 +301,9 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
                       max="31"
                       value={salaryDueDay}
                       onChange={(e) => setSalaryDueDay(parseInt(e.target.value) || 15)}
-                      className="w-24 px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                      className="w-24 px-3 py-2 text-body bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
                     />
-                    <span className="text-xs text-slate-500">
+                    <span className="text-ui text-slate-500">
                       {t("day of the following month (e.g. 15th)", "deň nasledujúceho mesiaca (napr. 15.)", "a következő hónap napja (pl. 15.)")}
                     </span>
                   </div>
@@ -314,10 +314,10 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h4 className="text-sm font-semibold text-slate-900">
+                    <h4 className="text-body font-semibold text-slate-900">
                       {t("Auto-Sync Salaries to Financial Management", "Automatická synchronizácia miezd do financií", "Bérek automatikus szinkronizálása")}
                     </h4>
-                    <p className="text-xs text-slate-500 mt-0.5">
+                    <p className="text-ui text-slate-500 mt-0.5">
                       {t(
                         "Unpaid salaries are automatically registered as Planned Expenses; paid salaries as Paid Expenses",
                         "Nevyplatené mzdy sa zaevidujú ako Plánovaný výdavok; po úhrade ako Skutočný výdavok",
@@ -332,19 +332,19 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
                       onChange={(e) => setAutoExpense(e.target.checked)}
                       className="sr-only peer"
                     />
-                    <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#c29b62]"></div>
+                    <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#c29b62]"></div>
                   </label>
                 </div>
 
                 {autoExpense && (
                   <div className="pt-2 border-t border-slate-200">
-                    <label className="block text-xs font-semibold text-slate-600 mb-1">
+                    <label className="block text-ui font-semibold text-slate-600 mb-1">
                       {t("Default Expense Category", "Predvolená kategória výdavku", "Alapértelmezett kiadási kategória")}
                     </label>
                     <select
                       value={expenseCategoryId}
                       onChange={(e) => setExpenseCategoryId(e.target.value)}
-                      className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                      className="w-full px-3 py-2 text-body bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
                     >
                       <option value="">{t("-- Select Financial Category --", "-- Vyberte finančnú kategóriu --", "-- Válasszon kategóriát --")}</option>
                       {financialCategories
@@ -363,10 +363,10 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
               <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h4 className="text-sm font-semibold text-slate-900">
+                    <h4 className="text-body font-semibold text-slate-900">
                       {t("Salary Components & Categories", "Zložky a kategórie mzdy", "Bérösszetevők és kategóriák")}
                     </h4>
-                    <p className="text-xs text-slate-500">
+                    <p className="text-ui text-slate-500">
                       {t(
                         "Configured categories appear in the monthly salaries matrix table",
                         "Tieto zložky sa zobrazujú v matici miezd",
@@ -377,7 +377,7 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
                   <button
                     type="button"
                     onClick={handleAddSalaryType}
-                    className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-[#c29b62] text-white hover:bg-[#b58b4c] transition shadow-sm"
+                    className="flex items-center gap-1.5 px-3 py-1.5 text-ui font-semibold rounded-xl bg-[#c29b62] text-white hover:bg-[#b58b4c] transition shadow-sm"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     {t("Add Category", "Pridať zložku", "Összetevő hozzáadása")}
@@ -390,7 +390,7 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
                       key={st.id}
                       className="flex items-center gap-3 p-2.5 rounded-xl bg-white border border-slate-200"
                     >
-                      <span className="text-xs font-mono text-slate-400 w-5 text-center">{idx + 1}.</span>
+                      <span className="text-ui font-mono text-slate-400 w-5 text-center">{idx + 1}.</span>
                       <input
                         type="text"
                         value={st.name}
@@ -399,7 +399,7 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
                           updated[idx] = { ...updated[idx], name: e.target.value };
                           setSalaryTypes(updated);
                         }}
-                        className="flex-1 px-3 py-1.5 text-sm bg-transparent border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-1 focus:ring-[#c29b62]"
+                        className="flex-1 px-3 py-1.5 text-body bg-transparent border border-slate-200 rounded-lg text-slate-900 focus:outline-none focus:ring-1 focus:ring-[#c29b62]"
                         placeholder={t("Category Name", "Názov zložky", "Összetevő neve")}
                       />
                       <button
@@ -422,10 +422,10 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
             <div className="space-y-4 animate-in fade-in duration-150">
               <div className="flex items-center justify-between">
                 <div>
-                  <h4 className="text-sm font-semibold text-slate-900">
+                  <h4 className="text-body font-semibold text-slate-900">
                     {t("Vacation & Absence Types", "Typy dovoleniek a neprítomností", "Szabadság- és távolléttípusok")}
                   </h4>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-ui text-slate-500">
                     {t(
                       "Define available leave types and their default yearly allowance in days",
                       "Definujte typy voľna a ich predvolený ročný nárok v dňoch",
@@ -436,7 +436,7 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
                 <button
                   type="button"
                   onClick={handleAddVacationType}
-                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl bg-[#c29b62] text-white hover:bg-[#b58b4c] transition shadow-sm"
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-ui font-semibold rounded-xl bg-[#c29b62] text-white hover:bg-[#b58b4c] transition shadow-sm"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   {t("Add Leave Type", "Pridať typ voľna", "Típus hozzáadása")}
@@ -447,7 +447,7 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
                 {vacationTypes.map((vt, idx) => (
                   <div
                     key={vt.id}
-                    className="flex flex-col sm:flex-row sm:items-center gap-3 p-3 rounded-2xl bg-white border border-slate-200 shadow-sm"
+                    className="flex flex-col ws-sm:flex-row ws-sm:items-center gap-3 p-3 rounded-2xl bg-white border border-slate-200 shadow-sm"
                   >
                     <div className="flex items-center gap-2 flex-1">
                       <ColorPicker
@@ -469,14 +469,14 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
                           updated[idx] = { ...updated[idx], name: e.target.value };
                           setVacationTypes(updated);
                         }}
-                        className="flex-1 px-3 py-1.5 text-sm bg-transparent border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-1 focus:ring-[#c29b62]"
+                        className="flex-1 px-3 py-1.5 text-body bg-transparent border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-1 focus:ring-[#c29b62]"
                         placeholder={t("Leave Type Name", "Názov typu voľna", "Típus megnevezése")}
                       />
                     </div>
 
                     <div className="flex items-center gap-3 justify-end">
                       <div className="flex items-center gap-1.5">
-                        <span className="text-xs text-slate-500">
+                        <span className="text-ui text-slate-500">
                           {t("Default Days:", "Základ:", "Alapkeret:")}
                         </span>
                         <input
@@ -489,9 +489,9 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
                             updated[idx] = { ...updated[idx], defaultAllowance: parseFloat(e.target.value) || 0 };
                             setVacationTypes(updated);
                           }}
-                          className="w-16 px-2 py-1 text-sm bg-slate-50 border border-slate-200 rounded-lg text-slate-900 text-center focus:outline-none focus:ring-1 focus:ring-[#c29b62]"
+                          className="w-16 px-2 py-1 text-body bg-slate-50 border border-slate-200 rounded-lg text-slate-900 text-center focus:outline-none focus:ring-1 focus:ring-[#c29b62]"
                         />
-                        <span className="text-xs text-slate-400">{t("days", "dní", "nap")}</span>
+                        <span className="text-ui text-slate-400">{t("days", "dní", "nap")}</span>
                       </div>
 
                       <button
@@ -514,7 +514,7 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
             <div className="space-y-6 animate-in fade-in duration-150">
               <div className="p-4 rounded-2xl bg-[#c29b62]/10 border border-[#c29b62]/20 flex items-start gap-3">
                 <Clock className="w-5 h-5 text-[#9e7638] dark:text-[#d4af7a] shrink-0 mt-0.5" />
-                <div className="text-xs text-slate-700 space-y-1">
+                <div className="text-ui text-slate-700 space-y-1">
                   <p className="font-semibold text-slate-900">
                     {t("Toggl Track v9 Integration", "Prepojenie s Toggl Track v9", "Toggl Track v9 Integráció")}
                   </p>
@@ -531,7 +531,7 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
               <div className="space-y-4">
                 {/* API Key */}
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                  <label className="block text-ui font-semibold text-slate-500 mb-1.5">
                     {t("Toggl API Token", "Toggl API Token", "Toggl API Token")}
                   </label>
                   <div className="relative">
@@ -540,7 +540,7 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
                       value={togglApiKey}
                       onChange={(e) => setTogglApiKey(e.target.value)}
                       placeholder="e.g. 1a2b3c4d5e6f7g8h9i0j..."
-                      className="w-full pl-3 pr-10 py-2.5 text-sm bg-white border border-slate-200 rounded-xl text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                      className="w-full pl-3 pr-10 py-2.5 text-body bg-white border border-slate-200 rounded-xl text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
                     />
                     <button
                       type="button"
@@ -554,7 +554,7 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
 
                 {/* Workspace ID */}
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-1.5">
+                  <label className="block text-ui font-semibold text-slate-500 mb-1.5">
                     {t("Workspace ID (Optional - auto-discovered if blank)", "Workspace ID (Voliteľné - automaticky zistí ak je prázdne)", "Workspace ID (Opcionális)")}
                   </label>
                   <input
@@ -562,17 +562,17 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
                     value={togglWorkspaceId}
                     onChange={(e) => setTogglWorkspaceId(e.target.value)}
                     placeholder="e.g. 1234567"
-                    className="w-full px-3 py-2.5 text-sm bg-white border border-slate-200 rounded-xl text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                    className="w-full px-3 py-2.5 text-body bg-white border border-slate-200 rounded-xl text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
                   />
                 </div>
 
                 {/* Test Connection Button */}
-                <div className="pt-2 flex flex-col sm:flex-row items-start sm:items-center gap-3">
+                <div className="pt-2 flex flex-col ws-sm:flex-row items-start ws-sm:items-center gap-3">
                   <button
                     type="button"
                     onClick={handleTestToggl}
                     disabled={testingToggl || !togglApiKey.trim()}
-                    className="flex items-center gap-2 px-4 py-2 text-sm font-semibold rounded-xl bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 transition shadow-sm"
+                    className="flex items-center gap-2 px-4 py-2 text-body font-semibold rounded-xl bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 transition shadow-sm"
                   >
                     {testingToggl ? <Loader2 className="w-4 h-4 animate-spin" /> : <Briefcase className="w-4 h-4" />}
                     {t("Test Toggl Connection", "Otestovať pripojenie", "Kapcsolat tesztelése")}
@@ -580,7 +580,7 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
 
                   {togglStatus && (
                     <div
-                      className={`flex items-center gap-2 text-xs font-medium px-3 py-1.5 rounded-lg ${
+                      className={`flex items-center gap-2 text-ui font-medium px-3 py-1.5 rounded-lg ${
                         togglStatus.success
                           ? "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
                           : "bg-red-500/10 text-red-600 border border-red-500/20"
@@ -605,14 +605,14 @@ export const EmployeeSettingsModal: React.FC<EmployeeSettingsModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200/60 rounded-xl transition"
+            className="px-4 py-2 text-body font-semibold text-slate-700 hover:bg-slate-200/60 rounded-xl transition"
           >
             {t("Cancel", "Zrušiť", "Mégse")}
           </button>
           <button
             type="button"
             onClick={handleSave}
-            className="px-5 py-2 text-sm font-semibold text-white bg-[#c29b62] hover:bg-[#b58b4c] rounded-xl shadow-md shadow-[#c29b62]/30 transition"
+            className="px-5 py-2 text-body font-semibold text-white bg-[#c29b62] hover:bg-[#b58b4c] rounded-xl shadow-md shadow-[#c29b62]/30 transition"
           >
             {t("Save Settings", "Uložiť nastavenia", "Beállítások mentése")}
           </button>

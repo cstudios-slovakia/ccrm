@@ -610,7 +610,7 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
 
       {/* TOP BAR: Floating Minimal Info */}
       <div className="w-full max-w-4xl flex items-center justify-between z-10">
-        <div className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-white border border-slate-200/80 shadow-xs text-xs font-bold text-slate-700">
+        <div className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-white border border-slate-200/80 shadow-xs text-ui font-bold text-slate-700">
           <Sparkles className="h-3.5 w-3.5 text-purple-600" />
           <span>Voice: {executive.voice ? executive.voice.toUpperCase() : "ALLOY"}</span>
         </div>
@@ -620,19 +620,19 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
           <button
             type="button"
             onClick={() => setShowTranscript(!showTranscript)}
-            className="flex items-center gap-2 px-4 py-2 rounded-full bg-white hover:bg-slate-50 border border-slate-200/80 shadow-xs text-xs font-bold text-slate-700 hover:text-slate-900 transition-all cursor-pointer"
+            className="flex items-center gap-2 px-4 py-2 rounded-full bg-white hover:bg-slate-50 border border-slate-200/80 shadow-xs text-ui font-bold text-slate-700 hover:text-slate-900 transition-all cursor-pointer"
           >
             <FileText className="h-3.5 w-3.5 text-purple-600" />
             <span>{t("Transcript", "Prepis", "Átirat")}</span>
             {transcripts.length > 0 && (
-              <span className="px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 text-[10px] font-extrabold">
+              <span className="px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 text-micro font-extrabold">
                 {transcripts.length}
               </span>
             )}
           </button>
 
           {/* Active Call Timer Pill */}
-          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white border border-slate-200/80 shadow-xs text-xs font-bold text-slate-800 font-mono">
+          <div className="flex items-center gap-2 px-4 py-2 rounded-full bg-white border border-slate-200/80 shadow-xs text-ui font-bold text-slate-800 font-mono">
             <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
             <Clock className="h-3.5 w-3.5 text-slate-400" />
             <span>{formatTimer(callDuration)}</span>
@@ -675,14 +675,14 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
 
         {/* Floating Titles & Metadata */}
         <div className="space-y-1.5 mt-2 mb-3">
-          <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-extrabold uppercase tracking-wide bg-white border border-slate-200/80 text-purple-700 shadow-xs">
+          <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-ui font-extrabold bg-white border border-slate-200/80 text-purple-700 shadow-xs">
             <Sparkles className="h-3 w-3 text-purple-500" />
             {executive.badge}
           </div>
-          <h2 className="text-3xl sm:text-4xl font-black font-heading tracking-tight text-slate-900">
+          <h2 className="type-entity-title text-slate-900">
             {executive.name}
           </h2>
-          <p className="text-sm sm:text-base font-semibold text-slate-500 max-w-md mx-auto">
+          <p className="text-body font-semibold text-slate-500 max-w-md mx-auto">
             {translatedPosition}
           </p>
         </div>
@@ -690,42 +690,42 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
         {/* Live Status Pill */}
         <div className="my-3">
           {callState === "connecting" && (
-            <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/90 border border-amber-200 text-amber-800 text-xs font-bold animate-pulse shadow-xs backdrop-blur-md">
+            <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/90 border border-amber-200 text-amber-800 text-ui font-bold animate-pulse shadow-xs backdrop-blur-md">
               <Activity className="h-3.5 w-3.5 animate-spin text-amber-600" />
               {t("Connecting to Executive...", "Pripájanie k poradcovi...", "Kapcsolódás a vezetőhöz...")}
             </div>
           )}
 
           {callState === "connected" && isAiThinking && !isAiSpeaking && (
-            <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/90 border border-amber-200 text-amber-800 text-xs font-bold animate-pulse shadow-xs backdrop-blur-md">
+            <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/90 border border-amber-200 text-amber-800 text-ui font-bold animate-pulse shadow-xs backdrop-blur-md">
               <Sparkles className="h-3.5 w-3.5 text-amber-600 animate-spin" />
               {t(`${executive.name} is analyzing...`, `${executive.name} analyzuje...`, `${executive.name} elemez...`)}
             </div>
           )}
 
           {callState === "connected" && isAiSpeaking && (
-            <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/90 border border-purple-200 text-purple-800 text-xs font-bold animate-pulse shadow-xs backdrop-blur-md">
+            <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/90 border border-purple-200 text-purple-800 text-ui font-bold animate-pulse shadow-xs backdrop-blur-md">
               <Volume2 className="h-3.5 w-3.5 text-purple-600" />
               {t(`${executive.name} is speaking...`, `${executive.name} hovorí...`, `${executive.name} beszél...`)}
             </div>
           )}
 
           {callState === "connected" && !isAiSpeaking && !isAiThinking && isUserSpeaking && (
-            <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/90 border border-emerald-200 text-emerald-800 text-xs font-bold shadow-xs backdrop-blur-md">
+            <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/90 border border-emerald-200 text-emerald-800 text-ui font-bold shadow-xs backdrop-blur-md">
               <Mic className="h-3.5 w-3.5 text-emerald-600" />
               {t("Listening to you...", "Počúvam vás...", "Hallgatom Önt...")}
             </div>
           )}
 
           {callState === "connected" && !isAiSpeaking && !isAiThinking && !isUserSpeaking && (
-            <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/90 border border-slate-200/80 text-slate-700 text-xs font-bold shadow-xs backdrop-blur-md">
+            <div className="flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/90 border border-slate-200/80 text-slate-700 text-ui font-bold shadow-xs backdrop-blur-md">
               <span className="h-2 w-2 rounded-full bg-emerald-500" />
               {t("Ready & connected to CRM data", "Pripravený s prístupom k CRM dátam", "Készen áll a CRM adatokkal")}
             </div>
           )}
 
           {callState === "error" && (
-            <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/90 border border-rose-200 text-rose-700 text-xs font-bold max-w-sm text-center shadow-xs backdrop-blur-md">
+            <div className="flex items-center gap-2 px-4 py-2 rounded-2xl bg-white/90 border border-rose-200 text-rose-700 text-ui font-bold max-w-sm text-center shadow-xs backdrop-blur-md">
               <AlertCircle className="h-4 w-4 shrink-0 text-rose-500" />
               <span>{errorMessage || t("Connection error", "Chyba spojenia", "Kapcsolati hiba")}</span>
             </div>
@@ -733,7 +733,7 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
         </div>
 
         {/* Audio Visualizer Waves */}
-        <div className="w-full max-w-[240px] h-6 flex items-center justify-center gap-1.5 mt-2">
+        <div className="w-full max-w-60 h-6 flex items-center justify-center gap-1.5 mt-2">
           {[...Array(16)].map((_, i) => {
             const height = isAiSpeaking
               ? Math.max(4, Math.sin(i + callDuration * 4) * 22 + 8)
@@ -758,7 +758,7 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
 
         {/* Floating Subtitle / Transcript Drawer */}
         {showTranscript && (
-          <div className="w-full max-w-lg mt-6 p-4 max-h-48 overflow-y-auto rounded-3xl bg-white/80 backdrop-blur-xl border border-slate-200/80 shadow-lg space-y-2.5 text-xs text-left animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <div className="w-full max-w-lg mt-6 p-4 max-h-48 overflow-y-auto rounded-3xl bg-white/80 backdrop-blur-xl border border-slate-200/80 shadow-lg space-y-2.5 text-ui text-left animate-in fade-in slide-in-from-bottom-2 duration-200">
             {transcripts.length === 0 ? (
               <p className="text-slate-400 text-center py-4 italic">
                 {t("Transcripts will stream here in real time...", "Prepisy sa zobrazia počas hovoru...", "Az átirat itt jelenik meg...")}
@@ -773,7 +773,7 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
                       : "bg-purple-50/90 text-purple-950 font-medium mr-4"
                   }`}
                 >
-                  <span className="font-bold text-[10px] block opacity-70 mb-0.5">
+                  <span className="font-bold text-micro block opacity-70 mb-0.5">
                     {item.sender === "user" ? userName : executive.name}
                   </span>
                   <p className="leading-relaxed">{item.text}</p>
@@ -805,7 +805,7 @@ export const ExecutiveCallModal: React.FC<ExecutiveCallModalProps> = ({
         <button
           type="button"
           onClick={handleEndCall}
-          className="flex items-center gap-2.5 px-8 py-4 rounded-full bg-rose-500 hover:bg-rose-600 text-white text-xs font-black uppercase tracking-wider shadow-xl shadow-rose-500/35 hover:shadow-rose-500/50 active:scale-95 transition-all cursor-pointer"
+          className="flex items-center gap-2.5 px-8 py-4 rounded-full bg-rose-500 hover:bg-rose-600 text-white text-ui font-bold shadow-xl shadow-rose-500/35 hover:shadow-rose-500/50 active:scale-95 transition-all cursor-pointer"
         >
           <PhoneOff className="h-5 w-5" />
           <span>{t("End Call", "Ukončiť hovor", "Hívás befejezése")}</span>

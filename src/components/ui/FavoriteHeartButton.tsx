@@ -100,7 +100,7 @@ export const FavoriteHeartButton: React.FC<FavoriteHeartButtonProps> = ({
         }`}
       />
       {showLabel && (
-        <span className="text-xs font-bold font-heading uppercase tracking-wider">
+        <span className="text-ui font-bold font-heading">
           {isFav
             ? systemLanguage === "sk"
               ? "Obľúbené"

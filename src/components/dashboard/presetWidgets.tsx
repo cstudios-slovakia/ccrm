@@ -153,7 +153,7 @@ export const OpenTasksWidget: React.FC<PresetWidgetProps> = ({ data, title, sect
         <div className="flex items-baseline justify-between gap-2">
           <BigNumber>{total.toLocaleString()}</BigNumber>
           {blocked > 0 && (
-            <span className="text-xs font-bold text-rose-700 whitespace-nowrap">
+            <span className="text-ui font-bold text-rose-700 whitespace-nowrap">
               {blocked} {ctx.t("blocked", "blokované", "blokkolt")}
             </span>
           )}
@@ -232,13 +232,13 @@ export const LeadsTableWidget: React.FC<PresetWidgetProps> = ({
         const TypeIcon = isCompany ? Building2 : User;
         return (
           <div className="flex items-center gap-3 min-w-0">
-            <span className="w-[34px] h-[34px] rounded-full bg-indigo-50 text-indigo-600 text-[11px] font-extrabold flex items-center justify-center shrink-0">
+            <span className="w-8.5 h-8.5 rounded-full bg-indigo-50 text-indigo-600 text-caption font-extrabold flex items-center justify-center shrink-0">
               {initialsOf(row?.name)}
             </span>
             <div className="flex flex-col gap-0.5 min-w-0">
-              <span className="text-[13px] font-bold text-slate-800 truncate">{row?.name || "—"}</span>
-              <span className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 truncate">
-                <TypeIcon className="h-[11px] w-[11px] text-slate-400 shrink-0" strokeWidth={2.25} />
+              <span className="text-ui font-bold text-slate-800 truncate">{row?.name || "—"}</span>
+              <span className="flex items-center gap-1.5 text-caption font-semibold text-slate-500 truncate">
+                <TypeIcon className="h-2.75 w-2.75 text-slate-400 shrink-0" strokeWidth={2.25} />
                 {clientTypeLabel(row, ctx.t)}
                 {row?.city ? ` · ${row.city}` : ""}
               </span>
@@ -258,7 +258,7 @@ export const LeadsTableWidget: React.FC<PresetWidgetProps> = ({
       case "value":
         return (
           <div
-            className="text-[13px] font-bold text-slate-800 text-right"
+            className="text-ui font-bold text-slate-800 text-right"
             style={{ fontVariantNumeric: "tabular-nums" }}
           >
             {ctx.money(num(row?.value), { maximumFractionDigits: 0 })}
@@ -267,7 +267,7 @@ export const LeadsTableWidget: React.FC<PresetWidgetProps> = ({
       case "owner":
         return (
           <div className="min-w-0">
-            {row?.owner ? <PersonPill name={String(row.owner)} /> : <span className="text-xs text-slate-400">—</span>}
+            {row?.owner ? <PersonPill name={String(row.owner)} /> : <span className="text-ui text-slate-400">—</span>}
           </div>
         );
       case "source":
@@ -279,24 +279,24 @@ export const LeadsTableWidget: React.FC<PresetWidgetProps> = ({
                 color={colorForStatus(row.source, ctx.leadSourceColors, "#0d9488")}
               />
             ) : (
-              <span className="text-xs text-slate-400">—</span>
+              <span className="text-ui text-slate-400">—</span>
             )}
           </div>
         );
       case "category":
         return (
-          <div className="text-xs font-semibold text-slate-600 truncate">
+          <div className="text-ui font-semibold text-slate-600 truncate">
             {row?.category || "—"}
           </div>
         );
       case "created_at":
         return (
-          <div className="text-xs font-semibold text-slate-500" style={{ fontVariantNumeric: "tabular-nums" }}>
+          <div className="text-ui font-semibold text-slate-500" style={{ fontVariantNumeric: "tabular-nums" }}>
             {formatDateLocalized(row?.created_at, ctx.systemLanguage) || "—"}
           </div>
         );
       default:
-        return <div className="text-xs text-slate-500 truncate">{String(row?.[key] ?? "—")}</div>;
+        return <div className="text-ui text-slate-500 truncate">{String(row?.[key] ?? "—")}</div>;
     }
   };
 
@@ -337,7 +337,7 @@ export const LeadsTableWidget: React.FC<PresetWidgetProps> = ({
                 <span
                   key={key}
                   className={cn(
-                    "text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400",
+                    "type-overline text-slate-400",
                     key === "value" && "text-right"
                   )}
                 >
@@ -361,7 +361,7 @@ export const LeadsTableWidget: React.FC<PresetWidgetProps> = ({
                         e.preventDefault();
                         ctx.navigate(row?.id ? `lead-${row.id}` : "leads");
                       }}
-                      className="grid items-center h-[60px] px-3 gap-x-4 border-t border-slate-100 text-inherit hover:bg-slate-50 transition-colors"
+                      className="grid items-center h-15 px-3 gap-x-4 border-t border-slate-100 text-inherit hover:bg-slate-50 transition-colors"
                       style={{ gridTemplateColumns: template }}
                     >
                       {columns.map((key) => (
@@ -374,7 +374,7 @@ export const LeadsTableWidget: React.FC<PresetWidgetProps> = ({
             </div>
           </div>
           <CardFooter>
-            <span className="text-xs font-semibold text-slate-500">
+            <span className="text-ui font-semibold text-slate-500">
               {ctx.t(
                 `${shown.length} of ${total} leads`,
                 `${shown.length} z ${total} leadov`,
@@ -382,7 +382,7 @@ export const LeadsTableWidget: React.FC<PresetWidgetProps> = ({
               )}
             </span>
             <span
-              className="text-xs font-bold text-slate-700"
+              className="text-ui font-bold text-slate-700"
               style={{ fontVariantNumeric: "tabular-nums" }}
             >
               {ctx.t("Total", "Spolu", "Összesen")}{" "}
@@ -444,17 +444,17 @@ export const TasksTableWidget: React.FC<PresetWidgetProps> = ({
     switch (key) {
       case "task":
         return (
-          <div className="flex flex-col gap-[3px] min-w-0">
+          <div className="flex flex-col gap-0.75 min-w-0">
             <span
               className={cn(
-                "text-[13px] font-bold truncate",
+                "text-ui font-bold truncate",
                 done ? "text-slate-400 line-through" : "text-slate-800"
               )}
             >
               {row?.title || "—"}
             </span>
-            <span className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-500 truncate">
-              <Building2 className="h-[11px] w-[11px] text-slate-400 shrink-0" strokeWidth={2.25} />
+            <span className="flex items-center gap-1.5 text-caption font-semibold text-slate-500 truncate">
+              <Building2 className="h-2.75 w-2.75 text-slate-400 shrink-0" strokeWidth={2.25} />
               {row?.lead_name || row?.project_name || ctx.t("No client", "Bez klienta", "Nincs ügyfél")}
             </span>
           </div>
@@ -462,7 +462,7 @@ export const TasksTableWidget: React.FC<PresetWidgetProps> = ({
       case "owner":
         return (
           <div className="min-w-0">
-            {row?.owner ? <PersonPill name={String(row.owner)} /> : <span className="text-xs text-slate-400">—</span>}
+            {row?.owner ? <PersonPill name={String(row.owner)} /> : <span className="text-ui text-slate-400">—</span>}
           </div>
         );
       case "status":
@@ -486,7 +486,7 @@ export const TasksTableWidget: React.FC<PresetWidgetProps> = ({
           <div className="min-w-0">
             <span
               className={cn(
-                "inline-flex items-center gap-1.5 h-6 px-2 rounded-lg border text-xs font-bold whitespace-nowrap",
+                "inline-flex items-center gap-1.5 h-6 px-2 rounded-lg border text-ui font-bold whitespace-nowrap",
                 done
                   ? "bg-slate-100 border-slate-200 text-slate-500"
                   : overdue
@@ -509,9 +509,9 @@ export const TasksTableWidget: React.FC<PresetWidgetProps> = ({
         );
       }
       case "project":
-        return <div className="text-xs font-semibold text-slate-600 truncate">{row?.project_name || "—"}</div>;
+        return <div className="text-ui font-semibold text-slate-600 truncate">{row?.project_name || "—"}</div>;
       default:
-        return <div className="text-xs text-slate-500 truncate">{String(row?.[key] ?? "—")}</div>;
+        return <div className="text-ui text-slate-500 truncate">{String(row?.[key] ?? "—")}</div>;
     }
   };
 
@@ -546,7 +546,7 @@ export const TasksTableWidget: React.FC<PresetWidgetProps> = ({
           <div className="flex flex-col flex-1 min-w-0">
             <div className="grid items-center h-8 px-3 gap-x-4" style={{ gridTemplateColumns: template }}>
               {columns.map((key) => (
-                <span key={key} className="text-[10px] font-bold uppercase tracking-[0.08em] text-slate-400">
+                <span key={key} className="type-overline text-slate-400">
                   {ctx.t(...(TASK_COLUMN_LABEL[key] ?? ([key, key, key] as [string, string, string])))}
                 </span>
               ))}
@@ -567,7 +567,7 @@ export const TasksTableWidget: React.FC<PresetWidgetProps> = ({
                         e.preventDefault();
                         ctx.navigate("tasks");
                       }}
-                      className="grid items-center h-[60px] px-3 gap-x-4 border-t border-slate-100 text-inherit hover:bg-slate-50 transition-colors"
+                      className="grid items-center h-15 px-3 gap-x-4 border-t border-slate-100 text-inherit hover:bg-slate-50 transition-colors"
                       style={{ gridTemplateColumns: template }}
                     >
                       {columns.map((key) => (
@@ -580,7 +580,7 @@ export const TasksTableWidget: React.FC<PresetWidgetProps> = ({
             </div>
           </div>
           <CardFooter>
-            <span className="text-xs font-semibold text-slate-500">
+            <span className="text-ui font-semibold text-slate-500">
               {ctx.t(
                 `${shown.length} of ${total} tasks`,
                 `${shown.length} z ${total} úloh`,
@@ -593,7 +593,7 @@ export const TasksTableWidget: React.FC<PresetWidgetProps> = ({
                 e.preventDefault();
                 ctx.navigate("tasks");
               }}
-              className="flex items-center gap-1.5 text-xs font-bold text-indigo-600"
+              className="flex items-center gap-1.5 text-ui font-bold text-indigo-600"
             >
               <Plus className="h-3.5 w-3.5" strokeWidth={2.5} />
               {ctx.t("New task", "Nová úloha", "Új feladat")}
@@ -647,7 +647,7 @@ export const StageDonutWidget: React.FC<PresetWidgetProps> = ({ data, title, sec
       }
     >
       <div className="flex items-center gap-6">
-        <div className="relative w-[132px] h-[132px] shrink-0">
+        <div className="relative w-33 h-33 shrink-0">
           <svg width="132" height="132" viewBox="0 0 120 120" aria-hidden="true">
             <circle cx="60" cy="60" r={radius} fill="none" stroke="currentColor" className="text-slate-100" strokeWidth="16" />
             {arcs.map((arc) => (
@@ -667,28 +667,28 @@ export const StageDonutWidget: React.FC<PresetWidgetProps> = ({ data, title, sec
           </svg>
           <div className="absolute inset-0 flex flex-col items-center justify-center">
             <span
-              className="text-[22px] font-bold text-slate-900 leading-none"
+              className="text-heading font-bold text-slate-900 leading-none"
               style={{ fontVariantNumeric: "tabular-nums" }}
             >
               {total.toLocaleString()}
             </span>
-            <span className="text-[10px] font-bold uppercase tracking-[0.06em] text-slate-400 mt-[3px]">
+            <span className="type-overline text-slate-400 mt-0.75">
               {ctx.t("leads", "leadov", "lead")}
             </span>
           </div>
         </div>
         <div className="flex flex-col flex-1 min-w-0">
           {list.map((row, index) => (
-            <div key={`${row?.status ?? index}`} className="flex items-center gap-2 h-[22px]">
+            <div key={`${row?.status ?? index}`} className="flex items-center gap-2 h-5.5">
               <span
                 className="w-2 h-2 rounded-[3px] shrink-0"
                 style={{ backgroundColor: colorForStatus(row?.status, ctx.leadStateColors, "#94a3b8") }}
               />
-              <span className="text-xs font-semibold text-slate-700 flex-1 truncate capitalize">
+              <span className="text-ui font-semibold text-slate-700 flex-1 truncate capitalize">
                 {labelForStatus(row?.status, ctx.leadStates)}
               </span>
               <span
-                className="text-xs font-bold text-slate-900"
+                className="text-ui font-bold text-slate-900"
                 style={{ fontVariantNumeric: "tabular-nums" }}
               >
                 {num(row?.count).toLocaleString()}
@@ -733,7 +733,7 @@ export const SourceBarsWidget: React.FC<PresetWidgetProps> = ({ data, title, sec
                 className="grid items-center h-6 gap-x-2.5"
                 style={{ gridTemplateColumns: "92px minmax(0, 1fr) 28px" }}
               >
-                <span className="text-xs font-semibold text-slate-700 truncate capitalize">
+                <span className="text-ui font-semibold text-slate-700 truncate capitalize">
                   {row?.source || ctx.t("Unknown", "Neznámy", "Ismeretlen")}
                 </span>
                 <span className="h-2.5 rounded-full bg-slate-100 flex">
@@ -743,7 +743,7 @@ export const SourceBarsWidget: React.FC<PresetWidgetProps> = ({ data, title, sec
                   />
                 </span>
                 <span
-                  className="text-xs font-bold text-slate-900 text-right"
+                  className="text-ui font-bold text-slate-900 text-right"
                   style={{ fontVariantNumeric: "tabular-nums" }}
                 >
                   {value.toLocaleString()}
@@ -779,12 +779,12 @@ export const TaskStatusWidget: React.FC<PresetWidgetProps> = ({ data, title, sec
       <div className="flex flex-col gap-3">
         <div className="flex items-baseline gap-2">
           <span
-            className="text-[34px] font-bold tracking-[-0.02em] leading-none text-slate-900"
+            className="text-display font-bold tracking-[-0.02em] leading-none text-slate-900"
             style={{ fontVariantNumeric: "tabular-nums" }}
           >
             {total.toLocaleString()}
           </span>
-          <span className="text-xs font-semibold text-slate-500">
+          <span className="text-ui font-semibold text-slate-500">
             {ctx.t("tasks in total", "úloh spolu", "feladat összesen")}
           </span>
         </div>
@@ -812,13 +812,13 @@ export const TaskStatusWidget: React.FC<PresetWidgetProps> = ({ data, title, sec
               />
               <span className="flex items-baseline gap-2">
                 <span
-                  className="text-[15px] font-bold text-slate-900"
+                  className="text-title-sm font-bold text-slate-900"
                   style={{ fontVariantNumeric: "tabular-nums" }}
                 >
                   {value.toLocaleString()}
                 </span>
                 <span
-                  className="text-xs font-semibold text-slate-400 w-9 text-right"
+                  className="text-ui font-semibold text-slate-400 w-9 text-right"
                   style={{ fontVariantNumeric: "tabular-nums" }}
                 >
                   {total > 0 ? Math.round((value / total) * 100) : 0} %

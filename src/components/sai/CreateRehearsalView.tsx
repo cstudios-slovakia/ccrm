@@ -711,7 +711,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
   };
 
   return (
-    <div className="max-w-6xl mx-auto space-y-6 pb-20 animate-in fade-in duration-200">
+    <div className="space-y-6 pb-20 animate-in fade-in duration-200">
       
       {/* Top Header & Actions Bar */}
       <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b border-slate-200/80">
@@ -719,25 +719,25 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
           <button
             type="button"
             onClick={onBack}
-            className="p-2 rounded-2xl bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 transition shadow-sm flex items-center gap-1 text-xs font-bold cursor-pointer"
+            className="p-2 rounded-2xl bg-white border border-slate-200 hover:bg-slate-100 text-slate-600 transition shadow-sm flex items-center gap-1 text-ui font-bold cursor-pointer"
           >
             <ChevronLeft className="w-4 h-4" />
             <span>{t('Simulations List', 'Prehľad simulácií', 'Szimulációk áttekintése')}</span>
           </button>
           
-          <div className="h-4 w-px bg-slate-200 hidden sm:block" />
+          <div className="h-4 w-px bg-slate-200 hidden ws-sm:block" />
 
           <div className="flex items-center gap-2">
-            <span className="text-xs font-bold text-slate-400">SAI</span>
-            <span className="text-xs text-slate-300">/</span>
-            <span className="text-xs font-bold text-slate-800">
+            <span className="text-ui font-bold text-slate-400">SAI</span>
+            <span className="text-ui text-slate-300">/</span>
+            <span className="text-ui font-bold text-slate-800">
               {draftId 
                 ? t('Edit Simulation Draft', 'Úprava konceptu simulácie', 'Szimulációs vázlat szerkesztése')
                 : t('New Simulation Setup', 'Konfigurácia novej simulácie', 'Új szimuláció konfigurálása')}
             </span>
 
             {draftId && (
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
+              <span className="px-2 py-0.5 rounded-full type-overline bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
                 <Bookmark className="w-3 h-3 text-amber-600" />
                 {t('Draft', 'Koncept', 'Vázlat')}
               </span>
@@ -748,7 +748,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               <button
                 type="button"
                 onClick={() => setExecutionMode('demo')}
-                className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider transition flex items-center gap-1 cursor-pointer ${
+                className={`px-2.5 py-0.5 rounded-full type-overline transition flex items-center gap-1 cursor-pointer ${
                   executionMode === 'demo'
                     ? 'bg-emerald-500 text-white shadow-xs'
                     : 'text-slate-500 hover:text-slate-800'
@@ -761,7 +761,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               <button
                 type="button"
                 onClick={() => setExecutionMode('live')}
-                className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider transition flex items-center gap-1 cursor-pointer ${
+                className={`px-2.5 py-0.5 rounded-full type-overline transition flex items-center gap-1 cursor-pointer ${
                   executionMode === 'live'
                     ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-xs'
                     : 'text-slate-500 hover:text-slate-800'
@@ -779,13 +779,13 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
         <div className="flex items-center gap-2.5">
           {/* Draft Save Status */}
           {lastSavedTimestamp && !isDirty && (
-            <div className="text-xs text-emerald-600 font-bold flex items-center gap-1">
+            <div className="text-ui text-emerald-600 font-bold flex items-center gap-1">
               <Check className="w-3.5 h-3.5 text-emerald-600" />
               <span>{t(`Draft saved at ${lastSavedTimestamp}`, `Koncept uložený o ${lastSavedTimestamp}`, `Vázlat mentve ekkor: ${lastSavedTimestamp}`)}</span>
             </div>
           )}
           {isDirty && (
-            <div className="text-xs text-amber-600 font-medium flex items-center gap-1">
+            <div className="text-ui text-amber-600 font-medium flex items-center gap-1">
               <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
               <span>{t('Unsaved changes', 'Neuložené zmeny', 'Nem mentett módosítások')}</span>
             </div>
@@ -795,7 +795,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
           <button
             type="button"
             onClick={() => setIsCatalogueOpen(true)}
-            className="px-3.5 py-2 rounded-2xl bg-white border border-purple-200 hover:border-purple-300 hover:bg-purple-50/60 text-purple-700 font-bold text-xs shadow-sm transition flex items-center gap-1.5 cursor-pointer"
+            className="px-3.5 py-2 rounded-2xl bg-white border border-purple-200 hover:border-purple-300 hover:bg-purple-50/60 text-purple-700 font-bold text-ui shadow-sm transition flex items-center gap-1.5 cursor-pointer"
           >
             <Compass className="w-4 h-4 text-purple-600" />
             <span>{t('Browse Templates (105)', 'Katalóg šablón (105)', 'Sablonkatalógus (105)')}</span>
@@ -806,7 +806,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             type="button"
             onClick={handleSaveDraft}
             disabled={isSavingDraft || isSubmitting}
-            className="px-4 py-2 rounded-2xl bg-white border border-slate-200 hover:border-purple-300 hover:bg-purple-50/50 text-slate-700 font-bold text-xs shadow-sm transition flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
+            className="px-4 py-2 rounded-2xl bg-white border border-slate-200 hover:border-purple-300 hover:bg-purple-50/50 text-slate-700 font-bold text-ui shadow-sm transition flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
           >
             {isSavingDraft ? (
               <span className="w-4 h-4 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
@@ -821,7 +821,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             type="button"
             onClick={handleOpenEstimator}
             disabled={isSubmitting}
-            className="px-5 py-2 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 hover:from-purple-700 hover:to-emerald-600 text-white font-bold text-xs shadow-md hover:shadow-lg transition flex items-center gap-2 cursor-pointer disabled:opacity-60"
+            className="px-5 py-2 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 hover:from-purple-700 hover:to-emerald-600 text-white font-bold text-ui shadow-md hover:shadow-lg transition flex items-center gap-2 cursor-pointer disabled:opacity-60"
           >
             <span>{t('Review & Estimate Tokens', 'Skontrolovať & Odhadnúť tokeny', 'Áttekintés és tokenbecslés')}</span>
             <ArrowRight className="w-4 h-4" />
@@ -831,7 +831,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
 
       {/* Validation Banner */}
       {validationError && (
-        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-xs font-medium flex items-center gap-2 animate-in fade-in">
+        <div className="p-4 rounded-2xl bg-rose-50 border border-rose-200 text-rose-800 text-ui font-medium flex items-center gap-2 animate-in fade-in">
           <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
           <span>{validationError}</span>
         </div>
@@ -844,11 +844,11 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
         <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-3">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div>
-              <label className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-2">
+              <label className="text-ui font-bold text-slate-800 flex items-center gap-2">
                 <Zap className="w-4 h-4 text-purple-600" />
                 {t('Simulation Execution Mode', 'Režim vykonania simulácie', 'Szimuláció végrehajtási mód')}
               </label>
-              <p className="text-[11px] text-slate-500 mt-0.5">
+              <p className="text-caption text-slate-500 mt-0.5">
                 {t(
                   'Choose between an instant free demonstration or a live production simulation via OpenAI.',
                   'Vyberte si medzi okamžitou bezplatnou ukážkou a ostrou simuláciou cez OpenAI.',
@@ -856,7 +856,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 )}
               </p>
             </div>
-            <span className={`px-2.5 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border flex items-center gap-1.5 ${
+            <span className={`px-2.5 py-1 rounded-full type-overline border flex items-center gap-1.5 ${
               executionMode === 'live' 
                 ? 'bg-purple-50 text-purple-700 border-purple-200' 
                 : 'bg-emerald-50 text-emerald-700 border-emerald-200'
@@ -868,7 +868,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             </span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+          <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-3 pt-1">
             {/* Demo Option Card */}
             <div
               onClick={() => setExecutionMode('demo')}
@@ -887,20 +887,20 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
-                  <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <h4 className="text-body font-bold text-slate-900 flex items-center gap-2">
                     ⚡ Demo test
-                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200">
+                    <span className="type-overline px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 border border-emerald-200">
                       {t('$0.00', '0.00 €', '0.00 €')}
                     </span>
                   </h4>
                   {executionMode === 'demo' && (
-                    <span className="text-xs font-bold text-emerald-600 flex items-center gap-1">
+                    <span className="text-ui font-bold text-emerald-600 flex items-center gap-1">
                       <Check className="w-4 h-4 text-emerald-600" />
                       {t('Selected', 'Zvolené', 'Kiválasztva')}
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                <p className="text-ui text-slate-600 mt-1 leading-relaxed">
                   {t(
                     'Instant synthetic simulation on demonstration data. Zero OpenAI API costs, completes in seconds.',
                     'Blesková syntetická simulácia na demonštračných dátach. Nulové náklady na OpenAI API, trvá iba pár sekúnd.',
@@ -928,20 +928,20 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center justify-between gap-2">
-                  <h4 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+                  <h4 className="text-body font-bold text-slate-900 flex items-center gap-2">
                     🚀 {t('Live Test (Live API)', 'Živý test (Live API)', 'Élő teszt (Live API)')}
-                    <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 border border-purple-200">
+                    <span className="type-overline px-2 py-0.5 rounded-md bg-purple-100 text-purple-800 border border-purple-200">
                       ~{estimatedCost.toFixed(3)} €
                     </span>
                   </h4>
                   {executionMode === 'live' && (
-                    <span className="text-xs font-bold text-purple-600 flex items-center gap-1">
+                    <span className="text-ui font-bold text-purple-600 flex items-center gap-1">
                       <Check className="w-4 h-4 text-purple-600" />
                       {t('Selected', 'Zvolené', 'Kiválasztva')}
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-slate-600 mt-1 leading-relaxed">
+                <p className="text-ui text-slate-600 mt-1 leading-relaxed">
                   {t(
                     'Real AI simulation with live OpenAI calls, CRM context extraction, and complete agent ReAct cycles.',
                     'Skutočná AI simulácia s reálnymi OpenAI volaniami, extrakciou kontextu z CRM a plnohodnotným ReAct cyklom agentov.',
@@ -957,23 +957,23 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
         <div className="rounded-3xl bg-white border border-slate-200/90 shadow-sm overflow-hidden divide-y divide-slate-100">
           
           {/* 1. Simulation Title Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-5 divide-y lg:divide-y-0 lg:divide-x divide-slate-200/80 items-stretch">
-            <div className="lg:col-span-1 p-5 md:p-6 bg-slate-100/80 flex flex-col justify-start space-y-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 bg-purple-100/80 px-2 py-0.5 rounded-md inline-block border border-purple-200 w-fit">
+          <div className="grid grid-cols-1 ws-lg:grid-cols-5 divide-y ws-lg:divide-y-0 ws-lg:divide-x divide-slate-200/80 items-stretch">
+            <div className="ws-lg:col-span-1 p-5 ws-md:p-6 bg-slate-100/80 flex flex-col justify-start space-y-2">
+              <span className="type-overline text-purple-700 bg-purple-100/80 px-2 py-0.5 rounded-md inline-block border border-purple-200 w-fit">
                 {t('Simulation Title', 'Názov simulácie', 'Szimuláció címe')}
               </span>
-              <h3 className="text-xs font-bold text-slate-900 leading-snug">
+              <h3 className="text-ui font-bold text-slate-900 leading-snug">
                 {t('What is the name of the simulation?', 'Ako sa volá táto simulácia?', 'Mi a szimuláció neve?')}
               </h3>
-              <p className="text-[11px] text-slate-500 font-normal leading-relaxed">
+              <p className="text-caption text-slate-500 font-normal leading-relaxed">
                 {t('Give your simulation a clear executive identifier.', 'Zadajte jasný manažérsky identifikátor pre túto simuláciu.', 'Adjon egyértelmű vezetői azonosítót a szimulációnak.')}
               </p>
             </div>
 
-            <div className="lg:col-span-4 p-5 md:p-7 space-y-1.5 bg-white">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center justify-between">
+            <div className="ws-lg:col-span-4 p-5 ws-md:p-7 space-y-1.5 bg-white">
+              <label className="text-ui font-bold text-slate-700 flex items-center justify-between">
                 <span>{t('Simulation Title', 'Názov simulácie', 'Szimuláció címe')} <span className="text-rose-500">*</span></span>
-                <span className="text-[11px] text-slate-400 font-normal">
+                <span className="text-caption text-slate-400 font-normal">
                   {t('Executive identifier for reports & checkpoints', 'Manažérsky identifikátor pre reporty & kontrolné body', 'Vezetői azonosító a jelentésekhez és ellenőrző pontokhoz')}
                 </span>
               </label>
@@ -986,9 +986,9 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 }}
                 placeholder={t('e.g. Q4 Enterprise Pricing Restructuring', 'napr. Reštrukturalizácia cien balíka Enterprise v Q4', 'pl. Q4 Enterprise díjcsomag átstrukturálása')}
                 required
-                className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-sm text-slate-900 font-semibold bg-white"
+                className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-body text-slate-900 font-semibold bg-white"
               />
-              <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+              <div className="flex items-start gap-2 pt-1 text-caption text-slate-500 leading-relaxed">
                 <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
                 <span>
                   <strong className="text-slate-700 font-semibold">{t('Purpose:', 'Na čo slúži:', 'Célja:')}</strong>{' '}
@@ -1009,15 +1009,15 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
           </div>
 
           {/* 2. Strategic Question / Answer Mode Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-5 divide-y lg:divide-y-0 lg:divide-x divide-slate-200/80 items-stretch">
-            <div className="lg:col-span-1 p-5 md:p-6 bg-slate-100/80 flex flex-col justify-start space-y-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 bg-purple-100/80 px-2 py-0.5 rounded-md inline-block border border-purple-200 w-fit">
+          <div className="grid grid-cols-1 ws-lg:grid-cols-5 divide-y ws-lg:divide-y-0 ws-lg:divide-x divide-slate-200/80 items-stretch">
+            <div className="ws-lg:col-span-1 p-5 ws-md:p-6 bg-slate-100/80 flex flex-col justify-start space-y-2">
+              <span className="type-overline text-purple-700 bg-purple-100/80 px-2 py-0.5 rounded-md inline-block border border-purple-200 w-fit">
                 {t('Answer Mode', 'Režim odpovede', 'Válasz mód')}
               </span>
-              <h3 className="text-xs font-bold text-slate-900 leading-snug">
+              <h3 className="text-ui font-bold text-slate-900 leading-snug">
                 {t('What question should the simulation answer?', 'Akú otázku má simulácia zodpovedať?', 'Milyen kérdésre válaszoljon a szimuláció?')}
               </h3>
-              <p className="text-[11px] text-slate-500 font-normal leading-relaxed">
+              <p className="text-caption text-slate-500 font-normal leading-relaxed">
                 {t(
                   'The central question deliberated by the swarm. If you want to compare specific options (e.g. colors, candidates, pricing models), include them directly in the question or context.',
                   'Ústredná otázka, ktorú bude roj riešiť. Ak chcete porovnať konkrétne varianty (napr. farby produktu, kandidátov či cenové balíky), uveďte ich priamo v otázke alebo zadaní.',
@@ -1026,10 +1026,10 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               </p>
             </div>
 
-            <div className="lg:col-span-4 p-5 md:p-7 space-y-3 bg-white">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center justify-between">
+            <div className="ws-lg:col-span-4 p-5 ws-md:p-7 space-y-3 bg-white">
+              <label className="text-ui font-bold text-slate-700 flex items-center justify-between">
                 <span>{t('Strategic Question to Answer', 'Strategická otázka na zodpovedanie', 'Megválaszolandó stratégiai kérdés')} <span className="text-rose-500">*</span></span>
-                <span className="text-[11px] text-slate-400 font-normal">
+                <span className="text-caption text-slate-400 font-normal">
                   {t('The swarm will deliberate, vote, and deliver an executive answer with reasons', 'Roj bude diskutovať, priebežne hlasovať a v závere doručí priamu odpoveď s dôvodmi', 'A raj vitázik, szavaz, és a végén közvetlen indokolt választ ad')}
                 </span>
               </label>
@@ -1046,12 +1046,12 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                   'pl. Melyik termékszín lesz a legsikeresebb: Matt fekete, Erdei zöld, vagy Fehér? / Ki nyeri a választást? / Elfogadják az ügyfelek a 20%-os áremelést?'
                 )}
                 required
-                className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-sm text-slate-900 font-medium bg-white"
+                className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-body text-slate-900 font-medium bg-white"
               />
 
               {/* Quick Preset Chips to inspire question types */}
               <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
-                <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mr-1">
+                <span className="type-overline text-slate-400 mr-1">
                   {t('Examples:', 'Príklady otázok:', 'Példák:')}
                 </span>
                 <button
@@ -1064,7 +1064,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                     ));
                     setIsDirty(true);
                   }}
-                  className="px-2.5 py-1 rounded-xl bg-slate-50 hover:bg-purple-50 border border-slate-200 hover:border-purple-300 text-[11px] text-slate-600 hover:text-purple-700 transition cursor-pointer"
+                  className="px-2.5 py-1 rounded-xl bg-slate-50 hover:bg-purple-50 border border-slate-200 hover:border-purple-300 text-caption text-slate-600 hover:text-purple-700 transition cursor-pointer"
                 >
                   🎨 {t('Product Color / Variants', 'Farba / Varianty produktu', 'Termékszín / Változatok')}
                 </button>
@@ -1078,7 +1078,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                     ));
                     setIsDirty(true);
                   }}
-                  className="px-2.5 py-1 rounded-xl bg-slate-50 hover:bg-purple-50 border border-slate-200 hover:border-purple-300 text-[11px] text-slate-600 hover:text-purple-700 transition cursor-pointer"
+                  className="px-2.5 py-1 rounded-xl bg-slate-50 hover:bg-purple-50 border border-slate-200 hover:border-purple-300 text-caption text-slate-600 hover:text-purple-700 transition cursor-pointer"
                 >
                   🗳️ {t('Elections / Race', 'Voľby / Výber kandidáta', 'Választás / Jelöltek')}
                 </button>
@@ -1092,13 +1092,13 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                     ));
                     setIsDirty(true);
                   }}
-                  className="px-2.5 py-1 rounded-xl bg-slate-50 hover:bg-purple-50 border border-slate-200 hover:border-purple-300 text-[11px] text-slate-600 hover:text-purple-700 transition cursor-pointer"
+                  className="px-2.5 py-1 rounded-xl bg-slate-50 hover:bg-purple-50 border border-slate-200 hover:border-purple-300 text-caption text-slate-600 hover:text-purple-700 transition cursor-pointer"
                 >
                   💰 {t('Pricing / Go-No-Go', 'Zvýšenie cien / Prijatie trhom', 'Áremelés / Piaci elfogadás')}
                 </button>
               </div>
 
-              <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+              <div className="flex items-start gap-2 pt-1 text-caption text-slate-500 leading-relaxed">
                 <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
                 <span>
                   <strong className="text-slate-700 font-semibold">{t('How Answer Mode works:', 'Ako funguje režim odpovede:', 'Hogyan működik a Válasz mód:')}</strong>{' '}
@@ -1113,23 +1113,23 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
           </div>
 
           {/* 3. Input Briefing & Announcement Text Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-5 divide-y lg:divide-y-0 lg:divide-x divide-slate-200/80 items-stretch">
-            <div className="lg:col-span-1 p-5 md:p-6 bg-slate-100/80 flex flex-col justify-start space-y-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 bg-purple-100/80 px-2 py-0.5 rounded-md inline-block border border-purple-200 w-fit">
+          <div className="grid grid-cols-1 ws-lg:grid-cols-5 divide-y ws-lg:divide-y-0 ws-lg:divide-x divide-slate-200/80 items-stretch">
+            <div className="ws-lg:col-span-1 p-5 ws-md:p-6 bg-slate-100/80 flex flex-col justify-start space-y-2">
+              <span className="type-overline text-purple-700 bg-purple-100/80 px-2 py-0.5 rounded-md inline-block border border-purple-200 w-fit">
                 {t('Briefing Context', 'Kontext zadania', 'Forgatókönyv')}
               </span>
-              <h3 className="text-xs font-bold text-slate-900 leading-snug">
+              <h3 className="text-ui font-bold text-slate-900 leading-snug">
                 {t('What do you want to simulate?', 'Čo chcete simulovať?', 'Mit szeretne szimulálni?')}
               </h3>
-              <p className="text-[11px] text-slate-500 font-normal leading-relaxed">
+              <p className="text-caption text-slate-500 font-normal leading-relaxed">
                 {t('The announcement, pricing memo, or scenario text agents will read and quote.', 'Znenie tlačovej správy, cenník alebo memorandum, ktoré budú agenti citovať.', 'A közlemény, árlista vagy feljegyzés szövege, amit az ágensek olvasnak.')}
               </p>
             </div>
 
-            <div className="lg:col-span-4 p-5 md:p-7 space-y-1.5 bg-white">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center justify-between">
+            <div className="ws-lg:col-span-4 p-5 ws-md:p-7 space-y-1.5 bg-white">
+              <label className="text-ui font-bold text-slate-700 flex items-center justify-between">
                 <span>{t('Input Briefing & Announcement Text', 'Vstupné zadanie & Text oznámenia', 'Bemeneti összefoglaló és közlemény')} <span className="text-rose-500">*</span></span>
-                <span className="text-[11px] text-slate-400 font-normal">
+                <span className="text-caption text-slate-400 font-normal">
                   {t('Press release, internal memo, or pricing document', 'Tlačová správa, interné memorandum alebo cenový dokument', 'Sajtóközlemény, belső feljegyzés vagy árazási dokumentum')}
                 </span>
               </label>
@@ -1146,9 +1146,9 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                   'Illessze be a közlemény szövegét, a sajtóközlemény tervezetét vagy az árazási feljegyzést, amelyet az ágensek olvasnak és elemeznek...'
                 )}
                 required
-                className="w-full px-4 py-3.5 rounded-2xl border border-slate-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-sm text-slate-800 font-normal resize-y leading-relaxed bg-white"
+                className="w-full px-4 py-3.5 rounded-2xl border border-slate-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-body text-slate-800 font-normal resize-y leading-relaxed bg-white"
               />
-              <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+              <div className="flex items-start gap-2 pt-1 text-caption text-slate-500 leading-relaxed">
                 <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
                 <span>
                   <strong className="text-slate-700 font-semibold">{t('Purpose:', 'Na čo slúži:', 'Célja:')}</strong>{' '}
@@ -1169,31 +1169,31 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
           </div>
 
           {/* 4. Context Documents Upload (PDF & Markdown) Row */}
-          <div className="grid grid-cols-1 lg:grid-cols-5 divide-y lg:divide-y-0 lg:divide-x divide-slate-200/80 items-stretch">
-            <div className="lg:col-span-1 p-5 md:p-6 bg-slate-100/80 flex flex-col justify-start space-y-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md inline-block border border-emerald-200 w-fit">
+          <div className="grid grid-cols-1 ws-lg:grid-cols-5 divide-y ws-lg:divide-y-0 ws-lg:divide-x divide-slate-200/80 items-stretch">
+            <div className="ws-lg:col-span-1 p-5 ws-md:p-6 bg-slate-100/80 flex flex-col justify-start space-y-2">
+              <span className="type-overline text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md inline-block border border-emerald-200 w-fit">
                 {t('Attachments', 'Prílohy', 'Csatolmányok')}
               </span>
-              <h3 className="text-xs font-bold text-slate-900 leading-snug">
+              <h3 className="text-ui font-bold text-slate-900 leading-snug">
                 {t('Any additional files you want to consider?', 'Máte doplňujúce podklady alebo súbory na zváženie?', 'Vannak további figyelembe veendő fájlok?')}
               </h3>
-              <p className="text-[11px] text-slate-500 font-normal leading-relaxed">
+              <p className="text-caption text-slate-500 font-normal leading-relaxed">
                 {t('Attach supporting contracts, pricing policies, specs, or objection battlecards.', 'Priložte zmluvy, cenové smernice, technické špecifikácie alebo odpovede na námietky.', 'Csatoljon szerződéseket, árpolitikát, specifikációkat vagy kifogáskezelési kártyákat.')}
               </p>
             </div>
 
-            <div className="lg:col-span-4 p-5 md:p-7 space-y-3 bg-white">
+            <div className="ws-lg:col-span-4 p-5 ws-md:p-7 space-y-3 bg-white">
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+                <label className="text-ui font-bold text-slate-700 flex items-center gap-2">
                   <Paperclip className="w-3.5 h-3.5 text-purple-600" />
                   <span>{t('Supplementary Knowledge Base (PDF & Markdown)', 'Doplnková dokumentácia pre roj (PDF & Markdown)', 'Kiegészítő dokumentáció a raj számára (PDF és Markdown)')}</span>
                   {contextDocuments.length > 0 && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-purple-50 text-purple-700 border border-purple-200">
+                    <span className="px-2 py-0.5 rounded-full text-micro font-bold bg-purple-50 text-purple-700 border border-purple-200">
                       {contextDocuments.length} {systemLanguage === 'hu' ? 'fájl' : isSk ? (contextDocuments.length === 1 ? 'súbor' : contextDocuments.length < 5 ? 'súbory' : 'súborov') : (contextDocuments.length === 1 ? 'file' : 'files')}
                     </span>
                   )}
                 </label>
-                <span className="text-[11px] text-slate-400 font-normal">
+                <span className="text-caption text-slate-400 font-normal">
                   {t('Supported formats: ', 'Podporované formáty: ', 'Támogatott formátumok: ')}
                   <strong className="text-slate-600 font-semibold">.pdf</strong>, <strong className="text-slate-600 font-semibold">.md</strong>, <strong className="text-slate-600 font-semibold">.txt</strong>
                 </span>
@@ -1217,7 +1217,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                   }
                 }}
                 onClick={() => fileInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-2xl p-4 sm:p-5 transition-all text-center cursor-pointer flex flex-col items-center justify-center gap-2 ${
+                className={`border-2 border-dashed rounded-2xl p-4 ws-sm:p-5 transition-all text-center cursor-pointer flex flex-col items-center justify-center gap-2 ${
                   isDraggingDoc
                     ? 'border-purple-500 bg-purple-50/80 ring-4 ring-purple-100'
                     : 'border-slate-200 hover:border-purple-300 hover:bg-slate-50/60 bg-slate-50/30'
@@ -1246,12 +1246,12 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 </div>
 
                 <div>
-                  <p className="text-xs font-bold text-slate-800">
+                  <p className="text-ui font-bold text-slate-800">
                     {isUploadingDoc
                       ? uploadDocProgress || t('Uploading and parsing files...', 'Nahrávam a analyzujem súbory...', 'Fájlok feltöltése és elemzése...')
                       : t('Click to upload documents or drag & drop files here', 'Kliknite pre nahratie dokumentov alebo ich presuňte sem', 'Kattintson a dokumentumok feltöltéséhez vagy húzza ide a fájlokat')}
                   </p>
-                  <p className="text-[11px] text-slate-500 mt-0.5">
+                  <p className="text-caption text-slate-500 mt-0.5">
                     {t(
                       'Contracts, pricing policies, specs, objection battlecards, or product notes',
                       'Zmluvy, cenové smernice, technické špecifikácie, odpovede na námietky alebo poznámky k produktu',
@@ -1261,13 +1261,13 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 </div>
 
                 <div className="flex flex-wrap items-center justify-center gap-1.5 pt-1">
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-rose-50 text-rose-700 border border-rose-200">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-micro font-bold bg-rose-50 text-rose-700 border border-rose-200">
                     <FileText className="w-3 h-3" /> PDF ({t('text extraction', 'extrakcia textu', 'szövegkivonás')})
                   </span>
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-purple-50 text-purple-700 border border-purple-200">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-micro font-bold bg-purple-50 text-purple-700 border border-purple-200">
                     <FileCode className="w-3 h-3" /> MARKDOWN (.md)
                   </span>
-                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200">
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-micro font-bold bg-slate-100 text-slate-700 border border-slate-200">
                     TEXT (.txt)
                   </span>
                 </div>
@@ -1275,7 +1275,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
 
               {/* Error banner if upload failed */}
               {docUploadError && (
-                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-xs flex items-center justify-between">
+                <div className="p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-ui flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <AlertCircle className="w-4 h-4 text-rose-500 shrink-0" />
                     <span>{docUploadError}</span>
@@ -1293,7 +1293,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               {/* Uploaded Documents List */}
               {contextDocuments.length > 0 && (
                 <div className="space-y-2 pt-1">
-                  <div className="flex items-center justify-between text-[11px] text-slate-500 font-semibold px-1">
+                  <div className="flex items-center justify-between text-caption text-slate-500 font-semibold px-1">
                     <span>{t(`Attached context documents ready for simulation (${contextDocuments.length}):`, `Priložené dokumenty pripravené na simuláciu (${contextDocuments.length}):`, `Csatolt dokumentumok a szimulációhoz készen (${contextDocuments.length}):`)}</span>
                     <span>
                       {t(
@@ -1304,7 +1304,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                  <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-2.5">
                     {contextDocuments.map((doc) => {
                       const isPdf = doc.type === 'pdf';
                       const isMd = doc.type === 'markdown';
@@ -1335,10 +1335,10 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                             </div>
 
                             <div className="min-w-0 flex-1">
-                              <p className="text-xs font-bold text-slate-800 truncate" title={doc.name}>
+                              <p className="text-ui font-bold text-slate-800 truncate" title={doc.name}>
                                 {doc.name}
                               </p>
-                              <div className="flex flex-wrap items-center gap-2 mt-0.5 text-[10px] text-slate-500">
+                              <div className="flex flex-wrap items-center gap-2 mt-0.5 text-micro text-slate-500">
                                 <span>{formatBytes(doc.size)}</span>
                                 <span>•</span>
                                 {doc.extractedChars && doc.extractedChars > 0 ? (
@@ -1381,7 +1381,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 </div>
               )}
 
-              <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+              <div className="flex items-start gap-2 pt-1 text-caption text-slate-500 leading-relaxed">
                 <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
                 <span>
                   <strong className="text-slate-700 font-semibold">{t('How it works:', 'Ako to funguje:', 'Hogyan működik:')}</strong>{' '}
@@ -1402,10 +1402,10 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             <div className="space-y-0.5">
               <div className="flex items-center gap-2">
                 <Database className="w-4 h-4 text-purple-600" />
-                <h3 className="text-xs font-bold uppercase tracking-wider text-slate-800">
+                <h3 className="text-ui font-bold text-slate-800">
                   {t('CRM Grounding Data Sources', 'CRM podkladové zdroje dát', 'CRM megalapozó adatforrások')}
                 </h3>
-                <span className={`px-2 py-0.5 rounded-full text-[10px] font-black tracking-wide border ${
+                <span className={`px-2 py-0.5 rounded-full text-micro font-bold tracking-wide border ${
                   selectedSources.length === 0
                     ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
                     : 'bg-purple-50 text-purple-700 border-purple-200'
@@ -1415,7 +1415,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                     : t(`Hybrid (${selectedSources.length} CRM sources active)`, `Hybrid (${selectedSources.length} CRM zdrojov aktívnych)`, `Hibrid (${selectedSources.length} CRM forrás aktív)`)}
                 </span>
               </div>
-              <p className="text-[11px] text-slate-500 font-normal">
+              <p className="text-caption text-slate-500 font-normal">
                 {t(
                   'Choose whether to ground the simulation strictly on your uploaded files or pull real CRM customer records & past deal objections.',
                   'Zvoľte, či má simulácia vychádzať výhradne z vašich nahratých súborov, alebo vyťažiť skutočné CRM kontakty a minulé námietky.',
@@ -1429,7 +1429,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               <button
                 type="button"
                 onClick={handleClearAllSources}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                className={`px-3 py-1.5 rounded-xl text-ui font-bold transition flex items-center gap-1.5 cursor-pointer ${
                   selectedSources.length === 0
                     ? 'bg-white text-purple-700 shadow-xs ring-1 ring-slate-200'
                     : 'text-slate-600 hover:text-slate-900'
@@ -1441,7 +1441,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               <button
                 type="button"
                 onClick={handleSelectAllSources}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                className={`px-3 py-1.5 rounded-xl text-ui font-bold transition flex items-center gap-1.5 cursor-pointer ${
                   selectedSources.length > 0
                     ? 'bg-white text-purple-700 shadow-xs ring-1 ring-slate-200'
                     : 'text-slate-600 hover:text-slate-900'
@@ -1454,7 +1454,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
           </div>
 
           {/* Sources Checkbox Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 ws-md:grid-cols-2 ws-lg:grid-cols-3 gap-3">
             {allSourceOptions.map((src) => {
               const isChecked = selectedSources.includes(src.id);
               const IconComp = src.icon as React.ComponentType<{ className?: string }>;
@@ -1477,7 +1477,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                         }`}>
                           <IconComp className="w-3.5 h-3.5" />
                         </div>
-                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md border ${src.badgeColor}`}>
+                        <span className={`text-micro font-bold px-2 py-0.5 rounded-md border ${src.badgeColor}`}>
                           {systemLanguage === 'hu' ? (src.badgeHu || src.badgeEn || src.badge) : isSk ? src.badge : (src.badgeEn || src.badge)}
                         </span>
                       </div>
@@ -1495,18 +1495,18 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                     </div>
 
                     <div>
-                      <h4 className={`text-xs font-bold transition ${
+                      <h4 className={`text-ui font-bold transition ${
                         isChecked ? 'text-slate-900 group-hover:text-purple-700' : 'text-slate-600'
                       }`}>
                         {systemLanguage === 'hu' ? (src.titleHu || src.titleEn || src.title) : isSk ? src.title : (src.titleEn || src.title)}
                       </h4>
-                      <p className="text-[11px] text-slate-500 font-normal leading-relaxed mt-1">
+                      <p className="text-caption text-slate-500 font-normal leading-relaxed mt-1">
                         {systemLanguage === 'hu' ? (src.descriptionHu || src.descriptionEn || src.description) : isSk ? src.description : (src.descriptionEn || src.description)}
                       </p>
                     </div>
                   </div>
 
-                  <div className="pt-2.5 mt-2.5 border-t border-slate-100/80 flex items-center justify-between text-[10px]">
+                  <div className="pt-2.5 mt-2.5 border-t border-slate-100/80 flex items-center justify-between text-micro">
                     <span className="text-slate-400 font-medium">
                       {systemLanguage === 'hu' ? (src.categoryHu || src.categoryEn || src.category) : isSk ? src.category : (src.categoryEn || src.category)}
                     </span>
@@ -1521,7 +1521,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
 
           {/* Zero Selected Safeguard Warning */}
           {selectedSources.length === 0 && (
-            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-medium flex items-center gap-2.5 animate-in fade-in">
+            <div className="p-3.5 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-ui font-medium flex items-center gap-2.5 animate-in fade-in">
               <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
               <span>
                 {t(
@@ -1533,7 +1533,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             </div>
           )}
 
-          <div className="flex items-start gap-2 p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-[11px] text-slate-500 leading-relaxed">
+          <div className="flex items-start gap-2 p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80 text-caption text-slate-500 leading-relaxed">
             <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
             <span>
               <strong className="text-slate-700 font-semibold">{t('Purpose:', 'Na čo slúži:', 'Célja:')}</strong>{' '}
@@ -1553,18 +1553,18 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
         </div>
 
         {/* Simulation Parameters Grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4">
           
           {/* CRM Lookback Horizon */}
           <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+              <label className="text-ui font-bold text-slate-800 flex items-center gap-1.5">
                 <Calendar className="w-4 h-4 text-indigo-600" />
                 {t('CRM Data Lookback Horizon', 'Časový horizont CRM dát', 'CRM adatok időhorizontja')}
               </label>
-              <span className="text-[11px] text-slate-400">{t('Data Period', 'Obdobie dát', 'Időszak')}</span>
+              <span className="text-caption text-slate-400">{t('Data Period', 'Obdobie dát', 'Időszak')}</span>
             </div>
-            <p className="text-xs text-slate-500 font-normal">
+            <p className="text-ui text-slate-500 font-normal">
               {t(
                 'Extracts leads, active accounts, and sales objections from historical CRM data:',
                 'Extrahuje leady, aktívne účty a obchodné námietky z minulej histórie CRM:',
@@ -1580,7 +1580,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                     setLookbackMonths(months as 6 | 12 | 24);
                     setIsDirty(true);
                   }}
-                  className={`py-2.5 rounded-2xl text-xs font-bold transition cursor-pointer ${
+                  className={`py-2.5 rounded-2xl text-ui font-bold transition cursor-pointer ${
                     lookbackMonths === months
                       ? 'bg-indigo-600 text-white shadow-md'
                       : 'bg-slate-50 text-slate-700 border border-slate-200 hover:bg-slate-100'
@@ -1590,7 +1590,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 </button>
               ))}
             </div>
-            <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+            <div className="flex items-start gap-2 pt-1 text-caption text-slate-500 leading-relaxed">
               <Info className="w-3.5 h-3.5 text-indigo-500/80 shrink-0 mt-0.5" />
               <span>
                 <strong className="text-slate-700 font-semibold">{t('Purpose:', 'Na čo slúži:', 'Célja:')}</strong>{' '}
@@ -1612,13 +1612,13 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
           {/* Swarm Scale (Agents) */}
           <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+              <label className="text-ui font-bold text-slate-800 flex items-center gap-1.5">
                 <Users className="w-4 h-4 text-purple-600" />
                 {t('Swarm Scale (Agents)', 'Veľkosť roju (Agenti)', 'Raj mérete (Ágensek)')}
               </label>
-              <span className="text-[11px] text-slate-400">{t('Persona Count', 'Počet persón', 'Személyiségek száma')}</span>
+              <span className="text-caption text-slate-400">{t('Persona Count', 'Počet persón', 'Személyiségek száma')}</span>
             </div>
-            <p className="text-xs text-slate-500 font-normal">
+            <p className="text-ui text-slate-500 font-normal">
               {t(
                 'Number of synthesized autonomous buyers, client accounts, and competitor profiles:',
                 'Počet syntetizovaných autonómnych nákupcov, klientov a profilov konkurencie:',
@@ -1638,7 +1638,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                     setSwarmScale(opt.count);
                     setIsDirty(true);
                   }}
-                  className={`py-2.5 rounded-2xl text-xs font-bold transition cursor-pointer ${
+                  className={`py-2.5 rounded-2xl text-ui font-bold transition cursor-pointer ${
                     swarmScale === opt.count
                       ? 'bg-purple-600 text-white shadow-md'
                       : 'bg-slate-50 text-slate-700 border border-slate-200 hover:bg-slate-100'
@@ -1648,7 +1648,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 </button>
               ))}
             </div>
-            <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+            <div className="flex items-start gap-2 pt-1 text-caption text-slate-500 leading-relaxed">
               <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
               <span>
                 <strong className="text-slate-700 font-semibold">{t('Purpose:', 'Na čo slúži:', 'Célja:')}</strong>{' '}
@@ -1670,15 +1670,15 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
           {/* Simulation Rounds */}
           <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+              <label className="text-ui font-bold text-slate-800 flex items-center gap-1.5">
                 <Clock className="w-4 h-4 text-emerald-600" />
                 {t(`Simulation Rounds (${totalRounds} rounds)`, `Simulačné kolá (${totalRounds} kôl)`, `Szimulációs fordulók (${totalRounds} kör)`)}
               </label>
-              <span className="text-[11px] text-emerald-600 font-bold">
+              <span className="text-caption text-emerald-600 font-bold">
                 {t(`~${Math.round(totalRounds * 3)} hrs deliberation`, `~${Math.round(totalRounds * 3)} hod. diskusie`, `~${Math.round(totalRounds * 3)} óra egyeztetés`)}
               </span>
             </div>
-            <p className="text-xs text-slate-500 font-normal">
+            <p className="text-ui text-slate-500 font-normal">
               {t(
                 'Controls temporal depth and consensus convergence:',
                 'Riadi hĺbku časového vývoja a konvergenciu diskusie:',
@@ -1698,13 +1698,13 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 }}
                 className="w-full accent-emerald-600 cursor-pointer h-2 bg-slate-100 rounded-lg"
               />
-              <div className="flex justify-between text-[10px] text-slate-400 font-bold mt-2">
+              <div className="flex justify-between text-micro text-slate-400 font-bold mt-2">
                 <span>{t('5 (Rapid probe)', '5 (Rýchla sonda)', '5 (Gyors szonda)')}</span>
                 <span>{t('8 (Balanced) ⭐', '8 (Vyvážené) ⭐', '8 (Kiegyensúlyozott) ⭐')}</span>
                 <span>{t('20 (Full narrative)', '20 (Kompletný naratív)', '20 (Teljes narratíva)')}</span>
               </div>
             </div>
-            <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+            <div className="flex items-start gap-2 pt-1 text-caption text-slate-500 leading-relaxed">
               <Info className="w-3.5 h-3.5 text-emerald-500/80 shrink-0 mt-0.5" />
               <span>
                 <strong className="text-slate-700 font-semibold">{t('Purpose:', 'Na čo slúži:', 'Célja:')}</strong>{' '}
@@ -1726,11 +1726,11 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
           {/* Intelligence Model & Diurnal Cycle */}
           <div className="p-5 rounded-3xl bg-white border border-slate-200/90 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-800 flex items-center gap-1.5">
+              <label className="text-ui font-bold text-slate-800 flex items-center gap-1.5">
                 <Bot className="w-4 h-4 text-slate-700" />
                 {t('Reasoning Model', 'Kognitívny model', 'Kognitív modell')}
               </label>
-              <span className="text-[11px] text-purple-600 font-bold">{t('Neural Engine', 'Neurónový motor', 'Neurális motor')}</span>
+              <span className="text-caption text-purple-600 font-bold">{t('Neural Engine', 'Neurónový motor', 'Neurális motor')}</span>
             </div>
             
             <select 
@@ -1739,7 +1739,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 setLlmModel(e.target.value);
                 setIsDirty(true);
               }}
-              className="w-full px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs font-bold text-slate-900 outline-none focus:border-purple-500 focus:bg-white"
+              className="w-full px-3.5 py-2.5 rounded-2xl bg-slate-50 border border-slate-200 text-ui font-bold text-slate-900 outline-none focus:border-purple-500 focus:bg-white"
             >
               <option value="gpt-5.6-luna">
                 {t('GPT-5.6 Luna (Cost-optimized & High Speed) ⭐', 'GPT-5.6 Luna (Cenovo optimalizovaný & Vysoká rýchlosť) ⭐', 'GPT-5.6 Luna (Költségoptimalizált és nagy sebességű) ⭐')}
@@ -1748,7 +1748,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 {t('GPT-5.6 Terra (Deep Cognitive Analysis & Complex Swarm)', 'GPT-5.6 Terra (Hĺbková kognitívna analýza & Komplexný roj)', 'GPT-5.6 Terra (Mély kognitív elemzés és összetett raj)')}
               </option>
             </select>
-            <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+            <div className="flex items-start gap-2 pt-1 text-caption text-slate-500 leading-relaxed">
               <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
               <span>
                 <strong className="text-slate-700 font-semibold">{t('Purpose:', 'Na čo slúži:', 'Célja:')}</strong>{' '}
@@ -1768,8 +1768,8 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
 
             <div className="flex items-center justify-between pt-3 border-t border-slate-100">
               <div>
-                <span className="text-xs text-slate-700 font-bold block">{t('Circadian Sleep Cycle', 'Cirkadiánny cyklus spánku', 'Cirkadián alvásciklus')}</span>
-                <span className="text-[11px] text-slate-400 font-normal">{t('Agents pause during simulated night hours', 'Agenti oddychujú počas simulovanej noci', 'Az ágensek pihennek a szimulált éjszakai órákban')}</span>
+                <span className="text-ui text-slate-700 font-bold block">{t('Circadian Sleep Cycle', 'Cirkadiánny cyklus spánku', 'Cirkadián alvásciklus')}</span>
+                <span className="text-caption text-slate-400 font-normal">{t('Agents pause during simulated night hours', 'Agenti oddychujú počas simulovanej noci', 'Az ágensek pihennek a szimulált éjszakai órákban')}</span>
               </div>
               <input 
                 type="checkbox"
@@ -1781,7 +1781,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                 className="w-4 h-4 rounded text-purple-600 accent-purple-600 cursor-pointer"
               />
             </div>
-            <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
+            <div className="flex items-start gap-2 pt-1 text-caption text-slate-500 leading-relaxed">
               <Info className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
               <span>
                 <strong className="text-slate-700 font-semibold">{t('Purpose:', 'Na čo slúži:', 'Célja:')}</strong>{' '}
@@ -1808,7 +1808,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             <button
               type="button"
               onClick={onBack}
-              className="px-5 py-2.5 rounded-2xl border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold text-xs transition cursor-pointer"
+              className="px-5 py-2.5 rounded-2xl border border-slate-200 hover:bg-slate-50 text-slate-600 font-bold text-ui transition cursor-pointer"
             >
               {t('Cancel', 'Zrušiť', 'Mégse')}
             </button>
@@ -1816,14 +1816,14 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               type="button"
               onClick={handleSaveDraft}
               disabled={isSavingDraft || isSubmitting}
-              className="px-5 py-2.5 rounded-2xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold text-xs transition flex items-center gap-1.5 cursor-pointer"
+              className="px-5 py-2.5 rounded-2xl bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 font-bold text-ui transition flex items-center gap-1.5 cursor-pointer"
             >
               <Bookmark className="w-3.5 h-3.5 text-purple-600" />
               <span>{isSavingDraft ? t('Saving draft...', 'Ukladám koncept...', 'Vázlat mentése...') : t('Save as Draft', 'Uložiť ako koncept', 'Mentés vázlatként')}</span>
             </button>
           </div>
 
-          <div className="flex flex-wrap sm:flex-nowrap items-center gap-3.5">
+          <div className="flex flex-wrap ws-sm:flex-nowrap items-center gap-3.5">
             {/* Live Price & Resource Estimator */}
             <div
               onClick={() => setShowEstimatorModal(true)}
@@ -1841,24 +1841,24 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
               </div>
               <div className="flex flex-col text-left">
                 <div className="flex items-center gap-1.5 leading-none">
-                  <span className="text-[10px] uppercase font-black tracking-wider text-slate-400">
+                  <span className="type-overline text-slate-400">
                     {t('Cost Estimate', 'Odhad ceny', 'Becsült költség')}
                   </span>
                   {executionMode === 'demo' ? (
-                    <span className="px-1.5 py-0.5 text-[9px] font-black bg-emerald-100 text-emerald-800 rounded uppercase tracking-wider">
+                    <span className="px-1.5 py-0.5 type-overline bg-emerald-100 text-emerald-800 rounded">
                       {t('Demo test ($0.00)', 'Demo test (0 €)', 'Demo teszt (0 €)')}
                     </span>
                   ) : (
-                    <span className="text-[10px] font-bold text-purple-600">
+                    <span className="text-micro font-bold text-purple-600">
                       {MODEL_PRICING[llmModel]?.label || 'Model'}
                     </span>
                   )}
                 </div>
                 <div className="flex items-baseline gap-1.5 mt-1">
-                  <span className="text-sm sm:text-base font-black text-slate-900 tracking-tight leading-none group-hover:text-purple-700 transition-colors">
+                  <span className="text-body font-bold text-slate-900 tracking-tight leading-none group-hover:text-purple-700 transition-colors">
                     {executionMode === 'demo' ? t('$0.000', '0.000 €', '0.000 €') : `~${estimatedCost.toFixed(3)} €`}
                   </span>
-                  <span className="text-[11px] text-slate-400 font-semibold leading-none">
+                  <span className="text-caption text-slate-400 font-semibold leading-none">
                     {executionMode === 'demo' ? t('Zero token usage', 'Bez spotreby tokenov', 'Tokenfelhasználás nélkül') : `~${(estimatedTokens / 1000).toFixed(0)}k tkn`}
                   </span>
                 </div>
@@ -1868,7 +1868,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             <button
               type="submit"
               disabled={isSubmitting}
-              className={`px-7 py-3 rounded-2xl text-white font-extrabold text-xs shadow-md hover:shadow-lg transition flex items-center gap-2 cursor-pointer disabled:opacity-60 shrink-0 ${
+              className={`px-7 py-3 rounded-2xl text-white font-extrabold text-ui shadow-md hover:shadow-lg transition flex items-center gap-2 cursor-pointer disabled:opacity-60 shrink-0 ${
                 executionMode === 'demo'
                   ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700'
                   : 'bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 hover:from-purple-700 hover:to-emerald-600'
@@ -1914,7 +1914,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
       {toastMessage && (
         <div className="fixed bottom-6 right-6 z-50 p-4 rounded-2xl bg-slate-900 text-white shadow-2xl border border-purple-500/30 flex items-center gap-3 animate-in slide-in-from-bottom-5 duration-200">
           <Sparkles className="w-5 h-5 text-emerald-400 shrink-0" />
-          <span className="text-xs font-bold">{toastMessage}</span>
+          <span className="text-ui font-bold">{toastMessage}</span>
           <button 
             type="button"
             onClick={() => setToastMessage(null)} 
@@ -1948,10 +1948,10 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                   )}
                 </div>
                 <div className="min-w-0">
-                  <h3 className="text-sm font-bold text-slate-900 truncate max-w-md">
+                  <h3 className="text-body font-bold text-slate-900 truncate max-w-md">
                     {previewDoc.name}
                   </h3>
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-caption text-slate-500">
                     {t('Extracted text', 'Extrahovaný text', 'Kivont szöveg')} • {previewDoc.extractedChars?.toLocaleString() || 0} {t('chars', 'znakov', 'karakter')} (~{Math.ceil((previewDoc.content?.length || 0) / 4)} {t('tokens', 'tokenov', 'token')})
                   </p>
                 </div>
@@ -1966,17 +1966,17 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             </div>
 
             {/* Modal Content */}
-            <div className="p-6 overflow-y-auto flex-1 font-mono text-xs text-slate-700 whitespace-pre-wrap leading-relaxed bg-slate-50/40 select-text">
+            <div className="p-6 overflow-y-auto flex-1 font-mono text-ui text-slate-700 whitespace-pre-wrap leading-relaxed bg-slate-50/40 select-text">
               {previewDoc.content || t('No text could be extracted from this file.', 'Žiadny text sa z tohto súboru nepodarilo vyextrahovať.', 'Ebből a fájlból nem sikerült szöveget kinyerni.')}
             </div>
 
             {/* Modal Footer */}
-            <div className="px-6 py-3 border-t border-slate-100 bg-white flex items-center justify-between text-xs text-slate-500">
+            <div className="px-6 py-3 border-t border-slate-100 bg-white flex items-center justify-between text-ui text-slate-500">
               <span>{t('This text will be embedded into the agent briefing and knowledge graph.', 'Tento text bude vložený do zadania pre agentov a ontologického grafu.', 'Ez a szöveg beépül az ágensek feladatleírásába és a tudásgráfba.')}</span>
               <button
                 type="button"
                 onClick={() => setPreviewDoc(null)}
-                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition text-xs cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold transition text-ui cursor-pointer"
               >
                 {t('Close', 'Zavrieť', 'Bezárás')}
               </button>

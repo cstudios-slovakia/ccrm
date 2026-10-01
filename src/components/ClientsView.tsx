@@ -4,7 +4,7 @@ import { createPortal } from "react-dom";
 import { 
   Users, MapPin, Search, Clock, User, Briefcase, Handshake, 
   Euro, UserCheck, Check, Layers, Phone, Mail, Globe, 
-  Calendar, ArrowLeft, ArrowUp, ArrowDown, ArrowUpDown, Plus, TrendingUp, PencilLine, FileText,
+  Calendar, ArrowUp, ArrowDown, ArrowUpDown, Plus, TrendingUp, PencilLine, FileText,
   X, FolderOpen, Download, Trash2, SlidersHorizontal,
   CornerDownLeft, CornerLeftDown, Loader2, Brain,
   ChevronLeft, ChevronRight, Milestone, Coins, Archive, ArchiveRestore, Settings,
@@ -45,10 +45,12 @@ import { isDoneTaskState } from "../utils/projectTasks";
 import { isSystemMailConfigured } from "../utils/taskReminders";
 import { todayLocal, nowLocalStamp, formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
 import { chartTheme, useAppearance } from "../utils/theme";
+import { chartFonts, useViewSize } from "../utils/viewSize";
 import { mergeFinancialRecord, derivePaidDate, FINANCIAL_STATUS_OPTIONS } from "../utils/financialRecordMerge";
 import { splitRecordAmounts } from "../utils/financialOverviewTable";
 import { categoryBreadcrumbs } from "../utils/financialCategoryTree";
 import { isOutgoingMail } from "../utils/mailTimeline";
+import { EntityHeader, PageHeader, Tabs } from "./layout";
 
 export type ClientSortKey = "name" | "phone" | "email" | "city" | "clientType" | "owner" | "leadsCount" | "totalValue";
 export type ClientSortDirection = "asc" | "desc";
@@ -122,6 +124,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
   // chart.js paints to a canvas, so its axis, grid and legend colours cannot
   // come from CSS — they are literals rebuilt whenever the appearance flips.
   const appearance = useAppearance();
+  const { size: viewSize } = useViewSize();
   const chart = chartTheme(appearance);
   const chartRef = useRef<HTMLCanvasElement | null>(null);
   const chartInstanceRef = useRef<any>(null);
@@ -176,6 +179,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
       return;
     }
 
+    const fonts = chartFonts();
     chartInstanceRef.current = new ChartGlob(ctx, {
       type: 'line',
       data: {
@@ -217,7 +221,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
               font: {
                 family: 'Google Sans, sans-serif',
                 weight: 'bold',
-                size: 10
+                size: fonts.label
               },
               color: chart.label
             }
@@ -239,7 +243,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
               color: chart.tick,
               font: {
                 family: 'Google Sans, sans-serif',
-                size: 9,
+                size: fonts.tick,
                 weight: 'bold'
               },
               callback: (value: any) => '€' + value.toLocaleString()
@@ -253,7 +257,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
               color: chart.tick,
               font: {
                 family: 'Google Sans, sans-serif',
-                size: 10,
+                size: fonts.tick,
                 weight: 'bold'
               }
             },
@@ -270,7 +274,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
         chartInstanceRef.current.destroy();
       }
     };
-  }, [parsedData, systemLanguage, appearance]);
+  }, [parsedData, systemLanguage, appearance, viewSize]);
 
   const renderBeautifulReport = (text: string) => {
     if (!text) return null;
@@ -311,11 +315,11 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
       if (tableRows.length > 0) {
         elements.push(
           <div key={`table-${key}`} className="overflow-x-auto my-4 rounded-xl border border-slate-200 shadow-sm bg-white">
-            <table className="min-w-full divide-y divide-slate-200 text-[11px]">
+            <table className="min-w-full divide-y divide-slate-200 text-caption">
               <thead className="bg-slate-50">
                 <tr>
                   {tableRows[0].map((cell, idx) => (
-                    <th key={idx} className="px-4 py-2 text-left font-black text-slate-700 uppercase tracking-wider" dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(cell) }} />
+                    <th key={idx} className="px-4 py-2 text-left font-bold text-slate-700 uppercase tracking-wider" dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(cell) }} />
                   ))}
                 </tr>
               </thead>
@@ -351,15 +355,15 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
 
       if (h1Match) {
         elements.push(
-          <h2 key={i} className="text-sm font-black text-slate-900 uppercase tracking-wide mt-6 mb-3 border-b border-slate-200 pb-1.5 flex items-center gap-1.5" dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(h1Match[1]) }} />
+          <h2 key={i} className="text-body font-bold text-slate-900 mt-6 mb-3 border-b border-slate-200 pb-1.5 flex items-center gap-1.5" dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(h1Match[1]) }} />
         );
       } else if (h2Match) {
         elements.push(
-          <h3 key={i} className="text-xs font-black text-slate-800 uppercase tracking-wide mt-5 mb-2 flex items-center gap-1.5" dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(h2Match[1]) }} />
+          <h3 key={i} className="text-ui font-bold text-slate-800 mt-5 mb-2 flex items-center gap-1.5" dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(h2Match[1]) }} />
         );
       } else if (h3Match) {
         elements.push(
-          <h4 key={i} className="text-[11px] font-black text-slate-600 uppercase tracking-wider mt-4 mb-1.5" dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(h3Match[1]) }} />
+          <h4 key={i} className="type-overline text-slate-600 mt-4 mb-1.5" dangerouslySetInnerHTML={{ __html: formatInlineMarkdown(h3Match[1]) }} />
         );
       } else if (listMatch) {
         listItems.push(formatInlineMarkdown(listMatch[1]));
@@ -379,7 +383,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
     flushList("end");
     flushTable("end");
 
-    return <div className="space-y-1 text-[11.5px]">{elements}</div>;
+    return <div className="space-y-1 text-caption">{elements}</div>;
   };
 
   return (
@@ -387,7 +391,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
       {parsedData.years.length > 0 && (
         <div className="p-4 rounded-2xl bg-white border border-slate-100 shadow-sm space-y-3">
           <div className="flex items-center justify-between border-b border-slate-100 pb-2">
-            <h4 className="text-[10px] font-black text-slate-500 uppercase tracking-wider">
+            <h4 className="type-overline text-slate-500">
               {systemLanguage === 'sk' ? 'Graf vývoja hospodárenia' : systemLanguage === 'hu' ? 'Pénzügyi trend diagram' : 'Financial Trend Chart'}
             </h4>
           </div>
@@ -397,7 +401,7 @@ export const FinancialReportView: React.FC<FinancialReportViewProps> = ({ summar
         </div>
       )}
       
-      <div className="p-6 rounded-2xl bg-indigo-50/15 border-2 border-indigo-100/60 shadow-inner leading-relaxed text-xs">
+      <div className="p-6 rounded-2xl bg-indigo-50/15 border-2 border-indigo-100/60 shadow-inner leading-relaxed text-ui">
         {renderBeautifulReport(summary)}
       </div>
     </div>
@@ -699,26 +703,26 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     return (
       <div className="mt-1 flex items-center">
         {status === "checking" && (
-          <span className="inline-flex items-center gap-1 text-[9px] font-black text-slate-500 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-full animate-pulse">
+          <span className="inline-flex items-center gap-1 text-micro font-bold text-slate-500 bg-slate-50 border border-slate-200 px-2 py-0.5 rounded-full animate-pulse">
             <Loader2 className="h-2.5 w-2.5 animate-spin text-emerald-500" />
             {getTranslation(systemLanguage, "clients.vat_validation.checking")}
           </span>
         )}
         
         {status === "valid" && (
-          <span className="inline-flex items-center gap-1 text-[9px] font-black text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full" title={result?.name}>
+          <span className="inline-flex items-center gap-1 text-micro font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full" title={result?.name}>
             ✓ {getTranslation(systemLanguage, "clients.vat_validation.valid")}
           </span>
         )}
 
         {status === "invalid" && (
-          <span className="inline-flex items-center gap-1 text-[9px] font-black text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">
+          <span className="inline-flex items-center gap-1 text-micro font-bold text-rose-700 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-full">
             ✗ {getTranslation(systemLanguage, "clients.vat_validation.invalid")}
           </span>
         )}
 
         {status === "error" && (
-          <span className="inline-flex items-center gap-1 text-[9px] font-black text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full" title={result?.error}>
+          <span className="inline-flex items-center gap-1 text-micro font-bold text-amber-700 bg-amber-50 border border-amber-200 px-2 py-0.5 rounded-full" title={result?.error}>
             ⚠ {getTranslation(systemLanguage, "clients.vat_validation.error")}
           </span>
         )}
@@ -2905,12 +2909,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     if (!activeClient) {
       return (
         <div className="p-8 glass-panel rounded-[28px] border-2 border-red-400 bg-white shadow-glass text-center space-y-4">
-          <div className="text-4xl text-rose-600 animate-bounce">⚠️</div>
-          <h2 className="text-xl font-heading font-black text-slate-900 uppercase tracking-wide">{t("Client Profile Not Found", "Profil klienta sa nenašiel", "Az ügyfélprofil nem található")}</h2>
-          <p className="text-xs text-slate-600 font-semibold">{t(`The profile name '${initialSelectedClient}' could not be resolved in the active database.`, `Názov profilu '${initialSelectedClient}' sa nepodarilo nájsť v aktívnej databáze.`, `A(z) '${initialSelectedClient}' profilnév nem feloldható az aktív adatbázisban.`)}</p>
+          <div className="text-display text-rose-600 animate-bounce">⚠️</div>
+          <h2 className="text-title font-heading font-bold text-slate-900">{t("Client Profile Not Found", "Profil klienta sa nenašiel", "Az ügyfélprofil nem található")}</h2>
+          <p className="text-ui text-slate-600 font-semibold">{t(`The profile name '${initialSelectedClient}' could not be resolved in the active database.`, `Názov profilu '${initialSelectedClient}' sa nepodarilo nájsť v aktívnej databáze.`, `A(z) '${initialSelectedClient}' profilnév nem feloldható az aktív adatbázisban.`)}</p>
           <button
             onClick={() => { window.location.hash = "clients"; }}
-            className="px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all active:scale-95 shadow-md cursor-pointer"
+            className="px-6 py-3 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl text-ui font-bold transition-all active:scale-95 shadow-md cursor-pointer"
           >
             {t("Back to Clients List", "Späť na zoznam klientov", "Vissza az ügyféllistához")}
           </button>
@@ -2920,19 +2924,49 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
     return (
       <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
-        {/* Back header */}
-        <div className="flex items-center justify-between">
-          <div className="flex flex-wrap items-center gap-2">
-          <button
-            onClick={() => { window.location.hash = "clients"; }}
-            className="px-4.5 py-3 rounded-2xl bg-white border-2 border-slate-300 text-slate-700 hover:text-slate-950 hover:border-slate-800 transition-all text-xs font-extrabold uppercase tracking-wider flex items-center gap-2 shadow-sm"
-          >
-            <ArrowLeft className="h-4.5 w-4.5 stroke-[2.5]" /> {getTranslation(systemLanguage, "common.back_to_clients")}
-          </button>
+        {/* Entity header: back · avatar · title, badges and meta beneath, actions at the right */}
+        <EntityHeader
+          onBack={() => { window.location.hash = "clients"; }}
+          backLabel={getTranslation(systemLanguage, "common.back_to_clients")}
+          avatar={
+            <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-2 border-emerald-700 flex items-center justify-center font-heading font-bold text-title shadow-md shrink-0">
+              {getInitials(profileName || activeClient.name)}
+            </div>
+          }
+          title={profileName || activeClient.name}
+          badges={<>
+                {activeClient.clientType && (
+                  <span className="capitalize px-2.5 py-0.5 rounded-full type-overline bg-emerald-100 text-emerald-800 border border-emerald-300">
+                    {activeClient.clientType}
+                  </span>
+                )}
+                {activeClient.companyId && (
+                  <span className="font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md border border-slate-200 text-caption">
+                    IČO: {activeClient.companyId}
+                  </span>
+                )}
+                {activeClient.city && (
+                  <span className="text-slate-600 font-medium flex items-center gap-1">
+                    <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                    {activeClient.city}
+                  </span>
+                )}
+                {activeClient.owner && (
+                  <span className="text-slate-400 font-medium">
+                    • {activeClient.owner}
+                  </span>
+                )}
+          </>}
+          primaryAction={
+                      <span className="text-ui font-bold text-emerald-800 bg-emerald-100 border-2 border-emerald-300 px-4 py-2 rounded-2xl shadow-inner">
+                        {getTranslation(systemLanguage, "common.client_value")}: {money(activeClient.totalValue, { minimumFractionDigits: 2 })}
+                      </span>
+          }
+          actions={<>
           <button
             type="button"
             onClick={() => setClientArchived(activeClient.name, !activeClient.archived)}
-            className={`px-4 py-3 rounded-2xl border-2 transition-all text-xs font-extrabold uppercase tracking-wider flex items-center gap-2 shadow-sm active:scale-95 cursor-pointer ${
+            className={`h-9 px-3 rounded-xl border transition-all text-ui font-semibold flex items-center gap-2 shadow-sm active:scale-95 cursor-pointer ${
               activeClient.archived
                 ? "bg-emerald-600 border-emerald-700 text-white hover:bg-emerald-700"
                 : "bg-white border-slate-200 text-slate-500 hover:text-slate-900 hover:border-slate-400"
@@ -2953,33 +2987,35 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             url={`#client-${encodeURIComponent(activeClient.name)}`}
             showLabel
             systemLanguage={systemLanguage}
-            className="px-4 py-3 rounded-2xl bg-white border-2 border-slate-200 hover:border-rose-300 text-xs font-extrabold uppercase tracking-wider shadow-sm"
+            className="h-9 px-3 rounded-xl bg-white border border-slate-200 hover:border-rose-300 text-ui font-semibold shadow-sm"
           />
-          </div>
+          </>}
+        />
 
-          <div className="flex items-center gap-3">
+        {(!isOpenAiConfigured || localSummary || isGeneratingSummary) && (
+          <div className="flex flex-wrap items-center gap-3">
             {/* AI Summary Purple Card */}
             {(!isOpenAiConfigured && !localSummary) ? (
-              <div className="flex items-center gap-2.5 bg-purple-50/50 border border-purple-200 p-2.5 px-3.5 rounded-2xl max-w-md text-xs font-bold text-purple-800 shadow-sm">
+              <div className="flex items-center gap-2.5 bg-purple-50/50 border border-purple-200 p-2.5 px-3.5 rounded-2xl max-w-md text-ui font-bold text-purple-800 shadow-sm">
                 <Brain className="h-5 w-5 text-purple-400 shrink-0" />
-                <span className="text-[10px] text-purple-600 italic">
+                <span className="text-micro text-purple-600 italic">
                   {systemLanguage === "sk" ? "AI zhrnutie nie je k dispozícii. Nastavte OpenAI kľúč v nastaveniach." : systemLanguage === "hu" ? "Az AI összefoglaló nem érhető el. Állítsa be az OpenAI kulcsot a beállításokban." : "AI summary unavailable. Configure OpenAI Key in settings."}
                 </span>
               </div>
             ) : (localSummary || isGeneratingSummary) ? (
-              <div className="flex items-center gap-2.5 bg-purple-50 border-2 border-purple-200 p-2.5 px-3.5 rounded-2xl max-w-xl text-xs font-bold text-purple-900 shadow-sm hover:shadow-md transition-all animate-fade-in">
+              <div className="flex items-center gap-2.5 bg-purple-50 border-2 border-purple-200 p-2.5 px-3.5 rounded-2xl max-w-xl text-ui font-bold text-purple-900 shadow-sm hover:shadow-md transition-all animate-fade-in">
                 <Brain className={`h-5 w-5 text-purple-600 shrink-0 ${isGeneratingSummary ? 'animate-pulse' : ''}`} />
                 <div>
                   {isGeneratingSummary && !localSummary ? (
-                    <span className="text-[10px] text-purple-600 italic animate-pulse flex items-center gap-1.5">
+                    <span className="text-micro text-purple-600 italic animate-pulse flex items-center gap-1.5">
                       <Loader2 className="h-3 w-3 animate-spin text-purple-600" />
                       {systemLanguage === "sk" ? "Generuje sa AI zhrnutie..." : systemLanguage === "hu" ? "AI összefoglaló generálása..." : "Generating AI summary..."}
                     </span>
                   ) : (
-                    <p className="leading-relaxed text-[11px] font-semibold text-left">
+                    <p className="leading-relaxed text-caption font-semibold text-left">
                       {localSummary}
                       {isGeneratingSummary && (
-                        <span className="ml-1 text-[9px] text-purple-500 animate-pulse">
+                        <span className="ml-1 text-micro text-purple-500 animate-pulse">
                           ({systemLanguage === "sk" ? "Aktualizuje sa..." : systemLanguage === "hu" ? "Frissítés..." : "Updating..."})
                         </span>
                       )}
@@ -2988,52 +3024,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 </div>
               </div>
             ) : null}
-
-            <span className="text-xs font-black uppercase tracking-widest text-emerald-800 bg-emerald-100 border-2 border-emerald-300 px-4 py-2 rounded-2xl shadow-inner">
-              {getTranslation(systemLanguage, "common.client_value")}: {money(activeClient.totalValue, { minimumFractionDigits: 2 })}
-            </span>
           </div>
-        </div>
-
-        {/* Entity Title Header */}
-        <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-200/80 pb-4">
-          <div className="flex items-center gap-3.5 min-w-0">
-            <div className="h-12 w-12 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-2 border-emerald-700 flex items-center justify-center font-heading font-black text-lg shadow-md shrink-0">
-              {getInitials(profileName || activeClient.name)}
-            </div>
-            <div className="min-w-0">
-              <h1 className="text-3xl lg:text-4xl font-heading font-black text-slate-900 tracking-tight truncate">
-                {profileName || activeClient.name}
-              </h1>
-              <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 font-semibold flex-wrap">
-                {activeClient.clientType && (
-                  <span className="capitalize px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 border border-emerald-300">
-                    {activeClient.clientType}
-                  </span>
-                )}
-                {activeClient.companyId && (
-                  <span className="font-mono bg-slate-100 text-slate-600 px-2 py-0.5 rounded-md border border-slate-200 text-[11px]">
-                    IČO: {activeClient.companyId}
-                  </span>
-                )}
-                {activeClient.city && (
-                  <span className="text-slate-600 font-medium flex items-center gap-1">
-                    <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                    {activeClient.city}
-                  </span>
-                )}
-                {activeClient.owner && (
-                  <span className="text-slate-400 font-medium">
-                    • {activeClient.owner}
-                  </span>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+        )}
 
         {activeClient.archived && (
-          <div className="flex items-center gap-2.5 px-5 py-3 rounded-2xl border-2 border-amber-300 bg-amber-50 text-amber-800 text-xs font-bold animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="flex items-center gap-2.5 px-5 py-3 rounded-2xl border-2 border-amber-300 bg-amber-50 text-amber-800 text-ui font-bold animate-in fade-in slide-in-from-top-2 duration-200">
             <Archive className="h-4 w-4 shrink-0 stroke-[2.5]" />
             {t(
               "This client is archived — it is hidden from the client list until you restore it.",
@@ -3044,18 +3039,18 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         )}
 
         {/* Master Dual-Panel Dashboard Grid */}
-        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+        <div className="grid grid-cols-1 ws-lg:grid-cols-12 gap-6 items-start">
           
           {/* LEFT PANEL: Comprehensive Details Form */}
-          <div className="lg:col-span-5 glass-panel p-6 rounded-[28px] border-2 border-emerald-400 bg-white shadow-xl space-y-6">
+          <div className="ws-lg:col-span-5 glass-panel p-6 rounded-[28px] border-2 border-emerald-400 bg-white shadow-xl space-y-6">
             <div className="border-b-2 border-slate-100 pb-4 flex items-center justify-between gap-2.5">
               <div className="flex items-center gap-2.5">
-                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-2 border-emerald-700 flex items-center justify-center font-heading font-black text-sm shadow-md">
+                <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-2 border-emerald-700 flex items-center justify-center font-heading font-bold text-body shadow-md">
                   {getInitials(profileName || activeClient.name)}
                 </div>
                 <div>
-                  <h3 className="text-md font-heading font-black text-slate-900 uppercase tracking-tight">{getTranslation(systemLanguage, "profile.client_contact")}</h3>
-                  <p className="text-[9px] text-slate-400 uppercase font-extrabold tracking-wide mt-0.5">{getTranslation(systemLanguage, "profile.edit_desc")}</p>
+                  <h3 className="text-md font-heading font-bold text-slate-900 uppercase tracking-tight">{getTranslation(systemLanguage, "profile.client_contact")}</h3>
+                  <p className="type-overline text-slate-400 mt-0.5">{getTranslation(systemLanguage, "profile.edit_desc")}</p>
                 </div>
               </div>
               
@@ -3119,12 +3114,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               </button>
             </div>
 
-            <form onSubmit={handleUpdateClientProfile} className="space-y-4 text-xs font-bold">
+            <form onSubmit={handleUpdateClientProfile} className="space-y-4 text-ui font-bold">
               
               {/* Name & Type */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-4">
                 <div className="space-y-1 relative">
-                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{getTranslation(systemLanguage, "profile.client_name")}</label>
+                  <label className="type-overline text-slate-500">{getTranslation(systemLanguage, "profile.client_name")}</label>
                   <div className="relative">
                     <input
                       type="text"
@@ -3135,7 +3130,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all pr-9 ${
                         isEditingProfile 
                           ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-emerald-500 text-slate-800" 
-                          : "bg-transparent border-0 pl-0 text-slate-900 text-sm font-black cursor-default select-all"
+                          : "bg-transparent border-0 pl-0 text-slate-900 text-body font-bold cursor-default select-all"
                       }`}
                     />
                     <CompanyLookupSpinner visible={isEditingProfile && profileLookup.isLoading && profileLookup.activeField === "name"} />
@@ -3149,7 +3144,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{getTranslation(systemLanguage, "profile.client_type")}</label>
+                  <label className="type-overline text-slate-500">{getTranslation(systemLanguage, "profile.client_type")}</label>
                   {isEditingProfile ? (
                     <CustomSelect
                       value={profileType}
@@ -3161,7 +3156,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       ]}
                     />
                   ) : (
-                    <div className="pt-2 pl-0 text-slate-900 text-sm font-black uppercase tracking-wider cursor-default select-all">
+                    <div className="pt-2 pl-0 text-slate-900 text-body font-bold cursor-default select-all">
                       {profileType === "business" && `🏢 ${systemLanguage === "sk" ? "Firma / Podnikanie" : systemLanguage === "hu" ? "Cég / Vállalkozás" : "Company / Business"}`}
                       {profileType === "partner" && `🤝 ${systemLanguage === "sk" ? "Obchodný partner" : systemLanguage === "hu" ? "Kereskedő partner" : "Dealer Partner"}`}
                       {profileType === "person" && `👤 ${systemLanguage === "sk" ? "Súkromná osoba" : systemLanguage === "hu" ? "Magánszemély" : "Private Person"}`}
@@ -3171,9 +3166,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               </div>
 
               {/* Phone & Email */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-4">
                 <div className="space-y-1">
-                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1"><Phone className="h-3 w-3 text-emerald-500" /> {getTranslation(systemLanguage, "profile.phone")}</label>
+                  <label className="type-overline text-slate-500 flex items-center gap-1"><Phone className="h-3 w-3 text-emerald-500" /> {getTranslation(systemLanguage, "profile.phone")}</label>
                   <input
                     type="text"
                     required
@@ -3184,12 +3179,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
                       isEditingProfile 
                         ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-emerald-500 text-slate-800" 
-                        : "bg-transparent border-0 pl-0 text-slate-900 text-sm font-black cursor-default select-all"
+                        : "bg-transparent border-0 pl-0 text-slate-900 text-body font-bold cursor-default select-all"
                     }`}
                   />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1"><Mail className="h-3 w-3 text-emerald-500" /> {getTranslation(systemLanguage, "profile.email")}</label>
+                  <label className="type-overline text-slate-500 flex items-center gap-1"><Mail className="h-3 w-3 text-emerald-500" /> {getTranslation(systemLanguage, "profile.email")}</label>
                   <input
                     type="email"
                     required
@@ -3200,25 +3195,25 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     className={`w-full px-3 py-2 rounded-xl focus:outline-none transition-all ${
                       isEditingProfile 
                         ? "bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-emerald-500 text-slate-800" 
-                        : "bg-transparent border-0 pl-0 text-slate-900 text-sm font-black cursor-default select-all"
+                        : "bg-transparent border-0 pl-0 text-slate-900 text-body font-bold cursor-default select-all"
                     }`}
                   />
                 </div>
               </div>
 
               {/* Date Added & Financial Adjustment */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-4">
                 {activeClient?.createdAt ? (
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1"><Calendar className="h-3 w-3 text-emerald-500" /> {getTranslation(systemLanguage, "profile.created_at")}</label>
-                    <div className="pt-2 pl-0 text-slate-900 text-sm font-black cursor-default select-all">
+                    <label className="type-overline text-slate-500 flex items-center gap-1"><Calendar className="h-3 w-3 text-emerald-500" /> {getTranslation(systemLanguage, "profile.created_at")}</label>
+                    <div className="pt-2 pl-0 text-slate-900 text-body font-bold cursor-default select-all">
                       {formatDateLocalized(activeClient.createdAt, systemLanguage)}
                     </div>
                   </div>
                 ) : <div />}
 
                 <div className="space-y-1">
-                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                  <label className="type-overline text-slate-500 flex items-center gap-1">
                     <TrendingUp className="h-3 w-3 text-emerald-500" />
                     {systemLanguage === "sk" ? "Finančná úprava" : systemLanguage === "hu" ? "Pénzügyi korrekció" : "Financial Adjustment"}
                   </label>
@@ -3230,17 +3225,17 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         value={profileAdjustment}
                         onChange={(e) => setProfileAdjustment(e.target.value)}
                         placeholder="0.00"
-                        className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-emerald-500 text-slate-800 text-sm font-black focus:outline-none transition-all pr-8"
+                        className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-emerald-500 text-slate-800 text-body font-bold focus:outline-none transition-all pr-8"
                       />
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-ui font-bold text-slate-400">
                         {currencySymbol}
                       </span>
                     </div>
                   ) : (
-                    <div className="pt-2 pl-0 text-emerald-700 text-sm font-black cursor-default select-all flex items-center gap-2">
+                    <div className="pt-2 pl-0 text-emerald-700 text-body font-bold cursor-default select-all flex items-center gap-2">
                       <span>{money(activeClient.adjustment || 0, { minimumFractionDigits: 2 })}</span>
                       {Number(activeClient.adjustment || 0) !== 0 && (
-                        <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md border border-emerald-300">
+                        <span className="text-micro font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md border border-emerald-300">
                           {t("Adjustment", "Úprava", "Korrekció")}
                         </span>
                       )}
@@ -3251,11 +3246,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
               {/* Address details */}
               <div className="border-t-2 border-slate-100 pt-4 space-y-3">
-                <span className="text-[9px] font-black text-emerald-600 uppercase tracking-wider flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {getTranslation(systemLanguage, "profile.address_details")}</span>
+                <span className="type-overline text-emerald-600 flex items-center gap-1"><MapPin className="h-3.5 w-3.5" /> {getTranslation(systemLanguage, "profile.address_details")}</span>
                 
                 <div className="space-y-3 bg-slate-50/50 p-3 rounded-xl border-2 border-slate-200">
                   <div className="space-y-1">
-                    <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{getTranslation(systemLanguage, "profile.street")}</label>
+                    <label className="type-overline text-slate-400">{getTranslation(systemLanguage, "profile.street")}</label>
                     <input
                       type="text"
                       readOnly={!isEditingProfile}
@@ -3265,13 +3260,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       className={`w-full px-3 py-1.5 rounded-lg focus:outline-none ${
                         isEditingProfile 
                           ? "bg-white border-2 border-slate-200 text-slate-800" 
-                          : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all"
+                          : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default select-all"
                       }`}
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{getTranslation(systemLanguage, "profile.city")}</label>
+                      <label className="type-overline text-slate-400">{getTranslation(systemLanguage, "profile.city")}</label>
                       <input
                         type="text"
                         readOnly={!isEditingProfile}
@@ -3281,12 +3276,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         className={`w-full px-3 py-1.5 rounded-lg focus:outline-none ${
                           isEditingProfile 
                             ? "bg-white border-2 border-slate-200 text-slate-800" 
-                            : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all"
+                            : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default select-all"
                         }`}
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{getTranslation(systemLanguage, "profile.postal")}</label>
+                      <label className="type-overline text-slate-400">{getTranslation(systemLanguage, "profile.postal")}</label>
                       <input
                         type="text"
                         readOnly={!isEditingProfile}
@@ -3296,13 +3291,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         className={`w-full px-3 py-1.5 rounded-lg focus:outline-none ${
                           isEditingProfile 
                             ? "bg-white border-2 border-slate-200 text-slate-800" 
-                            : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all"
+                            : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default select-all"
                         }`}
                       />
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{getTranslation(systemLanguage, "profile.country")}</label>
+                    <label className="type-overline text-slate-400">{getTranslation(systemLanguage, "profile.country")}</label>
                     {isEditingProfile ? (
                       <CustomSelect
                         value={profileCountry}
@@ -3310,7 +3305,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         options={europeanCountries.map(country => ({ value: country, label: country }))}
                       />
                     ) : (
-                      <div className="pl-0 text-slate-900 font-black cursor-default select-all">
+                      <div className="pl-0 text-slate-900 font-bold cursor-default select-all">
                         🇪🇺 {profileCountry}
                       </div>
                     )}
@@ -3321,12 +3316,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               {/* Corporate Registries section */}
               {profileType !== "person" && (
                 <div className="border-t-2 border-slate-100 pt-4 space-y-3">
-                  <span className="text-[9px] font-black text-emerald-600 uppercase tracking-wider flex items-center gap-1"><Briefcase className="h-3.5 w-3.5" /> {getTranslation(systemLanguage, "profile.corporate_details")}</span>
+                  <span className="type-overline text-emerald-600 flex items-center gap-1"><Briefcase className="h-3.5 w-3.5" /> {getTranslation(systemLanguage, "profile.corporate_details")}</span>
                   
                   <div className="space-y-3 bg-slate-50/50 p-3 rounded-xl border-2 border-slate-200">
                     <div className="grid grid-cols-3 gap-2">
                       <div className="space-y-1 relative">
-                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{getTranslation(systemLanguage, "profile.company_id")}</label>
+                        <label className="type-overline text-slate-400">{getTranslation(systemLanguage, "profile.company_id")}</label>
                         <div className="relative">
                           <input
                             type="text"
@@ -3336,7 +3331,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                             className={`w-full px-2 py-1.5 rounded-lg focus:outline-none pr-7 ${
                               isEditingProfile 
                                 ? "bg-white border-2 border-slate-200 text-slate-800" 
-                                : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all"
+                                : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default select-all"
                             }`}
                           />
                           <CompanyLookupSpinner
@@ -3353,7 +3348,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         />
                       </div>
                       <div className="space-y-1 relative">
-                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{getTranslation(systemLanguage, "profile.tax_id")}</label>
+                        <label className="type-overline text-slate-400">{getTranslation(systemLanguage, "profile.tax_id")}</label>
                         <div className="relative">
                           <input
                             type="text"
@@ -3363,7 +3358,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                             className={`w-full px-2 py-1.5 rounded-lg focus:outline-none pr-7 ${
                               isEditingProfile
                                 ? "bg-white border-2 border-slate-200 text-slate-800"
-                                : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all"
+                                : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default select-all"
                             }`}
                           />
                           <CompanyLookupSpinner
@@ -3380,7 +3375,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         />
                       </div>
                       <div className="space-y-1 relative">
-                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{getTranslation(systemLanguage, "profile.vat_id")}</label>
+                        <label className="type-overline text-slate-400">{getTranslation(systemLanguage, "profile.vat_id")}</label>
                         <div className="relative">
                           <input
                             type="text"
@@ -3391,7 +3386,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                             className={`w-full px-2 py-1.5 rounded-lg focus:outline-none pr-7 ${
                               isEditingProfile
                                 ? "bg-white border-2 border-slate-200 text-slate-800"
-                                : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all"
+                                : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default select-all"
                             }`}
                           />
                           <CompanyLookupSpinner
@@ -3411,7 +3406,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1">
-                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{getTranslation(systemLanguage, "profile.contact_person")}</label>
+                        <label className="type-overline text-slate-400">{getTranslation(systemLanguage, "profile.contact_person")}</label>
                         <input
                           type="text"
                           readOnly={!isEditingProfile}
@@ -3420,12 +3415,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           className={`w-full px-3 py-1.5 rounded-lg focus:outline-none ${
                             isEditingProfile 
                               ? "bg-white border-2 border-slate-200 text-slate-800" 
-                              : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all"
+                              : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default select-all"
                           }`}
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider flex items-center gap-1"><Globe className="h-3 w-3" /> {getTranslation(systemLanguage, "profile.website")}</label>
+                        <label className="type-overline text-slate-400 flex items-center gap-1"><Globe className="h-3 w-3" /> {getTranslation(systemLanguage, "profile.website")}</label>
                         <input
                           type="text"
                           readOnly={!isEditingProfile}
@@ -3435,7 +3430,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           className={`w-full px-3 py-1.5 rounded-lg focus:outline-none ${
                             isEditingProfile 
                               ? "bg-white border-2 border-slate-200 text-slate-800" 
-                              : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all text-blue-600 underline"
+                              : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default select-all text-blue-600 underline"
                           }`}
                         />
                       </div>
@@ -3443,7 +3438,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     {/* Additional RegisterUZ Metadata */}
                     <div className="border-t border-slate-200/50 pt-2 grid grid-cols-2 gap-3">
                       <div className="space-y-1">
-                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">
+                        <label className="type-overline text-slate-400">
                           {systemLanguage === "sk" ? "Dátum založenia" : systemLanguage === "hu" ? "Alapítás dátuma" : "Establishment Date"}
                         </label>
                         <input
@@ -3454,12 +3449,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           className={`w-full px-3 py-1.5 rounded-lg focus:outline-none ${
                             isEditingProfile 
                               ? "bg-white border-2 border-slate-200 text-slate-800" 
-                              : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all"
+                              : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default select-all"
                           }`}
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">
+                        <label className="type-overline text-slate-400">
                           {systemLanguage === "sk" ? "Právna forma" : systemLanguage === "hu" ? "Jogi forma" : "Legal Form"}
                         </label>
                         <input
@@ -3470,14 +3465,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           className={`w-full px-3 py-1.5 rounded-lg focus:outline-none ${
                             isEditingProfile 
                               ? "bg-white border-2 border-slate-200 text-slate-800" 
-                              : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all"
+                              : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default select-all"
                           }`}
                         />
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1">
-                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">SK NACE</label>
+                        <label className="type-overline text-slate-400">SK NACE</label>
                         <input
                           type="text"
                           readOnly={!isEditingProfile}
@@ -3486,12 +3481,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           className={`w-full px-3 py-1.5 rounded-lg focus:outline-none ${
                             isEditingProfile 
                               ? "bg-white border-2 border-slate-200 text-slate-800" 
-                              : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all"
+                              : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default select-all"
                           }`}
                         />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">
+                        <label className="type-overline text-slate-400">
                           {systemLanguage === "sk" ? "Veľkosť organizácie" : systemLanguage === "hu" ? "Szervezet mérete" : "Org Size"}
                         </label>
                         <input
@@ -3502,14 +3497,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           className={`w-full px-3 py-1.5 rounded-lg focus:outline-none ${
                             isEditingProfile 
                               ? "bg-white border-2 border-slate-200 text-slate-800" 
-                              : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all"
+                              : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default select-all"
                           }`}
                         />
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1">
-                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">
+                        <label className="type-overline text-slate-400">
                           {systemLanguage === "sk" ? "Kraj / Okres" : systemLanguage === "hu" ? "Kerület / Járás" : "Region / District"}
                         </label>
                         <div className="flex gap-2">
@@ -3521,7 +3516,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                             className={`w-1/2 px-3 py-1.5 rounded-lg focus:outline-none ${
                               isEditingProfile 
                                 ? "bg-white border-2 border-slate-200 text-slate-800" 
-                                : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all"
+                                : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default select-all"
                             }`}
                             placeholder={t("Region", "Kraj", "Megye")}
                           />
@@ -3533,14 +3528,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                             className={`w-1/2 px-3 py-1.5 rounded-lg focus:outline-none ${
                               isEditingProfile 
                                 ? "bg-white border-2 border-slate-200 text-slate-800" 
-                                : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all"
+                                : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default select-all"
                             }`}
                             placeholder={t("District", "Okres", "Járás")}
                           />
                         </div>
                       </div>
                       <div className="space-y-1">
-                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">
+                        <label className="type-overline text-slate-400">
                           {systemLanguage === "sk" ? "Zdroj dát" : systemLanguage === "hu" ? "Adatforrás" : "Data Source"}
                         </label>
                         <input
@@ -3551,7 +3546,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           className={`w-full px-3 py-1.5 rounded-lg focus:outline-none ${
                             isEditingProfile 
                               ? "bg-white border-2 border-slate-200 text-slate-800" 
-                              : "bg-transparent border-0 pl-0 text-slate-900 font-black cursor-default select-all"
+                              : "bg-transparent border-0 pl-0 text-slate-900 font-bold cursor-default select-all"
                           }`}
                         />
                       </div>
@@ -3562,7 +3557,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
               {/* Project Manager */}
               <div className="border-t-2 border-slate-100 pt-4 space-y-1">
-                <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{getTranslation(systemLanguage, "profile.primary_pm")}</label>
+                <label className="type-overline text-slate-500">{getTranslation(systemLanguage, "profile.primary_pm")}</label>
                 {isEditingProfile ? (
                   <CustomSelect
                     value={profileOwner}
@@ -3570,7 +3565,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     options={projectManagers.map(pm => ({ value: pm, label: pm }))}
                   />
                 ) : (
-                  <div className="pl-0 text-slate-900 font-black cursor-default select-all">
+                  <div className="pl-0 text-slate-900 font-bold cursor-default select-all">
                     👤 {profileOwner}
                   </div>
                 )}
@@ -3578,7 +3573,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
               {/* Customer category (Clients → Categories) */}
               <div className="border-t-2 border-slate-100 pt-4 space-y-1 text-left">
-                <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                <label className="type-overline text-slate-500 flex items-center gap-1">
                   <Layers className="h-3 w-3" /> {t("Client Category", "Kategória klienta", "Ügyfélkategória")}
                 </label>
                 {isEditingProfile ? (
@@ -3590,16 +3585,16 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   />
                 ) : clientCategoryPath(clientCategories, profileClientCategoryId).length > 0 ? (
                   <div className="pt-1">
-                    <ClientCategoryBadge categories={clientCategories} categoryId={profileClientCategoryId} className="text-[10px]" />
+                    <ClientCategoryBadge categories={clientCategories} categoryId={profileClientCategoryId} className="text-micro" />
                   </div>
                 ) : (
-                  <span className="block pt-1 text-[10px] text-slate-400 italic">{t("None", "Žiadne", "Nincs")}</span>
+                  <span className="block pt-1 text-micro text-slate-400 italic">{t("None", "Žiadne", "Nincs")}</span>
                 )}
               </div>
 
               {/* Interested categories (lead interest, set in Settings) */}
               <div className="border-t-2 border-slate-100 pt-4 space-y-2 text-left">
-                <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                <label className="type-overline text-slate-500 flex items-center gap-1">
                   📁 {systemLanguage === "sk" ? "Zaujímavé kategórie" : systemLanguage === "hu" ? "Érdeklődési kategóriák" : "Interested Categories"}
                 </label>
                 {isEditingProfile ? (
@@ -3609,7 +3604,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       return (
                         <label 
                           key={cat} 
-                          className={`flex items-center gap-2 p-2 rounded-xl border text-[10px] font-black uppercase tracking-wide cursor-pointer transition-all ${
+                          className={`flex items-center gap-2 p-2 rounded-xl border type-overline cursor-pointer transition-all ${
                             isChecked 
                               ? "bg-emerald-500/10 border-emerald-500/30 text-emerald-700" 
                               : "bg-white border-slate-200/60 text-slate-500 hover:border-slate-300"
@@ -3636,12 +3631,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 ) : (
                   <div className="flex flex-wrap gap-1.5 pt-1">
                     {profileCategories.length === 0 ? (
-                      <span className="text-[10px] text-slate-400 italic">{t("None", "Žiadne", "Nincs")}</span>
+                      <span className="text-micro text-slate-400 italic">{t("None", "Žiadne", "Nincs")}</span>
                     ) : (
                       profileCategories.map((cat) => (
                         <span 
                           key={cat}
-                          className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 text-[9px] font-extrabold uppercase"
+                          className="px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-700 border border-emerald-200 type-overline"
                         >
                           {cat}
                         </span>
@@ -3656,7 +3651,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 <div className="pt-4 border-t-2 border-slate-100 flex gap-3 animate-in fade-in duration-200">
                   <button
                     type="submit"
-                    className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black uppercase tracking-wider shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                    className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-ui font-bold shadow-md transition-all active:scale-95 flex items-center justify-center gap-1.5"
                   >
                     <Check className="h-4.5 w-4.5 stroke-[2.5]" /> {systemLanguage === "sk" ? "Uložiť profil klienta" : systemLanguage === "hu" ? "Ügyfélprofil mentése" : "Save Client Profile"}
                   </button>
@@ -3667,94 +3662,41 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           </div>
 
           {/* RIGHT PANEL: Chronological Event Timeline & Interactive Logger (Combined) */}
-          <div className="lg:col-span-7">
+          <div className="ws-lg:col-span-7">
             <div className="glass-panel p-6 rounded-[28px] border-2 border-emerald-400 bg-white shadow-xl space-y-6">
               
               {/* Tab Navigation Switches */}
-              <div className="flex flex-wrap justify-start border-b-2 border-slate-100 pb-2.5 gap-2">
-                <button
-                  type="button"
-                  onClick={() => handleDetailTabChange("timeline")}
-                  className={`px-5 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all text-center flex items-center justify-center gap-2 border-2 ${
-                    activeDetailTab === "timeline"
-                      ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/10 border-emerald-700"
-                      : "text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border-slate-200"
-                  }`}
-                >
-                  <Clock className="h-4.5 w-4.5 stroke-[2.5]" /> {getTranslation(systemLanguage, "common.history_timeline")}
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDetailTabChange("tasks")}
-                  className={`px-5 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all text-center flex items-center justify-center gap-2 border-2 ${
-                    activeDetailTab === "tasks"
-                      ? "bg-orange-600 text-white shadow-md shadow-orange-500/10 border-orange-700"
-                      : "text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border-slate-200"
-                  }`}
-                >
-                  <CheckSquare className="h-4.5 w-4.5 stroke-[2.5]" /> {t("Tasks", "Úlohy", "Feladatok")} ({clientOpenTasksCount})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDetailTabChange("files")}
-                  className={`px-5 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all text-center flex items-center justify-center gap-2 border-2 ${
-                    activeDetailTab === "files"
-                      ? "bg-[#5c4033] text-white shadow-md shadow-[#5c4033]/15 border-[#3d2b1f]"
-                      : "text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border-slate-200"
-                  }`}
-                >
-                  <FileText className="h-4.5 w-4.5 stroke-[2.5]" /> {getTranslation(systemLanguage, "common.attached_files")} ({activeClient.timeline.filter(e => e.fileName).length})
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleDetailTabChange("leads")}
-                  className={`px-5 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all text-center flex items-center justify-center gap-2 border-2 ${
-                    activeDetailTab === "leads"
-                      ? "bg-blue-600 text-white shadow-md shadow-blue-500/10 border-blue-700"
-                      : "text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border-slate-200"
-                  }`}
-                >
-                  <Layers className="h-4.5 w-4.5 stroke-[2.5]" /> {systemLanguage === "sk" ? "Aktívne Leady" : systemLanguage === "hu" ? "Aktív leadek" : "Active Leads"} ({(activeClient.associatedLeads || []).filter((l: any) => l.status.toLowerCase() !== "won" && l.status.toLowerCase() !== "lost").length})
-                </button>
-                {activeClient.clientType !== "person" && (
-                  <button
-                    type="button"
-                    onClick={() => handleDetailTabChange("financial_status")}
-                    className={`px-5 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all text-center flex items-center justify-center gap-2 border-2 ${
-                      activeDetailTab === "financial_status"
-                        ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/10 border-indigo-700"
-                        : "text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border-slate-200"
-                    }`}
-                  >
-                    <TrendingUp className="h-4.5 w-4.5 stroke-[2.5]" /> {t("Financial Report", "Finančný report", "Pénzügyi jelentés")}
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => handleDetailTabChange("invoices")}
-                  className={`px-5 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all text-center flex items-center justify-center gap-2 border-2 ${
-                    activeDetailTab === "invoices"
-                      ? "bg-emerald-600 text-white shadow-md shadow-emerald-500/10 border-emerald-700"
-                      : "text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border-slate-200"
-                  }`}
-                >
-                  <Coins className="h-4.5 w-4.5 stroke-[2.5]" /> {t("Invoices & Billing", "Faktúry a platby", "Számlák és fizetések")} ({clientInvoices.length})
-                </button>
-              </div>
+              <Tabs
+                value={activeDetailTab}
+                onChange={handleDetailTabChange}
+                items={[
+                  { key: "timeline", icon: <Clock className="h-4.5 w-4.5" />, label: getTranslation(systemLanguage, "common.history_timeline") },
+                  { key: "tasks", icon: <CheckSquare className="h-4.5 w-4.5" />, label: t("Tasks", "Úlohy", "Feladatok"), count: clientOpenTasksCount },
+                  { key: "files", icon: <FileText className="h-4.5 w-4.5" />, label: getTranslation(systemLanguage, "common.attached_files"), count: activeClient.timeline.filter(e => e.fileName).length },
+                  {
+                    key: "leads",
+                    icon: <Layers className="h-4.5 w-4.5" />,
+                    label: systemLanguage === "sk" ? "Aktívne Leady" : systemLanguage === "hu" ? "Aktív leadek" : "Active Leads",
+                    count: (activeClient.associatedLeads || []).filter((l: any) => l.status.toLowerCase() !== "won" && l.status.toLowerCase() !== "lost").length,
+                  },
+                  { key: "financial_status", hidden: activeClient.clientType === "person", icon: <TrendingUp className="h-4.5 w-4.5" />, label: t("Financial Report", "Finančný report", "Pénzügyi jelentés") },
+                  { key: "invoices", icon: <Coins className="h-4.5 w-4.5" />, label: t("Invoices & Billing", "Faktúry a platby", "Számlák és fizetések"), count: clientInvoices.length },
+                ]}
+              />
 
               {activeDetailTab === "timeline" && (
                 <>
                   {/* Log event Form (New Event Bar) */}
                   <div>
-                    <h3 className="text-xs font-black text-emerald-700 uppercase tracking-wider mb-4 flex items-center gap-1.5 border-b-2 border-slate-100 pb-2">
+                    <h3 className="text-ui font-bold text-emerald-700 mb-4 flex items-center gap-1.5 border-b-2 border-slate-100 pb-2">
                       <PencilLine className="h-4.5 w-4.5 text-emerald-600 stroke-[2.5]" /> {getTranslation(systemLanguage, "common.log_event_client")}
                     </h3>
 
-                    <form onSubmit={handleAddTimelineEvent} className="space-y-4 text-xs font-bold">
+                    <form onSubmit={handleAddTimelineEvent} className="space-y-4 text-ui font-bold">
                       
                       {/* Event Category Switcher */}
                       <div className="space-y-1">
-                        <label className="text-[8px] font-black text-slate-400 uppercase tracking-wider">{getTranslation(systemLanguage, "common.event_type")}</label>
+                        <label className="type-overline text-slate-400">{getTranslation(systemLanguage, "common.event_type")}</label>
                         <div className="grid grid-cols-5 gap-1.5 bg-slate-100 p-1.5 rounded-xl border-2 border-slate-200">
                           {(["phone", "email", "note", "offer", "appointment"] as const).map(type => {
                             const colors = getEventColors(type);
@@ -3763,7 +3705,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                 key={type}
                                 type="button"
                                 onClick={() => setLogType(type)}
-                                className={`py-2 rounded-lg font-black text-[9px] uppercase tracking-wider transition-all text-center flex items-center justify-center gap-1 ${
+                                className={`py-2 rounded-lg type-overline transition-all text-center flex items-center justify-center gap-1 ${
                                   logType === type 
                                     ? `${colors.dotBg} border-2 shadow` 
                                     : "text-slate-500 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
@@ -3790,32 +3732,32 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           {/* Date and Time selectors for the event */}
                           <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1">
-                              <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{getTranslation(systemLanguage, "logger.event_date") || "Event Date"}</label>
+                              <label className="type-overline text-slate-500">{getTranslation(systemLanguage, "logger.event_date") || "Event Date"}</label>
                               <input
                                 type="date"
                                 required
                                 value={logDate}
                                 onChange={(e) => setLogDate(e.target.value)}
-                                className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:outline-none text-xs font-bold text-slate-700"
+                                className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:outline-none text-ui font-bold text-slate-700"
                               />
                             </div>
                             <div className="space-y-1">
-                              <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{getTranslation(systemLanguage, "logger.event_time") || "Event Time"}</label>
+                              <label className="type-overline text-slate-500">{getTranslation(systemLanguage, "logger.event_time") || "Event Time"}</label>
                               <input
                                 type="time"
                                 required
                                 value={logTimeOfEvent}
                                 onChange={(e) => setLogTimeOfEvent(e.target.value)}
-                                className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:outline-none text-xs font-bold text-slate-700"
+                                className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:outline-none text-ui font-bold text-slate-700"
                               />
                             </div>
                           </div>
 
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4">
                             {logType === "offer" && (
                               <>
                                 <div className="space-y-1 animate-in slide-in-from-left duration-200">
-                                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{getTranslation(systemLanguage, "logger.offer_amount")}</label>
+                                  <label className="type-overline text-slate-500">{getTranslation(systemLanguage, "logger.offer_amount")}</label>
                                   <input
                                     type="number"
                                     required
@@ -3823,13 +3765,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                     placeholder={t("e.g. 15000", "napr. 15000", "pl. 15000")}
                                     value={logAmount}
                                     onChange={(e) => setLogAmount(e.target.value)}
-                                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:outline-none font-bold text-xs"
+                                    className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:outline-none font-bold text-ui"
                                   />
                                 </div>
                                 <div className="space-y-1 animate-in slide-in-from-left duration-200">
-                                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{getTranslation(systemLanguage, "logger.attach_doc")}</label>
+                                  <label className="type-overline text-slate-500">{getTranslation(systemLanguage, "logger.attach_doc")}</label>
                                   <div className="flex items-center gap-2">
-                                    <label className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100/80 text-amber-800 border-2 border-amber-300 transition-all cursor-pointer text-[10px] font-black uppercase shadow-sm select-none shrink-0">
+                                    <label className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100/80 text-amber-800 border-2 border-amber-300 transition-all cursor-pointer type-overline shadow-sm select-none shrink-0">
                                       <FolderOpen className="h-4 w-4" />
                                       <span>{getTranslation(systemLanguage, "logger.choose_file")}</span>
                                       <input 
@@ -3860,7 +3802,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                       placeholder={getTranslation(systemLanguage, "logger.no_file")}
                                       value={logFileName ? `${logFileName} (${logFileSize})` : ""}
                                       readOnly
-                                      className="flex-1 px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:outline-none text-[10px] text-slate-500 font-bold"
+                                      className="flex-1 px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:outline-none text-micro text-slate-500 font-bold"
                                     />
                                     {logFileName && (
                                       <button 
@@ -3876,15 +3818,15 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                 
                                 {/* Always-visible file type selection when a file is selected */}
                                 {logFileName && (
-                                  <div className="md:col-span-2 space-y-1.5 animate-in slide-in-from-top-2 duration-200 border-t border-slate-100 pt-3">
-                                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{getTranslation(systemLanguage, "logger.specify_type")}</label>
+                                  <div className="ws-md:col-span-2 space-y-1.5 animate-in slide-in-from-top-2 duration-200 border-t border-slate-100 pt-3">
+                                    <label className="type-overline text-slate-500">{getTranslation(systemLanguage, "logger.specify_type")}</label>
                                     <div className="grid grid-cols-3 gap-2 bg-slate-100 p-1.5 rounded-xl border-2 border-slate-200">
                                       {(["offer", "contract", "invoice"] as const).map(type => (
                                         <button
                                           key={type}
                                           type="button"
                                           onClick={() => setLogFileType(type)}
-                                          className={`py-1.5 rounded-lg font-black text-[9px] uppercase tracking-wider transition-all text-center flex items-center justify-center gap-1.5 ${
+                                          className={`py-1.5 rounded-lg type-overline transition-all text-center flex items-center justify-center gap-1.5 ${
                                             logFileType === type 
                                               ? "bg-amber-700 text-white border border-amber-800 shadow" 
                                               : "text-slate-500 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200"
@@ -3905,7 +3847,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
  
                             {logType === "appointment" && (
                               <div className="space-y-1 animate-in slide-in-from-left duration-200">
-                                <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{getTranslation(systemLanguage, "logger.appt_time")}</label>
+                                <label className="type-overline text-slate-500">{getTranslation(systemLanguage, "logger.appt_time")}</label>
                                 <input
                                   type="text"
                                   required
@@ -3920,11 +3862,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
  
                           {/* Description details */}
                           <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">{getTranslation(systemLanguage, "logger.event_details")}</label>
+                            <label className="type-overline text-slate-500">{getTranslation(systemLanguage, "logger.event_details")}</label>
                             {logType === "note" ? (
                               <div className="space-y-2 border-2 border-slate-200 rounded-xl p-3 bg-slate-50/50 text-left">
                                 {renderCompactAudioRecorder()}
-                                <div className="flex flex-col border border-slate-200 rounded-xl bg-white p-3 min-h-[180px] max-h-[320px] overflow-y-auto outline-none text-xs cursor-text">
+                                <div className="flex flex-col border border-slate-200 rounded-xl bg-white p-3 min-h-45 max-h-80 overflow-y-auto outline-none text-ui cursor-text">
                                   <BlockEditor
                                     key={editorKey}
                                     fillHeight
@@ -3956,7 +3898,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           {/* Submit log */}
                           <button
                             type="submit"
-                            className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 active:scale-95 shadow-lg w-fit ml-auto border-2 border-emerald-700"
+                            className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-ui font-bold transition-all flex items-center gap-1.5 active:scale-95 shadow-lg w-fit ml-auto border-2 border-emerald-700"
                           >
                             <Plus className="h-4.5 w-4.5 stroke-[2.5]" /> {getTranslation(systemLanguage, "logger.btn_log")}
                           </button>
@@ -3969,15 +3911,15 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                   {/* Timeline event log */}
                   <div className="border-t-2 border-slate-100 pt-6 space-y-4">
-                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
+                    <h3 className="text-ui font-bold text-slate-400 flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
                       <Clock className="h-4.5 w-4.5 text-emerald-600 animate-pulse stroke-[2.5]" /> {getTranslation(systemLanguage, "common.chronological_timeline")}
-                      {isLoadingMails && <span className="ml-2 text-[9px] text-emerald-500 font-extrabold uppercase animate-pulse">{t("Syncing Mail...", "Synchronizujem poštu...", "Levelek szinkronizálása...")}</span>}
+                      {isLoadingMails && <span className="ml-2 type-overline text-emerald-500 animate-pulse">{t("Syncing Mail...", "Synchronizujem poštu...", "Levelek szinkronizálása...")}</span>}
                     </h3>
 
                     {/* An unreachable mailbox must not read as "this client was
                         never written to". Say so, above whatever did load. */}
                     {clientMailError && (
-                      <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-bold text-amber-800">
+                      <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-caption font-bold text-amber-800">
                         <AlertTriangle className="h-4 w-4 shrink-0 stroke-[2.5] mt-px" />
                         <span>
                           {t(
@@ -3997,27 +3939,27 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                     {activeClientTimeline.length === 0 ? (
                       <div className="py-12 text-center text-slate-400">
-                        <div className="text-3xl mb-2 animate-bounce">📜</div>
-                        <div className="font-black text-slate-700 uppercase tracking-wider">{t("No events logged yet", "Zatiaľ neboli zaznamenané žiadne udalosti", "Még nincs rögzített esemény")}</div>
-                        <div className="text-[9px] mt-1.5 uppercase tracking-wide font-extrabold text-slate-400">{t("Use the form above to add phone calls, emails, notes or proposals.", "Pomocou formulára vyššie pridajte telefonáty, e-maily, poznámky alebo ponuky.", "A fenti űrlap segítségével adjon hozzá hívásokat, e-maileket, jegyzeteket vagy ajánlatokat.")}</div>
+                        <div className="text-display mb-2 animate-bounce">📜</div>
+                        <div className="font-bold text-slate-700 uppercase tracking-wider">{t("No events logged yet", "Zatiaľ neboli zaznamenané žiadne udalosti", "Még nincs rögzített esemény")}</div>
+                        <div className="type-overline mt-1.5 text-slate-400">{t("Use the form above to add phone calls, emails, notes or proposals.", "Pomocou formulára vyššie pridajte telefonáty, e-maily, poznámky alebo ponuky.", "A fenti űrlap segítségével adjon hozzá hívásokat, e-maileket, jegyzeteket vagy ajánlatokat.")}</div>
                       </div>
                     ) : (
-                      <div className="relative pl-0 md:pl-4 space-y-6 py-2">
+                      <div className="relative pl-0 ws-md:pl-4 space-y-6 py-2">
                         {/* Running timeline vertical line on desktop/mobile */}
-                        <div className="absolute left-[17px] md:left-[132px] top-2 bottom-2 w-1 bg-emerald-100 rounded-full"></div>
+                        <div className="absolute left-4.25 ws-md:left-33 top-2 bottom-2 w-1 bg-emerald-100 rounded-full"></div>
 
                         {/* 1. FUTURE EVENTS (Rendered at top, closest future closest to line) */}
                         {futureEvents.map((event) => {
                           const colors = getEventColors(event.type);
                           return (
-                            <div key={event.id} className="relative flex flex-row items-start gap-4 md:gap-8 group animate-in fade-in slide-in-from-bottom duration-250">
+                            <div key={event.id} className="relative flex flex-row items-start gap-4 ws-md:gap-8 group animate-in fade-in slide-in-from-bottom duration-250">
                               
                               {/* Left Date / Time part */}
-                              <div className="hidden md:block w-[100px] text-right pt-1.5 shrink-0 select-text">
-                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">
+                              <div className="hidden ws-md:block w-25 text-right pt-1.5 shrink-0 select-text">
+                                <span className="type-overline text-slate-500 block">
                                   {formatDateLocalized(event.timestamp, systemLanguage)}
                                 </span>
-                                <span className="text-[9px] font-extrabold text-slate-400 block mt-0.5">
+                                <span className="text-micro font-extrabold text-slate-400 block mt-0.5">
                                   {event.timestamp.substring(11, 16)}
                                 </span>
                               </div>
@@ -4030,17 +3972,17 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                               </div>
 
                               {/* Event Card */}
-                              <div className="flex-1 min-w-0 pl-3 md:pl-0">
+                              <div className="flex-1 min-w-0 pl-3 ws-md:pl-0">
                                 <div 
                                   onClick={() => event.type === "email" && handleTimelineEmailClick(event)}
                                   className={`${event.type === "email" ? "cursor-pointer hover:border-indigo-400 active:scale-[0.99]" : ""} bg-amber-50/10 border-2 border-dashed border-amber-300 rounded-2xl p-4 transition-all shadow-md hover:shadow-lg ${colors.cardBorder}`}
                                 >
                                   <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 border-b-2 border-slate-200/50 pb-2 mb-2.5">
-                                    <span className="text-[10px] font-black text-slate-900 uppercase tracking-wide leading-snug break-words min-w-0 flex-1 basis-[55%] pt-0.5">
+                                    <span className="type-overline text-slate-900 leading-snug break-words min-w-0 flex-1 basis-[55%] pt-0.5">
                                       {event.title}
                                     </span>
                                     <div className="flex flex-wrap items-center justify-end gap-1.5 ml-auto">
-                                      <span className="text-[8px] font-black uppercase px-2 py-0.5 rounded bg-amber-500 text-white border border-amber-600 tracking-widest shadow-sm">
+                                      <span className="type-overline px-2 py-0.5 rounded bg-amber-500 text-white border border-amber-600 shadow-sm">
                                         {getTranslation(systemLanguage, "timeline.upcoming")}
                                       </span>
                                       <TimelineAuthorBadge
@@ -4048,7 +3990,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                         color={projectManagerColors[event.author || ""]}
                                       />
                                     </div>
-                                    <span className="block md:hidden text-[9px] font-black text-slate-400 uppercase tracking-wider">
+                                    <span className="block ws-md:hidden type-overline text-slate-400">
                                       {formatTimestampLocalized(event.timestamp, systemLanguage)}
                                     </span>
                                   </div>
@@ -4064,17 +4006,17 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                       try {
                                         const blocks: EditorBlock[] = JSON.parse(event.content);
                                         return (
-                                          <div className="space-y-2 text-[11px] text-slate-700 font-bold select-text text-left mt-2">
+                                          <div className="space-y-2 text-caption text-slate-700 font-bold select-text text-left mt-2">
                                             {/* Audio file section */}
                                             {event.audioFile && (
                                               <div className="flex items-center gap-2 p-1.5 rounded-lg bg-slate-100/80 border border-slate-200 w-fit mb-2">
-                                                <audio src={event.audioFile} controls className="h-6 max-w-[180px] text-[8px]" />
+                                                <audio src={event.audioFile} controls className="h-6 max-w-45 text-micro" />
                                                 {event.transcription && (
                                                   <details className="cursor-pointer">
-                                                    <summary className="text-[9px] uppercase tracking-wider text-indigo-600 hover:text-indigo-800 font-extrabold select-none">
+                                                    <summary className="type-overline text-indigo-600 hover:text-indigo-800 select-none">
                                                       {t("Transcript", "Prepis", "Átirat")}
                                                     </summary>
-                                                    <div className="mt-1 p-2 bg-white rounded border border-slate-100 text-[9.5px] font-medium leading-relaxed max-w-[240px] whitespace-pre-wrap">
+                                                    <div className="mt-1 p-2 bg-white rounded border border-slate-100 text-micro font-medium leading-relaxed max-w-60 whitespace-pre-wrap">
                                                       {event.transcription}
                                                     </div>
                                                   </details>
@@ -4101,7 +4043,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                                   );
                                                 }
                                                 if (b.type.startsWith("h")) {
-                                                  return <div key={b.id} className="font-black uppercase tracking-tight text-[11px] mt-1 text-slate-900 text-left">{b.content.replace(/<[^>]*>/g, "")}</div>;
+                                                  return <div key={b.id} className="type-overline mt-1 text-slate-900 text-left">{b.content.replace(/<[^>]*>/g, "")}</div>;
                                                 }
                                                 return <p key={b.id} className="leading-normal text-left">{b.content.replace(/<[^>]*>/g, "")}</p>;
                                               })}
@@ -4114,7 +4056,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                     }
 
                                     return (
-                                      <p className="text-[11px] text-slate-700 font-bold select-text whitespace-pre-wrap" style={{ lineHeight: 1.35 }}>
+                                      <p className="text-caption text-slate-700 font-bold select-text whitespace-pre-wrap" style={{ lineHeight: 1.35 }}>
                                         {event.content}
                                       </p>
                                     );
@@ -4123,13 +4065,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                                   {/* Extra values */}
                                   {event.type === "offer" && event.amount !== undefined && (
-                                    <div className="mt-3 pl-3 border-l-4 border-emerald-500 flex items-center gap-1 text-[10px] font-black text-emerald-700 uppercase tracking-wider">
+                                    <div className="mt-3 pl-3 border-l-4 border-emerald-500 flex items-center gap-1 type-overline text-emerald-700">
                                       <TrendingUp className="h-4 w-4" /> {t("BUDGET WORTH OFFERED:", "PONÚKNUTÝ ROZPOČET:", "FELAJÁNLOTT KÖLTSÉGVETÉS:")} {money(event.amount)}
                                     </div>
                                   )}
 
                                   {event.type === "appointment" && event.extraTime && (
-                                    <div className="mt-3 pl-3 border-l-4 border-rose-500 flex items-center gap-1 text-[10px] font-black text-rose-700 uppercase tracking-wider">
+                                    <div className="mt-3 pl-3 border-l-4 border-rose-500 flex items-center gap-1 type-overline text-rose-700">
                                       <Calendar className="h-4 w-4" /> {t("MEETING SCHEDULED AT:", "STRETNUTIE NAPLÁNOVANÉ NA:", "TALÁLKOZÓ IDŐPONTJA:")} {event.extraTime}
                                     </div>
                                   )}
@@ -4137,17 +4079,17 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                   {/* File Attachment details */}
                                   {event.fileName && (
                                     <div className="mt-3 p-3 rounded-xl bg-amber-500/5 border border-amber-200 flex items-center justify-between gap-2">
-                                      <div className="flex items-center gap-2 text-[10px] font-black text-amber-900 uppercase tracking-wider">
+                                      <div className="flex items-center gap-2 type-overline text-amber-900">
                                         <FileText className="h-4 w-4 text-amber-700 shrink-0" />
-                                        <span className="truncate max-w-[150px]">{event.fileName}</span>
-                                        <span className="text-[9px] font-extrabold text-slate-400">({event.fileSize})</span>
+                                        <span className="truncate max-w-37.5">{event.fileName}</span>
+                                        <span className="text-micro font-extrabold text-slate-400">({event.fileSize})</span>
                                       </div>
                                       <a 
                                         href={event.attachments?.[0]?.path || event.filePath || `/uploads/${event.id}_${event.fileName}`}
                                         download={event.fileName}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="px-2.5 py-1 rounded bg-amber-100 border border-amber-300 hover:bg-amber-200 transition-all text-[8px] font-black uppercase text-amber-800 tracking-wider shadow-sm cursor-pointer"
+                                        className="px-2.5 py-1 rounded bg-amber-100 border border-amber-300 hover:bg-amber-200 transition-all type-overline text-amber-800 shadow-sm cursor-pointer"
                                       >
                                         {t("View File", "Zobraziť súbor", "Fájl megtekintése")}
                                       </a>
@@ -4161,10 +4103,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                         {/* 2. TODAY DIVIDER LINE (Delineates future and past) */}
                         <div className="relative z-10 flex items-center gap-3 my-6 animate-in fade-in duration-300">
-                          <div className="hidden md:block w-[116px] shrink-0"></div>
+                          <div className="hidden ws-md:block w-29 shrink-0"></div>
                           <div className="flex-1 flex items-center gap-2">
                             <div className="h-0.5 bg-emerald-500/35 flex-1"></div>
-                            <span className="text-[9px] font-black uppercase text-emerald-800 bg-emerald-100 border-2 border-emerald-300 px-4 py-1.5 rounded-full tracking-widest shadow-sm flex items-center gap-1.5 shrink-0 select-text">
+                            <span className="type-overline text-emerald-800 bg-emerald-100 border-2 border-emerald-300 px-4 py-1.5 rounded-full shadow-sm flex items-center gap-1.5 shrink-0 select-text">
                               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping"></span>
                               {t("Today", "Dnes", "Ma")} ({formatDateLocalized(todayLocal(), systemLanguage)})
                             </span>
@@ -4180,14 +4122,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                             : (activeClient.owner || currentUser?.name || projectManagers[0] || ""));
                           const pmColor = projectManagerColors[pmName] || "#6366f1";
                           return (
-                            <div key={event.id} className="relative flex flex-row items-start gap-4 md:gap-8 group animate-in fade-in slide-in-from-bottom duration-250">
+                            <div key={event.id} className="relative flex flex-row items-start gap-4 ws-md:gap-8 group animate-in fade-in slide-in-from-bottom duration-250">
                               
                               {/* Left Date / Time part */}
-                              <div className="hidden md:block w-[100px] text-right pt-1.5 shrink-0 select-text">
-                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">
+                              <div className="hidden ws-md:block w-25 text-right pt-1.5 shrink-0 select-text">
+                                <span className="type-overline text-slate-500 block">
                                   {formatDateLocalized(event.timestamp, systemLanguage)}
                                 </span>
-                                <span className="text-[9px] font-extrabold text-slate-400 block mt-0.5">
+                                <span className="text-micro font-extrabold text-slate-400 block mt-0.5">
                                   {event.timestamp.substring(11, 16)}
                                 </span>
                               </div>
@@ -4200,19 +4142,19 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                               </div>
 
                               {/* Event Card */}
-                              <div className="flex-1 min-w-0 pl-3 md:pl-0">
+                              <div className="flex-1 min-w-0 pl-3 ws-md:pl-0">
                                 <div 
                                   onClick={() => event.type === "email" && handleTimelineEmailClick(event)}
                                   className={`${event.type === "email" ? "cursor-pointer hover:border-indigo-400 active:scale-[0.99]" : ""} bg-slate-50/60 border rounded-2xl p-4 transition-all shadow-md hover:shadow-lg ${colors.cardBorder}`}
                                 >
                                   <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2 border-b-2 border-slate-200/50 pb-2 mb-2.5">
-                                    <span className="text-[10px] font-black text-slate-900 uppercase tracking-wide leading-snug break-words min-w-0 flex-1 basis-[55%] pt-0.5">
+                                    <span className="type-overline text-slate-900 leading-snug break-words min-w-0 flex-1 basis-[55%] pt-0.5">
                                       {event.title}
                                     </span>
                                     <div className="flex flex-wrap items-center justify-end gap-1.5 ml-auto">
                                       {event.type === "email" ? (
                                         <>
-                                          <span className={`text-[8px] font-black uppercase px-2 py-0.5 rounded-full border tracking-widest shadow-inner ${colors.badgeBg} flex items-center gap-1.5`}>
+                                          <span className={`type-overline px-2 py-0.5 rounded-full border shadow-inner ${colors.badgeBg} flex items-center gap-1.5`}>
                                             {event.isOutgoing ? (
                                               <>
                                                 <CornerDownLeft className="h-3 w-3 stroke-[2.5]" />
@@ -4226,7 +4168,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                             )}
                                           </span>
                                           <span 
-                                            className="inline-flex items-center gap-1 text-[8px] font-black uppercase px-2.5 py-0.5 rounded-full border shadow-sm text-white"
+                                            className="inline-flex items-center gap-1 type-overline px-2.5 py-0.5 rounded-full border shadow-sm text-white"
                                             style={{ backgroundColor: pmColor, borderColor: pmColor }}
                                           >
                                             @ {pmName}
@@ -4239,7 +4181,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                         />
                                       )}
                                     </div>
-                                    <span className="block md:hidden text-[9px] font-black text-slate-400 uppercase tracking-wider">
+                                    <span className="block ws-md:hidden type-overline text-slate-400">
                                       {formatTimestampLocalized(event.timestamp, systemLanguage)}
                                     </span>
                                   </div>
@@ -4255,17 +4197,17 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                       try {
                                         const blocks: EditorBlock[] = JSON.parse(event.content);
                                         return (
-                                          <div className="space-y-2 text-[11px] text-slate-700 font-bold select-text text-left">
+                                          <div className="space-y-2 text-caption text-slate-700 font-bold select-text text-left">
                                             {/* Audio file section */}
                                             {event.audioFile && (
                                               <div className="flex items-center gap-2 p-1.5 rounded-lg bg-slate-100/80 border border-slate-200 w-fit mb-2">
-                                                <audio src={event.audioFile} controls className="h-6 max-w-[180px] text-[8px]" />
+                                                <audio src={event.audioFile} controls className="h-6 max-w-45 text-micro" />
                                                 {event.transcription && (
                                                   <details className="cursor-pointer">
-                                                    <summary className="text-[9px] uppercase tracking-wider text-indigo-600 hover:text-indigo-800 font-extrabold select-none">
+                                                    <summary className="type-overline text-indigo-600 hover:text-indigo-800 select-none">
                                                       {t("Transcript", "Prepis", "Átirat")}
                                                     </summary>
-                                                    <div className="mt-1 p-2 bg-white rounded border border-slate-100 text-[9.5px] font-medium leading-relaxed max-w-[240px] whitespace-pre-wrap">
+                                                    <div className="mt-1 p-2 bg-white rounded border border-slate-100 text-micro font-medium leading-relaxed max-w-60 whitespace-pre-wrap">
                                                       {event.transcription}
                                                     </div>
                                                   </details>
@@ -4292,7 +4234,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                                   );
                                                 }
                                                 if (b.type.startsWith("h")) {
-                                                  return <div key={b.id} className="font-black uppercase tracking-tight text-[11px] mt-1 text-slate-900 text-left">{b.content.replace(/<[^>]*>/g, "")}</div>;
+                                                  return <div key={b.id} className="type-overline mt-1 text-slate-900 text-left">{b.content.replace(/<[^>]*>/g, "")}</div>;
                                                 }
                                                 return <p key={b.id} className="leading-normal text-left">{b.content.replace(/<[^>]*>/g, "")}</p>;
                                               })}
@@ -4305,7 +4247,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                     }
 
                                     return (
-                                      <p className="text-[11px] text-slate-700 font-bold select-text whitespace-pre-wrap" style={{ lineHeight: 1.35 }}>
+                                      <p className="text-caption text-slate-700 font-bold select-text whitespace-pre-wrap" style={{ lineHeight: 1.35 }}>
                                         {event.content}
                                       </p>
                                     );
@@ -4314,13 +4256,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                                   {/* Extra values */}
                                   {event.type === "offer" && event.amount !== undefined && (
-                                    <div className="mt-3 pl-3 border-l-4 border-emerald-500 flex items-center gap-1 text-[10px] font-black text-emerald-700 uppercase tracking-wider">
+                                    <div className="mt-3 pl-3 border-l-4 border-emerald-500 flex items-center gap-1 type-overline text-emerald-700">
                                       <TrendingUp className="h-4 w-4" /> {t("BUDGET WORTH OFFERED:", "PONÚKNUTÝ ROZPOČET:", "FELAJÁNLOTT KÖLTSÉGVETÉS:")} {money(event.amount)}
                                     </div>
                                   )}
 
                                   {event.type === "appointment" && event.extraTime && (
-                                    <div className="mt-3 pl-3 border-l-4 border-rose-500 flex items-center gap-1 text-[10px] font-black text-rose-700 uppercase tracking-wider">
+                                    <div className="mt-3 pl-3 border-l-4 border-rose-500 flex items-center gap-1 type-overline text-rose-700">
                                       <Calendar className="h-4 w-4" /> {t("MEETING SCHEDULED AT:", "STRETNUTIE NAPLÁNOVANÉ NA:", "TALÁLKOZÓ IDŐPONTJA:")} {event.extraTime}
                                     </div>
                                   )}
@@ -4328,17 +4270,17 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                   {/* File Attachment details */}
                                   {event.fileName && (
                                     <div className="mt-3 p-3 rounded-xl bg-amber-500/5 border border-amber-200 flex items-center justify-between gap-2">
-                                      <div className="flex items-center gap-2 text-[10px] font-black text-amber-900 uppercase tracking-wider">
+                                      <div className="flex items-center gap-2 type-overline text-amber-900">
                                         <FileText className="h-4 w-4 text-amber-700 shrink-0" />
-                                        <span className="truncate max-w-[150px]">{event.fileName}</span>
-                                        <span className="text-[9px] font-extrabold text-slate-400">({event.fileSize})</span>
+                                        <span className="truncate max-w-37.5">{event.fileName}</span>
+                                        <span className="text-micro font-extrabold text-slate-400">({event.fileSize})</span>
                                       </div>
                                       <a 
                                         href={event.attachments?.[0]?.path || event.filePath || `/uploads/${event.id}_${event.fileName}`}
                                         download={event.fileName}
                                         target="_blank"
                                         rel="noopener noreferrer"
-                                        className="px-2.5 py-1 rounded bg-amber-100 border border-amber-300 hover:bg-amber-200 transition-all text-[8px] font-black uppercase text-amber-800 tracking-wider shadow-sm cursor-pointer"
+                                        className="px-2.5 py-1 rounded bg-amber-100 border border-amber-300 hover:bg-amber-200 transition-all type-overline text-amber-800 shadow-sm cursor-pointer"
                                       >
                                         {t("View File", "Zobraziť súbor", "Fájl megtekintése")}
                                       </a>
@@ -4360,11 +4302,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 <div className="space-y-4 text-left animate-in fade-in duration-150">
                   <div className="flex items-center justify-between border-b-2 border-slate-100 pb-3">
                     <div>
-                      <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                      <h3 className="text-ui font-bold text-slate-800 flex items-center gap-2">
                         <CheckSquare className="h-4.5 w-4.5 text-orange-600 stroke-[2.5]" />
                         {t("Client Tasks", "Úlohy klienta", "Ügyfél feladatai")}
                       </h3>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
+                      <p className="text-caption text-slate-500 mt-0.5">
                         {t(
                           `Tasks associated with ${activeClient.name}`,
                           `Úlohy priradené ku klientovi ${activeClient.name}`,
@@ -4372,7 +4314,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         )}
                       </p>
                     </div>
-                    <span className="px-2.5 py-1 rounded-xl bg-orange-50 text-orange-700 border border-orange-200 text-xs font-black">
+                    <span className="px-2.5 py-1 rounded-xl bg-orange-50 text-orange-700 border border-orange-200 text-ui font-bold">
                       {clientOpenTasksCount} {t("open", "otvorených", "nyitott")}
                     </span>
                   </div>
@@ -4404,16 +4346,16 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 <div className="space-y-6">
                   {/* Attach New Document Form */}
                   <div className="bg-slate-50/50 p-5 rounded-2xl border-2 border-slate-200">
-                    <h3 className="text-xs font-black text-emerald-700 uppercase tracking-wider mb-4 flex items-center gap-1.5 border-b border-slate-200 pb-2">
+                    <h3 className="text-ui font-bold text-emerald-700 mb-4 flex items-center gap-1.5 border-b border-slate-200 pb-2">
                       <FolderOpen className="h-4.5 w-4.5 text-emerald-600 stroke-[2.5]" /> {t("Attach New Document to Profile", "Pripojiť nový dokument k profilu", "Új dokumentum csatolása a profilhoz")}
                     </h3>
 
-                    <form onSubmit={handleAttachFile} className="space-y-4 text-xs font-bold">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <form onSubmit={handleAttachFile} className="space-y-4 text-ui font-bold">
+                      <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4">
                         <div className="space-y-1">
-                          <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider block pl-0.5">{t("Upload File", "Nahrať súbor", "Fájl feltöltése")} *</label>
+                          <label className="type-overline text-slate-500 block pl-0.5">{t("Upload File", "Nahrať súbor", "Fájl feltöltése")} *</label>
                           <div className="flex items-center gap-2">
-                            <label className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100/80 text-amber-800 border-2 border-amber-300 transition-all cursor-pointer text-[10px] font-black uppercase shadow-sm select-none shrink-0">
+                            <label className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl bg-amber-50 hover:bg-amber-100/80 text-amber-800 border-2 border-amber-300 transition-all cursor-pointer type-overline shadow-sm select-none shrink-0">
                               <FolderOpen className="h-4 w-4" />
                               <span>{t("Select File", "Vybrať súbor", "Fájl kiválasztása")}</span>
                               <input 
@@ -4445,7 +4387,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                               placeholder={t("No file chosen", "Nie je vybraný žiadny súbor", "Nincs kiválasztott fájl")}
                               value={uploadFileName ? `${uploadFileName} (${uploadFileSize})` : ""}
                               readOnly
-                              className="flex-1 px-3 py-2 rounded-xl bg-white border-2 border-slate-200 focus:outline-none text-[10px] text-slate-500 font-bold"
+                              className="flex-1 px-3 py-2 rounded-xl bg-white border-2 border-slate-200 focus:outline-none text-micro text-slate-500 font-bold"
                             />
                             {uploadFileName && (
                               <button 
@@ -4460,14 +4402,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         </div>
 
                         <div className="space-y-1">
-                          <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider block pl-0.5">{t("Document Category", "Kategória dokumentu", "Dokumentum kategória")} *</label>
+                          <label className="type-overline text-slate-500 block pl-0.5">{t("Document Category", "Kategória dokumentu", "Dokumentum kategória")} *</label>
                           <div className="grid grid-cols-3 gap-2 bg-white p-1 rounded-xl border-2 border-slate-200">
                             {(["offer", "contract", "invoice"] as const).map(type => (
                               <button
                                 key={type}
                                 type="button"
                                 onClick={() => setUploadFileType(type)}
-                                className={`py-2 rounded-lg font-black text-[9px] uppercase tracking-wider transition-all text-center flex items-center justify-center gap-1.5 ${
+                                className={`py-2 rounded-lg type-overline transition-all text-center flex items-center justify-center gap-1.5 ${
                                   uploadFileType === type 
                                     ? "bg-amber-600 text-white border border-amber-700 shadow" 
                                     : "text-slate-500 hover:text-slate-800 bg-white hover:bg-slate-50 border border-slate-200/50"
@@ -4485,7 +4427,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       </div>
 
                       <div className="space-y-1">
-                        <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider block pl-0.5">{t("Document Description / Remarks", "Popis dokumentu / Poznámky", "Dokumentum leírása / Megjegyzések")} *</label>
+                        <label className="type-overline text-slate-500 block pl-0.5">{t("Document Description / Remarks", "Popis dokumentu / Poznámky", "Dokumentum leírása / Megjegyzések")} *</label>
                         <input
                           type="text"
                           required
@@ -4498,7 +4440,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                       <button
                         type="submit"
-                        className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 active:scale-95 shadow-lg w-fit ml-auto border-2 border-emerald-700"
+                        className="px-6 py-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-ui font-bold transition-all flex items-center gap-1.5 active:scale-95 shadow-lg w-fit ml-auto border-2 border-emerald-700"
                       >
                         <Plus className="h-4.5 w-4.5 stroke-[2.5]" /> {t("Attach File to Client", "Pripojiť súbor ku klientovi", "Fájl csatolása az ügyfélhez")}
                       </button>
@@ -4507,15 +4449,15 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                   {/* Attached Documents List */}
                   <div className="space-y-4">
-                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
+                    <h3 className="text-ui font-bold text-slate-400 flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
                       <FileText className="h-4.5 w-4.5 text-emerald-600 stroke-[2.5]" /> {t("Attached Client Documents", "Pripojené dokumenty klienta", "Csatolt ügyféldokumentumok")} ({activeClient.timeline.filter(e => e.fileName).length})
                     </h3>
 
                     {activeClient.timeline.filter(e => e.fileName).length === 0 ? (
                       <div className="py-12 text-center text-slate-400">
-                        <div className="text-3xl mb-2">📁</div>
-                        <div className="font-black text-slate-700 uppercase tracking-wider">{t("No files attached to this client", "K tomuto klientovi nie sú pripojené žiadne súbory", "Nincs fájl csatolva ehhez az ügyfélhez")}</div>
-                        <div className="text-[9px] mt-1.5 uppercase tracking-wide font-extrabold text-slate-400">{t("Use the attachment form above to upload proposals, contracts or invoices.", "Pomocou formulára vyššie nahrajte ponuky, zmluvy alebo faktúry.", "A fenti űrlap segítségével töltsön fel ajánlatokat, szerződéseket vagy számlákat.")}</div>
+                        <div className="text-display mb-2">📁</div>
+                        <div className="font-bold text-slate-700 uppercase tracking-wider">{t("No files attached to this client", "K tomuto klientovi nie sú pripojené žiadne súbory", "Nincs fájl csatolva ehhez az ügyfélhez")}</div>
+                        <div className="type-overline mt-1.5 text-slate-400">{t("Use the attachment form above to upload proposals, contracts or invoices.", "Pomocou formulára vyššie nahrajte ponuky, zmluvy alebo faktúry.", "A fenti űrlap segítségével töltsön fel ajánlatokat, szerződéseket vagy számlákat.")}</div>
                       </div>
                     ) : (
                       <div className="grid grid-cols-1 gap-3">
@@ -4536,11 +4478,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                   <FileText className="h-5 w-5 stroke-[2.5]" />
                                 </div>
                                 <div className="flex flex-col min-w-0">
-                                  <span className="text-xs font-black text-slate-800 uppercase tracking-wide truncate">
+                                  <span className="text-ui font-bold text-slate-800 truncate">
                                     {file.fileName}
                                   </span>
-                                  <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider flex items-center gap-1.5 mt-0.5">
-                                    <span className={`px-1.5 py-0.5 rounded text-[8px] border font-black ${
+                                  <span className="type-overline text-slate-400 flex items-center gap-1.5 mt-0.5">
+                                    <span className={`px-1.5 py-0.5 rounded text-micro border font-bold ${
                                       file.fileType === "contract"
                                         ? "bg-amber-100/50 text-amber-800 border-amber-200"
                                         : file.fileType === "invoice"
@@ -4551,7 +4493,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                     </span>
                                     &bull; {file.fileSize || t("Unknown size", "Neznáma veľkosť", "Ismeretlen méret")} &bull; {formatDateLocalized(file.timestamp, systemLanguage)}
                                   </span>
-                                  <p className="text-[10px] text-slate-500 font-bold mt-1 leading-normal italic line-clamp-1">
+                                  <p className="text-micro text-slate-500 font-bold mt-1 leading-normal italic line-clamp-1">
                                     "{file.content}"
                                   </p>
                                 </div>
@@ -4610,11 +4552,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
               {activeDetailTab === "leads" && (
                 <div className="space-y-4 text-left">
-                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
+                  <h3 className="text-ui font-bold text-slate-400 flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
                     <Layers className="h-4.5 w-4.5 text-blue-600 stroke-[2.5]" /> {systemLanguage === "sk" ? "Aktívne obchodné prípady (Leady)" : systemLanguage === "hu" ? "Aktív leadek" : "Active Leads / Deals"}
                   </h3>
                   {((activeClient.associatedLeads || []).filter((l: any) => l.status.toLowerCase() !== "won" && l.status.toLowerCase() !== "lost")).length === 0 ? (
-                    <div className="py-8 text-center text-slate-400 text-xs font-bold uppercase tracking-wider">
+                    <div className="py-8 text-center text-slate-400 text-ui font-bold">
                       {systemLanguage === "sk" ? "Žiadne aktívne leady pre tohto klienta" : systemLanguage === "hu" ? "Nincsenek aktív leadek ehhez az ügyfélhez" : "No active leads for this client"}
                     </div>
                   ) : (
@@ -4641,8 +4583,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                               }}
                             >
                               <div className="min-w-0">
-                                <h4 className="font-heading font-black text-xs uppercase text-slate-800 tracking-tight truncate max-w-[280px]">{lead.name || t("Untitled Lead", "Lead bez názvu", "Cím nélküli lead")}</h4>
-                                <div className="flex flex-wrap items-center gap-2 mt-1.5 text-[9px] font-black uppercase text-slate-400 tracking-wider">
+                                <h4 className="font-heading font-bold text-ui text-slate-800 truncate max-w-70">{lead.name || t("Untitled Lead", "Lead bez názvu", "Cím nélküli lead")}</h4>
+                                <div className="flex flex-wrap items-center gap-2 mt-1.5 type-overline text-slate-400">
                                   <span>{t("Worth", "Hodnota", "Érték")}: <strong className="text-emerald-700 font-extrabold">{money(lead.value)}</strong></span>
                                   <span>&bull;</span>
                                   <span>PM: <strong className="text-slate-600 font-extrabold">{lead.owner || t("Unassigned", "Nepriradené", "Nincs hozzárendelve")}</strong></span>
@@ -4650,12 +4592,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                               </div>
                               <div className="shrink-0 flex items-center gap-2">
                                 <span 
-                                  className="px-2.5 py-0.5 rounded-full text-[8.5px] font-black uppercase text-white shadow-sm"
+                                  className="px-2.5 py-0.5 rounded-full type-overline text-white shadow-sm"
                                   style={{ backgroundColor: stateColor }}
                                 >
                                   {lead.status}
                                 </span>
-                                <span className="text-slate-400 font-black text-xs">&rarr;</span>
+                                <span className="text-slate-400 font-bold text-ui">&rarr;</span>
                               </div>
                             </div>
                           );
@@ -4668,7 +4610,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               {activeDetailTab === "financial_status" && (
                 <div className="space-y-4 text-left">
                   <div className="flex items-center justify-between border-b-2 border-slate-100 pb-2">
-                    <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <h3 className="text-ui font-bold text-slate-400 flex items-center gap-1.5">
                       <TrendingUp className="h-4.5 w-4.5 text-indigo-600 stroke-[2.5]" /> 
                       {t("AI Financial Report", "AI Finančný report", "AI pénzügyi jelentés")}
                     </h3>
@@ -4680,7 +4622,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         type="button"
                         disabled={isAnalyzingFinancial}
                         onClick={handleCreateFinancialReport}
-                        className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 disabled:bg-slate-200 text-indigo-800 border border-indigo-300 text-[10px] font-black uppercase tracking-wider transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:-translate-y-0.5 hover:shadow-md active:scale-95 cursor-pointer disabled:cursor-not-allowed disabled:hover:translate-y-0"
+                        className="px-3 py-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 disabled:bg-slate-200 text-indigo-800 border border-indigo-300 type-overline transition-all duration-200 flex items-center gap-1.5 shadow-sm hover:-translate-y-0.5 hover:shadow-md active:scale-95 cursor-pointer disabled:cursor-not-allowed disabled:hover:translate-y-0"
                       >
                         <Brain className="h-3.5 w-3.5 text-indigo-600" />
                         <span>{t("Regenerate Report", "Pre-generovať report", "Jelentés újragenerálása")}</span>
@@ -4695,14 +4637,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   />
 
                   {isAnalyzingFinancial ? (
-                    <div className="py-12 flex flex-col items-center justify-center gap-3 text-xs text-slate-500 font-bold uppercase">
+                    <div className="py-12 flex flex-col items-center justify-center gap-3 text-ui text-slate-500 font-bold">
                       <Loader2 className="h-6 w-6 animate-spin text-indigo-500" />
                       <span>{t("AI is generating financial report...", "AI generuje finančný report...", "Az AI pénzügyi jelentést készít...")}</span>
                     </div>
                   ) : activeClient.financialSummary ? (
                     <FinancialReportView summary={activeClient.financialSummary} systemLanguage={systemLanguage} />
                   ) : (
-                    <div className="py-10 text-center text-slate-400 text-xs font-black uppercase tracking-wider flex flex-col items-center justify-center gap-3 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                    <div className="py-10 text-center text-slate-400 text-ui font-bold flex flex-col items-center justify-center gap-3 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
                       <Brain className="h-8 w-8 text-indigo-300 animate-pulse" />
                       <div>
                         {t("No financial report has been generated yet.", "Žiadny finančný report nie je vygenerovaný.", "Még nem készült pénzügyi jelentés.")}
@@ -4712,13 +4654,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           type="button"
                           disabled={isAnalyzingFinancial}
                           onClick={handleCreateFinancialReport}
-                          className="mt-2 px-4 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white border-2 border-indigo-700 text-[10px] font-black uppercase tracking-wider transition-all duration-200 flex items-center gap-1.5 shadow-md hover:-translate-y-0.5 hover:shadow-lg active:scale-95 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
+                          className="mt-2 px-4 py-2 rounded-2xl bg-indigo-600 hover:bg-indigo-500 text-white border-2 border-indigo-700 type-overline transition-all duration-200 flex items-center gap-1.5 shadow-md hover:-translate-y-0.5 hover:shadow-lg active:scale-95 cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed"
                         >
                           <Brain className="h-4 w-4" />
                           <span>{t("Create Financial Report", "Vytvoriť finančný report", "Pénzügyi jelentés létrehozása")}</span>
                         </button>
                       ) : (
-                        <div className="text-[10px] text-slate-400 font-semibold lowercase tracking-tight max-w-sm mt-1">
+                        <div className="text-micro text-slate-400 font-semibold lowercase tracking-tight max-w-sm mt-1">
                           {t("the client must have a company ID configured to generate a financial report.", "na vytvorenie reportu musí mať klient vyplnené IČO.", "a pénzügyi jelentés létrehozásához az ügyfélnek beállított cégazonosítóval kell rendelkeznie.")}
                         </div>
                       )}
@@ -4728,18 +4670,18 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   {/* RegisterUZ Financial Statements (Slovak Register) */}
                   {activeClient.clientType !== "person" && activeClient.companyId && (
                     <div className="space-y-4 pt-6 border-t-2 border-slate-100">
-                      <h3 className="text-xs font-black text-slate-400 uppercase tracking-wider flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
+                      <h3 className="text-ui font-bold text-slate-400 flex items-center gap-1.5 pb-2 border-b-2 border-slate-100">
                         <Download className="h-4.5 w-4.5 text-emerald-600 stroke-[2.5]" /> 
                         {systemLanguage === "sk" ? "Registre: Účtovné závierky (PDF)" : systemLanguage === "hu" ? "Regiszter: Pénzügyi beszámolók (PDF)" : "Registry: Financial Statements (PDF)"}
                       </h3>
 
                       {isLoadingRegistryStatements ? (
-                        <div className="py-8 flex items-center justify-center gap-2 text-xs text-slate-500 font-bold uppercase">
+                        <div className="py-8 flex items-center justify-center gap-2 text-ui text-slate-500 font-bold">
                           <Loader2 className="h-4 w-4 animate-spin text-emerald-500" />
                           <span>{t("Loading statements from registry...", "Načítavam závierky z registra...", "Beszámolók betöltése a regiszterből...")}</span>
                         </div>
                       ) : registryStatements.length === 0 ? (
-                        <div className="py-6 text-center text-slate-400 text-xs font-extrabold uppercase tracking-wide">
+                        <div className="py-6 text-center text-slate-400 text-ui font-extrabold">
                           {t("No financial statements found in registry", "Žiadne závierky neboli nájdené v registri", "Nem találhatók pénzügyi beszámolók a regiszterben")}
                         </div>
                       ) : (
@@ -4748,16 +4690,16 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                             const label = `${stmt.typ || "Závierka"} (${stmt.obdobieOd || ""} - ${stmt.obdobieDo || ""})`;
                             const reportIds = stmt.idUctovnychVykazov || [];
                             return (
-                              <div key={stmt.id} className="p-4 rounded-2xl bg-white border-2 border-slate-100 shadow-md flex flex-col md:flex-row md:items-center justify-between gap-4 hover:border-slate-300 transition-all text-left">
+                              <div key={stmt.id} className="p-4 rounded-2xl bg-white border-2 border-slate-100 shadow-md flex flex-col ws-md:flex-row ws-md:items-center justify-between gap-4 hover:border-slate-300 transition-all text-left">
                                 <div className="flex items-center gap-3">
                                   <div className="h-10 w-10 rounded-xl bg-purple-50 text-purple-700 border border-purple-200 flex items-center justify-center shrink-0">
                                     <FileText className="h-5 w-5 stroke-[2.5]" />
                                   </div>
                                   <div className="flex flex-col">
-                                    <span className="text-xs font-black text-slate-800 uppercase tracking-wide">
+                                    <span className="text-ui font-bold text-slate-800">
                                       {label}
                                     </span>
-                                    <span className="text-[9px] text-slate-400 font-extrabold uppercase mt-0.5">
+                                    <span className="type-overline text-slate-400 mt-0.5">
                                       ID: {stmt.id} | {stmt.zdrojDat || "RÚZ"}
                                     </span>
                                   </div>
@@ -4769,7 +4711,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                     target="_blank"
                                     rel="noopener noreferrer"
                                     onClick={() => handleDownloadStatement(stmt.id, activeClient)}
-                                    className="px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-300 text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer"
+                                    className="px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 text-purple-800 border border-purple-300 type-overline transition-all flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer"
                                   >
                                     <Download className="h-3.5 w-3.5" />
                                     <span>
@@ -4784,7 +4726,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                       href={`/api/registeruz.php?action=pdf&id=${rid}`}
                                       target="_blank"
                                       rel="noopener noreferrer"
-                                      className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 text-[10px] font-black uppercase tracking-wider transition-all flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer"
+                                      className="px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 border border-emerald-300 type-overline transition-all flex items-center gap-1 shadow-sm active:scale-95 cursor-pointer"
                                     >
                                       <Download className="h-3.5 w-3.5" />
                                       <span>
@@ -4807,13 +4749,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               {activeDetailTab === "invoices" && (
                 <div className="space-y-5 text-left animate-in fade-in duration-150">
                   {/* Top Bar with Add Button */}
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b-2 border-slate-100 pb-3">
+                  <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3 border-b-2 border-slate-100 pb-3">
                     <div>
-                      <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                      <h3 className="text-ui font-bold text-slate-800 flex items-center gap-2">
                         <Coins className="h-4.5 w-4.5 text-emerald-600 stroke-[2.5]" />
                         {t("Client Invoices & Financial Movements", "Faktúry a finančné toky klienta", "Ügyfélszámlák és pénzügyi tételek")}
                       </h3>
-                      <p className="text-[11px] text-slate-500 mt-0.5">
+                      <p className="text-caption text-slate-500 mt-0.5">
                         {t("Overview of all issued and planned invoices associated with this client.", "Prehľad všetkých vystavených a plánovaných faktúr priradených k tomuto klientovi.", "Az ügyfélhez kapcsolódó összes kiállított és tervezett számla.")}
                       </p>
                     </div>
@@ -4822,7 +4764,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       <button
                         type="button"
                         onClick={() => handleOpenClientInvoiceModal()}
-                        className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all flex items-center gap-1.5 shadow-md shadow-emerald-500/20 active:scale-95 cursor-pointer shrink-0"
+                        className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-2xl text-ui font-bold transition-all flex items-center gap-1.5 shadow-md shadow-emerald-500/20 active:scale-95 cursor-pointer shrink-0"
                       >
                         <Plus className="h-4 w-4" />
                         <span>{t("New Invoice", "Nová faktúra", "Új számla")}</span>
@@ -4838,21 +4780,21 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     const overdueAmount = clientInvoices.filter(r => r.status === "overdue").reduce((acc, r) => acc + splitRecordAmounts(r).estimated, 0);
 
                     return (
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-3">
                         <div className="p-3.5 rounded-2xl bg-emerald-50/50 border border-emerald-200">
-                          <span className="text-[10px] font-bold text-emerald-700 uppercase block">{t("Total Invoiced", "Celkom vyfakturované", "Összes számlázott")}</span>
-                          <div className="text-base font-black text-emerald-900 mt-0.5">{money(totalReal)}</div>
-                          <span className="text-[10px] text-emerald-600">{t("Plan:", "Plán:", "Terv:")} {money(totalPlanned)}</span>
+                          <span className="type-overline text-emerald-700 block">{t("Total Invoiced", "Celkom vyfakturované", "Összes számlázott")}</span>
+                          <div className="text-title-sm font-bold text-emerald-900 mt-0.5">{money(totalReal)}</div>
+                          <span className="text-micro text-emerald-600">{t("Plan:", "Plán:", "Terv:")} {money(totalPlanned)}</span>
                         </div>
                         <div className="p-3.5 rounded-2xl bg-amber-50/50 border border-amber-200">
-                          <span className="text-[10px] font-bold text-amber-700 uppercase block">{t("Pending Payment", "Čaká na úhradu", "Fizetésre vár")}</span>
-                          <div className="text-base font-black text-amber-900 mt-0.5">{money(pendingAmount)}</div>
-                          <span className="text-[10px] text-amber-600">{clientInvoices.filter(r => r.status === "pending" || r.status === "planned" || r.status === "partially_paid").length} {t("invoices", "faktúr", "számla")}</span>
+                          <span className="type-overline text-amber-700 block">{t("Pending Payment", "Čaká na úhradu", "Fizetésre vár")}</span>
+                          <div className="text-title-sm font-bold text-amber-900 mt-0.5">{money(pendingAmount)}</div>
+                          <span className="text-micro text-amber-600">{clientInvoices.filter(r => r.status === "pending" || r.status === "planned" || r.status === "partially_paid").length} {t("invoices", "faktúr", "számla")}</span>
                         </div>
                         <div className="p-3.5 rounded-2xl bg-rose-50/50 border border-rose-200">
-                          <span className="text-[10px] font-bold text-rose-700 uppercase block">{t("Overdue", "Po splatnosti", "Lejárt")}</span>
-                          <div className="text-base font-black text-rose-900 mt-0.5">{money(overdueAmount)}</div>
-                          <span className="text-[10px] text-rose-600">{clientInvoices.filter(r => r.status === "overdue").length} {t("overdue", "po splatnosti", "lejárt")}</span>
+                          <span className="type-overline text-rose-700 block">{t("Overdue", "Po splatnosti", "Lejárt")}</span>
+                          <div className="text-title-sm font-bold text-rose-900 mt-0.5">{money(overdueAmount)}</div>
+                          <span className="text-micro text-rose-600">{clientInvoices.filter(r => r.status === "overdue").length} {t("overdue", "po splatnosti", "lejárt")}</span>
                         </div>
                       </div>
                     );
@@ -4860,14 +4802,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                   {/* Invoices List Table */}
                   {clientInvoices.length === 0 ? (
-                    <div className="py-12 text-center text-slate-400 text-xs font-semibold flex flex-col items-center justify-center gap-3 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                    <div className="py-12 text-center text-slate-400 text-ui font-semibold flex flex-col items-center justify-center gap-3 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
                       <Coins className="h-8 w-8 text-slate-300 animate-bounce" />
                       <div>{t("No invoices created for this client yet.", "Pre tohto klienta zatiaľ neboli vystavené žiadne faktúry.", "Még nincsenek számlák rögzítve ehhez az ügyfélhez.")}</div>
                       {canEditFinance && (
                         <button
                           type="button"
                           onClick={() => handleOpenClientInvoiceModal()}
-                          className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-sm flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+                          className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-ui font-bold shadow-sm flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
                         >
                           <Plus className="h-3.5 w-3.5" />
                           {t("Issue First Invoice", "Vystaviť prvú faktúru", "Első számla kiállítása")}
@@ -4876,7 +4818,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     </div>
                   ) : (
                     <div className="overflow-x-auto border border-slate-200 rounded-2xl">
-                      <table className="w-full text-left text-xs">
+                      <table className="w-full text-left text-ui">
                         <thead className="bg-slate-50 text-slate-500 border-b border-slate-200">
                           <tr>
                             <th className="py-2.5 px-3 font-bold">{t("Issue / Due Date", "Vystavenie / Splatnosť", "Kiállítás / Esedékesség")}</th>
@@ -4893,7 +4835,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                               <td className="py-3 px-3 whitespace-nowrap">
                                 <div>{formatDateLocalized(inv.issueDate, systemLanguage)}</div>
                                 {inv.dueDate && (
-                                  <div className="text-[10px] text-slate-400">
+                                  <div className="text-micro text-slate-400">
                                     {t("Due:", "Splatnosť:", "Esedékes:")} {formatDateLocalized(inv.dueDate, systemLanguage)}
                                   </div>
                                 )}
@@ -4901,7 +4843,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                               <td className="py-3 px-3">
                                 <div className="font-bold text-slate-900">{inv.title}</div>
                                 {inv.invoiceNumber && (
-                                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
+                                  <span className="text-micro font-mono px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">
                                     {inv.invoiceNumber}
                                   </span>
                                 )}
@@ -4909,7 +4851,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                               <td className="py-3 px-3 text-right text-slate-500 font-normal">{money(inv.amountPlanned)}</td>
                               <td className="py-3 px-3 text-right font-bold text-emerald-600">{money(inv.amountReal)}</td>
                               <td className="py-3 px-3 text-center">
-                                <span className={`inline-flex px-2.5 py-1 rounded-full text-[10px] font-bold ${
+                                <span className={`inline-flex px-2.5 py-1 rounded-full text-micro font-bold ${
                                   inv.status === "paid"
                                     ? "bg-emerald-100 text-emerald-800 border border-emerald-200"
                                     : inv.status === "overdue"
@@ -4958,7 +4900,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                           <div className="flex items-center gap-2">
                             <Coins className="h-5 w-5 text-emerald-600" />
-                            <h3 className="text-sm font-bold text-slate-900">
+                            <h3 className="text-body font-bold text-slate-900">
                               {clientInvEditing
                                 ? t("Edit Client Invoice", "Upraviť faktúru klienta", "Ügyfélszámla szerkesztése")
                                 : t("Issue Invoice for Client", "Vystaviť faktúru pre klienta", "Számla kiállítása ügyfélnek")}
@@ -4969,9 +4911,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           </button>
                         </div>
 
-                        <form onSubmit={handleSaveClientInvoice} className="space-y-3.5 text-xs font-semibold text-left">
+                        <form onSubmit={handleSaveClientInvoice} className="space-y-3.5 text-ui font-semibold text-left">
                           <div>
-                            <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Invoice Title / Service Description *", "Názov faktúry / popis plnenia *", "Számla tárgya / leírás *")}</label>
+                            <label className="block type-overline text-slate-400 mb-1">{t("Invoice Title / Service Description *", "Názov faktúry / popis plnenia *", "Számla tárgya / leírás *")}</label>
                             <input
                               required
                               value={clientInvTitle}
@@ -4982,7 +4924,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           </div>
 
                           <div>
-                            <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Invoice Number", "Číslo faktúry", "Számlaszám")}</label>
+                            <label className="block type-overline text-slate-400 mb-1">{t("Invoice Number", "Číslo faktúry", "Számlaszám")}</label>
                             <input
                               value={clientInvNumber}
                               onChange={(e) => setClientInvNumber(e.target.value)}
@@ -4993,7 +4935,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                           <div className="grid grid-cols-2 gap-3">
                             <div>
-                              <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Planned Amount (€) *", "Plánovaná suma (€) *", "Tervezett összeg (€) *")}</label>
+                              <label className="block type-overline text-slate-400 mb-1">{t("Planned Amount (€) *", "Plánovaná suma (€) *", "Tervezett összeg (€) *")}</label>
                               <input
                                 type="number"
                                 step="0.01"
@@ -5005,7 +4947,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                               />
                             </div>
                             <div>
-                              <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Real / Paid Amount (€)", "Skutočná suma (€)", "Valós összeg (€)")}</label>
+                              <label className="block type-overline text-slate-400 mb-1">{t("Real / Paid Amount (€)", "Skutočná suma (€)", "Valós összeg (€)")}</label>
                               <input
                                 type="number"
                                 step="0.01"
@@ -5019,7 +4961,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                           <div className="grid grid-cols-2 gap-3">
                             <div>
-                              <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Category", "Kategória", "Kategória")}</label>
+                              <label className="block type-overline text-slate-400 mb-1">{t("Category", "Kategória", "Kategória")}</label>
                               <select
                                 value={clientInvCategoryId}
                                 onChange={(e) => setClientInvCategoryId(e.target.value)}
@@ -5037,7 +4979,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                             </div>
 
                             <div>
-                              <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Status", "Stav úhrady", "Fizetési állapot")}</label>
+                              <label className="block type-overline text-slate-400 mb-1">{t("Status", "Stav úhrady", "Fizetési állapot")}</label>
                               <select
                                 value={clientInvStatus}
                                 onChange={(e) => setClientInvStatus(e.target.value as any)}
@@ -5064,7 +5006,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
                           <div className="grid grid-cols-2 gap-3">
                             <div>
-                              <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Issue Date", "Dátum vystavenia", "Kiállítás dátuma")}</label>
+                              <label className="block type-overline text-slate-400 mb-1">{t("Issue Date", "Dátum vystavenia", "Kiállítás dátuma")}</label>
                               <input
                                 type="date"
                                 required
@@ -5074,7 +5016,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                               />
                             </div>
                             <div>
-                              <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Due Date", "Dátum splatnosti", "Esedékesség")}</label>
+                              <label className="block type-overline text-slate-400 mb-1">{t("Due Date", "Dátum splatnosti", "Esedékesség")}</label>
                               <input
                                 type="date"
                                 value={clientInvDueDate}
@@ -5119,53 +5061,51 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
 
       {/* 1. Title header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-100 pb-4">
-        <div className="flex flex-col">
-          <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-            <Users className="h-6 w-6 text-emerald-600" /> {getTranslation(systemLanguage, "clients.title")}
-          </h2>
-          <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
-            {getTranslation(systemLanguage, "clients.subtitle")}
-          </p>
+      <PageHeader
+        icon={<Users className="h-6 w-6 text-emerald-600" />}
+        title={getTranslation(systemLanguage, "clients.title")}
+        badge={<>
           {!canEdit && (
-            <span className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider w-fit">
-              {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
-            </span>
+          <span className="mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-50 border border-amber-200 text-amber-800 type-overline w-fit">
+          {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
+          </span>
           )}
-        </div>
-
-        {/* Settings — a single quiet button in, and a single way back out. */}
-        <div className="flex items-center gap-2 self-start md:self-auto">
-          {clientsSubView === "settings" ? (
-            <button
-              type="button"
-              onClick={() => setClientsSubView("list")}
-              className="flex items-center gap-1.5 pl-3 pr-4 py-2.5 rounded-2xl border border-slate-200 bg-white text-slate-600 font-heading font-bold text-xs uppercase tracking-wider hover:bg-slate-50 hover:text-slate-900 transition-all cursor-pointer"
-            >
-              <ChevronLeft className="h-4 w-4 shrink-0" />
-              <span>{t("Back to clients", "Späť na klientov", "Vissza az ügyfelekhez")}</span>
-            </button>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setClientsSubView("settings")}
-              title={t("Client settings", "Nastavenia klientov", "Ügyfél beállítások")}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-slate-400 font-heading font-bold text-xs uppercase tracking-wider hover:bg-slate-100 hover:text-slate-700 transition-all cursor-pointer"
-            >
-              <Settings className="h-4 w-4 shrink-0" />
-              <span className="hidden sm:inline">{t("Settings", "Nastavenia", "Beállítások")}</span>
-            </button>
-          )}
-        </div>
-      </div>
+        </>}
+        subtitle={getTranslation(systemLanguage, "clients.subtitle")}
+        actions={<>
+          {/* Settings — a single quiet button in, and a single way back out. */}
+          <div className="flex items-center gap-2 self-start ws-md:self-auto">
+            {clientsSubView === "settings" ? (
+              <button
+                type="button"
+                onClick={() => setClientsSubView("list")}
+                className="flex items-center gap-1.5 pl-3 pr-4 py-2.5 rounded-2xl border border-slate-200 bg-white text-slate-600 font-heading font-bold text-ui hover:bg-slate-50 hover:text-slate-900 transition-all cursor-pointer"
+              >
+                <ChevronLeft className="h-4 w-4 shrink-0" />
+                <span>{t("Back to clients", "Späť na klientov", "Vissza az ügyfelekhez")}</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setClientsSubView("settings")}
+                title={t("Client settings", "Nastavenia klientov", "Ügyfél beállítások")}
+                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-slate-400 font-heading font-bold text-ui hover:bg-slate-100 hover:text-slate-700 transition-all cursor-pointer"
+              >
+                <Settings className="h-4 w-4 shrink-0" />
+                <span className="hidden ws-sm:inline">{t("Settings", "Nastavenia", "Beállítások")}</span>
+              </button>
+            )}
+          </div>
+        </>}
+      />
 
       {clientsSubView === "settings" ? (
         <div className="space-y-6">
           <div className="flex flex-col">
-            <h3 className="font-heading font-black text-slate-800 text-[15px] uppercase tracking-widest">
+            <h3 className="font-heading font-bold text-slate-800 text-title-sm">
               {t("Client Categories", "Kategórie klientov", "Ügyfélkategóriák")}
             </h3>
-            <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mt-0.5">
+            <p className="type-overline text-slate-400 mt-0.5">
               {t("Organize clients into categories and subcategories", "Usporiadajte klientov do kategórií a podkategórií", "Ügyfelek rendezése kategóriákba és alkategóriákba")}
             </p>
           </div>
@@ -5183,17 +5123,17 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       <>
       {/* 2. Control search & filter bar */}
       <div className="glass-panel p-6 rounded-[28px] border-2 border-emerald-400 bg-white shadow-lg space-y-4">
-        <div className="flex flex-col sm:flex-row items-center gap-3 w-full">
+        <div className="flex flex-col ws-sm:flex-row items-center gap-3 w-full">
 
           {/* Saturated & Prominent Search Input */}
-          <div className="relative flex-1 w-full min-w-[220px]">
+          <div className="relative flex-1 w-full min-w-55">
             <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-emerald-600 stroke-[2.5]" />
             <input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={getTranslation(systemLanguage, "clients.filter.search")}
-              className="w-full pl-12 pr-4 py-3 rounded-2xl bg-emerald-50/15 border-2 border-emerald-200 text-xs text-slate-800 placeholder:text-slate-400 font-extrabold focus:outline-none focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all shadow-inner"
+              className="w-full pl-12 pr-4 py-3 rounded-2xl bg-emerald-50/15 border-2 border-emerald-200 text-ui text-slate-800 placeholder:text-slate-400 font-extrabold focus:outline-none focus:bg-white focus:border-emerald-500 focus:ring-4 focus:ring-emerald-500/10 transition-all shadow-inner"
             />
           </div>
 
@@ -5202,7 +5142,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           <button
             type="button"
             onClick={() => setShowRegisterDrawer(true)}
-            className="w-full sm:w-auto px-5 py-3 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 border-2 border-emerald-700 text-white font-black text-xs uppercase tracking-wider transition-all flex items-center justify-center gap-2 shadow-md shadow-emerald-500/10 hover:scale-[1.02] active:scale-95 cursor-pointer shrink-0"
+            className="w-full ws-sm:w-auto px-5 py-3 rounded-2xl bg-gradient-to-br from-emerald-500 to-emerald-600 border-2 border-emerald-700 text-white font-bold text-ui transition-all flex items-center justify-center gap-2 shadow-md shadow-emerald-500/10 hover:scale-[1.02] active:scale-95 cursor-pointer shrink-0"
           >
             <Plus className="h-4.5 w-4.5 text-emerald-100 stroke-[2.5]" />
             {systemLanguage === "sk" ? "Registrovať klienta" : systemLanguage === "hu" ? "Ügyfél regisztráció" : "Register Client"}
@@ -5210,14 +5150,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           )}
 
           {/* Saturated Client Type Selector */}
-          <div className="relative w-full sm:w-[180px] shrink-0">
+          <div className="relative w-full ws-sm:w-45 shrink-0">
             <div className="flex items-center gap-2 bg-slate-50 border-2 border-slate-200 text-slate-700 rounded-2xl px-4 py-3 shadow-sm hover:border-slate-300 transition-colors">
               <Users className="h-4.5 w-4.5 text-slate-400 shrink-0" />
               <CustomSelect
                 value={selectedType}
                 onChange={(v) => setSelectedType(v)}
                 unstyled
-                className="bg-transparent text-[11px] font-black text-slate-700 focus:outline-none cursor-pointer uppercase tracking-wider w-full justify-between select-none"
+                className="bg-transparent type-overline text-slate-700 focus:outline-none cursor-pointer w-full justify-between select-none"
                 options={[
                   { value: "all", label: t("All Types", "Všetky typy", "Minden típus") },
                   { value: "person", label: t("Person", "Osoba", "Személy") },
@@ -5247,11 +5187,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         {/* Collapsible Filter Panel (Collapses smoothly using modern CSS grid/height transitions) */}
         <div className={`grid transition-all duration-350 ease-in-out ${showFilterDrawer ? "grid-rows-[1fr] opacity-100 border-t border-slate-100 pt-4" : "grid-rows-[0fr] opacity-0 invisible overflow-hidden pointer-events-none"}`} aria-hidden={!showFilterDrawer}>
           <div className="overflow-hidden">
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pb-1">
+            <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-4 pb-1">
               
               {/* City Location Filter */}
               <div className="space-y-1.5">
-                <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider pl-0.5">{t("Filter by City Location", "Filtrovať podľa mesta", "Szűrés város szerint")}</label>
+                <label className="type-overline text-slate-500 pl-0.5">{t("Filter by City Location", "Filtrovať podľa mesta", "Szűrés város szerint")}</label>
                 <CustomSelect
                   value={filterCity}
                   onChange={(v) => setFilterCity(v)}
@@ -5265,7 +5205,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
               {/* Account PM Manager Filter */}
               <div className="space-y-1.5">
-                <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider pl-0.5">{t("Filter by Account Manager (PM)", "Filtrovať podľa manažéra (PM)", "Szűrés ügyfélmenedzser szerint (PM)")}</label>
+                <label className="type-overline text-slate-500 pl-0.5">{t("Filter by Account Manager (PM)", "Filtrovať podľa manažéra (PM)", "Szűrés ügyfélmenedzser szerint (PM)")}</label>
                 <CustomSelect
                   value={filterPM}
                   onChange={(v) => setFilterPM(v)}
@@ -5279,7 +5219,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
               {/* Customer category — a main category also matches its subcategories */}
               <div className="space-y-1.5">
-                <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider pl-0.5">{t("Filter by Client Category", "Filtrovať podľa kategórie klienta", "Szűrés ügyfélkategória szerint")}</label>
+                <label className="type-overline text-slate-500 pl-0.5">{t("Filter by Client Category", "Filtrovať podľa kategórie klienta", "Szűrés ügyfélkategória szerint")}</label>
                 <ClientCategorySelect
                   value={filterClientCategory}
                   onChange={setFilterClientCategory}
@@ -5299,12 +5239,12 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       </div>
 
       {/* Table controls row: Quick sort selector & Active/Archive scope toggle */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+      <div className="flex flex-col ws-sm:flex-row items-stretch ws-sm:items-center justify-between gap-3">
         {/* Sort Controls (Quick selector, especially powerful on mobile where table headers are hidden) */}
         <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 bg-white border-2 border-emerald-100 rounded-2xl px-3.5 py-1.5 text-xs text-slate-700 shadow-sm">
+          <div className="flex items-center gap-2 bg-white border-2 border-emerald-100 rounded-2xl px-3.5 py-1.5 text-ui text-slate-700 shadow-sm">
             <ArrowUpDown className="h-3.5 w-3.5 text-emerald-600 shrink-0 stroke-[2.5]" />
-            <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+            <span className="type-overline text-slate-400">
               {t("Sort:", "Zoradiť:", "Rendezés:")}
             </span>
             <select
@@ -5317,7 +5257,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   handleSort(val, true);
                 }
               }}
-              className="bg-transparent text-xs font-black text-slate-800 focus:outline-none cursor-pointer pr-1"
+              className="bg-transparent text-ui font-bold text-slate-800 focus:outline-none cursor-pointer pr-1"
             >
               <option value="">{t("Default", "Predvolené", "Alapértelmezett")}</option>
               <option value="name">{getTranslation(systemLanguage, "leads.table.client")}</option>
@@ -5333,7 +5273,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               <button
                 type="button"
                 onClick={() => setSortConfig(prev => prev ? { ...prev, direction: prev.direction === "asc" ? "desc" : "asc" } : null)}
-                className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors cursor-pointer font-bold text-[10px]"
+                className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors cursor-pointer font-bold text-micro"
                 title={sortConfig.direction === "asc" ? t("Ascending (click to switch to descending)", "Vzostupne (kliknite pre zostupné)", "Növekvő (kattintson a csökkenőhöz)") : t("Descending (click to switch to ascending)", "Zostupne (kliknite pre vzostupné)", "Csökkenő (kattintson a növekvőhöz)")}
               >
                 {sortConfig.direction === "asc" ? (
@@ -5363,7 +5303,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         </div>
 
         {/* Active clients or the archive */}
-        <div className="flex items-center gap-1 p-1 w-fit rounded-2xl bg-slate-100 border border-slate-200 select-none self-end sm:self-auto">
+        <div className="flex items-center gap-1 p-1 w-fit rounded-2xl bg-slate-100 border border-slate-200 select-none self-end ws-sm:self-auto">
           {([
             { scope: "active" as const, Icon: Users, label: t("Active clients", "Aktívni klienti", "Aktív ügyfelek"), count: clientProfiles.length - archivedClientsCount },
             { scope: "archived" as const, Icon: Archive, label: t("Archived", "Archivovaní", "Archivált"), count: archivedClientsCount },
@@ -5373,13 +5313,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               type="button"
               aria-pressed={clientArchiveScope === scope}
               onClick={() => setClientArchiveScope(scope)}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-200 active:scale-95 cursor-pointer ${
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl type-overline transition-all duration-200 active:scale-95 cursor-pointer ${
                 clientArchiveScope === scope ? "bg-white text-emerald-700 shadow-sm" : "text-slate-500 hover:text-slate-800"
               }`}
             >
               <Icon className="h-3.5 w-3.5 stroke-[2.5]" />
               {label}
-              <span className={`px-1.5 py-0.5 rounded-full text-[9px] tabular-nums ${clientArchiveScope === scope ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-500"}`}>
+              <span className={`px-1.5 py-0.5 rounded-full text-micro tabular-nums ${clientArchiveScope === scope ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-500"}`}>
                 {count}
               </span>
             </button>
@@ -5389,10 +5329,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
       {/* 3. Clients Data Grid Table */}
       <div className="glass-panel rounded-[28px] border-2 border-emerald-400 bg-white shadow-xl overflow-hidden">
-        <div className="overflow-x-auto lg:overflow-x-auto scrollbar-thin">
-          <table className="w-full border-collapse text-left block lg:table">
-            <thead className="hidden lg:table-header-group">
-              <tr className="bg-white text-emerald-700 text-[10px] font-black uppercase tracking-wider select-none">
+        <div className="overflow-x-auto ws-lg:overflow-x-auto scrollbar-thin">
+          <table className="w-full border-collapse text-left block ws-lg:table">
+            <thead className="hidden ws-lg:table-header-group">
+              <tr className="bg-white text-emerald-700 type-overline select-none">
                 <th
                   className={`sticky top-0 bg-white z-10 py-3.5 px-6 rounded-tl-[24px] border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "name" ? "bg-emerald-50/40" : ""}`}
                   aria-sort={sortConfig?.key === "name" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
@@ -5400,7 +5340,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => handleSort("name")}
-                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-black cursor-pointer transition-colors ${
+                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-bold cursor-pointer transition-colors ${
                       sortConfig?.key === "name" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
                     }`}
                   >
@@ -5415,7 +5355,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => handleSort("phone")}
-                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-black cursor-pointer transition-colors ${
+                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-bold cursor-pointer transition-colors ${
                       sortConfig?.key === "phone" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
                     }`}
                   >
@@ -5430,7 +5370,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => handleSort("email")}
-                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-black cursor-pointer transition-colors ${
+                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-bold cursor-pointer transition-colors ${
                       sortConfig?.key === "email" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
                     }`}
                   >
@@ -5445,7 +5385,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => handleSort("city")}
-                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-black cursor-pointer transition-colors ${
+                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-bold cursor-pointer transition-colors ${
                       sortConfig?.key === "city" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
                     }`}
                   >
@@ -5460,7 +5400,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => handleSort("clientType")}
-                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-black cursor-pointer transition-colors ${
+                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-bold cursor-pointer transition-colors ${
                       sortConfig?.key === "clientType" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
                     }`}
                   >
@@ -5475,7 +5415,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => handleSort("owner")}
-                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-black cursor-pointer transition-colors ${
+                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-bold cursor-pointer transition-colors ${
                       sortConfig?.key === "owner" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
                     }`}
                   >
@@ -5490,7 +5430,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => handleSort("leadsCount")}
-                    className={`group/sort inline-flex items-center justify-center gap-1.5 uppercase tracking-wider font-black cursor-pointer transition-colors ${
+                    className={`group/sort inline-flex items-center justify-center gap-1.5 uppercase tracking-wider font-bold cursor-pointer transition-colors ${
                       sortConfig?.key === "leadsCount" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
                     }`}
                   >
@@ -5505,7 +5445,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => handleSort("totalValue")}
-                    className={`group/sort inline-flex items-center justify-end gap-1.5 uppercase tracking-wider font-black cursor-pointer transition-colors ${
+                    className={`group/sort inline-flex items-center justify-end gap-1.5 uppercase tracking-wider font-bold cursor-pointer transition-colors ${
                       sortConfig?.key === "totalValue" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
                     }`}
                   >
@@ -5519,17 +5459,17 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               </tr>
             </thead>
 
-            <tbody className="divide-y-0 lg:divide-y lg:divide-emerald-100 text-xs block lg:table-row-group">
+            <tbody className="divide-y-0 ws-lg:divide-y ws-lg:divide-emerald-100 text-ui block ws-lg:table-row-group">
               {processedClients.length === 0 ? (
-                <tr className="block lg:table-row">
-                  <td colSpan={9} className="py-16 px-6 text-center text-slate-400 block lg:table-cell w-full lg:w-auto">
-                    <div className="text-2xl mb-2 animate-bounce">👥</div>
-                    <div className="font-black text-slate-700 uppercase tracking-wider">
+                <tr className="block ws-lg:table-row">
+                  <td colSpan={9} className="py-16 px-6 text-center text-slate-400 block ws-lg:table-cell w-full ws-lg:w-auto">
+                    <div className="text-heading mb-2 animate-bounce">👥</div>
+                    <div className="font-bold text-slate-700 uppercase tracking-wider">
                       {clientArchiveScope === "archived"
                         ? t("No archived clients found", "Nenašli sa žiadni archivovaní klienti", "Nem található archivált ügyfél")
                         : t("No registered clients found", "Nenašli sa žiadni registrovaní klienti", "Nem található regisztrált ügyfél")}
                     </div>
-                    <div className="text-[9px] text-slate-400 font-extrabold uppercase tracking-wider mt-0.5">{t("We aggregate clients automatically from your leads database.", "Klientov automaticky agregujeme z vašej databázy leadov.", "Az ügyfeleket automatikusan összesítjük a lead-adatbázisából.")}</div>
+                    <div className="type-overline text-slate-400 mt-0.5">{t("We aggregate clients automatically from your leads database.", "Klientov automaticky agregujeme z vašej databázy leadov.", "Az ügyfeleket automatikusan összesítjük a lead-adatbázisából.")}</div>
                   </td>
                 </tr>
               ) : (
@@ -5537,11 +5477,11 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   <tr 
                     key={client.name}
                     onClick={() => { window.location.hash = `client-${encodeURIComponent(client.name)}`; }}
-                    className="block lg:table-row border-b-4 border-slate-200/80 lg:border-b lg:border-emerald-50/60 p-4 lg:p-0 hover:bg-emerald-50/40 transition-colors duration-150 cursor-pointer group"
+                    className="block ws-lg:table-row border-b-4 border-slate-200/80 ws-lg:border-b ws-lg:border-emerald-50/60 p-4 ws-lg:p-0 hover:bg-emerald-50/40 transition-colors duration-150 cursor-pointer group"
                   >
                     
                     {/* Client Name & initials */}
-                    <td className="block lg:table-cell py-1.5 lg:py-3.5 px-0 lg:px-6 font-bold text-slate-900 mb-2 lg:mb-0 w-full lg:w-auto">
+                    <td className="block ws-lg:table-cell py-1.5 ws-lg:py-3.5 px-0 ws-lg:px-6 font-bold text-slate-900 mb-2 ws-lg:mb-0 w-full ws-lg:w-auto">
                       <div className="flex items-center gap-2.5">
                         <FavoriteHeartButton
                           entityId={`client_${encodeURIComponent(client.name)}`}
@@ -5554,13 +5494,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           size="xs"
                           systemLanguage={systemLanguage}
                         />
-                        <div className="h-7 w-7 rounded-lg bg-emerald-600 text-white border border-emerald-700 font-heading font-black text-[9px] flex items-center justify-center shrink-0 shadow">
+                        <div className="h-7 w-7 rounded-lg bg-emerald-600 text-white border border-emerald-700 font-heading font-bold text-micro flex items-center justify-center shrink-0 shadow">
                           {getInitials(client.name)}
                         </div>
                         <div className="flex flex-col">
-                          <span className="line-clamp-1 group-hover:text-emerald-700 transition-colors font-black text-sm lg:text-xs text-slate-800">{client.name}</span>
+                          <span className="line-clamp-1 group-hover:text-emerald-700 transition-colors font-bold text-body text-slate-800">{client.name}</span>
                           {client.categories && client.categories.length > 0 && (
-                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider line-clamp-1 mt-0.5">
+                            <span className="type-overline text-slate-400 line-clamp-1 mt-0.5">
                               {client.categories.join(", ")}
                             </span>
                           )}
@@ -5572,7 +5512,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     </td>
 
                     {/* Phone */}
-                    <td className="inline-flex items-center lg:table-cell py-1 lg:py-3.5 px-0 lg:px-4 text-slate-700 font-black mr-3.5">
+                    <td className="inline-flex items-center ws-lg:table-cell py-1 ws-lg:py-3.5 px-0 ws-lg:px-4 text-slate-700 font-bold mr-3.5">
                       {client.phone ? (
                         <span className="flex items-center gap-1"><Phone className="h-3 w-3 text-emerald-500 stroke-[2.5]" /> {client.phone}</span>
                       ) : (
@@ -5581,16 +5521,16 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     </td>
 
                     {/* Email */}
-                    <td className="inline-flex items-center lg:table-cell py-1 lg:py-3.5 px-0 lg:px-4 text-slate-700 font-black mr-3.5">
+                    <td className="inline-flex items-center ws-lg:table-cell py-1 ws-lg:py-3.5 px-0 ws-lg:px-4 text-slate-700 font-bold mr-3.5">
                       {client.email ? (
-                        <span className="flex items-center gap-1 truncate max-w-[140px]"><Mail className="h-3 w-3 text-emerald-500 stroke-[2.5]" /> {client.email}</span>
+                        <span className="flex items-center gap-1 truncate max-w-35"><Mail className="h-3 w-3 text-emerald-500 stroke-[2.5]" /> {client.email}</span>
                       ) : (
                         <span className="text-slate-300 italic">{t("None", "Žiadne", "Nincs")}</span>
                       )}
                     </td>
 
                     {/* City location / address */}
-                    <td className="inline-flex items-center lg:table-cell py-1 lg:py-3.5 px-0 lg:px-4 text-slate-700 font-black mr-3.5">
+                    <td className="inline-flex items-center ws-lg:table-cell py-1 ws-lg:py-3.5 px-0 ws-lg:px-4 text-slate-700 font-bold mr-3.5">
                       <div className="flex items-center gap-1">
                         <MapPin className="h-3.5 w-3.5 text-emerald-500 stroke-[2.5] shrink-0" />
                         <span className="line-clamp-1 text-slate-600">
@@ -5602,28 +5542,28 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     </td>
 
                     {/* Client Type badge */}
-                    <td className="inline-flex items-center lg:table-cell py-1 lg:py-3.5 px-0 lg:px-4 mr-3.5">
+                    <td className="inline-flex items-center ws-lg:table-cell py-1 ws-lg:py-3.5 px-0 ws-lg:px-4 mr-3.5">
                       {client.clientType === "business" && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-emerald-600 text-white border border-emerald-700 shadow-sm animate-fade-in">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full type-overline bg-emerald-600 text-white border border-emerald-700 shadow-sm animate-fade-in">
                           <Briefcase className="h-2.5 w-2.5 text-white" /> {t("Business", "Firma", "Cég")}
                         </span>
                       )}
                       {client.clientType === "partner" && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-amber-500 text-white border border-amber-600 shadow-sm animate-fade-in">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full type-overline bg-amber-500 text-white border border-amber-600 shadow-sm animate-fade-in">
                           <Handshake className="h-2.5 w-2.5 text-white" /> {t("Partner", "Partner", "Partner")}
                         </span>
                       )}
                       {client.clientType === "person" && (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[9px] font-extrabold uppercase bg-emerald-500 text-white border border-emerald-600 shadow-sm animate-fade-in">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full type-overline bg-emerald-500 text-white border border-emerald-600 shadow-sm animate-fade-in">
                           <User className="h-2.5 w-2.5 text-white" /> {t("Person", "Osoba", "Személy")}
                         </span>
                       )}
                     </td>
 
                     {/* PM Manager */}
-                    <td className="inline-flex items-center lg:table-cell py-1 lg:py-3.5 px-0 lg:px-4 text-slate-700 font-black mr-3.5">
+                    <td className="inline-flex items-center ws-lg:table-cell py-1 ws-lg:py-3.5 px-0 ws-lg:px-4 text-slate-700 font-bold mr-3.5">
                       <div className="flex items-center gap-1.5">
-                        <span className="text-[9px] font-black text-slate-400 lg:hidden uppercase tracking-wider">PM:</span>
+                        <span className="type-overline text-slate-400 ws-lg:hidden">PM:</span>
                         <div className="flex items-center gap-1">
                           <UserCheck className="h-3.5 w-3.5 text-emerald-600 stroke-[2.5]" />
                           <span>{client.owner}</span>
@@ -5632,27 +5572,27 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     </td>
 
                     {/* Deals count */}
-                    <td className="inline-flex items-center lg:table-cell py-1 lg:py-3.5 px-0 lg:px-4 text-center mr-3.5">
+                    <td className="inline-flex items-center ws-lg:table-cell py-1 ws-lg:py-3.5 px-0 ws-lg:px-4 text-center mr-3.5">
                       <div className="flex items-center gap-1.5">
-                        <span className="text-[9px] font-black text-slate-400 lg:hidden uppercase tracking-wider">{t("Deals", "Obchody", "Üzletek")}:</span>
-                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-emerald-500 text-white border border-emerald-600 shadow">
+                        <span className="type-overline text-slate-400 ws-lg:hidden">{t("Deals", "Obchody", "Üzletek")}:</span>
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-micro font-bold bg-emerald-500 text-white border border-emerald-600 shadow">
                           <Layers className="h-3 w-3 text-white" /> {client.leadsCount}
                         </span>
                       </div>
                     </td>
 
                     {/* Total Value */}
-                    <td className="inline-flex items-center lg:table-cell py-1.5 lg:py-3.5 px-0 lg:px-6 font-heading font-black text-emerald-700 text-sm w-full lg:w-auto mt-1 lg:mt-0 pt-2 lg:pt-3.5 border-t border-slate-50 lg:border-t-0">
+                    <td className="inline-flex items-center ws-lg:table-cell py-1.5 ws-lg:py-3.5 px-0 ws-lg:px-6 font-heading font-bold text-emerald-700 text-body w-full ws-lg:w-auto mt-1 ws-lg:mt-0 pt-2 ws-lg:pt-3.5 border-t border-slate-50 ws-lg:border-t-0">
                       <div className="flex items-center gap-1.5">
-                        <span className="text-[9px] font-black text-slate-400 lg:hidden uppercase tracking-wider">{t("Worth", "Hodnota", "Érték")}:</span>
-                        <span className="font-heading font-black text-emerald-700 text-sm">
+                        <span className="type-overline text-slate-400 ws-lg:hidden">{t("Worth", "Hodnota", "Érték")}:</span>
+                        <span className="font-heading font-bold text-emerald-700 text-body">
                           {money(client.totalValue, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </span>
                       </div>
                     </td>
 
                     {/* Archive / restore */}
-                    <td className="inline-flex items-center lg:table-cell py-1.5 lg:py-3.5 px-0 lg:px-4 lg:text-right">
+                    <td className="inline-flex items-center ws-lg:table-cell py-1.5 ws-lg:py-3.5 px-0 ws-lg:px-4 ws-lg:text-right">
                       <button
                         type="button"
                         onClick={(e) => {
@@ -5676,26 +5616,26 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
         {/* Pagination controls */}
         {processedClients.length > 50 && (
-          <div className="bg-white border-t border-slate-100 px-4 py-3 flex items-center justify-between sm:px-6">
-            <div className="flex-1 flex justify-between sm:hidden">
+          <div className="bg-white border-t border-slate-100 px-4 py-3 flex items-center justify-between ws-sm:px-6">
+            <div className="flex-1 flex justify-between ws-sm:hidden">
               <button
                 onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                 disabled={currentPage === 1}
-                className="relative inline-flex items-center px-4 py-2 border border-slate-200 text-xs font-bold rounded-xl text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                className="relative inline-flex items-center px-4 py-2 border border-slate-200 text-ui font-bold rounded-xl text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
               >
                 {t("Previous", "Predchádzajúca", "Előző")}
               </button>
               <button
                 onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(processedClients.length / 50)))}
                 disabled={currentPage === Math.ceil(processedClients.length / 50)}
-                className="ml-3 relative inline-flex items-center px-4 py-2 border border-slate-200 text-xs font-bold rounded-xl text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                className="ml-3 relative inline-flex items-center px-4 py-2 border border-slate-200 text-ui font-bold rounded-xl text-slate-700 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
               >
                 {t("Next", "Ďalšia", "Következő")}
               </button>
             </div>
-            <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
+            <div className="hidden ws-sm:flex-1 ws-sm:flex ws-sm:items-center ws-sm:justify-between">
               <div>
-                <p className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                <p className="type-overline text-slate-500">
                   {t("Showing", "Zobrazuje sa", "Megjelenítve")} <span className="text-emerald-700 font-extrabold">{(currentPage - 1) * 50 + 1}</span> {t("to", "až", "–")} <span className="text-emerald-700 font-extrabold">{Math.min(currentPage * 50, processedClients.length)}</span> {t("of", "z", "/")} <span className="text-emerald-700 font-extrabold">{processedClients.length}</span> {t("results", "výsledkov", "találat")}
                 </p>
               </div>
@@ -5704,7 +5644,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   <button
                     onClick={() => setCurrentPage(prev => Math.max(prev - 1, 1))}
                     disabled={currentPage === 1}
-                    className="relative inline-flex items-center px-2 py-2 rounded-l-xl border border-slate-200 bg-white text-xs font-bold text-slate-500 hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                    className="relative inline-flex items-center px-2 py-2 rounded-l-xl border border-slate-200 bg-white text-ui font-bold text-slate-500 hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
                   >
                     <span className="sr-only">{t("Previous", "Predchádzajúca", "Előző")}</span>
                     <ChevronLeft className="h-4 w-4 text-emerald-600 stroke-[2.5]" aria-hidden="true" />
@@ -5716,7 +5656,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     if (!isFirstOrLast && !isClose) {
                       if (pageNum === 2 || pageNum === Math.ceil(processedClients.length / 50) - 1) {
                         return (
-                          <span key={`ellipse-${pageNum}`} className="relative inline-flex items-center px-3 py-2 border border-slate-200 bg-white text-xs font-bold text-slate-500">
+                          <span key={`ellipse-${pageNum}`} className="relative inline-flex items-center px-3 py-2 border border-slate-200 bg-white text-ui font-bold text-slate-500">
                             ...
                           </span>
                         );
@@ -5729,7 +5669,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         onClick={() => setCurrentPage(pageNum)}
                         aria-current={currentPage === pageNum ? "page" : undefined}
                         className={cn(
-                          "relative inline-flex items-center px-3 py-2 border text-xs font-bold transition-colors",
+                          "relative inline-flex items-center px-3 py-2 border text-ui font-bold transition-colors",
                           currentPage === pageNum
                             ? "z-10 bg-emerald-600 border-emerald-600 text-white shadow-sm"
                             : "bg-white border-slate-200 text-slate-700 hover:bg-emerald-50/50 hover:text-emerald-700"
@@ -5742,7 +5682,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   <button
                     onClick={() => setCurrentPage(prev => Math.min(prev + 1, Math.ceil(processedClients.length / 50)))}
                     disabled={currentPage === Math.ceil(processedClients.length / 50)}
-                    className="relative inline-flex items-center px-2 py-2 rounded-r-xl border border-slate-200 bg-white text-xs font-bold text-slate-500 hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
+                    className="relative inline-flex items-center px-2 py-2 rounded-r-xl border border-slate-200 bg-white text-ui font-bold text-slate-500 hover:bg-slate-50 disabled:opacity-50 disabled:pointer-events-none transition-colors"
                   >
                     <span className="sr-only">{t("Next", "Ďalšia", "Következő")}</span>
                     <ChevronRight className="h-4 w-4 text-emerald-600 stroke-[2.5]" aria-hidden="true" />
@@ -5753,7 +5693,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           </div>
         )}
 
-        <div className="bg-emerald-50/20 border-t-2 border-emerald-100 p-4 flex items-center justify-between text-[10px] text-slate-500 font-black uppercase tracking-wider">
+        <div className="bg-emerald-50/20 border-t-2 border-emerald-100 p-4 flex items-center justify-between type-overline text-slate-500">
           <div className="flex items-center gap-1.5">
             <Clock className="h-3.5 w-3.5 text-emerald-600 stroke-[2.5]" />
             <span>{t("Click any client row to inspect profile details & timeline logs", "Kliknutím na riadok klienta zobrazíte detaily profilu a záznamy časovej osi", "Kattintson egy ügyfélsorra a profiladatok és az idővonal megtekintéséhez")}</span>
@@ -5774,8 +5714,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             {/* Header */}
             <div className="bg-slate-900 text-white p-4 flex items-center justify-between shrink-0">
               <div className="text-left min-w-0 flex-1 pr-4">
-                <span className="text-[10px] font-black uppercase text-pink-500 tracking-wider">{t("Email Correspondence", "E-mailová korešpondencia", "E-mail levelezés")}</span>
-                <h3 className="text-sm font-heading font-black uppercase tracking-tight truncate">{selectedTimelineEmail.title}</h3>
+                <span className="type-overline text-pink-500">{t("Email Correspondence", "E-mailová korešpondencia", "E-mail levelezés")}</span>
+                <h3 className="text-body font-heading font-bold truncate">{selectedTimelineEmail.title}</h3>
               </div>
               <button
                 onClick={closeEmailDetailSlideout}
@@ -5790,22 +5730,22 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               {isLoadingEmailDetail ? (
                 <div className="flex flex-col items-center justify-center py-12 gap-2 text-slate-400 my-auto">
                   <Loader2 className="animate-spin text-pink-500" size={24} />
-                  <span className="text-[9px] font-bold uppercase tracking-wider">{t("Loading mail contents...", "Načítavam obsah e-mailu...", "Levél tartalmának betöltése...")}</span>
+                  <span className="type-overline">{t("Loading mail contents...", "Načítavam obsah e-mailu...", "Levél tartalmának betöltése...")}</span>
                 </div>
               ) : timelineEmailDetailBody ? (
                 <div className="flex-1 flex flex-col justify-between">
                   <div className="border-b border-slate-100 pb-3 mb-4 text-left">
-                    <p className="text-[10px] text-slate-500 font-bold">
+                    <p className="text-micro text-slate-500 font-bold">
                       {t("Subject", "Predmet", "Tárgy")}: <strong className="text-slate-800">{selectedTimelineEmail.title}</strong>
                     </p>
-                    <p className="text-[10px] text-slate-500 font-bold mt-1">
+                    <p className="text-micro text-slate-500 font-bold mt-1">
                       {t("Date", "Dátum", "Dátum")}: <span className="text-slate-700">{formatTimestampLocalized(selectedTimelineEmail.timestamp, systemLanguage)}</span>
                     </p>
                   </div>
-                  <div className="flex-1 min-h-[300px]">
+                  <div className="flex-1 min-h-75">
                     {timelineEmailDetailBody.html ? (
                       <iframe 
-                        className="w-full h-full min-h-[400px] border-0 rounded-2xl bg-transparent"
+                        className="w-full h-full min-h-100 border-0 rounded-2xl bg-transparent"
                         title={t("Timeline parsed mail content", "Spracovaný obsah e-mailu z časovej osi", "Idővonal feldolgozott e-mail tartalma")}
                         sandbox=""
                         srcDoc={`
@@ -5831,14 +5771,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         `}
                       />
                     ) : (
-                      <div className="text-left text-xs text-slate-700 font-semibold whitespace-pre-wrap leading-relaxed select-text p-4 bg-slate-50 rounded-2xl border border-slate-100">
+                      <div className="text-left text-ui text-slate-700 font-semibold whitespace-pre-wrap leading-relaxed select-text p-4 bg-slate-50 rounded-2xl border border-slate-100">
                         {timelineEmailDetailBody.text || t("No message content.", "Žiadny obsah správy.", "Nincs üzenettartalom.")}
                       </div>
                     )}
                   </div>
                 </div>
               ) : (
-                <div className="text-center text-slate-400 py-12 text-xs font-semibold my-auto">
+                <div className="text-center text-slate-400 py-12 text-ui font-semibold my-auto">
                   {t("No message content.", "Žiadny obsah správy.", "Nincs üzenettartalom.")}
                 </div>
               )}
@@ -5861,8 +5801,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             {/* Header */}
             <div className="bg-white border-b border-slate-100 px-6 py-5 rounded-t-[30px] flex items-center justify-between shrink-0">
               <div className="text-left">
-                <span className="text-[10px] font-black uppercase text-emerald-600 tracking-wider">{systemName} CRM System</span>
-                <h3 className="text-sm font-heading font-black uppercase tracking-tight text-slate-800">
+                <span className="type-overline text-emerald-600">{systemName} CRM System</span>
+                <h3 className="text-body font-heading font-bold text-slate-800">
                   {systemLanguage === "sk" ? "Registrovať Nového Klienta" : systemLanguage === "hu" ? "Új Ügyfél Regisztrálása" : "Register New Client"}
                 </h3>
               </div>
@@ -5876,21 +5816,21 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             </div>
             
             {/* Form Body */}
-            <form onSubmit={handleRegisterClient} className="flex-1 overflow-y-auto p-6 space-y-6 text-left text-xs font-bold text-slate-700">
+            <form onSubmit={handleRegisterClient} className="flex-1 overflow-y-auto p-6 space-y-6 text-left text-ui font-bold text-slate-700">
               {/* Basic Details Section */}
               <div className="space-y-4">
-                <h4 className="text-[10px] font-black uppercase text-emerald-600 tracking-wider border-b border-slate-100 pb-1.5 flex items-center gap-1">
+                <h4 className="type-overline text-emerald-600 border-b border-slate-100 pb-1.5 flex items-center gap-1">
                   <User className="h-3.5 w-3.5" />
                   {systemLanguage === "sk" ? "Základné Informácie" : systemLanguage === "hu" ? "Alapvető Információk" : "Basic Information"}
                 </h4>
 
                 {/* Client Type Radio Group */}
-                <div className="bg-slate-50/50 p-4 rounded-2xl border border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="bg-slate-50/50 p-4 rounded-2xl border border-slate-100 flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3">
                   <div className="text-left">
-                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                    <span className="type-overline text-slate-400">
                       {systemLanguage === "sk" ? "Typ klienta" : systemLanguage === "hu" ? "Ügyfél típusa" : "Client Type"}
                     </span>
-                    <p className="text-[10px] font-bold text-slate-400 mt-0.5">
+                    <p className="text-micro font-bold text-slate-400 mt-0.5">
                       {systemLanguage === "sk" ? "Vyberte typ registrovaného subjektu" : systemLanguage === "hu" ? "Válassza ki a regisztrált alany típusát" : "Choose the type of entity to register"}
                     </p>
                   </div>
@@ -5905,7 +5845,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         <label
                           key={opt.id}
                           className={cn(
-                            "px-4 py-2 rounded-lg text-xs font-black uppercase tracking-wider cursor-pointer transition-all flex items-center gap-1.5 select-none",
+                            "px-4 py-2 rounded-lg text-ui font-bold cursor-pointer transition-all flex items-center gap-1.5 select-none",
                             active 
                               ? "bg-white text-emerald-700 shadow-sm border border-slate-200/50" 
                               : "text-slate-400 hover:text-slate-600 border border-transparent"
@@ -5926,9 +5866,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+                <div className="grid grid-cols-1 ws-md:grid-cols-5 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
+                    <label className="type-overline text-slate-400 block">
                       {systemLanguage === "sk" ? "Krajina" : systemLanguage === "hu" ? "Ország" : "Country"}
                     </label>
                     <CustomSelect
@@ -5938,8 +5878,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     />
                   </div>
                   
-                  <div className="md:col-span-2 space-y-1 relative">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
+                  <div className="ws-md:col-span-2 space-y-1 relative">
+                    <label className="type-overline text-slate-400 block">
                       {systemLanguage === "sk" ? "Meno klienta *" : systemLanguage === "hu" ? "Ügyfél neve *" : "Client Name *"}
                     </label>
                     <div className="relative">
@@ -5962,8 +5902,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     />
                   </div>
                   
-                  <div className="md:col-span-1 space-y-1">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
+                  <div className="ws-md:col-span-1 space-y-1">
+                    <label className="type-overline text-slate-400 block">
                       {systemLanguage === "sk" ? `Odhad (${currencySymbol})` : systemLanguage === "hu" ? `Becsült (${currencySymbol})` : `Est. (${currencySymbol})`}
                     </label>
                     <input
@@ -5975,8 +5915,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     />
                   </div>
 
-                  <div className="md:col-span-1 space-y-1">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
+                  <div className="ws-md:col-span-1 space-y-1">
+                    <label className="type-overline text-slate-400 block">
                       {systemLanguage === "sk" ? `Úprava (${currencySymbol})` : systemLanguage === "hu" ? `Korrekció (${currencySymbol})` : `Adjust. (${currencySymbol})`}
                     </label>
                     <input
@@ -5990,9 +5930,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 ws-md:grid-cols-3 gap-4">
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
+                    <label className="type-overline text-slate-400 block">
                       {systemLanguage === "sk" ? "Telefónne číslo" : systemLanguage === "hu" ? "Telefonszám" : "Phone Number"}
                     </label>
                     <input
@@ -6005,7 +5945,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </div>
                   
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
+                    <label className="type-overline text-slate-400 block">
                       {systemLanguage === "sk" ? "E-mailová adresa" : systemLanguage === "hu" ? "E-mail cím" : "Email Address"}
                     </label>
                     <input
@@ -6018,7 +5958,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
+                    <label className="type-overline text-slate-400 block">
                       {systemLanguage === "sk" ? "Priradený PM manažér" : systemLanguage === "hu" ? "Hozzárendelt PM menedzser" : "Assigned PM Manager"}
                     </label>
                     <CustomSelect
@@ -6032,14 +5972,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
               {/* Address Section */}
               <div className="space-y-4">
-                <h4 className="text-[10px] font-black uppercase text-emerald-600 tracking-wider border-b border-slate-100 pb-1.5 flex items-center gap-1">
+                <h4 className="type-overline text-emerald-600 border-b border-slate-100 pb-1.5 flex items-center gap-1">
                   <MapPin className="h-3.5 w-3.5" />
                   {systemLanguage === "sk" ? "Adresa a Lokalita" : systemLanguage === "hu" ? "Cím és Elhelyezkedés" : "Address & Location"}
                 </h4>
                 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div className="space-y-1 md:col-span-2">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
+                <div className="grid grid-cols-1 ws-md:grid-cols-4 gap-4">
+                  <div className="space-y-1 ws-md:col-span-2">
+                    <label className="type-overline text-slate-400 block">
                       {systemLanguage === "sk" ? "Ulica a číslo" : systemLanguage === "hu" ? "Utca, házszám" : "Street Address"}
                     </label>
                     <input
@@ -6052,7 +5992,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </div>
                   
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
+                    <label className="type-overline text-slate-400 block">
                       {systemLanguage === "sk" ? "Mesto" : systemLanguage === "hu" ? "Város" : "City"}
                     </label>
                     <input
@@ -6065,7 +6005,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </div>
 
                   <div className="space-y-1">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
+                    <label className="type-overline text-slate-400 block">
                       {systemLanguage === "sk" ? "PSČ" : systemLanguage === "hu" ? "Irányítószám" : "Postal Code"}
                     </label>
                     <input
@@ -6079,7 +6019,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
+                  <label className="type-overline text-slate-400 block">
                     {t("Client Category", "Kategória klienta", "Ügyfélkategória")}
                   </label>
                   <ClientCategorySelect
@@ -6091,9 +6031,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   />
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                  <div className="space-y-1 md:col-span-4">
-                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
+                <div className="grid grid-cols-1 ws-md:grid-cols-4 gap-4">
+                  <div className="space-y-1 ws-md:col-span-4">
+                    <label className="type-overline text-slate-400 block">
                       {systemLanguage === "sk" ? "Zaujímavé kategórie" : systemLanguage === "hu" ? "Érdeklődési kategóriák" : "Interested Categories"}
                     </label>
                     <div className="flex flex-wrap gap-1.5 pt-1">
@@ -6110,7 +6050,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                                 setNewClientCategories([...newClientCategories, cat]);
                               }
                             }}
-                            className={`px-2.5 py-1 rounded-lg border text-[9px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                            className={`px-2.5 py-1 rounded-lg border type-overline transition-all cursor-pointer ${
                               isSelected
                                 ? "bg-emerald-600 text-white border-emerald-700 shadow-sm"
                                 : "bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100"
@@ -6128,14 +6068,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
               {/* Corporate Register Section (Only for Business/Partner) */}
               {newClientType !== "person" && (
                 <div className="space-y-4 animate-in fade-in slide-in-from-top-4 duration-200">
-                  <h4 className="text-[10px] font-black uppercase text-emerald-600 tracking-wider border-b border-slate-100 pb-1.5 flex items-center gap-1">
+                  <h4 className="type-overline text-emerald-600 border-b border-slate-100 pb-1.5 flex items-center gap-1">
                     <Briefcase className="h-3.5 w-3.5" />
                     {systemLanguage === "sk" ? "Firemné Registre" : systemLanguage === "hu" ? "Céges adatok" : "Corporate Registers"}
                   </h4>
                   
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="grid grid-cols-1 ws-md:grid-cols-3 gap-4">
                     <div className="space-y-1 relative">
-                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
+                      <label className="type-overline text-slate-400 block">
                         {systemLanguage === "sk" ? "IČO (Identifikačné číslo)" : systemLanguage === "hu" ? "Cégjegyzékszám (IČO)" : "Company ID (IČO)"}
                       </label>
                       <div className="relative">
@@ -6158,7 +6098,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     </div>
                     
                     <div className="space-y-1 relative">
-                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
+                      <label className="type-overline text-slate-400 block">
                         {systemLanguage === "sk" ? "DIČ (Daňové registračné číslo)" : systemLanguage === "hu" ? "Adószám (DIČ)" : "Tax ID (DIČ)"}
                       </label>
                       <div className="relative">
@@ -6181,7 +6121,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     </div>
 
                     <div className="space-y-1 relative">
-                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
+                      <label className="type-overline text-slate-400 block">
                         {systemLanguage === "sk" ? "IČ DPH" : systemLanguage === "hu" ? "Közösségi adószám (IČ DPH)" : "VAT ID (IČ DPH)"}
                       </label>
                       <div className="relative">
@@ -6206,9 +6146,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4">
                     <div className="space-y-1">
-                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
+                      <label className="type-overline text-slate-400 block">
                         {systemLanguage === "sk" ? "Kontaktná osoba" : systemLanguage === "hu" ? "Kapcsolattartó személy" : "Contact Person"}
                       </label>
                       <input
@@ -6221,7 +6161,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     </div>
                     
                     <div className="space-y-1">
-                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
+                      <label className="type-overline text-slate-400 block">
                         {systemLanguage === "sk" ? "Webstránka" : systemLanguage === "hu" ? "Weboldal" : "Website URL"}
                       </label>
                       <input
@@ -6241,13 +6181,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 <button
                   type="button"
                   onClick={closeRegisterDrawer}
-                  className="px-5 py-2.5 rounded-xl border-2 border-slate-200 bg-white text-slate-500 hover:bg-slate-50 transition-all text-xs font-black uppercase tracking-wider cursor-pointer"
+                  className="px-5 py-2.5 rounded-xl border-2 border-slate-200 bg-white text-slate-500 hover:bg-slate-50 transition-all text-ui font-bold cursor-pointer"
                 >
                   {systemLanguage === "sk" ? "Zrušiť" : systemLanguage === "hu" ? "Mégse" : "Cancel"}
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20 transition-all text-xs font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer"
+                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white shadow-lg shadow-emerald-600/20 transition-all text-ui font-bold flex items-center gap-1.5 cursor-pointer"
                 >
                   <Plus className="h-4 w-4 stroke-[2.5]" />
                   {systemLanguage === "sk" ? "Vytvoriť profil" : systemLanguage === "hu" ? "Profil létrehozása" : "Create Profile"}

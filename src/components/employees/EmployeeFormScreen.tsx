@@ -312,8 +312,8 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
   return (
     <div className="space-y-6 animate-fade-in text-slate-800 pb-16">
       {/* Top Breadcrumb & Action Navigation Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
-        <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+      <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4 pb-2">
+        <div className="flex items-center gap-2 text-ui font-semibold text-slate-500">
           <button
             type="button"
             onClick={onCancel}
@@ -341,7 +341,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 rounded-2xl glass-panel border border-white/60 bg-white/95 shadow-glass text-xs font-heading font-bold text-slate-700 hover:text-slate-900 hover:bg-white transition cursor-pointer"
+            className="px-4 py-2 rounded-2xl glass-panel border border-white/60 bg-white/95 shadow-glass text-ui font-heading font-bold text-slate-700 hover:text-slate-900 hover:bg-white transition cursor-pointer"
           >
             {t("Cancel", "Zrušiť", "Mégse")}
           </button>
@@ -350,7 +350,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
             type="button"
             onClick={() => handleSubmit()}
             disabled={isSavedRecently}
-            className="flex items-center gap-2 px-5 py-2 rounded-2xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white font-heading font-bold text-xs uppercase tracking-wider shadow-lg shadow-[#c29b62]/25 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition cursor-pointer"
+            className="flex items-center gap-2 px-5 py-2 rounded-2xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white font-heading font-bold text-ui shadow-lg shadow-[#c29b62]/25 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition cursor-pointer"
           >
             {isSavedRecently ? (
               <>
@@ -372,18 +372,18 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
       </div>
 
       {/* Screen Title Banner */}
-      <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 flex flex-col ws-md:flex-row ws-md:items-center justify-between gap-4">
         <div className="flex items-start gap-4">
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#c29b62] to-[#9e7638] text-white flex items-center justify-center shadow-lg shadow-[#c29b62]/30 shrink-0">
             {isEditing ? <User className="w-7 h-7" /> : <UserPlus className="w-7 h-7" />}
           </div>
           <div>
-            <h1 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight">
+            <h1 className="type-page-title text-slate-900">
               {isEditing
                 ? t(`Edit Employee: ${employee.name}`, `Úprava zamestnanca: ${employee.name}`, `Alkalmazott szerkesztése: ${employee.name}`)
                 : t("Add New Employee", "Nový zamestnanec", "Új alkalmazott")}
             </h1>
-            <p className="text-xs text-slate-500 font-medium mt-1">
+            <p className="text-ui text-slate-500 font-medium mt-1">
               {t(
                 "Configure personal data, contract conditions, salary rate, Toggl time tracking & vacation quotas",
                 "Osobné údaje, zmluvné podmienky, mzdová sadzba, prepojenie na Toggl a nároky na dovolenku",
@@ -394,14 +394,14 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
         </div>
 
         {/* Status switch in banner */}
-        <div className="flex items-center gap-3 self-start md:self-auto p-2.5 px-4 rounded-2xl bg-slate-50/80 border border-slate-200/80">
+        <div className="flex items-center gap-3 self-start ws-md:self-auto p-2.5 px-4 rounded-2xl bg-slate-50/80 border border-slate-200/80">
           <div>
-            <span className="text-xs font-bold text-slate-800 block">
+            <span className="text-ui font-bold text-slate-800 block">
               {isActive
                 ? t("Active Employee", "Aktívny zamestnanec", "Aktív alkalmazott")
                 : t("Inactive / Archived", "Neaktívny / Archivovaný", "Inaktív / Archivált")}
             </span>
-            <span className="text-[10px] text-slate-400 block">
+            <span className="text-micro text-slate-400 block">
               {isActive
                 ? t("Included in payroll and matrices", "Zahrnutý v mzdovej matici", "Szerepel a bérmátrixban")
                 : t("Excluded from active calculations", "Vylúčený z aktívnych výpočtov", "Nem szerepel a számításokban")}
@@ -414,23 +414,23 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
               onChange={(e) => setIsActive(e.target.checked)}
               className="sr-only peer"
             />
-            <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+            <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
           </label>
         </div>
       </div>
 
       {/* Validation banner if error */}
       {validationError && (
-        <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-700 text-xs font-medium flex items-center gap-3 animate-shake">
+        <div className="p-4 rounded-2xl bg-red-500/10 border border-red-500/30 text-red-700 text-ui font-medium flex items-center gap-3 animate-shake">
           <AlertCircle className="w-5 h-5 shrink-0 text-red-600" />
           <span>{validationError}</span>
         </div>
       )}
 
       {/* Two-Column Responsive Form Layout */}
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+      <form onSubmit={handleSubmit} className="grid grid-cols-1 ws-lg:grid-cols-12 gap-6">
         {/* LEFT COLUMN: Main Profile, Address, Compensation & Notes (7 cols) */}
-        <div className="lg:col-span-7 space-y-6">
+        <div className="ws-lg:col-span-7 space-y-6">
           {/* Card 1: Personal & Contact Information */}
           <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 space-y-4">
             <div className="flex items-center gap-3 pb-3 border-b border-slate-200/60">
@@ -438,18 +438,18 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                 <User className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-sm font-heading font-bold text-slate-900">
+                <h3 className="text-body font-heading font-bold text-slate-900">
                   {t("Personal & Contact Information", "Osobné a kontaktné údaje", "Személyes és elérhetőségi adatok")}
                 </h3>
-                <p className="text-[11px] text-slate-400">
+                <p className="text-caption text-slate-400">
                   {t("Basic identification and communication details", "Základná identifikácia a kontaktné spojenie", "Alapvető azonosító és kapcsolat adatok")}
                 </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-1">
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+            <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-4 pt-1">
+              <div className="ws-sm:col-span-2">
+                <label className="block text-ui font-bold text-slate-600 mb-1.5">
                   {t("Full Name & Titles *", "Meno, priezvisko a tituly *", "Teljes név és titulus *")}
                 </label>
                 <div className="relative">
@@ -462,13 +462,13 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                       if (validationError) setValidationError(null);
                     }}
                     placeholder="e.g. Ing. Michal Kováč, PhD."
-                    className="w-full px-4 py-2.5 text-sm bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm font-medium"
+                    className="w-full px-4 py-2.5 text-body bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm font-medium"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                <label className="block text-ui font-bold text-slate-600 mb-1.5">
                   {t("Personal ID / PIN (Rodné číslo)", "Rodné číslo / Identifikátor", "Személyi azonosító")}
                 </label>
                 <input
@@ -476,12 +476,12 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                   value={pin}
                   onChange={(e) => setPin(e.target.value)}
                   placeholder="e.g. 880512/7412"
-                  className="w-full px-4 py-2.5 text-sm bg-white border border-slate-200 rounded-2xl text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm"
+                  className="w-full px-4 py-2.5 text-body bg-white border border-slate-200 rounded-2xl text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                <label className="block text-ui font-bold text-slate-600 mb-1.5">
                   {t("Phone Number", "Telefónne číslo", "Telefonszám")}
                 </label>
                 <div className="relative">
@@ -491,13 +491,13 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
                     placeholder="+421 905 123 456"
-                    className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm"
+                    className="w-full pl-10 pr-4 py-2.5 text-body bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm"
                   />
                 </div>
               </div>
 
-              <div className="sm:col-span-2">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+              <div className="ws-sm:col-span-2">
+                <label className="block text-ui font-bold text-slate-600 mb-1.5">
                   {t("Email Address", "Emailová adresa", "E-mail cím")}
                 </label>
                 <div className="relative">
@@ -507,7 +507,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="michal.kovac@cstudios.sk"
-                    className="w-full pl-10 pr-4 py-2.5 text-sm bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm"
+                    className="w-full pl-10 pr-4 py-2.5 text-body bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm"
                   />
                 </div>
               </div>
@@ -521,18 +521,18 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                 <MapPin className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-sm font-heading font-bold text-slate-900">
+                <h3 className="text-body font-heading font-bold text-slate-900">
                   {t("Permanent Residence & Address", "Trvalé bydlisko a adresa", "Állandó lakcím")}
                 </h3>
-                <p className="text-[11px] text-slate-400">
+                <p className="text-caption text-slate-400">
                   {t("Legal residence for tax documents and contracts", "Adresa trvalého pobytu pre zmluvy a výplatné pásky", "Bejelentett lakcím a szerződésekhez")}
                 </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
-              <div className="sm:col-span-3">
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+            <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-4 pt-1">
+              <div className="ws-sm:col-span-3">
+                <label className="block text-ui font-bold text-slate-600 mb-1.5">
                   {t("Street & Number", "Ulica a orientačné číslo", "Utca és házszám")}
                 </label>
                 <input
@@ -540,12 +540,12 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                   value={addressStreet}
                   onChange={(e) => setAddressStreet(e.target.value)}
                   placeholder="e.g. Ružová dolina 25/B"
-                  className="w-full px-4 py-2.5 text-sm bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm"
+                  className="w-full px-4 py-2.5 text-body bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                <label className="block text-ui font-bold text-slate-600 mb-1.5">
                   {t("City / Municipality", "Mesto / Obec", "Város / Település")}
                 </label>
                 <input
@@ -553,12 +553,12 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                   value={addressCity}
                   onChange={(e) => setAddressCity(e.target.value)}
                   placeholder="Bratislava"
-                  className="w-full px-4 py-2.5 text-sm bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm"
+                  className="w-full px-4 py-2.5 text-body bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                <label className="block text-ui font-bold text-slate-600 mb-1.5">
                   {t("ZIP / Postal Code", "PSČ", "Irányítószám")}
                 </label>
                 <input
@@ -566,12 +566,12 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                   value={addressZip}
                   onChange={(e) => setAddressZip(e.target.value)}
                   placeholder="821 09"
-                  className="w-full px-4 py-2.5 text-sm bg-white border border-slate-200 rounded-2xl text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm"
+                  className="w-full px-4 py-2.5 text-body bg-white border border-slate-200 rounded-2xl text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                <label className="block text-ui font-bold text-slate-600 mb-1.5">
                   {t("Country", "Krajina", "Ország")}
                 </label>
                 <input
@@ -579,7 +579,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                   value={addressCountry}
                   onChange={(e) => setAddressCountry(e.target.value)}
                   placeholder="Slovakia"
-                  className="w-full px-4 py-2.5 text-sm bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm"
+                  className="w-full px-4 py-2.5 text-body bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm"
                 />
               </div>
             </div>
@@ -592,24 +592,24 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                 <Coins className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-sm font-heading font-bold text-slate-900">
+                <h3 className="text-body font-heading font-bold text-slate-900">
                   {t("Salary & Compensation Terms", "Mzda a mzdové podmienky", "Bér és díjazási feltételek")}
                 </h3>
-                <p className="text-[11px] text-slate-400">
+                <p className="text-caption text-slate-400">
                   {t("Base rate, payment schedule and Financial Hub integration", "Základná sadzba, termín výplaty a prepojenie do Financií", "Alapbér, kifizetési határidő és pénzügyi szinkronizáció")}
                 </p>
               </div>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-1">
+            <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-4 pt-1">
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                <label className="block text-ui font-bold text-slate-600 mb-1.5">
                   {t("Salary Cycle / Type", "Typ mzdy", "Bér típusa")}
                 </label>
                 <select
                   value={salaryType}
                   onChange={(e) => setSalaryType(e.target.value as any)}
-                  className="w-full px-4 py-2.5 text-sm bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm font-medium"
+                  className="w-full px-4 py-2.5 text-body bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm font-medium"
                 >
                   <option value="monthly">{t("Monthly (Mesačná)", "Mesačná mzda", "Havi fix bér")}</option>
                   <option value="daily">{t("Daily (Denná)", "Denná sadzba", "Napidíj")}</option>
@@ -618,7 +618,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                <label className="block text-ui font-bold text-slate-600 mb-1.5">
                   {t(`Base Rate / Amount (${systemCurrency})`, `Základná sadzba (${systemCurrency})`, `Alapbér összege (${systemCurrency})`)}
                 </label>
                 <div className="relative">
@@ -628,16 +628,16 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                     min="0"
                     value={salaryAmount}
                     onChange={(e) => setSalaryAmount(parseFloat(e.target.value) || 0)}
-                    className="w-full px-4 py-2.5 text-sm bg-white border border-slate-200 rounded-2xl text-slate-900 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm"
+                    className="w-full px-4 py-2.5 text-body bg-white border border-slate-200 rounded-2xl text-slate-900 font-mono font-bold focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm"
                   />
-                  <span className="absolute right-4 top-2.5 text-sm font-bold text-slate-400">
+                  <span className="absolute right-4 top-2.5 text-body font-bold text-slate-400">
                     {systemCurrency}
                   </span>
                 </div>
               </div>
 
               <div>
-                <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                <label className="block text-ui font-bold text-slate-600 mb-1.5">
                   {t(
                     `Salary Due Day (Default: ${settings.salaryDueDay ?? 15}.)`,
                     `Výplatný termín (Predvolený: ${settings.salaryDueDay ?? 15}.)`,
@@ -651,18 +651,18 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                   value={salaryDueDay}
                   onChange={(e) => setSalaryDueDay(e.target.value)}
                   placeholder={String(settings.salaryDueDay ?? 15)}
-                  className="w-full px-4 py-2.5 text-sm bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm"
+                  className="w-full px-4 py-2.5 text-body bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm"
                 />
               </div>
             </div>
 
             {/* Financial sync setting card */}
-            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col sm:flex-row sm:items-center justify-between gap-4 mt-2">
+            <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4 mt-2">
               <div>
-                <span className="text-xs font-bold text-slate-800 block">
+                <span className="text-ui font-bold text-slate-800 block">
                   {t("Auto-sync to Financial Hub", "Automaticky zaznamenávať výplaty do Financií", "Kifizetések automatikus rögzítése a Pénzügyekben")}
                 </span>
-                <span className="text-[11px] text-slate-500 block mt-0.5">
+                <span className="text-caption text-slate-500 block mt-0.5">
                   {t(
                     "Generates planned expense entries for unpaid periods and marks them paid upon settlement",
                     "Pri nevyplatenej mzde vytvorí plánovaný výdavok, po úhrade ho označí ako uhradený",
@@ -679,14 +679,14 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                     onChange={(e) => setAutoExpense(e.target.checked)}
                     className="sr-only peer"
                   />
-                  <div className="w-10 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#c29b62]"></div>
+                  <div className="w-10 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#c29b62]"></div>
                 </label>
 
                 {autoExpense && (
                   <select
                     value={expenseCategoryId}
                     onChange={(e) => setExpenseCategoryId(e.target.value)}
-                    className="px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-xl text-slate-800 shadow-sm"
+                    className="px-3 py-1.5 text-ui bg-white border border-slate-200 rounded-xl text-slate-800 shadow-sm"
                   >
                     <option value="">{t("Default Category (Mzdy)", "Predvolená kategória (Mzdy)", "Alapértelmezett kategória")}</option>
                     {financialCategories
@@ -709,10 +709,10 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                 <FileText className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-sm font-heading font-bold text-slate-900">
+                <h3 className="text-body font-heading font-bold text-slate-900">
                   {t("Internal Notes & Observations", "Interné poznámky a záznamy", "Belső feljegyzések és megjegyzések")}
                 </h3>
-                <p className="text-[11px] text-slate-400">
+                <p className="text-caption text-slate-400">
                   {t("Hardware handed over, probation details, or private HR memos", "Odovzdaný hardvér, skúšobná lehota alebo interné HR poznámky", "Kiadott eszközök, próbaidő vagy egyéb belső feljegyzések")}
                 </p>
               </div>
@@ -723,13 +723,13 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
               placeholder={t("e.g. MacBook Pro M3 handed over on 2026-02-01. Probation ends on 2026-05-01.", "napr. Odovzdaný služobný notebook MacBook M3, skúšobná doba do 01.05.2026.", "pl. Céges laptop átadva, próbaidő vége: 2026.05.01.")}
-              className="w-full px-4 py-3 text-sm bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm"
+              className="w-full px-4 py-3 text-body bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm"
             />
           </div>
         </div>
 
         {/* RIGHT COLUMN: Vacation Quotas, Toggl Track & Contracts (5 cols) */}
-        <div className="lg:col-span-5 space-y-6">
+        <div className="ws-lg:col-span-5 space-y-6">
           {/* Card 5: Vacation & Leave Allowances */}
           <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 space-y-4">
             <div className="flex items-center gap-3 pb-3 border-b border-slate-200/60">
@@ -738,14 +738,14 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
               </div>
               <div className="flex-1">
                 <div className="flex items-center justify-between">
-                  <h3 className="text-sm font-heading font-bold text-slate-900">
+                  <h3 className="text-body font-heading font-bold text-slate-900">
                     {t("Vacation Quotas", "Ročný nárok na voľno", "Szabadságkeret")}
                   </h3>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 bg-slate-100 px-2 py-0.5 rounded-lg">
+                  <span className="type-overline text-slate-400 bg-slate-100 px-2 py-0.5 rounded-lg">
                     {t("Days / Year", "Dni / Rok", "Nap / Év")}
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-400">
+                <p className="text-caption text-slate-400">
                   {t("Annual allowance limits per absence category", "Limity voľna pre jednotlivé kategórie absencie", "Éves keret kategóriánként")}
                 </p>
               </div>
@@ -762,7 +762,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                   ]
               ).map((vt) => (
                 <div key={vt.id} className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/80">
-                  <span className="block text-xs font-semibold text-slate-700 truncate mb-1.5" title={vt.name}>
+                  <span className="block text-ui font-semibold text-slate-700 truncate mb-1.5" title={vt.name}>
                     {vt.name}
                   </span>
                   <div className="flex items-center gap-2">
@@ -777,9 +777,9 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                           [vt.id]: parseFloat(e.target.value) || 0
                         })
                       }
-                      className="w-full px-3 py-1.5 text-sm bg-white border border-slate-200 rounded-xl text-slate-900 font-mono font-bold text-center focus:outline-none focus:ring-1 focus:ring-[#c29b62] shadow-sm"
+                      className="w-full px-3 py-1.5 text-body bg-white border border-slate-200 rounded-xl text-slate-900 font-mono font-bold text-center focus:outline-none focus:ring-1 focus:ring-[#c29b62] shadow-sm"
                     />
-                    <span className="text-xs font-bold text-slate-400">
+                    <span className="text-ui font-bold text-slate-400">
                       {t("d", "d", "n")}
                     </span>
                   </div>
@@ -795,10 +795,10 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                 <Clock className="w-4 h-4" />
               </div>
               <div>
-                <h3 className="text-sm font-heading font-bold text-slate-900">
+                <h3 className="text-body font-heading font-bold text-slate-900">
                   {t("Toggl Track User Mapping", "Prepojenie na Toggl Track", "Toggl fiók összerendelése")}
                 </h3>
-                <p className="text-[11px] text-slate-400">
+                <p className="text-caption text-slate-400">
                   {t("Sync live worked hours and projects for this employee", "Zobrazovanie odpracovaných hodín a projektov", "Munkaórák és projektek szinkronizálása")}
                 </p>
               </div>
@@ -806,13 +806,13 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
 
             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-3">
               {loadingTogglUsers ? (
-                <div className="flex items-center gap-2.5 text-xs text-slate-500 py-2">
+                <div className="flex items-center gap-2.5 text-ui text-slate-500 py-2">
                   <Loader2 className="w-4 h-4 animate-spin text-[#c29b62]" />
                   <span>{t("Loading workspace users from Toggl...", "Načítavam používateľov z Toggl...", "Felhasználók betöltése a Toggl-ből...")}</span>
                 </div>
               ) : togglUsers.length > 0 ? (
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                  <label className="block text-ui font-bold text-slate-600 mb-1.5">
                     {t("Select Toggl Workspace User", "Vyberte používateľa z Toggl", "Válasszon Toggl felhasználót")}
                   </label>
                   <select
@@ -823,7 +823,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                       const found = togglUsers.find((u) => String(u.id) === selectedId);
                       setTimeTrackingUserName(found ? found.name || found.email : "");
                     }}
-                    className="w-full px-4 py-2.5 text-sm bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm font-medium"
+                    className="w-full px-4 py-2.5 text-body bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm font-medium"
                   >
                     <option value="">{t("-- Not mapped / Unlinked --", "-- Bez prepojenia na Toggl --", "-- Nincs összerendelve --")}</option>
                     {togglUsers.map((u) => (
@@ -835,7 +835,7 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                 </div>
               ) : (
                 <div className="space-y-2">
-                  <div className="text-xs text-slate-500">
+                  <div className="text-ui text-slate-500">
                     {hasTogglKey
                       ? t(
                           "Manual user mapping (or workspace users not loaded):",
@@ -853,20 +853,20 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                     value={timeTrackingUserId}
                     onChange={(e) => setTimeTrackingUserId(e.target.value)}
                     placeholder={t("Toggl User ID (e.g. 10245089)", "Toggl User ID (napr. 10245089)", "Toggl User ID")}
-                    className="w-full px-3 py-2 text-xs bg-white border border-slate-200 rounded-xl text-slate-900 font-mono shadow-sm"
+                    className="w-full px-3 py-2 text-ui bg-white border border-slate-200 rounded-xl text-slate-900 font-mono shadow-sm"
                   />
                 </div>
               )}
 
               {togglFetchError && (
-                <div className="p-2.5 rounded-xl bg-red-500/10 text-red-600 text-xs flex items-center gap-2">
+                <div className="p-2.5 rounded-xl bg-red-500/10 text-red-600 text-ui flex items-center gap-2">
                   <AlertCircle className="w-4 h-4 shrink-0" />
                   <span>{togglFetchError}</span>
                 </div>
               )}
 
               {timeTrackingUserId && (
-                <div className="flex items-center gap-2 p-2 px-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-700 font-semibold">
+                <div className="flex items-center gap-2 p-2 px-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-ui text-emerald-700 font-semibold">
                   <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" />
                   <span>
                     {t(
@@ -888,16 +888,16 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                   <FileText className="w-4 h-4" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-heading font-bold text-slate-900">
+                  <h3 className="text-body font-heading font-bold text-slate-900">
                     {t("Contracts & Documents", "Zmluvy a dokumenty", "Szerződések és iratok")}
                   </h3>
-                  <p className="text-[11px] text-slate-400">
+                  <p className="text-caption text-slate-400">
                     {t("Employment contracts, NDAs, certificates", "Pracovné zmluvy, NDA, certifikáty", "Munkaszerződések, titoktartási nyilatkozatok")}
                   </p>
                 </div>
               </div>
 
-              <label className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-heading font-bold rounded-xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white hover:shadow-md cursor-pointer shadow-sm transition">
+              <label className="flex items-center gap-1.5 px-3 py-1.5 text-ui font-heading font-bold rounded-xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white hover:shadow-md cursor-pointer shadow-sm transition">
                 {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
                 <span>
                   {isUploading
@@ -915,14 +915,14 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
             </div>
 
             {uploadError && (
-              <div className="p-3 rounded-2xl bg-red-500/10 text-red-600 text-xs flex items-center gap-2">
+              <div className="p-3 rounded-2xl bg-red-500/10 text-red-600 text-ui flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{uploadError}</span>
               </div>
             )}
 
             {files.length === 0 ? (
-              <div className="p-6 text-center border-2 border-dashed border-slate-200 rounded-2xl text-xs text-slate-400">
+              <div className="p-6 text-center border-2 border-dashed border-slate-200 rounded-2xl text-ui text-slate-400">
                 <FileText className="w-8 h-8 mx-auto text-slate-300 mb-2" />
                 <span>
                   {t(
@@ -944,8 +944,8 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                         <FileText className="w-4 h-4" />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-xs font-bold text-slate-900 truncate">{file.name}</p>
-                        <p className="text-[10px] text-slate-400">
+                        <p className="text-ui font-bold text-slate-900 truncate">{file.name}</p>
+                        <p className="text-micro text-slate-400">
                           {file.size ? `${(file.size / 1024).toFixed(1)} KB` : ""} •{" "}
                           {file.uploadedAt ? new Date(file.uploadedAt).toLocaleDateString() : ""}
                         </p>
@@ -979,25 +979,25 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
         </div>
 
         {/* BOTTOM FIXED / STICKY ACTION BAR */}
-        <div className="lg:col-span-12">
+        <div className="ws-lg:col-span-12">
           <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-4 px-6 flex items-center justify-between gap-4">
             <button
               type="button"
               onClick={onCancel}
-              className="px-4 py-2 text-xs font-heading font-bold text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+              className="px-4 py-2 text-ui font-heading font-bold text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition cursor-pointer"
             >
               {t("Cancel", "Zrušiť", "Mégse")}
             </button>
 
             <div className="flex items-center gap-3">
-              <span className="text-[11px] text-slate-400 hidden sm:inline">
+              <span className="text-caption text-slate-400 hidden ws-sm:inline">
                 {t("Press Ctrl+Enter to save", "Uložte stlačením Ctrl+Enter", "Mentés: Ctrl+Enter")}
               </span>
               <button
                 type="button"
                 onClick={() => handleSubmit()}
                 disabled={isSavedRecently}
-                className="flex items-center gap-2 px-6 py-2.5 rounded-2xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white font-heading font-bold text-xs uppercase tracking-wider shadow-lg shadow-[#c29b62]/25 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition cursor-pointer"
+                className="flex items-center gap-2 px-6 py-2.5 rounded-2xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white font-heading font-bold text-ui shadow-lg shadow-[#c29b62]/25 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition cursor-pointer"
               >
                 {isSavedRecently ? (
                   <>

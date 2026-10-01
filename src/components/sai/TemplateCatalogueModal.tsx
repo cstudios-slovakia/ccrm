@@ -91,14 +91,14 @@ export const TemplateCatalogueModal: React.FC<TemplateCatalogueModalProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-bold text-slate-900">
+                <h2 className="text-title font-bold text-slate-900">
                   {t('Strategic Template & Scenario Catalogue', 'Katalóg strategických šablón & scenárov', 'Stratégiai sablon- és forgatókönyv-katalógus')}
                 </h2>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-purple-100 text-purple-800 border border-purple-200">
+                <span className="px-2 py-0.5 rounded-full type-overline bg-purple-100 text-purple-800 border border-purple-200">
                   MiroFish (105)
                 </span>
               </div>
-              <p className="text-xs text-slate-500 mt-0.5">
+              <p className="text-ui text-slate-500 mt-0.5">
                 {t(
                   'Choose from 105 verified predictive simulation templates for market entry, pricing, competitors, and customers. Selecting one will auto-fill the rehearsal setup.',
                   'Vyberte si zo 105 overených prediktívnych šablón trhu, cenotvorby, konkurentov a zákazníkov. Kliknutím sa okamžite vyplnia polia simulácie.',
@@ -133,7 +133,7 @@ export const TemplateCatalogueModal: React.FC<TemplateCatalogueModalProps> = ({
                   'Hľadať šablónu podľa názvu, hypotézy, námietok...',
                   'Keresés 105 sablon, hipotézis vagy címke között...'
                 )}
-                className="w-full pl-9 pr-8 py-2.5 rounded-xl border border-slate-200 text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100 bg-slate-50/50"
+                className="w-full pl-9 pr-8 py-2.5 rounded-xl border border-slate-200 text-ui text-slate-900 placeholder:text-slate-400 focus:outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-100 bg-slate-50/50"
               />
               {searchQuery && (
                 <button
@@ -147,7 +147,7 @@ export const TemplateCatalogueModal: React.FC<TemplateCatalogueModalProps> = ({
             </div>
 
             {/* Quick Result Counter */}
-            <div className="text-xs text-slate-500 font-medium">
+            <div className="text-ui text-slate-500 font-medium">
               <span>
                 {t('Showing', 'Nájdených', 'Találat:')} <strong>{filteredTemplates.length}</strong> {t('of 105 templates', 'z 105 šablón', '/ 105 sablon')}
               </span>
@@ -167,7 +167,7 @@ export const TemplateCatalogueModal: React.FC<TemplateCatalogueModalProps> = ({
                     setSelectedCategory(cat.id);
                     setSelectedTag(null);
                   }}
-                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer border ${
+                  className={`px-3 py-1.5 rounded-xl text-ui font-semibold whitespace-nowrap transition cursor-pointer border ${
                     active
                       ? 'bg-purple-600 text-white border-purple-600 shadow-sm'
                       : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200'
@@ -181,7 +181,7 @@ export const TemplateCatalogueModal: React.FC<TemplateCatalogueModalProps> = ({
 
           {/* Secondary Tag Pills */}
           <div className="flex items-center gap-1.5 overflow-x-auto pt-1 pb-1">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 mr-1 flex items-center gap-1">
+            <span className="type-overline text-slate-400 mr-1 flex items-center gap-1">
               <Tag className="w-3 h-3" />
               {t('Tags:', 'Filtre:', 'Címkék:')}
             </span>
@@ -192,7 +192,7 @@ export const TemplateCatalogueModal: React.FC<TemplateCatalogueModalProps> = ({
                   key={tag}
                   type="button"
                   onClick={() => setSelectedTag(active ? null : tag)}
-                  className={`px-2.5 py-0.5 rounded-full text-[11px] font-medium transition cursor-pointer border ${
+                  className={`px-2.5 py-0.5 rounded-full text-caption font-medium transition cursor-pointer border ${
                     active
                       ? 'bg-slate-800 text-white border-slate-800'
                       : 'bg-white hover:bg-slate-100 text-slate-600 border-slate-200'
@@ -206,7 +206,7 @@ export const TemplateCatalogueModal: React.FC<TemplateCatalogueModalProps> = ({
               <button
                 type="button"
                 onClick={() => setSelectedTag(null)}
-                className="text-[11px] text-purple-600 hover:underline font-semibold ml-2"
+                className="text-caption text-purple-600 hover:underline font-semibold ml-2"
               >
                 {t('Clear tag', 'Zrušiť filter', 'Címke törlése')}
               </button>
@@ -221,7 +221,7 @@ export const TemplateCatalogueModal: React.FC<TemplateCatalogueModalProps> = ({
               <div className="w-12 h-12 rounded-2xl bg-slate-100 text-slate-400 mx-auto flex items-center justify-center">
                 <Search className="w-6 h-6" />
               </div>
-              <p className="text-sm font-semibold text-slate-700">
+              <p className="text-body font-semibold text-slate-700">
                 {t('No templates match your search criteria', 'Žiadna šablóna nezodpovedá hľadaniu', 'Nincs a keresési feltételeknek megfelelő sablon')}
               </p>
               <button
@@ -231,7 +231,7 @@ export const TemplateCatalogueModal: React.FC<TemplateCatalogueModalProps> = ({
                   setSelectedCategory('all');
                   setSelectedTag(null);
                 }}
-                className="px-4 py-2 rounded-xl bg-purple-50 text-purple-700 text-xs font-bold hover:bg-purple-100 transition"
+                className="px-4 py-2 rounded-xl bg-purple-50 text-purple-700 text-ui font-bold hover:bg-purple-100 transition"
               >
                 {t('Reset filters', 'Resetovať filtre', 'Szűrők visszaállítása')}
               </button>
@@ -254,38 +254,38 @@ export const TemplateCatalogueModal: React.FC<TemplateCatalogueModalProps> = ({
                     <div className="space-y-2.5">
                       {/* Top Badges */}
                       <div className="flex items-center justify-between gap-2">
-                        <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider border ${getCategoryColor(tmpl.category)}`}>
+                        <span className={`px-2.5 py-0.5 rounded-full type-overline border ${getCategoryColor(tmpl.category)}`}>
                           {tmpl.tags[0] || tmpl.category}
                         </span>
-                        <span className="text-[10px] text-slate-400 font-mono">
+                        <span className="text-micro text-slate-400 font-mono">
                           MiroFish
                         </span>
                       </div>
 
                       {/* Title */}
-                      <h3 className="text-sm font-bold text-slate-900 group-hover:text-purple-700 transition leading-snug">
+                      <h3 className="text-body font-bold text-slate-900 group-hover:text-purple-700 transition leading-snug">
                         {title}
                       </h3>
 
                       {/* Description */}
-                      <p className="text-xs text-slate-600 leading-relaxed line-clamp-2">
+                      <p className="text-ui text-slate-600 leading-relaxed line-clamp-2">
                         {desc}
                       </p>
 
                       {/* Hypothesis preview */}
-                      <div className="p-2.5 rounded-xl bg-purple-50/60 border border-purple-100/80 text-[11px] text-purple-900/90 leading-snug line-clamp-2 italic">
+                      <div className="p-2.5 rounded-xl bg-purple-50/60 border border-purple-100/80 text-caption text-purple-900/90 leading-snug line-clamp-2 italic">
                         &ldquo;{hyp}&rdquo;
                       </div>
                     </div>
 
                     {/* Bottom Action Footer */}
                     <div className="pt-3.5 mt-3 border-t border-slate-100 flex items-center justify-between">
-                      <div className="flex items-center gap-1 text-[10px] font-medium text-slate-400">
+                      <div className="flex items-center gap-1 text-micro font-medium text-slate-400">
                         <Database className="w-3 h-3 text-slate-400" />
                         <span>{tmpl.recommendedSources.length} {t('CRM sources', 'CRM zdrojov', 'CRM adatforrás')}</span>
                       </div>
 
-                      <div className="flex items-center gap-1 text-xs font-bold text-purple-600 group-hover:text-purple-700 transition">
+                      <div className="flex items-center gap-1 text-ui font-bold text-purple-600 group-hover:text-purple-700 transition">
                         <span>{t('Use Template', 'Použiť šablónu', 'Sablon használata')}</span>
                         <ArrowRight className="w-3.5 h-3.5 group-hover:translate-x-1 transition" />
                       </div>
@@ -298,7 +298,7 @@ export const TemplateCatalogueModal: React.FC<TemplateCatalogueModalProps> = ({
         </div>
 
         {/* Modal Footer */}
-        <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/70 flex items-center justify-between text-xs text-slate-500">
+        <div className="px-6 py-4 border-t border-slate-100 bg-slate-50/70 flex items-center justify-between text-ui text-slate-500">
           <span>
             {t(
               'Curated from MiroFish Use Cases connected with real CRM leads & client context.',

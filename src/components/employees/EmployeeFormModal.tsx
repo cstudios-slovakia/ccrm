@@ -291,12 +291,12 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
               <User className="w-5 h-5" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-900">
+              <h2 className="text-title font-bold text-slate-900">
                 {isEditing
                   ? t("Edit Employee Profile", "Úprava profilu zamestnanca", "Alkalmazotti profil szerkesztése")
                   : t("Add New Employee", "Nový zamestnanec", "Új alkalmazott")}
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-ui text-slate-500">
                 {t(
                   "Manage personal data, compensation rate, time tracking & contract documents",
                   "Osobné údaje, mzda, meranie času a pracovné zmluvy",
@@ -317,14 +317,14 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
         <form onSubmit={handleSubmit} className="flex-1 overflow-y-auto p-6 space-y-6">
           {/* SECTION 1: Personal & Identification */}
           <div className="space-y-4">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-[#b58b4c] dark:text-[#d4af7a] flex items-center gap-2">
+            <h3 className="text-ui font-bold text-[#b58b4c] dark:text-[#d4af7a] flex items-center gap-2">
               <User className="w-4 h-4" />
               {t("Personal & Contact Information", "Osobné a kontaktné údaje", "Személyes és elérhetőségi adatok")}
             </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-ui font-medium text-slate-700 dark:text-slate-300 mb-1">
                   {t("Full Name *", "Meno a priezvisko *", "Teljes név *")}
                 </label>
                 <input
@@ -333,12 +333,12 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="e.g. Ján Novák"
-                  className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                  className="w-full px-3 py-2 text-body bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-ui font-medium text-slate-700 dark:text-slate-300 mb-1">
                   {t("Personal ID / PIN (Rodné číslo)", "Rodné číslo / IČO", "Személyi azonosító")}
                 </label>
                 <input
@@ -346,12 +346,12 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                   value={pin}
                   onChange={(e) => setPin(e.target.value)}
                   placeholder="e.g. 900101/1234"
-                  className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                  className="w-full px-3 py-2 text-body bg-white border border-slate-200 rounded-xl text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-ui font-medium text-slate-700 dark:text-slate-300 mb-1">
                   {t("Email Address", "Emailová adresa", "E-mail cím")}
                 </label>
                 <input
@@ -359,12 +359,12 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="jan.novak@example.com"
-                  className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                  className="w-full px-3 py-2 text-body bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-ui font-medium text-slate-700 dark:text-slate-300 mb-1">
                   {t("Phone Number", "Telefónne číslo", "Telefonszám")}
                 </label>
                 <input
@@ -372,7 +372,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
                   placeholder="+421 900 123 456"
-                  className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                  className="w-full px-3 py-2 text-body bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
                 />
               </div>
             </div>
@@ -380,14 +380,14 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
 
           {/* SECTION 2: Permanent Address */}
           <div className="space-y-4 pt-2 border-t border-slate-200 dark:border-slate-800">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-[#b58b4c] dark:text-[#d4af7a] flex items-center gap-2">
+            <h3 className="text-ui font-bold text-[#b58b4c] dark:text-[#d4af7a] flex items-center gap-2">
               <MapPin className="w-4 h-4" />
               {t("Permanent Address", "Trvalé bydlisko", "Állandó lakcím")}
             </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="md:col-span-2">
-                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+            <div className="grid grid-cols-1 ws-md:grid-cols-4 gap-4">
+              <div className="ws-md:col-span-2">
+                <label className="block text-ui font-medium text-slate-700 dark:text-slate-300 mb-1">
                   {t("Street & Number", "Ulica a číslo", "Utca és házszám")}
                 </label>
                 <input
@@ -395,12 +395,12 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                   value={addressStreet}
                   onChange={(e) => setAddressStreet(e.target.value)}
                   placeholder="Hlavná 123/4"
-                  className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                  className="w-full px-3 py-2 text-body bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-ui font-medium text-slate-700 dark:text-slate-300 mb-1">
                   {t("City", "Mesto / Obec", "Város")}
                 </label>
                 <input
@@ -408,12 +408,12 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                   value={addressCity}
                   onChange={(e) => setAddressCity(e.target.value)}
                   placeholder="Bratislava"
-                  className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                  className="w-full px-3 py-2 text-body bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-ui font-medium text-slate-700 dark:text-slate-300 mb-1">
                   {t("Postal / ZIP Code", "PSČ", "Irányítószám")}
                 </label>
                 <input
@@ -421,7 +421,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                   value={addressZip}
                   onChange={(e) => setAddressZip(e.target.value)}
                   placeholder="811 01"
-                  className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                  className="w-full px-3 py-2 text-body bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
                 />
               </div>
             </div>
@@ -429,20 +429,20 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
 
           {/* SECTION 3: Compensation & Due Day */}
           <div className="space-y-4 pt-2 border-t border-slate-200 dark:border-slate-800">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-[#b58b4c] dark:text-[#d4af7a] flex items-center gap-2">
+            <h3 className="text-ui font-bold text-[#b58b4c] dark:text-[#d4af7a] flex items-center gap-2">
               <Coins className="w-4 h-4" />
               {t("Salary & Compensation", "Mzda a odmeňovanie", "Bér és juttatások")}
             </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 ws-md:grid-cols-3 gap-4">
               <div>
-                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-ui font-medium text-slate-700 dark:text-slate-300 mb-1">
                   {t("Salary Type", "Typ mzdy", "Bér típusa")}
                 </label>
                 <select
                   value={salaryType}
                   onChange={(e) => setSalaryType(e.target.value as any)}
-                  className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                  className="w-full px-3 py-2 text-body bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
                 >
                   <option value="monthly">{t("Monthly (Mesačná)", "Mesačná", "Havi")}</option>
                   <option value="daily">{t("Daily (Denná)", "Denná", "Napi")}</option>
@@ -451,7 +451,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-ui font-medium text-slate-700 dark:text-slate-300 mb-1">
                   {t(`Rate / Amount (${systemCurrency})`, `Základná sadzba (${systemCurrency})`, `Alapbér összege (${systemCurrency})`)}
                 </label>
                 <input
@@ -460,12 +460,12 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                   min="0"
                   value={salaryAmount}
                   onChange={(e) => setSalaryAmount(parseFloat(e.target.value) || 0)}
-                  className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                  className="w-full px-3 py-2 text-body bg-white border border-slate-200 rounded-xl text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                <label className="block text-ui font-medium text-slate-700 dark:text-slate-300 mb-1">
                   {t(
                     `Salary Due Day (Default: ${settings.salaryDueDay ?? 15})`,
                     `Výplatný deň (Predvolený: ${settings.salaryDueDay ?? 15}.)`,
@@ -479,18 +479,18 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                   value={salaryDueDay}
                   onChange={(e) => setSalaryDueDay(e.target.value)}
                   placeholder={String(settings.salaryDueDay ?? 15)}
-                  className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                  className="w-full px-3 py-2 text-body bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
                 />
               </div>
             </div>
 
             {/* Financial auto-expense toggle & category */}
-            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3">
               <div>
-                <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 block">
+                <span className="text-ui font-semibold text-slate-800 dark:text-slate-200 block">
                   {t("Auto-sync payout to Financial Records", "Automaticky evidovať výplatu do nákladov", "Kifizetés automatikus rögzítése kiadásként")}
                 </span>
-                <span className="text-xs text-slate-500 dark:text-slate-400">
+                <span className="text-ui text-slate-500 dark:text-slate-400">
                   {t(
                     "Creates planned expense when unpaid, paid expense when settled",
                     "Vytvorí plánovaný výdavok pri nevyplatení, skutočný pri úhrade",
@@ -506,14 +506,14 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                     onChange={(e) => setAutoExpense(e.target.checked)}
                     className="sr-only peer"
                   />
-                  <div className="w-10 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#c29b62]"></div>
+                  <div className="w-10 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#c29b62]"></div>
                 </label>
 
                 {autoExpense && (
                   <select
                     value={expenseCategoryId}
                     onChange={(e) => setExpenseCategoryId(e.target.value)}
-                    className="px-2.5 py-1 text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
+                    className="px-2.5 py-1 text-ui bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-white"
                   >
                     <option value="">{t("Default Category", "Predvolená kategória", "Alapértelmezett kategória")}</option>
                     {financialCategories
@@ -531,20 +531,20 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
 
           {/* SECTION 4: Time Tracking Mapping (Toggl) */}
           <div className="space-y-4 pt-2 border-t border-slate-200 dark:border-slate-800">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-[#b58b4c] dark:text-[#d4af7a] flex items-center gap-2">
+            <h3 className="text-ui font-bold text-[#b58b4c] dark:text-[#d4af7a] flex items-center gap-2">
               <Clock className="w-4 h-4" />
               {t("Toggl Track User Mapping", "Prepojenie s používateľom v Toggl", "Toggl felhasználó összerendelés")}
             </h3>
 
             <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 space-y-3">
               {loadingTogglUsers ? (
-                <div className="flex items-center gap-2 text-xs text-slate-500 py-1">
+                <div className="flex items-center gap-2 text-ui text-slate-500 py-1">
                   <Loader2 className="w-4 h-4 animate-spin text-[#c29b62]" />
                   <span>{t("Loading workspace users from Toggl...", "Načítavam používateľov z Toggl...", "Felhasználók betöltése a Toggl-ből...")}</span>
                 </div>
               ) : togglUsers.length > 0 ? (
                 <div>
-                  <label className="block text-xs font-medium text-slate-700 dark:text-slate-300 mb-1">
+                  <label className="block text-ui font-medium text-slate-700 dark:text-slate-300 mb-1">
                     {t("Select Mapped Toggl User", "Vyberte používateľa v Toggl", "Válasszon Toggl felhasználót")}
                   </label>
                   <select
@@ -555,7 +555,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                       const found = togglUsers.find((u) => String(u.id) === selectedId);
                       setTimeTrackingUserName(found ? found.name || found.email : "");
                     }}
-                    className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                    className="w-full px-3 py-2 text-body bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
                   >
                     <option value="">{t("-- Not mapped / Unlinked --", "-- Bez prepojenia na Toggl --", "-- Nincs összerendelve --")}</option>
                     {togglUsers.map((u) => (
@@ -567,7 +567,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                 </div>
               ) : (
                 <div className="flex items-center justify-between">
-                  <div className="text-xs text-slate-500 dark:text-slate-400">
+                  <div className="text-ui text-slate-500 dark:text-slate-400">
                     {hasTogglKey
                       ? t(
                           "No users loaded or manual mapping:",
@@ -585,20 +585,20 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                     value={timeTrackingUserId}
                     onChange={(e) => setTimeTrackingUserId(e.target.value)}
                     placeholder={t("Toggl User ID (manual)", "Toggl User ID (manuálne)", "Toggl User ID (kézi)")}
-                    className="w-48 px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg text-slate-900 font-mono"
+                    className="w-48 px-3 py-1.5 text-ui bg-white border border-slate-200 rounded-lg text-slate-900 font-mono"
                   />
                 </div>
               )}
 
               {togglFetchError && (
-                <div className="p-2 rounded-lg bg-red-50 text-red-600 text-xs flex items-center gap-1.5">
+                <div className="p-2 rounded-lg bg-red-50 text-red-600 text-ui flex items-center gap-1.5">
                   <AlertCircle className="w-3.5 h-3.5 shrink-0" />
                   <span>{togglFetchError}</span>
                 </div>
               )}
 
               {timeTrackingUserId && (
-                <div className="flex items-center gap-1.5 text-xs text-emerald-600 font-medium">
+                <div className="flex items-center gap-1.5 text-ui text-emerald-600 font-medium">
                   <CheckCircle2 className="w-3.5 h-3.5" />
                   <span>
                     {t(
@@ -614,12 +614,12 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
 
           {/* SECTION 5: Vacation & Leave Allowances */}
           <div className="space-y-4 pt-2 border-t border-slate-200">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-[#b58b4c] dark:text-[#d4af7a] flex items-center gap-2">
+            <h3 className="text-ui font-bold text-[#b58b4c] dark:text-[#d4af7a] flex items-center gap-2">
               <Calendar className="w-4 h-4" />
               {t("Vacation Allowances (Days / Year)", "Ročný nárok na voľno (Dni / Rok)", "Szabadságkeret (Nap / Év)")}
             </h3>
 
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 ws-sm:grid-cols-4 gap-3">
               {(settings.vacationTypes && settings.vacationTypes.length > 0
                 ? settings.vacationTypes
                 : [
@@ -630,7 +630,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                   ]
               ).map((vt) => (
                 <div key={vt.id} className="p-3 rounded-xl bg-slate-50 border border-slate-200">
-                  <span className="block text-xs font-medium text-slate-600 truncate mb-1">
+                  <span className="block text-ui font-medium text-slate-600 truncate mb-1">
                     {vt.name}
                   </span>
                   <div className="flex items-center gap-2">
@@ -645,9 +645,9 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                           [vt.id]: parseFloat(e.target.value) || 0
                         })
                       }
-                      className="w-full px-2.5 py-1.5 text-sm bg-white border border-slate-200 rounded-lg text-slate-900 font-mono text-center focus:outline-none focus:ring-1 focus:ring-[#c29b62]"
+                      className="w-full px-2.5 py-1.5 text-body bg-white border border-slate-200 rounded-lg text-slate-900 font-mono text-center focus:outline-none focus:ring-1 focus:ring-[#c29b62]"
                     />
-                    <span className="text-xs text-slate-400">{t("d", "d", "n")}</span>
+                    <span className="text-ui text-slate-400">{t("d", "d", "n")}</span>
                   </div>
                 </div>
               ))}
@@ -657,12 +657,12 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
           {/* SECTION 6: Contracts & File Attachments */}
           <div className="space-y-4 pt-2 border-t border-slate-200 dark:border-slate-800">
             <div className="flex items-center justify-between">
-              <h3 className="text-xs font-bold uppercase tracking-wider text-[#b58b4c] dark:text-[#d4af7a] flex items-center gap-2">
+              <h3 className="text-ui font-bold text-[#b58b4c] dark:text-[#d4af7a] flex items-center gap-2">
                 <FileText className="w-4 h-4" />
                 {t("Contracts & Uploaded Documents", "Zmluvy a dokumenty zamestnanca", "Szerződések és dokumentumok")}
               </h3>
 
-              <label className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg bg-[#c29b62] text-white hover:bg-[#b58b4c] cursor-pointer shadow-sm transition">
+              <label className="flex items-center gap-1.5 px-3 py-1.5 text-ui font-semibold rounded-lg bg-[#c29b62] text-white hover:bg-[#b58b4c] cursor-pointer shadow-sm transition">
                 {isUploading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Upload className="w-3.5 h-3.5" />}
                 <span>{isUploading ? t("Uploading...", "Nahrávam...", "Feltöltés...") : t("Upload Contract", "Nahrať zmluvu", "Szerződés feltöltése")}</span>
                 <input
@@ -676,14 +676,14 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
             </div>
 
             {uploadError && (
-              <div className="p-2.5 rounded-lg bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 text-xs flex items-center gap-2">
+              <div className="p-2.5 rounded-lg bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 text-ui flex items-center gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{uploadError}</span>
               </div>
             )}
 
             {files.length === 0 ? (
-              <div className="p-6 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-400">
+              <div className="p-6 text-center border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl text-ui text-slate-400">
                 {t("No contracts or files attached yet.", "Zatiaľ neboli nahraté žiadne zmluvy ani dokumenty.", "Még nincsenek csatolt dokumentumok.")}
               </div>
             ) : (
@@ -698,8 +698,8 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                         <FileText className="w-4 h-4" />
                       </div>
                       <div className="min-w-0">
-                        <p className="text-xs font-semibold text-slate-900 truncate">{file.name}</p>
-                        <p className="text-[10px] text-slate-400">
+                        <p className="text-ui font-semibold text-slate-900 truncate">{file.name}</p>
+                        <p className="text-micro text-slate-400">
                           {file.size ? `${(file.size / 1024).toFixed(1)} KB` : ""} •{" "}
                           {file.uploadedAt ? new Date(file.uploadedAt).toLocaleDateString() : ""}
                         </p>
@@ -734,7 +734,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
           {/* SECTION 7: Notes & Status */}
           <div className="space-y-4 pt-2 border-t border-slate-200">
             <div>
-              <label className="block text-xs font-medium text-slate-700 mb-1">
+              <label className="block text-ui font-medium text-slate-700 mb-1">
                 {t("Internal Notes & Observations", "Interné poznámky", "Belső feljegyzések")}
               </label>
               <textarea
@@ -742,12 +742,12 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder={t("Notes, qualifications, workstation details...", "Poznámky, kvalifikácia, pracovné miesto...", "Jegyzetek, képesítések, munkakör...")}
-                className="w-full px-3 py-2 text-sm bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
+                className="w-full px-3 py-2 text-body bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62]"
               />
             </div>
 
             <div className="flex items-center justify-between p-3 rounded-xl bg-slate-50 border border-slate-200">
-              <span className="text-xs font-semibold text-slate-800">
+              <span className="text-ui font-semibold text-slate-800">
                 {t("Active Employee Status", "Aktívny stav zamestnanca", "Aktív alkalmazotti státusz")}
               </span>
               <label className="relative inline-flex items-center cursor-pointer">
@@ -757,7 +757,7 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
                   onChange={(e) => setIsActive(e.target.checked)}
                   className="sr-only peer"
                 />
-                <div className="w-10 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
+                <div className="w-10 h-5 bg-slate-300 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-500"></div>
               </label>
             </div>
           </div>
@@ -768,14 +768,14 @@ export const EmployeeFormModal: React.FC<EmployeeFormModalProps> = ({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-200/60 rounded-xl transition"
+            className="px-4 py-2 text-body font-semibold text-slate-700 hover:bg-slate-200/60 rounded-xl transition"
           >
             {t("Cancel", "Zrušiť", "Mégse")}
           </button>
           <button
             type="button"
             onClick={handleSubmit}
-            className="px-5 py-2 text-sm font-semibold text-white bg-[#c29b62] hover:bg-[#b58b4c] rounded-xl shadow-md shadow-[#c29b62]/30 transition"
+            className="px-5 py-2 text-body font-semibold text-white bg-[#c29b62] hover:bg-[#b58b4c] rounded-xl shadow-md shadow-[#c29b62]/30 transition"
           >
             {isEditing ? t("Save Changes", "Uložiť zmeny", "Módosítások mentése") : t("Create Employee", "Vytvoriť zamestnanca", "Alkalmazott létrehozása")}
           </button>

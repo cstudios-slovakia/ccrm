@@ -61,11 +61,11 @@ export const AccessDeniedView: React.FC<AccessDeniedViewProps> = ({
           <ShieldOff className="h-8 w-8" />
         </div>
 
-        <h2 className="text-xl font-heading font-black uppercase tracking-tight text-slate-800">
+        <h2 className="text-title font-heading font-bold text-slate-800">
           {t("No access to this section", "K tejto sekcii nemáte prístup", "Nincs hozzáférése ehhez a szakaszhoz")}
         </h2>
 
-        <p className="mt-3 text-sm text-slate-500 font-medium leading-relaxed max-w-sm">
+        <p className="mt-3 text-body text-slate-500 font-medium leading-relaxed max-w-sm">
           {hasKnownRole
             ? t(
                 "An administrator can grant it in Settings → Roles & permissions.",
@@ -80,7 +80,7 @@ export const AccessDeniedView: React.FC<AccessDeniedViewProps> = ({
         </p>
 
         {!canGoSomewhere && (
-          <p className="mt-3 text-xs font-bold uppercase tracking-wider text-slate-400">
+          <p className="mt-3 text-ui font-bold text-slate-400">
             {t(
               "This account currently has no access to any module.",
               "Tento účet momentálne nemá prístup k žiadnemu modulu.",
@@ -94,7 +94,7 @@ export const AccessDeniedView: React.FC<AccessDeniedViewProps> = ({
             <button
               type="button"
               onClick={() => onNavigate(fallbackRoute)}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-black uppercase tracking-wider shadow-md shadow-indigo-600/20 transition-all active:scale-[0.98] cursor-pointer"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-ui font-bold shadow-md shadow-indigo-600/20 transition-all active:scale-[0.98] cursor-pointer"
             >
               {fallbackLabel
                 ? t(`Go to ${fallbackLabel}`, `Prejsť na ${fallbackLabel}`, `Ugrás: ${fallbackLabel}`)
@@ -106,7 +106,7 @@ export const AccessDeniedView: React.FC<AccessDeniedViewProps> = ({
             <button
               type="button"
               onClick={() => onNavigate("personal-settings")}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-xs font-black uppercase tracking-wider shadow-sm transition-all active:scale-[0.98] cursor-pointer"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white hover:bg-slate-50 border border-slate-200 text-slate-700 text-ui font-bold shadow-sm transition-all active:scale-[0.98] cursor-pointer"
             >
               <UserCog className="h-4 w-4 text-slate-400" />
               {t("Personal settings", "Osobné nastavenia", "Személyes beállítások")}
@@ -116,7 +116,7 @@ export const AccessDeniedView: React.FC<AccessDeniedViewProps> = ({
             <button
               type="button"
               onClick={onLogout}
-              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-slate-700 hover:text-rose-600 text-xs font-black uppercase tracking-wider shadow-sm transition-all active:scale-[0.98] cursor-pointer"
+              className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-white hover:bg-rose-50 border border-slate-200 hover:border-rose-200 text-slate-700 hover:text-rose-600 text-ui font-bold shadow-sm transition-all active:scale-[0.98] cursor-pointer"
             >
               <LogOut className="h-4 w-4" />
               {t("Log out", "Odhlásiť sa", "Kijelentkezés")}

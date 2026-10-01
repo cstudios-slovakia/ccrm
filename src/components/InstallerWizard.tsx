@@ -169,7 +169,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
       <div className="w-full max-w-2xl bg-white/70 border border-white/60 rounded-[32px] shadow-2xl shadow-indigo-100/30 backdrop-blur-xl p-6 md:p-10 relative z-10 text-slate-800 animate-in zoom-in duration-300">
         
         {/* Language selector in Header */}
-        <div className="absolute top-6 right-6 flex items-center gap-2 bg-slate-100/80 px-3 py-1.5 rounded-full border border-slate-200 text-[10px] font-black uppercase tracking-wider text-slate-600">
+        <div className="absolute top-6 right-6 flex items-center gap-2 bg-slate-100/80 px-3 py-1.5 rounded-full border border-slate-200 type-overline text-slate-600">
           <Languages className="h-3.5 w-3.5 text-indigo-500" />
           <button onClick={() => setLang("en")} className={`hover:text-indigo-600 ${lang === "en" ? "text-indigo-600 font-extrabold" : ""}`}>EN</button>
           <span>&bull;</span>
@@ -184,10 +184,10 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
             <Database className="h-7 w-7 text-white animate-bounce" />
           </div>
           <div>
-            <h2 className="text-2xl md:text-3xl font-heading font-black tracking-tight uppercase bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-600">
+            <h2 className="type-page-title bg-clip-text text-transparent bg-gradient-to-r from-indigo-600 via-indigo-700 to-purple-600">
               {t[lang].title}
             </h2>
-            <p className="text-[10px] text-slate-500 uppercase tracking-widest font-black mt-1.5">
+            <p className="type-overline text-slate-500 mt-1.5">
               {t[lang].requires}
             </p>
           </div>
@@ -202,10 +202,10 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
 
         {/* Error notification banner */}
         {error && (
-          <div className="flex items-start gap-3 p-4 rounded-2xl bg-rose-50 border border-rose-100 text-rose-800 text-xs font-semibold mb-6 animate-shake">
+          <div className="flex items-start gap-3 p-4 rounded-2xl bg-rose-50 border border-rose-100 text-rose-800 text-ui font-semibold mb-6 animate-shake">
             <AlertCircle className="h-5 w-5 text-rose-500 shrink-0 mt-0.5" />
             <div className="space-y-0.5">
-              <span className="font-extrabold uppercase text-[10px] tracking-wider block">{t[lang].error_title}</span>
+              <span className="type-overline block">{t[lang].error_title}</span>
               <span>{error}</span>
             </div>
           </div>
@@ -215,7 +215,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
         {isLoading && (
           <div className="absolute inset-0 bg-white/80 backdrop-blur-sm rounded-[32px] z-50 flex flex-col items-center justify-center space-y-4">
             <Loader2 className="h-10 w-10 text-indigo-600 animate-spin" />
-            <span className="text-[10px] font-black uppercase tracking-widest text-slate-500 animate-pulse">{t[lang].checking}</span>
+            <span className="type-overline text-slate-500 animate-pulse">{t[lang].checking}</span>
           </div>
         )}
 
@@ -226,7 +226,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
               
               {/* Host Address */}
               <div className="md:col-span-3 space-y-1.5 text-left">
-                <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider block pl-0.5">{t[lang].host}</label>
+                <label className="type-overline text-slate-500 block pl-0.5">{t[lang].host}</label>
                 <div className="relative">
                   <Server className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
                   <input
@@ -235,20 +235,20 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
                     value={host}
                     onChange={(e) => setHost(e.target.value)}
                     placeholder="localhost"
-                    className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white/80 border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400/70 placeholder:font-normal focus:outline-none focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold shadow-sm"
+                    className="w-full pl-11 pr-4 py-3 rounded-2xl bg-white/80 border border-slate-200 text-ui text-slate-800 placeholder:text-slate-400/70 placeholder:font-normal focus:outline-none focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold shadow-sm"
                   />
                 </div>
               </div>
 
               {/* Port Number */}
               <div className="space-y-1.5 text-left">
-                <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider block pl-0.5">{t[lang].port}</label>
+                <label className="type-overline text-slate-500 block pl-0.5">{t[lang].port}</label>
                 <input
                   type="text"
                   required
                   value={port}
                   onChange={(e) => setPort(e.target.value)}
-                  className="w-full px-4 py-3 rounded-2xl bg-white/80 border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400/70 placeholder:font-normal text-center focus:outline-none focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold shadow-sm"
+                  className="w-full px-4 py-3 rounded-2xl bg-white/80 border border-slate-200 text-ui text-slate-800 placeholder:text-slate-400/70 placeholder:font-normal text-center focus:outline-none focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold shadow-sm"
                 />
               </div>
 
@@ -256,14 +256,14 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
 
             {/* Database Name */}
             <div className="space-y-1.5 text-left">
-              <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider block pl-0.5">{t[lang].dbname}</label>
+              <label className="type-overline text-slate-500 block pl-0.5">{t[lang].dbname}</label>
               <input
                 type="text"
                 required
                 value={dbname}
                 onChange={(e) => setDbname(e.target.value)}
                 placeholder="ccrm"
-                className="w-full px-4 py-3 rounded-2xl bg-white/80 border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400/70 placeholder:font-normal focus:outline-none focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold shadow-sm"
+                className="w-full px-4 py-3 rounded-2xl bg-white/80 border border-slate-200 text-ui text-slate-800 placeholder:text-slate-400/70 placeholder:font-normal focus:outline-none focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold shadow-sm"
               />
             </div>
 
@@ -271,26 +271,26 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
               
               {/* User Login */}
               <div className="space-y-1.5 text-left">
-                <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider block pl-0.5">{t[lang].user}</label>
+                <label className="type-overline text-slate-500 block pl-0.5">{t[lang].user}</label>
                 <input
                   type="text"
                   required
                   value={user}
                   onChange={(e) => setUser(e.target.value)}
                   placeholder="ccrm_user"
-                  className="w-full px-4 py-3 rounded-2xl bg-white/80 border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400/70 placeholder:font-normal focus:outline-none focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold shadow-sm"
+                  className="w-full px-4 py-3 rounded-2xl bg-white/80 border border-slate-200 text-ui text-slate-800 placeholder:text-slate-400/70 placeholder:font-normal focus:outline-none focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold shadow-sm"
                 />
               </div>
 
               {/* Password */}
               <div className="space-y-1.5 text-left">
-                <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider block pl-0.5">{t[lang].pass}</label>
+                <label className="type-overline text-slate-500 block pl-0.5">{t[lang].pass}</label>
                 <div className="relative">
                   <Key className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400 z-10" />
                   <PasswordInput
                     value={pass}
                     onChange={(e) => setPass(e.target.value)}
-                    className="w-full pl-11 pr-11 py-3 rounded-2xl bg-white/80 border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400/70 placeholder:font-normal focus:outline-none focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold shadow-sm"
+                    className="w-full pl-11 pr-11 py-3 rounded-2xl bg-white/80 border border-slate-200 text-ui text-slate-800 placeholder:text-slate-400/70 placeholder:font-normal focus:outline-none focus:border-indigo-500 focus:bg-white focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold shadow-sm"
                   />
                 </div>
               </div>
@@ -301,7 +301,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
             <div className="pt-4 flex justify-end">
               <button
                 type="submit"
-                className="w-full sm:w-auto px-8 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-xs font-black uppercase tracking-wider transition-all duration-150 flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 active:scale-[0.99] hover:scale-[1.01] cursor-pointer shrink-0"
+                className="w-full sm:w-auto px-8 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-2xl text-ui font-bold transition-all duration-150 flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20 active:scale-[0.99] hover:scale-[1.01] cursor-pointer shrink-0"
               >
                 {t[lang].btnNext}
               </button>
@@ -331,10 +331,10 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
                     <Sparkles className="h-5 w-5" />
                   </div>
                   <div className="flex-1 space-y-1">
-                    <span className="font-heading font-black text-xs uppercase tracking-wide text-slate-800 group-hover:text-indigo-600 transition-colors">
+                    <span className="font-heading font-bold text-ui text-slate-800 group-hover:text-indigo-600 transition-colors">
                       {t[lang].type_demo}
                     </span>
-                    <p className="text-[10px] text-slate-500 leading-relaxed">
+                    <p className="text-micro text-slate-500 leading-relaxed">
                       {t[lang].type_demo_desc}
                     </p>
                   </div>
@@ -357,10 +357,10 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
                     <ShieldCheck className="h-5 w-5" />
                   </div>
                   <div className="flex-1 space-y-1">
-                    <span className="font-heading font-black text-xs uppercase tracking-wide text-slate-800 group-hover:text-indigo-600 transition-colors">
+                    <span className="font-heading font-bold text-ui text-slate-800 group-hover:text-indigo-600 transition-colors">
                       {t[lang].type_fresh}
                     </span>
-                    <p className="text-[10px] text-slate-500 leading-relaxed">
+                    <p className="text-micro text-slate-500 leading-relaxed">
                       {t[lang].type_fresh_desc}
                     </p>
                   </div>
@@ -370,7 +370,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
               {/* Administrator account (fresh install only) */}
               {installType === "fresh" && (
                 <div className="p-5 rounded-[24px] border border-slate-200 bg-slate-50/50 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
-                  <span className="font-heading font-black text-[9px] uppercase tracking-widest text-slate-500 flex items-center gap-2">
+                  <span className="font-heading type-overline text-slate-500 flex items-center gap-2">
                     <Key className="h-3.5 w-3.5 text-indigo-500" />
                     {lang === "sk" ? "Administrátorský účet" : lang === "hu" ? "Rendszergazdai fiók" : "Administrator account"}
                   </span>
@@ -380,23 +380,23 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
                       value={adminName}
                       onChange={(e) => setAdminName(e.target.value)}
                       placeholder={lang === "sk" ? "Meno" : lang === "hu" ? "Név" : "Name"}
-                      className="w-full px-4 py-3 rounded-2xl bg-white border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400/70 placeholder:font-normal focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold"
+                      className="w-full px-4 py-3 rounded-2xl bg-white border border-slate-200 text-ui text-slate-800 placeholder:text-slate-400/70 placeholder:font-normal focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold"
                     />
                     <input
                       type="email"
                       value={adminEmail}
                       onChange={(e) => setAdminEmail(e.target.value)}
                       placeholder={lang === "sk" ? "E-mail (prihlásenie)" : lang === "hu" ? "E-mail (belépés)" : "Email (login)"}
-                      className="w-full px-4 py-3 rounded-2xl bg-white border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400/70 placeholder:font-normal focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold"
+                      className="w-full px-4 py-3 rounded-2xl bg-white border border-slate-200 text-ui text-slate-800 placeholder:text-slate-400/70 placeholder:font-normal focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold"
                     />
                   </div>
                   <PasswordInput
                     value={adminPassword}
                     onChange={(e) => setAdminPassword(e.target.value)}
                     placeholder={lang === "sk" ? "Heslo" : lang === "hu" ? "Jelszó" : "Password"}
-                    className="w-full pl-4 pr-11 py-3 rounded-2xl bg-white border border-slate-200 text-xs text-slate-800 placeholder:text-slate-400/70 placeholder:font-normal focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold"
+                    className="w-full pl-4 pr-11 py-3 rounded-2xl bg-white border border-slate-200 text-ui text-slate-800 placeholder:text-slate-400/70 placeholder:font-normal focus:outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 transition-all font-semibold"
                   />
-                  <p className="text-xs text-slate-400 leading-relaxed">
+                  <p className="text-ui text-slate-400 leading-relaxed">
                     {lang === "sk"
                       ? "Ak necháte polia prázdne, vytvorí sa účet admin@crm.com s náhodným heslom, ktoré sa zobrazí po inštalácii."
                       : lang === "hu"
@@ -412,14 +412,14 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
             <div className="flex gap-4 pt-4">
               <button
                 onClick={() => setStep(1)}
-                className="px-6 py-4 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-black uppercase tracking-wider rounded-2xl transition-all active:scale-[0.99] border border-slate-200 cursor-pointer"
+                className="px-6 py-4 bg-slate-100 hover:bg-slate-200 text-slate-700 text-ui font-bold rounded-2xl transition-all active:scale-[0.99] border border-slate-200 cursor-pointer"
               >
                 {t[lang].btnBack}
               </button>
               
               <button
                 onClick={handleRunSetup}
-                className="flex-1 py-4 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black uppercase tracking-wider rounded-2xl transition-all shadow-lg shadow-indigo-600/20 active:scale-[0.99] hover:scale-[1.01] cursor-pointer"
+                className="flex-1 py-4 bg-indigo-600 hover:bg-indigo-500 text-white text-ui font-bold rounded-2xl transition-all shadow-lg shadow-indigo-600/20 active:scale-[0.99] hover:scale-[1.01] cursor-pointer"
               >
                 {t[lang].btnInstall}
               </button>
@@ -436,24 +436,24 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
             </div>
             
             <div className="space-y-2">
-              <h3 className="text-xl font-heading font-black uppercase tracking-wider text-indigo-600">
+              <h3 className="text-title font-heading font-bold text-indigo-600">
                 {t[lang].success_title}
               </h3>
-              <p className="text-xs text-slate-500 max-w-sm font-semibold leading-normal">
+              <p className="text-ui text-slate-500 max-w-sm font-semibold leading-normal">
                 {t[lang].success_desc}
               </p>
             </div>
 
             {generatedCreds && (
               <div className="w-full max-w-sm p-4 rounded-2xl bg-amber-50 border border-amber-200 text-left space-y-2">
-                <span className="text-[10px] font-black uppercase tracking-widest text-amber-800 block">
+                <span className="type-overline text-amber-800 block">
                   {lang === "sk" ? "Uložte si tieto údaje" : lang === "hu" ? "Mentse el ezeket az adatokat" : "Save these credentials"}
                 </span>
-                <div className="text-xs font-mono text-slate-800 space-y-1 break-all bg-white/50 p-2.5 rounded-xl border border-slate-200/50">
+                <div className="text-ui font-mono text-slate-800 space-y-1 break-all bg-white/50 p-2.5 rounded-xl border border-slate-200/50">
                   <div>{generatedCreds.email}</div>
-                  <div className="font-black mt-1 text-slate-900">{generatedCreds.password}</div>
+                  <div className="font-bold mt-1 text-slate-900">{generatedCreds.password}</div>
                 </div>
-                <p className="text-[9px] text-amber-800 leading-relaxed font-semibold">
+                <p className="text-micro text-amber-800 leading-relaxed font-semibold">
                   {lang === "sk" ? "Heslo sa už nezobrazí. Po prihlásení si ho zmeňte." : lang === "hu" ? "A jelszó többé nem jelenik meg. Belépés után változtassa meg." : "This password will not be shown again. Change it after logging in."}
                 </p>
               </div>
@@ -461,7 +461,7 @@ export const InstallerWizard: React.FC<InstallerWizardProps> = ({ onInstallSucce
 
             <button
               onClick={onInstallSuccess}
-              className="px-8 py-4 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-black uppercase tracking-wider rounded-2xl transition-all shadow-lg shadow-indigo-600/25 active:scale-[0.99] hover:scale-[1.01] cursor-pointer"
+              className="px-8 py-4 bg-indigo-600 hover:bg-indigo-500 text-white text-ui font-bold rounded-2xl transition-all shadow-lg shadow-indigo-600/25 active:scale-[0.99] hover:scale-[1.01] cursor-pointer"
             >
               {t[lang].success_btn}
             </button>

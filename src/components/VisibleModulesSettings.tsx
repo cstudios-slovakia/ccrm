@@ -409,35 +409,35 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
   return (
     <div className="space-y-6 animate-fade-in">
       {/* Top Banner & Header Card */}
-      <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-6">
+      <div className="glass-panel p-6 ws-sm:p-8 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-6">
+        <div className="flex flex-col ws-md:flex-row ws-md:items-center justify-between gap-4 border-b border-slate-100 pb-6">
           <div className="flex items-start gap-4">
             <div className="p-3.5 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-700 text-white shadow-lg shadow-indigo-500/25 shrink-0">
               <Eye className="h-6 w-6" />
             </div>
             <div className="space-y-1">
               <div className="flex items-center gap-2.5 flex-wrap">
-                <h3 className="text-lg sm:text-xl font-heading font-extrabold text-slate-900 tracking-tight">
+                <h3 className="text-title font-heading font-extrabold text-slate-900 tracking-tight">
                   {getTranslation(language, "settings.modules.title")}
                 </h3>
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-200/80">
+                <span className="px-2.5 py-0.5 rounded-full type-overline bg-indigo-50 text-indigo-700 border border-indigo-200/80">
                   {getTranslation(language, "settings.modules.admin_badge")}
                 </span>
               </div>
-              <p className="text-xs sm:text-sm text-slate-500 font-medium max-w-2xl leading-relaxed">
+              <p className="text-ui text-slate-500 font-medium max-w-2xl leading-relaxed">
                 {getTranslation(language, "settings.modules.subtitle")}
               </p>
             </div>
           </div>
 
           {/* Quick Counter Pills */}
-          <div className="flex items-center gap-2 self-start md:self-center shrink-0">
-            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200/80 text-emerald-800 text-xs font-bold">
+          <div className="flex items-center gap-2 self-start ws-md:self-center shrink-0">
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-50 border border-emerald-200/80 text-emerald-800 text-ui font-bold">
               <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
               <span>{activeCount} {getTranslation(language, "settings.modules.active_stats")}</span>
             </div>
             {hiddenCount > 0 && (
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200/80 text-amber-800 text-xs font-bold">
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-amber-50 border border-amber-200/80 text-amber-800 text-ui font-bold">
                 <EyeOff className="h-3.5 w-3.5 text-amber-600" />
                 <span>{hiddenCount} {getTranslation(language, "settings.modules.hidden_stats")}</span>
               </div>
@@ -446,7 +446,7 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
         </div>
 
         {/* Global Action Bar & Filters */}
-        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
+        <div className="flex flex-col ws-sm:flex-row items-stretch ws-sm:items-center justify-between gap-3 pt-1">
           {/* Search Input */}
           <div className="relative flex-1 max-w-md">
             <Search className="h-4 w-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -455,7 +455,7 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={getTranslation(language, "settings.modules.search_placeholder")}
-              className="w-full pl-10 pr-9 py-2 rounded-xl text-xs font-medium bg-slate-50/80 border border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+              className="w-full pl-10 pr-9 py-2 rounded-xl text-ui font-medium bg-slate-50/80 border border-slate-200 text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
             />
             {searchQuery && (
               <button
@@ -475,7 +475,7 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
                 type="button"
                 disabled={!canEdit}
                 onClick={handleEnableAll}
-                className="px-3.5 py-2 rounded-xl text-xs font-bold bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 hover:border-indigo-200 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-3.5 py-2 rounded-xl text-ui font-bold bg-slate-100 hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 border border-slate-200 hover:border-indigo-200 transition-all flex items-center gap-1.5 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <CheckCheck className="h-3.5 w-3.5 text-indigo-600" />
                 <span>{getTranslation(language, "settings.modules.enable_all")}</span>
@@ -489,7 +489,7 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
           <button
             type="button"
             onClick={() => setActiveCategoryFilter("all")}
-            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+            className={`px-3 py-1.5 rounded-xl text-ui font-bold transition-all cursor-pointer ${
               activeCategoryFilter === "all"
                 ? "bg-indigo-600 text-white shadow-sm shadow-indigo-600/30"
                 : "bg-slate-100 text-slate-600 hover:bg-slate-200"
@@ -506,7 +506,7 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
                 key={cat.id}
                 type="button"
                 onClick={() => setActiveCategoryFilter(cat.id)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
+                className={`px-3 py-1.5 rounded-xl text-ui font-bold transition-all cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
                   isSelected
                     ? "bg-indigo-600 text-white shadow-sm shadow-indigo-600/30"
                     : "bg-slate-100 text-slate-600 hover:bg-slate-200"
@@ -514,7 +514,7 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
               >
                 <span>{cat.title}</span>
                 <span
-                  className={`text-[10px] px-1.5 py-0.2 rounded-md ${
+                  className={`text-micro px-1.5 py-0.2 rounded-md ${
                     isSelected ? "bg-white/20 text-white" : "bg-slate-200 text-slate-600"
                   }`}
                 >
@@ -546,16 +546,16 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
               className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-4"
             >
               {/* Category Header */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
+              <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
                 <div className="flex items-center gap-2.5">
                   <div className={`p-2 rounded-xl border ${category.bgColor}`}>
                     <CategoryIcon className="h-4 w-4" />
                   </div>
                   <div>
-                    <h4 className="text-sm font-heading font-bold text-slate-900 uppercase tracking-wider">
+                    <h4 className="text-body font-heading font-bold text-slate-900">
                       {category.title}
                     </h4>
-                    <p className="text-[11px] text-slate-400 font-medium">
+                    <p className="text-caption text-slate-400 font-medium">
                       {catActiveCount} / {totalCatItems} {t("visible", "viditeľných", "látható")}
                     </p>
                   </div>
@@ -563,12 +563,12 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
 
                 {/* Section Batch Actions */}
                 {canEdit && (
-                  <div className="flex items-center gap-1 self-end sm:self-auto">
+                  <div className="flex items-center gap-1 self-end ws-sm:self-auto">
                     {catHiddenCount > 0 && (
                       <button
                         type="button"
                         onClick={() => handleToggleCategory(category.id, true)}
-                        className="px-2.5 py-1 rounded-lg text-[10.5px] font-bold text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+                        className="px-2.5 py-1 rounded-lg text-micro font-bold text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
                       >
                         {getTranslation(language, "settings.modules.show_category")}
                       </button>
@@ -577,7 +577,7 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
                       <button
                         type="button"
                         onClick={() => handleToggleCategory(category.id, false)}
-                        className="px-2.5 py-1 rounded-lg text-[10.5px] font-bold text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
+                        className="px-2.5 py-1 rounded-lg text-micro font-bold text-slate-500 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer"
                       >
                         {getTranslation(language, "settings.modules.hide_category")}
                       </button>
@@ -587,7 +587,7 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
               </div>
 
               {/* Module Cards Grid */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+              <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-3.5">
                 {itemsInCat.map((module) => {
                   const isVisible = !disabledModules.includes(module.id);
                   const ModIcon = module.icon;
@@ -618,7 +618,7 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
                         <div className="min-w-0 flex-1 space-y-0.5">
                           <div className="flex items-center gap-2 flex-wrap">
                             <span
-                              className={`text-xs sm:text-sm font-bold truncate ${
+                              className={`text-ui font-bold truncate ${
                                 isVisible ? "text-slate-900" : "text-slate-600 line-through decoration-slate-400"
                               }`}
                             >
@@ -626,7 +626,7 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
                             </span>
                             {module.badge && (
                               <span
-                                className={`px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${
+                                className={`px-1.5 py-0.5 rounded type-overline ${
                                   module.isCustom
                                     ? "bg-indigo-50 text-indigo-700 border border-indigo-200"
                                     : "bg-slate-100 text-slate-600 border border-slate-200"
@@ -636,13 +636,13 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
                               </span>
                             )}
                             {!isVisible && (
-                              <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
+                              <span className="px-1.5 py-0.5 rounded type-overline bg-amber-50 text-amber-700 border border-amber-200 flex items-center gap-1">
                                 <EyeOff className="h-2.5 w-2.5" />
                                 {getTranslation(language, "settings.modules.status.hidden")}
                               </span>
                             )}
                           </div>
-                          <p className="text-[11px] text-slate-500 truncate leading-tight">
+                          <p className="text-caption text-slate-500 truncate leading-tight">
                             {module.description}
                           </p>
                         </div>
@@ -687,7 +687,7 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
         {filteredModules.length === 0 && (
           <div className="glass-panel p-12 rounded-3xl border border-white/60 bg-white/95 shadow-glass text-center space-y-3">
             <Filter className="h-8 w-8 text-slate-300 mx-auto" />
-            <h4 className="text-sm font-bold text-slate-700">
+            <h4 className="text-body font-bold text-slate-700">
               {getTranslation(language, "settings.modules.no_results")}
             </h4>
             <button
@@ -696,7 +696,7 @@ export const VisibleModulesSettings: React.FC<VisibleModulesSettingsProps> = ({
                 setSearchQuery("");
                 setActiveCategoryFilter("all");
               }}
-              className="px-4 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition-colors cursor-pointer"
+              className="px-4 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-ui font-bold transition-colors cursor-pointer"
             >
               {t("Clear filters", "Zrušiť filtre", "Szűrők törlése")}
             </button>

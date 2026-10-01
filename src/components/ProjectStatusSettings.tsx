@@ -204,12 +204,12 @@ export const ProjectStatusSettings: React.FC<ProjectStatusSettingsProps> = ({
 
   return (
     <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass text-left">
-      <h3 className="text-sm font-heading font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2 border-b border-slate-200 pb-3">
+      <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3">
         <Tag className="h-4.5 w-4.5 text-indigo-500" />
         {t("Project statuses", "Stavy projektov", "Projekt állapotok")}
       </h3>
 
-      <p className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
+      <p className="type-overline text-slate-400">
         {t(
           "Drag statuses up or down relative to the group dividers to reorder them and change their group. Click a status's colour dot to change its colour.",
           "Presunutím stavov nahor alebo nadol vzhľadom na oddeľovače skupín zmeníte ich poradie aj skupinu. Kliknutím na farebný bod zmeníte farbu stavu.",
@@ -221,12 +221,12 @@ export const ProjectStatusSettings: React.FC<ProjectStatusSettingsProps> = ({
         <table className="w-full text-left border-collapse">
           <thead>
             <tr className="bg-slate-50 border-b border-slate-200/60 select-none">
-              <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-12 text-center">{t("Drag", "Ťahať", "Húzás")}</th>
-              <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-44">{t("Colour", "Farba", "Szín")}</th>
-              <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest">{t("Status name", "Názov stavu", "Állapot neve")}</th>
-              <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-36">{t("Group", "Skupina", "Csoport")}</th>
-              <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-28 text-center">{t("Projects", "Projekty", "Projektek")}</th>
-              <th className="py-3 px-4 text-[10px] font-black text-slate-500 uppercase tracking-widest w-16 text-center">{t("Delete", "Zmazať", "Törlés")}</th>
+              <th className="py-3 px-4 type-overline text-slate-500 w-12 text-center">{t("Drag", "Ťahať", "Húzás")}</th>
+              <th className="py-3 px-4 type-overline text-slate-500 w-44">{t("Colour", "Farba", "Szín")}</th>
+              <th className="py-3 px-4 type-overline text-slate-500">{t("Status name", "Názov stavu", "Állapot neve")}</th>
+              <th className="py-3 px-4 type-overline text-slate-500 w-36">{t("Group", "Skupina", "Csoport")}</th>
+              <th className="py-3 px-4 type-overline text-slate-500 w-28 text-center">{t("Projects", "Projekty", "Projektek")}</th>
+              <th className="py-3 px-4 type-overline text-slate-500 w-16 text-center">{t("Delete", "Zmazať", "Törlés")}</th>
             </tr>
           </thead>
           <tbody>
@@ -260,8 +260,8 @@ export const ProjectStatusSettings: React.FC<ProjectStatusSettingsProps> = ({
                   >
                     <td colSpan={6} className="py-3 px-4 select-none">
                       <div className="flex items-center gap-2">
-                        <span className="text-[11px] text-slate-900 font-extrabold uppercase tracking-wide">{info.name}</span>
-                        <span className="text-[9px] text-slate-400 font-bold ml-1">{info.desc}</span>
+                        <span className="type-overline text-slate-900">{info.name}</span>
+                        <span className="text-micro text-slate-400 font-bold ml-1">{info.desc}</span>
                       </div>
                     </td>
                   </tr>
@@ -309,7 +309,7 @@ export const ProjectStatusSettings: React.FC<ProjectStatusSettingsProps> = ({
                       ) : (
                         <span className="h-3 w-3 rounded-full border border-slate-200 inline-block" style={{ backgroundColor: def.color }} />
                       )}
-                      <span className="text-[9px] font-black uppercase text-slate-400">{def.color}</span>
+                      <span className="type-overline text-slate-400">{def.color}</span>
                     </div>
                   </td>
 
@@ -321,7 +321,7 @@ export const ProjectStatusSettings: React.FC<ProjectStatusSettingsProps> = ({
                       renameTitle={t("Rename", "Premenovať", "Átnevezés")}
                     >
                       <span
-                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black uppercase border"
+                        className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-ui font-bold border"
                         style={{ backgroundColor: `${def.color}12`, color: def.color, borderColor: `${def.color}35` }}
                       >
                         {label}
@@ -330,13 +330,13 @@ export const ProjectStatusSettings: React.FC<ProjectStatusSettingsProps> = ({
                   </td>
 
                   <td className="py-3 px-4 align-middle select-none">
-                    <span className={`px-2.5 py-0.5 rounded-full text-[8px] font-black uppercase border tracking-widest ${info.chip}`}>
+                    <span className={`px-2.5 py-0.5 rounded-full type-overline border ${info.chip}`}>
                       {info.name}
                     </span>
                   </td>
 
                   <td className="py-3 px-4 text-center align-middle select-none">
-                    <span className={`text-xs font-black ${count ? "text-slate-700" : "text-slate-300"}`}>{count}</span>
+                    <span className={`text-ui font-bold ${count ? "text-slate-700" : "text-slate-300"}`}>{count}</span>
                   </td>
 
                   <td className="py-3 px-4 text-center align-middle">
@@ -351,7 +351,7 @@ export const ProjectStatusSettings: React.FC<ProjectStatusSettingsProps> = ({
                         <X className="h-3.5 w-3.5" />
                       </button>
                     ) : (
-                      <span className="text-[9px] text-slate-300 font-bold block uppercase select-none">{t("Locked", "Zamknuté", "Zárolt")}</span>
+                      <span className="type-overline text-slate-300 block select-none">{t("Locked", "Zamknuté", "Zárolt")}</span>
                     )}
                   </td>
                 </tr>
@@ -370,7 +370,7 @@ export const ProjectStatusSettings: React.FC<ProjectStatusSettingsProps> = ({
             onChange={(e) => setNewName(e.target.value)}
             placeholder={t("Add new project status...", "Pridať nový stav projektu...", "Új projekt állapot hozzáadása...")}
             aria-label={t("New project status", "Nový stav projektu", "Új projekt állapot")}
-            className="flex-1 min-w-[150px] px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-xs text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
+            className="flex-1 min-w-37.5 px-4 py-2.5 rounded-xl bg-white border border-slate-200 text-ui text-slate-800 font-bold focus:outline-none focus:border-indigo-500"
           />
           <div className="w-40">
             <CustomSelect
@@ -381,7 +381,7 @@ export const ProjectStatusSettings: React.FC<ProjectStatusSettingsProps> = ({
           </div>
           <button
             type="submit"
-            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-indigo-600/10 flex items-center gap-1 shrink-0 cursor-pointer active:scale-95"
+            className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-ui font-bold transition-all shadow-md shadow-indigo-600/10 flex items-center gap-1 shrink-0 cursor-pointer active:scale-95"
           >
             <Plus className="h-3.5 w-3.5" /> {t("Add status", "Pridať stav", "Állapot hozzáadása")}
           </button>

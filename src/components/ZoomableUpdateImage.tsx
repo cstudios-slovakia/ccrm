@@ -43,7 +43,7 @@ export const ZoomableUpdateImage: React.FC<ZoomableUpdateImageProps> = ({
     aria-label={`${openLabel}: ${alt}`}
   >
     <img src={src} alt={alt} className={`w-full object-contain ${imageClassName}`} />
-    <span className="pointer-events-none absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-full bg-slate-950/80 px-3 py-1.5 text-[10px] font-bold text-white opacity-0 shadow-lg backdrop-blur-sm transition-[opacity,transform] duration-200 ease-out translate-y-1 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100">
+    <span className="pointer-events-none absolute bottom-3 right-3 inline-flex items-center gap-1.5 rounded-full bg-slate-950/80 px-3 py-1.5 text-micro font-bold text-white opacity-0 shadow-lg backdrop-blur-sm transition-[opacity,transform] duration-200 ease-out translate-y-1 group-hover:translate-y-0 group-hover:opacity-100 group-focus-visible:translate-y-0 group-focus-visible:opacity-100">
       <ZoomIn className="h-3.5 w-3.5" aria-hidden="true" />
       {openLabel}
     </span>

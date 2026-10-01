@@ -29,7 +29,7 @@ export const TimelineAuthorBadge = ({
   const accent = color || "#64748b";
   return (
     <span
-      className={`inline-flex items-center gap-1 text-[8px] font-black uppercase px-2 py-0.5 rounded-full border tracking-wider shadow-sm text-white whitespace-nowrap transition-transform duration-200 hover:scale-105 ${className}`}
+      className={`inline-flex items-center gap-1 type-overline px-2 py-0.5 rounded-full border shadow-sm text-white whitespace-nowrap transition-transform duration-200 hover:scale-105 ${className}`}
       style={{ backgroundColor: accent, borderColor: accent }}
       title={author}
     >

@@ -63,19 +63,19 @@ export function CompanySuggestions({
             className="w-full px-4 py-3 hover:bg-slate-50 active:bg-slate-100 transition-colors cursor-pointer border-b border-slate-100 last:border-0 text-left"
           >
             <div className="flex items-center gap-2">
-              <span className="font-bold text-slate-800 text-[11px] truncate">{item.name}</span>
+              <span className="font-bold text-slate-800 text-caption truncate">{item.name}</span>
               {badge && (
-                <span className="shrink-0 text-[9px] font-black uppercase tracking-wider text-slate-500 bg-slate-100 border border-slate-200 rounded-full px-1.5 py-0.5">
+                <span className="shrink-0 type-overline text-slate-500 bg-slate-100 border border-slate-200 rounded-full px-1.5 py-0.5">
                   {badge}
                 </span>
               )}
               {!item.active && (
-                <span className="shrink-0 text-[9px] font-black uppercase tracking-wider text-rose-600 bg-rose-50 border border-rose-100 rounded-full px-1.5 py-0.5">
+                <span className="shrink-0 type-overline text-rose-600 bg-rose-50 border border-rose-100 rounded-full px-1.5 py-0.5">
                   {systemLanguage === "sk" ? "Zrušená" : systemLanguage === "hu" ? "Megszűnt" : "Dissolved"}
                 </span>
               )}
             </div>
-            <div className="text-[10px] text-slate-400 mt-0.5 truncate">{suggestionSubtitle(item)}</div>
+            <div className="text-micro text-slate-400 mt-0.5 truncate">{suggestionSubtitle(item)}</div>
           </button>
         );
       })}

@@ -260,19 +260,19 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-sm font-black tracking-tight text-white line-clamp-1 max-w-xs sm:max-w-sm md:max-w-md">
+              <h2 className="text-body font-bold tracking-tight text-white line-clamp-1 max-w-xs ws-sm:max-w-sm ws-md:max-w-md">
                 {title || t('SAI Autonomous Rehearsal', 'SAI Autonómna simulácia', 'SAI Autonóm szimuláció')}
               </h2>
-              <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border shrink-0 ${badgeStyle}`}>
+              <span className={`px-2 py-0.5 rounded-full type-overline border shrink-0 ${badgeStyle}`}>
                 {badgeText}
               </span>
             </div>
-            <p className="text-[11px] text-slate-400 line-clamp-1 flex items-center gap-1.5">
+            <p className="text-caption text-slate-400 line-clamp-1 flex items-center gap-1.5">
               <span>
                 {t(`Step ${currentStep} of 6:`, `Krok ${currentStep} zo 6:`, `${currentStep}. lépés a 6-ból:`)} {isPreparing && prepStepMessage ? prepStepMessage : stepMeta.title}
               </span>
               {simulatedHour !== undefined && isEngineRunning && (
-                <span className="text-amber-400/90 font-mono text-[10px] inline-flex items-center gap-1 ml-1 bg-slate-800/80 px-1.5 py-0.2 rounded border border-slate-700">
+                <span className="text-amber-400/90 font-mono text-micro inline-flex items-center gap-1 ml-1 bg-slate-800/80 px-1.5 py-0.2 rounded border border-slate-700">
                   <Clock className="w-3 h-3 text-amber-400 inline" />
                   {String(simulatedHour).padStart(2, '0')}:00 CET
                 </span>
@@ -299,7 +299,7 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
                 onClick={() => handleStepClick(s.id)}
                 disabled={!isClickable && !isActive}
                 title={`${s.title} — ${s.tagline}${isClickable ? t(' (Click to review)', ' (Kliknutím skontrolujete)', ' (Kattintson az ellenőrzéshez)') : ''}`}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 ${
+                className={`px-3 py-1.5 rounded-xl text-ui font-bold transition flex items-center gap-1.5 shrink-0 ${
                   isActive 
                     ? 'bg-gradient-to-r from-purple-600 to-emerald-500 text-white shadow-md' 
                     : isPassed
@@ -324,7 +324,7 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
             <button
               type="button"
               onClick={onStopSimulation}
-              className="px-3 py-1.5 rounded-xl text-xs font-bold text-rose-300 bg-rose-500/20 border border-rose-500/30 hover:bg-rose-500/30 transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+              className="px-3 py-1.5 rounded-xl text-ui font-bold text-rose-300 bg-rose-500/20 border border-rose-500/30 hover:bg-rose-500/30 transition flex items-center gap-1.5 cursor-pointer shadow-sm"
               title={t("Stop agent deliberation and synthesize early", "Zastaviť debatu agentov a vygenerovať záverečnú syntézu", "Ágensek vitájának leállítása és korai szintézis")}
             >
               <Pause className="w-3.5 h-3.5" />
@@ -337,10 +337,10 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
             <button
               type="button"
               onClick={onOpenQaDrawer}
-              className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+              className="px-3 py-1.5 rounded-xl text-ui font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 transition flex items-center gap-1.5 cursor-pointer shadow-sm"
             >
               <MessageSquare className="w-3.5 h-3.5 text-purple-400" />
-              <span className="hidden sm:inline">{t("Ask Analyst", "Spýtať sa analytika", "Kérdezze az elemzőt")}</span>
+              <span className="hidden ws-sm:inline">{t("Ask Analyst", "Spýtať sa analytika", "Kérdezze az elemzőt")}</span>
             </button>
           )}
 
@@ -349,10 +349,10 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
             <button
               type="button"
               onClick={onStartNewRehearsal}
-              className="px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-purple-600 hover:bg-purple-700 transition flex items-center gap-1.5 cursor-pointer shadow-sm"
+              className="px-3 py-1.5 rounded-xl text-ui font-bold text-white bg-purple-600 hover:bg-purple-700 transition flex items-center gap-1.5 cursor-pointer shadow-sm"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span className="hidden md:inline">{t("New Simulation", "Nová simulácia", "Új szimuláció")}</span>
+              <span className="hidden ws-md:inline">{t("New Simulation", "Nová simulácia", "Új szimuláció")}</span>
             </button>
           )}
 
@@ -375,7 +375,7 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div className="flex items-center gap-2">
                 <FileText className="w-5 h-5 text-purple-600" />
-                <h3 className="text-sm font-bold text-slate-900">
+                <h3 className="text-body font-bold text-slate-900">
                   {t("Simulation Hypothesis & Input Scenario", "Vstupné zadanie a hypotéza simulácie", "Bemeneti feladat és hipotézis")}
                 </h3>
               </div>
@@ -388,17 +388,17 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
               </button>
             </div>
 
-            <div className="space-y-3 text-xs">
+            <div className="space-y-3 text-ui">
               <div>
-                <span className="font-bold uppercase tracking-wider text-slate-400 text-[10px] block mb-1">
+                <span className="text-slate-400 type-overline block mb-1">
                   {t("Simulation Title", "Názov simulácie", "Szimuláció címe")}
                 </span>
-                <p className="font-bold text-slate-800 text-sm">{title}</p>
+                <p className="font-bold text-slate-800 text-body">{title}</p>
               </div>
 
               {hypothesis && (
                 <div>
-                  <span className="font-bold uppercase tracking-wider text-slate-400 text-[10px] block mb-1">
+                  <span className="text-slate-400 type-overline block mb-1">
                     {t("Strategic Hypothesis", "Strategická hypotéza", "Stratégiai hipotézis")}
                   </span>
                   <div className="p-3 bg-purple-50 text-purple-950 font-medium rounded-2xl border border-purple-100">
@@ -409,10 +409,10 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
 
               {seedDocument && (
                 <div>
-                  <span className="font-bold uppercase tracking-wider text-slate-400 text-[10px] block mb-1">
+                  <span className="text-slate-400 type-overline block mb-1">
                     {t("Briefing Document / Announcement", "Text zadania / oznámenia", "Zadási dokumentum / Bejelentés")}
                   </span>
-                  <div className="p-3 bg-slate-50 text-slate-700 font-mono text-[11px] rounded-2xl border border-slate-200 max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed">
+                  <div className="p-3 bg-slate-50 text-slate-700 font-mono text-caption rounded-2xl border border-slate-200 max-h-48 overflow-y-auto whitespace-pre-wrap leading-relaxed">
                     {seedDocument}
                   </div>
                 </div>
@@ -423,7 +423,7 @@ export const SimulationStepsBar: React.FC<SimulationStepsBarProps> = ({
               <button
                 type="button"
                 onClick={() => setShowScenarioModal(false)}
-                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-xs transition"
+                className="px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold text-ui transition"
               >
                 {t("Close", "Zavrieť", "Bezárás")}
               </button>

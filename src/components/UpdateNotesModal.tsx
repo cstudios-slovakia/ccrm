@@ -73,10 +73,10 @@ export const UpdateNotesModal: React.FC<UpdateNotesModalProps> = ({
               <Sparkles className="h-5 w-5" />
             </div>
             <div>
-              <h2 className="font-heading font-extrabold text-base text-slate-800 leading-tight">
+              <h2 className="font-heading font-extrabold text-title-sm text-slate-800 leading-tight">
                 {t("Product Updates", "Novinky v systéme", "Termékfrissítések")}
               </h2>
-              <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mt-1">
+              <p className="type-overline text-slate-400 mt-1">
                 {t("Learn about new features", "Dozvedieť sa o nových funkciách", "Ismerje meg az új funkciókat")}
               </p>
             </div>
@@ -94,14 +94,14 @@ export const UpdateNotesModal: React.FC<UpdateNotesModalProps> = ({
           <div className="flex items-center justify-between border-b border-slate-100 pb-4 mb-6">
             <div className="flex flex-col gap-1">
               <div className="flex items-center gap-2">
-                <span className="px-3 py-1 rounded-full bg-indigo-600 text-white font-black text-[10px] tracking-wider uppercase">
+                <span className="px-3 py-1 rounded-full bg-indigo-600 text-white type-overline">
                   v{activeUpdate.version}
                 </span>
-                <h3 className="font-heading font-extrabold text-lg text-slate-800">
+                <h3 className="font-heading font-extrabold text-title text-slate-800">
                   {activeUpdate.title}
                 </h3>
               </div>
-              <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-400 mt-1 select-none">
+              <div className="flex items-center gap-1 text-caption font-semibold text-slate-400 mt-1 select-none">
                 <Calendar className="h-3.5 w-3.5" />
                 <span>
                   {new Date(activeUpdate.postDate).toLocaleDateString(
@@ -120,7 +120,7 @@ export const UpdateNotesModal: React.FC<UpdateNotesModalProps> = ({
                 return (
                   <div 
                     key={idx}
-                    className="prose prose-slate max-w-none text-sm text-slate-600 leading-relaxed font-sans ck-content"
+                    className="prose prose-slate max-w-none text-body text-slate-600 leading-relaxed font-sans ck-content"
                     dangerouslySetInnerHTML={{ __html: block.text.html }}
                   />
                 );
@@ -137,7 +137,7 @@ export const UpdateNotesModal: React.FC<UpdateNotesModalProps> = ({
                       group={`update-${activeUpdate.id}`}
                       openLabel={t("Open full size", "Otvoriť v plnej veľkosti", "Megnyitás teljes méretben")}
                       className="border border-slate-200/80 shadow-md"
-                      imageClassName="h-auto max-h-[480px]"
+                      imageClassName="h-auto max-h-120"
                   />
                 );
               }
@@ -158,14 +158,14 @@ export const UpdateNotesModal: React.FC<UpdateNotesModalProps> = ({
                           caption={img.title}
                           group={`update-${activeUpdate.id}`}
                           openLabel={t("Open full size", "Otvoriť v plnej veľkosti", "Megnyitás teljes méretben")}
-                          imageClassName="h-auto max-h-[320px]"
+                          imageClassName="h-auto max-h-80"
                         />
                       </div>
                     )}
                     <div className="flex-1">
                       {block.text?.html && (
                         <div 
-                          className="prose prose-slate max-w-none text-sm text-slate-600 leading-relaxed font-sans ck-content"
+                          className="prose prose-slate max-w-none text-body text-slate-600 leading-relaxed font-sans ck-content"
                           dangerouslySetInnerHTML={{ __html: block.text.html }}
                         />
                       )}
@@ -181,7 +181,7 @@ export const UpdateNotesModal: React.FC<UpdateNotesModalProps> = ({
 
         {/* Pager / Footer */}
         <div className="p-5 border-t border-slate-100 bg-slate-50 flex items-center justify-between select-none shrink-0">
-          <div className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+          <div className="type-overline text-slate-400">
             {t(
               `Update ${updates.length - activeIndex} of ${updates.length}`,
               `Aktualizácia ${updates.length - activeIndex} z ${updates.length}`,
@@ -193,7 +193,7 @@ export const UpdateNotesModal: React.FC<UpdateNotesModalProps> = ({
             <button
               onClick={handlePrev}
               disabled={activeIndex === updates.length - 1}
-              className={`p-2 rounded-xl border border-slate-200 flex items-center justify-center transition-all bg-white font-bold text-xs gap-1.5 shadow-xs cursor-pointer ${
+              className={`p-2 rounded-xl border border-slate-200 flex items-center justify-center transition-all bg-white font-bold text-ui gap-1.5 shadow-xs cursor-pointer ${
                 activeIndex === updates.length - 1 
                   ? "opacity-40 cursor-not-allowed border-slate-100" 
                   : "hover:border-slate-300 text-slate-700 hover:bg-slate-50"
@@ -201,7 +201,7 @@ export const UpdateNotesModal: React.FC<UpdateNotesModalProps> = ({
               title={t("Older Update", "Staršia aktualizácia", "Régebbi frissítés")}
             >
               <ChevronLeft className="h-4 w-4" />
-              <span className="hidden sm:inline font-black uppercase text-[9px] tracking-wider">
+              <span className="hidden sm:inline type-overline">
                 {t("Older", "Staršie", "Régebbi")}
               </span>
             </button>
@@ -209,14 +209,14 @@ export const UpdateNotesModal: React.FC<UpdateNotesModalProps> = ({
             <button
               onClick={handleNext}
               disabled={activeIndex === 0}
-              className={`p-2 rounded-xl border border-slate-200 flex items-center justify-center transition-all bg-white font-bold text-xs gap-1.5 shadow-xs cursor-pointer ${
+              className={`p-2 rounded-xl border border-slate-200 flex items-center justify-center transition-all bg-white font-bold text-ui gap-1.5 shadow-xs cursor-pointer ${
                 activeIndex === 0 
                   ? "opacity-40 cursor-not-allowed border-slate-100" 
                   : "hover:border-slate-300 text-slate-700 hover:bg-slate-50"
               }`}
               title={t("Newer Update", "Novšia aktualizácia", "Újabb frissítés")}
             >
-              <span className="hidden sm:inline font-black uppercase text-[9px] tracking-wider">
+              <span className="hidden sm:inline type-overline">
                 {t("Newer", "Novšie", "Újabb")}
               </span>
               <ChevronRight className="h-4 w-4" />

@@ -219,7 +219,7 @@ export const VoiceRecorderCard: React.FC<VoiceRecorderCardProps> = ({
               );
 
     const btnBase =
-        "px-4 py-2.5 rounded-xl text-[11px] font-black uppercase tracking-wider cursor-pointer flex items-center gap-1.5 transition-all duration-200 active:scale-95 shadow-sm";
+        "px-4 py-2.5 rounded-xl type-overline cursor-pointer flex items-center gap-1.5 transition-all duration-200 active:scale-95 shadow-sm";
 
     return (
         <div
@@ -263,13 +263,13 @@ export const VoiceRecorderCard: React.FC<VoiceRecorderCardProps> = ({
                 {/* Label + live meter / player */}
                 <div className="flex-1 min-w-0">
                     <div className="flex items-baseline gap-2.5 flex-wrap">
-                        <span className="text-[13px] font-black text-slate-800 tracking-tight">
+                        <span className="text-ui font-bold text-slate-800 tracking-tight">
                             {title}
                         </span>
                         {isLive && (
                             <span
                                 className={cn(
-                                    "text-lg font-black tabular-nums leading-none",
+                                    "text-title font-bold tabular-nums leading-none",
                                     isRecording
                                         ? "text-rose-600"
                                         : "text-amber-600",
@@ -279,13 +279,13 @@ export const VoiceRecorderCard: React.FC<VoiceRecorderCardProps> = ({
                             </span>
                         )}
                     </div>
-                    <p className="text-[11px] font-semibold text-slate-500 truncate mt-0.5">
+                    <p className="text-caption font-semibold text-slate-500 truncate mt-0.5">
                         {subtitle}
                     </p>
 
                     {/* Live waveform */}
                     {isLive && (
-                        <div className="flex items-center gap-[3px] h-8 mt-2">
+                        <div className="flex items-center gap-0.75 h-8 mt-2">
                             {Array.from({ length: BAR_COUNT }).map((_, i) => (
                                 <span
                                     key={i}
@@ -372,7 +372,7 @@ export const VoiceRecorderCard: React.FC<VoiceRecorderCardProps> = ({
                                     }}
                                 />
                             </div>
-                            <span className="text-[11px] font-black text-slate-500 tabular-nums shrink-0">
+                            <span className="text-caption font-bold text-slate-500 tabular-nums shrink-0">
                                 {formatDuration(Math.floor(currentTime))} /{" "}
                                 {formatDuration(Math.floor(audioDuration))}
                             </span>

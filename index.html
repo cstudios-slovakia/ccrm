@@ -51,7 +51,7 @@
           root.setAttribute("data-appearance", dark ? "dark" : "light");
           root.style.colorScheme = dark ? "dark" : "light";
           // View size — mirrors resolveViewSize() in src/utils/viewSize.ts.
-          var VS_DEFAULT = "compact"; // becomes "auto" in Phase F — keep equal to viewSize.ts (unit-tested)
+          var VS_DEFAULT = "auto"; // keep equal to viewSize.ts (unit-tested)
           var vs = read("ccrm_view_size");
           var vsMode = vs === "auto" || vs === "compact" || vs === "normal" || vs === "big" ? vs : VS_DEFAULT;
           var mq = function (q) { return !!(window.matchMedia && window.matchMedia(q).matches); };

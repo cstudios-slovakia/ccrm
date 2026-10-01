@@ -33,6 +33,7 @@ import {
 } from "../utils/executive/defaultExecutives";
 import { ExecutiveCallModal } from "./executive/ExecutiveCallModal";
 import { BlobatarAvatar } from "./common/BlobatarAvatar";
+import { PageHeader } from "./layout";
 
 export interface Message {
   id: string;
@@ -684,73 +685,68 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
   return (
     <div className="space-y-6 select-none animate-fade-in text-slate-800">
       {/* Title Header */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between border-b border-slate-100 pb-4 gap-3">
-        <div>
-          <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2.5">
-            <Brain className="h-6 w-6 text-purple-600" />
-            {t("Virtual Executive Team & RAG Suite", "Virtuálny tím vedenia & RAG AI", "Virtuális Vezetői Csapat és RAG AI")}
-          </h2>
-          <p className="text-xs text-slate-500 font-semibold tracking-wider mt-0.5">
-            {t(
+      <PageHeader
+        icon={<Brain className="h-6 w-6 text-purple-600" />}
+        title={t("Virtual Executive Team & RAG Suite", "Virtuálny tím vedenia & RAG AI", "Virtuális Vezetői Csapat és RAG AI")}
+        subtitle={t(
               "OpenExecutive C-Suite architecture grounded in your live CRM records & episodic decisions",
               "OpenExecutive architektúra C-Suite napojená na reálne CRM dáta a strategickú pamäť",
               "OpenExecutive C-Suite architektúra a valós CRM adatokra és stratégiai döntésekre építve"
             )}
-          </p>
-        </div>
+        actions={<>
+          {/* Global Action Chips */}
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => {
+                setIsCouncilMode((prev) => !prev);
+                if (!isCouncilMode) setSelectedAgentId("orchestrator");
+              }}
+          className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-ui font-bold transition-all shadow-sm cursor-pointer ${
+                isCouncilMode
+                  ? "bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-amber-500/25 ring-2 ring-amber-400"
+                  : "bg-white hover:bg-slate-50 text-slate-700 border border-slate-200"
+              }`}
+            >
+              <Shield className="h-4 w-4" />
+              <span>{t("Executive Council", "Výkonná rada", "Igazgatótanács")}</span>
+              {isCouncilMode && (
+                <span className="type-overline bg-white/25 px-1.5 py-0.5 rounded">Active</span>
+              )}
+            </button>
 
-        {/* Global Action Chips */}
-        <div className="flex items-center gap-2 shrink-0">
-          <button
-            type="button"
-            onClick={() => {
-              setIsCouncilMode((prev) => !prev);
-              if (!isCouncilMode) setSelectedAgentId("orchestrator");
-            }}
-            className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm cursor-pointer ${
-              isCouncilMode
-                ? "bg-gradient-to-r from-amber-500 to-amber-600 text-white shadow-amber-500/25 ring-2 ring-amber-400"
-                : "bg-white hover:bg-slate-50 text-slate-700 border border-slate-200"
-            }`}
-          >
-            <Shield className="h-4 w-4" />
-            <span>{t("Executive Council", "Výkonná rada", "Igazgatótanács")}</span>
-            {isCouncilMode && (
-              <span className="text-[9px] bg-white/25 px-1.5 py-0.5 rounded uppercase tracking-wider font-extrabold">Active</span>
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setIsDecisionsDrawerOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 transition-all shadow-sm cursor-pointer"
-            title={t("Open Strategic Decision Log", "Otvoriť zoznam strategických rozhodnutí", "Stratégiai döntési napló")}
-          >
-            <Bookmark className="h-4 w-4 text-purple-600" />
-            <span>{t("Decisions", "Rozhodnutia", "Döntések")}</span>
-            {decisions.length > 0 && (
-              <span className="text-[10px] bg-purple-100 text-purple-700 font-black px-1.5 py-0.2 rounded-full">
-                {decisions.length}
-              </span>
-            )}
-          </button>
-        </div>
-      </div>
+            <button
+              type="button"
+              onClick={() => setIsDecisionsDrawerOpen(true)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl text-ui font-bold bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 transition-all shadow-sm cursor-pointer"
+              title={t("Open Strategic Decision Log", "Otvoriť zoznam strategických rozhodnutí", "Stratégiai döntési napló")}
+            >
+              <Bookmark className="h-4 w-4 text-purple-600" />
+              <span>{t("Decisions", "Rozhodnutia", "Döntések")}</span>
+              {decisions.length > 0 && (
+                <span className="text-micro bg-purple-100 text-purple-700 font-bold px-1.5 py-0.2 rounded-full">
+                  {decisions.length}
+                </span>
+              )}
+            </button>
+          </div>
+        </>}
+      />
 
       {/* Main Glass Workspace */}
-      <div className="glass-panel p-0 rounded-3xl border border-white/60 bg-white/95 shadow-glass overflow-hidden flex flex-col md:flex-row h-[calc(100vh-16rem)] min-h-[580px] animate-slide-up">
+      <div className="glass-panel p-0 rounded-3xl border border-white/60 bg-white/95 shadow-glass overflow-hidden flex flex-col ws-md:flex-row h-[calc(100vh-16rem)] min-h-145 animate-slide-up">
         
         {/* LEFT SIDEBAR: Executive Roster */}
-        <div className="w-full md:w-72 lg:w-84 border-r border-slate-200/80 bg-slate-50/40 flex flex-col shrink-0">
+        <div className="w-full ws-md:w-72 ws-lg:w-84 border-r border-slate-200/80 bg-slate-50/40 flex flex-col shrink-0">
           
           {/* 1. HIGHLIGHTED FLAGSHIP: Executive Orchestrator */}
           <div className="p-3.5 border-b border-purple-100/80 bg-gradient-to-b from-purple-50/80 via-indigo-50/40 to-white/40">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-[9.5px] font-extrabold uppercase tracking-wider text-purple-700 bg-purple-100/80 px-2 py-0.5 rounded-full border border-purple-200/60 flex items-center gap-1">
+              <span className="type-overline text-purple-700 bg-purple-100/80 px-2 py-0.5 rounded-full border border-purple-200/60 flex items-center gap-1">
                 <Sparkles className="h-3 w-3 text-amber-500" />
                 {t("Flagship AI Leader", "Hlavný AI líder", "Kiemelt AI Vezető")}
               </span>
-              <span className="text-[9px] font-bold text-slate-400">v{VERSION}</span>
+              <span className="text-micro font-bold text-slate-400">v{VERSION}</span>
             </div>
 
             <div
@@ -773,20 +769,20 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                     rounded="2xl"
                     animate="always"
                     badge={
-                      <span className="h-4 w-4 rounded-full bg-purple-600 text-white flex items-center justify-center text-[9px] shadow-xs ring-2 ring-white">
+                      <span className="h-4 w-4 rounded-full bg-purple-600 text-white flex items-center justify-center text-micro shadow-xs ring-2 ring-white">
                         <Sparkles className="h-2.5 w-2.5" />
                       </span>
                     }
                   />
                 </div>
                 <div className="flex-1 min-w-0">
-                  <h4 className="font-heading font-extrabold text-xs text-slate-900 truncate">
+                  <h4 className="font-heading font-extrabold text-ui text-slate-900 truncate">
                     {flagshipOrchestrator.name}
                   </h4>
-                  <p className="text-[10px] text-purple-700 font-semibold truncate mt-0.5">
+                  <p className="text-micro text-purple-700 font-semibold truncate mt-0.5">
                     {systemLanguage === "sk" ? flagshipOrchestrator.positionSk : systemLanguage === "hu" ? flagshipOrchestrator.positionHu : flagshipOrchestrator.position}
                   </p>
-                  <p className="text-[9px] text-slate-500 mt-1 line-clamp-1">
+                  <p className="text-micro text-slate-500 mt-1 line-clamp-1">
                     {systemLanguage === "sk" ? flagshipOrchestrator.description.sk : systemLanguage === "hu" ? flagshipOrchestrator.description.hu : flagshipOrchestrator.description.en}
                   </p>
                 </div>
@@ -819,7 +815,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
 
           {/* 2. Roster Filter Tabs & New Agent Button */}
           <div className="px-3.5 py-2 border-b border-slate-200/70 bg-white/40 flex items-center justify-between gap-1">
-            <div className="flex items-center gap-1 bg-slate-100/80 p-0.5 rounded-xl text-[10px] font-bold">
+            <div className="flex items-center gap-1 bg-slate-100/80 p-0.5 rounded-xl text-micro font-bold">
               <button
                 onClick={() => setSidebarFilter("all")}
                 className={`px-2 py-1 rounded-lg transition-all ${
@@ -886,9 +882,9 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
-                      <span className="font-heading font-bold text-xs text-slate-800 truncate">{role.name}</span>
+                      <span className="font-heading font-bold text-ui text-slate-800 truncate">{role.name}</span>
                     </div>
-                    <p className={`text-[10px] ${theme.text} font-semibold truncate`}>
+                    <p className={`text-micro ${theme.text} font-semibold truncate`}>
                       {posLabel}
                     </p>
                   </div>
@@ -946,14 +942,14 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
 
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between">
-                      <span className="font-heading font-bold text-xs text-slate-800 truncate">{custom.name}</span>
+                      <span className="font-heading font-bold text-ui text-slate-800 truncate">{custom.name}</span>
                       {custom.is_autonomous && (
-                        <span className="text-[7.5px] font-bold text-indigo-600 bg-indigo-100 px-1 py-0.5 rounded flex items-center gap-0.5">
+                        <span className="text-micro font-bold text-indigo-600 bg-indigo-100 px-1 py-0.5 rounded flex items-center gap-0.5">
                           <Clock className="h-2 w-2" /> Auto
                         </span>
                       )}
                     </div>
-                    <p className={`text-[10px] ${theme.text} font-semibold truncate`}>
+                    <p className={`text-micro ${theme.text} font-semibold truncate`}>
                       {custom.position}
                     </p>
                   </div>
@@ -1021,7 +1017,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
           </div>
 
           {/* Sidebar Footer */}
-          <div className="p-3 border-t border-slate-200/80 bg-slate-50/50 text-[10px] text-slate-500 flex items-center justify-between font-semibold uppercase tracking-wider">
+          <div className="p-3 border-t border-slate-200/80 bg-slate-50/50 type-overline text-slate-500 flex items-center justify-between">
             <span className="flex items-center gap-1.5">
               <Database className="h-3.5 w-3.5 text-purple-500" />
               {t("Episodic Memory", "Strategická pamäť", "Epizodikus Memória")}
@@ -1049,7 +1045,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                   expression={isLoading ? "thinking" : inputText.trim().length > 0 ? "surprised" : "idle"}
                   badge={
                     isCouncilMode ? (
-                      <span className="h-4 w-4 rounded-full bg-amber-500 text-white flex items-center justify-center text-[9px] shadow-xs ring-2 ring-white">
+                      <span className="h-4 w-4 rounded-full bg-amber-500 text-white flex items-center justify-center text-micro shadow-xs ring-2 ring-white">
                         <Shield className="h-2.5 w-2.5" />
                       </span>
                     ) : undefined
@@ -1058,14 +1054,14 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <h4 className="font-heading font-extrabold text-sm text-slate-900 truncate">
+                  <h4 className="font-heading font-extrabold text-body text-slate-900 truncate">
                     {isCouncilMode ? t("Executive Council Boardroom", "Výkonná rada vedenia", "Igazgatótanácsi Tárgyaló") : selectedRole.name}
                   </h4>
-                  <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full border shrink-0 ${isCouncilMode ? "bg-amber-100 text-amber-800 border-amber-200" : activeTheme.badgeBg}`}>
+                  <span className={`text-micro font-bold px-2 py-0.5 rounded-full border shrink-0 ${isCouncilMode ? "bg-amber-100 text-amber-800 border-amber-200" : activeTheme.badgeBg}`}>
                     {isCouncilMode ? t("Multi-Agent Deliberation", "Deliberácia rady", "Többügynökös Tanácskozás") : selectedRole.badge}
                   </span>
                 </div>
-                <p className="text-[10px] text-slate-500 font-medium truncate mt-0.5">
+                <p className="text-micro text-slate-500 font-medium truncate mt-0.5">
                   {isCouncilMode
                     ? t("Consolidated C-Suite advisory & unified strategic synthesis", "Spoločné stanovisko vedenia a finálna syntéza", "Konzolidált vezetői állásfoglalás és döntési javaslat")
                     : (systemLanguage === "sk" ? selectedRole.positionSk : systemLanguage === "hu" ? selectedRole.positionHu : selectedRole.position)}
@@ -1079,7 +1075,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                 type="button"
                 onClick={handleResetChat}
                 disabled={isLoading}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-[10px] font-bold text-slate-500 hover:text-slate-800 transition-all cursor-pointer disabled:opacity-50"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-micro font-bold text-slate-500 hover:text-slate-800 transition-all cursor-pointer disabled:opacity-50"
                 title={t("Reset Chat History", "Vyčistiť históriu chatu", "Chat előzmények törlése")}
               >
                 <RotateCcw className="h-3.5 w-3.5" />
@@ -1090,7 +1086,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
 
           {/* Quick Prompts Bar */}
           <div className="px-4 py-2 bg-slate-50/50 border-b border-slate-100 flex items-center gap-2 overflow-x-auto scrollbar-none min-w-0 max-w-full">
-            <span className="text-[9.5px] font-bold text-slate-400 uppercase tracking-wider shrink-0 flex items-center gap-1">
+            <span className="type-overline text-slate-400 shrink-0 flex items-center gap-1">
               <Sparkles className="h-3 w-3 text-amber-500" />
               {t("Strategic Prompts:", "Strategické témy:", "Stratégiai kérdések:")}
             </span>
@@ -1106,7 +1102,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                 key={idx}
                 onClick={() => handleSendText(prompt)}
                 disabled={isLoading}
-                className="text-[10px] bg-white hover:bg-purple-50 text-slate-700 hover:text-purple-700 border border-slate-200/80 hover:border-purple-200 px-3 py-1 rounded-full whitespace-nowrap transition-all shadow-xs cursor-pointer shrink-0 disabled:opacity-50"
+                className="text-micro bg-white hover:bg-purple-50 text-slate-700 hover:text-purple-700 border border-slate-200/80 hover:border-purple-200 px-3 py-1 rounded-full whitespace-nowrap transition-all shadow-xs cursor-pointer shrink-0 disabled:opacity-50"
               >
                 {prompt}
               </button>
@@ -1114,7 +1110,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
           </div>
 
           {/* Messages Area */}
-          <div className="flex-1 min-w-0 overflow-y-auto p-4 md:p-6 space-y-4 scrollbar-thin bg-slate-50/20">
+          <div className="flex-1 min-w-0 overflow-y-auto p-4 ws-md:p-6 space-y-4 scrollbar-thin bg-slate-50/20">
             {messages.map((msg) => {
               const isAgent = msg.sender === "agent";
               return (
@@ -1147,7 +1143,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
 
                   {/* Bubble */}
                   <div
-                    className={`p-4 rounded-2xl text-xs leading-relaxed shadow-sm relative group min-w-0 max-w-full ${
+                    className={`p-4 rounded-2xl text-ui leading-relaxed shadow-sm relative group min-w-0 max-w-full ${
                       isAgent
                         ? "bg-white border border-slate-100 text-slate-800 rounded-tl-none"
                         : `${activeTheme.fill} text-white rounded-tr-none font-medium`
@@ -1158,7 +1154,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                         <Markdown content={msg.text} />
                         
                         {/* Quick Save as Strategic Decision Button */}
-                        <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-[9px] text-slate-400">
+                        <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-micro text-slate-400">
                           <span>
                             {msg.timestamp.toLocaleTimeString(localeCodeFor(systemLanguage), {
                               hour: "2-digit",
@@ -1179,7 +1175,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                     ) : (
                       <div>
                         <p className="whitespace-pre-wrap">{msg.text}</p>
-                        <span className="text-[8px] block mt-1.5 text-right text-white/80">
+                        <span className="text-micro block mt-1.5 text-right text-white/80">
                           {msg.timestamp.toLocaleTimeString(localeCodeFor(systemLanguage), {
                             hour: "2-digit",
                             minute: "2-digit"
@@ -1210,7 +1206,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                   </span>
                 </div>
                 <div className="p-4 rounded-2xl bg-white border border-slate-100 text-slate-700 rounded-tl-none shadow-sm flex items-center gap-2">
-                  <span className="text-xs font-semibold text-slate-500">
+                  <span className="text-ui font-semibold text-slate-500">
                     {isCouncilMode
                       ? t("Convening C-Suite specialists & synthesizing verdict...", "Zvolávam vedenie a syntetizujem verdikt...", "A tanács összehívása és döntési javaslat generálása...")
                       : t("Analyzing context & grounding response...", "Analyzujem dáta a generujem odpoveď...", "Adatok elemzése és válasz generálása...")}
@@ -1231,7 +1227,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
               <button
                 type="button"
                 onClick={() => startCall(isCouncilMode ? flagshipOrchestrator : selectedRole)}
-                className="flex items-center gap-2 px-3.5 h-10 shrink-0 rounded-2xl bg-gradient-to-br from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 active:scale-95 text-white text-xs font-black shadow-md shadow-rose-500/25 border border-rose-400/40 transition-all cursor-pointer group whitespace-nowrap"
+                className="flex items-center gap-2 px-3.5 h-10 shrink-0 rounded-2xl bg-gradient-to-br from-rose-500 to-red-600 hover:from-rose-600 hover:to-red-700 active:scale-95 text-white text-ui font-bold shadow-md shadow-rose-500/25 border border-rose-400/40 transition-all cursor-pointer group whitespace-nowrap"
                 title={t(
                   `Start Voice Call with ${isCouncilMode ? flagshipOrchestrator.name : selectedRole.name}`,
                   `Začať hlasový hovor (${isCouncilMode ? flagshipOrchestrator.name : selectedRole.name})`,
@@ -1239,14 +1235,14 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                 )}
               >
                 <PhoneCall className="h-4 w-4 group-hover:scale-110 transition-transform" />
-                <span className="hidden sm:inline">
+                <span className="hidden ws-sm:inline">
                   {systemLanguage === "sk"
                     ? `Zavolať ${isCouncilMode ? flagshipOrchestrator.name : selectedRole.name}`
                     : systemLanguage === "hu"
                       ? `Hívás: ${isCouncilMode ? flagshipOrchestrator.name : selectedRole.name}`
                       : `Call ${isCouncilMode ? flagshipOrchestrator.name : selectedRole.name}`}
                 </span>
-                <span className="inline sm:hidden">
+                <span className="inline ws-sm:hidden">
                   {systemLanguage === "sk" ? "Hovor" : systemLanguage === "hu" ? "Hívás" : "Call"}
                 </span>
               </button>
@@ -1265,7 +1261,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                           ? `Kérdezzen a(z) ${selectedRole.name} pozíciótól...`
                           : `Ask ${selectedRole.name}...`
                   }
-                  className="w-full pl-4 pr-12 py-3 rounded-2xl border border-slate-200 bg-white focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 text-xs transition-all shadow-xs"
+                  className="w-full pl-4 pr-12 py-3 rounded-2xl border border-slate-200 bg-white focus:outline-none focus:border-purple-500 focus:ring-1 focus:ring-purple-500 text-ui transition-all shadow-xs"
                 />
                 <button
                   type="submit"
@@ -1291,10 +1287,10 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
               <div className="flex items-center gap-2">
                 <Bookmark className="h-5 w-5 text-purple-600" />
                 <div>
-                  <h3 className="text-sm font-heading font-bold text-slate-800 uppercase tracking-wider">
+                  <h3 className="text-body font-heading font-bold text-slate-800">
                     {t("Strategic Decision Log & Episodic Memory", "Záznam strategických rozhodnutí", "Stratégiai Döntési Napló")}
                   </h3>
-                  <p className="text-[10px] text-slate-400 font-semibold">
+                  <p className="text-micro text-slate-400 font-semibold">
                     {t("Preserved across sessions and injected as <past_decisions> into C-Suite context", "Uchovávané medzi reláciami a automaticky vkladané do kontextu AI", "Munkameneteken átívelő döntések, melyek beépülnek az AI kontextusába")}
                   </p>
                 </div>
@@ -1302,7 +1298,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setIsNewDecisionModalOpen(true)}
-                  className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-purple-600 text-white text-[10px] font-bold hover:bg-purple-700 shadow-sm cursor-pointer"
+                  className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-purple-600 text-white text-micro font-bold hover:bg-purple-700 shadow-sm cursor-pointer"
                 >
                   <Plus className="h-3.5 w-3.5" />
                   {t("Log Decision", "Zapísať rozhodnutie", "Új döntés")}
@@ -1321,7 +1317,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
               {decisions.length === 0 ? (
                 <div className="text-center py-12 text-slate-400 space-y-2">
                   <Bookmark className="h-8 w-8 mx-auto text-slate-300" />
-                  <p className="text-xs font-semibold">
+                  <p className="text-ui font-semibold">
                     {t("No recorded decisions yet. Save key takeaways from your chats to build long-term memory.", "Zatiaľ žiadne uložené rozhodnutia. Uložte závery z konverzácií pre vytvorenie dlhodobej pamäte.", "Még nincsenek rögzített döntések. Mentsen le kulcsfontosságú határozatokat a hosszú távú memóriához.")}
                   </p>
                 </div>
@@ -1330,10 +1326,10 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                   <div key={d.id} className="p-3.5 rounded-2xl border border-slate-100 bg-slate-50/50 hover:bg-white hover:shadow-sm transition-all space-y-2">
                     <div className="flex items-start justify-between gap-2">
                       <div className="flex items-center gap-2">
-                        <span className="text-[9px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 border border-purple-200">
+                        <span className="type-overline px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 border border-purple-200">
                           {d.domain || "strategy"}
                         </span>
-                        <h4 className="font-heading font-bold text-xs text-slate-900">{d.title}</h4>
+                        <h4 className="font-heading font-bold text-ui text-slate-900">{d.title}</h4>
                       </div>
                       <button
                         onClick={() => handleDeleteDecision(d.id)}
@@ -1344,10 +1340,10 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                       </button>
                     </div>
 
-                    <p className="text-xs text-slate-700 leading-relaxed whitespace-pre-wrap">{d.summary}</p>
+                    <p className="text-ui text-slate-700 leading-relaxed whitespace-pre-wrap">{d.summary}</p>
 
                     {(d.owner || d.deadline) && (
-                      <div className="flex items-center gap-3 text-[10px] text-slate-500 font-semibold pt-1 border-t border-slate-100">
+                      <div className="flex items-center gap-3 text-micro text-slate-500 font-semibold pt-1 border-t border-slate-100">
                         {d.owner && <span>👤 Owner: {d.owner}</span>}
                         {d.deadline && <span>📅 Deadline: {d.deadline}</span>}
                         {d.created_at && <span className="ml-auto text-slate-400">{d.created_at.slice(0, 10)}</span>}
@@ -1366,7 +1362,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
         <div className="fixed inset-0 z-[10001] flex items-center justify-center bg-slate-900/50 backdrop-blur-sm animate-fade-in p-4">
           <div className="w-full max-w-md rounded-3xl border border-slate-100 bg-white p-6 shadow-2xl space-y-4 animate-scale-in">
             <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
-              <h3 className="text-sm font-heading font-bold text-slate-900 uppercase tracking-wider flex items-center gap-1.5">
+              <h3 className="text-body font-heading font-bold text-slate-900 flex items-center gap-1.5">
                 <Bookmark className="h-4 w-4 text-purple-600" />
                 {t("Log Strategic Decision", "Zapísať strategické rozhodnutie", "Stratégiai döntés rögzítése")}
               </h3>
@@ -1380,24 +1376,24 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
 
             <form onSubmit={handleSaveDecision} className="space-y-3">
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Title", "Názov", "Cím")} *</label>
+                <label className="type-overline text-slate-500 block">{t("Title", "Názov", "Cím")} *</label>
                 <input
                   type="text"
                   required
                   value={decisionTitle}
                   onChange={(e) => setDecisionTitle(e.target.value)}
                   placeholder={t("e.g. Q4 Market Expansion in B2B Services", "napr. Expanzia v B2B segmente v Q4", "pl. Q4 piaci expanzió B2B szektorban")}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-500"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-ui focus:outline-none focus:border-purple-500"
                 />
               </div>
 
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Domain", "Oblasť", "Szakterület")}</label>
+                  <label className="type-overline text-slate-500 block">{t("Domain", "Oblasť", "Szakterület")}</label>
                   <select
                     value={decisionDomain}
                     onChange={(e) => setDecisionDomain(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-500 bg-white"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-ui focus:outline-none focus:border-purple-500 bg-white"
                   >
                     <option value="strategy">Strategy / CSO</option>
                     <option value="finance">Finance / CFO</option>
@@ -1412,37 +1408,37 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Owner", "Zodpovedná osoba", "Felelős")}</label>
+                  <label className="type-overline text-slate-500 block">{t("Owner", "Zodpovedná osoba", "Felelős")}</label>
                   <input
                     type="text"
                     value={decisionOwner}
                     onChange={(e) => setDecisionOwner(e.target.value)}
                     placeholder={t("e.g. Erik, Peti", "napr. Erik, Peti", "pl. Erik, Peti")}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-500"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-ui focus:outline-none focus:border-purple-500"
                   />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Summary & Core Takeaway", "Zhrnutie a hlavný záver", "Összefoglaló")} *</label>
+                <label className="type-overline text-slate-500 block">{t("Summary & Core Takeaway", "Zhrnutie a hlavný záver", "Összefoglaló")} *</label>
                 <textarea
                   required
                   rows={4}
                   value={decisionSummary}
                   onChange={(e) => setDecisionSummary(e.target.value)}
                   placeholder={t("What was decided, what is the trade-off, and why?", "Čo bolo rozhodnuté, aké sú kompromisy a prečo?", "Mi a döntés lényege és a fő kompromisszum?")}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-500"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-ui focus:outline-none focus:border-purple-500"
                 />
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Target Deadline", "Termín", "Határidő")}</label>
+                <label className="type-overline text-slate-500 block">{t("Target Deadline", "Termín", "Határidő")}</label>
                 <input
                   type="text"
                   value={decisionDeadline}
                   onChange={(e) => setDecisionDeadline(e.target.value)}
                   placeholder={t("e.g. 2026-10-31, Next QBR", "napr. 2026-10-31, Ďalší QBR", "pl. 2026-10-31")}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-500"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-ui focus:outline-none focus:border-purple-500"
                 />
               </div>
 
@@ -1450,13 +1446,13 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                 <button
                   type="button"
                   onClick={() => setIsNewDecisionModalOpen(false)}
-                  className="px-3.5 py-2 rounded-xl border border-slate-200 text-xs text-slate-600 hover:bg-slate-50"
+                  className="px-3.5 py-2 rounded-xl border border-slate-200 text-ui text-slate-600 hover:bg-slate-50"
                 >
                   {t("Cancel", "Zrušiť", "Mégse")}
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-purple-600 text-white text-xs font-bold hover:bg-purple-700 shadow-md shadow-purple-500/20"
+                  className="px-4 py-2 rounded-xl bg-purple-600 text-white text-ui font-bold hover:bg-purple-700 shadow-md shadow-purple-500/20"
                 >
                   {t("Save Decision", "Uložiť rozhodnutie", "Döntés mentése")}
                 </button>
@@ -1472,7 +1468,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
           <div className="absolute inset-0" onClick={() => setIsEditModalOpen(false)} />
           <div className="w-full max-w-xl max-h-[90vh] rounded-3xl border border-slate-100 bg-white p-6 shadow-2xl relative z-10 flex flex-col space-y-4 animate-scale-in">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-heading font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+              <h3 className="text-body font-heading font-bold text-slate-800 flex items-center gap-1.5">
                 <FileText className="h-4.5 w-4.5 text-purple-600" />
                 {t("Inspect & Edit MBA Skill (skill.md)", "Prezrieť a upraviť MBA zručnosť (skill.md)", "MBA Képesség megtekintése és szerkesztése")}
               </h3>
@@ -1485,38 +1481,38 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
             </div>
 
             <form onSubmit={handleEditSubmit} className="flex-1 overflow-y-auto space-y-3.5 pr-1 scrollbar-thin">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 ws-md:grid-cols-3 gap-3">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Agent Name", "Meno", "Név")} *</label>
+                  <label className="type-overline text-slate-500 block">{t("Agent Name", "Meno", "Név")} *</label>
                   <input
                     type="text"
                     required
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-500"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-ui focus:outline-none focus:border-purple-500"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Position / Role", "Pozícia", "Pozíció")} *</label>
+                  <label className="type-overline text-slate-500 block">{t("Position / Role", "Pozícia", "Pozíció")} *</label>
                   <input
                     type="text"
                     required
                     value={editPosition}
                     onChange={(e) => setEditPosition(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-500"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-ui focus:outline-none focus:border-purple-500"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block flex items-center gap-1">
+                  <label className="type-overline text-slate-500 block flex items-center gap-1">
                     <Volume2 className="h-3 w-3 text-purple-600" />
                     {t("Realtime Voice", "Hlas hovoru", "Hívás hangja")}
                   </label>
                   <select
                     value={editVoice}
                     onChange={(e) => setEditVoice(e.target.value)}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-500 bg-white"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-ui focus:outline-none focus:border-purple-500 bg-white"
                   >
                     {OPENAI_REALTIME_VOICES.map((v) => (
                       <option key={v.id} value={v.id}>
@@ -1528,31 +1524,31 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("MBA System Prompt & Domain Frameworks", "MBA systémový prompt a doménové rámce", "MBA Rendszerprompt és Szakterületi Keretrendszerek")} *</label>
+                <label className="type-overline text-slate-500 block">{t("MBA System Prompt & Domain Frameworks", "MBA systémový prompt a doménové rámce", "MBA Rendszerprompt és Szakterületi Keretrendszerek")} *</label>
                 <textarea
                   required
                   rows={10}
                   value={editSkillContent}
                   onChange={(e) => setEditSkillContent(e.target.value)}
-                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-[11px] font-mono leading-relaxed focus:outline-none focus:border-purple-500 bg-slate-50/50"
+                  className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-caption font-mono leading-relaxed focus:outline-none focus:border-purple-500 bg-slate-50/50"
                 />
               </div>
 
               <div className="pt-2 flex items-center justify-between border-t border-slate-100">
-                <p className="text-[9px] text-slate-400">
+                <p className="text-micro text-slate-400">
                   {t("Grounded in OpenExecutive MBA advisory benchmarks", "Postavené na MBA princípoch OpenExecutive", "OpenExecutive MBA tanácsadási elvekre építve")}
                 </p>
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setIsEditModalOpen(false)}
-                    className="px-3.5 py-2 rounded-xl border border-slate-200 text-xs text-slate-600 hover:bg-slate-50"
+                    className="px-3.5 py-2 rounded-xl border border-slate-200 text-ui text-slate-600 hover:bg-slate-50"
                   >
                     {t("Cancel", "Zrušiť", "Mégse")}
                   </button>
                   <button
                     type="submit"
-                    className="px-4 py-2 rounded-xl bg-purple-600 text-white text-xs font-bold hover:bg-purple-700 shadow-md shadow-purple-500/20"
+                    className="px-4 py-2 rounded-xl bg-purple-600 text-white text-ui font-bold hover:bg-purple-700 shadow-md shadow-purple-500/20"
                   >
                     {t("Save Changes", "Uložiť zmeny", "Módosítások mentése")}
                   </button>
@@ -1569,7 +1565,7 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
           <div className="absolute inset-0" onClick={() => setIsModalOpen(false)} />
           <div className="w-full max-w-md rounded-3xl border border-slate-100 bg-white p-6 shadow-2xl relative z-10 space-y-4 animate-scale-in">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-sm font-heading font-bold text-slate-800 uppercase tracking-wider flex items-center gap-1.5">
+              <h3 className="text-body font-heading font-bold text-slate-800 flex items-center gap-1.5">
                 <Sparkles className="h-4.5 w-4.5 text-purple-600 animate-pulse" />
                 {t("Create New Custom Specialist", "Vytvoriť nového špecialistu", "Új egyéni szakértő létrehozása")}
               </h3>
@@ -1584,39 +1580,39 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
             <form onSubmit={handleCreateAgent} className="space-y-3.5">
               <div className="grid grid-cols-2 gap-2">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Agent Name", "Meno agenta", "Ügynök neve")} *</label>
+                  <label className="type-overline text-slate-500 block">{t("Agent Name", "Meno agenta", "Ügynök neve")} *</label>
                   <input
                     type="text"
                     required
                     value={agentName}
                     onChange={(e) => setAgentName(e.target.value)}
                     placeholder={t("e.g. Lead Qualifier", "napr. Kvalifikátor", "pl. Minősítő")}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-500"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-ui focus:outline-none focus:border-purple-500"
                   />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Position / Role", "Pozícia", "Pozíció")} *</label>
+                  <label className="type-overline text-slate-500 block">{t("Position / Role", "Pozícia", "Pozíció")} *</label>
                   <input
                     type="text"
                     required
                     value={agentPosition}
                     onChange={(e) => setAgentPosition(e.target.value)}
                     placeholder={t("e.g. Inbound Qualifier", "napr. Pipeline Qualifier", "pl. Qualifier")}
-                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-500"
+                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-ui focus:outline-none focus:border-purple-500"
                   />
                 </div>
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block flex items-center gap-1">
+                <label className="type-overline text-slate-500 block flex items-center gap-1">
                   <Volume2 className="h-3 w-3 text-purple-600" />
                   {t("Realtime Voice (OpenAI)", "Hlas hovoru (OpenAI)", "Hanghívás hangja")}
                 </label>
                 <select
                   value={agentVoice}
                   onChange={(e) => setAgentVoice(e.target.value)}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-500 bg-white"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-ui focus:outline-none focus:border-purple-500 bg-white"
                 >
                   {OPENAI_REALTIME_VOICES.map((v) => (
                     <option key={v.id} value={v.id}>
@@ -1627,14 +1623,14 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
               </div>
 
               <div className="space-y-1">
-                <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">{t("Skill Prompt (skill.md)", "Inštrukcie (skill.md)", "Utasítások (skill.md)")} *</label>
+                <label className="type-overline text-slate-500 block">{t("Skill Prompt (skill.md)", "Inštrukcie (skill.md)", "Utasítások (skill.md)")} *</label>
                 <textarea
                   required
                   rows={4}
                   value={agentSkillContent}
                   onChange={(e) => setAgentSkillContent(e.target.value)}
                   placeholder={t("Paste instructions or framework rules...", "Vložte inštrukcie alebo pravidlá...", "Illessze be az utasításokat...")}
-                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:outline-none focus:border-purple-500 font-mono"
+                  className="w-full px-3 py-2 rounded-xl border border-slate-200 text-ui focus:outline-none focus:border-purple-500 font-mono"
                 />
               </div>
 
@@ -1642,13 +1638,13 @@ export const RagAiView: React.FC<RagAiViewProps> = ({ systemLanguage, currentUse
                 <button
                   type="button"
                   onClick={() => setIsModalOpen(false)}
-                  className="px-3.5 py-2 rounded-xl border border-slate-200 text-xs text-slate-600 hover:bg-slate-50"
+                  className="px-3.5 py-2 rounded-xl border border-slate-200 text-ui text-slate-600 hover:bg-slate-50"
                 >
                   {t("Cancel", "Zrušiť", "Mégse")}
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-2 rounded-xl bg-purple-600 text-white text-xs font-bold hover:bg-purple-700 shadow-md shadow-purple-500/20"
+                  className="px-4 py-2 rounded-xl bg-purple-600 text-white text-ui font-bold hover:bg-purple-700 shadow-md shadow-purple-500/20"
                 >
                   {t("Create Agent", "Vytvoriť agenta", "Létrehozás")}
                 </button>

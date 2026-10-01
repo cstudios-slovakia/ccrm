@@ -53,11 +53,11 @@ export const EntityPill: React.FC<{ label: string; url: string }> = ({ label, ur
     <button
       type="button"
       onClick={handleEntityClick}
-      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-[11px] font-bold transition-all cursor-pointer hover:scale-[1.03] active:scale-95 mx-1 my-0.5 select-none shadow-2xs group ${colorStyles}`}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full border text-caption font-bold transition-all cursor-pointer hover:scale-[1.03] active:scale-95 mx-1 my-0.5 select-none shadow-2xs group ${colorStyles}`}
       title={`Open ${displayLabel} in CRM`}
     >
       <Icon className={`h-3 w-3 shrink-0 ${iconColor} group-hover:scale-110 transition-transform`} />
-      <span className="truncate max-w-[240px]">{displayLabel}</span>
+      <span className="truncate max-w-60">{displayLabel}</span>
       <ArrowRight className="h-2.5 w-2.5 opacity-40 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
     </button>
   );
@@ -107,7 +107,7 @@ export const FilePill: React.FC<{ fileName: string }> = ({ fileName }) => {
     <button
       type="button"
       onClick={handlePillClick}
-      className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 hover:border-indigo-300 text-indigo-700 hover:text-indigo-800 text-[10.5px] font-black uppercase tracking-wide transition-all cursor-pointer hover:scale-[1.02] active:scale-95 mx-1 my-0.5 select-none"
+      className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 hover:border-indigo-300 text-indigo-700 hover:text-indigo-800 type-overline transition-all cursor-pointer hover:scale-[1.02] active:scale-95 mx-1 my-0.5 select-none"
     >
       <FileText className="h-3 w-3 text-indigo-500" />
       <span>{fileName}</span>
@@ -216,11 +216,11 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
     if (currentTableRows) {
       elements.push(
         <div key={`table-wrapper-${key}`} className="overflow-x-auto my-3 rounded-2xl border border-slate-200 shadow-sm max-w-full text-left">
-          <table className="w-full border-collapse text-left text-xs">
+          <table className="w-full border-collapse text-left text-ui">
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200 text-slate-800 font-extrabold">
                 {currentTableHeader.map((cell, idx) => (
-                  <th key={idx} className="py-2.5 px-4 font-black uppercase tracking-wider text-[10px] text-slate-700">
+                  <th key={idx} className="py-2.5 px-4 type-overline text-slate-700">
                     {parseInlineStyles(cell)}
                   </th>
                 ))}
@@ -230,7 +230,7 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
               {currentTableRows.map((row, rowIdx) => (
                 <tr key={rowIdx} className="hover:bg-slate-50/30 transition-colors">
                   {row.map((cell, cellIdx) => (
-                    <td key={cellIdx} className="py-2.5 px-4 font-bold text-slate-600">
+                    <td key={cellIdx} className="py-2.5 px-4 text-slate-600">
                       {parseInlineStyles(cell)}
                     </td>
                   ))}
@@ -268,7 +268,7 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
   const closeBlockquote = (key: string) => {
     if (currentBlockquoteLines.length > 0) {
       elements.push(
-        <blockquote key={`bq-${key}`} className="my-2.5 pl-3.5 border-l-4 border-indigo-400/80 bg-indigo-50/40 rounded-r-xl py-2 pr-3 text-xs italic text-slate-700 space-y-1">
+        <blockquote key={`bq-${key}`} className="my-2.5 pl-3.5 border-l-4 border-indigo-400/80 bg-indigo-50/40 rounded-r-xl py-2 pr-3 text-ui italic text-slate-700 space-y-1">
           {currentBlockquoteLines.map((line, idx) => (
             <div key={idx}>{parseInlineStyles(line)}</div>
           ))}
@@ -313,11 +313,11 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
         elements.push(
           <div key={`codeblock-${i}`} className="my-3 rounded-2xl overflow-hidden border border-slate-800 bg-slate-900 text-slate-100 shadow-sm text-left">
             {currentCodeBlockLang && (
-              <div className="px-4 py-1.5 bg-slate-950/80 border-b border-slate-800 text-[10px] font-mono uppercase tracking-wider text-slate-400">
+              <div className="px-4 py-1.5 bg-slate-950/80 border-b border-slate-800 type-overline font-mono text-slate-400">
                 {currentCodeBlockLang}
               </div>
             )}
-            <pre className="p-4 text-xs font-mono overflow-x-auto leading-relaxed">
+            <pre className="p-4 text-ui font-mono overflow-x-auto leading-relaxed">
               <code>{currentCodeBlockLines.join("\n")}</code>
             </pre>
           </div>
@@ -394,11 +394,11 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
       const parsedContent = parseInlineStyles(content);
 
       if (level === 1) {
-        elements.push(<h1 key={`h1-${i}`} className="text-sm font-black uppercase tracking-wider my-3 text-slate-800 border-b pb-1">{parsedContent}</h1>);
+        elements.push(<h1 key={`h1-${i}`} className="text-body font-bold my-3 text-slate-800 border-b pb-1">{parsedContent}</h1>);
       } else if (level === 2) {
-        elements.push(<h2 key={`h2-${i}`} className="text-xs font-black uppercase tracking-wider my-2 text-slate-800">{parsedContent}</h2>);
+        elements.push(<h2 key={`h2-${i}`} className="text-ui font-bold my-2 text-slate-800">{parsedContent}</h2>);
       } else {
-        elements.push(<h3 key={`h3-${i}`} className="text-[10px] font-black uppercase tracking-wider my-1.5 text-slate-700">{parsedContent}</h3>);
+        elements.push(<h3 key={`h3-${i}`} className="type-overline my-1.5 text-slate-700">{parsedContent}</h3>);
       }
       continue;
     }
@@ -416,7 +416,7 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
       const indent = ulMatch[1].length;
       const content = ulMatch[3];
       currentListItems.push(
-        <li key={`li-${i}`} style={{ marginLeft: `${indent * 6}px` }} className="text-xs font-medium text-slate-700">
+        <li key={`li-${i}`} style={{ marginLeft: `${indent * 6}px` }} className="text-ui font-medium text-slate-700">
           {parseInlineStyles(content)}
         </li>
       );
@@ -441,7 +441,7 @@ export const parseMarkdown = (text: string): React.ReactNode[] => {
           key={`li-${i}`} 
           value={isNaN(itemNum) ? undefined : itemNum}
           style={{ marginLeft: `${indent * 6}px` }} 
-          className="text-xs font-medium text-slate-700"
+          className="text-ui font-medium text-slate-700"
         >
           {parseInlineStyles(content)}
         </li>
@@ -505,7 +505,7 @@ const parseInlineStyles = (text: string): React.ReactNode => {
       parts.push(<em key={match.index} className="italic text-slate-800">{parseInnerStyles(match[4])}</em>);
     } else if (match[5]) {
       // Inline Code
-      parts.push(<code key={match.index} className="bg-slate-100/80 px-1 py-0.5 rounded text-[10.5px] font-mono text-purple-700 border border-slate-200/50">{match[6]}</code>);
+      parts.push(<code key={match.index} className="bg-slate-100/80 px-1 py-0.5 rounded text-micro font-mono text-purple-700 border border-slate-200/50">{match[6]}</code>);
     } else if (match[7] !== undefined && match[8] !== undefined) {
       const linkLabel = match[7];
       const linkUrl = match[8].trim();

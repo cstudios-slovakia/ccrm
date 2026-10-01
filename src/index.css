@@ -991,8 +991,8 @@ dialog[open]::backdrop {
 :root {
   --vs-scale: 1;
   --gutter: 1.5rem;
-  --workspace-max: 100rem; /* Phase F: 200rem */
-  --drawer-sm: 24rem; --drawer-md: 30rem; --drawer-lg: 42rem;
+  --workspace-max: 200rem; /* ultrawide safety cap only */
+  --drawer-sm: 24rem; --drawer-md: 30rem; --drawer-lg: 42rem; --drawer-xl: 80rem;
 }
 
 [data-view-size="normal"] {
@@ -1007,7 +1007,7 @@ dialog[open]::backdrop {
   --container-xl: 40.5rem;   --container-2xl: 47.25rem; --container-3xl: 54rem;
   --container-4xl: 63rem;    --container-5xl: 72rem;    --container-6xl: 81rem;
   --container-7xl: 90rem;
-  --drawer-sm: 27rem; --drawer-md: 33.75rem; --drawer-lg: 47.25rem;
+  --drawer-sm: 27rem; --drawer-md: 33.75rem; --drawer-lg: 47.25rem; --drawer-xl: 90rem;
 }
 
 [data-view-size="big"] {
@@ -1022,7 +1022,7 @@ dialog[open]::backdrop {
   --container-xl: 45rem;     --container-2xl: 52.5rem;  --container-3xl: 60rem;
   --container-4xl: 70rem;    --container-5xl: 80rem;    --container-6xl: 90rem;
   --container-7xl: 100rem;
-  --drawer-sm: 30rem; --drawer-md: 37.5rem; --drawer-lg: 52.5rem;
+  --drawer-sm: 30rem; --drawer-md: 37.5rem; --drawer-lg: 52.5rem; --drawer-xl: 100rem;
 }
 
 /* Phones keep a 16px gutter whatever size is chosen. After the size blocks,
@@ -1043,7 +1043,7 @@ dialog[open]::backdrop {
   --container-xl: 36rem;   --container-2xl: 42rem;    --container-3xl: 48rem;
   --container-4xl: 56rem;  --container-5xl: 64rem;    --container-6xl: 72rem;
   --container-7xl: 80rem;
-  --drawer-sm: 24rem; --drawer-md: 30rem; --drawer-lg: 42rem;
+  --drawer-sm: 24rem; --drawer-md: 30rem; --drawer-lg: 42rem; --drawer-xl: 80rem;
 }
 
 .workspace {
@@ -1082,3 +1082,15 @@ dialog[open]::backdrop {
 @utility type-page-title   { font-family: var(--font-heading); font-size: var(--text-heading); line-height: var(--text-heading--line-height); font-weight: 800; letter-spacing: -0.02em; }
 @utility type-entity-title { font-family: var(--font-heading); font-size: var(--text-display); line-height: var(--text-display--line-height); font-weight: 900; letter-spacing: -0.025em; }
 @utility type-metric       { font-size: var(--text-metric);   line-height: var(--text-metric--line-height);   font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+
+/* Table styles (docs/VIEW-SIZE.md §6.2 "DataTable") */
+@utility table-header   { font-size: var(--text-micro); line-height: var(--text-micro--line-height); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
+@utility table-cell     { font-size: var(--text-ui); line-height: var(--text-ui--line-height); padding: --spacing(3) --spacing(4); }
+@utility table-cell-num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Horizontal scroller without the scrollbar (tab rows). */
+@utility no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
+}

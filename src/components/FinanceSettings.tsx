@@ -25,7 +25,7 @@ interface FinanceSettingsProps {
 
 const PANEL = "glass-panel p-6 rounded-3xl space-y-5 border border-white/60 bg-white/95 shadow-glass";
 const PANEL_TITLE =
-  "text-sm font-heading font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2 border-b border-slate-200 pb-3";
+  "text-body font-heading font-bold text-slate-900 flex items-center gap-2 border-b border-slate-200 pb-3";
 
 /**
  * Settings → Finance: how the Finance screen behaves and what it is made of.
@@ -60,17 +60,17 @@ export const FinanceSettings: React.FC<FinanceSettingsProps> = ({
 
         <label className="flex items-center justify-between gap-4 cursor-pointer">
           <span className="min-w-0">
-            <span className="block text-xs font-bold text-slate-800">
+            <span className="block text-ui font-bold text-slate-800">
               {t("Inline editing", "Úpravy priamo v riadku", "Szerkesztés közvetlenül a sorban")}
             </span>
-            <span className="block text-[11px] text-slate-500 mt-0.5">
+            <span className="block text-caption text-slate-500 mt-0.5">
               {t(
                 "Change a payment's status straight from its row in the Movements table. When off, the status is a plain badge and every change goes through the edit panel.",
                 "Stav úhrady meníte priamo v riadku tabuľky Pohyby. Keď je vypnuté, stav je len štítok a každá zmena sa robí v paneli úprav.",
                 "A fizetés állapotát közvetlenül a Mozgások táblázat soraiban módosíthatja. Kikapcsolva az állapot csak címke, és minden módosítás a szerkesztő panelen keresztül történik."
               )}
             </span>
-            <span className="block text-[10px] text-slate-400 mt-1">
+            <span className="block text-micro text-slate-400 mt-1">
               {t("Applies to your account only.", "Platí iba pre váš účet.", "Csak az Ön fiókjára vonatkozik.")}
             </span>
           </span>
@@ -81,7 +81,7 @@ export const FinanceSettings: React.FC<FinanceSettingsProps> = ({
               onChange={(e) => setInlineEdit(e.target.checked)}
               className="sr-only peer"
             />
-            <span className="w-9 h-5 bg-slate-300 rounded-full peer-focus-visible:ring-2 peer-focus-visible:ring-indigo-500/40 peer-checked:bg-indigo-600 transition-colors duration-200 after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-transform after:duration-200 peer-checked:after:translate-x-4 peer-checked:after:border-white" />
+            <span className="w-9 h-5 bg-slate-300 rounded-full peer-focus-visible:ring-2 peer-focus-visible:ring-indigo-500/40 peer-checked:bg-indigo-600 transition-colors duration-200 after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-transform after:duration-200 peer-checked:after:translate-x-4 peer-checked:after:border-white" />
           </span>
         </label>
       </div>
@@ -105,10 +105,10 @@ export const FinanceSettings: React.FC<FinanceSettingsProps> = ({
               ...CURRENCY_OPTIONS.map((c) => ({ value: c.code, label: c.label }))
             ]}
           />
-          <p className="text-[10px] text-slate-400">
+          <p className="text-micro text-slate-400">
             {getTranslation(userLanguage, "settings.general.currency_desc")}
           </p>
-          <p className="text-[10px] text-slate-400">
+          <p className="text-micro text-slate-400">
             {t(
               "The same setting as in General config — it applies to the whole workspace, not just Finance.",
               "Rovnaké nastavenie ako vo Všeobecnej konfigurácii — platí pre celý systém, nielen pre Financie.",

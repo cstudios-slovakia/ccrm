@@ -115,12 +115,12 @@ export const LicenseBanner: React.FC<LicenseBannerProps> = ({
       <div className="flex items-start gap-4 flex-wrap sm:flex-nowrap">
         <ShieldAlert className={`h-6 w-6 shrink-0 mt-0.5 ${palette.icon}`} aria-hidden="true" />
 
-        <div className="flex-1 min-w-[240px] space-y-1">
-          <p className={`text-sm font-heading font-black tracking-tight ${palette.title}`}>
+        <div className="flex-1 min-w-60 space-y-1">
+          <p className={`text-body font-heading font-bold tracking-tight ${palette.title}`}>
             {headline}
           </p>
           {!isAdmin && (
-            <p className={`text-xs font-semibold leading-relaxed ${palette.body}`}>
+            <p className={`text-ui font-semibold leading-relaxed ${palette.body}`}>
               {t("license.banner.admin_only")}
             </p>
           )}
@@ -133,7 +133,7 @@ export const LicenseBanner: React.FC<LicenseBannerProps> = ({
             <button
               type="button"
               onClick={onOpenLicenseSettings}
-              className={`px-3.5 py-2 rounded-xl border text-white text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer ${palette.action}`}
+              className={`px-3.5 py-2 rounded-xl border text-white type-overline flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer ${palette.action}`}
             >
               <KeyRound className="h-3.5 w-3.5" aria-hidden="true" />
               {t("license.banner.enter_key")}
@@ -145,7 +145,7 @@ export const LicenseBanner: React.FC<LicenseBannerProps> = ({
               writeSessionDismissal(signature);
               setSessionDismissed(signature);
             }}
-            className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 ${palette.quiet}`}
+            className={`px-3 py-2 rounded-xl type-overline transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 ${palette.quiet}`}
           >
             <X className="h-3.5 w-3.5" aria-hidden="true" />
             {t("license.banner.close")}
@@ -153,7 +153,7 @@ export const LicenseBanner: React.FC<LicenseBannerProps> = ({
           <button
             type="button"
             onClick={() => setSuppressed(signature)}
-            className={`px-3 py-2 rounded-xl text-[10px] font-black uppercase tracking-wider transition-all active:scale-95 cursor-pointer ${palette.quiet}`}
+            className={`px-3 py-2 rounded-xl type-overline transition-all active:scale-95 cursor-pointer ${palette.quiet}`}
           >
             {t("license.banner.never")}
           </button>

@@ -5,6 +5,7 @@ import { Check, Pipette } from "lucide-react";
 import { cn } from "../../utils/cn";
 import { COLOR_PRESETS, DISCREET_COLOR_PRESETS, normalizeHex, prefersDarkInk } from "../../utils/color";
 import { getStoredLanguage } from "../../utils/translations";
+import { viewSizeScale } from "../../utils/viewSize";
 
 /**
  * How the trigger looks where the picker sits:
@@ -32,8 +33,9 @@ interface ColorPickerProps {
   defaultPalette?: "discreet" | "vivid";
 }
 
-const PANEL_WIDTH = 270;
-const PANEL_HEIGHT_ESTIMATE = 200;
+const PANEL_WIDTH_BASE = 270;
+const PANEL_HEIGHT_ESTIMATE_BASE = 200;
+const panelWidth = () => PANEL_WIDTH_BASE * viewSizeScale();
 const MARGIN = 8;
 /** Same layer as CustomSelect: above drawers (`z-[100000]`) and modals (`z-[9999]`). */
 const PANEL_Z = 100001;
@@ -109,10 +111,10 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
   const updatePosition = () => {
     const rect = triggerRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const panelHeight = panelRef.current?.offsetHeight || PANEL_HEIGHT_ESTIMATE;
+    const panelHeight = panelRef.current?.offsetHeight || PANEL_HEIGHT_ESTIMATE_BASE * viewSizeScale();
     const spaceBelow = window.innerHeight - rect.bottom;
     const openUp = spaceBelow < panelHeight + MARGIN && rect.top > spaceBelow;
-    const left = Math.max(MARGIN, Math.min(rect.left, window.innerWidth - PANEL_WIDTH - MARGIN));
+    const left = Math.max(MARGIN, Math.min(rect.left, window.innerWidth - panelWidth() - MARGIN));
     setCoords({
       top: openUp ? undefined : rect.bottom + 6,
       bottom: openUp ? window.innerHeight - rect.top + 6 : undefined,
@@ -272,7 +274,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
           <button
             {...shared}
             className={cn(
-              "relative flex h-6 w-6 shrink-0 items-center justify-center rounded-full p-[3px] shadow-sm cursor-pointer transition-transform duration-150 hover:scale-115 active:scale-95",
+              "relative flex h-6 w-6 shrink-0 items-center justify-center rounded-full p-0.75 shadow-sm cursor-pointer transition-transform duration-150 hover:scale-115 active:scale-95",
               isOpen && "scale-115",
               focusRing,
               disabledState,
@@ -327,7 +329,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
                   top: coords?.top,
                   bottom: coords?.bottom,
                   left: coords?.left,
-                  width: PANEL_WIDTH,
+                  width: panelWidth(),
                   zIndex: PANEL_Z,
                   transformOrigin: coords?.openUp ? "bottom left" : "top left",
                   visibility: coords ? "visible" : "hidden",
@@ -339,10 +341,10 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
                   {/* Palette Header with Discreet / Vivid Tabs */}
                   {!presets && (
                     <div className="flex items-center justify-between mb-2.5 pb-2 border-b border-slate-100">
-                      <span className="text-[11px] font-bold text-slate-700 tracking-tight">
+                      <span className="text-caption font-bold text-slate-700 tracking-tight">
                         {activeTab === "discreet" ? labels.title : labels.vivid}
                       </span>
-                      <div className="flex items-center bg-slate-100 p-0.5 rounded-lg text-[10px] font-medium text-slate-500">
+                      <div className="flex items-center bg-slate-100 p-0.5 rounded-lg text-micro font-medium text-slate-500">
                         <button
                           type="button"
                           onClick={() => setActiveTab("discreet")}
@@ -410,7 +412,7 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
                       style={{ backgroundColor: current }}
                     />
                     <label className="flex h-8 min-w-0 flex-1 items-center rounded-lg border border-slate-200 bg-slate-50 px-2 transition-all duration-150 focus-within:border-[#c29b62] focus-within:bg-white focus-within:ring-2 focus-within:ring-[#c29b62]/20">
-                      <span className="select-none font-mono text-xs font-bold text-slate-400">#</span>
+                      <span className="select-none font-mono text-ui font-bold text-slate-400">#</span>
                       <input
                         type="text"
                         value={hexDraft}
@@ -438,13 +440,13 @@ export const ColorPicker: React.FC<ColorPickerProps> = ({
                             triggerRef.current?.focus();
                           }
                         }}
-                        className="w-full min-w-0 bg-transparent pl-0.5 font-mono text-xs font-bold uppercase text-slate-700 focus:outline-none"
+                        className="w-full min-w-0 bg-transparent pl-0.5 font-mono text-ui font-bold text-slate-700 focus:outline-none"
                       />
                     </label>
                     <button
                       type="button"
                       onClick={openNativePicker}
-                      className="relative flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] font-bold text-slate-700 cursor-pointer transition-all duration-150 hover:border-[#c29b62] hover:bg-[#c29b62]/10 hover:text-slate-900 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c29b62]/40"
+                      className="relative flex h-8 shrink-0 items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-caption font-bold text-slate-700 cursor-pointer transition-all duration-150 hover:border-[#c29b62] hover:bg-[#c29b62]/10 hover:text-slate-900 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#c29b62]/40"
                       title={labels.custom}
                     >
                       <Pipette className="h-3.5 w-3.5 text-[#c29b62]" />

@@ -33,7 +33,7 @@ export const InlineRenameName: React.FC<{
           if (e.key === "Enter") { e.preventDefault(); commit(); }
           if (e.key === "Escape") { setEditing(false); setDraft(value); }
         }}
-        className="px-2.5 py-1 rounded-full border border-indigo-300 bg-white text-slate-800 text-xs font-black uppercase tracking-wider focus:outline-none focus:ring-1 focus:ring-indigo-400 min-w-[110px]"
+        className="px-2.5 py-1 rounded-full border border-indigo-300 bg-white text-slate-800 text-ui font-bold focus:outline-none focus:ring-1 focus:ring-indigo-400 min-w-27.5"
       />
     );
   }

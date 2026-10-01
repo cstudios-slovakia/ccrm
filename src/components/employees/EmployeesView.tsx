@@ -3,6 +3,7 @@ import {
   Users,
   Coins,
   Sparkles,
+  Plus,
   Settings as SettingsIcon,
   ChevronRight,
   Loader2
@@ -28,6 +29,8 @@ import { SalariesMatrixView } from "./SalariesMatrixView";
 import { EmployeeFormScreen } from "./EmployeeFormScreen";
 import { EmployeeSettingsScreen } from "./EmployeeSettingsScreen";
 import { useConfirmDialog } from "../ui/ConfirmDialog";
+import { PageHeader, Tabs } from "../layout";
+import { EmployeeTieIcon } from "../icons/EmployeeTieIcon";
 
 interface EmployeesViewProps {
   access: ModuleAccess;
@@ -330,56 +333,62 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
 
   return (
     <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
-      {/* Top Module Sub-Navigation Bar (hidden when in full-screen employee form) */}
+      {/* Module header: title first, then the sub-navigation (docs/VIEW-SIZE.md §6.1) */}
       {currentView !== "form" && (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200/60 pb-3">
+        <PageHeader
+          icon={<EmployeeTieIcon className="size-6" color="#9e7638" />}
+          title={t("Employees & Payroll", "Zamestnanci a mzdy", "Alkalmazottak és bérek")}
+          subtitle={t(
+            "Staff directory, salary structures, Toggl time tracking & vacation planner",
+            "Prehľad zamestnancov, štruktúra miezd, meranie času a plánovač dovoleniek",
+            "Munkatársak, bérstruktúra, időkövetés és szabadságtervező"
+          )}
+          actions={
+            currentView === "list" ? (
+              <>
+                {employees.length === 0 && (
+                  <button
+                    type="button"
+                    onClick={handleSeedMockData}
+                    className="flex items-center gap-1.5 h-9 px-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 text-ui font-semibold hover:bg-amber-500/20 transition-all"
+                  >
+                    <Sparkles className="size-4 text-amber-600" />
+                    <span>{t("Load Demo Staff", "Vzorové dáta", "Minta adatok")}</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => navigateToAddEmployee()}
+                  className="flex items-center gap-2 h-9 px-3 rounded-xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white text-ui font-semibold shadow-md shadow-[#c29b62]/20 hover:scale-[1.02] active:scale-[0.98] transition-all cursor-pointer"
+                >
+                  <Plus className="size-4" />
+                  <span>{t("Add Employee", "Nový zamestnanec", "Új alkalmazott")}</span>
+                </button>
+              </>
+            ) : undefined
+          }
+        />
+      )}
+
+      {/* Sub-navigation (hidden when in full-screen employee form) */}
+      {currentView !== "form" && (
+        <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4 border-b border-slate-200/60 pb-3">
           {/* Sub-view switcher tabs */}
           <div className="flex items-center gap-2">
-            <div className="glass-panel p-1 rounded-2xl flex items-center gap-1.5 border border-white/60 bg-white/95 shadow-glass">
-              <button
-                type="button"
-                onClick={() => navigateToTab("list")}
-                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-heading font-bold transition-all cursor-pointer ${
-                  currentView === "list"
-                    ? "bg-[#c29b62] text-white shadow-md shadow-[#c29b62]/25"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
-                }`}
-              >
-                <Users className="w-3.5 h-3.5" />
-                <span>{t("Employees Directory", "Zoznam zamestnancov", "Munkatársak négyzete")}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => navigateToTab("matrix")}
-                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-heading font-bold transition-all cursor-pointer ${
-                  currentView === "matrix"
-                    ? "bg-[#c29b62] text-white shadow-md shadow-[#c29b62]/25"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
-                }`}
-              >
-                <Coins className="w-3.5 h-3.5" />
-                <span>{t("Salaries Matrix", "Matica miezd", "Bérmátrix")}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => navigateToTab("settings")}
-                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-heading font-bold transition-all cursor-pointer ${
-                  currentView === "settings"
-                    ? "bg-[#c29b62] text-white shadow-md shadow-[#c29b62]/25"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
-                }`}
-              >
-                <SettingsIcon className="w-3.5 h-3.5" />
-                <span>{t("Settings", "Nastavenia", "Beállítások")}</span>
-              </button>
-            </div>
+            <Tabs
+              value={currentView === "detail" ? "list" : currentView}
+              onChange={navigateToTab}
+              items={[
+                { key: "list", icon: <Users className="w-3.5 h-3.5" />, label: t("Employees Directory", "Zoznam zamestnancov", "Munkatársak négyzete") },
+                { key: "matrix", icon: <Coins className="w-3.5 h-3.5" />, label: t("Salaries Matrix", "Matica miezd", "Bérmátrix") },
+                { key: "settings", icon: <SettingsIcon className="w-3.5 h-3.5" />, label: t("Settings", "Nastavenia", "Beállítások") },
+              ]}
+            />
 
             {currentView === "detail" && selectedEmployee && (
               <div className="flex items-center gap-2 pl-2">
                 <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
-                <span className="text-xs font-heading font-bold text-[#b58b4c]">
+                <span className="text-ui font-heading font-bold text-[#b58b4c]">
                   {selectedEmployee.name}
                 </span>
               </div>
@@ -392,7 +401,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
               <button
                 type="button"
                 onClick={handleSeedMockData}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 text-xs font-bold hover:bg-amber-500/20 transition cursor-pointer"
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-700 text-ui font-bold hover:bg-amber-500/20 transition cursor-pointer"
               >
                 <Sparkles className="w-3.5 h-3.5 text-amber-600" />
                 <span>{t("Load Demo Staff", "Vzorové dáta", "Minta adatok")}</span>
@@ -447,20 +456,20 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             {employees.length === 0 ? (
               <div className="flex flex-col items-center gap-3">
                 <Loader2 className="w-8 h-8 animate-spin text-[#c29b62]" />
-                <p className="text-sm font-medium text-slate-500">
+                <p className="text-body font-medium text-slate-500">
                   {t("Loading employee profile...", "Načítavam profil zamestnanca...", "Alkalmazotti profil betöltése...")}
                 </p>
               </div>
             ) : (
               <div className="flex flex-col items-center gap-4 max-w-md mx-auto">
-                <div className="w-14 h-14 rounded-3xl bg-amber-500/10 border border-amber-500/20 text-amber-600 flex items-center justify-center font-bold text-xl">
+                <div className="w-14 h-14 rounded-3xl bg-amber-500/10 border border-amber-500/20 text-amber-600 flex items-center justify-center font-bold text-title">
                   !
                 </div>
                 <div>
-                  <h3 className="text-base font-heading font-bold text-slate-900">
+                  <h3 className="text-title-sm font-heading font-bold text-slate-900">
                     {t("Employee Not Found", "Zamestnanec sa nenašiel", "Az alkalmazott nem található")}
                   </h3>
-                  <p className="text-xs text-slate-500 mt-1">
+                  <p className="text-ui text-slate-500 mt-1">
                     {t(
                       "The requested employee does not exist or may have been removed.",
                       "Požadovaný zamestnanec neexistuje alebo bol odstránený.",
@@ -471,7 +480,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
                 <button
                   type="button"
                   onClick={() => navigateToTab("list")}
-                  className="px-4 py-2 rounded-2xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white text-xs font-heading font-bold shadow-sm hover:shadow transition cursor-pointer"
+                  className="px-4 py-2 rounded-2xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white text-ui font-heading font-bold shadow-sm hover:shadow transition cursor-pointer"
                 >
                   {t("Back to Directory", "Späť do zoznamu", "Vissza a listához")}
                 </button>

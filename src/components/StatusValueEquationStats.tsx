@@ -342,15 +342,15 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
             </div>
             <div className="flex flex-col min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-heading font-black text-slate-800 uppercase tracking-tight">
+                <span className="text-ui font-heading font-bold text-slate-800">
                   {title || defaultTitle}
                 </span>
-                <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-white border border-slate-200/80 text-slate-600 uppercase tracking-wider shadow-2xs">
+                <span className="px-2 py-0.5 rounded-full type-overline bg-white border border-slate-200/80 text-slate-600 shadow-2xs">
                   {items.length}{" "}
                   {t("active statuses", "aktívnych stavov", "aktív állapot")}
                 </span>
               </div>
-              <span className="text-[10px] font-semibold text-slate-400 mt-0.5 truncate max-w-md hidden sm:block">
+              <span className="text-micro font-semibold text-slate-400 mt-0.5 truncate max-w-md hidden ws-sm:block">
                 {subtitle || defaultSubtitle}
               </span>
             </div>
@@ -360,16 +360,16 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
             {/* Collapsed mini-teaser sum */}
             {!isExpanded && (
               <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/90 border border-slate-200/80 shadow-2xs">
-                <span className="text-[10px] font-black text-slate-400 uppercase tracking-wider">
+                <span className="type-overline text-slate-400">
                   {t("Total:", "Spolu:", "Összesen:")}
                 </span>
-                <span className="text-xs font-black text-slate-800 tabular-nums">
+                <span className="text-ui font-bold text-slate-800 tabular-nums">
                   {formatMoney(totalValue, resolvedCurrency, language, {
                     minimumFractionDigits: 0,
                     maximumFractionDigits: 2,
                   })}
                 </span>
-                <span className="text-[9px] font-extrabold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-md">
+                <span className="text-micro font-extrabold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-md">
                   {totalCount}
                 </span>
               </div>
@@ -378,7 +378,7 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
             {/* Quick toggle button */}
             <button
               type="button"
-              className="h-8 px-2.5 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all text-[10px] font-extrabold uppercase tracking-wider flex items-center gap-1 shadow-2xs cursor-pointer"
+              className="h-8 px-2.5 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all type-overline flex items-center gap-1 shadow-2xs cursor-pointer"
               onClick={(e) => {
                 e.stopPropagation();
                 setIsExpanded((prev) => !prev);
@@ -398,8 +398,8 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
         {isExpanded && (
           <div className="px-5 pb-5 pt-1 space-y-3 animate-in fade-in slide-in-from-top-2 duration-200 border-t border-slate-100/80">
             {/* Quick Controls Bar if some are disabled */}
-            <div className="flex items-center justify-between gap-2 pt-1 text-[10px] font-bold text-slate-500">
-              <span className="text-[10px] font-semibold text-slate-400">
+            <div className="flex items-center justify-between gap-2 pt-1 text-micro font-bold text-slate-500">
+              <span className="text-micro font-semibold text-slate-400">
                 ({t("click Eye icon or badge to include/exclude; click (i) to inspect calculated items", "kliknutím na Oko/odznak zahrniete/vylúčite; kliknutím na (i) zobrazíte položky", "Kattintson a Szemre/jelvényre a ki/bekapcsoláshoz; kattintson az (i)-re a tételekhez")})
               </span>
               <div className="flex items-center gap-2 ml-auto">
@@ -407,7 +407,7 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
                   <button
                     type="button"
                     onClick={enableAll}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-indigo-600 hover:text-indigo-700 text-[10px] font-black uppercase tracking-wider transition-colors shadow-2xs cursor-pointer"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-indigo-600 hover:text-indigo-700 type-overline transition-colors shadow-2xs cursor-pointer"
                     title={t("Enable all statuses", "Zapnúť všetky stavy", "Összes bekapcsolása")}
                   >
                     <RotateCcw className="h-3 w-3 stroke-[2.5]" />
@@ -418,7 +418,7 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
                   <button
                     type="button"
                     onClick={disableAll}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/80 border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-700 text-[10px] font-black uppercase tracking-wider transition-colors shadow-2xs cursor-pointer"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/80 border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-700 type-overline transition-colors shadow-2xs cursor-pointer"
                     title={t("Disable all statuses", "Vypnúť všetky stavy", "Összes kikapcsolása")}
                   >
                     <XCircle className="h-3 w-3 stroke-[2]" />
@@ -429,7 +429,7 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
             </div>
 
             {/* Equation Formula: <status1> + <status2> + ... = total */}
-            <div className="p-3.5 bg-white/90 backdrop-blur-md rounded-2xl border border-slate-200/90 shadow-sm flex flex-wrap items-center gap-2 sm:gap-2.5">
+            <div className="p-3.5 bg-white/90 backdrop-blur-md rounded-2xl border border-slate-200/90 shadow-sm flex flex-wrap items-center gap-2 ws-sm:gap-2.5">
               {items.map((item, index) => {
                 const isDisabled = disabledKeys.has(item.key);
                 const isEnabled = !isDisabled;
@@ -440,7 +440,7 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
                 return (
                   <React.Fragment key={item.key}>
                     {index > 0 && (
-                      <div className="flex items-center justify-center h-8 w-5 text-slate-300 font-black text-sm select-none shrink-0">
+                      <div className="flex items-center justify-center h-8 w-5 text-slate-300 font-bold text-body select-none shrink-0">
                         +
                       </div>
                     )}
@@ -460,7 +460,7 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
                               `Kattintson a(z) ${item.name} kizárásához a végösszegből`
                             )
                       }
-                      className={`group relative flex items-center gap-2 px-3 py-1.5 rounded-xl text-xs font-black uppercase tracking-wider transition-all duration-150 cursor-pointer active:scale-98 ${
+                      className={`group relative flex items-center gap-2 px-3 py-1.5 rounded-xl text-ui font-bold transition-all duration-150 cursor-pointer active:scale-98 ${
                         isDisabled
                           ? "bg-slate-100/90 border border-slate-200 text-slate-400 opacity-50 hover:opacity-75 shadow-2xs line-through"
                           : "shadow-sm hover:shadow-md hover:brightness-105 border border-transparent"
@@ -494,7 +494,7 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
 
                       {/* Status Name */}
                       <span
-                        className="text-[10px] font-black uppercase tracking-wider truncate"
+                        className="type-overline truncate"
                         style={
                           isEnabled
                             ? {
@@ -510,7 +510,7 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
 
                       {/* Monetary Value (Invoicable) */}
                       <span
-                        className="font-mono font-black tabular-nums text-xs ml-0.5"
+                        className="font-mono font-bold tabular-nums text-ui ml-0.5"
                         style={isEnabled ? { color: textColor } : undefined}
                       >
                         {formatMoney(item.value || 0, resolvedCurrency, language, {
@@ -521,7 +521,7 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
 
                       {/* Count Badge */}
                       <span
-                        className={`px-1.5 py-0.5 rounded-md text-[9px] font-extrabold tabular-nums leading-none transition-colors ${
+                        className={`px-1.5 py-0.5 rounded-md text-micro font-extrabold tabular-nums leading-none transition-colors ${
                           isDisabled
                             ? "bg-slate-200 text-slate-400"
                             : isLightFg
@@ -564,7 +564,7 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
               })}
 
               {/* Equals Sign */}
-              <div className="flex items-center justify-center h-8 w-6 text-slate-700 font-black text-base select-none shrink-0 px-0.5">
+              <div className="flex items-center justify-center h-8 w-6 text-slate-700 font-bold text-title-sm select-none shrink-0 px-0.5">
                 =
               </div>
 
@@ -573,10 +573,10 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
                 className={`flex items-center gap-2.5 px-4 py-2 rounded-xl ${totalClasses.totalBg} transition-all duration-200 shrink-0`}
               >
                 <div className="flex flex-col">
-                  <span className="text-[8px] font-black uppercase tracking-widest leading-none text-white/80">
+                  <span className="type-overline leading-none text-white/80">
                     {t("Total Invoicable", "Spolu na fakturáciu", "Összes számlázható")}
                   </span>
-                  <span className="font-mono font-black text-sm sm:text-base tabular-nums leading-tight tracking-tight mt-0.5">
+                  <span className="font-mono font-bold text-body tabular-nums leading-tight tracking-tight mt-0.5">
                     {formatMoney(totalValue, resolvedCurrency, language, {
                       minimumFractionDigits: 0,
                       maximumFractionDigits: 2,
@@ -585,7 +585,7 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
                 </div>
 
                 <div
-                  className={`px-2 py-0.5 rounded-lg ${totalClasses.totalBadgeBg} text-[10px] font-black uppercase tracking-wider leading-none ml-1`}
+                  className={`px-2 py-0.5 rounded-lg ${totalClasses.totalBadgeBg} type-overline leading-none ml-1`}
                 >
                   {totalCount} {resolvedUnitLabel}
                 </div>
@@ -602,14 +602,14 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
           onClick={() => setDrawerData(null)}
         >
           <div
-            className="w-full max-w-lg sm:max-w-xl bg-white h-full shadow-2xl flex flex-col z-[10000] animate-in slide-in-from-right duration-300 overflow-hidden"
+            className="w-full max-w-lg ws-sm:max-w-xl bg-white h-full shadow-2xl flex flex-col z-[10000] animate-in slide-in-from-right duration-300 overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Drawer Header */}
             <div className="p-5 border-b border-slate-100 bg-slate-50/80 flex items-start justify-between gap-4 shrink-0">
               <div className="flex items-center gap-3 min-w-0">
                 <div
-                  className="h-10 w-10 rounded-2xl flex items-center justify-center text-white shadow-md shrink-0 font-heading font-black text-sm"
+                  className="h-10 w-10 rounded-2xl flex items-center justify-center text-white shadow-md shrink-0 font-heading font-bold text-body"
                   style={{ backgroundColor: drawerData.itemColor }}
                 >
                   {drawerData.itemCount}
@@ -617,16 +617,16 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
                     <span
-                      className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase text-white shadow-2xs"
+                      className="px-2 py-0.5 rounded-full type-overline text-white shadow-2xs"
                       style={{ backgroundColor: drawerData.itemColor }}
                     >
                       {drawerData.itemName}
                     </span>
                   </div>
-                  <h3 className="text-base font-heading font-black text-slate-900 truncate mt-0.5">
+                  <h3 className="text-title-sm font-heading font-bold text-slate-900 truncate mt-0.5">
                     {t("Calculated Items Breakdown", "Prehľad kalkulovaných položiek", "Kalkulált tételek részletei")}
                   </h3>
-                  <p className="text-xs font-semibold text-slate-500 mt-0.5">
+                  <p className="text-ui font-semibold text-slate-500 mt-0.5">
                     {t("Invoicable in this status:", "Hodnota na fakturovanie v tomto stave:", "Számlázható összeg:")}{" "}
                     <span className="font-bold text-emerald-700 font-heading">
                       {formatMoney(drawerData.itemValue, resolvedCurrency, language, {
@@ -649,10 +649,10 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
 
             {/* Budget Breakdown Strip if available */}
             {drawerData.totalBudget !== undefined && drawerData.totalBudget > 0 && (
-              <div className="px-5 py-3 bg-amber-50/70 border-b border-amber-200/60 flex items-center justify-between gap-3 text-xs shrink-0">
+              <div className="px-5 py-3 bg-amber-50/70 border-b border-amber-200/60 flex items-center justify-between gap-3 text-ui shrink-0">
                 <div className="flex items-center gap-4 flex-wrap">
                   <div>
-                    <span className="text-[9px] font-black uppercase text-slate-400 block">
+                    <span className="type-overline text-slate-400 block">
                       {t("Total Budget", "Celkový rozpočet", "Teljes büdzsé")}
                     </span>
                     <span className="font-bold text-slate-900 tabular-nums">
@@ -664,7 +664,7 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
                   </div>
                   {drawerData.invoiced !== undefined && (
                     <div>
-                      <span className="text-[9px] font-black uppercase text-slate-400 block">
+                      <span className="type-overline text-slate-400 block">
                         {t("Invoiced so far", "Vyfakturované", "Számlázva")}
                       </span>
                       <span className="font-bold text-indigo-700 tabular-nums">
@@ -676,10 +676,10 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
                     </div>
                   )}
                   <div>
-                    <span className="text-[9px] font-black uppercase text-amber-700 block">
+                    <span className="type-overline text-amber-700 block">
                       {t("Remaining Invoicable", "Zostáva vyfakturovať", "Hátralévő számlázható")}
                     </span>
-                    <span className="font-heading font-black text-amber-950 tabular-nums">
+                    <span className="font-heading font-bold text-amber-950 tabular-nums">
                       {formatMoney(drawerData.itemValue, resolvedCurrency, language, {
                         minimumFractionDigits: 0,
                         maximumFractionDigits: 0,
@@ -703,7 +703,7 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
                     "Filtrovať podľa názvu, klienta, manažéra, divízie...",
                     "Szűrés név, ügyfél, felelős, divízió szerint..."
                   )}
-                  className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-hidden focus:bg-white focus:border-indigo-500 transition-colors"
+                  className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui font-semibold focus:outline-hidden focus:bg-white focus:border-indigo-500 transition-colors"
                 />
                 {drawerSearch && (
                   <button
@@ -721,7 +721,7 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
             <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
               {filteredDrawerRows.length === 0 ? (
                 <div className="text-center py-16 text-slate-400">
-                  <p className="text-xs font-semibold">
+                  <p className="text-ui font-semibold">
                     {drawerSearch
                       ? t(
                           "No items matching search query.",
@@ -745,7 +745,7 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap mb-1">
                           <span
-                            className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                            className={`px-2 py-0.5 rounded-full type-overline ${
                               row.type === "project"
                                 ? "bg-purple-100 text-purple-800"
                                 : "bg-blue-100 text-blue-800"
@@ -756,12 +756,12 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
                               : t("Lead", "Lead", "Lead")}
                           </span>
                           {row.division && (
-                            <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                            <span className="px-2 py-0.5 rounded-full text-micro font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-100">
                               {row.division}
                             </span>
                           )}
                           {row.date && (
-                            <span className="text-[10px] font-semibold text-slate-400">
+                            <span className="text-micro font-semibold text-slate-400">
                               {row.date}
                             </span>
                           )}
@@ -770,13 +770,13 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
                         <a
                           href={row.url || "#"}
                           onClick={() => setDrawerData(null)}
-                          className="text-sm font-heading font-black text-slate-900 hover:text-indigo-600 transition-colors line-clamp-1 block"
+                          className="text-body font-heading font-bold text-slate-900 hover:text-indigo-600 transition-colors line-clamp-1 block"
                         >
                           {row.name}
                         </a>
 
                         {row.clientName && (
-                          <p className="text-xs font-semibold text-slate-500 truncate mt-0.5">
+                          <p className="text-ui font-semibold text-slate-500 truncate mt-0.5">
                             {row.clientName}
                           </p>
                         )}
@@ -784,10 +784,10 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
 
                       {/* Invoicable Value Badge */}
                       <div className="text-right shrink-0">
-                        <span className="text-[9px] font-black uppercase text-slate-400 block">
+                        <span className="type-overline text-slate-400 block">
                           {t("Invoicable", "Na fakturovanie", "Számlázható")}
                         </span>
-                        <span className="text-sm font-heading font-black text-emerald-600 tabular-nums">
+                        <span className="text-body font-heading font-bold text-emerald-600 tabular-nums">
                           {formatMoney(row.invoicable, resolvedCurrency, language, {
                             minimumFractionDigits: 0,
                             maximumFractionDigits: 2,
@@ -798,7 +798,7 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
 
                     {/* Financial Details for Projects with Invoiced vs Budget */}
                     {row.type === "project" && row.totalBudget !== undefined && row.totalBudget > 0 && (
-                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2 text-[10px] text-slate-500">
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2 text-micro text-slate-500">
                         <span>
                           {t("Budget:", "Rozpočet:", "Büdzsé:")}{" "}
                           <b className="text-slate-700 font-bold">
@@ -818,7 +818,7 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
                           </b>
                         </span>
                         {row.manager && (
-                          <span className="text-slate-400 truncate max-w-[120px]">
+                          <span className="text-slate-400 truncate max-w-30">
                             PM: {row.manager}
                           </span>
                         )}
@@ -829,7 +829,7 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
                       <a
                         href={row.url || "#"}
                         onClick={() => setDrawerData(null)}
-                        className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition-colors"
+                        className="text-micro font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition-colors"
                       >
                         <span>{t("Open in CRM", "Otvoriť v CRM", "Megnyitás a CRM-ben")}</span>
                         <ExternalLink className="h-3 w-3" />
@@ -841,14 +841,14 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
             </div>
 
             {/* Drawer Footer */}
-            <div className="p-4 border-t border-slate-100 bg-slate-50/80 flex items-center justify-between text-xs text-slate-500 shrink-0">
-              <span className="font-semibold text-[11px]">
+            <div className="p-4 border-t border-slate-100 bg-slate-50/80 flex items-center justify-between text-ui text-slate-500 shrink-0">
+              <span className="font-semibold text-caption">
                 {filteredDrawerRows.length} {t("items calculated", "kalkulovaných položiek", "tétel számolva")}
               </span>
               <button
                 type="button"
                 onClick={() => setDrawerData(null)}
-                className="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-xs uppercase tracking-wider hover:bg-slate-800 transition-colors cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-ui hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 {t("Close", "Zavrieť", "Bezárás")}
               </button>

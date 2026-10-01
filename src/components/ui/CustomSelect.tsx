@@ -3,6 +3,7 @@ import { createPortal, flushSync } from "react-dom";
 import { motion } from "framer-motion";
 import { Check, ChevronDown, Plus, Search } from "lucide-react";
 import { getStoredLanguage } from "../../utils/translations";
+import { viewSizeScale } from "../../utils/viewSize";
 
 export interface DropdownOption {
   value: string;
@@ -67,7 +68,8 @@ interface Coords {
   openUp: boolean;
 }
 
-const PANEL_MAX_HEIGHT = 260;
+const PANEL_MAX_HEIGHT_BASE = 260;
+const panelMaxHeight = () => PANEL_MAX_HEIGHT_BASE * viewSizeScale();
 /** Below this many options, scanning the list beats typing. */
 const SEARCH_THRESHOLD = 8;
 /** Above drawers (`z-[100000]`) and modals (`z-[9999]`) so portaled options paint on top. */
@@ -116,7 +118,7 @@ export const DropdownSearchRow: React.FC<{
             onKeyDown={onKeyDown}
             onClick={(e) => e.stopPropagation()}
             placeholder={placeholder ?? copy.search}
-            className="w-full rounded-lg border border-slate-200 bg-slate-50 py-1.5 pl-8 pr-2.5 text-sm font-medium text-slate-700 outline-none transition-colors placeholder:font-medium placeholder:text-slate-400 focus:border-accent focus:bg-white"
+            className="w-full rounded-lg border border-slate-200 bg-slate-50 py-1.5 pl-8 pr-2.5 text-body font-medium text-slate-700 outline-none transition-colors placeholder:font-medium placeholder:text-slate-400 focus:border-accent focus:bg-white"
           />
         </div>
         {onAddNew && (
@@ -129,7 +131,7 @@ export const DropdownSearchRow: React.FC<{
               e.stopPropagation();
               onAddNew();
             }}
-            className="shrink-0 flex h-[30px] w-[30px] items-center justify-center rounded-lg border border-accent/20 bg-accent/10 text-accent transition-all hover:bg-accent/20 active:scale-95 cursor-pointer"
+            className="shrink-0 flex h-7.5 w-7.5 items-center justify-center rounded-lg border border-accent/20 bg-accent/10 text-accent transition-all hover:bg-accent/20 active:scale-95 cursor-pointer"
           >
             {addNewIcon ?? <Plus className="h-4 w-4" />}
           </button>
@@ -178,7 +180,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
     if (!el) return;
     const rect = el.getBoundingClientRect();
     const spaceBelow = window.innerHeight - rect.bottom;
-    const openUp = spaceBelow < PANEL_MAX_HEIGHT && rect.top > spaceBelow;
+    const openUp = spaceBelow < panelMaxHeight() && rect.top > spaceBelow;
     const margin = 8;
     const width = rect.width;
     let left = align === "right" ? undefined : rect.left;
@@ -329,7 +331,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
     }
   };
 
-  const sizeClasses = size === "sm" ? "px-2.5 py-1.5 text-xs gap-1" : "px-3.5 py-2.5 text-sm gap-1.5";
+  const sizeClasses = size === "sm" ? "px-2.5 py-1.5 text-ui gap-1" : "px-3.5 py-2.5 text-body gap-1.5";
 
   return (
     <>
@@ -390,7 +392,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                   right: coords?.right,
                   minWidth: coords?.width ?? 160,
                   maxWidth: coords?.maxWidth,
-                  maxHeight: PANEL_MAX_HEIGHT,
+                  maxHeight: panelMaxHeight(),
                   zIndex: PANEL_Z,
                   transformOrigin: coords?.openUp ? "bottom" : "top",
                   visibility: coords ? "visible" : "hidden",
@@ -426,7 +428,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                     the list, and a listbox may only contain options. */}
                 <div role="listbox" className="flex-1 overflow-y-auto py-1.5">
                   {opts.length === 0 && (
-                    <div className="px-3.5 py-2.5 text-sm text-slate-400 italic">
+                    <div className="px-3.5 py-2.5 text-body text-slate-400 italic">
                       {needle ? copy.noMatches : copy.noOptions}
                     </div>
                   )}
@@ -442,7 +444,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                         e.stopPropagation();
                         pick(opt);
                       }}
-                      className={`w-full flex items-center gap-2 px-3.5 py-2.5 text-left text-sm font-medium transition-colors cursor-pointer ${
+                      className={`w-full flex items-center gap-2 px-3.5 py-2.5 text-left text-body font-medium transition-colors cursor-pointer ${
                         opt.disabled
                           ? "opacity-40 cursor-not-allowed"
                           : opt.value === value

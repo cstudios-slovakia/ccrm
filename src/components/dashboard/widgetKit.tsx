@@ -16,6 +16,7 @@ import React from "react";
 import { ArrowRight } from "lucide-react";
 import { cn } from "../../utils/cn";
 import { liftAccent } from "../../utils/accentColor";
+import { useViewSize } from "../../utils/viewSize";
 
 export type Translate = (en: string, sk: string, hu: string) => string;
 
@@ -35,7 +36,7 @@ export const WidgetCard: React.FC<{
   <div
     className={cn(
       "h-full bg-white border border-slate-200 rounded-3xl shadow-sm box-border flex flex-col",
-      flush ? "px-[22px] pt-5 pb-3 gap-3.5" : "px-[22px] py-5 gap-[18px]",
+      flush ? "px-5.5 pt-5 pb-3 gap-3.5" : "px-5.5 py-5 gap-4.5",
       className
     )}
   >
@@ -47,7 +48,7 @@ export const WidgetCard: React.FC<{
         >
           <Icon className="h-4 w-4 text-white" strokeWidth={2.25} />
         </span>
-        <h2 className="m-0 text-[11px] font-bold uppercase tracking-[0.08em] text-slate-500 truncate">
+        <h2 className="m-0 type-overline text-slate-500 truncate">
           {title}
         </h2>
       </div>
@@ -68,8 +69,8 @@ export const SegmentedToggle: React.FC<{
   <div
     role="group"
     className={cn(
-      "flex items-center gap-0.5 p-[3px] rounded-[10px] bg-slate-100 box-border",
-      large ? "h-[34px]" : "h-7"
+      "flex items-center gap-0.5 p-0.75 rounded-[10px] bg-slate-100 box-border",
+      large ? "h-8.5" : "h-7"
     )}
   >
     {options.map((option) => {
@@ -81,8 +82,8 @@ export const SegmentedToggle: React.FC<{
           aria-pressed={active}
           onClick={() => onChange(option.value)}
           className={cn(
-            "px-2.5 rounded-lg border-0 text-[11px] font-bold whitespace-nowrap transition-colors cursor-pointer",
-            large ? "h-7" : "h-[22px]",
+            "px-2.5 rounded-lg border-0 text-caption font-bold whitespace-nowrap transition-colors cursor-pointer",
+            large ? "h-7" : "h-5.5",
             active ? "bg-white shadow-sm text-indigo-600" : "bg-transparent text-slate-500 hover:text-slate-700"
           )}
         >
@@ -106,7 +107,7 @@ export const MoreLink: React.FC<{ label: string; onClick?: () => void; href?: st
       e.preventDefault();
       onClick();
     }}
-    className="flex items-center gap-1 h-7 px-2 rounded-lg text-xs font-bold text-indigo-600 hover:bg-indigo-50 transition-colors"
+    className="flex items-center gap-1 h-7 px-2 rounded-lg text-ui font-bold text-indigo-600 hover:bg-indigo-50 transition-colors"
   >
     {label}
     <ArrowRight className="h-3.5 w-3.5" strokeWidth={2.25} />
@@ -121,7 +122,7 @@ export const MoreLink: React.FC<{ label: string; onClick?: () => void; href?: st
  */
 export const StatusBadge: React.FC<{ label: string; color: string }> = ({ label, color }) => (
   <span
-    className="inline-flex items-center gap-1 h-6 px-2 rounded-lg border text-[10px] font-extrabold uppercase tracking-[0.06em] whitespace-nowrap"
+    className="inline-flex items-center gap-1 h-6 px-2 rounded-lg border type-overline whitespace-nowrap"
     style={{
       backgroundColor: `${color}1a`,
       borderColor: `${color}40`,
@@ -134,8 +135,8 @@ export const StatusBadge: React.FC<{ label: string; color: string }> = ({ label,
 
 /** A person: a dot in their colour, their name, on a faint indigo chip. */
 export const PersonPill: React.FC<{ name: string; color?: string }> = ({ name, color = "#6366f1" }) => (
-  <span className="inline-flex items-center gap-1.5 h-6 max-w-full px-2 rounded-lg bg-indigo-50 text-indigo-700 text-xs font-bold">
-    <span className="w-[5px] h-[5px] rounded-full shrink-0" style={{ backgroundColor: color }} />
+  <span className="inline-flex items-center gap-1.5 h-6 max-w-full px-2 rounded-lg bg-indigo-50 text-indigo-700 text-ui font-bold">
+    <span className="w-1.25 h-1.25 rounded-full shrink-0" style={{ backgroundColor: color }} />
     <span className="truncate">{name}</span>
   </span>
 );
@@ -146,7 +147,7 @@ export const BigNumber: React.FC<{ children: React.ReactNode; className?: string
   className
 }) => (
   <div
-    className={cn("text-[34px] font-bold tracking-[-0.02em] leading-[1.05] text-slate-900", className)}
+    className={cn("text-display font-bold tracking-[-0.02em] leading-[1.05] text-slate-900", className)}
     style={{ fontVariantNumeric: "tabular-nums" }}
   >
     {children}
@@ -163,7 +164,10 @@ export const BigNumber: React.FC<{ children: React.ReactNode; className?: string
  * push the card taller themselves: the card's height comes from `min` (or less,
  * when there is less data than that) and from the grid row, and rows fill it.
  */
-export const useFillRows = (min: number, available: number, rowHeight: number) => {
+export const useFillRows = (min: number, available: number, baseRowHeight: number) => {
+  // Row heights are written for Compact; the view size scales them.
+  const { scale } = useViewSize();
+  const rowHeight = baseRowHeight * scale;
   const [node, setNode] = React.useState<HTMLDivElement | null>(null);
   const [fit, setFit] = React.useState(min);
 
@@ -204,7 +208,7 @@ export const SegmentBar: React.FC<{
     return <span className="block rounded-full bg-slate-100" style={{ height: thickness }} />;
   }
   return (
-    <div className="flex gap-[2px] rounded-full overflow-hidden" style={{ height: thickness }}>
+    <div className="flex gap-0.5 rounded-full overflow-hidden" style={{ height: thickness }}>
       {live.map((segment) => (
         <span
           key={segment.key}
@@ -253,7 +257,7 @@ export const labelForStatus = (status: any, known: string[]): string => {
 };
 
 export const EmptyWidgetRows: React.FC<{ t: Translate }> = ({ t }) => (
-  <div className="flex-1 flex items-center justify-center py-6 text-xs text-slate-400 font-semibold uppercase tracking-wider">
+  <div className="flex-1 flex items-center justify-center py-6 text-ui text-slate-400 font-semibold">
     {t("No records found", "Žiadne záznamy", "Nincs találat")}
   </div>
 );

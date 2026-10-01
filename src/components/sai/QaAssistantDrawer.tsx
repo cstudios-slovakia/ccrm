@@ -147,7 +147,7 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
   return (
     <div className={
       embedded 
-        ? `rounded-3xl bg-white border border-slate-200/80 shadow-md flex flex-col h-[calc(100vh-210px)] min-h-[500px] max-h-[820px] overflow-hidden ${className}`
+        ? `rounded-3xl bg-white border border-slate-200/80 shadow-md flex flex-col h-[calc(100vh-210px)] min-h-125 max-h-205 overflow-hidden ${className}`
         : `fixed inset-y-0 right-0 z-[1300] w-full max-w-lg bg-white shadow-2xl border-l border-slate-200/90 flex flex-col animate-in slide-in-from-right duration-300 ${className}`
     }>
       
@@ -163,10 +163,10 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
             className="shadow-sm shrink-0"
           />
           <div className="min-w-0">
-            <h3 className="text-sm font-bold text-slate-900 truncate">
+            <h3 className="text-body font-bold text-slate-900 truncate">
               {t('Simulation Interrogation Hub', 'Interrogačný hub simulácie', 'Szimulációs kikérdező központ')}
             </h3>
-            <p className="text-[11px] text-slate-500 truncate">
+            <p className="text-caption text-slate-500 truncate">
               {t('Cross-examination of analyst findings & agent motives', 'Krížový výsluch zistení analytika & motívov agentov', 'Az elemzői megállapítások és ágens-indítékok keresztkikérdezése')}
             </p>
           </div>
@@ -196,7 +196,7 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
       <div className="px-5 pt-3 border-b border-slate-100 flex items-center gap-4 bg-white">
         <button
           onClick={() => setActiveTab('analyst')}
-          className={`pb-2.5 text-xs font-bold border-b-2 transition cursor-pointer ${
+          className={`pb-2.5 text-ui font-bold border-b-2 transition cursor-pointer ${
             activeTab === 'analyst' 
               ? 'border-indigo-600 text-indigo-600' 
               : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -206,7 +206,7 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
         </button>
         <button
           onClick={() => setActiveTab('agent')}
-          className={`pb-2.5 text-xs font-bold border-b-2 transition cursor-pointer ${
+          className={`pb-2.5 text-ui font-bold border-b-2 transition cursor-pointer ${
             activeTab === 'agent' 
               ? 'border-indigo-600 text-indigo-600' 
               : 'border-transparent text-slate-500 hover:text-slate-800'
@@ -219,7 +219,7 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
       {/* Agent Selector (If on Agent tab) */}
       {activeTab === 'agent' && (
         <div className="px-4 py-2.5 bg-slate-50 border-b border-slate-200/70 flex items-center gap-2">
-          <span className="text-[11px] font-bold text-slate-600 uppercase shrink-0">
+          <span className="type-overline text-slate-600 shrink-0">
             {t('Agent:', 'Agent:', 'Ágens:')}
           </span>
           <select
@@ -229,7 +229,7 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
               setSelectedAgent(a || null);
               setAgentMessages([]);
             }}
-            className="flex-1 text-xs py-1 px-2.5 rounded-lg border border-slate-300 bg-white font-medium focus:ring-1 focus:ring-indigo-500 truncate"
+            className="flex-1 text-ui py-1 px-2.5 rounded-lg border border-slate-300 bg-white font-medium focus:ring-1 focus:ring-indigo-500 truncate"
           >
             {agents.map(a => (
               <option key={a.id} value={a.id}>
@@ -269,12 +269,12 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
                   : (activeTab === 'analyst' ? 'smug' : 'unsure')
               }
             />
-            <div className={`p-3 rounded-2xl text-xs leading-relaxed max-w-[85%] ${
+            <div className={`p-3 rounded-2xl text-ui leading-relaxed max-w-[85%] ${
               m.sender === 'user' 
                 ? 'bg-indigo-600 text-white rounded-tr-none whitespace-pre-wrap' 
                 : 'bg-slate-50 text-slate-800 rounded-tl-none border border-slate-200/80 shadow-xs'
             }`}>
-              {m.sender === 'user' ? m.text : <Markdown content={m.text} className="space-y-1.5 text-xs text-slate-800 leading-relaxed" />}
+              {m.sender === 'user' ? m.text : <Markdown content={m.text} className="space-y-1.5 text-ui text-slate-800 leading-relaxed" />}
             </div>
           </div>
         ))}
@@ -282,7 +282,7 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
         {/* Quick Suggestion Chips for Chief Analyst */}
         {activeTab === 'analyst' && analystMessages.length <= 1 && (
           <div className="pt-2 space-y-2">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">
+            <span className="type-overline text-slate-400 block">
               {t('Recommended Questions:', 'Odporúčané otázky:', 'Ajánlott kérdések:')}
             </span>
             <div className="space-y-1.5">
@@ -295,10 +295,10 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
                   key={pIdx}
                   type="button"
                   onClick={() => triggerSend(prompt)}
-                  className="w-full text-left px-3 py-2 rounded-xl bg-indigo-50/70 hover:bg-indigo-100/90 border border-indigo-200/60 text-indigo-700 text-xs font-medium transition cursor-pointer flex items-center justify-between group"
+                  className="w-full text-left px-3 py-2 rounded-xl bg-indigo-50/70 hover:bg-indigo-100/90 border border-indigo-200/60 text-indigo-700 text-ui font-medium transition cursor-pointer flex items-center justify-between group"
                 >
                   <span className="truncate">{prompt}</span>
-                  <span className="text-[11px] opacity-60 group-hover:opacity-100 transition ml-2 shrink-0">→</span>
+                  <span className="text-caption opacity-60 group-hover:opacity-100 transition ml-2 shrink-0">→</span>
                 </button>
               ))}
             </div>
@@ -307,11 +307,11 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
 
         {/* Interview Agent Welcome Banner */}
         {activeTab === 'agent' && agentMessages.length === 0 && selectedAgent && (
-          <div className="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200/70 text-xs space-y-2">
+          <div className="p-3.5 rounded-2xl bg-emerald-50/70 border border-emerald-200/70 text-ui space-y-2">
             <div className="font-bold text-emerald-800 flex items-center gap-1.5">
               <span>{t('Interview Agent:', 'Výsluch agenta:', 'Ágens interjú:')} {selectedAgent.displayName} (@{selectedAgent.username})</span>
             </div>
-            <p className="text-emerald-700 text-[11px] leading-relaxed">
+            <p className="text-emerald-700 text-caption leading-relaxed">
               {t(
                 `Ask this specialist (${selectedAgent.profession}) directly why they adopted a ${selectedAgent.stance} stance, or what would persuade them to change their mind.`,
                 `Opýtajte sa priamo tohto špecialistu (${selectedAgent.profession}), prečo zaujal postoj ${selectedAgent.stance}, alebo čo by ho presvedčilo zmeniť názor.`,
@@ -328,7 +328,7 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
                   key={qIdx}
                   type="button"
                   onClick={() => triggerSend(q)}
-                  className="px-2.5 py-1 rounded-lg bg-white border border-emerald-300 text-emerald-800 text-[11px] font-semibold hover:bg-emerald-100 transition cursor-pointer"
+                  className="px-2.5 py-1 rounded-lg bg-white border border-emerald-300 text-emerald-800 text-caption font-semibold hover:bg-emerald-100 transition cursor-pointer"
                 >
                   {q}
                 </button>
@@ -338,7 +338,7 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
         )}
 
         {isLoading && (
-          <div className="flex items-center gap-2.5 text-slate-500 text-xs pl-1">
+          <div className="flex items-center gap-2.5 text-slate-500 text-ui pl-1">
             <BlobatarAvatar
               name={activeTab === 'analyst' ? 'Chief Intelligence Analyst' : (selectedAgent?.displayName || selectedAgent?.username || 'Market Specialist')}
               size={24}
@@ -367,7 +367,7 @@ export const QaAssistantDrawer: React.FC<QaAssistantDrawerProps> = ({
               ? t('Ask why objections arose, what the next steps are...', 'Opýtajte sa, prečo vznikla námietka, aké sú ďalšie kroky...', 'Kérdezze meg, miért merült fel a kifogás, mik a következő lépések...') 
               : t(`Ask agent ${selectedAgent?.displayName || ''} why they took that stance...`, `Opýtajte sa agenta ${selectedAgent?.displayName || ''}, prečo zaujal daný postoj...`, `Kérdezze meg a(z) ${selectedAgent?.displayName || ''} ágenst, miért ezt az álláspontot képviselte...`)
           }
-          className="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-xs focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white font-sans"
+          className="flex-1 px-3 py-2 rounded-xl border border-slate-300 text-ui focus:ring-2 focus:ring-indigo-500 focus:outline-none bg-white font-sans"
         />
         <button
           type="button"

@@ -18,7 +18,7 @@ import type { WidgetSize } from "./dashboardWidgets";
 
 export const GRID_COLUMNS = 12;
 
-/** The Tailwind breakpoints the card widths change at. */
+/** The workspace breakpoints (`ws-md`, `ws-lg`) the card widths change at. */
 export type GridBreakpoint = "base" | "md" | "lg";
 
 /**
@@ -34,8 +34,16 @@ const SPAN: Record<GridBreakpoint, Record<WidgetSize, number>> = {
   base: { sm: 12, md: 12, lg: 12, full: 12 }
 };
 
-export const breakpointForWidth = (width: number): GridBreakpoint =>
-  width >= 1024 ? "lg" : width >= 768 ? "md" : "base";
+/**
+ * Mirrors the `ws-lg` (72em) and `ws-md` (56em) container queries on the
+ * workspace. `em` is the workspace's font size, so the same window yields fewer
+ * columns at a bigger view size — exactly what the CSS does. The view's span
+ * classes and this function must change together.
+ */
+export const breakpointForWidth = (width: number, em = 16): GridBreakpoint => {
+  const ems = width / em;
+  return ems >= 72 ? "lg" : ems >= 56 ? "md" : "base";
+};
 
 export const spanOf = (size: WidgetSize, breakpoint: GridBreakpoint): number =>
   SPAN[breakpoint][size] ?? GRID_COLUMNS;
@@ -43,7 +51,7 @@ export const spanOf = (size: WidgetSize, breakpoint: GridBreakpoint): number =>
 export interface GridItem {
   id: string;
   size: WidgetSize;
-  /** A card may claim two rows; only honoured at `lg`, matching `lg:row-span-2`. */
+  /** A card may claim two rows; only honoured at `lg`, matching `ws-lg:row-span-2`. */
   rowSpan?: number;
 }
 

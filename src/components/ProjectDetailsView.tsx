@@ -37,6 +37,7 @@ import { isDoneTaskState } from "../utils/projectTasks";
 import { isOnPersonalDashboard, type TaskAccess } from "../utils/taskSelectors";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 import { registerPendingSave } from "../utils/pendingSaves";
+import { useViewSize } from "../utils/viewSize";
 
 /** The tabs of the right-hand column, as they also appear in the URL's `tab` parameter. */
 type RightTab = "timeline" | "tasks" | "gantt" | "finances" | "files";
@@ -111,10 +112,10 @@ interface ProjectDetailsViewProps {
  * rather than five differently-sized buttons. `shrink-0` + `whitespace-nowrap`
  * keep each tab whole; the row scrolls sideways when the column is too narrow.
  */
-const tabClass = "shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-heading font-bold text-[11px] uppercase tracking-wider whitespace-nowrap transition-all active:scale-95 cursor-pointer";
+const tabClass = "shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-heading type-overline whitespace-nowrap transition-all active:scale-95 cursor-pointer";
 const tabActiveClass = "bg-slate-900 text-white shadow-sm";
 const tabIdleClass = "text-slate-500 hover:bg-slate-100 hover:text-slate-800";
-const tabBadgeClass = "px-1.5 py-0.5 rounded-full text-[10px] font-bold leading-none";
+const tabBadgeClass = "px-1.5 py-0.5 rounded-full text-micro font-bold leading-none";
 
 const DEFAULT_TASK_STATES = ["New", "In progress", "Blocked", "Done"];
 const FULL_TASK_ACCESS: TaskAccess = { view: true, create: true, edit: true, delete: true, viewAll: true };
@@ -195,7 +196,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     const current = parseMoneyValue(rawVal, defaultCurrency);
     const inputClass = compact
       ? "flex-1 min-w-0 px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-800"
-      : "flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800";
+      : "flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold bg-white text-slate-800";
     return (
       <div className="flex items-center gap-2">
         <input
@@ -217,7 +218,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           <CustomSelect
             value={current.currency}
             onChange={code => updateVal({ amount: current.amount, currency: code })}
-            className="!text-xs"
+            className="text-ui"
             options={CURRENCY_OPTIONS.map(c => ({ value: c.code, label: `${c.code} ${c.symbol}` }))}
           />
         </div>
@@ -237,7 +238,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       case "money": {
         if (isMoneyValueEmpty(rawVal, defaultCurrency)) return empty;
         const m = parseMoneyValue(rawVal, defaultCurrency);
-        return <span className="font-black text-slate-800">{formatMoney(m.amount || 0, m.currency, userLanguage)}</span>;
+        return <span className="font-bold text-slate-800">{formatMoney(m.amount || 0, m.currency, userLanguage)}</span>;
       }
       case "date":
         return rawVal ? formatDateLocalized(rawVal, userLanguage) : empty;
@@ -254,7 +255,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
         return (
           <div className="flex flex-wrap gap-1.5">
             {picked.map(opt => (
-              <span key={String(opt)} className="px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-[10px] font-black uppercase tracking-wider text-slate-600">
+              <span key={String(opt)} className="px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 type-overline text-slate-600">
                 {String(opt)}
               </span>
             ))}
@@ -285,7 +286,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
         const contact = leads.find(l => l.id === rawVal);
         if (!contact) return empty;
         return (
-          <a href={`#lead-${contact.id}`} className="text-indigo-600 hover:text-indigo-800 font-black">
+          <a href={`#lead-${contact.id}`} className="text-indigo-600 hover:text-indigo-800 font-bold">
             {contact.name}
           </a>
         );
@@ -383,7 +384,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const [newGeContactId, setNewGeContactId] = useState("");
   const [newGeStart, setNewGeStart] = useState("");
   const [newGeEnd, setNewGeEnd] = useState("");
-  const [columnWidth, setColumnWidth] = useState(60);
+  // Zoom is stored as the Compact pixel width and rendered × the view-size scale (docs/VIEW-SIZE.md §3.5).
+  const { scale: viewScale } = useViewSize();
+  const [columnBase, setColumnWidth] = useState(60);
+  const columnWidth = columnBase * viewScale;
   const [selectedGanttEdit, setSelectedGanttEdit] = useState<ProjectGanttRow | null>(null);
 
   // File Upload states
@@ -1008,7 +1012,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     >
       <div className="flex flex-col gap-1.5">
         {asList(val).map((f, fIdx) => (
-          <div key={fIdx} className="flex items-center justify-between p-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold">
+          <div key={fIdx} className="flex items-center justify-between p-2 bg-slate-50 border border-slate-200 rounded-xl text-ui font-semibold">
             <a
               href={f.path}
               target="_blank"
@@ -1017,7 +1021,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             >
               <FileText className="h-4 w-4 shrink-0 text-slate-400" />
               <span className="truncate">{f.name}</span>
-              <span className="text-[10px] text-slate-400 font-medium shrink-0">({f.size})</span>
+              <span className="text-micro text-slate-400 font-medium shrink-0">({f.size})</span>
             </a>
             {canDelete && (
               <button
@@ -1040,7 +1044,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             const input = document.getElementById(`file-input-${attrId}`);
             input?.click();
           }}
-          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-dashed border-slate-300 text-xs font-semibold text-slate-500 hover:bg-slate-50 hover:border-slate-400 transition-all cursor-pointer disabled:opacity-50"
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-dashed border-slate-300 text-ui font-semibold text-slate-500 hover:bg-slate-50 hover:border-slate-400 transition-all cursor-pointer disabled:opacity-50"
         >
           <Upload className="h-4 w-4 text-slate-400" />
           <span>
@@ -1158,15 +1162,15 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             {uploaded
               ? <CircleCheck className="h-4 w-4 shrink-0 text-emerald-600" />
               : <CircleAlert className="h-4 w-4 shrink-0 text-rose-500" />}
-            <span className="text-xs font-black text-slate-800 truncate">{slot.name}</span>
-            <span className={`text-[10px] font-bold uppercase tracking-wider shrink-0 ${uploaded ? "text-emerald-700" : "text-rose-600"}`}>
+            <span className="text-ui font-bold text-slate-800 truncate">{slot.name}</span>
+            <span className={`type-overline shrink-0 ${uploaded ? "text-emerald-700" : "text-rose-600"}`}>
               {uploaded ? t("Uploaded", "Nahrané", "Feltöltve") : t("Missing", "Chýba", "Hiányzik")}
             </span>
           </div>
           <div className="flex items-center gap-1 shrink-0">
             {canEdit && (
               <label
-                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white text-[11px] font-bold text-slate-600 transition-all duration-150 active:scale-95 ${
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 bg-white text-caption font-bold text-slate-600 transition-all duration-150 active:scale-95 ${
                   busy ? "opacity-50 cursor-wait pointer-events-none" : "cursor-pointer hover:bg-slate-50 hover:border-slate-300"
                 }`}
               >
@@ -1189,7 +1193,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
         </div>
 
         {canEdit && (dropping || !uploaded) && (
-          <p className={`mt-2 px-2.5 py-1.5 rounded-xl border border-dashed text-center text-[10px] font-bold uppercase tracking-wider transition-colors duration-150 ${
+          <p className={`mt-2 px-2.5 py-1.5 rounded-xl border border-dashed text-center type-overline transition-colors duration-150 ${
             dropping ? "border-indigo-400 text-indigo-600 bg-white/70" : "border-slate-300/70 text-slate-400"
           }`}>
             {t("Drop files here", "Pretiahnite súbory sem", "Húzza ide a fájlokat")}
@@ -1199,7 +1203,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
         {uploaded && (
           <div className="mt-2 flex flex-col gap-1.5">
             {slot.files.map((f, fIdx) => (
-              <div key={fIdx} className="flex items-center justify-between gap-2 px-2.5 py-1.5 bg-white/80 border border-emerald-100 rounded-xl text-xs font-semibold">
+              <div key={fIdx} className="flex items-center justify-between gap-2 px-2.5 py-1.5 bg-white/80 border border-emerald-100 rounded-xl text-ui font-semibold">
                 <a
                   href={f.path}
                   target="_blank"
@@ -1208,7 +1212,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 >
                   <FileText className="h-3.5 w-3.5 shrink-0 text-slate-400" />
                   <span className="truncate">{f.name}</span>
-                  {f.size && <span className="text-[10px] text-slate-400 font-medium shrink-0">({f.size})</span>}
+                  {f.size && <span className="text-micro text-slate-400 font-medium shrink-0">({f.size})</span>}
                 </a>
                 {canDelete && (
                   <button
@@ -1477,12 +1481,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   };
 
   return (
-    <div className="w-full flex flex-col h-auto lg:h-[calc(100vh-11rem)] animate-fade-in text-left">
+    <div className="w-full flex flex-col h-auto ws-lg:h-[calc(100vh-11rem)] animate-fade-in text-left">
 
       {/* Header — the same shape the projects list opens with: a large
           heading with its icon, a caption under it, the actions on the right,
           and a hairline below. No panel of its own. */}
-      <div className="shrink-0 flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-100 pb-4 select-none">
+      <div className="shrink-0 flex flex-col ws-md:flex-row ws-md:items-center ws-md:justify-between gap-4 border-b border-slate-100 pb-4 select-none">
         <div className="flex items-center gap-3 min-w-0">
           <button
             onClick={onClose}
@@ -1492,7 +1496,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             <ArrowLeft className="h-5 w-5" />
           </button>
           <div className="flex flex-col min-w-0 flex-1">
-            <h1 className="text-3xl lg:text-4xl font-heading font-black text-slate-900 tracking-tight flex items-center gap-2.5 min-w-0">
+            <h1 className="type-entity-title text-slate-900 flex items-center gap-2.5 min-w-0">
               <span className="shrink-0" style={{ color: projectType.color }}>
                 {renderIcon(projectType.icon, "h-8 w-8")}
               </span>
@@ -1512,7 +1516,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   autoFocus
                   maxLength={200}
                   placeholder={t("e.g. Roof replacement, Kosice", "napr. Výmena strechy, Košice", "pl. Tetőcsere, Kassa")}
-                  className="select-text min-w-0 flex-1 max-w-xl px-2 py-0.5 -my-1 rounded-xl border border-indigo-300 bg-white text-3xl lg:text-4xl font-heading font-black text-slate-900 tracking-tight focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  className="select-text min-w-0 flex-1 max-w-xl px-2 py-0.5 -my-1 rounded-xl border border-indigo-300 bg-white type-entity-title text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                 />
               ) : (
                 <>
@@ -1536,7 +1540,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 </>
               )}
             </h1>
-            <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1 truncate">
+            <p className="text-ui text-slate-500 font-semibold mt-1 truncate">
               {isEditingName && !nameDraft.trim()
                 ? t(
                     "Left empty, the project is listed under the paired lead's name",
@@ -1548,7 +1552,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           </div>
         </div>
 
-        <div className="flex items-center gap-2 self-start md:self-auto">
+        <div className="flex items-center gap-2 self-start ws-md:self-auto">
           {/* Favorite Button */}
           {!isNew && (
             <FavoriteHeartButton
@@ -1577,11 +1581,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   : t("Project restored.", "Projekt bol obnovený.", "Projekt visszaállítva.");
                 (window as any).showToast?.(msg);
               }}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-amber-600 font-heading font-bold text-xs uppercase tracking-wider hover:bg-amber-50 hover:text-amber-800 transition-all active:scale-95 cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-amber-600 font-heading font-bold text-ui hover:bg-amber-50 hover:text-amber-800 transition-all active:scale-95 cursor-pointer"
               title={project.archived ? t("Restore Project", "Obnoviť projekt", "Projekt visszaállítása") : t("Archive Project", "Archivovať projekt", "Projekt archiválása")}
             >
               {project.archived ? <ArchiveRestore className="h-4 w-4 shrink-0" /> : <Archive className="h-4 w-4 shrink-0" />}
-              <span className="hidden sm:inline">{project.archived ? t("Restore", "Obnoviť", "Visszaállítás") : t("Archive", "Archivovať", "Archiválás")}</span>
+              <span className="hidden ws-sm:inline">{project.archived ? t("Restore", "Obnoviť", "Visszaállítás") : t("Archive", "Archivovať", "Archiválás")}</span>
             </button>
           )}
 
@@ -1590,18 +1594,18 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           {canDelete && !isNew && onDelete && (
             <button
               onClick={handleDeleteProject}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-rose-500 font-heading font-bold text-xs uppercase tracking-wider hover:bg-rose-50 hover:text-rose-700 transition-all active:scale-95 cursor-pointer"
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-rose-500 font-heading font-bold text-ui hover:bg-rose-50 hover:text-rose-700 transition-all active:scale-95 cursor-pointer"
               title={t("Delete Project", "Vymazať projekt", "Projekt törlése")}
             >
               <Trash2 className="h-4 w-4 shrink-0" />
-              <span className="hidden sm:inline">{t("Delete", "Vymazať", "Törlés")}</span>
+              <span className="hidden ws-sm:inline">{t("Delete", "Vymazať", "Törlés")}</span>
             </button>
           )}
           {canEdit ? (
             /* No Save button: every change saves itself. This only says whether
                the last one has gone out yet — or why it cannot. */
             <span
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-black uppercase tracking-wider whitespace-nowrap transition-colors duration-200 ${
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 type-overline whitespace-nowrap transition-colors duration-200 ${
                 finishBeforeStart ? "text-rose-600" : saveState === "pending" ? "text-slate-400" : "text-emerald-600"
               }`}
               data-testid="project-save-state"
@@ -1626,7 +1630,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           ) : (
             /* Read-only: the same pill the list wears, in place of the save state. */
             <span
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-amber-200 bg-amber-50 text-[10px] font-black uppercase tracking-wider text-amber-700 whitespace-nowrap"
+              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-amber-200 bg-amber-50 type-overline text-amber-700 whitespace-nowrap"
               title={t(
                 "Your role can view this project but not change it.",
                 "Vaša rola môže tento projekt prezerať, ale nie meniť.",
@@ -1641,19 +1645,19 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       </div>
 
       {/* Workspace Body */}
-      <div className="flex-1 lg:overflow-hidden grid grid-cols-1 lg:grid-cols-12 gap-6 pt-6 min-h-0">
+      <div className="flex-1 ws-lg:overflow-hidden grid grid-cols-1 ws-lg:grid-cols-12 gap-6 pt-6 min-h-0">
         
         {/* LEFT COLUMN: the project's own card, its custom attributes, then
             the paired client at the bottom. The project card is edited in
             place and every change saves itself; the attributes card keeps an
             Edit mode of its own. */}
-        <div className="lg:col-span-4 flex flex-col h-auto lg:h-full min-h-0 lg:overflow-y-auto gap-4 lg:pr-1 scrollbar-thin text-left">
+        <div className="ws-lg:col-span-4 flex flex-col h-auto ws-lg:h-full min-h-0 ws-lg:overflow-y-auto gap-4 ws-lg:pr-1 scrollbar-thin text-left">
 
 
           {/* PROJECT CARD DETAILS */}
           <div className="shrink-0 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
             <div className="flex items-center justify-between gap-2 pb-3">
-              <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-widest">
+              <h4 className="text-ui font-heading font-bold text-slate-900">
                 {t("Project Card Details", "Detaily karty projektu", "Projekt részletei")}
               </h4>
             </div>
@@ -1666,7 +1670,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           <div className="space-y-4">
             {/* Status. Each status wears its own colour, badge and dropdown row alike. */}
             <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Status", "Stav", "Állapot")}</label>
+              <label className="block type-overline text-slate-400 mb-1">{t("Status", "Stav", "Állapot")}</label>
               <CustomSelect
                 value={status}
                 disabled={!canEdit}
@@ -1691,13 +1695,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
             {/* Division */}
             <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
+              <label className="block type-overline text-slate-400 mb-1">
                 {getTranslation(userLanguage, "profile.division")}
               </label>
               {!canEdit ? (
                 division ? (
                   <span
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-black uppercase tracking-wider shadow-sm"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-ui font-bold shadow-sm"
                     style={{
                       backgroundColor: `${divisionColors[division] || "#3b82f6"}15`,
                       color: divisionColors[division] || "#3b82f6",
@@ -1708,7 +1712,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     {division}
                   </span>
                 ) : (
-                  <span className="text-slate-300 italic font-semibold text-xs">
+                  <span className="text-slate-300 italic font-semibold text-ui">
                     {t("No division", "Bez divízie", "Divízió nélkül")}
                   </span>
                 )
@@ -1732,7 +1736,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             {/* Star priority — the same 1-5 rating a lead carries, and the same
                 widget. Clicking the star it already wears clears the rating again. */}
             <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
+              <label className="block type-overline text-slate-400 mb-1">
                 {getTranslation(userLanguage, "profile.priority_rating")}
               </label>
               <div className="flex items-center gap-2 bg-slate-50 p-2 rounded-xl border border-slate-200 w-fit">
@@ -1745,7 +1749,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   }}
                 />
                 {rating === 0 && (
-                  <span className="text-[9px] font-black text-slate-400 uppercase tracking-wider">
+                  <span className="type-overline text-slate-400">
                     {t("Not rated", "Bez hodnotenia", "Nincs értékelve")}
                   </span>
                 )}
@@ -1757,18 +1761,18 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             {projectType.hasDeadline && (() => {
               const dl = evaluateProjectDeadline({ deadline, status, finishedAt }, projectType, todayLocal(), projectStatuses);
               const missedDeadline = projectMissedDeadline(dl);
-              const dateInputClass = "flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500";
+              const dateInputClass = "flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500";
               return (
                 <div>
                   {/* Planned deadline on the left, the real start and finish next
                       to it. The real finish, once set, is what the list shows. */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3">
                   <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
+                  <label className="block type-overline text-slate-400 mb-1">
                     {t("Deadline", "Termín dokončenia", "Határidő")} {canEdit && projectType.deadlineRequired && <span className="text-red-500">*</span>}
                   </label>
                   {!canEdit ? (
-                    <p className="text-xs font-bold text-slate-800">
+                    <p className="text-ui font-bold text-slate-800">
                       {deadline
                         ? formatDateLocalized(deadline, userLanguage)
                         : <span className="text-slate-300 italic font-semibold">{t("No deadline set", "Bez termínu", "Nincs határidő")}</span>}
@@ -1794,16 +1798,16 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </div>
                   )}
                   {canEdit && projectType.deadlineRequired && !deadline && (
-                    <p className="mt-1 text-[9px] font-bold text-rose-600 leading-snug">
+                    <p className="mt-1 text-micro font-bold text-rose-600 leading-snug">
                       {t("A deadline is required for this project type.", "Termín je pre tento typ projektu povinný.", "Ennél a projekt típusnál a határidő kötelező.")}
                     </p>
                   )}
                   </div>
 
                   <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Real dates", "Skutočný termín", "Tényleges időpontok")}</label>
+                  <label className="block type-overline text-slate-400 mb-1">{t("Real dates", "Skutočný termín", "Tényleges időpontok")}</label>
                   {!canEdit ? (
-                    <p className="text-xs font-bold text-slate-800">
+                    <p className="text-ui font-bold text-slate-800">
                       {startDate ? formatDateLocalized(startDate, userLanguage) : "—"}
                       {" – "}
                       {finishedAt
@@ -1813,7 +1817,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   ) : (
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
-                      <span className="w-14 shrink-0 text-[9px] font-black text-slate-400 uppercase">{t("Start", "Začiatok", "Kezdés")}</span>
+                      <span className="w-14 shrink-0 type-overline text-slate-400">{t("Start", "Začiatok", "Kezdés")}</span>
                       <input
                         type="date"
                         value={startDate}
@@ -1822,7 +1826,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       />
                     </div>
                     <div className="flex items-center gap-2">
-                      <span className="w-14 shrink-0 text-[9px] font-black text-slate-400 uppercase">{t("Finish", "Koniec", "Befejezés")}</span>
+                      <span className="w-14 shrink-0 type-overline text-slate-400">{t("Finish", "Koniec", "Befejezés")}</span>
                       <input
                         type="date"
                         value={finishedAt}
@@ -1842,7 +1846,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       )}
                     </div>
                     {finishBeforeStart && (
-                      <p className="text-[9px] font-bold text-rose-600 leading-snug">
+                      <p className="text-micro font-bold text-rose-600 leading-snug">
                         {t(
                           "The finish cannot be before the start — changes are not saved until it is fixed.",
                           "Koniec nemôže byť pred začiatkom — zmeny sa neuložia, kým to neopravíte.",
@@ -1856,7 +1860,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </div>
 
                   {dl && (
-                    <p className={`mt-1.5 text-[10px] font-black uppercase tracking-wider ${
+                    <p className={`mt-1.5 type-overline ${
                       missedDeadline
                         ? "text-rose-600"
                         : dl.tone === "soon"
@@ -1887,7 +1891,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       project wears a flag everywhere it is listed. */}
                   {missedDeadline && (
                     <div className="mt-3 p-3 rounded-2xl border border-rose-200 bg-rose-50">
-                      <label className="flex items-center gap-1.5 text-[10px] font-black text-rose-700 uppercase tracking-wider mb-1.5">
+                      <label className="flex items-center gap-1.5 type-overline text-rose-700 mb-1.5">
                         <Icons.Flag className="h-3.5 w-3.5 shrink-0 fill-current" />
                         <span>{t("Reason for the delay", "Dôvod meškania", "A késés oka")}</span>
                         <span className="text-rose-500">*</span>
@@ -1905,12 +1909,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                               "napr. čakáme na schválenie návrhu klientom",
                               "pl. az ügyfél jóváhagyására várunk",
                             )}
-                            className={`w-full px-3 py-2 rounded-xl border text-xs font-semibold bg-white text-slate-800 resize-y focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 ${
+                            className={`w-full px-3 py-2 rounded-xl border text-ui font-semibold bg-white text-slate-800 resize-y focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 ${
                               delayReason.trim() ? "border-rose-200" : "border-rose-400"
                             }`}
                           />
                           {!delayReason.trim() && (
-                            <p className="mt-1 text-[9px] font-bold text-rose-600 leading-snug">
+                            <p className="mt-1 text-micro font-bold text-rose-600 leading-snug">
                               {t(
                                 "Required while the project is past its deadline — it stays flagged in the list until one is given.",
                                 "Povinné, kým je projekt po termíne — v zozname ostane označený, kým ho nedoplníte.",
@@ -1920,12 +1924,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                           )}
                         </>
                       ) : delayReason.trim() ? (
-                        <p className="text-xs font-semibold text-slate-700 whitespace-pre-wrap break-words">
+                        <p className="text-ui font-semibold text-slate-700 whitespace-pre-wrap break-words">
                           {delayReason}
                         </p>
                       ) : (
                         <>
-                          <p className="text-[11px] font-bold text-rose-600 leading-snug">
+                          <p className="text-caption font-bold text-rose-600 leading-snug">
                             {t(
                               "No reason given yet — this project is flagged in the list until one is.",
                               "Zatiaľ bez zdôvodnenia — projekt je v zozname označený, kým ho nedoplníte.",
@@ -1946,7 +1950,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 it as the same coloured chips the lead view wears for its manager;
                 each chip's cross takes that manager off again. */}
             <div>
-              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Project Managers", "Projektoví manažéri", "Projektmenedzserek")}</label>
+              <label className="block type-overline text-slate-400 mb-1">{t("Project Managers", "Projektoví manažéri", "Projektmenedzserek")}</label>
               {selectedManagers.length > 0 && (
                 <div className="flex flex-wrap gap-1.5 mb-2">
                   {selectedManagers.map(name => {
@@ -1954,7 +1958,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     return (
                       <span
                         key={name}
-                        className={`inline-flex items-center gap-1 pl-2.5 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider shadow-sm ${canEdit ? "pr-1" : "pr-2.5"}`}
+                        className={`inline-flex items-center gap-1 pl-2.5 py-1 rounded-full border type-overline shadow-sm ${canEdit ? "pr-1" : "pr-2.5"}`}
                         style={{ backgroundColor: `${color}15`, color, borderColor: `${color}30` }}
                       >
                         <Icons.User className="h-3 w-3 shrink-0" />
@@ -1999,7 +2003,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 );
               })()}
               {!canEdit && selectedManagers.length === 0 && (
-                <p className="text-xs font-semibold text-slate-300 italic">
+                <p className="text-ui font-semibold text-slate-300 italic">
                   {t(
                     "Nobody is on this project yet.",
                     "Na projekte zatiaľ nikto nie je priradený.",
@@ -2021,7 +2025,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           {(projectType.attributes || []).length > 0 && (
           <div className="shrink-0 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
             <div className="flex items-center justify-between gap-2 pb-3 mb-4 border-b border-slate-200">
-              <h4 className="text-xs font-heading font-black text-slate-900 uppercase tracking-widest">
+              <h4 className="text-ui font-heading font-bold text-slate-900">
                 {t("Custom Attributes", "Vlastné atribúty", "Egyedi attribútumok")}
               </h4>
             </div>
@@ -2059,12 +2063,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                 return (
                   <div key={attr.id} className={`min-w-0 break-words ${wide ? "col-span-2" : ""}`}>
-                    <label className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] font-black text-slate-400 uppercase mb-1">
+                    <label className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 type-overline text-slate-400 mb-1">
                       <span>{attr.name} {canEdit && attr.required && <span className="text-red-500">*</span>}</span>
                       {missingBoxes.length > 0 && (
                         <span
                           title={missingBoxes.join(", ")}
-                          className="px-1.5 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-rose-600 text-[9px] font-black normal-case tracking-normal leading-none tabular-nums animate-fade-in"
+                          className="px-1.5 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-rose-600 text-micro font-bold normal-case tracking-normal leading-none tabular-nums animate-fade-in"
                         >
                           {missingBoxes.length} {t("missing", "chýba", "hiányzik")}
                         </span>
@@ -2072,7 +2076,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     </label>
 
                     {!isEditingAttrs ? (
-                      <div className="text-xs font-bold text-slate-800">{renderAttrValue(attr, dynamicData[attr.id])}</div>
+                      <div className="text-ui font-bold text-slate-800">{renderAttrValue(attr, dynamicData[attr.id])}</div>
                     ) : (
                     <>
                     {/* Textfield */}
@@ -2081,7 +2085,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         type="text"
                         value={val}
                         onChange={e => updateVal(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800"
+                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold bg-white text-slate-800"
                       />
                     )}
 
@@ -2091,7 +2095,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         value={val}
                         onChange={e => updateVal(e.target.value)}
                         rows={3}
-                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800 resize-none"
+                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold bg-white text-slate-800 resize-none"
                       />
                     )}
 
@@ -2101,7 +2105,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         type="number"
                         value={val}
                         onChange={e => updateVal(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800"
+                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold bg-white text-slate-800"
                       />
                     )}
 
@@ -2114,7 +2118,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         type="date"
                         value={val}
                         onChange={e => updateVal(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800"
+                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold bg-white text-slate-800"
                       />
                     )}
 
@@ -2124,7 +2128,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         type="time"
                         value={val}
                         onChange={e => updateVal(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800"
+                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold bg-white text-slate-800"
                       />
                     )}
 
@@ -2134,7 +2138,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         type="datetime-local"
                         value={val}
                         onChange={e => updateVal(e.target.value)}
-                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800"
+                        className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold bg-white text-slate-800"
                       />
                     )}
 
@@ -2174,7 +2178,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                           return (
                             <>
                               {(attr.options || []).map(opt => (
-                                <label key={opt} className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-600">
+                                <label key={opt} className="flex items-center gap-2 cursor-pointer text-ui font-semibold text-slate-600">
                                   <input
                                     type="checkbox"
                                     checked={list.checked.includes(opt)}
@@ -2186,7 +2190,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                 </label>
                               ))}
                               {list.extra.map(extra => (
-                                <div key={extra.label} className="group flex items-start gap-2 text-xs font-semibold text-slate-600">
+                                <div key={extra.label} className="group flex items-start gap-2 text-ui font-semibold text-slate-600">
                                   {/* Required reads as the same red "*" as the type's own
                                       options; a word-sized badge here squeezed the label
                                       to a few letters in a half-width column. */}
@@ -2212,7 +2216,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                         onClick={() => save({
                                           extra: list.extra.map(e => e.label === extra.label ? { ...e, required: !e.required } : e),
                                         })}
-                                        className={`-ml-1 shrink-0 w-4 h-4 flex items-center justify-center rounded text-sm leading-none font-black transition-all duration-150 active:scale-90 cursor-pointer ${
+                                        className={`-ml-1 shrink-0 w-4 h-4 flex items-center justify-center rounded text-body leading-none font-bold transition-all duration-150 active:scale-90 cursor-pointer ${
                                           extra.required
                                             ? "text-red-500 hover:bg-rose-50"
                                             : "text-slate-300 hover:text-red-400 hover:bg-slate-100"
@@ -2249,7 +2253,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                     }
                                   }}
                                   placeholder={t("Add checkbox…", "Pridať políčko…", "Jelölőnégyzet hozzáadása…")}
-                                  className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-slate-200 text-xs font-semibold bg-white text-slate-800"
+                                  className="flex-1 min-w-0 px-2.5 py-1.5 rounded-lg border border-slate-200 text-ui font-semibold bg-white text-slate-800"
                                 />
                                 <button
                                   type="button"
@@ -2264,7 +2268,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                             </>
                           );
                         })() : (
-                          <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-600">
+                          <label className="flex items-center gap-2 cursor-pointer text-ui font-semibold text-slate-600">
                             <input
                               type="checkbox"
                               checked={!!val}
@@ -2281,7 +2285,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     {attr.type === "radio" && (
                       <div className="space-y-1.5 py-1">
                         {(attr.options || []).map(opt => (
-                          <label key={opt} className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-600">
+                          <label key={opt} className="flex items-center gap-2 cursor-pointer text-ui font-semibold text-slate-600">
                             <input
                               type="radio"
                               name={attr.id}
@@ -2312,12 +2316,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                           const contact = leads.find(l => l.id === val);
                           if (!contact) return null;
                           return (
-                            <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-[11px] font-semibold text-slate-600 animate-fade-in">
+                            <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl space-y-1.5 text-caption font-semibold text-slate-600 animate-fade-in">
                               <div className="flex items-center justify-between">
                                 <span className="text-slate-800 font-bold">{contact.name}</span>
                                 <a 
                                   href={`#lead-${contact.id}`}
-                                  className="text-indigo-600 hover:text-indigo-800 text-[10px] underline"
+                                  className="text-indigo-600 hover:text-indigo-800 text-micro underline"
                                 >
                                   {t("View Profile", "Zobraziť profil", "Profil megtekintése")}
                                 </a>
@@ -2343,7 +2347,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     )}
 
                     {canEdit && missingRequired && (
-                      <p className="mt-1 text-[9px] font-bold text-rose-600 leading-snug">
+                      <p className="mt-1 text-micro font-bold text-rose-600 leading-snug">
                         {t("Required", "Povinné", "Kötelező")}
                       </p>
                     )}
@@ -2380,7 +2384,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 return (
                   <div className="shrink-0 bg-white border border-dashed border-slate-300 rounded-3xl p-5 shadow-sm text-center">
                     <Icons.Unlink className="h-5 w-5 text-slate-300 mx-auto mb-2" />
-                    <p className="text-[11px] font-bold text-slate-500 leading-snug">
+                    <p className="text-caption font-bold text-slate-500 leading-snug">
                       {t(
                         "This project is not paired with any lead or client.",
                         "Tento projekt nie je spárovaný so žiadnym leadom ani klientom.",
@@ -2391,7 +2395,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       <button
                         type="button"
                         onClick={() => setPickingClient(true)}
-                        className="mt-2.5 px-3 py-1.5 rounded-xl text-[10px] font-black uppercase tracking-wider text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
+                        className="mt-2.5 px-3 py-1.5 rounded-xl type-overline text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer"
                       >
                         {t("Pair now", "Spárovať", "Párosítať")}
                       </button>
@@ -2401,7 +2405,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               }
               return (
                 <div className="shrink-0 bg-white border border-slate-200 rounded-3xl p-5 shadow-sm">
-                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Paired Lead / Client", "Spárovaný lead / klient", "Párosított lead / ügyfél")}</label>
+                  <label className="block type-overline text-slate-400 mb-1">{t("Paired Lead / Client", "Spárovaný lead / klient", "Párosított lead / ügyfél")}</label>
                   <ClientSelect
                     leads={leads}
                     value={associatedLeadId}
@@ -2413,12 +2417,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setPickingClient(false)}
-                      className="mt-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                      className="mt-1.5 type-overline text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
                     >
                       {t("Keep current pairing", "Ponechať súčasné spárovanie", "Jelenlegi párosítás megtartása")}
                     </button>
                   )}
-                  <p className="mt-1 text-[9px] font-semibold text-slate-400 leading-snug">
+                  <p className="mt-1 text-micro font-semibold text-slate-400 leading-snug">
                     {t(
                       "Not paired with anyone — pick a lead or client to link this project to.",
                       "Nie je spárovaný s nikým — vyberte lead alebo klienta, s ktorým sa projekt prepojí.",
@@ -2451,28 +2455,28 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             return (
               <div className="shrink-0 rounded-3xl border-2 border-emerald-400 bg-emerald-50/70 shadow-md p-4 space-y-3 text-emerald-950">
                 <div className="border-b-2 border-emerald-200/50 pb-2 flex items-center justify-between gap-2 flex-wrap">
-                  <span className="text-[10px] font-black text-emerald-700 uppercase tracking-wider flex items-center gap-1.5 min-w-0">
+                  <span className="type-overline text-emerald-700 flex items-center gap-1.5 min-w-0">
                     <Icons.Briefcase className="h-4 w-4 text-emerald-600 stroke-[2.5] shrink-0" />
                     <span>{getTranslation(userLanguage, "common.client_relationship_card")}</span>
                   </span>
-                  <span className="px-2 py-0.5 rounded-full text-[8px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200 uppercase tracking-wider shrink-0">
+                  <span className="px-2 py-0.5 rounded-full type-overline bg-emerald-100 text-emerald-800 border border-emerald-200 shrink-0">
                     {getTranslation(userLanguage, "common.synced_profile")}
                   </span>
                 </div>
 
                 <div className="flex items-center gap-3">
-                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-2 border-emerald-700 flex items-center justify-center font-heading font-black text-sm shadow shrink-0">
+                  <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white border-2 border-emerald-700 flex items-center justify-center font-heading font-bold text-body shadow shrink-0">
                     {initials}
                   </div>
                   <div className="min-w-0">
-                    <h4 className="text-sm font-black text-slate-800 line-clamp-1">{pairedLead.name}</h4>
-                    <span className="text-[9px] font-extrabold uppercase tracking-wide text-emerald-700">{clientTypeLabel}</span>
+                    <h4 className="text-body font-bold text-slate-800 line-clamp-1">{pairedLead.name}</h4>
+                    <span className="type-overline text-emerald-700">{clientTypeLabel}</span>
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3 text-[11px] bg-white/70 p-3 rounded-xl border border-emerald-200/50">
+                <div className="grid grid-cols-2 gap-3 text-caption bg-white/70 p-3 rounded-xl border border-emerald-200/50">
                   <div className="space-y-0.5 min-w-0">
-                    <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">
+                    <span className="type-overline text-emerald-700/60 block">
                       {getTranslation(userLanguage, "profile.phone_number")}
                     </span>
                     <span className="font-extrabold text-slate-700 block truncate">
@@ -2482,7 +2486,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     </span>
                   </div>
                   <div className="space-y-0.5 min-w-0">
-                    <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">
+                    <span className="type-overline text-emerald-700/60 block">
                       {getTranslation(userLanguage, "profile.email_address")}
                     </span>
                     <span className="font-extrabold text-slate-700 block truncate">
@@ -2492,7 +2496,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     </span>
                   </div>
                   <div className="space-y-0.5 col-span-2 border-t border-emerald-200/50 pt-2 mt-1">
-                    <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">
+                    <span className="type-overline text-emerald-700/60 block">
                       {getTranslation(userLanguage, "profile.location_address")}
                     </span>
                     <span className="font-extrabold text-slate-700 block">
@@ -2503,7 +2507,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </div>
                   {pairedLead.website && (
                     <div className="space-y-0.5 col-span-2 border-t border-emerald-200/50 pt-2 mt-1">
-                      <span className="text-[8px] font-black text-emerald-700/60 uppercase tracking-wider block">
+                      <span className="type-overline text-emerald-700/60 block">
                         {getTranslation(userLanguage, "profile.website_link")}
                       </span>
                       <a
@@ -2525,7 +2529,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => setPickingClient(true)}
-                      className="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider text-emerald-700 hover:bg-emerald-100 transition-colors cursor-pointer flex items-center gap-1"
+                      className="px-2.5 py-1.5 rounded-lg type-overline text-emerald-700 hover:bg-emerald-100 transition-colors cursor-pointer flex items-center gap-1"
                       title={t("Pair with a different lead or client", "Spárovať s iným leadom alebo klientom", "Másik leaddel vagy ügyféllel párosítás")}
                     >
                       <Icons.Repeat className="h-3 w-3" />
@@ -2534,7 +2538,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => { setAssociatedLeadId(""); setAssociatedClientId(""); setPickingClient(false); }}
-                      className="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-wider text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer flex items-center gap-1"
+                      className="px-2.5 py-1.5 rounded-lg type-overline text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer flex items-center gap-1"
                       title={t("Unpair this project", "Zrušiť spárovanie projektu", "Párosítás megszüntetése")}
                     >
                       <Icons.Unlink className="h-3 w-3" />
@@ -2545,7 +2549,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => { window.location.hash = `client-${encodeURIComponent(pairedLead.name)}`; }}
-                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-[10px] font-black uppercase tracking-wider shadow transition-all active:scale-95 flex items-center justify-center gap-1.5 border border-emerald-700 cursor-pointer"
+                    className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white type-overline shadow transition-all active:scale-95 flex items-center justify-center gap-1.5 border border-emerald-700 cursor-pointer"
                   >
                     {getTranslation(userLanguage, "common.view_full_profile")}
                     <ArrowLeft className="h-3.5 w-3.5 rotate-180" />
@@ -2553,7 +2557,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 </div>
 
                 {canEdit && (
-                <p className="text-[9px] font-semibold text-emerald-800/60 leading-snug">
+                <p className="text-micro font-semibold text-emerald-800/60 leading-snug">
                   {t(
                     "This project shows up on the lead's card too.",
                     "Tento projekt sa zobrazí aj na karte leadu.",
@@ -2567,7 +2571,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
         </div>
 
         {/* RIGHT COLUMN: Timeline & Gantt Tabs */}
-        <div className="lg:col-span-8 flex flex-col h-auto lg:h-full lg:overflow-hidden bg-white border border-slate-200 rounded-3xl p-4 sm:p-5 shadow-sm text-left">
+        <div className="ws-lg:col-span-8 flex flex-col h-auto ws-lg:h-full ws-lg:overflow-hidden bg-white border border-slate-200 rounded-3xl p-4 ws-sm:p-5 shadow-sm text-left">
           {/* Tab Switched Header */}
           <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4 shrink-0">
             {/* One shape for every tab: icon, label, optional badge. The row
@@ -2666,17 +2670,17 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
           {/* TAB CONTENT: Timeline */}
           {activeRightTab === "timeline" && projectType.hasTimeline && (
-            <div className="flex-1 lg:overflow-hidden flex flex-col lg:flex-row gap-6">
+            <div className="flex-1 ws-lg:overflow-hidden flex flex-col ws-lg:flex-row gap-6">
               {/* Timeline Form — writes an event, so a read-only role gets the list alone. */}
               {canEdit && (
-              <div className="lg:w-1/3 flex flex-col shrink-0 bg-slate-50 p-4 border border-slate-200 rounded-2xl h-fit">
-                <span className="text-[10px] font-black text-slate-400 uppercase mb-3 block">
+              <div className="ws-lg:w-1/3 flex flex-col shrink-0 bg-slate-50 p-4 border border-slate-200 rounded-2xl h-fit">
+                <span className="type-overline text-slate-400 mb-3 block">
                   {t("Log Timeline Event", "Zaznamenať udalosť", "Esemény rögzítése")}
                 </span>
                 
-                <form onSubmit={handleAddTimelineEvent} className="space-y-3.5 text-xs font-semibold">
+                <form onSubmit={handleAddTimelineEvent} className="space-y-3.5 text-ui font-semibold">
                   <div>
-                    <label className="block text-[9px] text-slate-400 uppercase mb-1">{t("Event Title", "Názov udalosti", "Esemény címe")}</label>
+                    <label className="block type-overline text-slate-400 mb-1">{t("Event Title", "Názov udalosti", "Esemény címe")}</label>
                     <input
                       value={newTeTitle}
                       onChange={e => setNewTeTitle(e.target.value)}
@@ -2686,7 +2690,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-[9px] text-slate-400 uppercase mb-1">{t("Event Type", "Typ", "Típus")}</label>
+                    <label className="block type-overline text-slate-400 mb-1">{t("Event Type", "Typ", "Típus")}</label>
                     <CustomSelect
                       value={newTeType}
                       onChange={v => setNewTeType(v)}
@@ -2704,7 +2708,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-[9px] text-slate-400 uppercase mb-1">{t("Timestamp (Optional)", "Dátum a čas", "Dátum és idő")}</label>
+                    <label className="block type-overline text-slate-400 mb-1">{t("Timestamp (Optional)", "Dátum a čas", "Dátum és idő")}</label>
                     <input
                       type="datetime-local"
                       value={newTeTime}
@@ -2714,7 +2718,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-[9px] text-slate-400 uppercase mb-1">{t("Content details...", "Podrobnosti", "Részletek")}</label>
+                    <label className="block type-overline text-slate-400 mb-1">{t("Content details...", "Podrobnosti", "Részletek")}</label>
                     <textarea
                       value={newTeContent}
                       onChange={e => setNewTeContent(e.target.value)}
@@ -2735,7 +2739,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                       return (
                         <div key={attr.id} className="text-left mt-2">
-                          <label className="block text-[9px] text-slate-400 uppercase mb-1">
+                          <label className="block type-overline text-slate-400 mb-1">
                             {attr.name} {attr.required && <span className="text-red-500">*</span>}
                           </label>
                           {attr.type === "textfield" && (
@@ -2810,7 +2814,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                   const checkedList = asList(val);
                                   const isChecked = checkedList.includes(opt);
                                   return (
-                                    <label key={opt} className="flex items-center gap-2 cursor-pointer text-xs text-slate-700 select-none">
+                                    <label key={opt} className="flex items-center gap-2 cursor-pointer text-ui text-slate-700 select-none">
                                       <input
                                         type="checkbox"
                                         checked={isChecked}
@@ -2827,7 +2831,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                   );
                                 })
                               ) : (
-                                <label className="flex items-center gap-2 cursor-pointer text-xs text-slate-700 select-none">
+                                <label className="flex items-center gap-2 cursor-pointer text-ui text-slate-700 select-none">
                                   <input
                                     type="checkbox"
                                     checked={!!val}
@@ -2842,7 +2846,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                           {attr.type === "radio" && (
                             <div className="space-y-1.5 py-1">
                               {(attr.options || []).map(opt => (
-                                <label key={opt} className="flex items-center gap-2 cursor-pointer text-xs text-slate-700 select-none">
+                                <label key={opt} className="flex items-center gap-2 cursor-pointer text-ui text-slate-700 select-none">
                                   <input
                                     type="radio"
                                     name={`te-${attr.id}`}
@@ -2860,8 +2864,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                             <div className="space-y-2">
                               <div className="flex flex-col gap-1.5">
                                 {asList(val).map((f, fIdx) => (
-                                  <div key={fIdx} className="flex items-center justify-between p-2 bg-white border border-slate-200 rounded-xl text-[10.5px]">
-                                    <span className="truncate max-w-[150px] font-bold text-slate-700">{f.name}</span>
+                                  <div key={fIdx} className="flex items-center justify-between p-2 bg-white border border-slate-200 rounded-xl text-micro">
+                                    <span className="truncate max-w-37.5 font-bold text-slate-700">{f.name}</span>
                                     <button
                                       type="button"
                                       onClick={() => {
@@ -2883,7 +2887,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                   onClick={() => {
                                     document.getElementById(`te-file-input-${attr.id}`)?.click();
                                   }}
-                                  className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-dashed border-slate-300 text-[10.5px] font-bold text-slate-500 hover:bg-slate-100/50 hover:border-slate-400 transition-all cursor-pointer disabled:opacity-50"
+                                  className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-xl border border-dashed border-slate-300 text-micro font-bold text-slate-500 hover:bg-slate-100/50 hover:border-slate-400 transition-all cursor-pointer disabled:opacity-50"
                                 >
                                   <Upload className="h-3.5 w-3.5 text-slate-400" />
                                   <span>{isUploading === `te-${attr.id}` ? t("Uploading...", "Nahráva sa...", "Feltöltés...") : t("Upload File", "Nahrať súbor", "Fájl feltöltése")}</span>
@@ -2936,28 +2940,28 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               )}
 
               {/* Timeline Events List */}
-              <div className="flex-1 lg:overflow-y-auto space-y-3.5 lg:pr-1 scrollbar-thin">
+              <div className="flex-1 ws-lg:overflow-y-auto space-y-3.5 ws-lg:pr-1 scrollbar-thin">
                 {timeline.length === 0 ? (
-                  <div className="h-full min-h-[200px] flex items-center justify-center border-2 border-dashed border-slate-100 rounded-2xl p-6 text-slate-400 text-xs">
+                  <div className="h-full min-h-50 flex items-center justify-center border-2 border-dashed border-slate-100 rounded-2xl p-6 text-slate-400 text-ui">
                     {t("No events logged for this project yet.", "Zatiaľ neboli zaznamenané žiadne udalosti.", "Még nincsenek események rögzítve.")}
                   </div>
                 ) : (
                   timeline.map(event => (
-                    <div key={event.id} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl shadow-sm text-xs font-semibold relative group flex gap-3.5 animate-fade-in">
+                    <div key={event.id} className="p-4 bg-slate-50 border border-slate-200 rounded-2xl shadow-sm text-ui font-semibold relative group flex gap-3.5 animate-fade-in">
                       <div className="p-2.5 rounded-xl bg-white border border-slate-200 shrink-0 self-start shadow-sm">
                         {getTimelineIcon(event.type, event.eventType)}
                       </div>
                       <div className="flex-1 text-left">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
-                            <span className="text-slate-800 text-[13px] font-bold">{event.title}</span>
+                            <span className="text-slate-800 text-ui font-bold">{event.title}</span>
                             {event.eventType && (
-                              <span className="text-[9px] font-black text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full uppercase tracking-wider">
+                              <span className="type-overline text-indigo-600 bg-indigo-50 border border-indigo-200 px-2 py-0.5 rounded-full">
                                 {projectType.timelineEventTypes?.find(t => t.id === event.eventType)?.name || event.eventType}
                               </span>
                             )}
                           </div>
-                          <span className="text-[10px] text-slate-400 font-medium flex items-center gap-1">
+                          <span className="text-micro text-slate-400 font-medium flex items-center gap-1">
                             <Icons.Clock className="h-3 w-3" />
                             {formatTimestampLocalized(event.timestamp, userLanguage)}
                           </span>
@@ -2996,9 +3000,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                   renderedVal = (
                                     <div className="flex flex-col gap-1 mt-0.5">
                                       {filesList.map((f: any, fIdx: number) => (
-                                        <a key={fIdx} href={f.path} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline flex items-center gap-1 text-[10px] font-bold">
+                                        <a key={fIdx} href={f.path} target="_blank" rel="noopener noreferrer" className="text-indigo-600 hover:underline flex items-center gap-1 text-micro font-bold">
                                           <FileText className="h-3 w-3 shrink-0 text-slate-400" />
-                                          <span className="truncate max-w-[120px]">{f.name}</span>
+                                          <span className="truncate max-w-30">{f.name}</span>
                                         </a>
                                       ))}
                                     </div>
@@ -3010,8 +3014,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                 }
 
                                 return (
-                                  <div key={attr.id} className="text-left text-[11px] font-semibold text-slate-500">
-                                    <span className="text-[10px] text-slate-400 block font-bold uppercase tracking-wider">{attr.name}</span>
+                                  <div key={attr.id} className="text-left text-caption font-semibold text-slate-500">
+                                    <span className="type-overline text-slate-400 block">{attr.name}</span>
                                     <div className="text-slate-700 mt-0.5">{renderedVal}</div>
                                   </div>
                                 );
@@ -3041,13 +3045,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           {activeRightTab === "gantt" && projectType.hasGantt && (() => {
             const { weekdays, weekGroups, totalTimelineWidth } = getGanttTimelineData();
             return (
-              <div className="flex-1 lg:overflow-hidden flex flex-col gap-4 text-xs font-semibold">
+              <div className="flex-1 ws-lg:overflow-hidden flex flex-col gap-4 text-ui font-semibold">
                 
                 {/* Gantt Entry Form Inline — adds a row, so only for a role that may edit. */}
                 {canEdit && (
                 <form onSubmit={handleAddGanttRow} className="bg-slate-50 p-4 border border-slate-200 rounded-2xl flex flex-wrap gap-4 items-end shrink-0">
-                  <div className="flex-1 min-w-[200px]">
-                    <label className="block text-[9px] text-slate-400 uppercase mb-1">{t("Task Title", "Názov úlohy", "Feladat címe")}</label>
+                  <div className="flex-1 min-w-50">
+                    <label className="block type-overline text-slate-400 mb-1">{t("Task Title", "Názov úlohy", "Feladat címe")}</label>
                     <input
                       value={newGeTitle}
                       onChange={e => setNewGeTitle(e.target.value)}
@@ -3057,8 +3061,8 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-[9px] text-slate-400 uppercase mb-1">{t("Assignee Contact", "Kontakt", "Kapcsolat")}</label>
-                    <div className="min-w-[150px]">
+                    <label className="block type-overline text-slate-400 mb-1">{t("Assignee Contact", "Kontakt", "Kapcsolat")}</label>
+                    <div className="min-w-37.5">
                       <ClientSelect
                         leads={leads}
                         value={newGeContactId}
@@ -3069,7 +3073,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-[9px] text-slate-400 uppercase mb-1">{t("Start Date", "Začiatok", "Kezdet")}</label>
+                    <label className="block type-overline text-slate-400 mb-1">{t("Start Date", "Začiatok", "Kezdet")}</label>
                     <input
                       type="date"
                       value={newGeStart}
@@ -3079,7 +3083,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-[9px] text-slate-400 uppercase mb-1">{t("End Date", "Koniec", "Vége")}</label>
+                    <label className="block type-overline text-slate-400 mb-1">{t("End Date", "Koniec", "Vége")}</label>
                     <input
                       type="date"
                       value={newGeEnd}
@@ -3099,7 +3103,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 )}
 
                 {/* THE GANTT CONTAINER: Left Table & Right Timeline Scrollable */}
-                <div className="flex-1 border border-slate-200 rounded-3xl overflow-hidden bg-white shadow-sm flex flex-col relative min-h-[350px]">
+                <div className="flex-1 border border-slate-200 rounded-3xl overflow-hidden bg-white shadow-sm flex flex-col relative min-h-87.5">
                   
                   {/* Zoom controls floating */}
                   <div className="absolute right-4 top-3.5 z-30 flex items-center gap-1 bg-white/90 backdrop-blur border border-slate-200 p-1.5 rounded-xl shadow-sm">
@@ -3110,7 +3114,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     >
                       <Icons.Minus className="h-3.5 w-3.5" />
                     </button>
-                    <span className="text-[10px] font-black text-slate-400 px-1.5 uppercase select-none">{columnWidth}px</span>
+                    <span className="type-overline text-slate-400 px-1.5 select-none">{columnBase}px</span>
                     <button
                       type="button"
                       onClick={handleZoomIn}
@@ -3123,12 +3127,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   <div className="flex-1 flex overflow-hidden">
                     
                     {/* LEFT SIDE PANEL: Tasks table */}
-                    <div className="w-[340px] shrink-0 flex flex-col border-r border-slate-200 bg-white z-10 shadow-[2px_0_5px_rgba(0,0,0,0.015)]">
+                    <div className="w-85 shrink-0 flex flex-col border-r border-slate-200 bg-white z-10 shadow-[2px_0_5px_rgba(0,0,0,0.015)]">
                       {/* Left Header */}
-                      <div className="h-[76px] border-b border-slate-200 flex items-center justify-between px-4 shrink-0 bg-slate-50/20">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">{t("Task Name", "Názov úlohy", "Feladat")}</span>
+                      <div className="h-19 border-b border-slate-200 flex items-center justify-between px-4 shrink-0 bg-slate-50/20">
+                        <span className="type-overline text-slate-400">{t("Task Name", "Názov úlohy", "Feladat")}</span>
                         <div className="flex items-center gap-4">
-                          <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest pr-4">{t("Due Date", "Termín", "Határidő")}</span>
+                          <span className="type-overline text-slate-400 pr-4">{t("Due Date", "Termín", "Határidő")}</span>
                         </div>
                       </div>
 
@@ -3140,7 +3144,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         {gantt.map(row => {
                           const isCompleted = row.progress === 100;
                           return (
-                            <div key={row.id} className="h-[44px] flex items-center justify-between px-4 hover:bg-slate-50 transition-colors shrink-0">
+                            <div key={row.id} className="h-11 flex items-center justify-between px-4 hover:bg-slate-50 transition-colors shrink-0">
                               <div className="flex items-center gap-2 flex-1 min-w-0">
                                 <button
                                   type="button"
@@ -3167,7 +3171,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                 <button
                                   type="button"
                                   onClick={() => openGanttEdit(row)}
-                                  className="text-slate-500 hover:text-indigo-600 hover:bg-indigo-50/50 font-bold px-2 py-0.5 rounded-xl border border-slate-200 transition-all text-[10.5px] cursor-pointer"
+                                  className="text-slate-500 hover:text-indigo-600 hover:bg-indigo-50/50 font-bold px-2 py-0.5 rounded-xl border border-slate-200 transition-all text-micro cursor-pointer"
                                 >
                                   {row.endDate ? (
                                     new Date(row.endDate).toLocaleDateString(userLanguage === "sk" ? "sk-SK" : userLanguage === "hu" ? "hu-HU" : "en-US", { month: "short", day: "numeric" })
@@ -3193,14 +3197,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <div className="flex-1 flex flex-col overflow-hidden bg-slate-50/30">
                       
                       {/* Timeline Header */}
-                      <div className="h-[76px] border-b border-slate-200 overflow-x-hidden overflow-y-hidden shrink-0 bg-slate-50/20" id="gantt-right-header">
+                      <div className="h-19 border-b border-slate-200 overflow-x-hidden overflow-y-hidden shrink-0 bg-slate-50/20" id="gantt-right-header">
                         <div style={{ width: totalTimelineWidth, height: "100%" }} className="flex flex-col relative select-none">
                           {/* Weeks Row */}
-                          <div className="h-[38px] border-b border-slate-100 relative">
+                          <div className="h-9.5 border-b border-slate-100 relative">
                             {weekGroups.map((g, idx) => (
                               <div
                                 key={idx}
-                                className="absolute h-full border-r border-slate-100 flex items-center justify-center text-[10px] font-black text-slate-500 uppercase tracking-wider bg-slate-50/20 px-2"
+                                className="absolute h-full border-r border-slate-100 flex items-center justify-center type-overline text-slate-500 bg-slate-50/20 px-2"
                                 style={{
                                   left: g.startOffset,
                                   width: g.width
@@ -3211,11 +3215,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                             ))}
                           </div>
                           {/* Days Row */}
-                          <div className="h-[38px] relative">
+                          <div className="h-9.5 relative">
                             {weekdays.map((d, idx) => (
                               <div
                                 key={idx}
-                                className="absolute h-full border-r border-slate-100 flex items-center justify-center text-[9px] font-bold text-slate-400 uppercase"
+                                className="absolute h-full border-r border-slate-100 flex items-center justify-center type-overline text-slate-400"
                                 style={{
                                   left: idx * columnWidth,
                                   width: columnWidth
@@ -3278,7 +3282,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                             const initials = contactName ? contactName.split(" ").map(n => n[0]).join("").slice(0, 2).toUpperCase() : "";
 
                             return (
-                              <div key={row.id} className="h-[44px] relative shrink-0 z-10 flex items-center bg-transparent">
+                              <div key={row.id} className="h-11 relative shrink-0 z-10 flex items-center bg-transparent">
                                 {hasPill ? (
                                   <div 
                                     className="absolute h-full flex items-center transition-all duration-300"
@@ -3298,7 +3302,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                     {/* Assignee initials badge */}
                                     {initials && (
                                       <div 
-                                        className={`h-5.5 w-5.5 rounded-full shrink-0 flex items-center justify-center text-[9px] font-black text-white ml-2 shadow-sm uppercase ${
+                                        className={`h-5.5 w-5.5 rounded-full shrink-0 flex items-center justify-center type-overline text-white ml-2 shadow-sm ${
                                           row.progress === 100 ? "bg-blue-500" : "bg-orange-500"
                                         }`}
                                         title={contactName}
@@ -3309,7 +3313,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                                     {/* Task name display next to badge */}
                                     <span 
-                                      className="ml-2 text-[11px] font-bold text-slate-700 truncate cursor-pointer hover:underline max-w-[300px]"
+                                      className="ml-2 text-caption font-bold text-slate-700 truncate cursor-pointer hover:underline max-w-75"
                                       onClick={() => openGanttEdit(row)}
                                     >
                                       {row.title}
@@ -3320,12 +3324,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                                   <div className="absolute h-full flex items-center left-3">
                                     <div className="h-2 w-2 rounded-full bg-amber-400 shrink-0 animate-pulse" />
                                     {initials && (
-                                      <div className="h-5 w-5 rounded-full bg-slate-500 shrink-0 flex items-center justify-center text-[8.5px] font-black text-white ml-2 shadow-sm">
+                                      <div className="h-5 w-5 rounded-full bg-slate-500 shrink-0 flex items-center justify-center text-micro font-bold text-white ml-2 shadow-sm">
                                         {initials}
                                       </div>
                                     )}
                                     <span 
-                                      className="ml-2 text-[11px] font-bold text-slate-400 italic cursor-pointer hover:underline truncate max-w-[250px]"
+                                      className="ml-2 text-caption font-bold text-slate-400 italic cursor-pointer hover:underline truncate max-w-62.5"
                                       onClick={() => openGanttEdit(row)}
                                     >
                                       {row.title} ({t("no dates", "bez termínu", "nincs határidő")})
@@ -3352,7 +3356,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center z-50 animate-fade-in">
               <div className="bg-white rounded-3xl p-6 w-full max-w-md shadow-glass border border-slate-200/60 text-left space-y-4">
                 <div className="flex items-center justify-between border-b border-slate-200 pb-3">
-                  <h4 className="font-heading font-bold text-sm text-slate-800">
+                  <h4 className="font-heading font-bold text-body text-slate-800">
                     {t("Edit Task Details", "Upraviť podrobnosti úlohy", "Feladat részleteinek szerkesztése")}
                   </h4>
                   <button
@@ -3364,9 +3368,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </button>
                 </div>
 
-                <div className="space-y-3.5 text-xs font-semibold text-slate-700">
+                <div className="space-y-3.5 text-ui font-semibold text-slate-700">
                   <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Task Title", "Názov úlohy", "Feladat címe")}</label>
+                    <label className="block type-overline text-slate-400 mb-1">{t("Task Title", "Názov úlohy", "Feladat címe")}</label>
                     <input
                       type="text"
                       value={selectedGanttEdit.title}
@@ -3380,7 +3384,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Assignee Contact", "Kontakt", "Kapcsolat")}</label>
+                    <label className="block type-overline text-slate-400 mb-1">{t("Assignee Contact", "Kontakt", "Kapcsolat")}</label>
                     <ClientSelect
                       leads={leads}
                       value={selectedGanttEdit.contactId}
@@ -3394,7 +3398,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("Start Date", "Začiatok", "Kezdet")}</label>
+                      <label className="block type-overline text-slate-400 mb-1">{t("Start Date", "Začiatok", "Kezdet")}</label>
                       <input
                         type="date"
                         value={selectedGanttEdit.startDate || ""}
@@ -3408,7 +3412,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">{t("End Date", "Koniec", "Vége")}</label>
+                      <label className="block type-overline text-slate-400 mb-1">{t("End Date", "Koniec", "Vége")}</label>
                       <input
                         type="date"
                         value={selectedGanttEdit.endDate || ""}
@@ -3423,7 +3427,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1.5">{t("Progress", "Postup", "Haladás")} ({selectedGanttEdit.progress}%)</label>
+                    <label className="block type-overline text-slate-400 mb-1.5">{t("Progress", "Postup", "Haladás")} ({selectedGanttEdit.progress}%)</label>
                     <div className="flex items-center gap-3">
                       <input
                         type="range"
@@ -3444,7 +3448,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                             setSelectedGanttEdit(prev => prev ? { ...prev, progress: 0 } : null);
                             setGantt(prev => prev.map(r => r.id === selectedGanttEdit.id ? { ...r, progress: 0 } : r));
                           }}
-                          className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-[10px] cursor-pointer"
+                          className="px-2 py-1 rounded bg-slate-100 hover:bg-slate-200 text-micro cursor-pointer"
                         >
                           0%
                         </button>
@@ -3454,7 +3458,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                             setSelectedGanttEdit(prev => prev ? { ...prev, progress: 100 } : null);
                             setGantt(prev => prev.map(r => r.id === selectedGanttEdit.id ? { ...r, progress: 100 } : r));
                           }}
-                          className="px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[10px] cursor-pointer"
+                          className="px-2 py-1 rounded bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-micro cursor-pointer"
                         >
                           100%
                         </button>
@@ -3467,7 +3471,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setSelectedGanttEdit(null)}
-                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-xs transition-colors cursor-pointer"
+                    className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-ui transition-colors cursor-pointer"
                   >
                     {t("Close", "Zatvoriť", "Bezárás")}
                   </button>
@@ -3478,14 +3482,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
           {/* TAB CONTENT: Files — the type's default files, then this project's own */}
           {activeRightTab === "files" && (
-            <div className="flex-1 lg:overflow-y-auto space-y-5 scrollbar-thin lg:pr-1 animate-in fade-in duration-150 text-left">
+            <div className="flex-1 ws-lg:overflow-y-auto space-y-5 scrollbar-thin ws-lg:pr-1 animate-in fade-in duration-150 text-left">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex flex-col min-w-0">
-                  <span className="font-heading font-bold text-sm text-slate-800 flex items-center gap-1.5">
+                  <span className="font-heading font-bold text-body text-slate-800 flex items-center gap-1.5">
                     <Paperclip className="h-4 w-4 text-slate-400" />
                     {t("Files", "Súbory", "Fájlok")}
                   </span>
-                  <span className="text-[11px] font-medium text-slate-400 mt-0.5">
+                  <span className="text-caption font-medium text-slate-400 mt-0.5">
                     {t(
                       "Default files come from the project type. Custom files belong to this project only.",
                       "Predvolené súbory určuje typ projektu. Vlastné súbory patria len tomuto projektu.",
@@ -3495,12 +3499,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 </div>
                 {fileSlots.length > 0 && (
                   missingFileCount > 0 ? (
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-rose-200 bg-rose-50 text-[10px] font-black uppercase tracking-wider text-rose-700 whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-rose-200 bg-rose-50 type-overline text-rose-700 whitespace-nowrap">
                       <CircleAlert className="h-3.5 w-3.5" />
                       {missingFilesLabel(missingFileCount)}
                     </span>
                   ) : (
-                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-emerald-200 bg-emerald-50 text-[10px] font-black uppercase tracking-wider text-emerald-700 whitespace-nowrap">
+                    <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-emerald-200 bg-emerald-50 type-overline text-emerald-700 whitespace-nowrap">
                       <CircleCheck className="h-3.5 w-3.5" />
                       {t("All files uploaded", "Všetky súbory nahrané", "Minden fájl feltöltve")}
                     </span>
@@ -3510,13 +3514,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
               {/* Default files */}
               <div className="space-y-2">
-                <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                <span className="block type-overline text-slate-400">
                   {t("Default files", "Predvolené súbory", "Alapértelmezett fájlok")}
                 </span>
                 {fileSlots.some(s => !s.custom) ? (
                   fileSlots.filter(s => !s.custom).map(renderFileSlot)
                 ) : (
-                  <p className="p-3 border-2 border-dashed border-slate-200 rounded-2xl text-center text-slate-400 text-xs font-semibold">
+                  <p className="p-3 border-2 border-dashed border-slate-200 rounded-2xl text-center text-slate-400 text-ui font-semibold">
                     {t("This project type has no default files.", "Tento typ projektu nemá predvolené súbory.", "Ennek a projekt típusnak nincsenek alapértelmezett fájljai.")}
                   </p>
                 )}
@@ -3524,13 +3528,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
               {/* Custom files — this project only */}
               <div className="space-y-2">
-                <span className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                <span className="block type-overline text-slate-400">
                   {t("Custom files", "Vlastné súbory", "Egyedi fájlok")}
                 </span>
                 {fileSlots.some(s => s.custom) ? (
                   fileSlots.filter(s => s.custom).map(renderFileSlot)
                 ) : (
-                  <p className="text-[11px] font-semibold text-slate-400">
+                  <p className="text-caption font-semibold text-slate-400">
                     {t("No custom files on this project.", "Tento projekt nemá vlastné súbory.", "Ennek a projektnek nincsenek egyedi fájljai.")}
                   </p>
                 )}
@@ -3547,14 +3551,14 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         }
                       }}
                       placeholder={t("e.g. Building permit", "napr. Stavebné povolenie", "pl. Építési engedély")}
-                      className="flex-1 min-w-[8rem] px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                      className="flex-1 min-w-[8rem] px-3 py-2 rounded-xl border border-slate-200 text-ui font-semibold bg-white text-slate-800 transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                     />
                     <button
                       type="button"
                       onClick={handleAddCustomFileField}
                       disabled={!canAddCustomFile}
                       title={newCustomFileTaken ? t("A file with this name already exists.", "Súbor s týmto názvom už existuje.", "Ilyen nevű fájl már létezik.") : undefined}
-                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 transition-all duration-150 active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                      className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600 text-white font-bold text-ui hover:bg-indigo-700 transition-all duration-150 active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
                     >
                       <Plus className="h-4 w-4" />
                       <span>{t("Add custom file", "Pridať vlastný súbor", "Egyedi fájl hozzáadása")}</span>
@@ -3567,19 +3571,19 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
           {/* TAB CONTENT: Finances & Revenue Analysis (CRITICAL REQUIREMENT #5, #6, #7) */}
           {activeRightTab === "finances" && (
-            <div className="flex-1 lg:overflow-y-auto space-y-6 scrollbar-thin lg:pr-1 animate-in fade-in duration-150 text-left">
+            <div className="flex-1 ws-lg:overflow-y-auto space-y-6 scrollbar-thin ws-lg:pr-1 animate-in fade-in duration-150 text-left">
               {/* 0. Top Row: Project Value & Invoicable + Project Cost Budget */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4">
                 {/* 0A. PROJECT VALUE & INVOICABLE */}
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-2 min-w-0">
                       <Receipt className="h-4 w-4 text-blue-600 shrink-0" />
-                      <span className="text-xs font-bold text-slate-900 uppercase">
+                      <span className="text-ui font-bold text-slate-900">
                         {t("Project Value & Invoicable", "Hodnota projektu a fakturácia", "Projekt értéke és számlázható")}
                       </span>
                       {invoicableAnalysis.total > 0 && contractValueDraft === null && (
-                        <span className="text-sm font-black text-slate-900">{money(invoicableAnalysis.total)}</span>
+                        <span className="text-body font-bold text-slate-900">{money(invoicableAnalysis.total)}</span>
                       )}
                     </div>
 
@@ -3587,7 +3591,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       <button
                         type="button"
                         onClick={() => setContractValueDraft(invoicableAnalysis.total > 0 ? String(invoicableAnalysis.total) : "")}
-                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-ui font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
                       >
                         {invoicableAnalysis.total > 0 ? <Edit3 className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
                         {invoicableAnalysis.total > 0
@@ -3606,12 +3610,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                           onKeyDown={(e) => { if (e.key === "Escape") setContractValueDraft(null); }}
                           placeholder="0.00"
                           aria-label={t("Project Value", "Hodnota projektu", "Projekt értéke")}
-                          className="w-28 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold focus:outline-none focus:border-blue-500 transition-colors"
+                          className="w-28 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-ui font-bold focus:outline-none focus:border-blue-500 transition-colors"
                         />
-                        <span className="text-[11px] font-bold text-slate-500">{currencyCode || defaultCurrency}</span>
+                        <span className="text-caption font-bold text-slate-500">{currencyCode || defaultCurrency}</span>
                         <button
                           type="submit"
-                          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
+                          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-ui font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
                         >
                           <Check className="h-3.5 w-3.5" />
                           {t("Save", "Uložiť", "Mentés")}
@@ -3629,7 +3633,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </div>
 
                   {invoicableAnalysis.total <= 0 ? (
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-caption text-slate-500">
                       {t(
                         "No project value set yet. Set one to track the total billable amount and remaining balance to invoice.",
                         "Hodnota projektu zatiaľ nie je nastavená. Nastavte ju pre sledovanie celkovej fakturovateľnej sumy a zostávajúcej čiastky.",
@@ -3646,7 +3650,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                           style={{ width: `${invoicableAnalysis.invoicedPct}%` }}
                         />
                       </div>
-                      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[11px] text-slate-500">
+                      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-caption text-slate-500">
                         <span>
                           {t("Invoiced / Planned:", "Fakturované / Plán:", "Számlázva / Terv:")}{" "}
                           <strong className="text-slate-700">{money(invoicableAnalysis.invoiced)}</strong> ({invoicableAnalysis.invoicedPct.toFixed(0)}%)
@@ -3663,7 +3667,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                         <button
                           type="button"
                           onClick={handleMarkValuePaid}
-                          className="mt-1.5 w-full px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
+                          className="mt-1.5 w-full px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-ui font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
                         >
                           <CircleCheck className="h-3.5 w-3.5" />
                           {invoicableAnalysis.invoiced > 0
@@ -3680,11 +3684,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div className="flex items-center gap-2 min-w-0">
                       <Wallet className="h-4 w-4 text-indigo-600 shrink-0" />
-                      <span className="text-xs font-bold text-slate-900 uppercase">
+                      <span className="text-ui font-bold text-slate-900">
                         {t("Project Budget", "Rozpočet projektu", "Projekt költségvetése")}
                       </span>
                       {budgetAnalysis && budgetDraft === null && (
-                        <span className="text-sm font-black text-slate-900">{money(budgetAnalysis.budget)}</span>
+                        <span className="text-body font-bold text-slate-900">{money(budgetAnalysis.budget)}</span>
                       )}
                     </div>
 
@@ -3692,7 +3696,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       <button
                         type="button"
                         onClick={() => setBudgetDraft(budgetAnalysis ? String(budgetAnalysis.budget) : "")}
-                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-ui font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
                       >
                         {budgetAnalysis ? <Edit3 className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
                         {budgetAnalysis
@@ -3711,12 +3715,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                           onKeyDown={(e) => { if (e.key === "Escape") setBudgetDraft(null); }}
                           placeholder="0.00"
                           aria-label={t("Project Budget", "Rozpočet projektu", "Projekt költségvetése")}
-                          className="w-28 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold focus:outline-none focus:border-indigo-500 transition-colors"
+                          className="w-28 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-ui font-bold focus:outline-none focus:border-indigo-500 transition-colors"
                         />
-                        <span className="text-[11px] font-bold text-slate-500">{currencyCode || defaultCurrency}</span>
+                        <span className="text-caption font-bold text-slate-500">{currencyCode || defaultCurrency}</span>
                         <button
                           type="submit"
-                          className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
+                          className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-ui font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
                         >
                           <Check className="h-3.5 w-3.5" />
                           {t("Save", "Uložiť", "Mentés")}
@@ -3734,7 +3738,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </div>
 
                   {!budgetAnalysis ? (
-                    <p className="text-[11px] text-slate-500">
+                    <p className="text-caption text-slate-500">
                       {t(
                         "No budget set yet. Set one to see how the project's costs compare with it. (The \"Planned\" figures below are the sums of the planned amounts on invoices and expenses.)",
                         "Rozpočet zatiaľ nie je nastavený. Po nastavení uvidíte, ako sa k nemu majú náklady projektu. (Hodnoty „Plán“ nižšie sú súčty plánovaných súm na faktúrach a výdavkoch.)",
@@ -3753,7 +3757,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                           style={{ width: `${Math.min(budgetAnalysis.spentPct, 100)}%` }}
                         />
                       </div>
-                      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[11px] text-slate-500">
+                      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-caption text-slate-500">
                         <span>
                           {t("Spent:", "Minuté:", "Elköltve:")} <strong className="text-slate-700">{money(budgetAnalysis.spent)}</strong> ({budgetAnalysis.spentPct.toFixed(0)}%)
                           {" · "}
@@ -3772,59 +3776,59 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               </div>
 
               {/* 1. Project Revenue & Profitability Scorecard */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <div className="grid grid-cols-1 ws-sm:grid-cols-2 ws-lg:grid-cols-4 gap-3">
                 {/* Revenue Card */}
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
-                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase">
+                  <div className="flex items-center justify-between type-overline text-slate-500">
                     <span>{t("Project Revenue", "Príjmy z projektu", "Projekt bevételek")}</span>
                     <TrendingUp className="h-4 w-4 text-emerald-500" />
                   </div>
-                  <div className="text-xl font-black text-slate-900 mt-1">
+                  <div className="text-title font-bold text-slate-900 mt-1">
                     {money(revenueAnalysis.totalRealIncome)}
                   </div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">
+                  <div className="text-caption text-slate-500 mt-0.5">
                     {t("Planned:", "Plán:", "Terv:")} <strong>{money(revenueAnalysis.totalPlannedIncome)}</strong>
                   </div>
                 </div>
 
                 {/* Costs Card */}
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
-                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase">
+                  <div className="flex items-center justify-between type-overline text-slate-500">
                     <span>{t("Project Costs", "Priame náklady", "Közvetlen költségek")}</span>
                     <TrendingDown className="h-4 w-4 text-rose-500" />
                   </div>
-                  <div className="text-xl font-black text-slate-900 mt-1">
+                  <div className="text-title font-bold text-slate-900 mt-1">
                     {money(revenueAnalysis.totalRealExpenses)}
                   </div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">
+                  <div className="text-caption text-slate-500 mt-0.5">
                     {t("Planned:", "Plán:", "Terv:")} <strong>{money(revenueAnalysis.totalPlannedExpenses)}</strong>
                   </div>
                 </div>
 
                 {/* Net Profit Card */}
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
-                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase">
+                  <div className="flex items-center justify-between type-overline text-slate-500">
                     <span>{t("Net Profit", "Čistý zisk", "Nettó nyereség")}</span>
                     <DollarSign className="h-4 w-4 text-indigo-500" />
                   </div>
-                  <div className={`text-xl font-black mt-1 ${revenueAnalysis.realProfit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                  <div className={`text-title font-bold mt-1 ${revenueAnalysis.realProfit >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
                     {money(revenueAnalysis.realProfit)}
                   </div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">
+                  <div className="text-caption text-slate-500 mt-0.5">
                     {t("Planned:", "Plán:", "Terv:")} <strong>{money(revenueAnalysis.plannedProfit)}</strong>
                   </div>
                 </div>
 
                 {/* Profit Margin Card */}
                 <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200">
-                  <div className="flex items-center justify-between text-[11px] font-bold text-slate-500 uppercase">
+                  <div className="flex items-center justify-between type-overline text-slate-500">
                     <span>{t("Profit Margin", "Zisková marža", "Haszonkulcs")}</span>
                     <Coins className="h-4 w-4 text-amber-500" />
                   </div>
-                  <div className={`text-xl font-black mt-1 ${revenueAnalysis.realMarginPct >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
+                  <div className={`text-title font-bold mt-1 ${revenueAnalysis.realMarginPct >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
                     {revenueAnalysis.realMarginPct.toFixed(1)}%
                   </div>
-                  <div className="text-[11px] text-slate-500 mt-0.5">
+                  <div className="text-caption text-slate-500 mt-0.5">
                     {t("Planned:", "Plán:", "Terv:")} <strong>{revenueAnalysis.plannedMarginPct.toFixed(1)}%</strong>
                   </div>
                 </div>
@@ -3835,7 +3839,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <TrendingUp className="h-4 w-4 text-emerald-600" />
-                    <span className="text-xs font-bold text-slate-900 uppercase">
+                    <span className="text-ui font-bold text-slate-900">
                       {t("Issued & Scheduled Invoices", "Faktúry a vystavené doklady", "Kimenő és tervezett számlák")} ({projectInvoices.length})
                     </span>
                   </div>
@@ -3843,7 +3847,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => handleOpenProjectFinModal("income")}
-                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm"
+                      className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-ui font-bold flex items-center gap-1.5 cursor-pointer shadow-sm"
                     >
                       <Plus className="h-3.5 w-3.5" />
                       {t("Issue / Plan Invoice", "Vystaviť / naplánovať faktúru", "Új számla kiállítása")}
@@ -3852,12 +3856,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 </div>
 
                 {projectInvoices.length === 0 ? (
-                  <div className="py-6 text-center text-xs text-slate-400 font-medium">
+                  <div className="py-6 text-center text-ui text-slate-400 font-medium">
                     {t("No invoices issued for this project yet.", "K tomuto projektu zatiaľ neboli vystavené žiadne faktúry.", "Még nincsenek számlák rögzítve ehhez a projekthez.")}
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
+                    <table className="w-full text-left text-ui">
                       <thead className="text-slate-400 border-b border-slate-200">
                         <tr>
                           <th className="py-2 px-3 font-semibold">{t("Date", "Dátum", "Dátum")}</th>
@@ -3873,16 +3877,16 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                           <tr key={inv.id} className="hover:bg-white/80">
                             <td className="py-2.5 px-3 whitespace-nowrap">
                               <div>{formatDateLocalized(inv.issueDate, userLanguage)}</div>
-                              {inv.dueDate && <div className="text-[10px] text-slate-400">{t("Due:", "Splatné:", "Esedékes:")} {formatDateLocalized(inv.dueDate, userLanguage)}</div>}
+                              {inv.dueDate && <div className="text-micro text-slate-400">{t("Due:", "Splatné:", "Esedékes:")} {formatDateLocalized(inv.dueDate, userLanguage)}</div>}
                             </td>
                             <td className="py-2.5 px-3">
                               <div className="font-bold text-slate-900">{inv.title}</div>
-                              {inv.invoiceNumber && <span className="text-[10px] font-mono text-slate-500">#{inv.invoiceNumber}</span>}
+                              {inv.invoiceNumber && <span className="text-micro font-mono text-slate-500">#{inv.invoiceNumber}</span>}
                             </td>
                             <td className="py-2.5 px-3 text-right text-slate-500 font-normal">{money(inv.amountPlanned)}</td>
                             <td className="py-2.5 px-3 text-right font-bold text-emerald-600">{money(inv.amountReal)}</td>
                             <td className="py-2.5 px-3 text-center">
-                              <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              <span className={`inline-flex px-2 py-0.5 rounded-full text-micro font-bold ${
                                 inv.status === "paid" ? "bg-emerald-100 text-emerald-800" : inv.status === "overdue" ? "bg-rose-100 text-rose-800" : "bg-amber-100 text-amber-800"
                               }`}>
                                 {inv.status === "paid" ? t("Paid", "Uhradené", "Fizetve") : inv.status === "overdue" ? t("Overdue", "Po splatnosti", "Lejárt") : t("Pending", "Čaká na úhradu", "Függő")}
@@ -3924,7 +3928,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <TrendingDown className="h-4 w-4 text-rose-600" />
-                    <span className="text-xs font-bold text-slate-900 uppercase">
+                    <span className="text-ui font-bold text-slate-900">
                       {t("Direct Project Costs & Materials", "Priame náklady a materiál projektu", "Közvetlen projektköltségek és anyagok")} ({projectExpenses.length})
                     </span>
                   </div>
@@ -3932,7 +3936,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     <button
                       type="button"
                       onClick={() => handleOpenProjectFinModal("expense")}
-                      className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm"
+                      className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-ui font-bold flex items-center gap-1.5 cursor-pointer shadow-sm"
                     >
                       <Plus className="h-3.5 w-3.5" />
                       {t("Add Project Expense", "Pridať výdavok k projektu", "Új kiadás rögzítése")}
@@ -3941,12 +3945,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 </div>
 
                 {projectExpenses.length === 0 ? (
-                  <div className="py-6 text-center text-xs text-slate-400 font-medium">
+                  <div className="py-6 text-center text-ui text-slate-400 font-medium">
                     {t("No expenses logged for this project yet.", "K tomuto projektu zatiaľ neboli zaevidované žiadne výdavky.", "Még nincsenek kiadások rögzítve.")}
                   </div>
                 ) : (
                   <div className="overflow-x-auto">
-                    <table className="w-full text-left text-xs">
+                    <table className="w-full text-left text-ui">
                       <thead className="text-slate-400 border-b border-slate-200">
                         <tr>
                           <th className="py-2 px-3 font-semibold">{t("Date", "Dátum", "Dátum")}</th>
@@ -3965,12 +3969,12 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                             </td>
                             <td className="py-2.5 px-3">
                               <div className="font-bold text-slate-900">{exp.title}</div>
-                              {exp.categoryPath && <span className="text-[10px] text-slate-400">{exp.categoryPath}</span>}
+                              {exp.categoryPath && <span className="text-micro text-slate-400">{exp.categoryPath}</span>}
                             </td>
                             <td className="py-2.5 px-3 text-right text-slate-500 font-normal">{money(exp.amountPlanned)}</td>
                             <td className="py-2.5 px-3 text-right font-bold text-rose-600">{money(exp.amountReal)}</td>
                             <td className="py-2.5 px-3 text-center">
-                              <span className={`inline-flex px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              <span className={`inline-flex px-2 py-0.5 rounded-full text-micro font-bold ${
                                 exp.status === "paid" ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-700"
                               }`}>
                                 {exp.status === "paid" ? t("Paid", "Zaplatené", "Kifizetve") : t("Planned", "Plánované", "Tervezett")}
@@ -4010,7 +4014,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               {/* 4. Cost Structure Breakdown by Category */}
               {revenueAnalysis.expensesByCategory.length > 0 && (
                 <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-2.5">
-                  <div className="flex items-center gap-2 text-xs font-bold text-slate-700 uppercase">
+                  <div className="flex items-center gap-2 text-ui font-bold text-slate-700">
                     <PieChart className="h-4 w-4 text-indigo-600" />
                     <span>{t("Project Cost Breakdown by Category", "Štruktúra nákladov projektu podľa kategórií", "Költségstruktúra kategóriák szerint")}</span>
                   </div>
@@ -4019,13 +4023,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       const pct = revenueAnalysis.totalRealExpenses > 0 ? (cat.real / revenueAnalysis.totalRealExpenses) * 100 : 0;
                       return (
                         <div key={idx} className="p-2 bg-white rounded-xl border border-slate-100">
-                          <div className="flex items-center justify-between text-xs mb-1">
+                          <div className="flex items-center justify-between text-ui mb-1">
                             <span className="font-semibold text-slate-800 flex items-center gap-1.5">
                               <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: cat.color }} />
                               {cat.name}
                             </span>
                             <span className="font-bold text-slate-900">
-                              {money(cat.real)} <span className="text-[10px] text-slate-400">({pct.toFixed(0)}%)</span>
+                              {money(cat.real)} <span className="text-micro text-slate-400">({pct.toFixed(0)}%)</span>
                             </span>
                           </div>
                           <div className="w-full bg-slate-100 h-1.5 rounded-full overflow-hidden">
@@ -4047,7 +4051,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                 <div className="flex items-center justify-between border-b border-slate-100 pb-3">
                   <div className="flex items-center gap-2">
                     {finFormType === "income" ? <TrendingUp className="h-5 w-5 text-emerald-600" /> : <TrendingDown className="h-5 w-5 text-rose-600" />}
-                    <h3 className="text-sm font-bold text-slate-900">
+                    <h3 className="text-body font-bold text-slate-900">
                       {finEditingRecord
                         ? (finFormType === "income" ? t("Edit Project Invoice", "Upraviť faktúru projektu", "Számla szerkesztése") : t("Edit Project Expense", "Upraviť výdavok projektu", "Kiadás szerkesztése"))
                         : (finFormType === "income" ? t("Issue Project Invoice", "Vystaviť faktúru pre projekt", "Számla kiállítása projekthez") : t("Add Project Expense", "Pridať výdavok k projektu", "Új kiadás hozzáadása"))}
@@ -4058,9 +4062,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   </button>
                 </div>
 
-                <form onSubmit={handleSaveProjectFinancial} className="space-y-3.5 text-xs font-semibold text-left">
+                <form onSubmit={handleSaveProjectFinancial} className="space-y-3.5 text-ui font-semibold text-left">
                   <div>
-                    <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Title / Description *", "Názov / Popis *", "Megnevezés *")}</label>
+                    <label className="block type-overline text-slate-400 mb-1">{t("Title / Description *", "Názov / Popis *", "Megnevezés *")}</label>
                     <input
                       required
                       value={finFormTitle}
@@ -4072,7 +4076,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                   {finFormType === "income" && (
                     <div>
-                      <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Invoice Number", "Číslo faktúry", "Számlaszám")}</label>
+                      <label className="block type-overline text-slate-400 mb-1">{t("Invoice Number", "Číslo faktúry", "Számlaszám")}</label>
                       <input
                         value={finFormInvoiceNumber}
                         onChange={(e) => setFinFormInvoiceNumber(e.target.value)}
@@ -4084,7 +4088,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Planned Amount (€) *", "Plánovaná suma (€) *", "Tervezett összeg (€) *")}</label>
+                      <label className="block type-overline text-slate-400 mb-1">{t("Planned Amount (€) *", "Plánovaná suma (€) *", "Tervezett összeg (€) *")}</label>
                       <input
                         type="number"
                         step="0.01"
@@ -4096,7 +4100,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Real / Paid Amount (€)", "Skutočná suma (€)", "Valós összeg (€)")}</label>
+                      <label className="block type-overline text-slate-400 mb-1">{t("Real / Paid Amount (€)", "Skutočná suma (€)", "Valós összeg (€)")}</label>
                       <input
                         type="number"
                         step="0.01"
@@ -4110,7 +4114,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Category", "Kategória", "Kategória")}</label>
+                      <label className="block type-overline text-slate-400 mb-1">{t("Category", "Kategória", "Kategória")}</label>
                       <select
                         value={finFormCategoryId}
                         onChange={(e) => setFinFormCategoryId(e.target.value)}
@@ -4128,7 +4132,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     </div>
 
                     <div>
-                      <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Status", "Stav", "Állapot")}</label>
+                      <label className="block type-overline text-slate-400 mb-1">{t("Status", "Stav", "Állapot")}</label>
                       <select
                         value={finFormStatus}
                         onChange={(e) => setFinFormStatus(e.target.value as any)}
@@ -4155,7 +4159,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Issue Date", "Dátum vystavenia", "Kiállítás dátuma")}</label>
+                      <label className="block type-overline text-slate-400 mb-1">{t("Issue Date", "Dátum vystavenia", "Kiállítás dátuma")}</label>
                       <input
                         type="date"
                         required
@@ -4165,7 +4169,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       />
                     </div>
                     <div>
-                      <label className="block text-[10px] text-slate-400 uppercase mb-1">{t("Due Date", "Dátum splatnosti", "Esedékesség")}</label>
+                      <label className="block type-overline text-slate-400 mb-1">{t("Due Date", "Dátum splatnosti", "Esedékesség")}</label>
                       <input
                         type="date"
                         value={finFormDueDate}

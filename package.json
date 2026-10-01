@@ -22,6 +22,7 @@
     "test:qa:nav": "node scripts/qa/run-qa.mjs --full -- navigation.spec.ts",
     "test:qa:recorder": "node scripts/qa/run-qa.mjs --full -- recorder.spec.ts",
     "test:qa:dark": "node scripts/qa/run-qa.mjs --full -- darkmode.spec.ts",
+    "test:qa:viewsize": "node scripts/qa/run-qa.mjs --full -- viewSize.spec.ts",
     "test:qa:license": "node scripts/qa/run-qa.mjs --full -- license.spec.ts",
     "test:qa:report": "node scripts/qa/open-report.mjs",
     "test:qa:report:html": "npx playwright show-report",

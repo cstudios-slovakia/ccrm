@@ -2,7 +2,6 @@ import React, { useState, useMemo } from "react";
 import {
   Search,
   Plus,
-  Settings,
   Users,
   UserCheck,
   Coins,
@@ -52,7 +51,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
   onAddEmployee,
   onEditEmployee,
   onDeleteEmployee,
-  onOpenSettings,
+  onOpenSettings: _onOpenSettings,
   onOpenMatrix: _onOpenMatrix,
   onSeedMockData,
   systemLanguage = "sk",
@@ -119,68 +118,18 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Top Action Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-3">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#c29b62] to-[#9e7638] text-white flex items-center justify-center shadow-lg shadow-[#c29b62]/25">
-              <EmployeeTieIcon className="w-5 h-5" color="#ffffff" />
-            </div>
-            <span>{t("Employees & Payroll", "Zamestnanci a mzdy", "Alkalmazottak és bérek")}</span>
-          </h1>
-          <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
-            {t(
-              "Staff directory, salary structures, Toggl time tracking & vacation planner",
-              "Prehľad zamestnancov, štruktúra miezd, meranie času a plánovač dovoleniek",
-              "Munkatársak, bérstruktúra, időkövetés és szabadságtervező"
-            )}
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2.5">
-          {employees.length === 0 && onSeedMockData && (
-            <button
-              type="button"
-              onClick={onSeedMockData}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 text-amber-700 font-heading font-bold text-xs uppercase tracking-wider hover:bg-amber-500/20 transition-all cursor-pointer"
-            >
-              <Sparkles className="w-4 h-4 text-amber-600" />
-              <span>{t("Seed Mock Data", "Naplniť vzorovými dátami", "Minta adatok")}</span>
-            </button>
-          )}
-
-          <button
-            type="button"
-            onClick={onOpenSettings}
-            className="p-2.5 text-slate-500 hover:text-slate-800 glass-panel border border-white/60 bg-white/95 rounded-2xl transition shadow-glass cursor-pointer"
-            title={t("Settings", "Nastavenia", "Beállítások")}
-          >
-            <Settings className="w-4 h-4" />
-          </button>
-
-          <button
-            type="button"
-            onClick={onAddEmployee}
-            className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white font-heading font-bold text-xs uppercase tracking-wider shadow-lg shadow-[#c29b62]/25 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition cursor-pointer"
-          >
-            <Plus className="w-4 h-4" />
-            <span>{t("Add Employee", "Nový zamestnanec", "Új alkalmazott")}</span>
-          </button>
-        </div>
-      </div>
-
       {/* KPI Cards Row */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 ws-sm:grid-cols-2 ws-lg:grid-cols-4 gap-4">
         {/* Total Staff */}
         <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-5 flex items-center justify-between hover:shadow-lg transition-all">
           <div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+            <span className="type-overline text-slate-400 block">
               {t("Total Staff", "Celkom zamestnancov", "Összes alkalmazott")}
             </span>
-            <span className="text-3xl font-heading font-black text-slate-900 tracking-tight mt-1 block">
+            <span className="type-metric text-slate-900 mt-1 block">
               {stats.total}
             </span>
-            <span className="text-[10px] text-slate-400 font-medium">
+            <span className="text-micro text-slate-400 font-medium">
               {stats.active} {t("active employees", "aktívnych", "aktív")}
             </span>
           </div>
@@ -192,13 +141,13 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
         {/* Active Rate */}
         <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-5 flex items-center justify-between hover:shadow-lg transition-all">
           <div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+            <span className="type-overline text-slate-400 block">
               {t("Active Status", "Aktívny stav", "Aktív állapot")}
             </span>
-            <span className="text-3xl font-heading font-black text-emerald-600 tracking-tight mt-1 block">
+            <span className="type-metric text-emerald-600 mt-1 block">
               {stats.total > 0 ? Math.round((stats.active / stats.total) * 100) : 0}%
             </span>
-            <span className="text-[10px] text-slate-400 font-medium">
+            <span className="text-micro text-slate-400 font-medium">
               {stats.total - stats.active} {t("inactive / left", "neaktívnych", "inaktív")}
             </span>
           </div>
@@ -210,14 +159,14 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
         {/* Monthly Payroll Base */}
         <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-5 flex items-center justify-between hover:shadow-lg transition-all">
           <div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+            <span className="type-overline text-slate-400 block">
               {t("Est. Monthly Payroll", "Mesačný objem miezd", "Havi bérköltség")}
             </span>
-            <span className="text-2xl sm:text-3xl font-heading font-black text-slate-900 tracking-tight mt-1 block">
+            <span className="type-metric text-slate-900 mt-1 block">
               {formatNumber(stats.totalMonthlyPayroll, systemLanguage, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}{" "}
-              <span className="text-sm font-bold text-slate-400">{systemCurrency}</span>
+              <span className="text-body font-bold text-slate-400">{systemCurrency}</span>
             </span>
-            <span className="text-[10px] text-slate-400 font-medium">
+            <span className="text-micro text-slate-400 font-medium">
               {t("Due around", "Splatnosť okolo", "Esedékes:")} {settings.salaryDueDay ?? 15}. {t("of month", "v mesiaci", "")}
             </span>
           </div>
@@ -229,13 +178,13 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
         {/* On Leave Today */}
         <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-5 flex items-center justify-between hover:shadow-lg transition-all">
           <div>
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block">
+            <span className="type-overline text-slate-400 block">
               {t("On Leave Today", "Dnes na dovolenke / PN", "Ma távol lévők")}
             </span>
-            <span className="text-3xl font-heading font-black text-amber-600 tracking-tight mt-1 block">
+            <span className="type-metric text-amber-600 mt-1 block">
               {stats.onLeaveToday}
             </span>
-            <span className="text-[10px] text-slate-400 font-medium">
+            <span className="text-micro text-slate-400 font-medium">
               {t("Absence calendar tracked", "Evidované v kalendári", "Naptárban rögzítve")}
             </span>
           </div>
@@ -246,7 +195,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
       </div>
 
       {/* Filter and Search Bar */}
-      <div className="glass-panel rounded-2xl border border-white/60 bg-white/95 shadow-glass p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+      <div className="glass-panel rounded-2xl border border-white/60 bg-white/95 shadow-glass p-3 flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3">
         <div className="flex items-center gap-3 flex-1">
           <div className="relative flex-1 max-w-md">
             <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -255,16 +204,16 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t("Search by name, PIN, email or phone...", "Hľadať podľa mena, RČ, emailu...", "Keresés név, személyi szám szerint...")}
-              className="w-full pl-9 pr-3.5 py-2 text-xs bg-slate-100/70 border border-slate-200/60 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#c29b62]/40 focus:bg-white transition"
+              className="w-full pl-9 pr-3.5 py-2 text-ui bg-slate-100/70 border border-slate-200/60 rounded-xl text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-[#c29b62]/40 focus:bg-white transition"
             />
           </div>
 
           {/* Status Segmented Buttons */}
-          <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl text-xs border border-slate-200/40">
+          <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl text-ui border border-slate-200/40">
             <button
               type="button"
               onClick={() => setStatusFilter("all")}
-              className={`px-3 py-1 rounded-lg font-heading text-xs transition cursor-pointer ${
+              className={`px-3 py-1 rounded-lg font-heading text-ui transition cursor-pointer ${
                 statusFilter === "all"
                   ? "bg-white text-slate-900 shadow-xs font-bold"
                   : "text-slate-500 hover:text-slate-900 font-medium"
@@ -275,7 +224,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
             <button
               type="button"
               onClick={() => setStatusFilter("active")}
-              className={`px-3 py-1 rounded-lg font-heading text-xs transition cursor-pointer ${
+              className={`px-3 py-1 rounded-lg font-heading text-ui transition cursor-pointer ${
                 statusFilter === "active"
                   ? "bg-white text-slate-900 shadow-xs font-bold"
                   : "text-slate-500 hover:text-slate-900 font-medium"
@@ -286,7 +235,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
             <button
               type="button"
               onClick={() => setStatusFilter("inactive")}
-              className={`px-3 py-1 rounded-lg font-heading text-xs transition cursor-pointer ${
+              className={`px-3 py-1 rounded-lg font-heading text-ui transition cursor-pointer ${
                 statusFilter === "inactive"
                   ? "bg-white text-slate-900 shadow-xs font-bold"
                   : "text-slate-500 hover:text-slate-900 font-medium"
@@ -329,10 +278,10 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
             <EmployeeTieIcon className="w-8 h-8" color="#c29b62" />
           </div>
           <div className="max-w-md mx-auto space-y-1.5">
-            <h3 className="text-base font-heading font-extrabold text-slate-900">
+            <h3 className="text-title-sm font-heading font-extrabold text-slate-900">
               {t("No employees found", "Žiadni zamestnanci", "Nincsenek alkalmazottak")}
             </h3>
-            <p className="text-xs text-slate-500 leading-relaxed">
+            <p className="text-ui text-slate-500 leading-relaxed">
               {employees.length === 0
                 ? t(
                     "Start by adding your first team member or quickly load sample employee profiles with salaries and vacations.",
@@ -347,7 +296,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
               <button
                 type="button"
                 onClick={onSeedMockData}
-                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 text-white font-heading font-bold text-xs uppercase tracking-wider shadow-lg shadow-amber-500/25 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition cursor-pointer"
+                className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-amber-500 to-amber-600 text-white font-heading font-bold text-ui shadow-lg shadow-amber-500/25 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition cursor-pointer"
               >
                 <Sparkles className="w-4 h-4" />
                 <span>{t("Load Demo Staff", "Naplniť vzorovými dátami", "Minta adatok betöltése")}</span>
@@ -356,7 +305,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
             <button
               type="button"
               onClick={onAddEmployee}
-              className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white font-heading font-bold text-xs uppercase tracking-wider shadow-lg shadow-[#c29b62]/25 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition cursor-pointer"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white font-heading font-bold text-ui shadow-lg shadow-[#c29b62]/25 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>{t("Add Employee", "Nový zamestnanec", "Új alkalmazott")}</span>
@@ -367,9 +316,9 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
         /* TABLE VIEW */
         <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-xs border-collapse">
+            <table className="w-full text-left text-ui border-collapse">
               <thead>
-                <tr className="border-b border-slate-200/80 bg-slate-50/75 text-slate-500 font-bold uppercase tracking-wider text-[11px]">
+                <tr className="border-b border-slate-200/80 bg-slate-50/75 text-slate-500 type-overline">
                   <th className="py-3.5 px-4">{t("Employee", "Zamestnanec", "Alkalmazott")}</th>
                   <th className="py-3.5 px-4">{t("Contact", "Kontakt", "Elérhetőség")}</th>
                   <th className="py-3.5 px-4">{t("Salary & Terms", "Mzda a podmienky", "Bér és feltételek")}</th>
@@ -397,7 +346,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                       {/* Employee Name & Role / PIN */}
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#c29b62]/20 to-[#9e7638]/20 border border-[#c29b62]/30 text-[#9e7638] flex items-center justify-center font-heading font-black text-xs shrink-0 shadow-xs">
+                          <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#c29b62]/20 to-[#9e7638]/20 border border-[#c29b62]/30 text-[#9e7638] flex items-center justify-center font-heading font-bold text-ui shrink-0 shadow-xs">
                             {initials}
                           </div>
                           <div className="min-w-0">
@@ -407,18 +356,18 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                                 e.preventDefault();
                                 onSelectEmployee(emp.id);
                               }}
-                              className="font-heading font-bold text-slate-900 block group-hover:text-[#c29b62] transition truncate text-sm"
+                              className="font-heading font-bold text-slate-900 block group-hover:text-[#c29b62] transition truncate text-body"
                             >
                               {emp.name}
                             </a>
                             <div className="flex items-center gap-2 mt-0.5">
                               {emp.role && (
-                                <span className="text-[11px] font-medium text-slate-500 truncate block">
+                                <span className="text-caption font-medium text-slate-500 truncate block">
                                   {emp.role}
                                 </span>
                               )}
                               {emp.pin && (
-                                <span className="text-[10px] font-mono text-slate-400">
+                                <span className="text-micro font-mono text-slate-400">
                                   • {emp.pin}
                                 </span>
                               )}
@@ -430,15 +379,15 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                       {/* Contact */}
                       <td className="py-3.5 px-4 text-slate-600">
                         {emp.email && <div className="truncate font-medium">{emp.email}</div>}
-                        {emp.phone && <div className="text-[10px] text-slate-400 mt-0.5">{emp.phone}</div>}
+                        {emp.phone && <div className="text-micro text-slate-400 mt-0.5">{emp.phone}</div>}
                       </td>
 
                       {/* Compensation */}
                       <td className="py-3.5 px-4">
-                        <span className="font-mono font-bold text-slate-900 block text-xs">
+                        <span className="font-mono font-bold text-slate-900 block text-ui">
                           {formatNumber(emp.salaryAmount, systemLanguage)} {systemCurrency}
                         </span>
-                        <span className="text-[10px] text-slate-400 block mt-0.5">
+                        <span className="text-micro text-slate-400 block mt-0.5">
                           {emp.salaryType === "hourly"
                             ? t("hourly", "hodinová", "órabér")
                             : emp.salaryType === "daily"
@@ -451,31 +400,31 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                       {/* Time tracking mapping */}
                       <td className="py-3.5 px-4">
                         {emp.timeTrackingUserId ? (
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold bg-[#c29b62]/10 text-[#9e7638] border border-[#c29b62]/25">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-micro font-bold bg-[#c29b62]/10 text-[#9e7638] border border-[#c29b62]/25">
                             <Clock className="w-3 h-3 text-[#c29b62]" />
-                            <span className="truncate max-w-[120px]">{emp.timeTrackingUserName || emp.timeTrackingUserId}</span>
+                            <span className="truncate max-w-30">{emp.timeTrackingUserName || emp.timeTrackingUserId}</span>
                           </span>
                         ) : (
-                          <span className="text-slate-400 text-[10px]">—</span>
+                          <span className="text-slate-400 text-micro">—</span>
                         )}
                       </td>
 
                       {/* Contracts count */}
                       <td className="py-3.5 px-4">
                         {emp.files && emp.files.length > 0 ? (
-                          <span className="inline-flex items-center gap-1 text-[11px] text-slate-700 font-semibold">
+                          <span className="inline-flex items-center gap-1 text-caption text-slate-700 font-semibold">
                             <FileText className="w-3.5 h-3.5 text-[#c29b62]" />
                             <span>{emp.files.length}</span>
                           </span>
                         ) : (
-                          <span className="text-slate-400 text-[10px]">0</span>
+                          <span className="text-slate-400 text-micro">0</span>
                         )}
                       </td>
 
                       {/* Status badge */}
                       <td className="py-3.5 px-4 text-center">
                         <span
-                          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase ${
+                          className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full type-overline ${
                             emp.isActive !== false
                               ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                               : "bg-slate-100 text-slate-500 border border-slate-200"
@@ -520,7 +469,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
         </div>
       ) : (
         /* CARDS GRID VIEW */
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+        <div className="grid grid-cols-1 ws-sm:grid-cols-2 ws-lg:grid-cols-3 gap-5">
           {filteredEmployees.map((emp) => {
             const initials = emp.name
               .split(" ")
@@ -538,7 +487,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                 <div>
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#c29b62]/20 to-[#9e7638]/20 border border-[#c29b62]/30 text-[#9e7638] flex items-center justify-center font-heading font-black text-sm shrink-0 shadow-xs">
+                      <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#c29b62]/20 to-[#9e7638]/20 border border-[#c29b62]/30 text-[#9e7638] flex items-center justify-center font-heading font-bold text-body shrink-0 shadow-xs">
                         {initials}
                       </div>
                       <div className="min-w-0">
@@ -548,24 +497,24 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                             e.preventDefault();
                             onSelectEmployee(emp.id);
                           }}
-                          className="font-heading font-bold text-sm text-slate-900 group-hover:text-[#c29b62] transition truncate block"
+                          className="font-heading font-bold text-body text-slate-900 group-hover:text-[#c29b62] transition truncate block"
                         >
                           {emp.name}
                         </a>
                         {emp.role ? (
-                          <span className="text-[11px] font-medium text-slate-500 truncate block">
+                          <span className="text-caption font-medium text-slate-500 truncate block">
                             {emp.role}
                           </span>
                         ) : emp.pin ? (
-                          <span className="text-[10px] font-mono text-slate-400 block">{emp.pin}</span>
+                          <span className="text-micro font-mono text-slate-400 block">{emp.pin}</span>
                         ) : (
-                          <span className="text-[10px] text-slate-400 block">{emp.addressCity || "—"}</span>
+                          <span className="text-micro text-slate-400 block">{emp.addressCity || "—"}</span>
                         )}
                       </div>
                     </div>
 
                     <span
-                      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-bold tracking-wide uppercase shrink-0 ${
+                      className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full type-overline shrink-0 ${
                         emp.isActive !== false
                           ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                           : "bg-slate-100 text-slate-500 border border-slate-200"
@@ -576,7 +525,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                     </span>
                   </div>
 
-                  <div className="mt-4 pt-3 border-t border-slate-100 space-y-2 text-xs text-slate-600">
+                  <div className="mt-4 pt-3 border-t border-slate-100 space-y-2 text-ui text-slate-600">
                     {emp.email && (
                       <div className="flex items-center gap-2 truncate">
                         <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
@@ -592,12 +541,12 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                   </div>
                 </div>
 
-                <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-xs">
+                <div className="pt-3 border-t border-slate-100 flex items-center justify-between text-ui">
                   <div>
-                    <span className="font-mono font-bold text-slate-900 block text-sm">
+                    <span className="font-mono font-bold text-slate-900 block text-body">
                       {formatNumber(emp.salaryAmount, systemLanguage)} {systemCurrency}
                     </span>
-                    <span className="text-[10px] text-slate-400 font-medium">
+                    <span className="text-micro text-slate-400 font-medium">
                       {emp.salaryType === "hourly"
                         ? t("hourly", "hodinová", "órabér")
                         : emp.salaryType === "daily"

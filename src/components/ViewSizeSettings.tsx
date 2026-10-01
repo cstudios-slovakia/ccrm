@@ -57,7 +57,7 @@ export const ViewSizeSettings: React.FC<ViewSizeSettingsProps> = ({ systemLangua
   };
 
   return (
-    <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-3">
+    <div className="@container p-4 rounded-2xl bg-white border border-slate-200/80 shadow-xs space-y-3">
       <div>
         <label className="type-label text-slate-700 block">
           {t("View size", "Veľkosť zobrazenia", "Nézet mérete")}
@@ -71,7 +71,7 @@ export const ViewSizeSettings: React.FC<ViewSizeSettingsProps> = ({ systemLangua
         </p>
       </div>
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+      <div className="grid grid-cols-2 @lg:grid-cols-4 gap-2">
         {options.map((opt) => (
           <button
             key={opt.id}

@@ -102,7 +102,7 @@ export const ClientSelect: React.FC<ClientSelectProps> = ({
           <span className="flex min-w-0 items-center gap-2">
             <span className="truncate">{label}</span>
             <span
-              className={`shrink-0 rounded-md px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider ${
+              className={`shrink-0 rounded-md px-1.5 py-0.5 type-overline ${
                 kind === "client" ? "bg-emerald-50 text-emerald-700" : "bg-slate-100 text-slate-500"
               }`}
             >

@@ -43,7 +43,7 @@ export const ClientCategoryBadge: React.FC<{
     <span
       title={fullPath}
       className={cn(
-        "inline-flex items-center gap-1.5 max-w-full px-2 py-0.5 rounded-md border border-slate-200 bg-white text-[9px] font-extrabold uppercase tracking-wide text-slate-600",
+        "inline-flex items-center gap-1.5 max-w-full px-2 py-0.5 rounded-md border border-slate-200 bg-white type-overline text-slate-600",
         className
       )}
     >
@@ -109,22 +109,22 @@ const ROW_STYLES = {
   1: {
     row: "p-3.5 bg-slate-50/80 border-b border-slate-100",
     swatch: "h-3.5 w-3.5",
-    name: "font-bold text-xs text-slate-900 uppercase tracking-wider",
-    badge: "px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-200 text-slate-600",
+    name: "font-bold text-ui text-slate-900",
+    badge: "px-2 py-0.5 rounded-full text-micro font-semibold bg-slate-200 text-slate-600",
     icon: "h-3.5 w-3.5",
   },
   2: {
     row: "p-2 rounded-xl bg-white border border-slate-100",
     swatch: "h-3 w-3",
-    name: "font-semibold text-xs text-slate-800",
-    badge: "px-1.5 py-0.2 rounded text-[10px] bg-slate-100 text-slate-500",
+    name: "font-semibold text-ui text-slate-800",
+    badge: "px-1.5 py-0.2 rounded text-micro bg-slate-100 text-slate-500",
     icon: "h-3 w-3",
   },
   3: {
-    row: "p-1.5 px-3 rounded-lg bg-slate-50 border border-slate-100 text-xs",
+    row: "p-1.5 px-3 rounded-lg bg-slate-50 border border-slate-100 text-ui",
     swatch: "h-2.5 w-2.5",
     name: "text-slate-700 font-medium",
-    badge: "text-[10px] text-slate-400",
+    badge: "text-micro text-slate-400",
     icon: "h-3 w-3",
   },
 } as const;
@@ -401,7 +401,7 @@ export const ClientCategoryManager: React.FC<{
                   setRenamingId(null);
                 }
               }}
-              className="min-w-0 flex-1 px-2 py-1 rounded-lg border border-emerald-300 bg-white text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
+              className="min-w-0 flex-1 px-2 py-1 rounded-lg border border-emerald-300 bg-white text-ui font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20"
             />
           ) : (
             <span
@@ -418,7 +418,7 @@ export const ClientCategoryManager: React.FC<{
           <span className={cn("shrink-0", styles.badge)}>L{level}</span>
           {count > 0 && (
             <span
-              className="shrink-0 px-1.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-[9px] font-black text-emerald-700 tabular-nums"
+              className="shrink-0 px-1.5 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-micro font-bold text-emerald-700 tabular-nums"
               title={t(`${count} client(s) in this category`, `${count} klient(ov) v tejto kategórii`, `${count} ügyfél ebben a kategóriában`)}
             >
               {count}
@@ -459,11 +459,11 @@ export const ClientCategoryManager: React.FC<{
   return (
     <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm p-6 space-y-6 animate-in fade-in duration-200">
       <div className="border-b border-slate-100 pb-4">
-        <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
+        <h3 className="text-body font-bold text-slate-900 flex items-center gap-2">
           <Layers className="h-4 w-4 text-emerald-500" />
           {t("Client Categories", "Kategórie klientov", "Ügyfélkategóriák")}
         </h3>
-        <p className="text-xs text-slate-400 mt-0.5">
+        <p className="text-ui text-slate-400 mt-0.5">
           {t(
             "Organize your clients across Main Category (L1) ➔ Subcategory (L2) ➔ Sub-subcategory (L3).",
             "Organizácia klientov v 3 úrovniach: Hlavná kategória (L1) ➔ Podkategória (L2) ➔ Pod-podkategória (L3).",
@@ -475,8 +475,8 @@ export const ClientCategoryManager: React.FC<{
       {/* Quick add */}
       {editable && (
       <form onSubmit={handleCreate} className="p-4 rounded-2xl bg-slate-50 border border-slate-200 flex flex-wrap items-end gap-3">
-        <div className="flex-1 min-w-[200px]">
-          <label className="text-[11px] font-bold text-slate-500 block mb-1">
+        <div className="flex-1 min-w-50">
+          <label className="text-caption font-bold text-slate-500 block mb-1">
             {t("Category Name", "Názov kategórie", "Kategória neve")}
           </label>
           <input
@@ -484,12 +484,12 @@ export const ClientCategoryManager: React.FC<{
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             placeholder={t("e.g. Retail, Architects, Key accounts...", "napr. Maloobchod, Architekti, Kľúčoví klienti...", "pl. Kiskereskedelem, Építészek...")}
-            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
+            className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-ui text-slate-800 focus:outline-none focus:ring-2 focus:ring-emerald-500/20 focus:border-emerald-500 transition-all"
           />
         </div>
 
-        <div className="min-w-[220px]">
-          <label className="text-[11px] font-bold text-slate-500 block mb-1">
+        <div className="min-w-55">
+          <label className="text-caption font-bold text-slate-500 block mb-1">
             {t("Parent Category (optional)", "Nadradená kategória (voliteľné)", "Szülő kategória (opcionális)")}
           </label>
           <CustomSelect
@@ -497,12 +497,12 @@ export const ClientCategoryManager: React.FC<{
             onChange={(val) => setNewParentId(val)}
             options={parentOptions}
             size="sm"
-            className="w-full text-xs font-semibold rounded-xl bg-white border-slate-200"
+            className="w-full text-ui font-semibold rounded-xl bg-white border-slate-200"
           />
         </div>
 
         <div>
-          <label className="text-[11px] font-bold text-slate-500 block mb-1">
+          <label className="text-caption font-bold text-slate-500 block mb-1">
             {newParentId && !colorTouched ? t("Color (inherited)", "Farba (zdedená)", "Szín (örökölt)") : t("Color", "Farba", "Szín")}
           </label>
           <ColorPicker
@@ -517,7 +517,7 @@ export const ClientCategoryManager: React.FC<{
 
         <button
           type="submit"
-          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-xs font-semibold rounded-xl cursor-pointer shadow-sm transition-all duration-150"
+          className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-ui font-semibold rounded-xl cursor-pointer shadow-sm transition-all duration-150"
         >
           {t("Add Category", "Pridať kategóriu", "Kategória hozzáadása")}
         </button>
@@ -525,7 +525,7 @@ export const ClientCategoryManager: React.FC<{
       )}
 
       {roots.length === 0 ? (
-        <div className="rounded-2xl border-2 border-dashed border-slate-200 px-6 py-10 text-center text-xs font-semibold text-slate-400">
+        <div className="rounded-2xl border-2 border-dashed border-slate-200 px-6 py-10 text-center text-ui font-semibold text-slate-400">
           {editable
             ? t(
                 "No client categories yet — add the first one above.",
@@ -537,7 +537,7 @@ export const ClientCategoryManager: React.FC<{
       ) : (
         <>
           {editable && (
-            <p className="-mt-3 text-[11px] text-slate-400 flex items-center gap-1.5">
+            <p className="-mt-3 text-caption text-slate-400 flex items-center gap-1.5">
               <GripVertical className="h-3.5 w-3.5 shrink-0" />
               {t(
                 "Drag a category to reorder it or move it under another one; click its colour dot to recolour it, double-click its name to rename it.",
@@ -584,7 +584,7 @@ export const ClientCategoryManager: React.FC<{
                 onDragOver={(e) => handleDragOver(e, null)}
                 onDrop={handleDrop}
                 className={cn(
-                  "animate-in fade-in slide-in-from-bottom-1 duration-200 rounded-2xl border-2 border-dashed px-4 py-3 text-center text-xs font-semibold transition-colors",
+                  "animate-in fade-in slide-in-from-bottom-1 duration-200 rounded-2xl border-2 border-dashed px-4 py-3 text-center text-ui font-semibold transition-colors",
                   dropTarget?.targetId === null ? "border-emerald-400 bg-emerald-50 text-emerald-600" : "border-slate-200 text-slate-400"
                 )}
               >

@@ -20,6 +20,7 @@ import {
 import type { EmployeeSettings, FinancialCategory, SalaryTypeConfig, VacationTypeConfig } from "../../types";
 import { ColorPicker } from "../ui/ColorPicker";
 import { nextDiscreetColor } from "../../utils/color";
+import { Tabs } from "../layout";
 
 interface EmployeeSettingsScreenProps {
   settings: EmployeeSettings;
@@ -239,8 +240,8 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
   return (
     <div className="space-y-6 animate-fade-in text-slate-800 pb-16">
       {/* Top Breadcrumb & Action Navigation Bar */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2">
-        <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
+      <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4 pb-2">
+        <div className="flex items-center gap-2 text-ui font-semibold text-slate-500">
           <button
             type="button"
             onClick={onCancel}
@@ -264,7 +265,7 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 rounded-2xl glass-panel border border-white/60 bg-white/95 shadow-glass text-xs font-heading font-bold text-slate-700 hover:text-slate-900 hover:bg-white transition cursor-pointer"
+            className="px-4 py-2 rounded-2xl glass-panel border border-white/60 bg-white/95 shadow-glass text-ui font-heading font-bold text-slate-700 hover:text-slate-900 hover:bg-white transition cursor-pointer"
           >
             {t("Cancel", "Zrušiť", "Mégse")}
           </button>
@@ -273,7 +274,7 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
             type="button"
             onClick={handleSave}
             disabled={isSavedRecently}
-            className="flex items-center gap-2 px-5 py-2 rounded-2xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white font-heading font-bold text-xs uppercase tracking-wider shadow-lg shadow-[#c29b62]/25 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition cursor-pointer"
+            className="flex items-center gap-2 px-5 py-2 rounded-2xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white font-heading font-bold text-ui shadow-lg shadow-[#c29b62]/25 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition cursor-pointer"
           >
             {isSavedRecently ? (
               <>
@@ -291,16 +292,16 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
       </div>
 
       {/* Screen Title Banner */}
-      <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 flex flex-col ws-md:flex-row ws-md:items-center justify-between gap-4">
         <div className="flex items-start gap-4">
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#c29b62] to-[#9e7638] text-white flex items-center justify-center shadow-lg shadow-[#c29b62]/30 shrink-0">
             <Settings className="w-7 h-7" />
           </div>
           <div>
-            <h1 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight">
+            <h1 className="type-page-title text-slate-900">
               {t("Employee & Payroll Settings", "Nastavenia zamestnancov a miezd", "Alkalmazotti és bérbeállítások")}
             </h1>
-            <p className="text-xs text-slate-500 font-medium mt-1">
+            <p className="text-ui text-slate-500 font-medium mt-1">
               {t(
                 "Configure company payroll periods, salary due dates, leave quota categories, and Toggl Track API integration",
                 "Globálna perióda miezd, výplatný termín, kategórie absencií a prepojenie na Toggl Track",
@@ -311,46 +312,15 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
         </div>
 
         {/* Tab Pills in Banner */}
-        <div className="glass-panel p-1 rounded-2xl flex items-center gap-1 border border-white/60 bg-white/95 shadow-glass self-start md:self-auto">
-          <button
-            type="button"
-            onClick={() => handleTabClick("payroll")}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-heading font-bold transition-all cursor-pointer ${
-              activeTab === "payroll"
-                ? "bg-[#c29b62] text-white shadow-md shadow-[#c29b62]/25"
-                : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
-            }`}
-          >
-            <Coins className="w-3.5 h-3.5" />
-            <span>{t("Payroll & Finances", "Mzdy a financie", "Bérek és pénzügyek")}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleTabClick("vacation")}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-heading font-bold transition-all cursor-pointer ${
-              activeTab === "vacation"
-                ? "bg-[#c29b62] text-white shadow-md shadow-[#c29b62]/25"
-                : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
-            }`}
-          >
-            <Calendar className="w-3.5 h-3.5" />
-            <span>{t("Leave & Vacation Types", "Typy dovoleniek", "Szabadságtípusok")}</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => handleTabClick("toggl")}
-            className={`flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-heading font-bold transition-all cursor-pointer ${
-              activeTab === "toggl"
-                ? "bg-[#c29b62] text-white shadow-md shadow-[#c29b62]/25"
-                : "text-slate-600 hover:text-slate-900 hover:bg-white/60"
-            }`}
-          >
-            <Clock className="w-3.5 h-3.5" />
-            <span>{t("Toggl Time Tracking", "Toggl meranie času", "Toggl időkövetés")}</span>
-          </button>
-        </div>
+        <Tabs
+          value={activeTab}
+          onChange={handleTabClick}
+          items={[
+            { key: "payroll", icon: <Coins className="w-3.5 h-3.5" />, label: t("Payroll & Finances", "Mzdy a financie", "Bérek és pénzügyek") },
+            { key: "vacation", icon: <Calendar className="w-3.5 h-3.5" />, label: t("Leave & Vacation Types", "Typy dovoleniek", "Szabadságtípusok") },
+            { key: "toggl", icon: <Clock className="w-3.5 h-3.5" />, label: t("Toggl Time Tracking", "Toggl meranie času", "Toggl időkövetés") },
+          ]}
+        />
       </div>
 
       {/* Main Tab Content */}
@@ -359,7 +329,7 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
         {activeTab === "payroll" && (
           <div className="space-y-6 animate-fade-in">
             {/* Top 2 Cards: Salary Period & Default Due Day */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-6">
               {/* Company Salary Period */}
               <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 space-y-4">
                 <div className="flex items-center gap-3 pb-3 border-b border-slate-200/60">
@@ -367,10 +337,10 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
                     <Coins className="w-4 h-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-heading font-bold text-slate-900">
+                    <h3 className="text-body font-heading font-bold text-slate-900">
                       {t("Company Salary Period", "Perióda vyplácania miezd", "Bérfizetési időszak")}
                     </h3>
-                    <p className="text-[11px] text-slate-400">
+                    <p className="text-caption text-slate-400">
                       {t("Default cycle for matrix columns and settlements", "Predvolený cyklus pre stĺpce matice a úhrady", "Alapértelmezett ciklus a bérmátrixban")}
                     </p>
                   </div>
@@ -380,14 +350,14 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
                   <button
                     type="button"
                     onClick={() => setSalaryPeriod("monthly")}
-                    className={`p-3.5 rounded-2xl text-xs font-heading font-bold transition-all border cursor-pointer ${
+                    className={`p-3.5 rounded-2xl text-ui font-heading font-bold transition-all border cursor-pointer ${
                       salaryPeriod === "monthly"
                         ? "bg-[#c29b62] text-white border-[#c29b62] shadow-md shadow-[#c29b62]/25"
                         : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-white"
                     }`}
                   >
-                    <span className="block text-sm">{t("Monthly", "Mesačne", "Havonta")}</span>
-                    <span className="block text-[10px] font-normal opacity-85 mt-0.5">
+                    <span className="block text-body">{t("Monthly", "Mesačne", "Havonta")}</span>
+                    <span className="block text-micro font-normal opacity-85 mt-0.5">
                       {t("Jan - Dec (12 periods/year)", "Jan - Dec (12 periód ročne)", "Jan - Dec (12 időszak/év)")}
                     </span>
                   </button>
@@ -395,14 +365,14 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
                   <button
                     type="button"
                     onClick={() => setSalaryPeriod("weekly")}
-                    className={`p-3.5 rounded-2xl text-xs font-heading font-bold transition-all border cursor-pointer ${
+                    className={`p-3.5 rounded-2xl text-ui font-heading font-bold transition-all border cursor-pointer ${
                       salaryPeriod === "weekly"
                         ? "bg-[#c29b62] text-white border-[#c29b62] shadow-md shadow-[#c29b62]/25"
                         : "bg-slate-50 text-slate-700 border-slate-200 hover:bg-white"
                     }`}
                   >
-                    <span className="block text-sm">{t("Weekly", "Týždenne", "Hetente")}</span>
-                    <span className="block text-[10px] font-normal opacity-85 mt-0.5">
+                    <span className="block text-body">{t("Weekly", "Týždenne", "Hetente")}</span>
+                    <span className="block text-micro font-normal opacity-85 mt-0.5">
                       {t("W1 - W52 (52 periods/year)", "T1 - T52 (52 periód ročne)", "H1 - H52 (52 időszak/év)")}
                     </span>
                   </button>
@@ -416,10 +386,10 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
                     <Calendar className="w-4 h-4" />
                   </div>
                   <div>
-                    <h3 className="text-sm font-heading font-bold text-slate-900">
+                    <h3 className="text-body font-heading font-bold text-slate-900">
                       {t("Default Salary Due Day", "Predvolený výplatný deň v mesiaci", "Alapértelmezett kifizetési nap")}
                     </h3>
-                    <p className="text-[11px] text-slate-400">
+                    <p className="text-caption text-slate-400">
                       {t("Company standard due day of the following month", "Štandardný deň splatnosti mzdy nasledujúceho mesiaca", "Következő havi kifizetési határidő")}
                     </p>
                   </div>
@@ -433,14 +403,14 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
                       max="31"
                       value={salaryDueDay}
                       onChange={(e) => setSalaryDueDay(parseInt(e.target.value) || 15)}
-                      className="w-28 px-4 py-2.5 text-base font-mono font-bold bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm text-center"
+                      className="w-28 px-4 py-2.5 text-title-sm font-mono font-bold bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm text-center"
                     />
                   </div>
-                  <div className="text-xs text-slate-600">
+                  <div className="text-ui text-slate-600">
                     <span className="font-semibold block text-slate-800">
                       {t(`${salaryDueDay}. day of the following month`, `${salaryDueDay}. deň nasledujúceho mesiaca`, `a következő hónap ${salaryDueDay}. napja`)}
                     </span>
-                    <span className="text-[11px] text-slate-400 block mt-0.5">
+                    <span className="text-caption text-slate-400 block mt-0.5">
                       {t("Can be customized per individual employee profile", "Možné individuálne upraviť v profile zamestnanca", "Alkalmazottanként egyénileg felülbírálható")}
                     </span>
                   </div>
@@ -450,12 +420,12 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
 
             {/* Financial Auto-Expense Sync */}
             <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-3 border-b border-slate-200/60">
+              <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4 pb-3 border-b border-slate-200/60">
                 <div>
-                  <h3 className="text-sm font-heading font-bold text-slate-900">
+                  <h3 className="text-body font-heading font-bold text-slate-900">
                     {t("Auto-Sync Salaries to Financial Management", "Automatická synchronizácia miezd do financií", "Bérek automatikus szinkronizálása a Pénzügyekbe")}
                   </h3>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
+                  <p className="text-caption text-slate-400 mt-0.5">
                     {t(
                       "Unpaid salaries are automatically registered as Planned Expenses; paid salaries as Paid Expenses",
                       "Nevyplatené mzdy sa zaevidujú ako Plánovaný výdavok; po úhrade ako Skutočný výdavok",
@@ -470,19 +440,19 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
                     onChange={(e) => setAutoExpense(e.target.checked)}
                     className="sr-only peer"
                   />
-                  <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#c29b62]"></div>
+                  <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#c29b62]"></div>
                 </label>
               </div>
 
               {autoExpense && (
                 <div className="pt-1">
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                  <label className="block text-ui font-bold text-slate-600 mb-1.5">
                     {t("Default Expense Category", "Predvolená kategória výdavku", "Alapértelmezett kiadási kategória")}
                   </label>
                   <select
                     value={expenseCategoryId}
                     onChange={(e) => setExpenseCategoryId(e.target.value)}
-                    className="w-full sm:w-80 px-4 py-2.5 text-sm bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm font-medium"
+                    className="w-full ws-sm:w-80 px-4 py-2.5 text-body bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm font-medium"
                   >
                     <option value="">{t("-- Select Financial Category --", "-- Vyberte finančnú kategóriu --", "-- Válasszon kategóriát --")}</option>
                     {financialCategories
@@ -501,10 +471,10 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
             <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 space-y-4">
               <div className="flex items-center justify-between pb-3 border-b border-slate-200/60">
                 <div>
-                  <h3 className="text-sm font-heading font-bold text-slate-900">
+                  <h3 className="text-body font-heading font-bold text-slate-900">
                     {t("Salary Components & Categories", "Zložky a kategórie mzdy", "Bérösszetevők és kategóriák")}
                   </h3>
-                  <p className="text-[11px] text-slate-400 mt-0.5">
+                  <p className="text-caption text-slate-400 mt-0.5">
                     {t(
                       "Configured categories appear in the monthly salaries matrix expander and slip generator",
                       "Tieto zložky sa zobrazujú v expanderi matice miezd a na výplatných páskach",
@@ -515,7 +485,7 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
                 <button
                   type="button"
                   onClick={handleAddSalaryType}
-                  className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-heading font-bold rounded-2xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white hover:shadow-md transition shadow-sm cursor-pointer"
+                  className="flex items-center gap-1.5 px-3.5 py-2 text-ui font-heading font-bold rounded-2xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white hover:shadow-md transition shadow-sm cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5" />
                   <span>{t("Add Category", "Pridať zložku", "Összetevő hozzáadása")}</span>
@@ -528,7 +498,7 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
                     key={st.id}
                     className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-200/80 hover:bg-slate-100/60 transition"
                   >
-                    <span className="text-xs font-mono font-bold text-slate-400 w-6 text-center">{idx + 1}.</span>
+                    <span className="text-ui font-mono font-bold text-slate-400 w-6 text-center">{idx + 1}.</span>
                     <input
                       type="text"
                       value={st.name}
@@ -537,7 +507,7 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
                         updated[idx] = { ...updated[idx], name: e.target.value };
                         setSalaryTypes(updated);
                       }}
-                      className="flex-1 px-3 py-1.5 text-sm bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-1 focus:ring-[#c29b62] shadow-sm font-medium"
+                      className="flex-1 px-3 py-1.5 text-body bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-1 focus:ring-[#c29b62] shadow-sm font-medium"
                       placeholder={t("Category Name", "Názov zložky", "Összetevő neve")}
                     />
                     <button
@@ -560,10 +530,10 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
           <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 space-y-6 animate-fade-in">
             <div className="flex items-center justify-between pb-3 border-b border-slate-200/60">
               <div>
-                <h3 className="text-sm font-heading font-bold text-slate-900">
+                <h3 className="text-body font-heading font-bold text-slate-900">
                   {t("Vacation & Absence Types", "Typy dovoleniek a neprítomností", "Szabadság- és távolléttípusok")}
                 </h3>
-                <p className="text-[11px] text-slate-400 mt-0.5">
+                <p className="text-caption text-slate-400 mt-0.5">
                   {t(
                     "Define available leave categories, color tags, and default annual quotas in days",
                     "Definujte kategórie voľna, farebné označenie a predvolený ročný nárok v dňoch",
@@ -574,7 +544,7 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
               <button
                 type="button"
                 onClick={handleAddVacationType}
-                className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-heading font-bold rounded-2xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white hover:shadow-md transition shadow-sm cursor-pointer"
+                className="flex items-center gap-1.5 px-3.5 py-2 text-ui font-heading font-bold rounded-2xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white hover:shadow-md transition shadow-sm cursor-pointer"
               >
                 <Plus className="w-3.5 h-3.5" />
                 <span>{t("Add Leave Type", "Pridať typ voľna", "Típus hozzáadása")}</span>
@@ -607,14 +577,14 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
                         updated[idx] = { ...updated[idx], name: e.target.value };
                         setVacationTypes(updated);
                       }}
-                      className="w-full px-3 py-1.5 text-sm bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-1 focus:ring-[#c29b62] shadow-sm font-medium"
+                      className="w-full px-3 py-1.5 text-body bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-1 focus:ring-[#c29b62] shadow-sm font-medium"
                       placeholder={t("Leave Type Name", "Názov typu voľna", "Típus megnevezése")}
                     />
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
                     <div className="flex items-center gap-1.5 bg-white px-2.5 py-1 rounded-xl border border-slate-200 shadow-sm">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                      <span className="type-overline text-slate-400">
                         {t("Quota:", "Základ:", "Keret:")}
                       </span>
                       <input
@@ -627,9 +597,9 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
                           updated[idx] = { ...updated[idx], defaultAllowance: parseFloat(e.target.value) || 0 };
                           setVacationTypes(updated);
                         }}
-                        className="w-14 px-1 py-0.5 text-sm bg-transparent font-mono font-bold text-slate-900 text-center focus:outline-none"
+                        className="w-14 px-1 py-0.5 text-body bg-transparent font-mono font-bold text-slate-900 text-center focus:outline-none"
                       />
-                      <span className="text-xs text-slate-400 font-bold">{t("d", "d", "n")}</span>
+                      <span className="text-ui text-slate-400 font-bold">{t("d", "d", "n")}</span>
                     </div>
 
                     <button
@@ -657,10 +627,10 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
                   <Clock className="w-5 h-5" />
                 </div>
                 <div>
-                  <h3 className="text-sm font-heading font-bold text-slate-900">
+                  <h3 className="text-body font-heading font-bold text-slate-900">
                     {t("Toggl Track v9 Integration", "Prepojenie s Toggl Track v9", "Toggl Track v9 Integráció")}
                   </h3>
-                  <p className="text-xs text-slate-500 mt-1">
+                  <p className="text-ui text-slate-500 mt-1">
                     {t(
                       "Configure your Toggl Track API token to automatically sync monthly worked hours, project breakdowns, and weekly stats directly into each employee profile.",
                       "Zadajte svoj osobný API token z Toggl Track pre automatické načítavanie odpracovaných hodín, rozdelenia projektov a týždenných štatistík do profilov zamestnancov.",
@@ -673,10 +643,10 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
 
             {/* Credentials Card */}
             <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 space-y-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-6">
                 {/* API Key */}
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                  <label className="block text-ui font-bold text-slate-600 mb-1.5">
                     {t("Toggl API Token (Personal Access Token) *", "Toggl API Token (Osobný prístupový token) *", "Toggl API Token *")}
                   </label>
                   <div className="relative">
@@ -685,7 +655,7 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
                       value={togglApiKey}
                       onChange={(e) => setTogglApiKey(e.target.value)}
                       placeholder="e.g. 1a2b3c4d5e6f7g8h9i0j..."
-                      className="w-full pl-4 pr-11 py-2.5 text-sm bg-white border border-slate-200 rounded-2xl text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm font-medium"
+                      className="w-full pl-4 pr-11 py-2.5 text-body bg-white border border-slate-200 rounded-2xl text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm font-medium"
                     />
                     <button
                       type="button"
@@ -695,14 +665,14 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
                       {showApiKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                   </div>
-                  <span className="text-[11px] text-slate-400 mt-1 block">
+                  <span className="text-caption text-slate-400 mt-1 block">
                     {t("Find this in Toggl Track > Profile Settings > API Token", "Nájdete v Toggl Track > Nastavenia profilu > API Token", "Megtalálható a Toggl Track > Profilbeállítások > API Token menüben")}
                   </span>
                 </div>
 
                 {/* Workspace ID */}
                 <div>
-                  <label className="block text-xs font-bold uppercase tracking-wider text-slate-600 mb-1.5">
+                  <label className="block text-ui font-bold text-slate-600 mb-1.5">
                     {t("Workspace ID (Optional - auto-discovered if blank)", "Workspace ID (Voliteľné - automaticky zistí)", "Workspace ID (Opcionális)")}
                   </label>
                   <input
@@ -710,21 +680,21 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
                     value={togglWorkspaceId}
                     onChange={(e) => setTogglWorkspaceId(e.target.value)}
                     placeholder="e.g. 1234567"
-                    className="w-full px-4 py-2.5 text-sm bg-white border border-slate-200 rounded-2xl text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm font-medium"
+                    className="w-full px-4 py-2.5 text-body bg-white border border-slate-200 rounded-2xl text-slate-900 font-mono focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm font-medium"
                   />
-                  <span className="text-[11px] text-slate-400 mt-1 block">
+                  <span className="text-caption text-slate-400 mt-1 block">
                     {t("Leave blank to automatically connect to your default workspace", "Nechajte prázdne pre automatické pripojenie k predvolenému workspace", "Hagyja üresen az alapértelmezett munkaterülethez")}
                   </span>
                 </div>
               </div>
 
               {/* Test Connection Button & Status */}
-              <div className="pt-2 flex flex-col sm:flex-row sm:items-center gap-4 border-t border-slate-200/60">
+              <div className="pt-2 flex flex-col ws-sm:flex-row ws-sm:items-center gap-4 border-t border-slate-200/60">
                 <button
                   type="button"
                   onClick={handleTestToggl}
                   disabled={testingToggl || !togglApiKey.trim()}
-                  className="flex items-center gap-2 px-5 py-2.5 text-xs font-heading font-bold rounded-2xl bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 transition shadow-md cursor-pointer uppercase tracking-wider"
+                  className="flex items-center gap-2 px-5 py-2.5 text-ui font-heading font-bold rounded-2xl bg-slate-900 text-white hover:bg-slate-800 disabled:opacity-50 transition shadow-md cursor-pointer"
                 >
                   {testingToggl ? <Loader2 className="w-4 h-4 animate-spin text-[#c29b62]" /> : <Briefcase className="w-4 h-4" />}
                   <span>{t("Test Toggl Connection", "Otestovať pripojenie na Toggl", "Toggl kapcsolat tesztelése")}</span>
@@ -732,7 +702,7 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
 
                 {togglStatus && (
                   <div
-                    className={`flex items-center gap-2 text-xs font-semibold px-4 py-2 rounded-2xl border ${
+                    className={`flex items-center gap-2 text-ui font-semibold px-4 py-2 rounded-2xl border ${
                       togglStatus.success
                         ? "bg-emerald-500/10 text-emerald-700 border-emerald-500/30"
                         : "bg-red-500/10 text-red-700 border-red-500/30"
@@ -756,20 +726,20 @@ export const EmployeeSettingsScreen: React.FC<EmployeeSettingsScreenProps> = ({
           <button
             type="button"
             onClick={onCancel}
-            className="px-4 py-2 text-xs font-heading font-bold text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition cursor-pointer"
+            className="px-4 py-2 text-ui font-heading font-bold text-slate-600 hover:text-slate-900 rounded-xl hover:bg-slate-100 transition cursor-pointer"
           >
             {t("Cancel", "Zrušiť", "Mégse")}
           </button>
 
           <div className="flex items-center gap-3">
-            <span className="text-[11px] text-slate-400 hidden sm:inline">
+            <span className="text-caption text-slate-400 hidden ws-sm:inline">
               {t("Press Ctrl+Enter to save", "Uložte stlačením Ctrl+Enter", "Mentés: Ctrl+Enter")}
             </span>
             <button
               type="button"
               onClick={handleSave}
               disabled={isSavedRecently}
-              className="flex items-center gap-2 px-6 py-2.5 rounded-2xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white font-heading font-bold text-xs uppercase tracking-wider shadow-lg shadow-[#c29b62]/25 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition cursor-pointer"
+              className="flex items-center gap-2 px-6 py-2.5 rounded-2xl bg-gradient-to-r from-[#c29b62] to-[#b58b4c] text-white font-heading font-bold text-ui shadow-lg shadow-[#c29b62]/25 hover:shadow-xl hover:scale-[1.02] active:scale-[0.98] transition cursor-pointer"
             >
               {isSavedRecently ? (
                 <>

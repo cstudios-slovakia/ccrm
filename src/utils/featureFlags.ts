@@ -8,6 +8,6 @@ export const SOCIAL_MEDIA_ENABLED = true;
 // View size (Auto / Compact / Normal / Big) — see docs/VIEW-SIZE.md.
 // While false: the default mode is "compact" (≈ the pre-feature look), the
 // setting UI is not rendered, and a value stored in `ccrm_view_size` is still
-// honoured so Normal/Big can be previewed. Phase F flips this and the default.
+// honoured so Normal/Big can be previewed. Enabled in Phase F: default "auto".
 // index.html's pre-paint script must use the same default (unit-tested).
-export const VIEW_SIZE_ENABLED = false;
+export const VIEW_SIZE_ENABLED = true;

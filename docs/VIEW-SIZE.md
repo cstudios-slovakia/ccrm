@@ -1,6 +1,6 @@
 # View size — typography, spacing and layout ruleset
 
-> **Status:** Phase 0 (foundation) implemented 2026-10-01 — `viewSize.ts`, tokens, `.workspace`, `.view-size-fixed`, flag off; codemod, guard test, QA spec and Phases 1–F still to do. Note: `@custom-variant` one-liners need single spaces and a trailing `;` (the §10 snippet is aligned with double spaces and fails to compile).
+> **Status:** Phases 0–F implemented 2026-10-01 (v1.11.139). Open: `viewSize.spec.ts` is report-only (phone horizontal overflow on Dashboard/Meetings/Financial); remaining hand-built tab bars/toolbars/detail headers (Projects, Employee detail, Financial) not yet on the primitives. Note: `@custom-variant` one-liners need single spaces and a trailing `;`.
 > Original plan: Written 2026-10-01 from a measured audit of
 > every section. **Audience:** the agents who implement it. Read §0 first, then
 > the section that matches your task. Everything here is a rule unless it says

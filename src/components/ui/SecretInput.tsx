@@ -71,7 +71,7 @@ export const SecretInput: React.FC<SecretInputProps> = ({
   const willClearStored = hadStoredSecret && !isStored && value === "";
 
   const baseInputClass =
-    "w-full pl-4 pr-11 py-2.5 rounded-xl border text-xs font-bold transition-all duration-200 " +
+    "w-full pl-4 pr-11 py-2.5 rounded-xl border text-ui font-bold transition-all duration-200 " +
     "focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 " +
     "disabled:bg-slate-50 disabled:text-slate-400 " +
     (mono ? "font-mono " : "");
@@ -132,13 +132,13 @@ export const SecretInput: React.FC<SecretInputProps> = ({
 
       {isStored && !disabled && (
         <div className="flex items-center justify-between gap-3 animate-fade-in">
-          <span className="text-[9px] font-black uppercase tracking-widest text-emerald-700">
+          <span className="type-overline text-emerald-700">
             {t(language, "Saved & encrypted", "Uložené a zašifrované", "Mentve és titkosítva")}
           </span>
           <button
             type="button"
             onClick={() => onChange("")}
-            className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-rose-600 transition-colors duration-150 cursor-pointer"
+            className="flex items-center gap-1 type-overline text-slate-400 hover:text-rose-600 transition-colors duration-150 cursor-pointer"
           >
             <Trash2 className="h-3 w-3" />
             {t(language, "Remove", "Odstrániť", "Eltávolítás")}
@@ -148,7 +148,7 @@ export const SecretInput: React.FC<SecretInputProps> = ({
 
       {willClearStored && !disabled && (
         <div className="flex items-center justify-between gap-3 animate-fade-in">
-          <span className="text-[9px] font-black uppercase tracking-wider text-amber-700">
+          <span className="type-overline text-amber-700">
             {t(
               language,
               "Saving now deletes the stored value",
@@ -159,7 +159,7 @@ export const SecretInput: React.FC<SecretInputProps> = ({
           <button
             type="button"
             onClick={() => onChange(SECRET_MASK)}
-            className="flex items-center gap-1 text-[9px] font-black uppercase tracking-widest text-slate-400 hover:text-indigo-600 transition-colors duration-150 cursor-pointer"
+            className="flex items-center gap-1 type-overline text-slate-400 hover:text-indigo-600 transition-colors duration-150 cursor-pointer"
           >
             <Undo2 className="h-3 w-3" />
             {t(language, "Keep it", "Ponechať", "Megtartás")}

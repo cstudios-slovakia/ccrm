@@ -296,12 +296,12 @@ export const TaskTagMentionInput: React.FC<TaskTagMentionInputProps> = ({
             {/* TAGS AUTOCOMPLETE POPOVER */}
             {mode === "tag" && tagSuggestions.length > 0 && (
                 <div className="absolute left-0 top-full mt-1.5 z-50 w-72 max-h-56 overflow-y-auto bg-white/95 backdrop-blur-md rounded-2xl border border-indigo-200 shadow-2xl p-1.5 space-y-0.5 animate-in fade-in zoom-in-95 duration-150">
-                    <div className="px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-indigo-500 border-b border-indigo-100 flex items-center justify-between">
+                    <div className="px-2.5 py-1 type-overline text-indigo-500 border-b border-indigo-100 flex items-center justify-between">
                         <span className="flex items-center gap-1">
                             <Hash className="h-3 w-3" />
                             <span>Tags</span>
                         </span>
-                        <span className="text-[8px] text-slate-400 font-normal">
+                        <span className="text-micro text-slate-400 font-normal">
                             Tab / Enter / Space
                         </span>
                     </div>
@@ -315,7 +315,7 @@ export const TaskTagMentionInput: React.FC<TaskTagMentionInputProps> = ({
                                     key={tag}
                                     type="button"
                                     onClick={() => handleSelectTag(tag)}
-                                    className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-bold flex items-center justify-between transition-colors ${
+                                    className={`w-full px-2.5 py-1.5 rounded-xl text-left text-ui font-bold flex items-center justify-between transition-colors ${
                                         isSelected
                                             ? "bg-indigo-600 text-white shadow-sm"
                                             : "hover:bg-indigo-50 text-slate-700"
@@ -326,13 +326,13 @@ export const TaskTagMentionInput: React.FC<TaskTagMentionInputProps> = ({
                                         <span>{tag}</span>
                                     </span>
                                     {isNew ? (
-                                        <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md ${
+                                        <span className={`type-overline px-1.5 py-0.5 rounded-md ${
                                             isSelected ? "bg-indigo-500 text-white" : "bg-indigo-100 text-indigo-700"
                                         }`}>
                                             New tag
                                         </span>
                                     ) : (
-                                        <span className={`text-[9px] ${isSelected ? "text-indigo-200" : "text-slate-400"}`}>
+                                        <span className={`text-micro ${isSelected ? "text-indigo-200" : "text-slate-400"}`}>
                                             existing
                                         </span>
                                     )}
@@ -346,9 +346,9 @@ export const TaskTagMentionInput: React.FC<TaskTagMentionInputProps> = ({
             {/* ENTITY MENTIONS AUTOCOMPLETE POPOVER */}
             {mode === "mention" && mentionSuggestions.length > 0 && (
                 <div className="absolute left-0 top-full mt-1.5 z-50 w-80 max-h-64 overflow-y-auto bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl p-1.5 space-y-0.5 animate-in fade-in zoom-in-95 duration-150">
-                    <div className="px-2.5 py-1 text-[9px] font-black uppercase tracking-wider text-slate-500 border-b border-slate-100 flex items-center justify-between">
+                    <div className="px-2.5 py-1 type-overline text-slate-500 border-b border-slate-100 flex items-center justify-between">
                         <span>Mention & Assign Entity</span>
-                        <span className="text-[8px] text-slate-400 font-normal">
+                        <span className="text-micro text-slate-400 font-normal">
                             Tab / Enter
                         </span>
                     </div>
@@ -379,7 +379,7 @@ export const TaskTagMentionInput: React.FC<TaskTagMentionInputProps> = ({
                                     key={`${entity.type}-${entity.id}`}
                                     type="button"
                                     onClick={() => handleSelectMention(entity)}
-                                    className={`w-full px-2.5 py-1.5 rounded-xl text-left text-xs font-bold flex items-center justify-between transition-colors ${
+                                    className={`w-full px-2.5 py-1.5 rounded-xl text-left text-ui font-bold flex items-center justify-between transition-colors ${
                                         isSelected
                                             ? "bg-slate-900 text-white shadow-sm"
                                             : "hover:bg-slate-50 text-slate-700"
@@ -390,11 +390,11 @@ export const TaskTagMentionInput: React.FC<TaskTagMentionInputProps> = ({
                                             <IconComponent className="h-3 w-3" />
                                         </div>
                                         <div className="truncate">
-                                            <span className="block truncate leading-tight font-black">
+                                            <span className="block truncate leading-tight font-bold">
                                                 {entity.name}
                                             </span>
                                             {entity.detail && (
-                                                <span className={`text-[9px] block truncate font-medium ${
+                                                <span className={`text-micro block truncate font-medium ${
                                                     isSelected ? "text-slate-300" : "text-slate-400"
                                                 }`}>
                                                     {entity.detail}
@@ -403,7 +403,7 @@ export const TaskTagMentionInput: React.FC<TaskTagMentionInputProps> = ({
                                         </div>
                                     </div>
 
-                                    <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded-md shrink-0 ml-2 ${
+                                    <span className={`type-overline px-1.5 py-0.5 rounded-md shrink-0 ml-2 ${
                                         isSelected ? "bg-white/20 text-white" : colorClasses
                                     }`}>
                                         {typeLabel}

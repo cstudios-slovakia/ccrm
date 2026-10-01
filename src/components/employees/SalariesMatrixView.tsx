@@ -151,7 +151,7 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
   return (
     <div className="space-y-4">
       {/* Top Controls: Year selector, active filter, metric lightswitch, and grand summary card */}
-      <div className="glass-panel rounded-2xl border border-white/60 dark:border-slate-800 bg-white/95 dark:bg-slate-900 shadow-glass p-3.5 flex flex-col xl:flex-row xl:items-center justify-between gap-4">
+      <div className="glass-panel rounded-2xl border border-white/60 dark:border-slate-800 bg-white/95 dark:bg-slate-900 shadow-glass p-3.5 flex flex-col ws-xl:flex-row ws-xl:items-center justify-between gap-4">
         <div className="flex items-center flex-wrap gap-3">
           <div className="flex items-center gap-1 bg-slate-100/80 dark:bg-slate-800 p-1 rounded-xl border border-slate-200/40 dark:border-slate-700">
             <button
@@ -162,7 +162,7 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
-            <span className="px-3 text-sm font-bold font-mono text-slate-800 dark:text-slate-100">
+            <span className="px-3 text-body font-bold font-mono text-slate-800 dark:text-slate-100">
               {selectedYear}
             </span>
             <button
@@ -175,7 +175,7 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
             </button>
           </div>
 
-          <label className="flex items-center gap-2 text-xs font-medium text-slate-600 dark:text-slate-300 cursor-pointer select-none">
+          <label className="flex items-center gap-2 text-ui font-medium text-slate-600 dark:text-slate-300 cursor-pointer select-none">
             <input
               type="checkbox"
               checked={onlyActive}
@@ -196,7 +196,7 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
               role="radio"
               aria-checked={displayMetric === "paid"}
               onClick={() => setDisplayMetric("paid")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all duration-150 cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-ui font-bold transition-all duration-150 cursor-pointer ${
                 displayMetric === "paid"
                   ? "bg-white dark:bg-slate-700 text-[#9e7638] dark:text-[#d4af7a] shadow-xs"
                   : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
@@ -210,7 +210,7 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
               role="radio"
               aria-checked={displayMetric === "remaining"}
               onClick={() => setDisplayMetric("remaining")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold uppercase tracking-wider transition-all duration-150 cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-ui font-bold transition-all duration-150 cursor-pointer ${
                 displayMetric === "remaining"
                   ? "bg-white dark:bg-slate-700 text-amber-700 dark:text-amber-400 shadow-xs"
                   : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
@@ -225,10 +225,10 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
         {/* Grand Total Badges */}
         <div className="flex items-center flex-wrap gap-2.5">
           <div className="px-3.5 py-1.5 rounded-xl bg-slate-100/70 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700 text-right">
-            <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
+            <span className="type-overline text-slate-400 block">
               {t("Total Planned Salaries", "Plánované mzdy", "Tervezett bérek")} ({selectedYear})
             </span>
-            <span className="text-sm font-bold font-mono text-slate-800 dark:text-slate-100">
+            <span className="text-body font-bold font-mono text-slate-800 dark:text-slate-100">
               {formatNumber(grandTotal.totalSalary, systemLanguage, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {systemCurrency}
             </span>
           </div>
@@ -242,10 +242,10 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
             }`}
             title={t("Click to show paid amounts in table", "Kliknite pre zobrazenie vyplatených súm", "Kattintson a kifizetett összegek megjelenítéséhez")}
           >
-            <span className="text-[10px] uppercase font-bold text-[#b58b4c] dark:text-[#d4af7a] block tracking-wider">
+            <span className="type-overline text-[#b58b4c] dark:text-[#d4af7a] block">
               {t("Total Paid Out", "Vyplatené", "Kifizetve")} ({selectedYear})
             </span>
-            <span className="text-sm font-bold font-mono text-[#9e7638] dark:text-[#d4af7a]">
+            <span className="text-body font-bold font-mono text-[#9e7638] dark:text-[#d4af7a]">
               {formatNumber(grandTotal.totalPaid, systemLanguage, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {systemCurrency}
             </span>
           </div>
@@ -259,10 +259,10 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
             }`}
             title={t("Click to show remaining amounts in table", "Kliknite pre zobrazenie zostávajúcich súm", "Kattintson a hátralék megjelenítéséhez")}
           >
-            <span className="text-[10px] uppercase font-bold text-amber-700 dark:text-amber-400 block tracking-wider">
+            <span className="type-overline text-amber-700 dark:text-amber-400 block">
               {t("Total Remaining", "Zostáva vyplatiť", "Hátralék")} ({selectedYear})
             </span>
-            <span className="text-sm font-bold font-mono text-amber-700 dark:text-amber-400">
+            <span className="text-body font-bold font-mono text-amber-700 dark:text-amber-400">
               {formatNumber(totalRemaining, systemLanguage, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {systemCurrency}
             </span>
           </div>
@@ -274,21 +274,21 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
         <div className="overflow-x-auto">
           <table className="w-full text-left border-collapse">
             <thead>
-              <tr className="border-b border-slate-200/80 bg-slate-50/75 dark:bg-slate-800/60 text-xs font-bold text-slate-500 uppercase tracking-wider">
-                <th className="py-3.5 px-4 sticky left-0 z-20 bg-slate-100 dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 min-w-[200px]">
+              <tr className="border-b border-slate-200/80 bg-slate-50/75 dark:bg-slate-800/60 text-ui font-bold text-slate-500">
+                <th className="py-3.5 px-4 sticky left-0 z-20 bg-slate-100 dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700 min-w-50">
                   {t("Employee", "Zamestnanec", "Alkalmazott")}
                 </th>
                 {monthNames.map((mName, idx) => (
                   <th
                     key={idx}
-                    className="py-3.5 px-2 text-center min-w-[110px] border-r border-slate-200/60 dark:border-slate-700/60"
+                    className="py-3.5 px-2 text-center min-w-27.5 border-r border-slate-200/60 dark:border-slate-700/60"
                   >
                     <span>{mName}</span>
                   </th>
                 ))}
-                <th className="py-3.5 px-4 text-right min-w-[140px] bg-slate-100/90 dark:bg-slate-800/90 font-bold">
+                <th className="py-3.5 px-4 text-right min-w-35 bg-slate-100/90 dark:bg-slate-800/90 font-bold">
                   <span>{t("Year Total", "Spolu Rok", "Év összesen")}</span>
-                  <span className="block text-[9px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-tight">
+                  <span className="block type-overline text-slate-500 dark:text-slate-400">
                     {displayMetric === "paid"
                       ? t("Plan / Paid", "Plán / Vyplatené", "Terv / Kifizetve")
                       : t("Plan / Remaining", "Plán / Zostáva", "Terv / Hátralék")}
@@ -296,7 +296,7 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
                 </th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-xs">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800 text-ui">
               {visibleEmployees.length === 0 ? (
                 <tr>
                   <td colSpan={14} className="py-12 text-center text-slate-400">
@@ -325,7 +325,7 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
                             className="text-left font-semibold text-slate-900 dark:text-slate-100 hover:text-[#c29b62] transition truncate cursor-pointer block"
                           >
                             <span className="block truncate">{emp.name}</span>
-                            <span className="text-[10px] font-normal text-slate-400 block">
+                            <span className="text-micro font-normal text-slate-400 block">
                               {emp.pin ? `${emp.pin} • ` : ""}{formatNumber(emp.salaryAmount || 0, systemLanguage)} {systemCurrency}/{emp.salaryType === "hourly" ? "h" : emp.salaryType === "daily" ? "d" : "m"}
                             </span>
                           </a>
@@ -364,30 +364,30 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
                                     : "bg-slate-100/70 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300"
                                 }`}
                               >
-                                <span className="block font-mono font-bold leading-tight text-xs">
+                                <span className="block font-mono font-bold leading-tight text-ui">
                                   {formatNumber(Math.round(sal!.totalSalary), systemLanguage)} {systemCurrency}
                                 </span>
-                                <div className="flex items-center justify-center gap-1 mt-0.5 text-[10px]">
+                                <div className="flex items-center justify-center gap-1 mt-0.5 text-micro">
                                   {displayMetric === "paid" ? (
                                     isFullyPaid ? (
-                                      <span className="inline-flex items-center gap-0.5 text-emerald-700 dark:text-emerald-400 font-mono text-[10px] font-bold">
+                                      <span className="inline-flex items-center gap-0.5 text-emerald-700 dark:text-emerald-400 font-mono text-micro font-bold">
                                         <Check className="w-3 h-3 stroke-[3]" />
                                         <span>{formatNumber(Math.round(sal!.totalPaid || 0), systemLanguage)} {systemCurrency}</span>
                                       </span>
                                     ) : (
-                                      <span className="font-mono text-[10px] font-semibold text-slate-600 dark:text-slate-300">
-                                        {formatNumber(Math.round(sal!.totalPaid || 0), systemLanguage)} {systemCurrency} <span className="text-[9px] opacity-75">{t("pd", "vyp", "kif")}</span>
+                                      <span className="font-mono text-micro font-semibold text-slate-600 dark:text-slate-300">
+                                        {formatNumber(Math.round(sal!.totalPaid || 0), systemLanguage)} {systemCurrency} <span className="text-micro opacity-75">{t("pd", "vyp", "kif")}</span>
                                       </span>
                                     )
                                   ) : (
                                     isFullyPaid ? (
-                                      <span className="inline-flex items-center gap-0.5 text-emerald-700 dark:text-emerald-400 font-mono text-[10px] font-bold">
+                                      <span className="inline-flex items-center gap-0.5 text-emerald-700 dark:text-emerald-400 font-mono text-micro font-bold">
                                         <Check className="w-3 h-3 stroke-[3]" />
                                         <span>0 {systemCurrency}</span>
                                       </span>
                                     ) : (
-                                      <span className="font-mono text-[10px] font-bold text-amber-700 dark:text-amber-400">
-                                        {formatNumber(Math.round(remaining), systemLanguage)} {systemCurrency} <span className="text-[9px] font-normal opacity-75">{t("rem", "zost", "hátr")}</span>
+                                      <span className="font-mono text-micro font-bold text-amber-700 dark:text-amber-400">
+                                        {formatNumber(Math.round(remaining), systemLanguage)} {systemCurrency} <span className="text-micro font-normal opacity-75">{t("rem", "zost", "hátr")}</span>
                                       </span>
                                     )
                                   )}
@@ -404,15 +404,15 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
 
                       {/* Year Row Total */}
                       <td className="py-3 px-4 text-right bg-slate-50/50 dark:bg-slate-800/40 font-mono font-bold text-slate-800 dark:text-slate-200">
-                        <span className="block text-xs sm:text-sm">
+                        <span className="block text-ui">
                           {formatNumber(empYearSalary, systemLanguage, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} {systemCurrency}
                         </span>
                         {displayMetric === "paid" ? (
-                          <span className="text-[10px] font-semibold text-[#9e7638] dark:text-[#d4af7a] block mt-0.5">
+                          <span className="text-micro font-semibold text-[#9e7638] dark:text-[#d4af7a] block mt-0.5">
                             {t("Paid", "Vyp.", "Kif.")}: {formatNumber(empYearPaid, systemLanguage, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} {systemCurrency}
                           </span>
                         ) : (
-                          <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 block mt-0.5">
+                          <span className="text-micro font-semibold text-amber-700 dark:text-amber-400 block mt-0.5">
                             {t("Remaining", "Zost.", "Hátr.")}: {formatNumber(Math.max(0, empYearSalary - empYearPaid), systemLanguage, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} {systemCurrency}
                           </span>
                         )}
@@ -425,36 +425,36 @@ export const SalariesMatrixView: React.FC<SalariesMatrixViewProps> = ({
 
             {/* Summary Footer Row */}
             <tfoot>
-              <tr className="border-t-2 border-slate-200 dark:border-slate-700 bg-slate-100/90 dark:bg-slate-800/90 text-xs font-bold text-slate-900 dark:text-slate-100">
+              <tr className="border-t-2 border-slate-200 dark:border-slate-700 bg-slate-100/90 dark:bg-slate-800/90 text-ui font-bold text-slate-900 dark:text-slate-100">
                 <td className="py-3.5 px-4 sticky left-0 z-20 bg-slate-100 dark:bg-slate-800 border-r border-slate-200 dark:border-slate-700">
                   {t("Total All Employees", "Celkom všetci", "Összes alkalmazott")}
                 </td>
                 {columnTotals.map((col, idx) => (
                   <td key={idx} className="py-3 px-1 text-center border-r border-slate-200/60 dark:border-slate-700/60 font-mono">
-                    <span className="block text-slate-800 dark:text-slate-200 font-bold text-xs">
+                    <span className="block text-slate-800 dark:text-slate-200 font-bold text-ui">
                       {formatNumber(Math.round(col.totalSalary), systemLanguage)} {systemCurrency}
                     </span>
                     {displayMetric === "paid" ? (
-                      <span className="text-[9px] text-[#9e7638] dark:text-[#d4af7a] font-semibold block mt-0.5">
+                      <span className="text-micro text-[#9e7638] dark:text-[#d4af7a] font-semibold block mt-0.5">
                         {formatNumber(Math.round(col.totalPaid), systemLanguage)} {systemCurrency}
                       </span>
                     ) : (
-                      <span className="text-[9px] text-amber-700 dark:text-amber-400 font-semibold block mt-0.5">
+                      <span className="text-micro text-amber-700 dark:text-amber-400 font-semibold block mt-0.5">
                         {formatNumber(Math.max(0, Math.round(col.totalSalary - col.totalPaid)), systemLanguage)} {systemCurrency}
                       </span>
                     )}
                   </td>
                 ))}
                 <td className="py-3.5 px-4 text-right font-mono">
-                  <span className="block text-sm font-bold text-slate-900 dark:text-white">
+                  <span className="block text-body font-bold text-slate-900 dark:text-white">
                     {formatNumber(grandTotal.totalSalary, systemLanguage, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} {systemCurrency}
                   </span>
                   {displayMetric === "paid" ? (
-                    <span className="text-xs text-[#9e7638] dark:text-[#d4af7a] font-bold block mt-0.5">
+                    <span className="text-ui text-[#9e7638] dark:text-[#d4af7a] font-bold block mt-0.5">
                       {t("Paid", "Vyp.", "Kif.")}: {formatNumber(grandTotal.totalPaid, systemLanguage, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} {systemCurrency}
                     </span>
                   ) : (
-                    <span className="text-xs text-amber-700 dark:text-amber-400 font-bold block mt-0.5">
+                    <span className="text-ui text-amber-700 dark:text-amber-400 font-bold block mt-0.5">
                       {t("Remaining", "Zost.", "Hátr.")}: {formatNumber(totalRemaining, systemLanguage, { minimumFractionDigits: 0, maximumFractionDigits: 0 })} {systemCurrency}
                     </span>
                   )}

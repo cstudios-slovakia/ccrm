@@ -12,6 +12,7 @@ import { CustomSelect } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 import { FavoriteHeartButton } from "./ui/FavoriteHeartButton";
+import { PageHeader } from "./layout";
 
 interface UnifiedEntryViewProps {
   registry: UnifiedEntryRegistry;
@@ -361,7 +362,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
 
     return (
       <div className="flex flex-col gap-1.5 relative">
-        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+        <label className="type-overline text-slate-400">
           {t("Linked Client", "Priradený klient", "Hozzárendelt ügyfél")}
         </label>
         <ClientSelect
@@ -373,15 +374,15 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
         />
 
         {linkedClient && (
-          <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 text-emerald-800 text-xs font-semibold space-y-2 relative shadow-sm animate-in fade-in slide-in-from-top-1 duration-150 mt-1.5">
+          <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 text-emerald-800 text-ui font-semibold space-y-2 relative shadow-sm animate-in fade-in slide-in-from-top-1 duration-150 mt-1.5">
             <div className="flex items-center justify-between border-b border-emerald-100 pb-1.5 mb-1.5">
-              <div className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[10px] text-emerald-700">
+              <div className="flex items-center gap-1.5 type-overline text-emerald-700">
                 <Users className="h-3.5 w-3.5" />
                 <span>{t("Client Information", "Základné info o klientovi", "Ügyfél adatai")}</span>
               </div>
               <a
                 href={`#client-${encodeURIComponent(linkedClient.name)}`}
-                className="text-[10px] text-emerald-600 hover:text-emerald-950 font-black underline flex items-center gap-0.5"
+                className="text-micro text-emerald-600 hover:text-emerald-950 font-bold underline flex items-center gap-0.5"
               >
                 {t("View Profile", "Profil klienta", "Profil megtekintése")}
                 <ChevronRight className="h-3 w-3" />
@@ -390,19 +391,19 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
 
             <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
               <div>
-                <span className="text-[10px] text-emerald-600 block">{t("Name", "Meno", "Név")}</span>
-                <span className="font-extrabold text-[13px]">{linkedClient.name}</span>
+                <span className="text-micro text-emerald-600 block">{t("Name", "Meno", "Név")}</span>
+                <span className="font-extrabold text-ui">{linkedClient.name}</span>
               </div>
               <div>
-                <span className="text-[10px] text-emerald-600 block">{t("City", "Mesto", "Város")}</span>
+                <span className="text-micro text-emerald-600 block">{t("City", "Mesto", "Város")}</span>
                 <span className="font-bold">{linkedClient.city || "-"}</span>
               </div>
               <div>
-                <span className="text-[10px] text-emerald-600 block">{t("Email", "E-mail", "E-mail")}</span>
+                <span className="text-micro text-emerald-600 block">{t("Email", "E-mail", "E-mail")}</span>
                 <span className="font-bold truncate block">{linkedClient.email || "-"}</span>
               </div>
               <div>
-                <span className="text-[10px] text-emerald-600 block">{t("Phone", "Telefón", "Telefon")}</span>
+                <span className="text-micro text-emerald-600 block">{t("Phone", "Telefón", "Telefon")}</span>
                 <span className="font-bold">{linkedClient.phone || "-"}</span>
               </div>
             </div>
@@ -417,7 +418,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
 
     return (
       <div className="flex flex-col gap-1.5 relative">
-        <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+        <label className="type-overline text-slate-400">
           {t("Linked Lead", "Priradený lead", "Hozzárendelt lead")}
         </label>
         <ClientSelect
@@ -430,15 +431,15 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
         />
 
         {linkedLead && (
-          <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200 text-indigo-800 text-xs font-semibold space-y-2 relative shadow-sm animate-in fade-in slide-in-from-top-1 duration-150 mt-1.5">
+          <div className="p-4 rounded-2xl bg-indigo-50/70 border border-indigo-200 text-indigo-800 text-ui font-semibold space-y-2 relative shadow-sm animate-in fade-in slide-in-from-top-1 duration-150 mt-1.5">
             <div className="flex items-center justify-between border-b border-indigo-100 pb-1.5 mb-1.5">
-              <div className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[10px] text-indigo-700">
+              <div className="flex items-center gap-1.5 type-overline text-indigo-700">
                 <Briefcase className="h-3.5 w-3.5" />
                 <span>{t("Lead Information", "Základné info o leade", "Lead adatai")}</span>
               </div>
               <a
                 href={`#lead-${encodeURIComponent(linkedLead.id)}`}
-                className="text-[10px] text-indigo-600 hover:text-indigo-950 font-black underline flex items-center gap-0.5"
+                className="text-micro text-indigo-600 hover:text-indigo-950 font-bold underline flex items-center gap-0.5"
               >
                 {t("View Profile", "Profil leadu", "Profil megtekintése")}
                 <ChevronRight className="h-3 w-3" />
@@ -447,19 +448,19 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
 
             <div className="grid grid-cols-2 gap-x-4 gap-y-1.5">
               <div>
-                <span className="text-[10px] text-indigo-600 block">{t("Name", "Meno", "Név")}</span>
-                <span className="font-extrabold text-[13px]">{linkedLead.name}</span>
+                <span className="text-micro text-indigo-600 block">{t("Name", "Meno", "Név")}</span>
+                <span className="font-extrabold text-ui">{linkedLead.name}</span>
               </div>
               <div>
-                <span className="text-[10px] text-indigo-600 block">{t("Status", "Status", "Státusz")}</span>
-                <span className="font-bold uppercase tracking-wider text-[9px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 border border-indigo-200 inline-block">{linkedLead.status || "-"}</span>
+                <span className="text-micro text-indigo-600 block">{t("Status", "Status", "Státusz")}</span>
+                <span className="type-overline px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 border border-indigo-200 inline-block">{linkedLead.status || "-"}</span>
               </div>
               <div>
-                <span className="text-[10px] text-indigo-600 block">{t("Email", "E-mail", "E-mail")}</span>
+                <span className="text-micro text-indigo-600 block">{t("Email", "E-mail", "E-mail")}</span>
                 <span className="font-bold truncate block">{linkedLead.email || "-"}</span>
               </div>
               <div>
-                <span className="text-[10px] text-indigo-600 block">{t("Phone", "Telefón", "Telefon")}</span>
+                <span className="text-micro text-indigo-600 block">{t("Phone", "Telefón", "Telefon")}</span>
                 <span className="font-bold">{linkedLead.phone || "-"}</span>
               </div>
             </div>
@@ -471,7 +472,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
 
   const renderNumberField = () => (
     <div className="flex flex-col gap-1.5">
-      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+      <label className="type-overline text-slate-400">
         {t("Number", "Číslo", "Szám")}
       </label>
       <input
@@ -479,7 +480,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
         step="any"
         value={formNumber}
         onChange={(e) => setFormNumber(e.target.value)}
-        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700"
+        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700"
         placeholder={t("e.g. 12", "napr. 12", "pl. 12")}
       />
     </div>
@@ -489,7 +490,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
   // two entries in the same registry can be priced in different currencies.
   const renderMoneyField = () => (
     <div className="flex flex-col gap-1.5">
-      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+      <label className="type-overline text-slate-400">
         {t("Amount", "Suma", "Összeg")}
       </label>
       <div className="flex items-center gap-2">
@@ -498,14 +499,14 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
           step="any"
           value={formMoneyAmount}
           onChange={(e) => setFormMoneyAmount(e.target.value)}
-          className="flex-1 min-w-0 px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700"
+          className="flex-1 min-w-0 px-3.5 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700"
           placeholder={t("e.g. 1500", "napr. 1500", "pl. 1500")}
         />
         <div className="w-28 shrink-0">
           <CustomSelect
             value={formMoneyCurrency}
             onChange={setFormMoneyCurrency}
-            className="!text-xs"
+            className="text-ui"
             options={CURRENCY_OPTIONS.map(c => ({ value: c.code, label: `${c.code} ${c.symbol}` }))}
           />
         </div>
@@ -639,10 +640,10 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             <ChevronRight className="h-4 w-4 rotate-180" />
           </button>
           <div className="flex-1 min-w-0">
-            <h2 className="text-xl font-heading font-bold text-slate-900 uppercase tracking-wider">
+            <h2 className="text-title font-heading font-bold text-slate-900">
               {t(`Details & Editing: ${entrySingularEn.toLowerCase()}`, `Detail a úprava: ${entrySingularSk.toLowerCase()}`, `${entrySingularHu.toLowerCase()} részletei és szerkesztése`)}
             </h2>
-            <p className="text-xs text-slate-500 uppercase font-bold tracking-wider mt-0.5">
+            <p className="text-ui text-slate-500 font-bold mt-0.5">
               {editingEntryRow.title || t("Untitled", "Bez názvu", "Névtelen")}
             </p>
           </div>
@@ -660,7 +661,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             className="bg-white border border-slate-200 hover:border-rose-300 px-3.5 py-2 rounded-xl shadow-xs"
           />
           {!canEdit && (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider shrink-0">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 type-overline shrink-0">
               <Lock className="h-3.5 w-3.5" />
               {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
             </span>
@@ -674,14 +675,14 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             {/* Title module */}
             {activeModules.includes("title") && (
               <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                <label className="type-overline text-slate-400">
                   {t("Title / Name", "Titulok / Názov", "Cím / Név")}
                 </label>
                 <input
                   type="text"
                   value={formTitle}
                   onChange={(e) => setFormTitle(e.target.value)}
-                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700 disabled:bg-slate-50 disabled:text-slate-500"
+                  className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700 disabled:bg-slate-50 disabled:text-slate-500"
                   placeholder={t("Enter name...", "Zadajte názov...", "Adjon meg egy nevet...")}
                   required
                   disabled={!canEdit}
@@ -691,21 +692,21 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
 
             {/* Due Date module */}
             {activeModules.includes("due_date") && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  <label className="type-overline text-slate-400">
                     {t("Due Date", "Termín (Due Date)", "Határidő")}
                   </label>
                   <input
                     type="date"
                     value={formDueDate}
                     onChange={(e) => setFormDueDate(e.target.value)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700"
                   />
                 </div>
                 
                 <div className="flex flex-col gap-1.5">
-                  <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                  <label className="type-overline text-slate-400">
                     {t("Warning days before due date", "Počet dní pre varovanie pred termínom", "Figyelmeztetés napokban a határidő előtt")}
                   </label>
                   <input
@@ -713,7 +714,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                     min="0"
                     value={formWarningDays}
                     onChange={(e) => setFormWarningDays(parseInt(e.target.value) || 0)}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700"
+                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700"
                     placeholder={t("e.g. 3", "napr. 3", "pl. 3")}
                   />
                 </div>
@@ -723,16 +724,16 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             {/* File module */}
             {activeModules.includes("file") && (
               <div className="flex flex-col gap-1.5">
-                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                <label className="type-overline text-slate-400">
                   {t("Attachment (File)", "Príloha (Súbor)", "Melléklet (Fájl)")}
                 </label>
                 {formFile ? (
-                  <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between gap-3 text-xs">
+                  <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between gap-3 text-ui">
                     <div className="flex items-center gap-2 truncate">
                       <FileText className="h-4.5 w-4.5 text-slate-400 shrink-0" />
                       <div className="flex flex-col truncate">
                         <span className="font-bold text-slate-700 truncate">{formFile.fileName}</span>
-                        <span className="text-[9px] text-slate-400">({formFile.fileSize})</span>
+                        <span className="text-micro text-slate-400">({formFile.fileSize})</span>
                       </div>
                     </div>
                     <div className="flex items-center gap-2">
@@ -766,16 +767,16 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                     />
                     <div className="flex flex-col items-center gap-2">
                       <UploadCloud className="h-8 w-8 text-slate-400 group-hover:text-indigo-500 transition-colors" />
-                      <span className="text-xs font-bold text-slate-500 group-hover:text-indigo-600 transition-colors">
+                      <span className="text-ui font-bold text-slate-500 group-hover:text-indigo-600 transition-colors">
                         {isUploading
                           ? t("Uploading...", "Nahráva sa...", "Feltöltés...")
                           : t("Click or drag file here", "Kliknite alebo pretiahnite súbor sem", "Kattintson vagy húzza ide a fájlt")}
                       </span>
-                      <span className="text-[10px] text-slate-400">{t("Max size: 50MB", "Max. veľkosť: 50MB", "Max. méret: 50MB")}</span>
+                      <span className="text-micro text-slate-400">{t("Max size: 50MB", "Max. veľkosť: 50MB", "Max. méret: 50MB")}</span>
                     </div>
                   </div>
                 ) : (
-                  <span className="text-xs text-slate-400">{t("No attachment", "Žiadna príloha", "Nincs melléklet")}</span>
+                  <span className="text-ui text-slate-400">{t("No attachment", "Žiadna príloha", "Nincs melléklet")}</span>
                 )}
               </div>
             )}
@@ -800,14 +801,14 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                 onClick={() => {
                   window.location.hash = "ue_" + registry.id + (editingEntryRow.parentId ? "/" + editingEntryRow.parentId : "");
                 }}
-                className="px-4 py-2.5 rounded-xl hover:bg-slate-50 text-slate-500 text-xs font-bold uppercase tracking-wider cursor-pointer"
+                className="px-4 py-2.5 rounded-xl hover:bg-slate-50 text-slate-500 text-ui font-bold cursor-pointer"
               >
                 {t("Cancel", "Zrušiť", "Mégse")}
               </button>
               {canEdit && (
               <button
                 type="submit"
-                className="px-5 py-2.5 rounded-xl text-white text-xs font-black uppercase tracking-wider shadow-md hover:shadow-lg transition-all cursor-pointer"
+                className="px-5 py-2.5 rounded-xl text-white text-ui font-bold shadow-md hover:shadow-lg transition-all cursor-pointer"
                 style={{ backgroundColor: registry.color }}
               >
                 {t("Save Changes", "Uložiť zmeny", "Módosítások mentése")}
@@ -828,67 +829,64 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
           with a filled color tile carrying its icon, which no other module does and
           which read as a badge competing with the app header above it. The registry
           color now lives in the inline icon and the primary action only. */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4 text-left">
-        <div className="flex flex-col">
-          <h1 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-            {(() => {
+      <PageHeader
+        title={<>
+          {(() => {
               const IconComponent = (Icons as any)[registry.icon] || Icons.FolderOpen;
               return <IconComponent className="h-6 w-6 shrink-0" style={{ color: registry.color }} />;
             })()}
             {registry.name}
-          </h1>
-          <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
-            {t(`Manage: ${registry.name.toLowerCase()}`, `Správa: ${registry.name.toLowerCase()}`, `Kezelés: ${registry.name.toLowerCase()}`)}
-          </p>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0 flex-wrap">
-          <FavoriteHeartButton
-            entityId={`ue_reg_${registry.id}`}
-            type="entry"
-            title={registry.name}
-            subtitle={t(`Custom Entity`, `Vlastná entita`, `Egyéni entitás`)}
-            color={registry.color}
-            icon={registry.icon}
-            url={`#ue_${registry.id}`}
-            showLabel
-            systemLanguage={systemLanguage}
-            className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white hover:border-rose-300 text-xs font-heading font-bold uppercase tracking-wider shadow-2xs"
-          />
-          {!canEdit && (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider">
-              <Lock className="h-3.5 w-3.5" />
-              {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
-            </span>
-          )}
-          {canEdit && registry.foldersEnabled && (
+        </>}
+        subtitle={t(`Manage: ${registry.name.toLowerCase()}`, `Správa: ${registry.name.toLowerCase()}`, `Kezelés: ${registry.name.toLowerCase()}`)}
+        actions={<>
+          <div className="flex items-center gap-2 shrink-0 flex-wrap">
+            <FavoriteHeartButton
+              entityId={`ue_reg_${registry.id}`}
+              type="entry"
+              title={registry.name}
+              subtitle={t(`Custom Entity`, `Vlastná entita`, `Egyéni entitás`)}
+              color={registry.color}
+              icon={registry.icon}
+              url={`#ue_${registry.id}`}
+              showLabel
+              systemLanguage={systemLanguage}
+              className="px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white hover:border-rose-300 text-ui font-heading font-bold shadow-2xs"
+            />
+            {!canEdit && (
+              <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 type-overline">
+                <Lock className="h-3.5 w-3.5" />
+                {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
+              </span>
+            )}
+            {canEdit && registry.foldersEnabled && (
+              <button
+                type="button"
+                onClick={handleOpenCreateFolder}
+                className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors text-ui font-heading font-bold flex items-center gap-1.5 cursor-pointer shrink-0"
+              >
+                <FolderPlus className="h-4 w-4" />
+                {t("New " + folderSingularEn, "Nový " + folderSingularSk.toLowerCase(), "Új " + folderSingularHu.toLowerCase())}
+              </button>
+            )}
+            {canEdit && (
             <button
               type="button"
-              onClick={handleOpenCreateFolder}
-              className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors text-xs font-heading font-bold uppercase tracking-wider flex items-center gap-1.5 cursor-pointer shrink-0"
+              onClick={handleOpenCreateEntry}
+              className="px-5 py-3 rounded-2xl text-white shadow-md transition-all font-heading font-bold text-ui flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95 shrink-0"
+              style={{ backgroundColor: registry.color }}
             >
-              <FolderPlus className="h-4 w-4" />
-              {t("New " + folderSingularEn, "Nový " + folderSingularSk.toLowerCase(), "Új " + folderSingularHu.toLowerCase())}
+              <Plus className="h-4.5 w-4.5" />
+              {t("New " + entrySingularEn, "Nový " + entrySingularSk.toLowerCase(), "Új " + entrySingularHu.toLowerCase())}
             </button>
-          )}
-          {canEdit && (
-          <button
-            type="button"
-            onClick={handleOpenCreateEntry}
-            className="px-5 py-3 rounded-2xl text-white shadow-md transition-all font-heading font-bold text-xs uppercase tracking-wider flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95 shrink-0"
-            style={{ backgroundColor: registry.color }}
-          >
-            <Plus className="h-4.5 w-4.5" />
-            {t("New " + entrySingularEn, "Nový " + entrySingularSk.toLowerCase(), "Új " + entrySingularHu.toLowerCase())}
-          </button>
-          )}
-        </div>
-      </div>
+            )}
+          </div>
+        </>}
+      />
  
       {/* Navigation Breadcrumbs & Search */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4">
         {/* Breadcrumbs */}
-        <div className="flex items-center flex-wrap gap-1 text-[11px] font-black uppercase tracking-widest text-slate-400 select-none">
+        <div className="flex items-center flex-wrap gap-1 type-overline text-slate-400 select-none">
           {getBreadcrumbs().map((crumb, idx, arr) => {
             const isLast = idx === arr.length - 1;
             return (
@@ -930,19 +928,19 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
         </div>
 
         {/* Search */}
-        <div className="relative w-full sm:w-64 select-none">
+        <div className="relative w-full ws-sm:w-64 select-none">
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 transition-all bg-white"
+            className="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-200 text-ui font-semibold focus:outline-none focus:border-indigo-500 transition-all bg-white"
             placeholder={t("Search...", "Vyhľadať...", "Keresés...")}
           />
           <Search className="h-4 w-4 text-slate-400 absolute left-3 top-2.5" />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery("")}
-              className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 text-xs"
+              className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 text-ui"
             >
               <X className="h-3.5 w-3.5" />
             </button>
@@ -954,11 +952,11 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
       <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass overflow-hidden">
         {currentFolderRows.length === 0 ? (
           <div className="p-12 text-center text-slate-400">
-            <span className="text-3xl">🗂️</span>
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-500 mt-2">
+            <span className="text-display">🗂️</span>
+            <p className="text-ui font-bold text-slate-500 mt-2">
               {t(`This ${folderSingularEn.toLowerCase()} is empty`, `${folderSingularSk} je prázdny`, `Ez a(z) ${folderSingularHu.toLowerCase()} üres`)}
             </p>
-            <p className="text-[10px] font-medium text-slate-400 mt-1">
+            <p className="text-micro font-medium text-slate-400 mt-1">
               {t(
                 `Create a new ${entrySingularEn.toLowerCase()} or ${folderSingularEn.toLowerCase()} using the toolbar buttons.`,
                 `Vytvorte nový ${entrySingularSk.toLowerCase()} alebo ${folderSingularSk.toLowerCase()} pomocou tlačidiel vyššie.`,
@@ -969,7 +967,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse">
               <thead>
-                <tr className="border-b border-slate-100 bg-slate-50/50 text-[10px] font-black uppercase tracking-wider text-slate-400 select-none">
+                <tr className="border-b border-slate-100 bg-slate-50/50 type-overline text-slate-400 select-none">
                   <th className="py-3.5 px-6">{t(`Title / ${folderSingularEn}`, `Názov / ${folderSingularSk}`, `Cím / ${folderSingularHu}`)}</th>
                   {isDueDateActive && <th className="py-3.5 px-4">{t("Due Date", "Termín", "Határidő")}</th>}
                   {isFileActive && <th className="py-3.5 px-4">{t("Attachment", "Súbor", "Melléklet")}</th>}
@@ -980,7 +978,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                   <th className="py-3.5 px-6 text-right">{t("Actions", "Akcie", "Műveletek")}</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-slate-100 text-xs font-semibold text-slate-700">
+              <tbody className="divide-y divide-slate-100 text-ui font-semibold text-slate-700">
                 {currentFolderRows.map((row) => {
                   const rowModules = row.isFolder ? (registry.folderModules || ["title"]) : registry.modules;
                   
@@ -989,7 +987,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                   if (row.isFolder && registry.showFolderSummary) {
                     const stats = getFolderSummary(row.id);
                     summarySpan = (
-                      <div className="flex items-center gap-1.5 ml-2.5 text-[9px] font-bold uppercase tracking-wider">
+                      <div className="flex items-center gap-1.5 ml-2.5 type-overline">
                         <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200">
                           {stats.ok} OK
                         </span>
@@ -1006,7 +1004,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                   const dueDateStatus = !row.isFolder && row.dueDate ? getDueDateStatus(row.dueDate, row.warningDays) : "normal";
                   let dueDateClass = "text-slate-500";
                   if (dueDateStatus === "overdue") {
-                    dueDateClass = "text-rose-600 font-black animate-pulse";
+                    dueDateClass = "text-rose-600 font-bold animate-pulse";
                   } else if (dueDateStatus === "warning") {
                     dueDateClass = "text-orange-500 font-bold";
                   }
@@ -1075,7 +1073,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                         {row.isFolder ? (() => {
                           const IconComponent = (Icons as any)[registry.icon] || Icons.Folder;
                           return (
-                            <div className="flex items-center gap-2.5 text-indigo-600 hover:text-indigo-800 font-black uppercase tracking-wider">
+                            <div className="flex items-center gap-2.5 text-indigo-600 hover:text-indigo-800 font-bold uppercase tracking-wider">
                               <FavoriteHeartButton
                                 entityId={row.id}
                                 type="entry"
@@ -1140,8 +1138,8 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                               title={t("Download attachment", "Stiahnuť prílohu", "Melléklet letöltése")}
                             >
                               <Download className="h-3.5 w-3.5" />
-                              <span className="max-w-[150px] truncate">{row.fileName}</span>
-                              <span className="text-[9px] text-slate-400 font-medium">({row.fileSize})</span>
+                              <span className="max-w-37.5 truncate">{row.fileName}</span>
+                              <span className="text-micro text-slate-400 font-medium">({row.fileSize})</span>
                             </a>
                           ) : (
                             <span className="text-slate-300">-</span>
@@ -1275,7 +1273,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
           <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-[2000] p-4">
             <div className="bg-white rounded-3xl p-6 max-w-md w-full border border-slate-100 shadow-2xl animate-in zoom-in-95 duration-200">
               <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4 text-left">
-                <h3 className="text-sm font-heading font-black text-slate-800 uppercase tracking-wider">
+                <h3 className="text-body font-heading font-bold text-slate-800">
                   {editingIsFolder
                     ? (editingRow
                         ? t(`Edit ${folderSingularEn}`, `Upraviť ${folderSingularSk.toLowerCase()}`, `${folderSingularHu} szerkesztése`)
@@ -1293,7 +1291,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                 {/* Title module */}
                 {(activeFormModules.includes("title") || editingIsFolder) && (
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    <label className="type-overline text-slate-400">
                       {editingIsFolder
                         ? t(`${folderSingularEn} Name`, `Názov pre ${folderSingularSk.toLowerCase()}`, `${folderSingularHu} neve`)
                         : t(`${entrySingularEn} Name`, `Názov pre ${entrySingularSk.toLowerCase()}`, `${entrySingularHu} neve`)} *
@@ -1302,7 +1300,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                       type="text"
                       value={formTitle}
                       onChange={(e) => setFormTitle(e.target.value)}
-                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 bg-white"
+                      className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold focus:outline-none focus:border-indigo-500 bg-white"
                       placeholder={editingIsFolder
                         ? t(`Enter ${folderSingularEn.toLowerCase()} name...`, `Zadajte názov pre ${folderSingularSk.toLowerCase()}...`, `Adja meg a(z) ${folderSingularHu.toLowerCase()} nevét...`)
                         : t(`Enter ${entrySingularEn.toLowerCase()} name...`, `Zadajte názov pre ${entrySingularSk.toLowerCase()}...`, `Adja meg a(z) ${entrySingularHu.toLowerCase()} nevét...`)}
@@ -1316,19 +1314,19 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                 {activeFormModules.includes("due_date") && (
                   <div className="space-y-3">
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      <label className="type-overline text-slate-400">
                         {t("Due Date", "Termín (Due Date)", "Határidő")}
                       </label>
                       <input
                         type="date"
                         value={formDueDate}
                         onChange={(e) => setFormDueDate(e.target.value)}
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700"
                       />
                     </div>
                     
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                      <label className="type-overline text-slate-400">
                         {t("Warning days before due date", "Počet dní pre varovanie pred termínom", "Figyelmeztetés napokban a határidő előtt")}
                       </label>
                       <input
@@ -1336,7 +1334,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                         min="0"
                         value={formWarningDays}
                         onChange={(e) => setFormWarningDays(parseInt(e.target.value) || 0)}
-                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700"
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold focus:outline-none focus:border-indigo-500 bg-white text-slate-700"
                         placeholder={t("e.g. 3", "napr. 3", "pl. 3")}
                       />
                     </div>
@@ -1346,15 +1344,15 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                 {/* File module */}
                 {activeFormModules.includes("file") && (
                   <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                    <label className="type-overline text-slate-400">
                       {t("Attachment (File)", "Príloha (Súbor)", "Melléklet (Fájl)")}
                     </label>
                     {formFile ? (
-                      <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between gap-3 text-xs">
+                      <div className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-between gap-3 text-ui">
                         <div className="flex items-center gap-2 truncate">
                           <FileText className="h-4.5 w-4.5 text-slate-400 shrink-0" />
                           <span className="font-semibold text-slate-700 truncate">{formFile.fileName}</span>
-                          <span className="text-[9px] text-slate-400 font-bold shrink-0">({formFile.fileSize})</span>
+                          <span className="text-micro text-slate-400 font-bold shrink-0">({formFile.fileSize})</span>
                         </div>
                         <button
                           type="button"
@@ -1369,7 +1367,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                         <label className="flex flex-col items-center justify-center w-full h-24 border-2 border-slate-200 border-dashed rounded-xl cursor-pointer bg-slate-50 hover:bg-slate-100 transition-colors">
                           <div className="flex flex-col items-center justify-center pt-5 pb-6">
                             <UploadCloud className={`h-6 w-6 text-slate-400 ${isUploading ? "animate-pulse" : ""}`} />
-                            <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wider mt-1.5">
+                            <p className="type-overline text-slate-500 mt-1.5">
                               {isUploading ? t("Uploading file...", "Nahráva sa súbor...", "Fájl feltöltése folyamatban...") : t("Upload file", "Nahrať súbor", "Fájl feltöltése")}
                             </p>
                           </div>
@@ -1401,14 +1399,14 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                   <button
                     type="button"
                     onClick={() => setIsEditing(false)}
-                    className="px-4 py-2 rounded-xl hover:bg-slate-50 text-slate-500 text-xs font-bold uppercase tracking-wider"
+                    className="px-4 py-2 rounded-xl hover:bg-slate-50 text-slate-500 text-ui font-bold"
                   >
                     {t("Cancel", "Zrušiť", "Mégse")}
                   </button>
                   <button
                     type="submit"
                     disabled={isUploading}
-                    className="px-4 py-2 rounded-xl text-white text-xs font-black uppercase tracking-wider shadow-md disabled:opacity-50"
+                    className="px-4 py-2 rounded-xl text-white text-ui font-bold shadow-md disabled:opacity-50"
                     style={{ backgroundColor: registry.color }}
                   >
                     {t("Save", "Uložiť", "Mentés")}
@@ -1426,7 +1424,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
         <div className="fixed inset-0 bg-slate-900/40 flex items-center justify-center z-[2000] p-4 select-none">
           <div className="bg-white rounded-3xl p-6 max-w-sm w-full border border-slate-100 shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 mb-4 text-left">
-              <h3 className="text-sm font-heading font-black text-slate-800 uppercase tracking-wider">
+              <h3 className="text-body font-heading font-bold text-slate-800">
                 {t("Move Item", "Presunúť položku", "Elem áthelyezése")}
               </h3>
               <button onClick={() => { setIsMoving(false); setMovingItem(null); }} className="text-slate-400 hover:text-slate-600">
@@ -1435,7 +1433,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
             </div>
 
             <div className="space-y-4 text-left">
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">
+              <span className="type-overline text-slate-400 block">
                 {t(`Select target ${folderSingularEn.toLowerCase()}`, `Vyberte cieľový ${folderSingularSk.toLowerCase()}`, `Válassza ki a cél ${folderSingularHu.toLowerCase()} elemet`)}
               </span>
 
@@ -1444,7 +1442,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                 <button
                   type="button"
                   onClick={() => handleMoveItem(null)}
-                  className="w-full flex items-center gap-2 p-2.5 rounded-xl hover:bg-white border border-transparent hover:border-slate-200 text-xs font-bold text-slate-600 hover:text-indigo-600 transition-all text-left cursor-pointer"
+                  className="w-full flex items-center gap-2 p-2.5 rounded-xl hover:bg-white border border-transparent hover:border-slate-200 text-ui font-bold text-slate-600 hover:text-indigo-600 transition-all text-left cursor-pointer"
                 >
                   <Folder className="h-4 w-4 text-slate-400" />
                   <span>/ ({t("Root", "Koreň", "Gyökér")})</span>
@@ -1455,7 +1453,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                     key={folder.id}
                     type="button"
                     onClick={() => handleMoveItem(folder.id)}
-                    className="w-full flex items-center gap-2 p-2.5 rounded-xl hover:bg-white border border-transparent hover:border-slate-200 text-xs font-bold text-slate-600 hover:text-indigo-600 transition-all text-left cursor-pointer"
+                    className="w-full flex items-center gap-2 p-2.5 rounded-xl hover:bg-white border border-transparent hover:border-slate-200 text-ui font-bold text-slate-600 hover:text-indigo-600 transition-all text-left cursor-pointer"
                   >
                     <Folder className="h-4 w-4 text-amber-500 fill-amber-50" />
                     <span className="truncate">{folder.title}</span>
@@ -1467,7 +1465,7 @@ export const UnifiedEntryView: React.FC<UnifiedEntryViewProps> = ({
                 <button
                   type="button"
                   onClick={() => { setIsMoving(false); setMovingItem(null); }}
-                  className="px-4 py-2 rounded-xl hover:bg-slate-50 text-slate-500 text-xs font-bold uppercase tracking-wider"
+                  className="px-4 py-2 rounded-xl hover:bg-slate-50 text-slate-500 text-ui font-bold"
                 >
                   {t("Cancel", "Zrušiť", "Mégse")}
                 </button>

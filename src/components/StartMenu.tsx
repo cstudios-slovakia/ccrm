@@ -944,20 +944,20 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                   <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-xs" />
                   <span className="h-2.5 w-2.5 rounded-full bg-indigo-500 shadow-xs" />
                 </div>
-                <span className="text-[7.5px] font-black tracking-widest text-indigo-600 uppercase leading-none">
+                <span className="type-overline text-indigo-600 leading-none">
                   START
                 </span>
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="font-heading font-black text-base text-slate-900 tracking-tight">
+                  <span className="font-heading font-bold text-title-sm text-slate-900 tracking-tight">
                     {systemName}
                   </span>
-                  <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 border border-indigo-500/20">
+                  <span className="type-overline px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 border border-indigo-500/20">
                     {t("Start Menu", "Štart menu", "Start menü")}
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-400 font-medium hidden sm:block">
+                <p className="text-caption text-slate-400 font-medium hidden sm:block">
                   {(isEditing
                     ? t("Drag groups to reorder columns • Add new group to sidebar • Pin 📌 items to left sidebar", "Presúvajte celé skupiny • Vytvorte novú skupinu pre bočný panel • Pripnite 📌 položky na bočný panel", "Csoportok átrendezése • Új csoport az oldalsávhoz • Kitűzés 📌 a bal oldalsávra")
                     : t("Quick access to all CRM modules & applications", "Rýchly prístup k modulom a evidenciám", "Gyors hozzáférés az összes modulhoz"))}
@@ -986,7 +986,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={t("Search modules... (ESC)", "Hľadať v moduloch... (ESC)", "Keresés a modulok között...")}
-                className="w-full pl-10 pr-9 py-2.5 bg-white border border-slate-200 rounded-2xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-xs transition-all"
+                className="w-full pl-10 pr-9 py-2.5 bg-white border border-slate-200 rounded-2xl text-ui text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-xs transition-all"
               />
               {searchQuery && (
                 <button
@@ -1012,7 +1012,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                     handleCreateGroup();
                   }
                 }}
-                className="px-3 py-2 rounded-2xl text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-all cursor-pointer flex items-center gap-1.5 shrink-0 shadow-xs"
+                className="px-3 py-2 rounded-2xl text-ui font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-all cursor-pointer flex items-center gap-1.5 shrink-0 shadow-xs"
                 title={t("Add New Group to Sidebar", "Pridať novú skupinu do bočného panelu", "Új csoport hozzáadása az oldalsávhoz")}
               >
                 <FolderPlus className="h-3.5 w-3.5" />
@@ -1024,13 +1024,13 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             {isEditing && (
               <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-amber-50 hover:bg-amber-100/80 border border-amber-200 text-amber-900 transition-all shadow-xs shrink-0">
                 <Home className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-                <span className="text-[11px] font-bold whitespace-nowrap hidden md:inline">
+                <span className="text-caption font-bold whitespace-nowrap hidden md:inline">
                   {t("Start Screen:", "Úvodná obrazovka:", "Kezdőképernyő:")}
                 </span>
                 <select
                   value={effectiveDefaultPage}
                   onChange={(e) => handleSetDefaultPage(e.target.value)}
-                  className="bg-transparent text-xs font-bold text-amber-950 focus:outline-none cursor-pointer pr-1"
+                  className="bg-transparent text-ui font-bold text-amber-950 focus:outline-none cursor-pointer pr-1"
                   title={t("Screen that opens when launching CCRM", "Obrazovka, ktorá sa otvorí pri spustení CCRM", "A CCRM indításakor megnyíló képernyő")}
                 >
                   {allItems
@@ -1052,7 +1052,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 e.stopPropagation();
                 setEditingMode(!isEditing);
               }}
-              className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+              className={`px-3.5 py-2 rounded-2xl text-ui font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
                 isEditing
                   ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20 ring-2 ring-indigo-400/30"
                   : "bg-slate-100 hover:bg-slate-200 text-slate-700"
@@ -1098,7 +1098,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
         {/* Edit Mode Instructions Banner */}
         {isEditing && (
-          <div className="bg-indigo-50/90 border-b border-indigo-100 px-4 sm:px-6 py-2 sm:py-2.5 flex items-center justify-between gap-3 text-xs text-indigo-900 animate-in fade-in slide-in-from-top-1 duration-200">
+          <div className="bg-indigo-50/90 border-b border-indigo-100 px-4 sm:px-6 py-2 sm:py-2.5 flex items-center justify-between gap-3 text-ui text-indigo-900 animate-in fade-in slide-in-from-top-1 duration-200">
             <div className="flex items-center gap-2">
               <span className="flex h-2 w-2 rounded-full bg-indigo-500 animate-ping shrink-0" />
               <span className="font-bold shrink-0">
@@ -1115,7 +1115,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 e.stopPropagation();
                 setEditingMode(false);
               }}
-              className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer shrink-0"
+              className="text-ui font-bold text-indigo-600 hover:underline cursor-pointer shrink-0"
             >
               {t("Done Editing ➔", "Hotovo ➔", "Kész ➔")}
             </button>
@@ -1167,7 +1167,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                   <div
                     draggable={isEditing}
                     onDragStart={(e) => handleGroupDragStart(e, group.id)}
-                    className={`flex items-center justify-between pb-2.5 border-b border-slate-200/70  text-[11px] font-black uppercase tracking-wider ${
+                    className={`flex items-center justify-between pb-2.5 border-b border-slate-200/70  type-overline ${
                       group.color || "text-slate-700 "
                     } ${isEditing ? "cursor-grab active:cursor-grabbing hover:opacity-80" : ""}`}
                   >
@@ -1189,7 +1189,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                               if (e.key === "Escape") setEditingGroupId(null);
                             }}
                             autoFocus
-                            className="w-full px-2 py-1 text-xs font-bold rounded-lg border border-indigo-400 bg-white  text-slate-800  focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                            className="w-full px-2 py-1 text-ui font-bold rounded-lg border border-indigo-400 bg-white  text-slate-800  focus:outline-none focus:ring-1 focus:ring-indigo-500"
                           />
                           <button
                             type="button"
@@ -1209,13 +1209,13 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                           </button>
                         </div>
                       ) : (
-                        <span className="truncate font-black">{group.name}</span>
+                        <span className="truncate font-bold">{group.name}</span>
                       )}
                     </div>
 
                     {/* Group Header Actions */}
                     <div className="flex items-center gap-1.5 shrink-0 ml-2">
-                      <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-slate-200/70  text-slate-600  font-bold">
+                      <span className="text-micro px-1.5 py-0.2 rounded-full bg-slate-200/70  text-slate-600  font-bold">
                         {filteredItems.length}
                       </span>
                       {isEditing && editingGroupId !== group.id && (
@@ -1268,7 +1268,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                       className="mb-2 p-2 bg-white rounded-xl border border-indigo-200 shadow-lg flex flex-col gap-1.5 animate-in fade-in zoom-in-95 duration-150 max-h-56 overflow-y-auto z-20"
                     >
                       <div className="flex items-center justify-between px-1 pb-1 border-b border-slate-100">
-                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+                        <span className="type-overline text-slate-600">
                           {t("Add to group", "Pridať do skupiny", "Hozzáadás a csoporthoz")}
                         </span>
                         <button
@@ -1297,13 +1297,13 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                 >
                                   <ModIcon className="h-3.5 w-3.5" />
                                 </div>
-                                <span className="text-xs font-medium truncate flex-1">{mod.label}</span>
+                                <span className="text-ui font-medium truncate flex-1">{mod.label}</span>
                                 <Plus className="h-3 w-3 text-slate-400 group-hover:text-indigo-600 shrink-0" />
                               </button>
                             );
                           })}
                         {allItems.filter((i) => !group.items.some((gi) => gi.id === i.id)).length === 0 && (
-                          <p className="text-[11px] text-slate-400 text-center py-2">
+                          <p className="text-caption text-slate-400 text-center py-2">
                             {t("All modules are in this group", "Všetky moduly sú v tejto skupine", "Minden modul ebben a csoportban van")}
                           </p>
                         )}
@@ -1312,7 +1312,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                   )}
 
                   {/* Group Items Container */}
-                  <div className="space-y-1.5 flex-1 min-h-[50px]">
+                  <div className="space-y-1.5 flex-1 min-h-12.5">
                     {filteredItems.map((item, idx) => {
                       const isBeingDragged = draggedItemId === item.id;
                       const isDropTargetBefore = isEditing && draggedItemId && dragOverGroup === group.id && dragOverItemIndex === idx && !isBeingDragged;
@@ -1361,7 +1361,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                         <div
                           onDragOver={(e) => handleItemDragOverContainer(e, group.id)}
                           onDrop={(e) => handleItemDropOnGroup(e, group.id, filteredItems.length)}
-                          className="w-full p-2 rounded-xl border border-dashed border-indigo-400 bg-indigo-50/60 text-indigo-700 text-xs font-bold flex items-center justify-center gap-1.5 animate-in fade-in duration-100"
+                          className="w-full p-2 rounded-xl border border-dashed border-indigo-400 bg-indigo-50/60 text-indigo-700 text-ui font-bold flex items-center justify-center gap-1.5 animate-in fade-in duration-100"
                         >
                           <Plus className="h-3.5 w-3.5" />
                           <span>{t("Drop item here", "Pustiť sem", "Ide helyezés")}</span>
@@ -1369,7 +1369,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                       )}
 
                     {filteredItems.length === 0 && isEditing && (
-                      <div className="py-4 text-center border border-dashed border-slate-200  rounded-2xl text-[10px] text-slate-400">
+                      <div className="py-4 text-center border border-dashed border-slate-200  rounded-2xl text-micro text-slate-400">
                         {t("Drop items here", "Sem presuňte položky", "Húzza ide az elemeket")}
                       </div>
                     )}
@@ -1386,14 +1386,14 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
-                            <span className="text-xs font-bold truncate">
+                            <span className="text-ui font-bold truncate">
                               {t("New Dashboard", "Nový panel", "Új irányítópult")}
                             </span>
-                            <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded-md bg-purple-100/80  text-purple-600 ">
+                            <span className="type-overline px-1.5 py-0.2 rounded-md bg-purple-100/80  text-purple-600 ">
                               +
                             </span>
                           </div>
-                          <p className="text-[10px] text-purple-600/70  line-clamp-1 mt-0.5 leading-snug">
+                          <p className="text-micro text-purple-600/70  line-clamp-1 mt-0.5 leading-snug">
                             {t("Create custom dashboard", "Vytvoriť vlastný panel", "Új irányítópult létrehozása")}
                           </p>
                         </div>
@@ -1422,20 +1422,20 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 mb-3 border-b border-slate-200/80 ">
                 <div className="flex items-center gap-2 text-slate-700 ">
                   <Archive className="h-4 w-4 text-amber-500" />
-                  <span className="text-xs font-black uppercase tracking-wider">
+                  <span className="text-ui font-bold">
                     {t("Unused / Hidden Modules", "Nepoužívané / Skryté moduly", "Nem használt / Rejtett modulok")}
                   </span>
-                  <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-slate-200  text-slate-600 ">
+                  <span className="text-micro font-bold px-2 py-0.5 rounded-full bg-slate-200  text-slate-600 ">
                     {resolvedGroupsData.unused.length}
                   </span>
                 </div>
-                <p className="text-[11px] text-slate-400">
+                <p className="text-caption text-slate-400">
                   {t("Drop items here to hide them from the columns above.", "Presuňte sem položky, ktoré nechcete zobrazovať v stĺpcoch vyššie.", "Húzza ide azokat az elemeket, amelyeket el szeretne rejteni.")}
                 </p>
               </div>
 
               {resolvedGroupsData.unused.length === 0 && (!isEditing || dragOverGroup !== "unused") ? (
-                <div className="py-6 text-center text-xs text-slate-400 font-medium">
+                <div className="py-6 text-center text-ui text-slate-400 font-medium">
                   {t("No hidden items. Drag and drop any module here to hide it from the Start Menu.", "Žiadne skryté moduly. Presuňte sem ľubovoľný modul zo zoznamu pre jeho skrytie.", "Nincsenek rejtett elemek. Húzzon ide egy modult az elrejtéshez.")}
                 </div>
               ) : (
@@ -1446,10 +1446,10 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                       <div className="p-1.5 rounded-xl bg-rose-200  text-rose-700  shrink-0 animate-bounce">
                         {draggedItemObj ? <draggedItemObj.icon className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
                       </div>
-                      <span className="text-xs font-bold text-rose-800  truncate flex-1">
+                      <span className="text-ui font-bold text-rose-800  truncate flex-1">
                         {draggedItemObj?.label || t("Hide item", "Skryť položku", "Elem elrejtése")}
                       </span>
-                      <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-rose-200  text-rose-800  shrink-0">
+                      <span className="type-overline px-2 py-0.5 rounded-md bg-rose-200  text-rose-800  shrink-0">
                         {t("Drop to hide", "Pustiť pre skrytie", "Elrejtés")}
                       </span>
                     </div>
@@ -1485,7 +1485,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                           >
                             <Icon className="h-3.5 w-3.5" />
                           </div>
-                          <span className="text-xs font-bold text-slate-700  truncate flex-1">
+                          <span className="text-ui font-bold text-slate-700  truncate flex-1">
                             {item.label}
                           </span>
                         </div>
@@ -1500,7 +1500,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                 e.stopPropagation();
                                 onTogglePinToSidebar(item.id);
                               }}
-                              className={`flex-1 py-1.5 px-2 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                              className={`flex-1 py-1.5 px-2 rounded-xl text-micro font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
                                 isPinned
                                   ? "bg-indigo-600 text-white shadow-xs"
                                   : "bg-slate-100  hover:bg-indigo-50 hover:text-indigo-600 text-slate-600 "
@@ -1516,7 +1516,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                           <button
                             type="button"
                             onClick={() => handleRestoreItem(item)}
-                            className="py-1.5 px-2.5 rounded-xl bg-emerald-50  hover:bg-emerald-100  text-emerald-600  text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+                            className="py-1.5 px-2.5 rounded-xl bg-emerald-50  hover:bg-emerald-100  text-emerald-600  text-micro font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
                             title={t("Restore to menu", "Vrátiť do menu", "Visszaállítás a menübe")}
                           >
                             <Plus className="h-3 w-3" />
@@ -1532,7 +1532,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                                   handleAddItemToMenuGroup(item.id, e.target.value);
                                 }
                               }}
-                              className="text-[9px] font-bold bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded px-1.5 py-1 text-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer max-w-[70px] truncate shrink-0"
+                              className="text-micro font-bold bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded px-1.5 py-1 text-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer max-w-17.5 truncate shrink-0"
                               title={t("Restore to group...", "Vrátiť do skupiny...", "Visszaállítás ide...")}
                             >
                               <option value="" disabled>
@@ -1556,21 +1556,21 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         </div>
 
         {/* Footer: User Profile & Default Start Screen Quick Selector */}
-        <div className="p-3.5 sm:px-6 bg-slate-50/90 border-t border-slate-100 flex items-center justify-between gap-2 sm:gap-3 text-xs">
+        <div className="p-3.5 sm:px-6 bg-slate-50/90 border-t border-slate-100 flex items-center justify-between gap-2 sm:gap-3 text-ui">
           <button
             type="button"
             onClick={() => handleItemClick("personal-settings")}
             title={t("Profile", "Profil", "Profil")}
             className="flex items-center gap-2.5 sm:gap-3 -mx-1 sm:-mx-2 px-2 py-1.5 rounded-xl text-left hover:bg-white border border-transparent hover:border-slate-200 transition-colors cursor-pointer group shrink-0"
           >
-            <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-indigo-600 to-indigo-400 text-white font-bold flex items-center justify-center text-xs shadow-sm shrink-0">
+            <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-indigo-600 to-indigo-400 text-white font-bold flex items-center justify-center text-ui shadow-sm shrink-0">
               {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : "U"}
             </div>
             <div className="min-w-0">
-              <span className="font-bold text-slate-800 block leading-tight truncate max-w-[100px] sm:max-w-none">
+              <span className="font-bold text-slate-800 block leading-tight truncate max-w-25 sm:max-w-none">
                 {currentUser?.name || "User"}
               </span>
-              <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block truncate">
+              <span className="type-overline text-slate-400 block truncate">
                 {currentUser?.role || "Member"}
               </span>
             </div>
@@ -1580,13 +1580,13 @@ export const StartMenu: React.FC<StartMenuProps> = ({
           {/* Quick Start Screen Selector */}
           <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-white border border-slate-200/90 shadow-2xs hover:border-slate-300 transition-colors shrink-0">
             <Home className="h-3.5 w-3.5 text-amber-600 shrink-0" />
-            <span className="text-[11px] font-semibold text-slate-500 hidden md:inline">
+            <span className="text-caption font-semibold text-slate-500 hidden md:inline">
               {t("Start Screen:", "Úvodná obrazovka:", "Kezdőképernyő:")}
             </span>
             <select
               value={effectiveDefaultPage}
               onChange={(e) => handleSetDefaultPage(e.target.value)}
-              className="bg-transparent text-xs font-bold text-slate-800 focus:outline-none cursor-pointer pr-1 max-w-[110px] sm:max-w-[180px] truncate"
+              className="bg-transparent text-ui font-bold text-slate-800 focus:outline-none cursor-pointer pr-1 max-w-27.5 sm:max-w-45 truncate"
               title={t("Screen that opens when launching CCRM", "Obrazovka, ktorá sa otvorí pri spustení CCRM", "A CCRM indításakor megnyíló képernyő")}
             >
               {allItems
@@ -1686,7 +1686,7 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
           >
             <Icon className="h-3.5 w-3.5" />
           </div>
-          <span className="text-xs font-bold text-slate-900  truncate flex-1 min-w-0">
+          <span className="text-ui font-bold text-slate-900  truncate flex-1 min-w-0">
             {item.label}
           </span>
 
@@ -1738,7 +1738,7 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
                 e.stopPropagation();
                 onMoveToGroup(e.target.value);
               }}
-              className="text-[9px] font-bold bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded px-1 py-0.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer max-w-[65px] truncate shrink-0"
+              className="text-micro font-bold bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded px-1 py-0.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer max-w-16.25 truncate shrink-0"
               title={t("Move to group", "Presunúť do skupiny", "Áthelyezés csoportba")}
             >
               {groups.map((g) => (
@@ -1751,7 +1751,7 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
 
           {isDefault && (
             <span
-              className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-300/80 flex items-center gap-1 shrink-0"
+              className="type-overline px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-300/80 flex items-center gap-1 shrink-0"
               title={
                 systemLanguage === "sk"
                   ? "Predvolená úvodná obrazovka"
@@ -1771,7 +1771,7 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
             </span>
           )}
           {item.badge && !isDefault && (
-            <span className="text-[8px] font-black uppercase px-1.5 py-0.2 rounded-md bg-slate-100  text-slate-500  shrink-0">
+            <span className="type-overline px-1.5 py-0.2 rounded-md bg-slate-100  text-slate-500  shrink-0">
               {item.badge}
             </span>
           )}
@@ -1787,7 +1787,7 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
                 e.stopPropagation();
                 onSetDefault();
               }}
-              className={`flex-1 py-1 px-2 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+              className={`flex-1 py-1 px-2 rounded-xl text-micro font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
                 isDefault
                   ? "bg-amber-600 text-white shadow-xs ring-1 ring-amber-500 hover:bg-amber-700"
                   : "bg-slate-100 hover:bg-amber-50 hover:text-amber-700 text-slate-600"
@@ -1831,7 +1831,7 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
                 e.stopPropagation();
                 onTogglePin();
               }}
-              className={`py-1 px-2 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+              className={`py-1 px-2 rounded-xl text-micro font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
                 isPinned
                   ? "bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-500 hover:bg-indigo-700"
                   : "bg-slate-100  hover:bg-indigo-50 hover:text-indigo-600  text-slate-600 "
@@ -1875,7 +1875,7 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
                 e.stopPropagation();
                 onHide();
               }}
-              className="py-1 px-2 rounded-xl bg-slate-100  hover:bg-rose-50  hover:text-rose-600 text-slate-500  text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+              className="py-1 px-2 rounded-xl bg-slate-100  hover:bg-rose-50  hover:text-rose-600 text-slate-500  text-micro font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
               title={
                 systemLanguage === "sk"
                   ? "Skryť modul"
@@ -1923,12 +1923,12 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
       {/* Content */}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5 flex-wrap">
-          <span className={`text-xs font-bold truncate transition-colors ${isActive ? "text-indigo-600 " : "text-slate-800  group-hover:text-slate-950 "}`}>
+          <span className={`text-ui font-bold truncate transition-colors ${isActive ? "text-indigo-600 " : "text-slate-800  group-hover:text-slate-950 "}`}>
             {item.label}
           </span>
           {isDefault && (
             <span
-              className="text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-amber-50 text-amber-700 border border-amber-200/80 flex items-center gap-1 shrink-0 shadow-2xs"
+              className="text-micro font-bold px-1.5 py-0.2 rounded-md bg-amber-50 text-amber-700 border border-amber-200/80 flex items-center gap-1 shrink-0 shadow-2xs"
               title={
                 systemLanguage === "sk"
                   ? "Predvolená úvodná obrazovka"
@@ -1948,12 +1948,12 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
             </span>
           )}
           {item.badge && (
-            <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded-md bg-slate-100  text-slate-500 ">
+            <span className="type-overline px-1.5 py-0.2 rounded-md bg-slate-100  text-slate-500 ">
               {item.badge}
             </span>
           )}
         </div>
-        <p className="text-[10px] text-slate-400 line-clamp-2 mt-0.5 leading-snug">
+        <p className="text-micro text-slate-400 line-clamp-2 mt-0.5 leading-snug">
           {item.description}
         </p>
       </div>

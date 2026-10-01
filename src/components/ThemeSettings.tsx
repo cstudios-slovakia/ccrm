@@ -80,7 +80,7 @@ export const ThemeSettings: React.FC<ThemeSettingsProps> = ({
       {/* -------------------------------------------------- Appearance mode */}
       <div className="space-y-2">
         <div className="flex items-center justify-between gap-2">
-          <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+          <label className="type-overline text-slate-600 flex items-center gap-1.5">
             {isDark ? (
               <Moon className="h-3.5 w-3.5 text-indigo-500" />
             ) : (
@@ -88,7 +88,7 @@ export const ThemeSettings: React.FC<ThemeSettingsProps> = ({
             )}
             {t("Appearance", "Vzhľad", "Megjelenés")}
           </label>
-          <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-[10px] font-bold text-slate-700 shadow-xs">
+          <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-micro font-bold text-slate-700 shadow-xs">
             <span>{isDark ? "🌙" : "☀️"}</span>
             <span>
               {t("Now", "Teraz", "Most")}:{" "}
@@ -125,8 +125,8 @@ export const ThemeSettings: React.FC<ThemeSettingsProps> = ({
                     transition={reduceMotion ? { duration: 0 } : { type: "spring", stiffness: 420, damping: 34 }}
                   />
                 )}
-                <span className="relative text-base leading-none">{mode.icon}</span>
-                <span className="relative text-[10px] font-bold leading-tight text-center">
+                <span className="relative text-title-sm leading-none">{mode.icon}</span>
+                <span className="relative text-micro font-bold leading-tight text-center">
                   {mode.id === "auto"
                     ? t("Auto", "Automatická", "Automatikus")
                     : mode.name[systemLanguage] || mode.name.en}
@@ -136,7 +136,7 @@ export const ThemeSettings: React.FC<ThemeSettingsProps> = ({
           })}
         </div>
 
-        <p className="text-[11px] text-slate-500 font-medium leading-relaxed">
+        <p className="text-caption text-slate-500 font-medium leading-relaxed">
           {activeMode.description[systemLanguage] || activeMode.description.en}
         </p>
       </div>
@@ -154,7 +154,7 @@ export const ThemeSettings: React.FC<ThemeSettingsProps> = ({
           >
             <div className="p-3 rounded-xl bg-amber-50 border border-amber-200/80 space-y-2.5">
               {schedule.polarDay || schedule.polarNight ? (
-                <p className="text-[11px] font-semibold text-amber-900 leading-relaxed">
+                <p className="text-caption font-semibold text-amber-900 leading-relaxed">
                   {schedule.polarDay
                     ? t(
                         "The sun does not set at your location today, so the interface stays light.",
@@ -172,27 +172,27 @@ export const ThemeSettings: React.FC<ThemeSettingsProps> = ({
                   <div className="flex items-center gap-1.5 text-amber-900">
                     <Sunrise className="h-4 w-4 shrink-0 text-amber-600" />
                     <div className="leading-tight">
-                      <div className="text-[9px] font-bold uppercase tracking-wider text-amber-700/80">
+                      <div className="type-overline text-amber-700/80">
                         {t("Sunrise", "Východ slnka", "Napkelte")}
                       </div>
-                      <div className="text-xs font-black tabular-nums">{formatTime(schedule.sunrise)}</div>
+                      <div className="text-ui font-bold tabular-nums">{formatTime(schedule.sunrise)}</div>
                     </div>
                   </div>
                   <div className="h-6 w-px bg-amber-200" />
                   <div className="flex items-center gap-1.5 text-amber-900">
                     <Sunset className="h-4 w-4 shrink-0 text-amber-600" />
                     <div className="leading-tight">
-                      <div className="text-[9px] font-bold uppercase tracking-wider text-amber-700/80">
+                      <div className="type-overline text-amber-700/80">
                         {t("Sunset", "Západ slnka", "Napnyugta")}
                       </div>
-                      <div className="text-xs font-black tabular-nums">{formatTime(schedule.sunset)}</div>
+                      <div className="text-ui font-bold tabular-nums">{formatTime(schedule.sunset)}</div>
                     </div>
                   </div>
                 </div>
               )}
 
               <div className="pt-2 border-t border-amber-200/70 space-y-2">
-                <p className="text-[10px] text-amber-800/90 font-medium leading-relaxed">
+                <p className="text-micro text-amber-800/90 font-medium leading-relaxed">
                   {schedule.precise
                     ? t(
                         "Calculated for your exact location — no weather service involved.",
@@ -213,7 +213,7 @@ export const ThemeSettings: React.FC<ThemeSettingsProps> = ({
                     whileHover={reduceMotion || locating ? undefined : { y: -1 }}
                     whileTap={reduceMotion || locating ? undefined : { scale: 0.97 }}
                     transition={{ duration: 0.15, ease: EASE_OUT }}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white text-[10px] font-bold uppercase tracking-wider shadow-sm transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-700 focus-visible:ring-offset-1"
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-700 hover:bg-amber-800 text-white type-overline shadow-sm transition-colors cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed focus:outline-none focus-visible:ring-2 focus-visible:ring-amber-700 focus-visible:ring-offset-1"
                   >
                     {locating ? (
                       <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -232,11 +232,11 @@ export const ThemeSettings: React.FC<ThemeSettingsProps> = ({
       {/* -------------------------------------------------- Light palette */}
       <div className="space-y-2 pt-3 border-t border-slate-200/80">
         <div className="flex items-center justify-between">
-          <label className="text-[10px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
+          <label className="type-overline text-slate-600 flex items-center gap-1.5">
             <Palette className="h-3.5 w-3.5 text-amber-600" />
             {t("Light palette (Herb Collection)", "Svetlá paleta (Bylinky)", "Világos paletta (Fűszernövények)")}
           </label>
-          <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-[10px] font-bold text-amber-900 shadow-xs">
+          <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 border border-amber-200 text-micro font-bold text-amber-900 shadow-xs">
             <span>{currentThemeObj.icon}</span>
             <span>{currentThemeObj.name[systemLanguage] || currentThemeObj.name.en}</span>
           </div>
@@ -254,12 +254,12 @@ export const ThemeSettings: React.FC<ThemeSettingsProps> = ({
           }))}
         />
 
-        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2 text-xs">
-          <p className="text-[11px] text-slate-600 font-medium leading-relaxed">
+        <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 space-y-2 text-ui">
+          <p className="text-caption text-slate-600 font-medium leading-relaxed">
             {currentThemeObj.description[systemLanguage] || currentThemeObj.description.en}
           </p>
           {isDark && (
-            <p className="text-[10px] text-slate-500 font-semibold leading-relaxed">
+            <p className="text-micro text-slate-500 font-semibold leading-relaxed">
               {t(
                 "The palette above applies whenever the interface is light.",
                 "Paleta vyššie sa uplatní vždy, keď je rozhranie svetlé.",
@@ -268,7 +268,7 @@ export const ThemeSettings: React.FC<ThemeSettingsProps> = ({
             </p>
           )}
           <div className="flex items-center justify-between pt-2 border-t border-slate-200/60">
-            <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+            <span className="type-overline text-slate-500">
               {t("Theme Palette:", "Paleta témy:", "Téma paletta:")}
             </span>
             <div className="flex items-center gap-1.5">
