@@ -217,10 +217,11 @@ function ccrm_deploy_branch() {
                 "\n"
                 . "Warning: CCRM_DEPLOY_BRANCH=$env is set in this environment and overrides\n"
                 . "         `git config ccrm.deployBranch` ($configured). Pulling '$env'.\n"
-                . "         To make the git config take effect, clear the variable and\n"
-                . "         whatever exports it:\n"
-                . "           unset CCRM_DEPLOY_BRANCH\n"
+                . "         To make the git config take effect, remove the line that exports\n"
+                . "         it (`unset` alone only lasts until the next login):\n"
                 . "           grep -n CCRM_DEPLOY_BRANCH ~/.bashrc ~/.bash_profile ~/.profile ~/.zshrc\n"
+                . "           sed -i '/CCRM_DEPLOY_BRANCH/d' <file from the grep>\n"
+                . "           unset CCRM_DEPLOY_BRANCH\n"
                 . "\n";
         }
         return array($env, 'CCRM_DEPLOY_BRANCH', $warning);
@@ -359,7 +360,7 @@ function ccrm_update() {
     if (!empty($toRestore)) {
         foreach ($toRestore as $file) {
             echo "Restoring $file to avoid conflict...\n";
-            passthru("git checkout — " . escapeshellarg($file));
+            passthru("git checkout -- " . escapeshellarg($file));
         }
     }
 
@@ -462,7 +463,7 @@ function ccrm_update() {
             // frontend is always exactly the one we just pulled. (Extra untracked
             // old bundles left in dist/assets are harmless — index.html points at
             // the correct hash.)
-            passthru("git checkout — dist/index.html dist/assets");
+            passthru("git checkout -- dist/index.html dist/assets");
         }
         \CCRM\Installer::copyDir(__DIR__ . '/dist', __DIR__, ['config.php']);
     }

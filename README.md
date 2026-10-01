@@ -166,12 +166,14 @@ Deploy branch: 1.9-jackfruit (CCRM_DEPLOY_BRANCH)
 ```
 
 If that source is `CCRM_DEPLOY_BRANCH` when you expected your git config, the
-update now prints a warning naming both values. Clear the variable and whatever
-exports it:
+update now prints a warning naming both values. `unset` alone is **not enough**:
+it only clears the current shell, and the profile line that exports the variable
+sets it again at the next login. Find that line, delete it, then unset:
 
 ```bash
-unset CCRM_DEPLOY_BRANCH
 grep -n CCRM_DEPLOY_BRANCH ~/.bashrc ~/.bash_profile ~/.profile ~/.zshrc
+sed -i '/CCRM_DEPLOY_BRANCH/d' ~/.bashrc   # the file(s) the grep listed
+unset CCRM_DEPLOY_BRANCH                   # clear the current shell too
 php ccrm update      # -> Deploy branch: main (git config ccrm.deployBranch)
 ```
 
