@@ -452,17 +452,126 @@ if (!function_exists('ccrm_send_cors')) {
     }
 
     /**
-     * The states a project may be in, in the order the UI offers them. Mirrors
-     * PROJECT_STATUSES in src/types — anything else reaching the `projects`
-     * table (from a workflow action, say) would render as a raw string on a
-     * card nothing can filter by. The first entry is where a new project starts.
+     * The five statuses every installation starts with, before anyone opens the
+     * editor in Settings → Project settings. Mirrors DEFAULT_PROJECT_STATUS_DEFS
+     * in src/utils/projects.ts.
      *
      * A function rather than a `const`: this whole block is inside a
      * function_exists() guard, and PHP refuses to declare a top-level const in a
      * conditional block.
      */
-    function ccrm_project_statuses(): array {
-        return ['new', 'active', 'completed', 'on_hold', 'cancelled'];
+    function ccrm_default_project_status_defs(): array {
+        return [
+            ['key' => 'new', 'color' => '#0ea5e9', 'group' => 'new'],
+            ['key' => 'active', 'color' => '#a855f7', 'group' => 'in_progress'],
+            ['key' => 'on_hold', 'color' => '#f59e0b', 'group' => 'in_progress'],
+            ['key' => 'completed', 'color' => '#10b981', 'group' => 'completed'],
+            ['key' => 'cancelled', 'color' => '#f43f5e', 'group' => 'cancelled'],
+        ];
+    }
+
+    /**
+     * A stored project-status list, cleaned up the same way
+     * normalizeProjectStatusDefs() does it in src/utils/projects.ts: unique
+     * non-empty keys, a known group, a hex colour, kept in group order — and the
+     * built-ins whenever the list is unreadable or has no open status left for a
+     * new project to start in.
+     */
+    function ccrm_normalize_project_statuses($raw): array {
+        $groups = ['new', 'in_progress', 'completed', 'cancelled'];
+        $defaults = ccrm_default_project_status_defs();
+        if (!is_array($raw)) {
+            return $defaults;
+        }
+        $builtins = [];
+        foreach ($defaults as $d) {
+            $builtins[$d['key']] = $d;
+        }
+        $seen = [];
+        $out = [];
+        foreach ($raw as $item) {
+            if (!is_array($item)) continue;
+            $key = trim((string)($item['key'] ?? ''));
+            if ($key === '' || mb_strlen($key) > 50 || isset($seen[$key])) continue;
+            $seen[$key] = true;
+            $builtin = $builtins[$key] ?? null;
+            $color = (string)($item['color'] ?? '');
+            $color = preg_match('/^#[0-9a-f]{6}$/i', $color) ? strtolower($color) : ($builtin['color'] ?? '#6366f1');
+            $group = in_array($item['group'] ?? null, $groups, true) ? $item['group'] : ($builtin['group'] ?? 'in_progress');
+            $label = trim((string)($item['label'] ?? ''));
+            $def = ['key' => $key];
+            if ($label !== '') $def['label'] = $label;
+            $def['color'] = $color;
+            $def['group'] = $group;
+            $out[] = $def;
+        }
+        $hasOpen = false;
+        foreach ($out as $d) {
+            if ($d['group'] === 'new' || $d['group'] === 'in_progress') { $hasOpen = true; break; }
+        }
+        if (!$hasOpen) {
+            return $defaults;
+        }
+        $ordered = [];
+        foreach ($groups as $g) {
+            foreach ($out as $d) {
+                if ($d['group'] === $g) $ordered[] = $d;
+            }
+        }
+        return $ordered;
+    }
+
+    /** The configured project statuses, read once per request. */
+    function ccrm_project_status_defs(?\PDO $pdo = null): array {
+        static $cached = null;
+        if ($pdo === null) {
+            return $cached ?? ccrm_default_project_status_defs();
+        }
+        if ($cached !== null) {
+            return $cached;
+        }
+        $raw = false;
+        try {
+            $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'PROJECT_STATUSES'");
+            $stmt->execute();
+            $raw = $stmt->fetchColumn();
+        } catch (\Throwable $e) {
+            $raw = false;
+        }
+        $decoded = ($raw !== false && $raw !== null && $raw !== '') ? json_decode((string)$raw, true) : null;
+        $cached = ccrm_normalize_project_statuses($decoded);
+        return $cached;
+    }
+
+    /**
+     * The status keys a project may be in, in the order the UI offers them —
+     * anything else reaching the `projects` table (from a workflow action, say)
+     * would render as a raw string on a card nothing can filter by. Pass the
+     * connection to get the list configured in settings; without it, the
+     * built-ins (or whatever this request already read).
+     */
+    function ccrm_project_statuses(?\PDO $pdo = null): array {
+        return array_column(ccrm_project_status_defs($pdo), 'key');
+    }
+
+    /** Where a new project starts: the first status of the "new" group, else the first open one. */
+    function ccrm_default_project_status(?\PDO $pdo = null): string {
+        $defs = ccrm_project_status_defs($pdo);
+        foreach ($defs as $d) {
+            if ($d['group'] === 'new') return $d['key'];
+        }
+        foreach ($defs as $d) {
+            if ($d['group'] === 'in_progress') return $d['key'];
+        }
+        return $defs[0]['key'] ?? 'new';
+    }
+
+    /** The group a status key belongs to, or null for one the list does not know. */
+    function ccrm_project_status_group(string $status, ?\PDO $pdo = null): ?string {
+        foreach (ccrm_project_status_defs($pdo) as $d) {
+            if ($d['key'] === $status) return $d['group'];
+        }
+        return null;
     }
 
     /**
@@ -670,14 +779,15 @@ if (!function_exists('ccrm_send_cors')) {
 
             $typeStmt = $pdo->prepare("SELECT `id` FROM `project_types` WHERE `id` = ?");
             $existing = $pdo->prepare("SELECT `id` FROM `projects` WHERE `lead_id` = ? AND `project_type_id` = ? LIMIT 1");
-            // 'new' is the first status in ccrm_project_statuses(), and where
-            // every project starts however it was created. Nothing promotes it:
-            // which lead status makes a project active differs per installation,
-            // so that belongs in a workflow ("Lead status changed" ->
-            // "Change project status"), not in this insert.
+            // Every project starts in the first status of the "new" group,
+            // however it was created. Nothing promotes it: which lead status
+            // makes a project active differs per installation, so that belongs
+            // in a workflow ("Lead status changed" -> "Change project status"),
+            // not in this insert.
+            $startStatus = ccrm_default_project_status($pdo);
             $insProject = $pdo->prepare(
                 "INSERT INTO `projects` (`id`, `project_type_id`, `lead_id`, `client_id`, `status`)
-                 VALUES (?, ?, ?, ?, 'new')"
+                 VALUES (?, ?, ?, ?, ?)"
             );
             $insManager = $pdo->prepare("INSERT IGNORE INTO `project_managers` (`project_id`, `user_id`) VALUES (?, ?)");
             $ownerName = trim($ownerName);
@@ -697,7 +807,7 @@ if (!function_exists('ccrm_send_cors')) {
                 }
 
                 $projectId = 'proj-' . sprintf('%04x%04x', mt_rand(0, 0xffff), mt_rand(0, 0xffff));
-                $insProject->execute([$projectId, $typeId, $leadId, $leadId]);
+                $insProject->execute([$projectId, $typeId, $leadId, $leadId, $startStatus]);
 
                 $managers = [];
                 if ($cfg['assignOwner'] && $ownerName !== '') {

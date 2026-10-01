@@ -961,10 +961,10 @@ if (!function_exists('ccrm_execute_workflow')) {
                         // A status outside the known set would render as a raw
                         // string on a card no filter can reach, so refuse it
                         // loudly rather than writing it and moving on.
-                        if (!in_array($newStatus, ccrm_project_statuses(), true)) {
+                        if (!in_array($newStatus, ccrm_project_statuses($pdo), true)) {
                             throw new \RuntimeException(
                                 'Unknown project status "' . $newStatus . '". Expected one of: '
-                                . implode(', ', ccrm_project_statuses()) . '.'
+                                . implode(', ', ccrm_project_statuses($pdo)) . '.'
                             );
                         }
 
@@ -1017,12 +1017,12 @@ if (!function_exists('ccrm_execute_workflow')) {
 
                         $newStatus = trim(ccrm_interpolate_variables($nodeData['status'] ?? '', $incomingPayload, $context));
                         if ($newStatus === '') {
-                            $newStatus = 'new';
+                            $newStatus = ccrm_default_project_status($pdo);
                         }
-                        if (!in_array($newStatus, ccrm_project_statuses(), true)) {
+                        if (!in_array($newStatus, ccrm_project_statuses($pdo), true)) {
                             throw new \RuntimeException(
                                 'Unknown project status "' . $newStatus . '". Expected one of: '
-                                . implode(', ', ccrm_project_statuses()) . '.'
+                                . implode(', ', ccrm_project_statuses($pdo)) . '.'
                             );
                         }
 

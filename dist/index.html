@@ -2,8 +2,8 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="./assets/favicon-PcgQMRcC.svg" />
-    <link rel="apple-touch-icon" href="./assets/favicon-PcgQMRcC.svg" />
+    <link rel="icon" type="image/svg+xml" href="./assets/favicon-D81-yVMc.svg" />
+    <link rel="apple-touch-icon" href="./assets/favicon-D81-yVMc.svg" />
     <link rel="manifest" href="./manifest.json" id="app-manifest" />
     <meta name="theme-color" content="#4f46e5" />
     <meta name="mobile-web-app-capable" content="yes" />
@@ -50,6 +50,15 @@
           root.setAttribute("data-theme", dark ? "dark" : palette);
           root.setAttribute("data-appearance", dark ? "dark" : "light");
           root.style.colorScheme = dark ? "dark" : "light";
+          // View size — mirrors resolveViewSize() in src/utils/viewSize.ts.
+          var VS_DEFAULT = "compact"; // becomes "auto" in Phase F — keep equal to viewSize.ts (unit-tested)
+          var vs = read("ccrm_view_size");
+          var vsMode = vs === "auto" || vs === "compact" || vs === "normal" || vs === "big" ? vs : VS_DEFAULT;
+          var mq = function (q) { return !!(window.matchMedia && window.matchMedia(q).matches); };
+          var vsSize = vsMode !== "auto" ? vsMode
+            : mq("(min-width: 2200px)") ? "big" : mq("(min-width: 1800px)") ? "normal" : "compact";
+          root.setAttribute("data-view-size", vsSize);
+          root.setAttribute("data-view-size-mode", vsMode);
         } catch (e) {}
       })();
     </script>
@@ -57,9 +66,9 @@
          charts and DynamicDashboardView's AI-generated chart widgets. There is no
          bundled/npm chart library, so removing this (as a prior cleanup did) makes
          every chart on both silently no-op with a console warning. -->
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script type="module" crossorigin src="./assets/index-BShGeD_W.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-BBRfXvBk.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script type="module" crossorigin src="./assets/index-C3BTnbt0.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-Cp66TezD.css">
   </head>
   <body class="font-sans antialiased overflow-x-hidden">
     <div id="root"></div>

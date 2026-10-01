@@ -1027,6 +1027,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $projectAutoCreate = ccrm_normalize_project_auto_create(
         isset($settings['PROJECT_AUTO_CREATE']) ? json_decode($settings['PROJECT_AUTO_CREATE'], true) : null
     );
+    // The project statuses (Settings → Project settings). Normalized on the way
+    // out, so an install that never opened the editor gets the built-ins.
+    $projectStatuses = ccrm_normalize_project_statuses(
+        isset($settings['PROJECT_STATUSES']) ? json_decode($settings['PROJECT_STATUSES'], true) : null
+    );
     $taskStates = isset($settings['TASK_STATES']) ? json_decode($settings['TASK_STATES'], true) : $defaultLists['taskStates'];
     $taskStateColors = isset($settings['TASK_STATE_COLORS']) ? json_decode($settings['TASK_STATE_COLORS'], true) : [];
     // An empty colour map would make every task state render in the same grey.
@@ -1918,6 +1923,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'projectAutoCreate' => $projectAutoCreate,
             'taskStates' => $taskStates,
             'taskStateColors' => $taskStateColors,
+            'projectStatuses' => $projectStatuses,
             'integrationsConfig' => $integrationsConfig,
             'companyBillingSettings' => isset($settings['COMPANY_BILLING_SETTINGS']) ? json_decode($settings['COMPANY_BILLING_SETTINGS'], true) : null,
             'invoicingIntegrations' => $invoicingIntegrations,
@@ -2424,6 +2430,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     : null,
                 'TASK_STATES' => json_encode($s['taskStates'] ?? []),
                 'TASK_STATE_COLORS' => json_encode($s['taskStateColors'] ?? []),
+                // Omitted means unchanged: a client that predates the editor must
+                // not reset everyone's statuses by saving an unrelated setting.
+                'PROJECT_STATUSES' => isset($s['projectStatuses']) && is_array($s['projectStatuses'])
+                    ? json_encode(ccrm_normalize_project_statuses($s['projectStatuses']), JSON_UNESCAPED_UNICODE)
+                    : null,
                 'INTEGRATIONS_CONFIG' => $integrationsValue,
                 'COMPANY_BILLING_SETTINGS' => $billingValue,
                 'INVOICING_INTEGRATIONS' => $invIntValue,
@@ -2442,7 +2453,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'SYSTEM_NAME', 'SYSTEM_LANGUAGE', 'SYSTEM_CURRENCY',
                     'TASK_STATES', 'TASK_STATE_COLORS', 'CUSTOM_LABELS',
                     'COMPANY_BILLING_SETTINGS', 'INVOICING_INTEGRATIONS',
-                    'PROJECT_AUTO_CREATE',
+                    'PROJECT_AUTO_CREATE', 'PROJECT_STATUSES',
                 ]);
             }
             if ($canSettingsPipeline) {
