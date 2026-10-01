@@ -85,7 +85,7 @@ import {
   projectPastRecurringCharges,
   type PastRecurringCharge
 } from "../utils/pastRecurringCharges";
-import { PageHeader } from "./layout";
+import { PageHeader, Tabs } from "./layout";
 
 // Trend graph forecast horizons. `futureWeeks` is the number of whole weeks the
 // projection runs past the current one — 13 weeks is the usual "3 months".
@@ -4564,29 +4564,16 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
       {/* 2. SUB-NAVIGATION TABS */}
       {!showSettings && (
-      <div className="flex border-b border-slate-200  overflow-x-auto scrollbar-none gap-2" role="tablist">
-        {[
-          { id: "overview", label: t("📊 Global Overview & Trend", "📊 Globálny prehľad & Trend", "📊 Globális áttekintés & Trend") },
-          { id: "table", label: t("📋 Overview Table", "📋 Prehľadová tabuľka", "📋 Áttekintő táblázat") },
-          { id: "movements", label: t("💸 Movements", "💸 Pohyby", "💸 Mozgások") },
-          { id: "recurring", label: t("🔄 Recurring Movements", "🔄 Pravidelné pohyby", "🔄 Rendszeres tételek") }
-        ].map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            role="tab"
-            aria-selected={activeTab === tab.id}
-            onClick={() => handleTabChange(tab.id as any)}
-            className={`px-4 py-3 text-ui font-bold border-b-2 transition-all cursor-pointer whitespace-nowrap ${
-              activeTab === tab.id
-                ? "border-emerald-500 text-emerald-600  bg-emerald-50/50  rounded-t-xl"
-                : "border-transparent text-slate-500 hover:text-slate-700 "
-            }`}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        value={activeTab}
+        onChange={(k) => handleTabChange(k as any)}
+        items={[
+          { key: "overview", label: t("📊 Global Overview & Trend", "📊 Globálny prehľad & Trend", "📊 Globális áttekintés & Trend") },
+          { key: "table", label: t("📋 Overview Table", "📋 Prehľadová tabuľka", "📋 Áttekintő táblázat") },
+          { key: "movements", label: t("💸 Movements", "💸 Pohyby", "💸 Mozgások") },
+          { key: "recurring", label: t("🔄 Recurring Movements", "🔄 Pravidelné pohyby", "🔄 Rendszeres tételek") },
+        ]}
+      />
       )}
 
       {/* 4. TAB CONTENT 1: GLOBAL OVERVIEW (FOCUSED HYBRID TREND & FORWARD PROJECTION) */}

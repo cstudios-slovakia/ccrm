@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { EntityHeader, Tabs } from "./layout";
 import * as Icons from "lucide-react";
 import {
   Plus, Trash2, Upload, FileText, ArrowLeft, Mail, Phone,
@@ -105,18 +106,6 @@ interface ProjectDetailsViewProps {
   divisions?: string[];
   divisionColors?: Record<string, string>;
 }
-
-/**
- * The right column's tabs all wear the same shape — an icon that takes the tab's
- * own colour, a label, and an optional badge — so the row reads as one control
- * rather than five differently-sized buttons. `shrink-0` + `whitespace-nowrap`
- * keep each tab whole; the row scrolls sideways when the column is too narrow.
- */
-const tabClass = "shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl font-heading type-overline whitespace-nowrap transition-all active:scale-95 cursor-pointer";
-const tabActiveClass = "bg-slate-900 text-white shadow-sm";
-const tabIdleClass = "text-slate-500 hover:bg-slate-100 hover:text-slate-800";
-const tabBadgeClass = "px-1.5 py-0.5 rounded-full text-micro font-bold leading-none";
-
 const DEFAULT_TASK_STATES = ["New", "In progress", "Blocked", "Done"];
 const FULL_TASK_ACCESS: TaskAccess = { view: true, create: true, edit: true, delete: true, viewAll: true };
 
@@ -1483,166 +1472,159 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   return (
     <div className="w-full flex flex-col h-auto ws-lg:h-[calc(100vh-11rem)] animate-fade-in text-left">
 
-      {/* Header — the same shape the projects list opens with: a large
-          heading with its icon, a caption under it, the actions on the right,
-          and a hairline below. No panel of its own. */}
-      <div className="shrink-0 flex flex-col ws-md:flex-row ws-md:items-center ws-md:justify-between gap-4 border-b border-slate-100 pb-4 select-none">
-        <div className="flex items-center gap-3 min-w-0">
-          <button
-            onClick={onClose}
-            className="shrink-0 p-2 rounded-xl hover:bg-slate-100 text-slate-500 hover:text-slate-900 transition-all active:scale-95 cursor-pointer"
-            title={t("Back to list", "Späť na zoznam", "Vissza a listához")}
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </button>
-          <div className="flex flex-col min-w-0 flex-1">
-            <h1 className="type-entity-title text-slate-900 flex items-center gap-2.5 min-w-0">
-              <span className="shrink-0" style={{ color: projectType.color }}>
-                {renderIcon(projectType.icon, "h-8 w-8")}
-              </span>
-              {/* Project name, edited in place. Projects used to have none and
-                  simply wore the paired lead's, which left a project paired with
-                  nobody with no name at all. Still optional: left empty, it
-                  reads as the lead. */}
-              {isEditingName ? (
-                <input
-                  value={nameDraft}
-                  onChange={e => setNameDraft(e.target.value)}
-                  onBlur={commitName}
-                  onKeyDown={e => {
-                    if (e.key === "Enter") { e.preventDefault(); commitName(); }
-                    else if (e.key === "Escape") { e.preventDefault(); cancelNameEdit(); }
-                  }}
-                  autoFocus
-                  maxLength={200}
-                  placeholder={t("e.g. Roof replacement, Kosice", "napr. Výmena strechy, Košice", "pl. Tetőcsere, Kassa")}
-                  className="select-text min-w-0 flex-1 max-w-xl px-2 py-0.5 -my-1 rounded-xl border border-indigo-300 bg-white type-entity-title text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                />
-              ) : (
-                <>
-                  <span className="truncate">
-                    {projectDisplayName(
-                      { name: projectName, leadId: associatedLeadId },
-                      leads,
-                      t("New Project", "Nový projekt", "Új projekt"),
-                    )}
-                  </span>
-                  {canEdit && (
-                    <button
-                      type="button"
-                      onClick={() => { nameCancelledRef.current = false; setNameDraft(projectName); setIsEditingName(true); }}
-                      className="shrink-0 p-1.5 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all active:scale-95 cursor-pointer"
-                      title={t("Rename project", "Premenovať projekt", "Projekt átnevezése")}
-                    >
-                      <Edit3 className="h-5 w-5" />
-                    </button>
+      {/* Entity header: back, project icon and name (edited in place), type beneath, actions right. */}
+      <EntityHeader
+        className="shrink-0 select-none"
+        onBack={onClose}
+        backLabel={t("Back to list", "Späť na zoznam", "Vissza a listához")}
+        title={
+          <span className="flex items-center gap-2.5 min-w-0">
+            <span className="shrink-0" style={{ color: projectType.color }}>
+              {renderIcon(projectType.icon, "h-8 w-8")}
+            </span>
+            {/* Project name, edited in place. Projects used to have none and
+                simply wore the paired lead's, which left a project paired with
+                nobody with no name at all. Still optional: left empty, it
+                reads as the lead. */}
+            {isEditingName ? (
+              <input
+                value={nameDraft}
+                onChange={e => setNameDraft(e.target.value)}
+                onBlur={commitName}
+                onKeyDown={e => {
+                  if (e.key === "Enter") { e.preventDefault(); commitName(); }
+                  else if (e.key === "Escape") { e.preventDefault(); cancelNameEdit(); }
+                }}
+                autoFocus
+                maxLength={200}
+                placeholder={t("e.g. Roof replacement, Kosice", "napr. Výmena strechy, Košice", "pl. Tetőcsere, Kassa")}
+                className="select-text min-w-0 flex-1 max-w-xl px-2 py-0.5 -my-1 rounded-xl border border-indigo-300 bg-white type-entity-title text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              />
+            ) : (
+              <>
+                <span className="truncate">
+                  {projectDisplayName(
+                    { name: projectName, leadId: associatedLeadId },
+                    leads,
+                    t("New Project", "Nový projekt", "Új projekt"),
                   )}
-                </>
-              )}
-            </h1>
-            <p className="text-ui text-slate-500 font-semibold mt-1 truncate">
-              {isEditingName && !nameDraft.trim()
-                ? t(
-                    "Left empty, the project is listed under the paired lead's name",
-                    "Ak ostane prázdny, projekt sa zobrazí pod menom spárovaného leadu",
-                    "Üresen hagyva a projekt a párosított lead nevén szerepel",
-                  )
-                : projectType.name}
-            </p>
-          </div>
-        </div>
+                </span>
+                {canEdit && (
+                  <button
+                    type="button"
+                    onClick={() => { nameCancelledRef.current = false; setNameDraft(projectName); setIsEditingName(true); }}
+                    className="shrink-0 p-1.5 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all active:scale-95 cursor-pointer"
+                    title={t("Rename project", "Premenovať projekt", "Projekt átnevezése")}
+                  >
+                    <Edit3 className="h-5 w-5" />
+                  </button>
+                )}
+              </>
+            )}
+          </span>
+        }
+        meta={
+          isEditingName && !nameDraft.trim()
+            ? t(
+                "Left empty, the project is listed under the paired lead's name",
+                "Ak ostane prázdny, projekt sa zobrazí pod menom spárovaného leadu",
+                "Üresen hagyva a projekt a párosított lead nevén szerepel",
+              )
+            : projectType.name
+        }
+        actions={
+          <>
+            {/* Favorite Button */}
+            {!isNew && (
+              <FavoriteHeartButton
+                entityId={project.id}
+                type="project"
+                title={projectName || projectDisplayName({ name: projectName, leadId: associatedLeadId }, leads, t("Untitled project", "Projekt bez názvu", "Névtelen projekt"))}
+                subtitle={projectType.name}
+                color={projectType.color}
+                icon={projectType.icon}
+                url={`#projects/${project.id}`}
+                showLabel
+                systemLanguage={userLanguage}
+                className="bg-white border border-slate-200 hover:border-rose-300 px-3.5 py-2.5 rounded-2xl shadow-xs"
+              />
+            )}
 
-        <div className="flex items-center gap-2 self-start ws-md:self-auto">
-          {/* Favorite Button */}
-          {!isNew && (
-            <FavoriteHeartButton
-              entityId={project.id}
-              type="project"
-              title={projectName || projectDisplayName({ name: projectName, leadId: associatedLeadId }, leads, t("Untitled project", "Projekt bez názvu", "Névtelen projekt"))}
-              subtitle={projectType.name}
-              color={projectType.color}
-              icon={projectType.icon}
-              url={`#projects/${project.id}`}
-              showLabel
-              systemLanguage={userLanguage}
-              className="bg-white border border-slate-200 hover:border-rose-300 px-3.5 py-2.5 rounded-2xl shadow-xs"
-            />
-          )}
+            {/* Archive / Restore Button */}
+            {canEdit && !isNew && (
+              <button
+                type="button"
+                onClick={() => {
+                  const nextArchived = !project.archived;
+                  handleSave({ archived: nextArchived });
+                  const msg = nextArchived
+                    ? t("Project archived.", "Projekt bol archivovaný.", "Projekt archiválva.")
+                    : t("Project restored.", "Projekt bol obnovený.", "Projekt visszaállítva.");
+                  (window as any).showToast?.(msg);
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-amber-600 font-heading font-bold text-ui hover:bg-amber-50 hover:text-amber-800 transition-all active:scale-95 cursor-pointer"
+                title={project.archived ? t("Restore Project", "Obnoviť projekt", "Projekt visszaállítása") : t("Archive Project", "Archivovať projekt", "Projekt archiválása")}
+              >
+                {project.archived ? <ArchiveRestore className="h-4 w-4 shrink-0" /> : <Archive className="h-4 w-4 shrink-0" />}
+                <span className="hidden ws-sm:inline">{project.archived ? t("Restore", "Obnoviť", "Visszaállítás") : t("Archive", "Archivovať", "Archiválás")}</span>
+              </button>
+            )}
 
-          {/* Archive / Restore Button */}
-          {canEdit && !isNew && (
-            <button
-              type="button"
-              onClick={() => {
-                const nextArchived = !project.archived;
-                handleSave({ archived: nextArchived });
-                const msg = nextArchived
-                  ? t("Project archived.", "Projekt bol archivovaný.", "Projekt archiválva.")
-                  : t("Project restored.", "Projekt bol obnovený.", "Projekt visszaállítva.");
-                (window as any).showToast?.(msg);
-              }}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-amber-600 font-heading font-bold text-ui hover:bg-amber-50 hover:text-amber-800 transition-all active:scale-95 cursor-pointer"
-              title={project.archived ? t("Restore Project", "Obnoviť projekt", "Projekt visszaállítása") : t("Archive Project", "Archivovať projekt", "Projekt archiválása")}
-            >
-              {project.archived ? <ArchiveRestore className="h-4 w-4 shrink-0" /> : <Archive className="h-4 w-4 shrink-0" />}
-              <span className="hidden ws-sm:inline">{project.archived ? t("Restore", "Obnoviť", "Visszaállítás") : t("Archive", "Archivovať", "Archiválás")}</span>
-            </button>
-          )}
-
-          {/* Deleting a project that has never been saved would delete nothing,
-              so the button only appears once the project exists. */}
-          {canDelete && !isNew && onDelete && (
-            <button
-              onClick={handleDeleteProject}
-              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-rose-500 font-heading font-bold text-ui hover:bg-rose-50 hover:text-rose-700 transition-all active:scale-95 cursor-pointer"
-              title={t("Delete Project", "Vymazať projekt", "Projekt törlése")}
-            >
-              <Trash2 className="h-4 w-4 shrink-0" />
-              <span className="hidden ws-sm:inline">{t("Delete", "Vymazať", "Törlés")}</span>
-            </button>
-          )}
-          {canEdit ? (
-            /* No Save button: every change saves itself. This only says whether
-               the last one has gone out yet — or why it cannot. */
-            <span
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 type-overline whitespace-nowrap transition-colors duration-200 ${
-                finishBeforeStart ? "text-rose-600" : saveState === "pending" ? "text-slate-400" : "text-emerald-600"
-              }`}
-              data-testid="project-save-state"
-            >
-              {finishBeforeStart ? (
-                <>
-                  <CircleAlert className="h-3.5 w-3.5 shrink-0" />
-                  <span>{t("Not saved — check the dates", "Neuložené — skontrolujte dátumy", "Nincs mentve — ellenőrizze a dátumokat")}</span>
-                </>
-              ) : saveState === "pending" ? (
-                <>
-                  <Icons.Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
-                  <span>{t("Saving…", "Ukladá sa…", "Mentés…")}</span>
-                </>
-              ) : (
-                <>
-                  <Icons.CloudCheck className="h-3.5 w-3.5 shrink-0" />
-                  <span>{t("All changes saved", "Všetko uložené", "Minden mentve")}</span>
-                </>
-              )}
-            </span>
-          ) : (
-            /* Read-only: the same pill the list wears, in place of the save state. */
-            <span
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-amber-200 bg-amber-50 type-overline text-amber-700 whitespace-nowrap"
-              title={t(
-                "Your role can view this project but not change it.",
-                "Vaša rola môže tento projekt prezerať, ale nie meniť.",
-                "A szerepköre megtekintheti ezt a projektet, de nem módosíthatja.",
-              )}
-            >
-              <Icons.Lock className="h-3 w-3 shrink-0" />
-              <span>{t("Read-only access", "Iba na čítanie", "Csak olvasható")}</span>
-            </span>
-          )}
-        </div>
-      </div>
+            {/* Deleting a project that has never been saved would delete nothing,
+                so the button only appears once the project exists. */}
+            {canDelete && !isNew && onDelete && (
+              <button
+                onClick={handleDeleteProject}
+                className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-rose-500 font-heading font-bold text-ui hover:bg-rose-50 hover:text-rose-700 transition-all active:scale-95 cursor-pointer"
+                title={t("Delete Project", "Vymazať projekt", "Projekt törlése")}
+              >
+                <Trash2 className="h-4 w-4 shrink-0" />
+                <span className="hidden ws-sm:inline">{t("Delete", "Vymazať", "Törlés")}</span>
+              </button>
+            )}
+            {canEdit ? (
+              /* No Save button: every change saves itself. This only says whether
+                 the last one has gone out yet — or why it cannot. */
+              <span
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 type-overline whitespace-nowrap transition-colors duration-200 ${
+                  finishBeforeStart ? "text-rose-600" : saveState === "pending" ? "text-slate-400" : "text-emerald-600"
+                }`}
+                data-testid="project-save-state"
+              >
+                {finishBeforeStart ? (
+                  <>
+                    <CircleAlert className="h-3.5 w-3.5 shrink-0" />
+                    <span>{t("Not saved — check the dates", "Neuložené — skontrolujte dátumy", "Nincs mentve — ellenőrizze a dátumokat")}</span>
+                  </>
+                ) : saveState === "pending" ? (
+                  <>
+                    <Icons.Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin" />
+                    <span>{t("Saving…", "Ukladá sa…", "Mentés…")}</span>
+                  </>
+                ) : (
+                  <>
+                    <Icons.CloudCheck className="h-3.5 w-3.5 shrink-0" />
+                    <span>{t("All changes saved", "Všetko uložené", "Minden mentve")}</span>
+                  </>
+                )}
+              </span>
+            ) : (
+              /* Read-only: the same pill the list wears, in place of the save state. */
+              <span
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-amber-200 bg-amber-50 type-overline text-amber-700 whitespace-nowrap"
+                title={t(
+                  "Your role can view this project but not change it.",
+                  "Vaša rola môže tento projekt prezerať, ale nie meniť.",
+                  "A szerepköre megtekintheti ezt a projektet, de nem módosíthatja.",
+                )}
+              >
+                <Icons.Lock className="h-3 w-3 shrink-0" />
+                <span>{t("Read-only access", "Iba na čítanie", "Csak olvasható")}</span>
+              </span>
+            )}
+          </>
+        }
+      />
 
       {/* Workspace Body */}
       <div className="flex-1 ws-lg:overflow-hidden grid grid-cols-1 ws-lg:grid-cols-12 gap-6 pt-6 min-h-0">
@@ -2572,82 +2554,48 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
         {/* RIGHT COLUMN: Timeline & Gantt Tabs */}
         <div className="ws-lg:col-span-8 flex flex-col h-auto ws-lg:h-full ws-lg:overflow-hidden bg-white border border-slate-200 rounded-3xl p-4 ws-sm:p-5 shadow-sm text-left">
-          {/* Tab Switched Header */}
-          <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4 shrink-0">
-            {/* One shape for every tab: icon, label, optional badge. The row
-                scrolls sideways rather than wrapping, so a narrow column keeps
-                the tabs on one line instead of breaking the header. */}
-            <div className="flex items-center gap-1 select-none overflow-x-auto scrollbar-none -mx-1 px-1 py-0.5">
-              {projectType.hasTimeline && (
-                <button
-                  onClick={() => handleRightTabChange("timeline")}
-                  className={`${tabClass} ${activeRightTab === "timeline" ? tabActiveClass : tabIdleClass}`}
-                >
-                  <Icons.Clock className="h-3.5 w-3.5 shrink-0" />
-                  <span>{t("Timeline", "Časová os", "Idővonal")}</span>
-                </button>
-              )}
-              {setTasks && taskAccess.view && (() => {
+          {/* Tab bar: icon, label, optional badge; scrolls sideways rather than wrapping. */}
+          <Tabs<RightTab>
+            className="mb-4 shrink-0"
+            value={activeRightTab}
+            onChange={handleRightTabChange}
+            items={[
+              { key: "timeline", hidden: !projectType.hasTimeline, icon: <Icons.Clock />, label: t("Timeline", "Časová os", "Idővonal") },
+              {
+                key: "tasks",
+                hidden: !(setTasks && taskAccess.view),
+                icon: <Icons.ListChecks />,
+                label: t("Tasks", "Úlohy", "Feladatok"),
                 // Open tasks, counted by the same visibility rule the tab lists them with.
-                const openTaskCount = tasks.filter(tk =>
-                  tk.relatedProjectId === project.id &&
-                  !tk.archived &&
-                  !isDoneTaskState(tk.status, taskStates) &&
-                  (taskAccess.viewAll || isOnPersonalDashboard(tk, currentUser?.name || ""))
-                ).length;
-                return (
-                  <button
-                    onClick={() => handleRightTabChange("tasks")}
-                    className={`${tabClass} ${activeRightTab === "tasks" ? tabActiveClass : tabIdleClass}`}
-                  >
-                    <Icons.ListChecks className="h-3.5 w-3.5 shrink-0" />
-                    <span>{t("Tasks", "Úlohy", "Feladatok")}</span>
-                    {openTaskCount > 0 && (
-                      <span className={`${tabBadgeClass} ${activeRightTab === "tasks" ? "bg-white/20 text-white" : "bg-indigo-500/15 text-indigo-600"}`}>
-                        {openTaskCount}
-                      </span>
-                    )}
-                  </button>
-                );
-              })()}
-              {projectType.hasGantt && (
-                <button
-                  onClick={() => handleRightTabChange("gantt")}
-                  className={`${tabClass} ${activeRightTab === "gantt" ? tabActiveClass : tabIdleClass}`}
-                >
-                  <Icons.GanttChartSquare className="h-3.5 w-3.5 shrink-0" />
-                  <span>{t("Gantt Chart", "Ganttov diagram", "Gantt diagram")}</span>
-                </button>
-              )}
-              <button
-                onClick={() => handleRightTabChange("finances")}
-                className={`${tabClass} ${activeRightTab === "finances" ? tabActiveClass : tabIdleClass}`}
-                title={t("Finances & Revenue", "Financie & Ziskovosť", "Pénzügyek & Jövedelmezőség")}
-              >
-                <Coins className="h-3.5 w-3.5 shrink-0" />
-                <span>{t("Finances", "Financie", "Pénzügyek")}</span>
-                <span className={`${tabBadgeClass} ${
-                  revenueAnalysis.realProfit >= 0
-                    ? activeRightTab === "finances" ? "bg-emerald-400/20 text-emerald-300" : "bg-emerald-500/15 text-emerald-600"
-                    : activeRightTab === "finances" ? "bg-rose-400/20 text-rose-300" : "bg-rose-500/15 text-rose-600"
-                }`}>
-                  {money(revenueAnalysis.realProfit)}
-                </span>
-              </button>
-              <button
-                onClick={() => handleRightTabChange("files")}
-                className={`${tabClass} ${activeRightTab === "files" ? tabActiveClass : tabIdleClass}`}
-              >
-                <Paperclip className="h-3.5 w-3.5 shrink-0" />
-                <span>{t("Files", "Súbory", "Fájlok")}</span>
-                {missingFileCount > 0 && (
-                  <span className={`${tabBadgeClass} bg-rose-500/20 text-rose-500`}>
-                    {missingFileCount}
+                count:
+                  tasks.filter(tk =>
+                    tk.relatedProjectId === project.id &&
+                    !tk.archived &&
+                    !isDoneTaskState(tk.status, taskStates) &&
+                    (taskAccess.viewAll || isOnPersonalDashboard(tk, currentUser?.name || ""))
+                  ).length || undefined,
+              },
+              { key: "gantt", hidden: !projectType.hasGantt, icon: <Icons.GanttChartSquare />, label: t("Gantt Chart", "Ganttov diagram", "Gantt diagram") },
+              {
+                key: "finances",
+                icon: <Coins />,
+                label: t("Finances", "Financie", "Pénzügyek"),
+                badge: (
+                  <span className={`px-1.5 rounded-full text-micro font-semibold tabular-nums ${revenueAnalysis.realProfit >= 0 ? "bg-emerald-500/15 text-emerald-700" : "bg-rose-500/15 text-rose-700"}`}>
+                    {money(revenueAnalysis.realProfit)}
                   </span>
-                )}
-              </button>
-            </div>
-          </div>
+                ),
+              },
+              {
+                key: "files",
+                icon: <Paperclip />,
+                label: t("Files", "Súbory", "Fájlok"),
+                badge: missingFileCount > 0 ? (
+                  <span className="px-1.5 rounded-full text-micro font-semibold tabular-nums bg-rose-500/20 text-rose-600">{missingFileCount}</span>
+                ) : undefined,
+              },
+            ]}
+          />
 
           {/* TAB CONTENT: Tasks — ordinary tasks that carry this project's id */}
           {activeRightTab === "tasks" && setTasks && (

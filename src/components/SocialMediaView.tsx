@@ -10,7 +10,7 @@ import {
 import { CustomSelect } from "./ui/CustomSelect";
 import type { Language } from "../utils/translations";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
-import { PageHeader, Tabs } from "./layout";
+import { StatGrid, EntityHeader, PageHeader, Tabs } from "./layout";
 
 interface SocialMediaViewProps {
   systemLanguage: Language;
@@ -902,60 +902,51 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
         /* DEDICATED FULL VIEW: LINKABLE POST DETAILS & COMMENTS FEED */
         <div className="space-y-6 animate-fade-in select-none">
           {/* Header Navigation Bar — same title-block + actions shape as the hub view */}
-          <div className="flex flex-col ws-sm:flex-row ws-sm:items-center ws-sm:justify-between gap-4 border-b border-slate-100 pb-4">
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={handleClosePostDetails}
-                className="p-2 rounded-xl hover:bg-slate-100 text-slate-500 transition-colors cursor-pointer shrink-0"
-                title={t("Back to Social Media Hub", "Späť na Správu sociálnych sietí", "Vissza a Közösségi Média Hubhoz")}
-              >
-                <ArrowLeft className="h-5 w-5" />
-              </button>
-              <div className="flex flex-col">
-                <h1 className="type-page-title text-slate-900 flex items-center gap-2">
-                  <Share2 className="h-6 w-6 text-rose-600" />
-                  {t("Post Details", "Detail príspevku", "Bejegyzés részletei")}
-                </h1>
-                <p className="text-ui text-slate-500 font-mono font-semibold tracking-wider mt-1">
-                  #social_media/post/{selectedPostModal.id}
-                </p>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 shrink-0 flex-wrap">
-              <button
-                type="button"
-                onClick={async () => {
-                  const fullUrl = `${window.location.origin}${window.location.pathname}#social_media/post/${selectedPostModal.id}`;
-                  try {
-                    // navigator.clipboard is undefined on plain-http origins, so the
-                    // success toast used to fire while nothing was copied.
-                    if (navigator.clipboard?.writeText) {
-                      await navigator.clipboard.writeText(fullUrl);
-                    } else {
-                      const ta = document.createElement("textarea");
-                      ta.value = fullUrl;
-                      ta.style.position = "fixed";
-                      ta.style.opacity = "0";
-                      document.body.appendChild(ta);
-                      ta.select();
-                      const ok = document.execCommand("copy");
-                      document.body.removeChild(ta);
-                      if (!ok) throw new Error("copy command rejected");
+          <EntityHeader
+            onBack={handleClosePostDetails}
+            backLabel={t("Back to Social Media Hub", "Späť na Správu sociálnych sietí", "Vissza a Közösségi Média Hubhoz")}
+            title={
+              <span className="inline-flex items-center gap-2">
+                <Share2 className="size-6 shrink-0 text-rose-600" />
+                {t("Post Details", "Detail príspevku", "Bejegyzés részletei")}
+              </span>
+            }
+            meta={<span className="font-mono tracking-wider">#social_media/post/{selectedPostModal.id}</span>}
+            actions={
+              <>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const fullUrl = `${window.location.origin}${window.location.pathname}#social_media/post/${selectedPostModal.id}`;
+                    try {
+                      // navigator.clipboard is undefined on plain-http origins, so the
+                      // success toast used to fire while nothing was copied.
+                      if (navigator.clipboard?.writeText) {
+                        await navigator.clipboard.writeText(fullUrl);
+                      } else {
+                        const ta = document.createElement("textarea");
+                        ta.value = fullUrl;
+                        ta.style.position = "fixed";
+                        ta.style.opacity = "0";
+                        document.body.appendChild(ta);
+                        ta.select();
+                        const ok = document.execCommand("copy");
+                        document.body.removeChild(ta);
+                        if (!ok) throw new Error("copy command rejected");
+                      }
+                      (window as any).showToast?.(t("Post link copied to clipboard!", "Odkaz na príspevok bol skopírovaný!", "Bejegyzés hivatkozás másolva!"));
+                    } catch {
+                      (window as any).showToast?.(t("Could not copy the link.", "Odkaz sa nepodarilo skopírovať.", "A hivatkozást nem sikerült másolni."), "error");
                     }
-                    (window as any).showToast?.(t("Post link copied to clipboard!", "Odkaz na príspevok bol skopírovaný!", "Bejegyzés hivatkozás másolva!"));
-                  } catch {
-                    (window as any).showToast?.(t("Could not copy the link.", "Odkaz sa nepodarilo skopírovať.", "A hivatkozást nem sikerült másolni."), "error");
-                  }
-                }}
-                className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors text-ui font-heading font-bold flex items-center gap-1.5 cursor-pointer shrink-0"
-              >
-                <Share2 className="h-4 w-4" />
-                {t("Copy CCRM Link", "Kopírovať odkaz", "Link másolása")}
-              </button>
-            </div>
-          </div>
+                  }}
+                  className="px-4 py-2.5 rounded-xl border border-slate-200 bg-white text-slate-600 hover:text-slate-800 hover:bg-slate-50 transition-colors text-ui font-heading font-bold flex items-center gap-1.5 cursor-pointer shrink-0"
+                >
+                  <Share2 className="h-4 w-4" />
+                  {t("Copy CCRM Link", "Kopírovať odkaz", "Link másolása")}
+                </button>
+              </>
+            }
+          />
 
           {/* 2-COLUMN MAIN WORKSPACE VIEW */}
           <div className="grid grid-cols-1 ws-lg:grid-cols-12 gap-6 items-start">
@@ -1808,7 +1799,7 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
                       chips ("-2.5% vs prev"), a 1,420-follower count and a Reach
                       figure derived by multiplying impressions by 0.6; none of
                       those had a data source, so they are gone rather than faked. */}
-                  <div className="grid grid-cols-1 ws-sm:grid-cols-2 ws-lg:grid-cols-4 gap-4">
+                  <StatGrid count={4}>
                     <div className="glass-panel p-5 rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-2">
                       <span className="type-overline text-slate-400 block">
                         {t("Engagement Rate", "Miera angažovanosti", "Kötődési arány")}
@@ -1856,7 +1847,7 @@ const getPlatformMeta = (key: string) => PLATFORM_CONFIG[key] || UNKNOWN_PLATFOR
                         {analyticsKpis.publishedCount} {t("published", "publikovaných", "közzétéve")} · {analyticsKpis.scheduledCount} {t("scheduled", "naplánovaných", "ütemezve")}
                       </span>
                     </div>
-                  </div>
+                  </StatGrid>
 
                   {/* BEST POST — ranked, not "whatever came first in the array" */}
                   {rankedPosts[0] && (

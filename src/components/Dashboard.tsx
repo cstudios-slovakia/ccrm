@@ -14,7 +14,7 @@ import { isClosedLeadState } from "../utils/leadSla";
 import { openProjectStatuses, projectStatusColor, projectStatusLabel } from "../utils/projects";
 import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import { GroupedStatusValueEquationStats, type StatusStatGroup, type StatusStatItem, type StatusStatDetailRow } from "./GroupedStatusValueEquationStats";
-import { PageHeader, Tabs } from "./layout";
+import { StatGrid, PageHeader, Tabs } from "./layout";
 
 interface DashboardProps {
   systemName: string;
@@ -1192,7 +1192,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       {activeTab === "overview" && (
         <div className="space-y-6">
           {/* Key Metric cards */}
-          <div className="grid grid-cols-1 ws-sm:grid-cols-2 ws-lg:grid-cols-4 gap-4 animate-in slide-in-from-bottom duration-300">
+          <StatGrid count={4} className="animate-in slide-in-from-bottom duration-300">
             <div 
               onClick={() => handleInspectChart("revenue")}
               className="glass-panel p-5 rounded-3xl border-2 border-emerald-400 bg-gradient-to-br from-emerald-500/10 to-teal-500/5 shadow-md shadow-emerald-500/5 flex items-center gap-4 hover:scale-[1.03] active:scale-[0.98] cursor-pointer transition-all duration-200 relative overflow-hidden group"
@@ -1260,7 +1260,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
               </div>
               <Sparkline points={conversionPoints} color="#f43f5e" />
             </div>
-          </div>
+          </StatGrid>
 
           <div className="grid grid-cols-1 ws-lg:grid-cols-12 gap-6">
             {/* Playful Pipeline Funnel Graph */}

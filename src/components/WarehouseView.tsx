@@ -88,7 +88,7 @@ import type {
   Lead,
   UserProfile
 } from "../types";
-import { PageHeader, Tabs } from "./layout";
+import { StatGrid, PageHeader, Tabs } from "./layout";
 
 interface WarehouseViewProps {
   systemLanguage: Language;
@@ -4755,7 +4755,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
       />
 
       {/* Metric Cards Banner */}
-      <div className="grid grid-cols-1 ws-sm:grid-cols-2 ws-lg:grid-cols-4 gap-4">
+      <StatGrid count={4}>
         {/* Card 1: Total Inventory Valuation */}
         <div className="bg-white p-4 rounded-2xl border border-slate-200/80 shadow-sm relative overflow-hidden flex flex-col justify-between">
           <div className="flex items-start justify-between">
@@ -4844,7 +4844,7 @@ export const WarehouseView: React.FC<WarehouseViewProps> = ({
             <span>{t("Avg. Margin", "Priem. marža", "Átlagos árrés")}: {metrics.averageMarginPercent.toFixed(1)}%</span>
           </div>
         </div>
-      </div>
+      </StatGrid>
 
       {/* Sub-Tabs Bar */}
       <Tabs

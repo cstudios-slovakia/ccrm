@@ -26,7 +26,7 @@ import { nextDocumentNumber as nextDocumentNumberShared } from "../utils/documen
 import { cn } from "../utils/cn";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import type { ModuleAccess } from "../utils/permissions";
-import { PageHeader } from "./layout";
+import { PageHeader, StatGrid, StatTile } from "./layout";
 
 interface InvoicingViewProps {
   invoicesOffers: InvoiceOffer[];
@@ -1047,7 +1047,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
       )}
 
       {/* 3. KPI OVERVIEW */}
-      <div className="grid grid-cols-1 ws-sm:grid-cols-2 ws-lg:grid-cols-4 gap-4">
+      <StatGrid count={4}>
         {[
           {
             icon: <Layers className="h-6 w-6" />,
@@ -1078,19 +1078,9 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
             value: String(metrics.totalCount)
           }
         ].map(card => (
-          <div
-            key={card.label}
-            className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm flex items-center gap-4 transition-all hover:shadow-md"
-          >
-            <div className={cn("p-3 rounded-2xl shrink-0", card.tone)}>{card.icon}</div>
-            <div className="min-w-0">
-              <div className="type-overline text-slate-400">{card.label}</div>
-              <div className="text-title font-bold text-slate-900 mt-0.5 truncate">{card.value}</div>
-              {card.hint && <div className="text-micro text-slate-400 font-medium">{card.hint}</div>}
-            </div>
-          </div>
+          <StatTile key={card.label} icon={card.icon} tone={card.tone} label={card.label} value={card.value} delta={card.hint} />
         ))}
-      </div>
+      </StatGrid>
 
       {/* 4. SEARCH & FILTERS */}
       <div className="bg-white p-3 ws-sm:p-4 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col ws-xl:flex-row gap-2.5 ws-sm:gap-3 ws-xl:items-center ws-xl:justify-between">

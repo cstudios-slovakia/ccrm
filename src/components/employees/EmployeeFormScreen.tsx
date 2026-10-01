@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
+import { PageHeader } from "../layout";
 import {
   ArrowLeft,
   User,
@@ -371,53 +372,43 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
         </div>
       </div>
 
-      {/* Screen Title Banner */}
-      <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-6 flex flex-col ws-md:flex-row ws-md:items-center justify-between gap-4">
-        <div className="flex items-start gap-4">
-          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-[#c29b62] to-[#9e7638] text-white flex items-center justify-center shadow-lg shadow-[#c29b62]/30 shrink-0">
-            {isEditing ? <User className="w-7 h-7" /> : <UserPlus className="w-7 h-7" />}
-          </div>
-          <div>
-            <h1 className="type-page-title text-slate-900">
-              {isEditing
-                ? t(`Edit Employee: ${employee.name}`, `Úprava zamestnanca: ${employee.name}`, `Alkalmazott szerkesztése: ${employee.name}`)
-                : t("Add New Employee", "Nový zamestnanec", "Új alkalmazott")}
-            </h1>
-            <p className="text-ui text-slate-500 font-medium mt-1">
-              {t(
-                "Configure personal data, contract conditions, salary rate, Toggl time tracking & vacation quotas",
-                "Osobné údaje, zmluvné podmienky, mzdová sadzba, prepojenie na Toggl a nároky na dovolenku",
-                "Személyes adatok, szerződéses feltételek, bérsáv, Toggl időkövetés és szabadságkeret"
-              )}
-            </p>
-          </div>
+      {/* Screen title (docs/VIEW-SIZE.md §6.2) */}
+      <PageHeader
+        icon={isEditing ? <User className="text-[#9e7638]" /> : <UserPlus className="text-[#9e7638]" />}
+        title={isEditing
+          ? t(`Edit Employee: ${employee.name}`, `Úprava zamestnanca: ${employee.name}`, `Alkalmazott szerkesztése: ${employee.name}`)
+          : t("Add New Employee", "Nový zamestnanec", "Új alkalmazott")}
+        subtitle={t(
+          "Configure personal data, contract conditions, salary rate, Toggl time tracking & vacation quotas",
+          "Osobné údaje, zmluvné podmienky, mzdová sadzba, prepojenie na Toggl a nároky na dovolenku",
+          "Személyes adatok, szerződéses feltételek, bérsáv, Toggl időkövetés és szabadságkeret"
+        )}
+        actions={
+      <div className="flex items-center gap-3 p-2.5 px-4 rounded-2xl bg-slate-50/80 border border-slate-200/80">
+        <div>
+          <span className="text-ui font-bold text-slate-800 block">
+            {isActive
+              ? t("Active Employee", "Aktívny zamestnanec", "Aktív alkalmazott")
+              : t("Inactive / Archived", "Neaktívny / Archivovaný", "Inaktív / Archivált")}
+          </span>
+          <span className="text-micro text-slate-400 block">
+            {isActive
+              ? t("Included in payroll and matrices", "Zahrnutý v mzdovej matici", "Szerepel a bérmátrixban")
+              : t("Excluded from active calculations", "Vylúčený z aktívnych výpočtov", "Nem szerepel a számításokban")}
+          </span>
         </div>
-
-        {/* Status switch in banner */}
-        <div className="flex items-center gap-3 self-start ws-md:self-auto p-2.5 px-4 rounded-2xl bg-slate-50/80 border border-slate-200/80">
-          <div>
-            <span className="text-ui font-bold text-slate-800 block">
-              {isActive
-                ? t("Active Employee", "Aktívny zamestnanec", "Aktív alkalmazott")
-                : t("Inactive / Archived", "Neaktívny / Archivovaný", "Inaktív / Archivált")}
-            </span>
-            <span className="text-micro text-slate-400 block">
-              {isActive
-                ? t("Included in payroll and matrices", "Zahrnutý v mzdovej matici", "Szerepel a bérmátrixban")
-                : t("Excluded from active calculations", "Vylúčený z aktívnych výpočtov", "Nem szerepel a számításokban")}
-            </span>
-          </div>
-          <label className="relative inline-flex items-center cursor-pointer ml-2">
-            <input
-              type="checkbox"
-              checked={isActive}
-              onChange={(e) => setIsActive(e.target.checked)}
-              className="sr-only peer"
-            />
-            <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
-          </label>
-        </div>
+        <label className="relative inline-flex items-center cursor-pointer ml-2">
+          <input
+            type="checkbox"
+            checked={isActive}
+            onChange={(e) => setIsActive(e.target.checked)}
+            className="sr-only peer"
+          />
+          <div className="w-11 h-6 bg-slate-300 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-emerald-500"></div>
+        </label>
       </div>
+        }
+      />
 
       {/* Validation banner if error */}
       {validationError && (

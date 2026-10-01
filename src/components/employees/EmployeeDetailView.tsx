@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useMemo } from "react";
 import {
-  ArrowLeft,
   Mail,
   Phone,
   MapPin,
@@ -33,6 +32,7 @@ import type {
   FinancialCategory
 } from "../../types";
 import { VacationRequestModal } from "./VacationRequestModal";
+import { EntityHeader } from "../layout";
 import { formatNumber } from "../../utils/currency";
 import { SalaryCellDrawer } from "./SalaryCellDrawer";
 import { EmployeeTimesheetSummary, type TimesheetHoursData } from "./EmployeeTimesheetSummary";
@@ -612,18 +612,18 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Top Breadcrumb & Actions Bar */}
-      <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4">
-        <div className="flex items-center gap-3">
-          <button
-            onClick={onBack}
-            className="flex items-center gap-1.5 px-3.5 py-2 text-ui font-semibold rounded-2xl glass-panel border border-white/60 bg-white/90 text-slate-700 hover:bg-white hover:text-slate-900 transition shadow-sm"
-          >
-            <ArrowLeft className="w-4 h-4 text-slate-500" />
-            <span>{t("Back to Employees", "Späť na zoznam", "Vissza az alkalmazottakhoz")}</span>
-          </button>
-
-          <div className="flex items-center gap-2">
+      {/* Entity header: back, avatar, name; status and meta beneath (docs/VIEW-SIZE.md §6.2) */}
+      <EntityHeader
+        onBack={onBack}
+        backLabel={t("Back to Employees", "Späť na zoznam", "Vissza az alkalmazottakhoz")}
+        avatar={
+          <div className="size-12 rounded-2xl bg-gradient-to-br from-[#c29b62] to-[#9e7638] text-white flex items-center justify-center font-heading font-bold text-title shadow-md">
+            {employee.name ? employee.name.split(" ").map(n => n[0]).slice(0, 2).join("").toUpperCase() : "EM"}
+          </div>
+        }
+        title={employee.name}
+        badges={
+          <>
             <span
               className={`px-2.5 py-0.5 text-ui font-semibold rounded-full ${
                 employee.isActive !== false
@@ -633,41 +633,15 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
             >
               {employee.isActive !== false ? t("Active", "Aktívny", "Aktív") : t("Inactive", "Neaktívny", "Inaktív")}
             </span>
-            <span className="text-ui text-slate-400">• ID: {employee.id}</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Entity Title Header */}
-      <div className="flex flex-col ws-md:flex-row ws-md:items-center ws-md:justify-between gap-4 border-b border-slate-200/80 pb-4">
-        <div className="flex items-center gap-3.5 min-w-0">
-          <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-[#c29b62] to-[#9e7638] text-white flex items-center justify-center font-heading font-bold text-title shadow-md shrink-0">
-            {employee.name ? employee.name.split(" ").map(n => n[0]).slice(0, 2).join("").toUpperCase() : "EM"}
-          </div>
-          <div className="min-w-0">
-            <h1 className="type-entity-title text-slate-900 truncate">
-              {employee.name}
-            </h1>
-            <div className="flex items-center gap-2 mt-1 text-ui text-slate-500 font-semibold flex-wrap">
-              {employee.role && (
-                <span className="text-slate-800 bg-amber-50 text-amber-900 border border-amber-200/80 px-2.5 py-0.5 rounded-full type-overline">
-                  {employee.role}
-                </span>
-              )}
-              {employee.addressCity && (
-                <span className="text-slate-600 font-medium">
-                  {employee.addressCity}
-                </span>
-              )}
-              {employee.email && (
-                <span className="text-slate-400 font-medium">
-                  • {employee.email}
-                </span>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
+            {employee.role && (
+              <span className="bg-amber-50 text-amber-900 border border-amber-200/80 px-2.5 py-0.5 rounded-full type-overline">
+                {employee.role}
+              </span>
+            )}
+          </>
+        }
+        meta={[employee.addressCity, employee.email, `ID: ${employee.id}`].filter(Boolean).join(" • ")}
+      />
 
       {/* Main Split Layout: Left Profile & Documents, Right 3 Sub-Tabs */}
       <div className="grid grid-cols-1 ws-lg:grid-cols-12 gap-6">

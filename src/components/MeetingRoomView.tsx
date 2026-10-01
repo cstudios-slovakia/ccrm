@@ -13,7 +13,7 @@ import { CustomSelect, DropdownSearchRow } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { useQuickAddClient } from "./ui/QuickAddClient";
 import { registerPendingSave } from "../utils/pendingSaves";
-import { Tabs } from "./layout";
+import { PageHeader, Tabs } from "./layout";
 
 const parseNotesToBlocks = (notes: string): EditorBlock[] => {
   if (notes.trim().startsWith("[")) {
@@ -1723,55 +1723,52 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
   return (
     <div className="space-y-6">
       {/* HEADER SECTION */}
-      {viewState !== "new" && (
-        <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
-          {viewState === "list" ? (
+      {/* Module header (docs/VIEW-SIZE.md §6.2) */}
+      {viewState === "list" && (
+        <PageHeader
+          icon={<Sparkles className="text-indigo-500" />}
+          title={t("AI Meeting Room & Note Summarizer", "AI Zasadačka a analýza stretnutí", "AI Tárgyaló és megbeszélés elemzés")}
+          subtitle={t(
+            "Log call/meeting notes, view raw conversations, and let AI automatically extract key take-aways, sentiment analysis, and follow-up actions.",
+            "Nahrávajte stretnutia, sledujte prepisy a nechajte umelú inteligenciu vygenerovať zhrnutia a úlohy.",
+            "Rögzítse megbeszéléseit, tekintse meg a leiratokat, és hagyja, hogy a mesterséges inteligenciát összefoglalót készítsen."
+          )}
+          actions={
             <>
-              <div className="flex flex-col">
-                <h2 className="type-page-title text-slate-900 flex items-center gap-2">
-                  <Sparkles className="h-6 w-6 text-indigo-500" />
-                  {systemLanguage === "sk" ? "AI Zasadačka a analýza stretnutí" : systemLanguage === "hu" ? "AI Tárgyaló és megbeszélés elemzés" : "AI Meeting Room & Note Summarizer"}
-                </h2>
-                <p className="text-ui text-slate-500 font-semibold mt-1">
-                  {systemLanguage === "sk" 
-                    ? "Nahrávajte stretnutia, sledujte prepisy a nechajte umelú inteligenciu vygenerovať zhrnutia a úlohy." 
-                    : systemLanguage === "hu" 
-                      ? "Rögzítse megbeszéléseit, tekintse meg a leiratokat, és hagyja, hogy a mesterséges inteligenciát összefoglalót készítsen." 
-                      : "Log call/meeting notes, view raw conversations, and let AI automatically extract key take-aways, sentiment analysis, and follow-up actions."}
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2 ws-sm:shrink-0">
-                {!canEdit && (
-                  <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 type-overline">
-                    <Lock className="h-3.5 w-3.5" />
-                    {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
-                  </span>
-                )}
-                {canEdit && (
+              {!canEdit && (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 type-overline">
+                  <Lock className="h-3.5 w-3.5" />
+                  {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
+                </span>
+              )}
+              {canEdit && (
                 <button
                   onClick={() => {
                     window.location.hash = "meetings/new?record=true";
                   }}
-                  className="px-5 py-3 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white shadow-md shadow-rose-600/20 transition-all font-heading font-bold text-ui flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95 shrink-0"
+                  className="h-9 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white shadow-md shadow-rose-600/20 transition-all font-heading font-semibold text-ui flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95 shrink-0"
                 >
-                  <Mic className="h-4.5 w-4.5" />
-                  {systemLanguage === "sk" ? "Nahrať stretnutie" : systemLanguage === "hu" ? "Rögzítés" : "Record Meeting"}
+                  <Mic className="size-4" />
+                  {t("Record Meeting", "Nahrať stretnutie", "Rögzítés")}
                 </button>
-                )}
-                {canEdit && (
+              )}
+              {canEdit && (
                 <button
                   onClick={() => { window.location.hash = "meetings/new"; }}
-                  className="px-5 py-3 rounded-2xl bg-[#0b1329] text-white hover:bg-slate-900 shadow-md shadow-[#0b1329]/20 transition-all font-heading font-bold text-ui flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95 shrink-0"
+                  className="h-9 px-3 rounded-xl bg-[#0b1329] text-white hover:bg-slate-900 shadow-md shadow-[#0b1329]/20 transition-all font-heading font-semibold text-ui flex items-center gap-2 cursor-pointer hover:scale-[1.02] active:scale-95 shrink-0"
                 >
-                  <Plus className="h-4.5 w-4.5" />
-                  {systemLanguage === "sk" ? "Nové stretnutie" : systemLanguage === "hu" ? "Új megbeszélés" : "New Meeting Note"}
+                  <Plus className="size-4" />
+                  {t("New Meeting Note", "Nové stretnutie", "Új megbeszélés")}
                 </button>
-                )}
-              </div>
+              )}
             </>
-          ) : (
-            <>
-              <button
+          }
+        />
+      )}
+      {viewState !== "new" && viewState !== "list" && (
+        <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+          <>
+            <button
                 onClick={() => {
                   window.location.hash = "meetings";
                 }}
@@ -1814,8 +1811,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                   )}
                 </button>
               )}
-            </>
-          )}
+          </>
         </div>
       )}
 

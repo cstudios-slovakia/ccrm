@@ -1,3 +1,4 @@
+import { PageHeader } from "./layout";
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import {
@@ -1405,61 +1406,52 @@ export const EmailView: React.FC<EmailViewProps> = ({
 
   return (
     <div className="space-y-5 select-none animate-fade-in text-slate-800">
-    {/* Title header */}
-    <div className="flex flex-col ws-md:flex-row ws-md:items-center ws-md:justify-between gap-4">
-      <div className="flex items-center gap-4 min-w-0">
-        <span className="h-12 w-12 rounded-2xl bg-pink-50 border border-pink-100 flex items-center justify-center shrink-0">
-          <Mail className="h-6 w-6 text-pink-600" />
-        </span>
-        <div className="min-w-0">
-          <h2 className="type-page-title text-slate-900">
-            {t("Email Inbox", "Emailová schránka", "E-mail postafiók")}
-          </h2>
-          <p className="text-body text-slate-500 mt-0.5">
-            {t("Unified SMTP / IMAP inbox connected to your CRM contacts", "Jednotná SMTP / IMAP schránka prepojená s kontaktmi CRM", "Egységes SMTP / IMAP postafiók a CRM kapcsolatokhoz")}
-          </p>
-        </div>
-      </div>
-
-      <div className="flex flex-wrap items-center gap-2">
-        {!canEdit && (
-          <span
-            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-body font-bold shrink-0"
-            title={t("Your role can read mail but not send it or write into the CRM from here.", "Vaša rola môže poštu čítať, ale nie odosielať ani odtiaľto zapisovať do CRM.", "A szerepköre olvashatja a leveleket, de nem küldhet, és innen nem írhat a CRM-be.")}
-          >
-            <Lock className="h-4 w-4" />
-            {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
+    {/* Module header (docs/VIEW-SIZE.md §6.2) */}
+    <PageHeader
+      icon={<Mail className="text-pink-600" />}
+      title={t("Email Inbox", "Emailová schránka", "E-mail postafiók")}
+      subtitle={t("Unified SMTP / IMAP inbox connected to your CRM contacts", "Jednotná SMTP / IMAP schránka prepojená s kontaktmi CRM", "Egységes SMTP / IMAP postafiók a CRM kapcsolatokhoz")}
+      actions={
+        <>
+          {!canEdit && (
+            <span
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 text-body font-bold shrink-0"
+              title={t("Your role can read mail but not send it or write into the CRM from here.", "Vaša rola môže poštu čítať, ale nie odosielať ani odtiaľto zapisovať do CRM.", "A szerepköre olvashatja a leveleket, de nem küldhet, és innen nem írhat a CRM-be.")}
+            >
+              <Lock className="h-4 w-4" />
+              {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
+            </span>
+          )}
+          <span className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-body font-semibold text-slate-600 shadow-2xs">
+            <span className={`h-2 w-2 rounded-full shrink-0 ${isSyncingEmails ? "bg-pink-500 animate-pulse" : "bg-emerald-500"}`} />
+            {isSyncingEmails
+              ? t("Syncing with mailbox...", "Synchronizuje sa so schránkou...", "Szinkronizálás a postafiókkal...")
+              : lastSyncAt
+                ? `${t("Synced", "Synchronizované", "Szinkronizálva")} ${lastSyncAt.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })} · ${t("every 60 s", "každých 60 s", "60 mp-enként")}`
+                : t("Auto-sync every 60s", "Automatická synchronizácia každých 60 s", "Automatikus szinkronizálás 60 mp-enként")}
           </span>
-        )}
-        <span className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-body font-semibold text-slate-600 shadow-2xs">
-          <span className={`h-2 w-2 rounded-full shrink-0 ${isSyncingEmails ? "bg-pink-500 animate-pulse" : "bg-emerald-500"}`} />
-          {isSyncingEmails
-            ? t("Syncing with mailbox...", "Synchronizuje sa so schránkou...", "Szinkronizálás a postafiókkal...")
-            : lastSyncAt
-              ? `${t("Synced", "Synchronizované", "Szinkronizálva")} ${lastSyncAt.toLocaleTimeString(locale, { hour: "2-digit", minute: "2-digit" })} · ${t("every 60 s", "každých 60 s", "60 mp-enként")}`
-              : t("Auto-sync every 60s", "Automatická synchronizácia každých 60 s", "Automatikus szinkronizálás 60 mp-enként")}
-        </span>
-        <button
-          type="button"
-          onClick={handleManualSync}
-          disabled={isSyncingEmails}
-          title={
-            lastSyncAt
-              ? `${t("Last synced", "Naposledy synchronizované", "Utoljára szinkronizálva")}: ${lastSyncAt.toLocaleTimeString()}`
-              : t("Sync now", "Synchronizovať teraz", "Szinkronizálás most")
-          }
-          aria-label={t("Sync now", "Synchronizovať teraz", "Szinkronizálás most")}
-          className="h-10 w-10 bg-white hover:bg-slate-50 active:scale-95 border border-slate-200 text-slate-600 hover:text-pink-600 rounded-xl transition-all flex items-center justify-center shadow-2xs shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
-        >
-          <RefreshCw size={16} className={isSyncingEmails ? "animate-spin" : ""} />
-        </button>
-        {canEdit && (
-          <button type="button" onClick={() => openNewComposer()} className={`${primaryButtonClass} shrink-0`}>
-            <Plus size={16} /> {t("New Message", "Nová správa", "Új üzenet")}
+          <button
+            type="button"
+            onClick={handleManualSync}
+            disabled={isSyncingEmails}
+            title={
+              lastSyncAt
+                ? `${t("Last synced", "Naposledy synchronizované", "Utoljára szinkronizálva")}: ${lastSyncAt.toLocaleTimeString()}`
+                : t("Sync now", "Synchronizovať teraz", "Szinkronizálás most")
+            }
+            aria-label={t("Sync now", "Synchronizovať teraz", "Szinkronizálás most")}
+            className="h-10 w-10 bg-white hover:bg-slate-50 active:scale-95 border border-slate-200 text-slate-600 hover:text-pink-600 rounded-xl transition-all flex items-center justify-center shadow-2xs shrink-0 cursor-pointer disabled:cursor-not-allowed disabled:opacity-60 disabled:active:scale-100"
+          >
+            <RefreshCw size={16} className={isSyncingEmails ? "animate-spin" : ""} />
           </button>
-        )}
-      </div>
-    </div>
+          {canEdit && (
+            <button type="button" onClick={() => openNewComposer()} className={`${primaryButtonClass} shrink-0`}>
+              <Plus size={16} /> {t("New Message", "Nová správa", "Új üzenet")}
+            </button>
+          )}
+        </>
+      }
+    />
 
     <div className={`grid grid-cols-1 ws-lg:grid-cols-12 gap-5 select-none h-[calc(100vh-280px)] min-h-130 items-stretch overflow-hidden animate-slide-up email-view-root ${isLargeFont ? 'email-view-large' : ''}`}>
       <style>{`

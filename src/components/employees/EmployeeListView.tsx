@@ -1,3 +1,4 @@
+import { StatGrid } from "../layout";
 import React, { useState, useMemo } from "react";
 import {
   Search,
@@ -119,7 +120,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
   return (
     <div className="space-y-6">
       {/* KPI Cards Row */}
-      <div className="grid grid-cols-1 ws-sm:grid-cols-2 ws-lg:grid-cols-4 gap-4">
+      <StatGrid count={4}>
         {/* Total Staff */}
         <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass p-5 flex items-center justify-between hover:shadow-lg transition-all">
           <div>
@@ -192,7 +193,7 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
             <Calendar className="w-6 h-6" />
           </div>
         </div>
-      </div>
+      </StatGrid>
 
       {/* Filter and Search Bar */}
       <div className="glass-panel rounded-2xl border border-white/60 bg-white/95 shadow-glass p-3 flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3">

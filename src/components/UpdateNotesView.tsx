@@ -1,3 +1,4 @@
+import { PageHeader } from "./layout";
 import React, { useState, useEffect } from "react";
 import { Sparkles, Calendar, Loader2 } from "lucide-react";
 import type { Language } from "../utils/translations";
@@ -178,37 +179,21 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
 
     return (
         <div className="flex-1 flex flex-col gap-6 w-full">
-            {/* Top Banner */}
-            <div className="bg-gradient-to-r from-indigo-500 to-violet-600 rounded-3xl p-6 ws-md:p-8 text-white shadow-lg relative overflow-hidden select-none">
-                <div className="absolute right-0 bottom-0 opacity-15 transform translate-x-6 translate-y-6">
-                    <Sparkles className="h-48 w-48" />
-                </div>
-                <div className="relative z-10">
-                    <div className="flex items-center gap-2">
-                        <span className="px-2.5 py-0.5 rounded-full bg-white/20 text-white type-overline backdrop-blur-md">
-                            {t(
-                                "CCRM Changelog",
-                                "Zoznam zmien CCRM",
-                                "CCRM változásnapló",
-                            )}
-                        </span>
-                    </div>
-                    <h1 className="type-page-title mt-3 leading-tight">
-                        {t(
-                            "Product Updates & Releases",
-                            "Novinky a verzie systému",
-                            "Termékfrissítések és kiadások",
-                        )}
-                    </h1>
-                    <p className="text-white/80 text-ui mt-2 max-w-xl font-medium">
-                        {t(
-                            "Stay up to date with the latest features, enhancements, and bug fixes added to the platform.",
-                            "Majte prehľad o najnovších funkciách, vylepšeniach a opravách chýb pridaných do platformy.",
-                            "Maradjon naprakész a platformhoz hozzáadott legújabb funkciókkal, fejlesztésekkel és hibajavításokkal.",
-                        )}
-                    </p>
-                </div>
-            </div>
+            {/* Module header (docs/VIEW-SIZE.md §6.2) */}
+            <PageHeader
+              icon={<Sparkles className="text-indigo-500" />}
+              title={t("Product Updates & Releases", "Novinky a verzie systému", "Termékfrissítések és kiadások")}
+              subtitle={t(
+                "Stay up to date with the latest features, enhancements, and bug fixes added to the platform.",
+                "Majte prehľad o najnovších funkciách, vylepšeniach a opravách chýb pridaných do platformy.",
+                "Maradjon naprakész a platformhoz hozzáadott legújabb funkciókkal, fejlesztésekkel és hibajavításokkal.",
+              )}
+              badge={
+                <span className="mt-2 inline-flex w-fit px-2.5 py-0.5 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 type-overline">
+                  {t("CCRM Changelog", "Zoznam zmien CCRM", "CCRM változásnapló")}
+                </span>
+              }
+            />
 
             {/* Main Content Pane */}
             <div className="bg-white rounded-3xl border border-slate-200/80 shadow-md flex flex-col ws-md:flex-row overflow-hidden min-h-125">

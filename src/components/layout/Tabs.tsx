@@ -6,6 +6,8 @@ export interface TabItem<K extends string = string> {
   icon?: ReactNode;
   /** Count badge (`text-micro`). */
   count?: number;
+  /** Free-form badge (e.g. a coloured amount), shown in place of `count`. */
+  badge?: ReactNode;
   hidden?: boolean;
 }
 
@@ -49,7 +51,8 @@ export function Tabs<K extends string>({
             >
               {i.icon && <span className="[&>svg]:size-4 inline-flex">{i.icon}</span>}
               {i.label}
-              {i.count !== undefined && (
+              {i.badge}
+              {i.badge === undefined && i.count !== undefined && (
                 <span
                   className={`rounded-full px-1.5 text-micro font-semibold tabular-nums ${
                     active ? "bg-slate-100 text-slate-600" : "bg-slate-200/70 text-slate-500"
