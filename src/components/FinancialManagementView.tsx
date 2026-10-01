@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from "react";
 import {
   Coins, TrendingUp, TrendingDown,
-  Plus, Search, Calendar, Layers, CheckCircle2,
+  Plus, Search, Calendar, CheckCircle2,
   Clock, RefreshCw,
   Trash2,
   User, Briefcase, BarChart3,
@@ -12,7 +12,7 @@ import {
   CalendarDays, Target, Maximize2, Minimize2,
   ArrowUpRight, ArrowDownRight, ArrowUpDown,
   SlidersHorizontal,
-  Copy, Sparkles, GripVertical, UserPlus
+  Copy, Sparkles, UserPlus, ChevronLeft, Settings
 } from "lucide-react";
 import type {
   FinancialRecord,
@@ -26,23 +26,17 @@ import type {
 } from "../types";
 import { CustomSelect, DropdownSearchRow } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
+import { FinancialCategoriesManager } from "./FinancialCategoriesManager";
 import { useQuickAddClient } from "./ui/QuickAddClient";
-import { ColorPicker } from "./ui/ColorPicker";
-import { inheritedColor, nextCategoryColor } from "../utils/color";
+import { inheritedColor } from "../utils/color";
 import type { Language } from "../utils/translations";
 import { formatMoney } from "../utils/currency";
 import { todayLocal, formatDateLocalized } from "../utils/localTime";
 import {
   categoryBreadcrumbs,
   categoryChildren,
-  categoryDescendantIds,
-  moveCategory,
-  nextCategorySortOrder,
-  resolveCategoryDrop,
-  type CategoryDropPosition,
-  type CategoryDropTarget
+  categoryDescendantIds
 } from "../utils/financialCategoryTree";
-import { useDragAutoScroll } from "../hooks/useDragAutoScroll";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 import { useUserPref } from "../utils/userPrefs";
 import {
@@ -94,9 +88,11 @@ import {
 
 // Trend graph forecast horizons. `futureWeeks` is the number of whole weeks the
 // projection runs past the current one — 13 weeks is the usual "3 months".
-type ProjectionMonths = 3 | 6 | 12;
+// `0` is "off": no future periods at all, only history and the current one.
+type ProjectionMonths = 0 | 3 | 6 | 12;
 
 const PROJECTION_HORIZONS: { months: ProjectionMonths; futureWeeks: number }[] = [
+  { months: 0, futureWeeks: 0 },
   { months: 3, futureWeeks: 13 },
   { months: 6, futureWeeks: 26 },
   { months: 12, futureWeeks: 52 }
@@ -798,7 +794,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   financialRecords = [],
   setFinancialRecords: setFinancialRecordsRaw,
   financialCategories = [],
-  setFinancialCategories: setFinancialCategoriesRaw,
+  setFinancialCategories,
   financialTrend = EMPTY_FINANCIAL_TREND,
   setFinancialTrend,
   projects = [],
@@ -816,10 +812,6 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const setFinancialRecords: typeof setFinancialRecordsRaw = (updater) => {
     if (!canEdit) return;
     setFinancialRecordsRaw(updater);
-  };
-  const setFinancialCategories: typeof setFinancialCategoriesRaw = (updater) => {
-    if (!canEdit) return;
-    setFinancialCategoriesRaw(updater);
   };
   /** The two setters above drop a write silently without edit rights. A handler
       that would then say "saved" asks here first and says it was not. */
@@ -880,11 +872,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     const parts = (pathPart || "").split("/");
     const sub = (parts[1] || parts[0] || "").toLowerCase();
 
-    let tab: "overview" | "table" | "movements" | "recurring" | "categories" = "overview";
+    let tab: "overview" | "table" | "movements" | "recurring" = "overview";
     if (sub === "table" || sub === "tabulka" || sub === "matrix" || sub === "overview-table" || sub === "prehlad") tab = "table";
     else if (sub === "movements" || sub === "pohyby" || sub === "transactions" || sub === "mozgasok" || sub === "incomes" || sub === "expenses") tab = "movements";
     else if (sub === "recurring" || sub === "pravidelne" || sub === "rendszeres") tab = "recurring";
-    else if (sub === "categories" || sub === "kategorie" || sub === "kategoriak") tab = "categories";
 
     const params = new URLSearchParams(queryPart || "");
     return {
@@ -901,7 +892,12 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const initialUrlState = parseFinancialUrlState();
 
   // Main navigation tabs
-  const [activeTab, setActiveTab] = useState<"overview" | "table" | "movements" | "recurring" | "categories">(initialUrlState.tab);
+  const [activeTab, setActiveTab] = useState<"overview" | "table" | "movements" | "recurring">(initialUrlState.tab);
+
+  // Settings is not a tab: it is a quiet button in the header that swaps the
+  // whole screen for its configuration, with one way back — the same shape as
+  // Projects and Clients.
+  const [showSettings, setShowSettings] = useState(false);
 
   // Overview Matrix Table State
   const [tableGranularity, setTableGranularity] = useState<"week" | "month" | "quarter" | "half" | "year">("month");
@@ -1019,7 +1015,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   }, []);
 
   // Update hash when tab is switched
-  const handleTabChange = (tabId: "overview" | "table" | "movements" | "recurring" | "categories") => {
+  const handleTabChange = (tabId: "overview" | "table" | "movements" | "recurring") => {
     setActiveTab(tabId);
     window.location.hash = tabId === "overview" ? "financial/overview" : `financial/${tabId}`;
   };
@@ -1052,16 +1048,6 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       setEditingOccurrence(null);
     }, 280);
   };
-
-  // Category Tree Manager Modal
-  const [isCatModalOpen, setIsCatModalOpen] = useState(false);
-  const [catTreeType, setCatTreeType] = useState<FinancialType>("expense");
-  const [newCatName, setNewCatName] = useState("");
-  const [newCatParentId, setNewCatParentId] = useState<string>("");
-  const [newCatColor, setNewCatColor] = useState("");
-  // Until a colour is picked on purpose, a subcategory inherits its parent's and
-  // a main category gets the next colour no other main category of its type has.
-  const [newCatColorTouched, setNewCatColorTouched] = useState(false);
 
   // Transaction Form fields
   const [formType, setFormType] = useState<FinancialType>("expense");
@@ -2126,6 +2112,12 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   // DB-backed for the same reason as trendMode above.
   const [projectionMonths, setProjectionMonths] = useUserPref("financialProjectionMonths");
 
+  // Whether a payment's status can be changed straight from its ledger row. The
+  // switch lives in Settings → Finance; without edit rights it is moot, since
+  // there is nothing to change.
+  const [inlineEditPref] = useUserPref("financialInlineEdit");
+  const inlineEdit = canEdit && inlineEditPref;
+
   // Resolution of the trend chart: "week" (weekly buckets) vs "month" (monthly buckets).
   const [trendResolution, setTrendResolution] = useUserPref("financialTrendResolution");
   const activeResolution = trendResolution === "month" ? "month" : "week";
@@ -2789,17 +2781,6 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       expenseTree: buildTree("expense")
     };
   }, [financialCategories]);
-
-  // Categories tab: dragging a row rewrites its position, level and parent together.
-  const [draggedCategoryId, setDraggedCategoryId] = useState<string | null>(null);
-  const [categoryDropTarget, setCategoryDropTarget] = useState<CategoryDropTarget | null>(null);
-  const categoryTreeRef = useRef<HTMLDivElement | null>(null);
-  useDragAutoScroll(draggedCategoryId !== null, categoryTreeRef);
-
-  // A colour picker fires on every pixel the pointer crosses, so the swatch
-  // previews a local draft and only the colour the user settles on is saved.
-  const [categoryColorDrafts, setCategoryColorDrafts] = useState<Record<string, string>>({});
-  const categoryColorTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
 
   // Overview Table Matrix Data Calculation Hook
   const overviewTableData = useMemo(() => {
@@ -3674,257 +3655,6 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     }
   };
 
-  const suggestedRootCatColor = useMemo(
-    () => nextCategoryColor(financialCategories.filter((c) => c.type === catTreeType && !c.parentId).map((c) => c.color)),
-    [financialCategories, catTreeType]
-  );
-  const newCatFormColor = newCatColorTouched
-    ? newCatColor
-    : newCatParentId
-      ? inheritedColor(financialCategories, newCatParentId) || suggestedRootCatColor
-      : suggestedRootCatColor;
-
-  // Create Category
-  const handleCreateCategory = (e: React.FormEvent) => {
-    if (!canEdit) {
-      e.preventDefault();
-      refuseWithoutEdit();
-      return;
-    }
-    e.preventDefault();
-    if (!newCatName.trim()) return;
-
-    let parentLevel = 1;
-    if (newCatParentId) {
-      const parent = financialCategories.find((c) => c.id === newCatParentId);
-      // A parent from the other side of the ledger (stale selection left over
-      // from the Expense/Income switcher, see F1) is treated the same as no
-      // parent found at all — the new category is created as a root of its
-      // own type instead of silently nesting under the wrong section.
-      if (parent && parent.type === catTreeType) {
-        parentLevel = parent.level + 1;
-      }
-    }
-
-    if (parentLevel > 3) {
-      alert(t("Maximum category depth is 3 levels.", "Maximálna hĺbka kategórií je 3 úrovne.", "A maximális kategóriamélység 3 szint."));
-      return;
-    }
-
-    const newCat: FinancialCategory = {
-      id: `fc-${catTreeType}-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
-      type: catTreeType,
-      name: newCatName.trim(),
-      parentId: newCatParentId || null,
-      level: parentLevel as 1 | 2 | 3,
-      sortOrder: nextCategorySortOrder(financialCategories, catTreeType, newCatParentId || null),
-      color: newCatColorTouched ? newCatColor : newCatParentId ? null : suggestedRootCatColor,
-      icon: parentLevel === 1 ? "Layers" : parentLevel === 2 ? "Folder" : "Tag",
-      createdAt: new Date().toISOString()
-    };
-
-    setFinancialCategories((prev) => [...prev, newCat]);
-    setNewCatName("");
-    setNewCatParentId("");
-    setNewCatColorTouched(false);
-    (window as any).showToast?.(t("Category added!", "Kategória bola pridaná!", "Kategória hozzáadva!"));
-  };
-
-  // Delete Category
-  const handleDeleteCategory = (id: string) => {
-    if (!canDelete) return;
-    if (confirm(t("Delete category and its subcategories?", "Vymazať kategóriu a všetky jej podkategórie?", "Törli a kategóriát és alkategóriáit?"))) {
-      // Find all nested child ids recursively
-      const toDeleteIds = new Set<string>([id]);
-      let changed = true;
-      while (changed) {
-        changed = false;
-        financialCategories.forEach((c) => {
-          if (c.parentId && toDeleteIds.has(c.parentId) && !toDeleteIds.has(c.id)) {
-            toDeleteIds.add(c.id);
-            changed = true;
-          }
-        });
-      }
-
-      setFinancialCategories((prev) => prev.filter((c) => !toDeleteIds.has(c.id)));
-      // The movements filed under them stay, now uncategorized, so every tab keeps counting them.
-      setFinancialRecords((prev) =>
-        prev.some((r) => r.categoryId && toDeleteIds.has(r.categoryId))
-          ? prev.map((r) =>
-              r.categoryId && toDeleteIds.has(r.categoryId)
-                ? { ...r, categoryId: null, categoryPath: null, updatedAt: new Date().toISOString() }
-                : r
-            )
-          : prev
-      );
-      (window as any).showToast?.(t("Category removed", "Kategória odstránená", "Kategória eltávolítva"));
-    }
-  };
-
-  const endCategoryDrag = () => {
-    setDraggedCategoryId(null);
-    setCategoryDropTarget(null);
-  };
-
-  const handleCategoryDragStart = (e: React.DragEvent<HTMLElement>, id: string) => {
-    e.stopPropagation();
-    e.dataTransfer.effectAllowed = "move";
-    e.dataTransfer.setData("text/plain", id); // Firefox will not start a drag without data
-    setDraggedCategoryId(id);
-  };
-
-  /**
-   * The top quarter of a row drops before it, the bottom quarter after it and
-   * the middle inside it. When the row cannot take the dragged category as a
-   * child (too deep), the middle falls back to the nearer edge.
-   */
-  const categoryDropFromPointer = (e: React.DragEvent<HTMLElement>, targetId: string | null): CategoryDropTarget | null => {
-    if (!draggedCategoryId) return null;
-    let candidates: CategoryDropPosition[] = ["after"];
-    if (targetId !== null) {
-      const rect = e.currentTarget.getBoundingClientRect();
-      const ratio = (e.clientY - rect.top) / Math.max(rect.height, 1);
-      const nearerEdge: CategoryDropPosition = ratio < 0.5 ? "before" : "after";
-      candidates = ratio < 0.25 ? ["before"] : ratio > 0.75 ? ["after"] : ["inside", nearerEdge];
-    }
-    for (const position of candidates) {
-      const drop = { targetId, position };
-      if (resolveCategoryDrop(financialCategories, draggedCategoryId, drop)) return drop;
-    }
-    return null;
-  };
-
-  const handleCategoryDragOver = (e: React.DragEvent<HTMLElement>, targetId: string | null) => {
-    if (!draggedCategoryId) return;
-    e.stopPropagation();
-    const drop = categoryDropFromPointer(e, targetId);
-    if (!drop) {
-      e.dataTransfer.dropEffect = "none";
-      if (categoryDropTarget) setCategoryDropTarget(null);
-      return;
-    }
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    if (categoryDropTarget?.targetId !== drop.targetId || categoryDropTarget?.position !== drop.position) {
-      setCategoryDropTarget(drop);
-    }
-  };
-
-  const handleCategoryDrop = (e: React.DragEvent<HTMLElement>) => {
-    if (!canEdit) {
-      e.preventDefault();
-      endCategoryDrag();
-      return;
-    }
-    e.preventDefault();
-    e.stopPropagation();
-    const dragId = draggedCategoryId;
-    const drop = categoryDropTarget;
-    endCategoryDrag();
-    if (!dragId || !drop) return;
-
-    const next = moveCategory(financialCategories, dragId, drop);
-    if (!next || next === financialCategories) return;
-    setFinancialCategories((prev) => moveCategory(prev, dragId, drop) ?? prev);
-    (window as any).showToast?.(t("Category moved", "Kategória bola presunutá", "Kategória áthelyezve"));
-  };
-
-  const categoryColor = (cat: FinancialCategory | undefined | null): string | null =>
-    cat ? categoryColorDrafts[cat.id] ?? cat.color ?? null : null;
-
-  const handleCategoryColorChange = (id: string, color: string) => {
-    if (!canEdit) return;
-    setCategoryColorDrafts((drafts) => ({ ...drafts, [id]: color }));
-    clearTimeout(categoryColorTimers.current[id]);
-    categoryColorTimers.current[id] = setTimeout(() => {
-      delete categoryColorTimers.current[id];
-      setFinancialCategories((prev) => prev.map((c) => (c.id === id && c.color !== color ? { ...c, color } : c)));
-      setCategoryColorDrafts((drafts) => {
-        const rest = { ...drafts };
-        delete rest[id];
-        return rest;
-      });
-    }, 400);
-  };
-
-  const CATEGORY_ROW_STYLES = {
-    1: {
-      row: "p-3.5 bg-slate-50/80 border-b border-slate-100",
-      swatch: "h-3.5 w-3.5",
-      name: "font-bold text-xs text-slate-900 uppercase tracking-wider",
-      badge: "px-2 py-0.5 rounded-full text-[10px] font-semibold bg-slate-200 text-slate-600",
-      badgeText: "Level 1",
-      trash: "h-3.5 w-3.5"
-    },
-    2: {
-      row: "p-2 rounded-xl bg-white border border-slate-100",
-      swatch: "h-3 w-3",
-      name: "font-semibold text-xs text-slate-800",
-      badge: "px-1.5 py-0.2 rounded text-[10px] bg-slate-100 text-slate-500",
-      badgeText: "Level 2",
-      trash: "h-3 w-3"
-    },
-    3: {
-      row: "p-1.5 px-3 rounded-lg bg-slate-50 border border-slate-100 text-xs",
-      swatch: "h-2.5 w-2.5",
-      name: "text-slate-700 font-medium",
-      badge: "text-[10px] text-slate-400",
-      badgeText: "(Level 3)",
-      trash: "h-3 w-3"
-    }
-  } as const;
-
-  /** One draggable row of the category tree; `inheritedColor` is shown while the category has none of its own. */
-  const renderCategoryRow = (cat: FinancialCategory, level: 1 | 2 | 3, inheritedColor?: string | null) => {
-    const styles = CATEGORY_ROW_STYLES[level];
-    const drop = draggedCategoryId && categoryDropTarget?.targetId === cat.id ? categoryDropTarget.position : null;
-    const shownColor = categoryColor(cat) || inheritedColor || "#6366f1";
-
-    return (
-      <div
-        key={cat.id}
-        draggable
-        onDragStart={(e) => handleCategoryDragStart(e, cat.id)}
-        onDragEnd={endCategoryDrag}
-        onDragOver={(e) => handleCategoryDragOver(e, cat.id)}
-        onDrop={handleCategoryDrop}
-        title={t("Drag to reorder or move under another category", "Potiahnutím zmeníte poradie alebo nadradenú kategóriu", "Húzza az átrendezéshez vagy áthelyezéshez")}
-        className={`group relative flex items-center justify-between cursor-grab active:cursor-grabbing transition-[opacity,background-color,box-shadow] duration-150 ${styles.row} ${
-          draggedCategoryId === cat.id ? "opacity-40" : ""
-        } ${drop === "inside" ? "ring-2 ring-inset ring-indigo-400 !bg-indigo-50" : ""}`}
-      >
-        {drop === "before" && (
-          <span className="pointer-events-none absolute inset-x-2 top-0 h-0.5 rounded-full bg-indigo-500 animate-in fade-in duration-150" />
-        )}
-        {drop === "after" && (
-          <span className="pointer-events-none absolute inset-x-2 bottom-0 h-0.5 rounded-full bg-indigo-500 animate-in fade-in duration-150" />
-        )}
-
-        <div className="flex items-center gap-2 min-w-0">
-          <GripVertical className="h-3.5 w-3.5 shrink-0 text-slate-300 group-hover:text-indigo-500 transition-colors duration-150" />
-          <ColorPicker
-            value={shownColor}
-            onChange={(color) => handleCategoryColorChange(cat.id, color)}
-            title={t("Change color", "Zmeniť farbu", "Szín módosítása")}
-            className={styles.swatch}
-          />
-          <span className={`truncate ${styles.name}`}>{cat.name}</span>
-          <span className={`shrink-0 ${styles.badge}`}>{styles.badgeText}</span>
-        </div>
-        {canDelete && (
-        <button
-          onClick={() => handleDeleteCategory(cat.id)}
-          className="p-1 text-slate-400 hover:text-rose-600 transition-colors duration-150 cursor-pointer"
-          title={t("Delete category", "Vymazať", "Törlés")}
-        >
-          <Trash2 className={styles.trash} />
-        </button>
-        )}
-      </div>
-    );
-  };
-
   // Shared Transaction Form Fields (used in both Slideout Drawer for Edit and Center Popup for Create)
   const renderTransactionFormFields = () => {
     // Editing a rule from the Recurring tab: only what holds for every payment
@@ -4768,6 +4498,17 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
         {/* Quick Actions — one row, equal height, never wrapping into a stack */}
         <div className="flex items-center gap-2 shrink-0">
+          {showSettings ? (
+            <button
+              type="button"
+              onClick={() => setShowSettings(false)}
+              className="flex items-center gap-1.5 pl-3 pr-4 py-2.5 rounded-2xl border border-slate-200 bg-white text-slate-600 font-heading font-bold text-xs uppercase tracking-wider hover:bg-slate-50 hover:text-slate-900 transition-all cursor-pointer"
+            >
+              <ChevronLeft className="h-4 w-4 shrink-0" />
+              <span>{t("Back to finance", "Späť na financie", "Vissza a pénzügyekhez")}</span>
+            </button>
+          ) : (
+          <>
           {canEdit && (
           <button
             onClick={() => handleOpenCreateModal("income", "global")}
@@ -4787,17 +4528,50 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             <span>{t("New Expense", "Nový výdavok", "Új kiadás")}</span>
           </button>
           )}
+
+          <button
+            type="button"
+            onClick={() => setShowSettings(true)}
+            title={t("Finance settings", "Nastavenia financií", "Pénzügyi beállítások")}
+            className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-slate-400 font-heading font-bold text-xs uppercase tracking-wider hover:bg-slate-100 hover:text-slate-700 transition-all cursor-pointer"
+          >
+            <Settings className="h-4 w-4 shrink-0" />
+            <span className="hidden sm:inline">{t("Settings", "Nastavenia", "Beállítások")}</span>
+          </button>
+          </>
+          )}
         </div>
       </div>
 
+      {showSettings && (
+        <div className="space-y-6 animate-in fade-in duration-200">
+          <div className="flex flex-col">
+            <h3 className="font-heading font-black text-slate-800 text-[15px] uppercase tracking-widest">
+              {t("Movement Categories", "Kategórie finančných pohybov", "Mozgási kategóriák")}
+            </h3>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mt-0.5">
+              {t("Organize movements into categories and subcategories", "Usporiadajte pohyby do kategórií a podkategórií", "Tételek rendezése kategóriákba és alkategóriákba")}
+            </p>
+          </div>
+          <FinancialCategoriesManager
+            financialCategories={financialCategories}
+            setFinancialCategories={setFinancialCategories}
+            setFinancialRecords={setFinancialRecords}
+            userLanguage={userLanguage}
+            canEdit={canEdit}
+            canDelete={canDelete}
+          />
+        </div>
+      )}
+
       {/* 2. SUB-NAVIGATION TABS */}
+      {!showSettings && (
       <div className="flex border-b border-slate-200  overflow-x-auto scrollbar-none gap-2" role="tablist">
         {[
           { id: "overview", label: t("📊 Global Overview & Trend", "📊 Globálny prehľad & Trend", "📊 Globális áttekintés & Trend") },
           { id: "table", label: t("📋 Overview Table", "📋 Prehľadová tabuľka", "📋 Áttekintő táblázat") },
           { id: "movements", label: t("💸 Movements", "💸 Pohyby", "💸 Mozgások") },
-          { id: "recurring", label: t("🔄 Recurring Movements", "🔄 Pravidelné pohyby", "🔄 Rendszeres tételek") },
-          { id: "categories", label: t("🏷️ Movement Categories", "🏷️ Kategórie pohybov", "🏷️ Mozgási kategóriák") }
+          { id: "recurring", label: t("🔄 Recurring Movements", "🔄 Pravidelné pohyby", "🔄 Rendszeres tételek") }
         ].map((tab) => (
           <button
             key={tab.id}
@@ -4815,9 +4589,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           </button>
         ))}
       </div>
+      )}
 
       {/* 4. TAB CONTENT 1: GLOBAL OVERVIEW (FOCUSED HYBRID TREND & FORWARD PROJECTION) */}
-      {activeTab === "overview" && (
+      {!showSettings && activeTab === "overview" && (
         <div className="space-y-6 animate-in fade-in duration-200">
           {/* HYBRID WEEKLY TREND & FORWARD PROJECTION CHART (3 / 6 / 12 months) */}
           <div className="bg-white  p-6 rounded-3xl border border-slate-200/80  shadow-sm space-y-6">
@@ -4827,29 +4602,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 <div className="flex items-center gap-2">
                   <h3 className="text-base font-bold text-slate-900  flex items-center gap-2">
                     <BarChart3 className="h-5 w-5 text-emerald-500" />
-                    {activeResolution === "month"
-                      ? (trendMode === "cumulative"
-                          ? t(
-                              `Monthly Trend & ${projectionMonths}-Month Projection (Cumulative Bank Balance)`,
-                              `Mesačný vývoj a ${projectionMonths}-mesačná prognóza (Kumulatívny stav na účte)`,
-                              `Havi trend és ${projectionMonths} hónapos előrejelzés (Kumulált bankszámla egyenleg)`
-                            )
-                          : t(
-                              `Monthly Trend & ${projectionMonths}-Month Projection (Relative Cash Flow)`,
-                              `Mesačný vývoj a ${projectionMonths}-mesačná prognóza (Relatívny cash flow)`,
-                              `Havi trend és ${projectionMonths} hónapos előrejelzés (Relatív pénzáramlás)`
-                            ))
-                      : (trendMode === "cumulative"
-                          ? t(
-                              `Weekly Trend & ${projectionMonths}-Month Projection (Cumulative Bank Balance)`,
-                              `Týždenný vývoj a ${projectionMonths}-mesačná prognóza (Kumulatívny stav na účte)`,
-                              `Heti trend és ${projectionMonths} hónapos előrejelzés (Kumulált bankszámla egyenleg)`
-                            )
-                          : t(
-                              `Weekly Trend & ${projectionMonths}-Month Projection (Relative Cash Flow)`,
-                              `Týždenný vývoj a ${projectionMonths}-mesačná prognóza (Relatívny cash flow)`,
-                              `Heti trend és ${projectionMonths} hónapos előrejelzés (Relatív pénzáramlás)`
-                            ))}
+                    {t("Cash Flow Trend", "Vývoj cash flow", "Cash flow trend")}
                   </h3>
                   <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
                     trendMode === "cumulative" 
@@ -4860,29 +4613,25 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   </span>
                 </div>
                 <p className="text-xs text-slate-500 ">
-                  {activeResolution === "month"
-                    ? (trendMode === "cumulative"
-                        ? t(
-                            `Bars display monthly income & expense. The continuous plotline projects running Bank Account Balance forward for the next ${projectionMonths} months. Click any month to calibrate its balance independently.`,
-                            `Stĺpce zobrazujú mesačné príjmy a výdavky. Spojitá krivka zobrazuje projektovaný stav na bankovom účte na ${skNextMonths(projectionMonths)}. Kliknutím na ľubovoľný mesiac môžete nezávisle nastaviť jeho zostatok.`,
-                            `Az oszlopok a havi bevételeket és kiadásokat mutatják. A folytonos vonal a következő ${projectionMonths} hónap várható bankszámla egyenlegét jelzi. Kattintson bármelyik hónapra az egyenleg független beállításához.`
-                          )
-                        : t(
-                            "Bars display cumulative monthly income & expense. The continuous plotline traces monthly net difference and future projected revenue (projected income − projected expense).",
-                            "Stĺpce zobrazujú mesačné kumulatívne príjmy a výdavky. Spojitá krivka zobrazuje čistý rozdiel a budúce projektované tržby po odpočítaní výdavkov.",
-                            "Az oszlopok a havi kumulált bevételeket és kiadásokat mutatják. A folytonos vonal a havi nettó különbözetet és a jövőbeli tervezett nyereséget jelzi."
-                          ))
-                    : (trendMode === "cumulative"
-                        ? t(
-                            `Bars display weekly income & expense. The continuous plotline projects running Bank Account Balance (cumulative cash reserves) forward for the next ${projectionMonths} months. Click any week to calibrate its balance independently.`,
-                            `Stĺpce zobrazujú týždenné príjmy a výdavky. Spojitá krivka zobrazuje projektovaný stav na bankovom účte na ${skNextMonths(projectionMonths)}. Kliknutím na ľubovoľný týždeň môžete nezávisle nastaviť jeho zostatok.`,
-                            `Az oszlopok a heti bevételeket és kiadásokat mutatják. A folytonos vonal a következő ${projectionMonths} hónap várható bankszámla egyenlegét jelzi. Kattintson bármelyik hétre az egyenleg független beállításához.`
-                          )
-                        : t(
-                            "Bars display cumulative weekly income & expense. The continuous plotline traces weekly net difference and future projected revenue (projected income − projected expense).",
-                            "Stĺpce zobrazujú týždenné kumulatívne príjmy a výdavky. Spojitá krivka zobrazuje čistý rozdiel a budúce projektované tržby po odpočítaní výdavkov.",
-                            "Az oszlopok a heti kumulált bevételeket és kiadásokat mutatják. A folytonos vonal a heti nettó különbözetet és a jövőbeli tervezett nyereséget jelzi."
-                          ))}
+                  {(() => {
+                    // What the line traces, and — only while a forecast horizon is
+                    // chosen — the extra clause that says it runs forward.
+                    const monthly = activeResolution === "month";
+                    const fwdEn = projectionMonths > 0 ? ` and projects it forward for the next ${projectionMonths} months` : "";
+                    const fwdSk = projectionMonths > 0 ? ` a jeho projekciu na ${skNextMonths(projectionMonths)}` : "";
+                    const fwdHu = projectionMonths > 0 ? ` és előrejelzi a következő ${projectionMonths} hónapra` : "";
+                    return trendMode === "cumulative"
+                      ? t(
+                          `Bars display ${monthly ? "monthly" : "weekly"} income & expense. The continuous plotline traces the running Bank Account Balance${fwdEn}. Click any ${monthly ? "month" : "week"} to calibrate its balance independently.`,
+                          `Stĺpce zobrazujú ${monthly ? "mesačné" : "týždenné"} príjmy a výdavky. Spojitá krivka zobrazuje stav na bankovom účte${fwdSk}. Kliknutím na ľubovoľný ${monthly ? "mesiac" : "týždeň"} môžete nezávisle nastaviť jeho zostatok.`,
+                          `Az oszlopok a ${monthly ? "havi" : "heti"} bevételeket és kiadásokat mutatják. A folytonos vonal a bankszámla egyenlegét jelzi${fwdHu}. Kattintson bármelyik ${monthly ? "hónapra" : "hétre"} az egyenleg független beállításához.`
+                        )
+                      : t(
+                          `Bars display ${monthly ? "monthly" : "weekly"} income & expense. The continuous plotline traces the ${monthly ? "monthly" : "weekly"} net difference (income − expense)${projectionMonths > 0 ? ` and the projected net for the next ${projectionMonths} months` : ""}.`,
+                          `Stĺpce zobrazujú ${monthly ? "mesačné" : "týždenné"} príjmy a výdavky. Spojitá krivka zobrazuje ${monthly ? "mesačný" : "týždenný"} čistý rozdiel (príjmy − výdavky)${projectionMonths > 0 ? ` a projektovaný rozdiel na ${skNextMonths(projectionMonths)}` : ""}.`,
+                          `Az oszlopok a ${monthly ? "havi" : "heti"} bevételeket és kiadásokat mutatják. A folytonos vonal a ${monthly ? "havi" : "heti"} nettó különbözetet (bevétel − kiadás) jelzi${projectionMonths > 0 ? ` és a következő ${projectionMonths} hónap tervezett nettó értékét` : ""}.`
+                        );
+                  })()}
                 </p>
               </div>
 
@@ -4948,22 +4697,26 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   </button>
                 </div>
 
-                {/* Forecast Horizon Pill: how far forward the projection runs */}
+                {/* Forecast Horizon Pill: whether the projection runs, and how far forward */}
                 <div className="bg-slate-100  p-1 rounded-2xl flex items-center gap-1 border border-slate-200/80 ">
                   <span className="pl-2 pr-1 text-[10px] font-black uppercase tracking-wider text-slate-400  flex items-center gap-1">
                     <CalendarDays className="h-3.5 w-3.5" />
-                    {t("Horizon", "Horizont", "Időtáv")}
+                    {t("Forecast horizon", "Horizont prognózy", "Előrejelzési időtáv")}
                   </span>
                   {PROJECTION_HORIZONS.map((h) => (
                     <button
                       key={h.months}
                       type="button"
                       onClick={() => handleSetProjectionMonths(h.months)}
-                      title={t(
-                        `Project ${h.months} months forward (${h.futureWeeks} future weeks)`,
-                        `Prognóza na ${skMonths(h.months)} dopredu (${h.futureWeeks} budúcich týždňov)`,
-                        `Előrejelzés ${h.months} hónapra előre (${h.futureWeeks} jövőbeli hét)`
-                      )}
+                      title={
+                        h.months === 0
+                          ? t("No forecast — history and the current period only", "Bez prognózy — iba história a aktuálne obdobie", "Nincs előrejelzés — csak a múlt és az aktuális időszak")
+                          : t(
+                              `Project ${h.months} months forward (${h.futureWeeks} future weeks)`,
+                              `Prognóza na ${skMonths(h.months)} dopredu (${h.futureWeeks} budúcich týždňov)`,
+                              `Előrejelzés ${h.months} hónapra előre (${h.futureWeeks} jövőbeli hét)`
+                            )
+                      }
                       aria-pressed={projectionMonths === h.months}
                       className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
                         projectionMonths === h.months
@@ -4971,7 +4724,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                           : "text-slate-600  hover:text-slate-900 "
                       }`}
                     >
-                      {t(`${h.months}M`, `${h.months}M`, `${h.months}H`)}
+                      {h.months === 0
+                        ? t("Off", "Vyp.", "Ki")
+                        : t(`${h.months}M`, `${h.months}M`, `${h.months}H`)}
                     </button>
                   ))}
                 </div>
@@ -5012,10 +4767,12 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                       : t("🎯 Reconciled Weekly Anchor", "🎯 Manuálne overený stav", "🎯 Manuálisan rögzített hét")}
                   </span>
                 </div>
-                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-100  text-slate-600  rounded-lg border border-slate-200 ">
-                  <span className="h-2.5 w-2.5 rounded-full bg-indigo-400 animate-ping" />
-                  <span>{t(`Future ${projectionMonths}-Mo Window`, `${projectionMonths}-Mesačné okno`, `${projectionMonths} Hónapos ablak`)}</span>
-                </div>
+                {projectionMonths > 0 && (
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-100  text-slate-600  rounded-lg border border-slate-200 ">
+                    <span className="h-2.5 w-2.5 rounded-full bg-indigo-400 animate-ping" />
+                    <span>{t(`Future ${projectionMonths}-Mo Window`, `${projectionMonths}-Mesačné okno`, `${projectionMonths} Hónapos ablak`)}</span>
+                  </div>
+                )}
               </div>
 
               {/* Quick interactive hint */}
@@ -5088,6 +4845,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               // Index of current week or month & first future period
               const currentPeriodIdx = trendData.findIndex((b) => b.isCurrent);
               const firstFutureIdx = trendData.findIndex((b) => b.isFuture);
+              // With the forecast off there are no future periods, so the shaded
+              // zone, the "today" divider and its label have nothing to mark.
+              const hasForecast = firstFutureIdx >= 0;
               const futureStartX = firstFutureIdx >= 0
                 ? startX + firstFutureIdx * stepX
                 : (currentPeriodIdx >= 0 ? startX + (currentPeriodIdx + 1) * stepX : startX + 4 * stepX);
@@ -5154,7 +4914,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                       </defs>
 
                       {/* 1. Future Projection Window Background Area */}
-                      {svgWidth - futureStartX > 20 && (
+                      {hasForecast && svgWidth - futureStartX > 20 && (
                         <rect
                           x={futureStartX}
                           y={topY}
@@ -5166,7 +4926,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                       )}
 
                       {/* 2. Today / Present Vertical Divider Line */}
-                      {futureStartX > startX && (
+                      {hasForecast && futureStartX > startX && (
                         <line
                           x1={futureStartX}
                           y1={topY - 15}
@@ -5178,7 +4938,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                         />
                       )}
                       {/* Label for Future Window */}
-                      {svgWidth - futureStartX >= 140 && (
+                      {hasForecast && svgWidth - futureStartX >= 140 && (
                         <g transform={`translate(${futureStartX + 12}, ${topY - 8})`}>
                           <rect
                             x="0"
@@ -5569,41 +5329,59 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                       <CalendarDays className="h-4 w-4" />
                       {activeResolution === "month"
                         ? (isWeeklyTableOpen
-                            ? t(
-                                `Hide ${projectionTotalMonths}-Month Projection Table`,
-                                `Skryť ${projectionTotalMonths}-mesačnú tabuľku prognózy`,
-                                `${projectionTotalMonths} hónapos előrejelzési táblázat elrejtése`
-                              )
-                            : t(
-                                `Inspect Full ${projectionTotalMonths}-Month Breakdown (${TREND_PAST_MONTHS} Past + ${projectionMonths} Future Months)`,
-                                `Zobraziť podrobnú ${projectionTotalMonths}-mesačnú tabuľku (${TREND_PAST_MONTHS} minulé + ${projectionMonths} budúcich mesiacov)`,
-                                `Részletes ${projectionTotalMonths} hónapos lebontás megtekintése (${TREND_PAST_MONTHS} múltbéli + ${projectionMonths} jövőbeli hónap)`
-                              ))
+                            ? projectionMonths === 0
+                              ? t("Hide Monthly Breakdown", "Skryť mesačnú tabuľku", "Havi lebontás elrejtése")
+                              : t(
+                                  `Hide ${projectionTotalMonths}-Month Projection Table`,
+                                  `Skryť ${projectionTotalMonths}-mesačnú tabuľku prognózy`,
+                                  `${projectionTotalMonths} hónapos előrejelzési táblázat elrejtése`
+                                )
+                            : projectionMonths === 0
+                              ? t(
+                                  `Inspect Monthly Breakdown (${TREND_PAST_MONTHS} Past Months + Current)`,
+                                  `Zobraziť podrobnú mesačnú tabuľku (${TREND_PAST_MONTHS} minulé mesiace + aktuálny)`,
+                                  `Részletes havi lebontás megtekintése (${TREND_PAST_MONTHS} múltbeli hónap + aktuális)`
+                                )
+                              : t(
+                                  `Inspect Full ${projectionTotalMonths}-Month Breakdown (${TREND_PAST_MONTHS} Past + ${projectionMonths} Future Months)`,
+                                  `Zobraziť podrobnú ${projectionTotalMonths}-mesačnú tabuľku (${TREND_PAST_MONTHS} minulé + ${projectionMonths} budúcich mesiacov)`,
+                                  `Részletes ${projectionTotalMonths} hónapos lebontás megtekintése (${TREND_PAST_MONTHS} múltbéli + ${projectionMonths} jövőbeli hónap)`
+                                ))
                         : (isWeeklyTableOpen
-                            ? t(
-                                `Hide ${projectionTotalWeeks}-Week Projection Table`,
-                                `Skryť ${projectionTotalWeeks}-týždňovú tabuľku prognózy`,
-                                `${projectionTotalWeeks} hetes előrejelzési táblázat elrejtése`
-                              )
-                            : t(
-                                `Inspect Full ${projectionTotalWeeks}-Week Weekly Breakdown (${TREND_PAST_WEEKS} Past + ${projectionFutureWeeks} Future Weeks)`,
-                                `Zobraziť podrobnú ${projectionTotalWeeks}-týždňovú tabuľku (${TREND_PAST_WEEKS} minulé + ${projectionFutureWeeks} budúcich týždňov)`,
-                                `Részletes ${projectionTotalWeeks} hetes lebontás megtekintése (${TREND_PAST_WEEKS} múltbéli + ${projectionFutureWeeks} jövőbeli hét)`
-                              ))}
+                            ? projectionMonths === 0
+                              ? t("Hide Weekly Breakdown", "Skryť týždennú tabuľku", "Heti lebontás elrejtése")
+                              : t(
+                                  `Hide ${projectionTotalWeeks}-Week Projection Table`,
+                                  `Skryť ${projectionTotalWeeks}-týždňovú tabuľku prognózy`,
+                                  `${projectionTotalWeeks} hetes előrejelzési táblázat elrejtése`
+                                )
+                            : projectionMonths === 0
+                              ? t(
+                                  `Inspect Weekly Breakdown (${TREND_PAST_WEEKS} Past Weeks + Current)`,
+                                  `Zobraziť podrobnú týždennú tabuľku (${TREND_PAST_WEEKS} minulé týždne + aktuálny)`,
+                                  `Részletes heti lebontás megtekintése (${TREND_PAST_WEEKS} múltbeli hét + aktuális)`
+                                )
+                              : t(
+                                  `Inspect Full ${projectionTotalWeeks}-Week Weekly Breakdown (${TREND_PAST_WEEKS} Past + ${projectionFutureWeeks} Future Weeks)`,
+                                  `Zobraziť podrobnú ${projectionTotalWeeks}-týždňovú tabuľku (${TREND_PAST_WEEKS} minulé + ${projectionFutureWeeks} budúcich týždňov)`,
+                                  `Részletes ${projectionTotalWeeks} hetes lebontás megtekintése (${TREND_PAST_WEEKS} múltbéli + ${projectionFutureWeeks} jövőbeli hét)`
+                                ))}
                       {isWeeklyTableOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                     </button>
                     <span className="text-[11px] text-slate-400">
-                      {activeResolution === "month"
-                        ? t(
-                            `Total Horizon: ${projectionTotalMonths} Months (${projectionMonths} Months Forward)`,
-                            `Časový horizont: ${projectionTotalMonths} mesiacov (${skMonths(projectionMonths)} dopredu)`,
-                            `Teljes időtáv: ${projectionTotalMonths} hónap (${projectionMonths} hónap előre)`
-                          )
-                        : t(
-                            `Total Horizon: ${projectionTotalWeeks} Weeks (${projectionMonths} Months Forward)`,
-                            `Časový horizont: ${projectionTotalWeeks} týždňov (${skMonths(projectionMonths)} dopredu)`,
-                            `Teljes időtáv: ${projectionTotalWeeks} hét (${projectionMonths} hónap előre)`
-                          )}
+                      {projectionMonths === 0
+                        ? t("Forecast off", "Prognóza vypnutá", "Előrejelzés kikapcsolva")
+                        : activeResolution === "month"
+                          ? t(
+                              `Total Horizon: ${projectionTotalMonths} Months (${projectionMonths} Months Forward)`,
+                              `Časový horizont: ${projectionTotalMonths} mesiacov (${skMonths(projectionMonths)} dopredu)`,
+                              `Teljes időtáv: ${projectionTotalMonths} hónap (${projectionMonths} hónap előre)`
+                            )
+                          : t(
+                              `Total Horizon: ${projectionTotalWeeks} Weeks (${projectionMonths} Months Forward)`,
+                              `Časový horizont: ${projectionTotalWeeks} týždňov (${skMonths(projectionMonths)} dopredu)`,
+                              `Teljes időtáv: ${projectionTotalWeeks} hét (${projectionMonths} hónap előre)`
+                            )}
                     </span>
                   </div>
 
@@ -5828,7 +5606,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       )}
 
       {/* 4.5 TAB CONTENT: OVERVIEW TABLE MATRIX (EXPENSES -> INCOMES -> SUMMARY) */}
-      {activeTab === "table" && (
+      {!showSettings && activeTab === "table" && (
         <div className="space-y-4 animate-in fade-in duration-200">
           {/* THE MATRIX DATA TABLE CONTAINER */}
           <div className="bg-white  rounded-3xl border border-slate-200/80  shadow-sm overflow-hidden">
@@ -6142,7 +5920,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       )}
 
       {/* 4.6 TAB CONTENT: CHRONOLOGICAL MOVEMENTS LEDGER (TAB 3) */}
-      {activeTab === "movements" && (
+      {!showSettings && activeTab === "movements" && (
         <div className="space-y-4 animate-in fade-in duration-200">
           {/* MOVEMENTS CONTROL & FILTER CARD */}
           <div className="bg-white  p-4 rounded-3xl border border-slate-200/80  shadow-sm space-y-3">
@@ -6981,9 +6759,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
                                   {renderLedgerSourceCells(rec)}
 
-                                  {/* 5. Payment status — editable straight from the row */}
+                                  {/* 5. Payment status — editable straight from the row (Settings → Finance) */}
                                   <td className="py-3 px-4">
-                                    {canEdit ? (
+                                    {inlineEdit ? (
                                       <CustomSelect
                                         size="sm"
                                         value={rec.status}
@@ -7109,7 +6887,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       )}
 
       {/* 5. TAB CONTENT: RECURRING EXPENSES MANAGER */}
-      {activeTab === "recurring" && (
+      {!showSettings && activeTab === "recurring" && (
         <div className="space-y-4 animate-in fade-in duration-200">
           {/* TOP METRIC CARDS */}
           {/* Icon + label share a header row and the figure sits below, so a narrow
@@ -7639,172 +7417,6 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         </div>
       )}
 
-      {/* 8. TAB CONTENT 5: 3-LEVEL CATEGORY HIERARCHY TREE MANAGER */}
-      {activeTab === "categories" && (
-        <div className="bg-white  rounded-3xl border border-slate-200/80  shadow-sm p-6 space-y-6 animate-in fade-in duration-200">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 border-b border-slate-100  pb-4">
-            <div>
-              <h3 className="text-sm font-bold text-slate-900  flex items-center gap-2">
-                <Layers className="h-4 w-4 text-indigo-500" />
-                {t("Movement Categories", "Kategórie finančných pohybov", "Mozgási kategóriák")}
-              </h3>
-              <p className="text-xs text-slate-400 mt-0.5">
-                {t("Organize your financial movement categories across Main Category (L1) ➔ Subcategory (L2) ➔ Sub-subcategory (L3).", "Organizácia finančných tokov a nákladov v 3 úrovniach: Hlavná kategória (L1) ➔ Podkategória (L2) ➔ Pod-podkategória (L3).", "Pénzügyi tételek 3 szintű rendszerezése: Főkategória (L1) ➔ Alkategória (L2) ➔ Al-alkategória (L3).")}
-              </p>
-            </div>
-
-            {/* Incomes vs Expenses tree switcher */}
-            <div className="flex items-center gap-2 bg-slate-100  p-1 rounded-2xl">
-              <button
-                onClick={() => {
-                  // A parent id from the tree just left behind must not survive
-                  // the switch — it would be silently invisible in the "Parent
-                  // Category" select (its option belongs to the other type) while
-                  // still being submitted, putting the new category's money on
-                  // the wrong side of the ledger (see F1).
-                  setCatTreeType("expense");
-                  setNewCatParentId("");
-                }}
-                className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  catTreeType === "expense" ? "bg-white  text-rose-600 shadow-sm" : "text-slate-500"
-                }`}
-              >
-                {t("Expense Categories", "Kategórie výdavkov", "Kiadási kategóriák")}
-              </button>
-              <button
-                onClick={() => {
-                  setCatTreeType("income");
-                  setNewCatParentId("");
-                }}
-                className={`px-4 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                  catTreeType === "income" ? "bg-white  text-emerald-600 shadow-sm" : "text-slate-500"
-                }`}
-              >
-                {t("Income Categories", "Kategórie príjmov", "Bevételi kategóriák")}
-              </button>
-            </div>
-          </div>
-
-          {/* Quick Add Category Form */}
-          <form onSubmit={handleCreateCategory} className="p-4 rounded-2xl bg-slate-50  border border-slate-200  flex flex-wrap items-end gap-3">
-            <div className="flex-1 min-w-[200px]">
-              <label className="text-[11px] font-bold text-slate-500 block mb-1">
-                {t("Category Name", "Názov kategórie", "Kategória neve")}
-              </label>
-              <input
-                type="text"
-                maxLength={150}
-                value={newCatName}
-                onChange={(e) => setNewCatName(e.target.value)}
-                placeholder={t("e.g. Meta Ads, Truck Transport, LAM 5+...", "napr. Meta Ads, Preprava, LAM 5+...", "pl. Google Ads, Szállítás...")}
-                className="w-full px-3 py-2 bg-white  border border-slate-200  rounded-xl text-xs text-slate-800  focus:outline-none"
-              />
-            </div>
-
-            <div className="min-w-[220px]">
-              <label className="text-[11px] font-bold text-slate-500 block mb-1">
-                {t("Parent Category (optional)", "Nadradená kategória (voliteľné)", "Szülő kategória (opcionális)")}
-              </label>
-              <CustomSelect
-                value={newCatParentId}
-                onChange={(val) => setNewCatParentId(val)}
-                options={[
-                  { value: "", label: t("★ None (Create as Level 1 Root)", "★ Žiadna (Vytvoriť ako Hlavnú L1)", "★ Nincs (Fő L1 kategória)") },
-                  ...(catTreeType === "expense" ? categoryTree.expenseTree : categoryTree.incomeTree).flatMap((l1) => [
-                    { value: l1.id, label: `● ${l1.name} (L1)` },
-                    ...l1.children.map((l2) => ({ value: l2.id, label: `  ↳ ${l2.name} (L2)` })),
-                  ]),
-                ]}
-                size="sm"
-                className="w-full text-xs font-semibold rounded-xl bg-white border-slate-200"
-              />
-            </div>
-
-            <div>
-              <label className="text-[11px] font-bold text-slate-500 block mb-1">
-                {newCatParentId && !newCatColorTouched ? t("Color (inherited)", "Farba (zdedená)", "Szín (örökölt)") : t("Color", "Farba", "Szín")}
-              </label>
-              <ColorPicker
-                variant="field"
-                value={newCatFormColor}
-                onChange={(color) => {
-                  setNewCatColor(color);
-                  setNewCatColorTouched(true);
-                }}
-              />
-            </div>
-
-            <button
-              type="submit"
-              className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl cursor-pointer shadow-sm"
-            >
-              {t("Add Category", "Pridať kategóriu", "Kategória hozzáadása")}
-            </button>
-          </form>
-
-          {/* Tree Rendering: every row drags — onto a row's edge to sit beside it, onto its middle to go under it */}
-          <p className="-mt-3 text-[11px] text-slate-400 flex items-center gap-1.5">
-            <GripVertical className="h-3.5 w-3.5 shrink-0" />
-            {t(
-              "Drag a category to reorder it or move it under another one; click its colour dot to recolour it.",
-              "Potiahnutím kategórie zmeníte poradie alebo ju presuniete pod inú; kliknutím na farebnú bodku zmeníte farbu.",
-              "Húzással átrendezheti vagy más kategória alá helyezheti; a színes pontra kattintva módosíthatja a színét."
-            )}
-          </p>
-          <div
-            ref={categoryTreeRef}
-            className="space-y-3"
-            onDragLeave={(e) => {
-              if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setCategoryDropTarget(null);
-            }}
-          >
-            {(catTreeType === "expense" ? categoryTree.expenseTree : categoryTree.incomeTree).map((l1) => (
-              <div key={l1.id} className="border border-slate-200  rounded-2xl overflow-hidden bg-white ">
-                {/* Level 1 Header */}
-                {renderCategoryRow(l1, 1)}
-
-                {/* Level 2 Children */}
-                {l1.children.length > 0 && (
-                  <div className="p-3 space-y-2 bg-slate-50/30 ">
-                    {l1.children.map((l2) => (
-                      <div key={l2.id} className="pl-4 border-l-2 border-slate-200  space-y-2">
-                        {renderCategoryRow(l2, 2, categoryColor(l1))}
-
-                        {/* Level 3 Children */}
-                        {l2.children.length > 0 && (
-                          <div className="pl-6 space-y-1">
-                            {l2.children.map((l3) => renderCategoryRow(l3, 3, categoryColor(l2) || categoryColor(l1)))}
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            ))}
-
-            {/* Drop zone: the end of the main categories */}
-            {draggedCategoryId && (
-              <div
-                onDragOver={(e) => handleCategoryDragOver(e, null)}
-                onDrop={handleCategoryDrop}
-                className={`animate-in fade-in slide-in-from-bottom-1 duration-200 rounded-2xl border-2 border-dashed px-4 py-3 text-center text-xs font-semibold transition-colors ${
-                  categoryDropTarget?.targetId === null
-                    ? "border-indigo-400 bg-indigo-50 text-indigo-600"
-                    : "border-slate-200 text-slate-400"
-                }`}
-              >
-                {t(
-                  "Drop here to make it a main category (L1) at the end",
-                  "Pustite sem — stane sa hlavnou kategóriou (L1) na konci zoznamu",
-                  "Engedje el ide — fő kategória (L1) lesz a lista végén"
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
       {/* 9A. EDIT TRANSACTION: RIGHT SLIDEOUT DRAWER PANEL (ENTITIES WITHOUT SEPARATE VIEW) */}
       {isModalOpen && (editingRecord || editingOccurrence) && (
         <div className="fixed inset-0 z-[9999] flex justify-end overflow-hidden">
@@ -8150,39 +7762,6 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           </div>
         );
       })()}
-
-      {/* 10. CATEGORY TREE MANAGEMENT MODAL */}
-      {isCatModalOpen && (
-        <div className="fixed inset-0 z-[9999] bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white  rounded-3xl border border-slate-200  shadow-2xl max-w-lg w-full p-6 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100  pb-3">
-              <h3 className="text-sm font-bold text-slate-900  flex items-center gap-2">
-                <Layers className="h-4 w-4 text-indigo-500" />
-                {t("Manage 3-Level Categories", "Správa kategórií (3 úrovne)", "3 szintű kategóriák")}
-              </h3>
-              <button onClick={() => setIsCatModalOpen(false)} className="p-1 text-slate-400 hover:text-slate-600">
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-
-            <p className="text-xs text-slate-500">
-              {t("You can manage categories under the '3-Level Category Tree' tab or add subcategories directly.", "Kategórie môžete spravovať v záložke 'Strom kategórií'.", "A kategóriák kezelhetők a 'Kategória-fa' fül alatt.")}
-            </p>
-
-            <div className="pt-2 flex justify-end">
-              <button
-                onClick={() => {
-                  setIsCatModalOpen(false);
-                  handleTabChange("categories");
-                }}
-                className="px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-xl cursor-pointer"
-              >
-                {t("Open Full Category Tree Manager", "Otvoriť strom kategórií", "Kategória-fa megnyitása")}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

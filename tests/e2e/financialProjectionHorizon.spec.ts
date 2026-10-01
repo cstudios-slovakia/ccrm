@@ -2,9 +2,11 @@ import { expect, test, type Page } from '@playwright/test';
 import { gotoView, startSession } from './helpers/appDriver';
 
 /**
- * Finance overview: the weekly trend graph projects 3, 6 or 12 months forward.
- * Switching the horizon has to re-scale the dataset (4 past weeks + the current
- * one + the horizon's future weeks), relabel the chart, and survive a reload.
+ * Finance overview: the trend graph's forecast is opt-in. It is off until a
+ * horizon is chosen — then it projects 3, 6 or 12 months forward. Switching the
+ * horizon has to re-scale the dataset (4 past weeks + the current one + the
+ * horizon's future weeks), relabel the chart, and survive a reload; Off drops
+ * every future period again.
  */
 
 const HORIZONS = [
@@ -32,7 +34,7 @@ async function openFinanceOverview(page: Page) {
 
 async function openWeeklyTable(page: Page) {
   const toggle = page.getByRole('button', {
-    name: /Inspect Full \d+-Week Weekly Breakdown|Zobraziť podrobnú \d+-týždňovú tabuľku/
+    name: /Inspect (Full \d+-Week )?Weekly Breakdown|Zobraziť podrobnú (\d+-týždňovú|týždennú) tabuľku/
   });
   if (await toggle.isVisible().catch(() => false)) await toggle.click();
 }
@@ -50,10 +52,9 @@ test.describe('Finance projection horizon', () => {
       await expect(
         page.getByText(new RegExp(`${h.months}-MONTH FUTURE FORECAST|${h.months}-MESAČNÁ PROGNÓZA`))
       ).toBeVisible(SETTLE);
+      // The title is global: it never names the view or the forecast.
       await expect(
-        page.getByRole('heading', {
-          name: new RegExp(`Weekly Trend & ${h.months}-Month Projection|Týždenný vývoj a ${h.months}-mesačná prognóza`)
-        })
+        page.getByRole('heading', { name: /Cash Flow Trend|Vývoj cash flow/ })
       ).toBeVisible(SETTLE);
 
       // The breakdown table is the dataset itself: one row per week.
@@ -65,6 +66,32 @@ test.describe('Finance projection horizon', () => {
         .poll(async () => page.locator('svg circle[stroke="#ffffff"]').count())
         .toBe(h.totalWeeks);
     }
+  });
+
+  test('Off drops the forecast: history and the current week only', async ({ page }) => {
+    await startSession(page);
+    await openFinanceOverview(page);
+
+    // Make sure a forecast is showing first, so Off has something to remove.
+    await page.getByRole('button', { name: /^3M$/ }).click();
+    await expect(page.getByText(/3-MONTH FUTURE FORECAST|3-MESAČNÁ PROGNÓZA/)).toBeVisible(SETTLE);
+
+    await page.getByRole('button', { name: /^(Off|Vyp\.)$/ }).click();
+
+    await expect(page.getByText(/Forecast off|Prognóza vypnutá/)).toBeVisible(SETTLE);
+    await expect(page.getByText(/FUTURE FORECAST|MESAČNÁ PROGNÓZA/)).toHaveCount(0);
+    await expect(page.getByText(/Future \d+-Mo Window|\d+-Mesačné okno/)).toHaveCount(0);
+
+    // The switcher is named for what it controls.
+    await expect(page.getByText(/Forecast horizon|Horizont prognózy/)).toBeVisible();
+
+    await openWeeklyTable(page);
+    // 4 past weeks + the current one, and one plotline node each.
+    const rows = page.locator('table tbody tr').filter({ hasText: /W\d+/ });
+    await expect.poll(async () => rows.count()).toBe(5);
+    await expect
+      .poll(async () => page.locator('svg circle[stroke="#ffffff"]').count())
+      .toBe(5);
   });
 
   test('the chosen horizon survives a reload', async ({ page }) => {

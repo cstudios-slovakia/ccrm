@@ -83,7 +83,18 @@ export interface UserPrefs {
    * utils/financialTrend.ts.
    */
   financialTrendMode: "relative" | "cumulative";
-  financialProjectionMonths: 3 | 6 | 12;
+  /**
+   * Finance trend chart: how far forward the forecast runs. `0` is "off" — the
+   * chart then shows history and the current period only, so the forecast is
+   * something a user opts into rather than what the screen is about.
+   */
+  financialProjectionMonths: 0 | 3 | 6 | 12;
+  /**
+   * Finance movements ledger: edit a payment's status straight from its row.
+   * Off (the default) leaves the status as a plain badge and sends every change
+   * through the edit drawer. Per user, like the other view preferences.
+   */
+  financialInlineEdit: boolean;
   /**
    * Finance trend chart: aggregation resolution — "week" or "month".
    * Per user preference like curve choice and projection horizon.
@@ -140,7 +151,8 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   leadsVisibleStates: null,
   projectsVisibleStatuses: null,
   financialTrendMode: "relative",
-  financialProjectionMonths: 3,
+  financialProjectionMonths: 0,
+  financialInlineEdit: false,
   financialTrendResolution: "week",
   startMenuLayout: null,
   seenUpdateId: null,
