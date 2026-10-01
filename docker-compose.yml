@@ -35,7 +35,9 @@ services:
   vector_db:
     image: mariadb:11.8
     ports:
-      - "3309:3306"
+      # Override per-machine via CCRM_DEV_VECTOR_DB_PORT in a local .env file
+      # (gitignored) when 3309 is already taken by another project/worktree.
+      - "${CCRM_DEV_VECTOR_DB_PORT:-3309}:3306"
     environment:
       MARIADB_DATABASE: vector_db
       MARIADB_USER: vector_user
