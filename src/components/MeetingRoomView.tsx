@@ -1724,7 +1724,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
     <div className="space-y-6">
       {/* HEADER SECTION */}
       {viewState !== "new" && (
-        <div className="flex flex-row items-center justify-between gap-4 border-b border-slate-100 pb-4">
+        <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-4 border-b border-slate-100 pb-4">
           {viewState === "list" ? (
             <>
               <div className="flex flex-col">
@@ -1740,7 +1740,7 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
                       : "Log call/meeting notes, view raw conversations, and let AI automatically extract key take-aways, sentiment analysis, and follow-up actions."}
                 </p>
               </div>
-              <div className="flex gap-2 shrink-0">
+              <div className="flex flex-wrap gap-2 ws-sm:shrink-0">
                 {!canEdit && (
                   <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 type-overline">
                     <Lock className="h-3.5 w-3.5" />

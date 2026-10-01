@@ -4494,7 +4494,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
         subtitle={t("Track planned vs real cash flows, project revenue profitability, single & recurring expenses, and 3-level categories.", "Sledovanie plánovaných a reálnych tokov, ziskovosti projektov, jednorazových a pravidelných výdavkov a 3 úrovní kategórií.", "Tervezett és valós pénzáramlások, projektjövedelmezőség, rendszeres kiadások és 3 szintű kategóriák.")}
         actions={<>
           {/* Quick Actions — one row, equal height, never wrapping into a stack */}
-          <div className="flex items-center gap-2 shrink-0">
+          <div className="flex items-center gap-2 shrink-0 max-w-full overflow-x-auto scrollbar-none">
             {showSettings ? (
               <button
                 type="button"

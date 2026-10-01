@@ -328,7 +328,7 @@ export const LeadsTableWidget: React.FC<PresetWidgetProps> = ({
         <EmptyWidgetRows t={ctx.t} />
       ) : (
         <>
-          <div className="flex flex-col flex-1 min-w-0">
+          <div className="flex flex-col flex-1 min-w-0 overflow-x-auto scrollbar-none">
             <div
               className="grid items-center h-8 px-3 gap-x-4"
               style={{ gridTemplateColumns: template }}
@@ -543,7 +543,7 @@ export const TasksTableWidget: React.FC<PresetWidgetProps> = ({
         <EmptyWidgetRows t={ctx.t} />
       ) : (
         <>
-          <div className="flex flex-col flex-1 min-w-0">
+          <div className="flex flex-col flex-1 min-w-0 overflow-x-auto scrollbar-none">
             <div className="grid items-center h-8 px-3 gap-x-4" style={{ gridTemplateColumns: template }}>
               {columns.map((key) => (
                 <span key={key} className="type-overline text-slate-400">
