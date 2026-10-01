@@ -913,9 +913,11 @@ function fetch_imap_email_detail($settings, $folder, $uid) {
         }
     }
     
-    // Opening a message is the one thing that marks it read - and it is marked
-    // by UID, the same way the user's mail client addresses it, so both agree.
-    $seen = ccrm_set_seen_flag($imapStream, $uid, true);
+    // Read the current seen state without altering it (opening/fetching detail does not mark as seen)
+    $overview = @imap_fetch_overview($imapStream, (string)$uid, FT_UID);
+    $seen = (is_array($overview) && !empty($overview) && is_object($overview[0]) && isset($overview[0]->seen))
+        ? (bool)$overview[0]->seen
+        : false;
 
     @imap_close($imapStream);
     @imap_errors();
@@ -925,7 +927,7 @@ function fetch_imap_email_detail($settings, $folder, $uid) {
         'html' => safe_utf8($html),
         'text' => safe_utf8($text),
         'attachments' => $attachments,
-        'seen' => $seen === null ? true : $seen
+        'seen' => $seen
     ];
 }
 
@@ -938,8 +940,8 @@ function fetch_imap_email_detail($settings, $folder, $uid) {
  * BODY[] fetch makes the server set \Seen as a side effect - that is how the
  * background inbox poll and the RAG cache used to mark every message read
  * before anyone had opened it. This helper is therefore the ONLY place the
- * flag changes, and it does so only when a user opens a message or asks for
- * it explicitly.
+ * flag changes, and it does so only when a user explicitly requests to toggle
+ * the read state via the set_seen endpoint.
  *
  * Returns the flag as the server reports it afterwards, or null when the
  * message could not be found under that UID.

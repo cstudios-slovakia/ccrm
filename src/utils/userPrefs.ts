@@ -71,6 +71,11 @@ export interface UserPrefs {
    */
   leadsVisibleStates: string[] | null;
   /**
+   * Projects screen: which project statuses are shown. `null` means "never chosen",
+   * which falls back to every active (non-closed) status.
+   */
+  projectsVisibleStatuses: string[] | null;
+  /**
    * Finance trend chart: weekly net cash flow, or the running bank balance.
    *
    * Only the *choice of curve* is per user. The manual weekly anchors the
@@ -108,6 +113,16 @@ export interface UserPrefs {
   aiKeyBannerDismissed: boolean;
   /** Customised built-in RAG agent, or null while it is still the stock one. */
   ragDefaultAgent: any | null;
+  /** Sidebar persistent pinned state on the left. If true, stays expanded and renders a right inner shadow. */
+  sidebarPinned: boolean;
+  /** Sidebar compactness density: "compact" | "comfortable" | "spacious". */
+  sidebarCompactness: "compact" | "comfortable" | "spacious";
+  /** Unpinned behavior: "overlay" (slide-out on hover) | "dock" (macOS cursor-distance magnification). */
+  sidebarUnpinnedStyle: "overlay" | "dock";
+  /** Custom sidebar groups structure. */
+  sidebarGroups: Array<{ id: string; title: string; items: string[] }> | null;
+  /** Default startup screen / landing page route id. */
+  defaultPage: string | null;
 }
 
 export const DEFAULT_USER_PREFS: UserPrefs = {
@@ -121,6 +136,7 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   leadsCompactMode: false,
   leadsOrderingMode: "state",
   leadsVisibleStates: null,
+  projectsVisibleStatuses: null,
   financialTrendMode: "relative",
   financialProjectionMonths: 3,
   startMenuLayout: null,
@@ -128,6 +144,11 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   licenseNoticeSuppressed: null,
   aiKeyBannerDismissed: false,
   ragDefaultAgent: null,
+  sidebarPinned: false,
+  sidebarCompactness: "comfortable",
+  sidebarUnpinnedStyle: "overlay",
+  sidebarGroups: null,
+  defaultPage: null,
 };
 
 /** Anything with a metadata_json blob — UserProfile, or a raw sync.php row. */
@@ -199,6 +220,7 @@ const LEGACY_PREF_KEYS = [
   // it would put a flash of the default theme on every reload.
   "ccrm_error_sidebar_enabled",
   "crm_leads_visible_states",
+  "crm_projects_visible_statuses",
   "ccrm_seen_update_id",
   "ccrm_custom_default_agent",
   "crm_financial_trend_mode",
@@ -225,6 +247,14 @@ export const readLegacyPrefs = (): Partial<UserPrefs> => {
     try {
       const parsed = JSON.parse(visibleStates);
       if (Array.isArray(parsed)) legacy.leadsVisibleStates = parsed;
+    } catch (e) {}
+  }
+
+  const visibleProjStatuses = read("crm_projects_visible_statuses");
+  if (visibleProjStatuses) {
+    try {
+      const parsed = JSON.parse(visibleProjStatuses);
+      if (Array.isArray(parsed)) legacy.projectsVisibleStatuses = parsed;
     } catch (e) {}
   }
 

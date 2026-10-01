@@ -35,7 +35,7 @@ function recordSyncedTasks(page: Page) {
 async function openProjectTasks(page: Page) {
   await gotoView(page, '#projects');
   await page.getByText(PROJECT_NAME).first().click();
-  const tab = page.getByRole('button', { name: TAB });
+  const tab = page.locator('main').getByRole('button', { name: TAB });
   await tab.first().click();
   return page.getByRole('textbox', { name: /New tasks, one per line|Nové úlohy, jedna na riadok|Új feladatok, soronként egy/ });
 }
@@ -107,7 +107,7 @@ test.describe('Project tasks', () => {
     // The board groups by time; the linked task is due in six days, so open the
     // team-wide board where every open task is listed.
     await page.getByRole('button', { name: /Global Tasks|Globálne úlohy|Globális feladatok/ }).first().click();
-    const card = page.locator('div').filter({ hasText: /^Objednať krytinu/ }).first();
+    const card = page.locator('div').filter({ hasText: 'Objednať krytinu' }).filter({ hasText: PROJECT_NAME }).first();
     await expect(page.getByText(PROJECT_NAME).first()).toBeVisible();
     await expect(card).toBeVisible();
   });

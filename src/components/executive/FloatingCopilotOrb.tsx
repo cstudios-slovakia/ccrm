@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Sparkles, Bot } from "lucide-react";
+import { Bot } from "lucide-react";
 import { BlobatarAvatar } from "../common/BlobatarAvatar";
 import { VERSION_CODENAME } from "../../utils/version";
 import type { Language } from "../../utils/translations";
@@ -170,24 +170,19 @@ export const FloatingCopilotOrb: React.FC<FloatingCopilotOrbProps> = ({
       aria-label="Open AI Executive Copilot"
     >
       <div className="relative group">
-        {/* Ambient Pulsing Halo */}
-        <div className="absolute -inset-2 bg-gradient-to-r from-purple-600 via-indigo-600 to-pink-500 rounded-full blur-md opacity-40 group-hover:opacity-75 animate-pulse transition-opacity duration-500" />
+        {/* Ambient Subtle Floating Halo */}
+        <div className="absolute -inset-2 bg-gradient-to-tr from-purple-600/30 via-indigo-600/25 to-pink-500/25 rounded-full blur-xl opacity-60 group-hover:opacity-100 transition-opacity duration-500 pointer-events-none" />
 
-        {/* Main Floating Orb Avatar Container */}
-        <div className="relative w-16 h-16 rounded-full bg-slate-900 border-2 border-white/90 shadow-2xl flex items-center justify-center overflow-hidden hover:scale-105 active:scale-95 transition-transform duration-200">
+        {/* Floating Frameless Blobatar */}
+        <div className="relative flex items-center justify-center filter drop-shadow-[0_12px_24px_rgba(0,0,0,0.35)] hover:scale-110 active:scale-95 transition-transform duration-200">
           <BlobatarAvatar
             name={`Executive Leader (${VERSION_CODENAME})`}
             roleColor="purple"
-            size={60}
+            size={64}
             animate="always"
             expression={isHovered ? "wink" : isDragging ? "surprised" : "idle"}
-            frameless
+            frameless={true}
           />
-
-          {/* Glowing AI Mini Badge */}
-          <div className="absolute -bottom-0.5 -right-0.5 bg-gradient-to-r from-amber-400 to-purple-600 text-white rounded-full p-1 shadow-md border-2 border-white">
-            <Sparkles className="h-3 w-3 animate-spin-slow" />
-          </div>
         </div>
 
         {/* Tooltip on Hover */}

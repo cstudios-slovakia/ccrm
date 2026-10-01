@@ -696,6 +696,7 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
     onLaunch({
       title: title.trim(),
       hypothesis: hypothesis.trim(),
+      strategicQuestion: hypothesis.trim(),
       seedDocument: seedDocument.trim(),
       lookbackMonths,
       crmDataSources: selectedSources,
@@ -1007,25 +1008,29 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
             </div>
           </div>
 
-          {/* 2. Strategic Hypothesis Row */}
+          {/* 2. Strategic Question / Answer Mode Row */}
           <div className="grid grid-cols-1 lg:grid-cols-5 divide-y lg:divide-y-0 lg:divide-x divide-slate-200/80 items-stretch">
             <div className="lg:col-span-1 p-5 md:p-6 bg-slate-100/80 flex flex-col justify-start space-y-2">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 bg-indigo-100/80 px-2 py-0.5 rounded-md inline-block border border-indigo-200 w-fit">
-                {t('Core Variable', 'Kľúčová premenná', 'Fő változó')}
+              <span className="text-[10px] font-bold uppercase tracking-wider text-purple-700 bg-purple-100/80 px-2 py-0.5 rounded-md inline-block border border-purple-200 w-fit">
+                {t('Answer Mode', 'Režim odpovede', 'Válasz mód')}
               </span>
               <h3 className="text-xs font-bold text-slate-900 leading-snug">
-                {t('What key question or change do you want to test?', 'Akú kľúčovú otázku alebo zmenu chcete otestovať?', 'Milyen kulcsfontosságú kérdést vagy változást szeretne tesztelni?')}
+                {t('What question should the simulation answer?', 'Akú otázku má simulácia zodpovedať?', 'Milyen kérdésre válaszoljon a szimuláció?')}
               </h3>
               <p className="text-[11px] text-slate-500 font-normal leading-relaxed">
-                {t('Core predictive hypothesis deliberated by the swarm.', 'Kľúčová prediktívna hypotéza, o ktorej bude roj diskutovať.', 'A raj által megvitatott legfontosabb prediktív hipotézis.')}
+                {t(
+                  'The central question deliberated by the swarm. If you want to compare specific options (e.g. colors, candidates, pricing models), include them directly in the question or context.',
+                  'Ústredná otázka, ktorú bude roj riešiť. Ak chcete porovnať konkrétne varianty (napr. farby produktu, kandidátov či cenové balíky), uveďte ich priamo v otázke alebo zadaní.',
+                  'A raj által megvitatott központi kérdés. Ha konkrét változatokat szeretne összehasonlítani (pl. termékszínek, jelöltek, árcsomagok), adja meg őket közvetlenül a kérdésben vagy a kontextusban.'
+                )}
               </p>
             </div>
 
-            <div className="lg:col-span-4 p-5 md:p-7 space-y-1.5 bg-white">
+            <div className="lg:col-span-4 p-5 md:p-7 space-y-3 bg-white">
               <label className="text-xs font-bold uppercase tracking-wider text-slate-700 flex items-center justify-between">
-                <span>{t('Strategic Hypothesis / What-If Variable', 'Strategická hypotéza / What-If premenná', 'Stratégiai hipotézis / "Mi lenne, ha" változó')} <span className="text-rose-500">*</span></span>
+                <span>{t('Strategic Question to Answer', 'Strategická otázka na zodpovedanie', 'Megválaszolandó stratégiai kérdés')} <span className="text-rose-500">*</span></span>
                 <span className="text-[11px] text-slate-400 font-normal">
-                  {t('Core predictive question deliberated by the swarm', 'Kľúčová prediktívna otázka, o ktorej bude roj diskutovať', 'A raj által megvitatott legfontosabb prediktív kérdés')}
+                  {t('The swarm will deliberate, vote, and deliver an executive answer with reasons', 'Roj bude diskutovať, priebežne hlasovať a v závere doručí priamu odpoveď s dôvodmi', 'A raj vitázik, szavaz, és a végén közvetlen indokolt választ ad')}
                 </span>
               </label>
               <input 
@@ -1035,24 +1040,72 @@ export const CreateRehearsalView: React.FC<CreateRehearsalViewProps> = ({
                   setHypothesis(e.target.value);
                   setIsDirty(true);
                 }}
-                placeholder={t('e.g. What if we raise prices by 25% while offering 99.9% SLA availability?', 'napr. Čo ak zvýšime ceny o 25% a zároveň ponúkneme 99.9% SLA dostupnosť?', 'pl. Mi lenne, ha 25%-kal növelnénk az árakat, miközben 99.9%-os SLA rendelkezésre állást garantálunk?')}
+                placeholder={t(
+                  'e.g. Which color of our new product will be most successful: Matte Black, Forest Green, or Ceramic White? / Who will win the elections? / Will clients accept a 20% price increase?',
+                  'napr. Ktorá farba nášho produktu bude najúspešnejšia: Matná čierna, Lesná zelená, alebo Keramická biela? / Kto vyhrá voľby? / Akceptujú klienti 20% zvýšenie cien?',
+                  'pl. Melyik termékszín lesz a legsikeresebb: Matt fekete, Erdei zöld, vagy Fehér? / Ki nyeri a választást? / Elfogadják az ügyfelek a 20%-os áremelést?'
+                )}
                 required
                 className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:border-purple-500 focus:ring-2 focus:ring-purple-100 outline-none text-sm text-slate-900 font-medium bg-white"
               />
+
+              {/* Quick Preset Chips to inspire question types */}
+              <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+                <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider mr-1">
+                  {t('Examples:', 'Príklady otázok:', 'Példák:')}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setHypothesis(t(
+                      'Which colorway of our new product will be the most successful: Matte Black, Forest Green, or Ceramic White?',
+                      'Ktorá farebná verzia nášho nového produktu bude najúspešnejšia: Matná čierna, Lesná zelená, alebo Keramická biela?',
+                      'Melyik termékszín lesz a legsikeresebb az új termékünknél: Matt fekete, Erdei zöld, vagy Kerámia fehér?'
+                    ));
+                    setIsDirty(true);
+                  }}
+                  className="px-2.5 py-1 rounded-xl bg-slate-50 hover:bg-purple-50 border border-slate-200 hover:border-purple-300 text-[11px] text-slate-600 hover:text-purple-700 transition cursor-pointer"
+                >
+                  🎨 {t('Product Color / Variants', 'Farba / Varianty produktu', 'Termékszín / Változatok')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setHypothesis(t(
+                      'Who will win the upcoming election and which voter groups will decide the outcome?',
+                      'Kto vyhrá nadchádzajúce voľby a ktoré voličské skupiny rozhodnú o výsledku?',
+                      'Ki nyeri a közelgő választást és mely választói rétegek döntik el a végeredményt?'
+                    ));
+                    setIsDirty(true);
+                  }}
+                  className="px-2.5 py-1 rounded-xl bg-slate-50 hover:bg-purple-50 border border-slate-200 hover:border-purple-300 text-[11px] text-slate-600 hover:text-purple-700 transition cursor-pointer"
+                >
+                  🗳️ {t('Elections / Race', 'Voľby / Výber kandidáta', 'Választás / Jelöltek')}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setHypothesis(t(
+                      'Will our B2B customers accept a 20% price increase if we provide direct engineer support via WhatsApp and a 99.9% SLA?',
+                      'Akceptujú naši B2B zákazníci 20% zvýšenie cien, ak im poskytneme priamu podporu vývojárov cez WhatsApp a 99.9% SLA?',
+                      'Elfogadják-e a B2B ügyfeleink a 20%-os áremelést, ha közvetlen mérnöki WhatsApp támogatást és 99.9%-os SLA-t biztosítunk?'
+                    ));
+                    setIsDirty(true);
+                  }}
+                  className="px-2.5 py-1 rounded-xl bg-slate-50 hover:bg-purple-50 border border-slate-200 hover:border-purple-300 text-[11px] text-slate-600 hover:text-purple-700 transition cursor-pointer"
+                >
+                  💰 {t('Pricing / Go-No-Go', 'Zvýšenie cien / Prijatie trhom', 'Áremelés / Piaci elfogadás')}
+                </button>
+              </div>
+
               <div className="flex items-start gap-2 pt-1 text-[11px] text-slate-500 leading-relaxed">
                 <Info className="w-3.5 h-3.5 text-purple-500/80 shrink-0 mt-0.5" />
                 <span>
-                  <strong className="text-slate-700 font-semibold">{t('Purpose:', 'Na čo slúži:', 'Célja:')}</strong>{' '}
+                  <strong className="text-slate-700 font-semibold">{t('How Answer Mode works:', 'Ako funguje režim odpovede:', 'Hogyan működik a Válasz mód:')}</strong>{' '}
                   {t(
-                    'Key strategic change, pricing shift, or directional move being stress-tested.',
-                    'Kľúčová strategická zmena, zmena cenotvorby alebo smerovania, ktorá sa má otestovať.',
-                    'Kulcsfontosságú stratégiai váltás, árváltoztatás vagy irányvonal, amely tesztelésre kerül.'
-                  )}{' '}
-                  <strong className="text-slate-700 font-semibold">{t('How it\'s used:', 'Ako sa používa:', 'Használata:')}</strong>{' '}
-                  {t(
-                    'Serves as the central mission prompt for agents, guiding autonomous opinion formulation, sentiment shifts, and objection tracking.',
-                    'Slúži ako ústredné zadanie pre agentov, riadi autonómnu tvorbu názorov, zmeny nálad a sledovanie námietok.',
-                    'Központi küldetésként szolgál az ágensek számára, irányítja az autonóm véleményalkotást, a hangulatváltozásokat és a kifogások követését.'
+                    'The swarm will not just generate random social chatter. Agents actively debate and evaluate your question based on their profession, budget, and biases, updating their stances each round. The final report starts with a direct answer and a breakdown of why.',
+                    'Roj nebude generovať len náhodnú konverzáciu. Agenti budú aktívne argumentovať a hodnotiť vašu otázku podľa svojej profesie a záujmov. Záverečný report začne priamou odpoveďou a podrobným vysvetlením prečo.',
+                    'A raj nem csupán véletlenszerű bejegyzéseket hoz létre. Az ágensek aktívan vitáznak és értékelik a kérdést szakmájuk és érdekeik szerint. A zárójelentés közvetlen válasszal és indoklással indul.'
                   )}
                 </span>
               </div>

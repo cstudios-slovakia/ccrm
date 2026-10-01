@@ -17,6 +17,9 @@ import {
     Workflow,
     Play,
     Package,
+    ChevronDown,
+    ChevronUp,
+    ChevronRight,
 } from "lucide-react";
 import * as Icons from "lucide-react";
 import type { UserProfile } from "../types";
@@ -24,6 +27,7 @@ import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import type { UpdateEntry } from "./UpdateNotesModal";
 import { useUserPref } from "../utils/userPrefs";
+import { SidebarSettings } from "./SidebarSettings";
 
 interface HeaderProps {
     activeTab: string;
@@ -34,7 +38,7 @@ interface HeaderProps {
     setSystemLanguage: (lang: Language) => void;
     isDemoMode?: boolean;
     onOpenPersonalSettings: () => void;
-    onNavigateMeetings?: (action: "list" | "new") => void;
+    onNavigateMeetings?: (action: "list" | "new" | "record") => void;
     onAddTask?: () => void;
     onNavigateUpdates?: () => void;
     /** Route gate from the permission resolver; search hits and shortcuts into closed modules are dropped. */
@@ -69,8 +73,28 @@ export const Header: React.FC<HeaderProps> = ({
     const [isClosing, setIsClosing] = React.useState(false);
     const [isMeetingsOpen, setIsMeetingsOpen] = React.useState(false);
     const [isMobileSearchOpen, setIsMobileSearchOpen] = React.useState(false);
+    const [isMobileSliderOpen, setIsMobileSliderOpen] = React.useState(false);
+    const [isMobileSliderClosing, setIsMobileSliderClosing] = React.useState(false);
     const dropdownRef = React.useRef<HTMLDivElement>(null);
     const meetingsDropdownRef = React.useRef<HTMLDivElement>(null);
+    const mobileSliderRef = React.useRef<HTMLDivElement>(null);
+
+    const handleCloseMobileSlider = React.useCallback(() => {
+        if (!isMobileSliderOpen || isMobileSliderClosing) return;
+        setIsMobileSliderClosing(true);
+        setTimeout(() => {
+            setIsMobileSliderOpen(false);
+            setIsMobileSliderClosing(false);
+        }, 320);
+    }, [isMobileSliderOpen, isMobileSliderClosing]);
+
+    const handleToggleMobileSlider = React.useCallback(() => {
+        if (isMobileSliderOpen) {
+            handleCloseMobileSlider();
+        } else {
+            setIsMobileSliderOpen(true);
+        }
+    }, [isMobileSliderOpen, handleCloseMobileSlider]);
 
     // Automation Toolbox States
     const [manualWorkflows, setManualWorkflows] = React.useState<any[]>([]);
@@ -78,25 +102,34 @@ export const Header: React.FC<HeaderProps> = ({
     const [runningWfId, setRunningWfId] = React.useState<string | null>(null);
     const toolboxDropdownRef = React.useRef<HTMLDivElement>(null);
 
+    const loadManualWorkflows = React.useCallback(() => {
+        if (!canRunWorkflows) return;
+        fetch("/api/workflows.php?action=list")
+            .then((res) => res.json())
+            .then((data) => {
+                if (data.success) {
+                    const manualOnly = (data.workflows || []).filter(
+                        (w: any) =>
+                            w.trigger_type === "manual" &&
+                            w.is_active === 1,
+                    );
+                    setManualWorkflows(manualOnly);
+                }
+            })
+            .catch((err) =>
+                console.error("Error loading manual triggers", err),
+            );
+    }, [canRunWorkflows]);
+
     React.useEffect(() => {
-        if (isToolboxOpen) {
-            fetch("/api/workflows.php?action=list")
-                .then((res) => res.json())
-                .then((data) => {
-                    if (data.success) {
-                        const manualOnly = (data.workflows || []).filter(
-                            (w: any) =>
-                                w.trigger_type === "manual" &&
-                                w.is_active === 1,
-                        );
-                        setManualWorkflows(manualOnly);
-                    }
-                })
-                .catch((err) =>
-                    console.error("Error loading manual triggers", err),
-                );
+        loadManualWorkflows();
+    }, [loadManualWorkflows]);
+
+    React.useEffect(() => {
+        if (isToolboxOpen || isMobileSliderOpen) {
+            loadManualWorkflows();
         }
-    }, [isToolboxOpen]);
+    }, [isToolboxOpen, isMobileSliderOpen, loadManualWorkflows]);
 
     React.useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -106,11 +139,18 @@ export const Header: React.FC<HeaderProps> = ({
             ) {
                 setIsToolboxOpen(false);
             }
+            if (
+                mobileSliderRef.current &&
+                !mobileSliderRef.current.contains(event.target as Node) &&
+                !(event.target as HTMLElement).closest("[data-mobile-slider-trigger]")
+            ) {
+                handleCloseMobileSlider();
+            }
         };
         document.addEventListener("mousedown", handleClickOutside);
         return () =>
             document.removeEventListener("mousedown", handleClickOutside);
-    }, []);
+    }, [handleCloseMobileSlider]);
 
     // Update notes states
     const [updatesList, setUpdatesList] = useState<UpdateEntry[]>([]);
@@ -761,10 +801,38 @@ export const Header: React.FC<HeaderProps> = ({
                             </a>
                         )}
 
+                        {/* Mobile Down Caret Trigger Button */}
+                        <button
+                            type="button"
+                            data-mobile-slider-trigger="true"
+                            onClick={handleToggleMobileSlider}
+                            className={`h-8.5 w-8.5 xs:h-9 xs:w-9 sm:hidden rounded-xl border flex items-center justify-center transition-all shadow-sm cursor-pointer relative shrink-0 ${
+                                isMobileSliderOpen
+                                    ? "bg-[#0b1329] border-[#0b1329] text-white"
+                                    : "bg-white/80 border-slate-200 text-slate-700 hover:border-slate-300 hover:bg-slate-50"
+                            }`}
+                            aria-expanded={isMobileSliderOpen}
+                            aria-label={t("Toggle quick options", "Prepnúť rýchle možnosti", "Gyors beállítások váltása")}
+                            title={t("Quick options", "Rýchle možnosti", "Gyors beállítások")}
+                        >
+                            {isMobileSliderOpen ? (
+                                <ChevronUp className="h-4 w-4" />
+                            ) : (
+                                <ChevronDown className="h-4 w-4" />
+                            )}
+                            {hasNewUpdate && !isMobileSliderOpen && (
+                                <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75" />
+                                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500" />
+                                </span>
+                            )}
+                        </button>
+
+                        {/* Desktop Create Task Button */}
                         {canCreateTask && (
                         <button
                             onClick={onAddTask}
-                            className="h-8.5 w-8.5 xs:h-9 xs:w-9 sm:h-10 sm:w-10 rounded-xl border bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-300 hover:bg-slate-50 flex items-center justify-center transition-colors shadow-sm cursor-pointer shrink-0"
+                            className="hidden sm:flex h-10 w-10 rounded-xl border bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-300 hover:bg-slate-50 items-center justify-center transition-colors shadow-sm cursor-pointer shrink-0"
                             title={
                                 systemLanguage === "sk"
                                     ? "Vytvoriť novú úlohu"
@@ -773,18 +841,18 @@ export const Header: React.FC<HeaderProps> = ({
                                       : "Create New Task"
                             }
                         >
-                            <CheckSquare className="h-4 w-4 sm:h-5 sm:w-5 text-indigo-600" />
+                            <CheckSquare className="h-5 w-5 text-[#ff5d00]" />
                         </button>
                         )}
 
-
+                        {/* Desktop Meetings Button */}
                         {canOpenRoute("meetings") && (
-                        <div className="relative" ref={meetingsDropdownRef}>
+                        <div className="relative hidden sm:block" ref={meetingsDropdownRef}>
                             <button
                                 onClick={() => setIsMeetingsOpen(!isMeetingsOpen)}
                                 aria-expanded={isMeetingsOpen}
                                 aria-haspopup="menu"
-                                className={`h-8.5 w-8.5 xs:h-9 xs:w-9 sm:h-10 sm:w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer ${
+                                className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer ${
                                     isMeetingsOpen
                                         ? "bg-[#0b1329] border-[#0b1329] text-white"
                                         : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-300 hover:bg-slate-50"
@@ -802,7 +870,7 @@ export const Header: React.FC<HeaderProps> = ({
                                           : "Meetings & Notes"
                                 }
                             >
-                                <PencilLine className="h-4 w-4 sm:h-5 sm:w-5" />
+                                <PencilLine className="h-5 w-5" />
                             </button>
 
                             {/* Popover Dropdown Panel */}
@@ -829,22 +897,13 @@ export const Header: React.FC<HeaderProps> = ({
                                     <button
                                         onClick={() => {
                                             setIsMeetingsOpen(false);
-                                            if (
-                                                typeof (window as any).showToast ===
-                                                "function"
-                                            ) {
-                                                (window as any).showToast(
-                                                    systemLanguage === "sk"
-                                                        ? "Nahrávanie stretnutia: Audio nahrávanie bude k dispozícii v ďalšej aktualizácii."
-                                                        : systemLanguage === "hu"
-                                                          ? "Megbeszélés rögzítése: A hangfelvétel a következő frissítésben érhető el."
-                                                          : "Record Meeting: Audio recording feature will be implemented in the next update.",
-                                                );
+                                            if (onNavigateMeetings) {
+                                                onNavigateMeetings("record");
                                             }
                                         }}
-                                        className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-all cursor-pointer group"
+                                        className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50/80 transition-all cursor-pointer group"
                                     >
-                                        <Mic className="h-4 w-4 text-slate-400 group-hover:text-slate-500" />
+                                        <Mic className="h-4 w-4 text-rose-500 group-hover:scale-110 transition-transform" />
                                         <div className="flex flex-col">
                                             <span>
                                                 {systemLanguage === "sk"
@@ -853,12 +912,12 @@ export const Header: React.FC<HeaderProps> = ({
                                                       ? "Megbeszélés rögzítése"
                                                       : "Record Meeting"}
                                             </span>
-                                            <span className="text-[8px] text-slate-400 font-bold uppercase tracking-wider mt-0.5">
+                                            <span className="text-[9px] text-rose-400 font-normal">
                                                 {systemLanguage === "sk"
-                                                    ? "Pripravuje sa"
+                                                    ? "Rýchly hlasový záznam"
                                                     : systemLanguage === "hu"
-                                                      ? "Fejlesztés alatt"
-                                                      : "Coming soon"}
+                                                      ? "Gyors hangfelvétel"
+                                                      : "Quick audio recording"}
                                             </span>
                                         </div>
                                     </button>
@@ -884,7 +943,6 @@ export const Header: React.FC<HeaderProps> = ({
                                     </button>
                                     )}
 
-
                                     {/* Show Meetings */}
                                     <button
                                         onClick={() => {
@@ -909,14 +967,14 @@ export const Header: React.FC<HeaderProps> = ({
                         </div>
                         )}
 
-
+                        {/* Desktop Automation Toolbox Button */}
                         {canRunWorkflows && (
-                        <div className="relative" ref={toolboxDropdownRef}>
+                        <div className="relative hidden sm:block" ref={toolboxDropdownRef}>
                             <button
                                 onClick={() => setIsToolboxOpen(!isToolboxOpen)}
                                 aria-expanded={isToolboxOpen}
                                 aria-haspopup="menu"
-                                className={`h-8.5 w-8.5 xs:h-9 xs:w-9 sm:h-10 sm:w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer ${
+                                className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer ${
                                     isToolboxOpen
                                         ? "bg-[#0b1329] border-[#0b1329] text-white"
                                         : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-300 hover:bg-slate-50"
@@ -927,7 +985,7 @@ export const Header: React.FC<HeaderProps> = ({
                                     "Automatizálási eszköztár",
                                 )}
                             >
-                                <Workflow className="h-4 w-4 sm:h-5 sm:w-5 text-purple-700" />
+                                <Workflow className="h-5 w-5 text-purple-700" />
                             </button>
 
                             {isToolboxOpen && typeof document !== "undefined" &&
@@ -990,7 +1048,6 @@ export const Header: React.FC<HeaderProps> = ({
                                                         "w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-slate-100 text-xs font-bold transition-all hover:bg-slate-50 hover:scale-[1.01] active:scale-[0.99]";
                                                     inlineStyle = { color: btnColor };
                                                 } else {
-                                                    // 'full'
                                                     buttonClass =
                                                         "w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-white text-xs font-bold transition-all hover:opacity-90 hover:scale-[1.01] active:scale-[0.99]";
                                                     inlineStyle = {
@@ -1029,13 +1086,12 @@ export const Header: React.FC<HeaderProps> = ({
                         </div>
                         )}
 
-
-                        {/* Product Release Notes Updates Button */}
+                        {/* Desktop Product Release Notes Updates Button */}
                         {canOpenRoute("updates") && updatesList.length > 0 && (
-                            <div className="relative">
+                            <div className="relative hidden sm:block">
                                 <button
                                     onClick={handleOpenUpdates}
-                                    className={`h-8.5 w-8.5 xs:h-9 xs:w-9 sm:h-10 sm:w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer relative ${
+                                    className={`h-10 w-10 rounded-xl border flex items-center justify-center transition-colors shadow-sm cursor-pointer relative ${
                                         activeTab === "updates"
                                             ? "bg-[#0b1329] border-[#0b1329] text-white"
                                             : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-slate-300 hover:bg-slate-50"
@@ -1048,7 +1104,7 @@ export const Header: React.FC<HeaderProps> = ({
                                               : "Updates & News"
                                     }
                                 >
-                                    <Sparkles className="h-4 w-4 sm:h-5 sm:w-5 text-amber-500" />
+                                    <Sparkles className="h-5 w-5 text-amber-500" />
                                     {hasNewUpdate && (
                                         <span className="absolute -top-1 -right-1 flex h-2.5 w-2.5">
                                             <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
@@ -1059,21 +1115,234 @@ export const Header: React.FC<HeaderProps> = ({
                             </div>
                         )}
 
-                        {/* User Account Trigger Button */}
-                        <div>
+                        {/* Desktop User Account Trigger Button */}
+                        <div className="hidden sm:block">
                             <button
                                 onClick={() => setIsProfileOpen(true)}
-                                className="h-8.5 w-8.5 xs:h-9 xs:w-9 sm:h-10 sm:w-10 rounded-xl bg-white/80 border border-slate-200 flex items-center justify-center hover:border-slate-300 text-slate-700 transition-colors shadow-sm cursor-pointer"
+                                className="h-10 w-10 rounded-xl bg-white/80 border border-slate-200 flex items-center justify-center hover:border-slate-300 text-slate-700 transition-colors shadow-sm cursor-pointer"
                                 aria-label={t(
                                     "User Profile Menu",
                                     "Menu používateľského profilu",
                                     "Felhasználói profil menü",
                                 )}
                             >
-                                <User className="h-4 w-4 sm:h-5 sm:w-5 text-indigo-600" />
+                                <User className="h-5 w-5 text-indigo-600" />
                             </button>
                         </div>
                     </div>
+                </>
+            )}
+
+            {/* Mobile Top Slider Dropdown Drawer */}
+            {(isMobileSliderOpen || isMobileSliderClosing) && typeof document !== "undefined" && (
+                <>
+                    {createPortal(
+                        <div
+                            className={`fixed inset-0 top-20 bg-slate-950/40 backdrop-blur-xs z-30 sm:hidden ${
+                                isMobileSliderClosing ? "animate-fade-out" : "animate-fade-in"
+                            }`}
+                            onClick={handleCloseMobileSlider}
+                            aria-hidden="true"
+                        />,
+                        document.body,
+                    )}
+
+                    {createPortal(
+                        <div
+                            ref={mobileSliderRef}
+                            className={`fixed top-20 left-0 right-0 z-40 sm:hidden bg-white/95 backdrop-blur-xl border-b border-slate-200/90 shadow-[0_20px_50px_rgba(0,0,0,0.2)] p-4 max-h-[80vh] overflow-y-auto flex flex-col gap-3.5 select-none ${
+                                isMobileSliderClosing
+                                    ? "animate-slide-out-top"
+                                    : "animate-slide-in-top"
+                            }`}
+                        >
+                            {/* Top Quick Action Buttons Row */}
+                            <div className="flex items-center gap-2 w-full">
+                                {canCreateTask && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            handleCloseMobileSlider();
+                                            onAddTask?.();
+                                        }}
+                                        className="flex-1 flex items-center justify-center gap-2 py-3 px-3.5 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 text-white text-xs font-bold shadow-md shadow-orange-500/20 active:scale-98 transition-all cursor-pointer"
+                                    >
+                                        <CheckSquare className="h-4 w-4" />
+                                        <span>{t("New Task", "Nová úloha", "Új feladat")}</span>
+                                    </button>
+                                )}
+
+                                {canOpenRoute("updates") && updatesList.length > 0 && (
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            handleCloseMobileSlider();
+                                            handleOpenUpdates();
+                                        }}
+                                        className="flex items-center justify-center gap-1.5 py-3 px-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold active:scale-98 transition-all cursor-pointer relative shrink-0"
+                                    >
+                                        <Sparkles className="h-4 w-4 text-amber-500" />
+                                        <span>{t("Updates", "Novinky", "Újdonságok")}</span>
+                                        {hasNewUpdate && (
+                                            <span className="h-2 w-2 rounded-full bg-rose-500 animate-pulse" />
+                                        )}
+                                    </button>
+                                )}
+
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        handleCloseMobileSlider();
+                                        setIsProfileOpen(true);
+                                    }}
+                                    className="flex items-center justify-center gap-1.5 py-3 px-3 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-900 text-xs font-bold active:scale-98 transition-all cursor-pointer shrink-0"
+                                >
+                                    <User className="h-4 w-4 text-indigo-600" />
+                                    <span>{currentUser?.name?.split(" ")[0] || t("Profile", "Profil", "Profil")}</span>
+                                </button>
+                            </div>
+
+                            {/* Meeting Room Options Widget Box */}
+                            {canOpenRoute("meetings") && (
+                                <div className="bg-slate-50/90 rounded-2xl border border-slate-200/90 p-3.5 flex flex-col gap-2.5 shadow-2xs">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <div className="p-1.5 rounded-lg bg-indigo-100 text-indigo-700">
+                                                <PencilLine className="h-3.5 w-3.5" />
+                                            </div>
+                                            <span className="text-xs font-bold text-slate-800">
+                                                {t("Meeting Room", "Zasadačka a stretnutia", "Tárgyaló és megbeszélések")}
+                                            </span>
+                                        </div>
+                                    </div>
+
+                                    <div className="grid grid-cols-2 gap-2">
+                                        {canCreateMeeting && (
+                                            <button
+                                                type="button"
+                                                onClick={() => {
+                                                    handleCloseMobileSlider();
+                                                    if (onNavigateMeetings) onNavigateMeetings("new");
+                                                }}
+                                                className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-white border border-slate-200 text-slate-800 text-xs font-bold shadow-2xs hover:bg-slate-50 active:scale-98 transition-all cursor-pointer"
+                                            >
+                                                <Plus className="h-3.5 w-3.5 text-indigo-600" />
+                                                <span>{t("New Meeting", "Nové stretnutie", "Új megbeszélés")}</span>
+                                            </button>
+                                        )}
+
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                handleCloseMobileSlider();
+                                                if (onNavigateMeetings) onNavigateMeetings("list");
+                                            }}
+                                            className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-white border border-slate-200 text-slate-800 text-xs font-bold shadow-2xs hover:bg-slate-50 active:scale-98 transition-all cursor-pointer ${
+                                                !canCreateMeeting ? "col-span-2" : ""
+                                            }`}
+                                        >
+                                            <List className="h-3.5 w-3.5 text-slate-600" />
+                                            <span>{t("Show Meetings", "Zoznam stretnutí", "Megbeszélések")}</span>
+                                        </button>
+                                    </div>
+
+                                    {/* Record Meeting Option */}
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            handleCloseMobileSlider();
+                                            if (onNavigateMeetings) onNavigateMeetings("record");
+                                        }}
+                                        className="flex items-center justify-between py-2.5 px-3 rounded-xl bg-rose-50 border border-rose-200/80 text-rose-700 text-xs font-bold hover:bg-rose-100/80 active:scale-98 transition-all cursor-pointer"
+                                    >
+                                        <div className="flex items-center gap-2">
+                                            <Mic className="h-4 w-4 text-rose-600 fill-rose-600/20" />
+                                            <span>{t("Record Meeting", "Nahrať stretnutie", "Megbeszélés rögzítése")}</span>
+                                        </div>
+                                        <span className="text-[9px] font-black text-rose-600 uppercase tracking-wider bg-rose-200/60 px-2 py-0.5 rounded-md">
+                                            {t("Record", "Nahrať", "Rögzítés")}
+                                        </span>
+                                    </button>
+                                </div>
+                            )}
+
+                            {/* Manual Triggers Widget Box (if configured) */}
+                            {canRunWorkflows && manualWorkflows.length > 0 && (
+                                <div className="bg-purple-50/70 rounded-2xl border border-purple-200/90 p-3.5 flex flex-col gap-2.5 shadow-2xs">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2">
+                                            <div className="p-1.5 rounded-lg bg-purple-100 text-purple-700">
+                                                <Workflow className="h-3.5 w-3.5" />
+                                            </div>
+                                            <span className="text-xs font-bold text-purple-950">
+                                                {t("Manual Triggers", "Manuálne spúšťače", "Kézi indítók")}
+                                            </span>
+                                        </div>
+                                        <span className="text-[9px] font-black uppercase tracking-wider text-purple-600 bg-purple-100/80 px-2 py-0.5 rounded-full border border-purple-200">
+                                            {manualWorkflows.length} {t("Active", "Aktívne", "Aktív")}
+                                        </span>
+                                    </div>
+
+                                    <div className="flex flex-col gap-1.5 max-h-52 overflow-y-auto pr-0.5">
+                                        {manualWorkflows.map((wf) => {
+                                            const cfg = wf.trigger_config || {};
+                                            const btnColor = cfg.buttonColor || "#6b21a8";
+                                            const btnIconName = cfg.buttonIcon || "Play";
+                                            const btnStyle = cfg.buttonStyle || "full";
+                                            const IconComponent = (Icons as any)[btnIconName] || Play;
+
+                                            let buttonClass = "";
+                                            let inlineStyle: React.CSSProperties = {};
+
+                                            if (btnStyle === "skeleton") {
+                                                buttonClass =
+                                                    "w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl border-2 text-xs font-bold transition-all active:scale-98";
+                                                inlineStyle = {
+                                                    borderColor: btnColor,
+                                                    color: btnColor,
+                                                };
+                                            } else if (btnStyle === "icon_only") {
+                                                buttonClass =
+                                                    "w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-bold transition-all active:scale-98";
+                                                inlineStyle = { color: btnColor };
+                                            } else {
+                                                buttonClass =
+                                                    "w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl text-white text-xs font-bold transition-all active:scale-98 shadow-xs";
+                                                inlineStyle = {
+                                                    backgroundColor: btnColor,
+                                                };
+                                            }
+
+                                            return (
+                                                <button
+                                                    key={wf.id}
+                                                    onClick={() => {
+                                                        handleRunWorkflow(wf);
+                                                        handleCloseMobileSlider();
+                                                    }}
+                                                    disabled={runningWfId === wf.id}
+                                                    className={buttonClass}
+                                                    style={inlineStyle}
+                                                    title={wf.description}
+                                                >
+                                                    <div className="flex items-center gap-2 min-w-0">
+                                                        {runningWfId === wf.id ? (
+                                                            <Loader2 className="h-4 w-4 animate-spin shrink-0" />
+                                                        ) : (
+                                                            <IconComponent className="h-4 w-4 shrink-0" />
+                                                        )}
+                                                        <span className="truncate">{wf.name}</span>
+                                                    </div>
+                                                    <ChevronRight className="h-3.5 w-3.5 opacity-60 shrink-0" />
+                                                </button>
+                                            );
+                                        })}
+                                    </div>
+                                </div>
+                            )}
+                        </div>,
+                        document.body,
+                    )}
                 </>
             )}
 
@@ -1091,12 +1360,12 @@ export const Header: React.FC<HeaderProps> = ({
                             ),
                             createPortal(
                                 <div
-                                    className={`fixed top-20 right-0 bottom-0 w-full max-w-[320px] sm:max-w-sm md:w-90 bg-white/95 backdrop-blur-lg border-l border-slate-200/80 shadow-2xl flex flex-col justify-between overflow-y-auto p-0 z-50 ${isClosing ? "animate-slide-out-right" : "animate-slide-in-right"}`}
+                                    className={`fixed top-20 right-0 bottom-0 w-full max-w-[340px] sm:max-w-md md:w-[420px] bg-white/95 backdrop-blur-lg border-l border-slate-200/80 shadow-2xl flex flex-col justify-between overflow-y-auto p-0 z-50 ${isClosing ? "animate-slide-out-right" : "animate-slide-in-right"}`}
                                     onClick={(e) => e.stopPropagation()}
                                     key="drawer-panel"
                                 >
                                     {/* Upper Section */}
-                                    <div className="flex-1">
+                                    <div className="flex-1 overflow-y-auto">
                                         {/* Header info with Close Trigger */}
                                         <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
                                             <div className="flex items-center gap-3">
@@ -1217,7 +1486,7 @@ export const Header: React.FC<HeaderProps> = ({
                                         </div>
 
                                         {/* Personal Settings Button */}
-                                        <div className="p-5">
+                                        <div className="p-5 border-b border-slate-100">
                                             <button
                                                 type="button"
                                                 onClick={() => {
@@ -1250,6 +1519,11 @@ export const Header: React.FC<HeaderProps> = ({
                                                       ? "Személyes beállítások"
                                                       : "Personal Settings"}
                                             </button>
+                                        </div>
+
+                                        {/* Navigation / Sidebar Settings */}
+                                        <div className="p-5">
+                                            <SidebarSettings systemLanguage={systemLanguage} compact />
                                         </div>
                                     </div>
 

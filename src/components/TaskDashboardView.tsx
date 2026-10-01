@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
 import {
     CheckSquare,
@@ -15,13 +15,20 @@ import {
     ChevronUp,
     Settings,
     RotateCcw,
-    List,
     Archive as ArchiveIcon,
     Clock,
     FolderKanban,
     Trash2,
     Users,
     ArrowUpRight,
+    Flame,
+    Minus,
+    CheckCircle2,
+    PlusCircle,
+    History,
+    Search,
+    ArrowUpDown,
+    Hash,
 } from "lucide-react";
 import type { Task, UserProfile, Lead, Project } from "../types";
 import type { Language } from "../utils/translations";
@@ -29,7 +36,10 @@ import { CalendarPane } from "./Dashboard";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { DeadlineTimePicker, TaskEditDrawer, taskProjectOptions } from "./TaskEditDrawer";
+import { VoiceTaskActionBar } from "./VoiceTaskActionBar";
 import { TaskEmailReminderField } from "./TaskEmailReminderField";
+import { TaskTagMentionInput } from "./TaskTagMentionInput";
+import { TaskPillText, extractTagsFromText, type MentionEntity } from "./TaskPillText";
 import { projectDisplayName } from "../utils/projects";
 import { taskPriorityLabel, taskStateLabel } from "../utils/taskLabels";
 import { requestTaskDeletion } from "../utils/taskApi";
@@ -45,6 +55,33 @@ import {
     isTaskCreatedBy,
     type TaskAccess,
 } from "../utils/taskSelectors";
+
+// Format a Date as a LOCAL calendar date (YYYY-MM-DD). Task deadlines are stored
+// as plain local date strings, so we must NOT go through toISOString() (which
+// converts to UTC and, in timezones ahead of UTC, shifts the day back by one —
+// making tasks appear on the wrong calendar cell and breaking day-click matching).
+const toLocalDateStr = (d: Date): string => {
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const day = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${day}`;
+};
+
+// Cookie helper for calendar scope / display mode
+const getCalendarScopeCookie = (): "month" | "week" | "timeline" | "hide" => {
+    if (typeof document === "undefined") return "month";
+    const match = document.cookie.match(/(?:^|;\s*)ccrm_task_calendar_scope=([^;]+)/);
+    const val = match ? decodeURIComponent(match[1]) : "";
+    if (val === "month" || val === "week" || val === "timeline" || val === "hide") {
+        return val;
+    }
+    return "month";
+};
+
+const setCalendarScopeCookie = (scope: "month" | "week" | "timeline" | "hide") => {
+    if (typeof document === "undefined") return;
+    document.cookie = `ccrm_task_calendar_scope=${encodeURIComponent(scope)}; path=/; max-age=31536000; SameSite=Lax`;
+};
 
 // Reusable calendar date-range filter (item 9) — reuses the overview CalendarPane range picker
 // inside a compact popover with month navigation. Used by the Global Tasks and Archive views.
@@ -160,16 +197,6 @@ const DateRangeCalendarFilter: React.FC<{
     );
 };
 
-// Format a Date as a LOCAL calendar date (YYYY-MM-DD). Task deadlines are stored
-// as plain local date strings, so we must NOT go through toISOString() (which
-// converts to UTC and, in timezones ahead of UTC, shifts the day back by one —
-// making tasks appear on the wrong calendar cell and breaking day-click matching).
-const toLocalDateStr = (d: Date): string => {
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const day = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${day}`;
-};
 
 // Calendar geometry, shared by every tab that draws a calendar (My Calendar,
 // Global Tasks, Archive). Kept as plain functions of an anchor date so each tab
@@ -210,7 +237,7 @@ const getWeekDays = (anchor: Date): Date[] => {
 // days independently while sharing one implementation.
 type CalendarPanelConfig = {
     anchor: Date;
-    scope: "month" | "week";
+    scope: "month" | "week" | "timeline" | "hide";
     selectedDay: Date | null;
     onSelectDay: (day: Date | null) => void;
     tasksForDate: (dateStr: string) => Task[];
@@ -221,36 +248,61 @@ type CalendarPanelConfig = {
 };
 
 // Colour scheme of one time bucket in the left-hand task panel. My Calendar and
-// Global Tasks render the same bucket card through renderTaskBucket, so the two
-// panels stay identical instead of drifting apart in two copies of the markup.
+// Global Tasks render the same bucket sections through renderTaskBucket.
 const BUCKET_TONES = {
     rose: {
         shell: "bg-rose-50/50 border border-rose-100",
+        headerBg: "bg-rose-50/60 hover:bg-rose-50/90",
         title: "text-rose-600",
         chevron: "text-rose-500 group-hover/btn:text-rose-700",
         emptyBorder: "border-rose-200/50",
         emptyText: "text-rose-500",
+        border: "border-rose-100",
     },
     indigo: {
         shell: "bg-indigo-50/30 border border-indigo-100",
+        headerBg: "bg-indigo-50/40 hover:bg-indigo-50/70",
         title: "text-indigo-600",
         chevron: "text-indigo-500 group-hover/btn:text-indigo-700",
         emptyBorder: "border-indigo-200/50",
         emptyText: "text-indigo-400",
+        border: "border-indigo-100",
     },
     amber: {
         shell: "bg-amber-50/30 border border-amber-100",
+        headerBg: "bg-amber-50/40 hover:bg-amber-50/70",
         title: "text-amber-600",
         chevron: "text-amber-500 group-hover/btn:text-amber-700",
         emptyBorder: "border-amber-200/50",
         emptyText: "text-amber-500",
+        border: "border-amber-100",
     },
     slate: {
         shell: "bg-slate-50/50 border border-slate-200",
+        headerBg: "bg-slate-50 hover:bg-slate-100/70",
         title: "text-slate-600",
         chevron: "text-slate-500 group-hover/btn:text-slate-700",
         emptyBorder: "border-slate-200",
         emptyText: "text-slate-400",
+        border: "border-slate-200",
+    },
+    emerald: {
+        shell: "bg-emerald-50/40 border border-emerald-200/80",
+        headerBg: "bg-emerald-50/50 hover:bg-emerald-50/80",
+        title: "text-emerald-700",
+        chevron: "text-emerald-500 group-hover/btn:text-emerald-700",
+        emptyBorder: "border-emerald-200/50",
+        emptyText: "text-emerald-600",
+        border: "border-emerald-100",
+    },
+    sky: {
+        shell: "bg-sky-50/40 border border-sky-100",
+        headerBg: "bg-sky-50/50 hover:bg-sky-50/80",
+        title: "text-sky-700",
+        chevron: "text-sky-500 group-hover/btn:text-sky-700",
+        emptyBorder: "border-sky-200/50",
+        emptyText: "text-sky-500",
+        border: "border-sky-100",
     },
 } as const;
 
@@ -270,7 +322,109 @@ interface TaskDashboardViewProps {
     taskAccess?: TaskAccess;
     /** False when no outgoing mail server is set up; task e-mail reminders then warn. */
     mailConfigured?: boolean;
-}
+};
+
+/** A compact micro-switch used on task cards. */
+const TaskCardSwitch: React.FC<{
+    checked: boolean;
+    onChange: (next: boolean) => void;
+    disabled?: boolean;
+    label: string;
+}> = ({ checked, onChange, disabled, label }) => (
+    <button
+        type="button"
+        role="switch"
+        aria-checked={checked}
+        aria-label={label}
+        disabled={disabled}
+        onClick={() => onChange(!checked)}
+        className={`relative inline-flex h-4 w-7 shrink-0 items-center rounded-full transition-all duration-150 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40 focus-visible:ring-offset-1 ${
+            checked ? "bg-indigo-600" : "bg-slate-300"
+        } ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer hover:opacity-90"}`}
+    >
+        <span
+            className={`inline-block h-3 w-3 transform rounded-full bg-white shadow-xs transition-transform duration-200 ease-[cubic-bezier(0.34,1.56,0.64,1)] ${
+                checked ? "translate-x-3.5" : "translate-x-0.5"
+            }`}
+        />
+    </button>
+);
+
+/** Header bar with discreet toggle switch and configurable days number input to show closed tasks */
+const ClosedTasksToggleBar: React.FC<{
+    showClosedTasks: boolean;
+    onToggleShowClosed: (next: boolean) => void;
+    days: number;
+    onChangeDays: (days: number) => void;
+    t: (en: string, sk: string, hu: string) => string;
+}> = ({ showClosedTasks, onToggleShowClosed, days, onChangeDays, t }) => {
+    const daysLabel = t(
+        days === 1 ? "day)" : "days)",
+        days === 1 ? "deň)" : (days >= 2 && days <= 4 ? "dni)" : "dní)"),
+        "nap)",
+    );
+
+    return (
+        <div className="px-4 py-2 bg-slate-50/50 border-b border-slate-100 flex items-center justify-end gap-2.5 select-none">
+            <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-400">
+                <span
+                    onClick={() => onToggleShowClosed(!showClosedTasks)}
+                    className="hover:text-slate-600 transition-colors cursor-pointer"
+                >
+                    {t(
+                        "Show closed tasks (<",
+                        "Zobraziť dokončené (<",
+                        "Lezárt feladatok (<",
+                    )}
+                </span>
+                <input
+                    type="number"
+                    min={1}
+                    max={365}
+                    value={days}
+                    onChange={(e) => {
+                        const raw = e.target.value;
+                        if (raw === "") {
+                            onChangeDays(1);
+                            return;
+                        }
+                        const val = parseInt(raw, 10);
+                        if (!isNaN(val)) {
+                            onChangeDays(val);
+                        }
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                    title={t(
+                        "Days threshold for closed tasks",
+                        "Počet dní pre zobrazenie dokončených úloh",
+                        "Napok száma lezárt feladatokhoz",
+                    )}
+                    aria-label={t(
+                        "Days threshold for closed tasks",
+                        "Počet dní pre zobrazenie dokončených úloh",
+                        "Napok száma lezárt feladatokhoz",
+                    )}
+                    className="w-10 h-5 px-1 py-0 text-center font-bold text-slate-700 bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs text-[11px] select-text"
+                />
+                <span
+                    onClick={() => onToggleShowClosed(!showClosedTasks)}
+                    className="hover:text-slate-600 transition-colors cursor-pointer"
+                >
+                    {daysLabel}
+                </span>
+            </div>
+            <TaskCardSwitch
+                checked={showClosedTasks}
+                onChange={onToggleShowClosed}
+                label={t(
+                    "Show closed tasks",
+                    "Zobraziť dokončené úlohy",
+                    "Lezárt feladatok mutatása",
+                )}
+            />
+        </div>
+    );
+};
 
 export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     tasks,
@@ -299,6 +453,24 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             (taskStates.length > 0 &&
                 status === taskStates[taskStates.length - 1])
         );
+    };
+
+    const isClosedRecentTask = (t: Task): boolean => {
+        if (t.archived) return false;
+        if (!isDoneState(t.status)) return false;
+        const raw = t.completedAt || (t as any).completed_at || (t as any).updatedAt || (t as any).updated_at;
+        let compTime: number | null = null;
+        if (raw) {
+            const d = new Date(typeof raw === "string" ? raw.replace(" ", "T") : raw);
+            if (!isNaN(d.getTime())) compTime = d.getTime();
+        }
+        if (!compTime && t.deadline) {
+            const d = new Date(t.deadline + "T23:59:59");
+            if (!isNaN(d.getTime())) compTime = d.getTime();
+        }
+        if (!compTime) return true;
+        const DAYS_MS = closedTasksDays * 24 * 60 * 60 * 1000;
+        return Date.now() - compTime <= DAYS_MS;
     };
 
     // Fallback owner/assignee name when none is selected — the logged-in user,
@@ -438,17 +610,30 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         });
     };
 
+
     const [currentDate, setCurrentDate] = useState(new Date());
     const [viewMode, setViewMode] = useState<"calendar" | "archive" | "global">(
         "calendar",
     );
-    // Calendar scope: the whole month, or just one week that can be paged
-    // backwards/forwards. `currentDate` anchors both — in week scope it is any
-    // day inside the displayed week.
-    const [calendarScope, setCalendarScope] = useState<"month" | "week">(
-        "month",
-    );
+    // Calendar scope: month view, week view, timeline activity log, or hidden (persisted in cookie)
+    const [calendarScope, setCalendarScopeState] = useState<
+        "month" | "week" | "timeline" | "hide"
+    >(() => getCalendarScopeCookie());
+
+    const setCalendarScope = (scope: "month" | "week" | "timeline" | "hide") => {
+        setCalendarScopeState(scope);
+        setCalendarScopeCookie(scope);
+    };
     const [selectedDay, setSelectedDay] = useState<Date | null>(null);
+
+    // Timeline view filter states
+    const [timelineFilter, setTimelineFilter] = useState<
+        "all" | "created" | "completed"
+    >("all");
+    const [timelineSearch, setTimelineSearch] = useState("");
+    const [timelineSort, setTimelineSort] = useState<"newest" | "oldest">(
+        "newest",
+    );
 
     // Global Tasks: the right-hand half switches between the team workload (the
     // default) and a calendar of the same filtered tasks. It keeps its own anchor,
@@ -458,7 +643,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     >("workload");
     const [globalCalendarDate, setGlobalCalendarDate] = useState(new Date());
     const [globalCalendarScope, setGlobalCalendarScope] = useState<
-        "month" | "week"
+        "month" | "week" | "timeline" | "hide"
     >("month");
     const [globalSelectedDay, setGlobalSelectedDay] = useState<Date | null>(
         null,
@@ -470,7 +655,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const [archiveView, setArchiveView] = useState<"list" | "calendar">("list");
     const [archiveCalendarDate, setArchiveCalendarDate] = useState(new Date());
     const [archiveCalendarScope, setArchiveCalendarScope] = useState<
-        "month" | "week"
+        "month" | "week" | "timeline" | "hide"
     >("month");
     const [archiveSelectedDay, setArchiveSelectedDay] = useState<Date | null>(
         null,
@@ -483,8 +668,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const [archiveTimingFilter, setArchiveTimingFilter] = useState("all");
 
     // Expand/collapse states for task buckets.
-    // Item 1: Missed (Overdue) and Today are always visible (no collapse) — only Tomorrow and
-    // Upcoming stay collapsible.
+    // Missed (Overdue) and Today are always visible (no collapse) — only Tomorrow and
+    // Future stay collapsible.
     const [isTomorrowExpanded, setIsTomorrowExpanded] = useState(false);
     const [isFutureExpanded, setIsFutureExpanded] = useState(false);
 
@@ -510,22 +695,75 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             return next;
         });
 
-    // Compact view toggle (item 10) — denser task cards for large lists
-    const [isCompact, setIsCompact] = useState(false);
-
     // Calendar-based date-range filters for Global tasks & Archive (item 9)
     const [globalDateStart, setGlobalDateStart] = useState<Date | null>(null);
     const [globalDateEnd, setGlobalDateEnd] = useState<Date | null>(null);
     const [archiveDateStart, setArchiveDateStart] = useState<Date | null>(null);
     const [archiveDateEnd, setArchiveDateEnd] = useState<Date | null>(null);
+    const [archiveTagFilter, setArchiveTagFilter] = useState<string | null>(null);
 
-    // Add Task Drawer State
+    // Toggle switch & days threshold to show closed tasks on the tasks card
+    const [showClosedTasks, setShowClosedTasks] = useState<boolean>(() => {
+        try {
+            return localStorage.getItem("ccrm_show_closed_tasks") === "true";
+        } catch {
+            return false;
+        }
+    });
+    const handleToggleShowClosedTasks = (next: boolean) => {
+        setShowClosedTasks(next);
+        try {
+            localStorage.setItem("ccrm_show_closed_tasks", String(next));
+        } catch {
+            // ignore
+        }
+    };
+
+    const [closedTasksDays, setClosedTasksDays] = useState<number>(() => {
+        try {
+            const stored = localStorage.getItem("ccrm_closed_tasks_days");
+            if (stored) {
+                const parsed = parseInt(stored, 10);
+                if (!isNaN(parsed) && parsed > 0) return parsed;
+            }
+        } catch {
+            // ignore
+        }
+        return 2;
+    });
+    const handleClosedTasksDaysChange = (days: number) => {
+        const val = Math.max(1, Math.min(365, days));
+        setClosedTasksDays(val);
+        try {
+            localStorage.setItem("ccrm_closed_tasks_days", String(val));
+        } catch {
+            // ignore
+        }
+    };
+
+    // Add Task Inline Card State
     const [isAddDrawerOpen, setIsAddDrawerOpen] = useState(false);
-    const [isClosingDrawer, setIsClosingDrawer] = useState(false);
 
     // Edit Task Drawer State
     const [editingTask, setEditingTask] = useState<Task | null>(null);
     const [deletingTaskIds, setDeletingTaskIds] = useState<Set<string>>(new Set());
+
+    // Multi-select & Bulk Actions State
+    const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
+    const [activeBulkMenu, setActiveBulkMenu] = useState<"status" | "priority" | "assignee" | "reschedule" | null>(null);
+    const bulkToolbarRef = React.useRef<HTMLDivElement>(null);
+
+    React.useEffect(() => {
+        const handler = (e: MouseEvent) => {
+            if (bulkToolbarRef.current && !bulkToolbarRef.current.contains(e.target as Node)) {
+                setActiveBulkMenu(null);
+            }
+        };
+        if (activeBulkMenu) {
+            document.addEventListener("mousedown", handler);
+        }
+        return () => document.removeEventListener("mousedown", handler);
+    }, [activeBulkMenu]);
 
     // Global view filters & user list memo
     const [globalPriorityFilter, setGlobalPriorityFilter] = useState("all");
@@ -562,6 +800,74 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         }
     }, [allUsersList, globalUserFilter]);
 
+    // All distinct tags collected from stored task.tags plus hashtags in titles/descriptions
+    const allExistingTags = useMemo(() => {
+        const tagSet = new Set<string>();
+        tasks.forEach((tk) => {
+            if (tk.tags && Array.isArray(tk.tags)) {
+                tk.tags.forEach((t) => tagSet.add(t));
+            }
+            extractTagsFromText(tk.title || "").forEach((t) => tagSet.add(t));
+            extractTagsFromText(tk.description || "").forEach((t) => tagSet.add(t));
+        });
+        return Array.from(tagSet).sort();
+    }, [tasks]);
+
+    // Mentionable entities (users, projects, clients, leads) for @ mentions
+    const mentionEntities: MentionEntity[] = useMemo(() => {
+        const list: MentionEntity[] = [];
+
+        // Users (Team members)
+        (users || []).forEach((u) => {
+            list.push({
+                id: u.name,
+                name: u.name,
+                type: "user",
+                detail: u.role || "Team member",
+            });
+        });
+
+        // Projects
+        (projects || []).forEach((p) => {
+            const name = projectDisplayName(p, leads, t("Untitled project", "Projekt bez názvu", "Névtelen projekt"));
+            list.push({
+                id: p.id,
+                name,
+                type: "project",
+                detail: p.status || "Project",
+            });
+        });
+
+        // Clients and Leads
+        leads.forEach((l) => {
+            const isClient = (l.id || "").startsWith("client-") || (Number(l.adjustment) || 0) > 0;
+            if (isClient) {
+                list.push({
+                    id: l.id,
+                    name: l.name,
+                    type: "client",
+                    detail: l.city || "Client",
+                });
+            } else {
+                list.push({
+                    id: l.id,
+                    name: l.name,
+                    type: "lead",
+                    detail: l.status || "Lead",
+                });
+            }
+        });
+
+        return list;
+    }, [users, projects, leads, t]);
+
+    // Handler when any tag is clicked anywhere: switch to Archive and filter by tag
+    const handleTagClick = useCallback((tag: string) => {
+        setEditingTask(null);
+        setViewMode("archive");
+        setArchiveTagFilter(tag.replace(/^#/, ""));
+    }, []);
+
     React.useEffect(() => {
         if (autoOpenAddTask) {
             if (taskAccess.create) {
@@ -584,19 +890,23 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     }, [autoOpenAddTask, setAutoOpenAddTask]);
 
     const closeAddDrawer = () => {
-        setIsClosingDrawer(true);
-        setTimeout(() => {
-            setIsAddDrawerOpen(false);
-            setIsClosingDrawer(false);
-        }, 350);
+        setIsAddDrawerOpen(false);
     };
+
+    React.useEffect(() => {
+        if (!isAddDrawerOpen) return;
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === "Escape") {
+                closeAddDrawer();
+            }
+        };
+        window.addEventListener("keydown", handleKeyDown);
+        return () => window.removeEventListener("keydown", handleKeyDown);
+    }, [isAddDrawerOpen]);
+
     const [newTitle, setNewTitle] = useState("");
-    const [newDescription, setNewDescription] = useState("");
     const [newPriority, setNewPriority] = useState<"low" | "medium" | "high">(
         "medium",
-    );
-    const [newStartDate, setNewStartDate] = useState(() =>
-        toLocalDateStr(new Date()),
     );
     const [newDeadline, setNewDeadline] = useState(() =>
         toLocalDateStr(new Date()),
@@ -608,13 +918,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const [newEmailReminders, setNewEmailReminders] = useState<Task["emailReminders"]>(undefined);
     const [newAssignedUser, setNewAssignedUser] = useState(defaultUserName);
 
-    // Resets the "New Task" form to fresh defaults; called every time the
-    // drawer is opened so it never carries over the previously used values.
+    // Resets the "New Task" form to fresh defaults
     const resetNewTaskForm = (deadlineDateStr?: string) => {
         setNewTitle("");
-        setNewDescription("");
         setNewPriority("medium");
-        setNewStartDate(toLocalDateStr(new Date()));
         setNewDeadline(deadlineDateStr || toLocalDateStr(new Date()));
         setNewDeadlineTime("16:00");
         setNewRelatedLeadId("");
@@ -627,6 +934,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // Helpers
     const today = new Date();
     const todayStr = toLocalDateStr(today);
+    const yesterdayStr = toLocalDateStr(new Date(today.getTime() - 86400000));
     // Steps an anchor date one month or one week in the given direction. Month
     // steps pin the day to the 1st so a 31st never overflows into the month after
     // next.
@@ -689,7 +997,12 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // Item 11: only the logged-in user's tasks.
     const myTasksForDate = (dateStr: string) =>
         myTasks
-            .filter((t) => t.deadline === dateStr && !isDoneState(t.status))
+            .filter((t) => {
+                if (t.deadline !== dateStr) return false;
+                if (!isDoneState(t.status)) return true;
+                if (showClosedTasks && isClosedRecentTask(t)) return true;
+                return false;
+            })
             .sort(byDeadlineTime);
 
     const calculateOverdueDays = (
@@ -739,6 +1052,19 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             // The archive is a team-wide history: every user sees the completed
             // tasks of the whole team, not just their own. Use the "Completed By"
             // filter to narrow it down to a single person.
+
+            // Tag filter
+            if (archiveTagFilter) {
+                const targetTag = archiveTagFilter.toLowerCase();
+                const taskTags = [
+                    ...(task.tags || []),
+                    ...extractTagsFromText(task.title || ""),
+                    ...extractTagsFromText(task.description || ""),
+                ].map((tg) => tg.toLowerCase());
+                if (!taskTags.includes(targetTag)) {
+                    return false;
+                }
+            }
 
             // Item 9 — calendar date-range filter (by deadline/due date)
             if (!dateInRange(task.deadline, archiveDateStart, archiveDateEnd))
@@ -793,6 +1119,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         archiveTimingFilter,
         archiveDateStart,
         archiveDateEnd,
+        archiveTagFilter,
         unknownCompletedBy,
     ]);
 
@@ -813,6 +1140,57 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 tasks: groups[date],
             }));
     }, [filteredArchivedTasks]);
+
+    // Manually archived tasks filtered by current archive query, priority, date & tag
+    const filteredManuallyArchivedTasks = useMemo(() => {
+        return tasks.filter((task) => {
+            if (!task.archived) return false;
+
+            // Search Query
+            if (archiveSearchQuery.trim()) {
+                const query = archiveSearchQuery.toLowerCase();
+                const matchesTitle = task.title.toLowerCase().includes(query);
+                const matchesDesc =
+                    task.description?.toLowerCase().includes(query) || false;
+                if (!matchesTitle && !matchesDesc) return false;
+            }
+
+            // Priority
+            if (
+                archivePriorityFilter !== "all" &&
+                task.priority !== archivePriorityFilter
+            ) {
+                return false;
+            }
+
+            // Tag filter
+            if (archiveTagFilter) {
+                const targetTag = archiveTagFilter.toLowerCase();
+                const taskTags = [
+                    ...(task.tags || []),
+                    ...extractTagsFromText(task.title || ""),
+                    ...extractTagsFromText(task.description || ""),
+                ].map((tg) => tg.toLowerCase());
+                if (!taskTags.includes(targetTag)) {
+                    return false;
+                }
+            }
+
+            // Date filter
+            if (!dateInRange(task.deadline, archiveDateStart, archiveDateEnd)) {
+                return false;
+            }
+
+            return true;
+        });
+    }, [
+        tasks,
+        archiveSearchQuery,
+        archivePriorityFilter,
+        archiveDateStart,
+        archiveDateEnd,
+        archiveTagFilter,
+    ]);
 
     // Completed tasks land on the archive calendar by their due date, which is
     // the same date the grouped list buckets them under.
@@ -921,30 +1299,739 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         }
     };
 
-    const handleCreateTask = (e: React.FormEvent) => {
-        e.preventDefault();
+    // --- Bulk Selection & Operations ---
+    const isSingleUserView = canSeeAllTasks && globalUserFilter !== "all";
+
+    const matchesGlobalFilters = React.useCallback(
+        (task: Task) => {
+            if (
+                globalPriorityFilter !== "all" &&
+                task.priority !== globalPriorityFilter
+            )
+                return false;
+            if (globalStateFilter !== "all" && task.status !== globalStateFilter)
+                return false;
+            if (
+                isSingleUserView &&
+                !task.assignedUsers?.includes(globalUserFilter)
+            )
+                return false;
+            if (!dateInRange(task.deadline, globalDateStart, globalDateEnd))
+                return false;
+            return true;
+        },
+        [globalPriorityFilter, globalStateFilter, isSingleUserView, globalUserFilter, globalDateStart, globalDateEnd]
+    );
+
+    const filteredGlobalTasks = useMemo(() => {
+        const activeTasks = (canSeeAllTasks ? tasks : myTasks).filter((task) =>
+            isActiveTask(task, isDoneState) || (showClosedTasks && isClosedRecentTask(task))
+        );
+        return activeTasks.filter(matchesGlobalFilters);
+    }, [canSeeAllTasks, tasks, myTasks, matchesGlobalFilters, showClosedTasks, closedTasksDays]);
+
+    const visibleTasksInCurrentView = useMemo(() => {
+        if (viewMode === "calendar") {
+            return myTasks;
+        }
+        if (viewMode === "global") {
+            return filteredGlobalTasks;
+        }
+        if (viewMode === "archive") {
+            const map = new Map<string, Task>();
+            filteredArchivedTasks.forEach((t) => map.set(t.id, t));
+            filteredManuallyArchivedTasks.forEach((t) => map.set(t.id, t));
+            return Array.from(map.values());
+        }
+        return [];
+    }, [viewMode, myTasks, filteredGlobalTasks, filteredArchivedTasks, filteredManuallyArchivedTasks]);
+
+    const areAllVisibleSelected = useMemo(() => {
+        if (visibleTasksInCurrentView.length === 0) return false;
+        return visibleTasksInCurrentView.every((t) => selectedTaskIds.has(t.id));
+    }, [visibleTasksInCurrentView, selectedTaskIds]);
+
+    const handleToggleSelect = (taskId: string) => {
+        setSelectedTaskIds((prev) => {
+            const next = new Set(prev);
+            if (next.has(taskId)) {
+                next.delete(taskId);
+            } else {
+                next.add(taskId);
+            }
+            return next;
+        });
+    };
+
+    const handleSelectAllVisible = () => {
+        setSelectedTaskIds((prev) => {
+            const next = new Set(prev);
+            if (areAllVisibleSelected) {
+                visibleTasksInCurrentView.forEach((t) => next.delete(t.id));
+            } else {
+                visibleTasksInCurrentView.forEach((t) => next.add(t.id));
+            }
+            return next;
+        });
+    };
+
+    const handleClearSelection = () => {
+        setSelectedTaskIds(new Set());
+    };
+
+    const selectedTasks = useMemo(() => {
+        return tasks.filter((t) => selectedTaskIds.has(t.id));
+    }, [tasks, selectedTaskIds]);
+
+    const hasActiveSelected = useMemo(() => {
+        return selectedTasks.some((t) => !t.archived);
+    }, [selectedTasks]);
+
+    const hasArchivedSelected = useMemo(() => {
+        return selectedTasks.some((t) => t.archived);
+    }, [selectedTasks]);
+
+    const handleBulkStatusChange = (newStatus: string) => {
+        const now = new Date();
+        const completedAtStr = isDoneState(newStatus)
+            ? toLocalDateStr(now) + " " + now.toTimeString().split(" ")[0].substring(0, 5)
+            : undefined;
+        const completedByName = isDoneState(newStatus)
+            ? currentUser?.name || defaultUserName
+            : undefined;
+
+        let modifiedCount = 0;
+        let skippedCount = 0;
+
+        setTasks((prev) =>
+            prev.map((t) => {
+                if (selectedTaskIds.has(t.id)) {
+                    if (mayEditTask(t)) {
+                        modifiedCount++;
+                        return {
+                            ...t,
+                            status: newStatus,
+                            completedBy: completedByName,
+                            completedAt: completedAtStr,
+                        };
+                    } else {
+                        skippedCount++;
+                    }
+                }
+                return t;
+            })
+        );
+        setActiveBulkMenu(null);
+
+        if (typeof (window as any).showToast === "function") {
+            if (modifiedCount > 0) {
+                (window as any).showToast(
+                    t(
+                        `${modifiedCount} tasks updated to "${stateLabel(newStatus)}"${skippedCount > 0 ? ` (${skippedCount} skipped)` : ""}`,
+                        `${modifiedCount} úloh zmenených na "${stateLabel(newStatus)}"${skippedCount > 0 ? ` (${skippedCount} vynechaných)` : ""}`,
+                        `${modifiedCount} feladat módosítva "${stateLabel(newStatus)}" állapotra${skippedCount > 0 ? ` (${skippedCount} kihagyva)` : ""}`
+                    )
+                );
+            } else if (skippedCount > 0) {
+                (window as any).showToast(
+                    t(
+                        "No tasks could be modified due to permissions.",
+                        "Žiadne úlohy nebolo možné upraviť z dôvodu oprávnení.",
+                        "A jogosultságok miatt egyetlen feladat sem módosítható."
+                    )
+                );
+            }
+        }
+    };
+
+    const handleBulkPriorityChange = (newPriority: "low" | "medium" | "high") => {
+        let modifiedCount = 0;
+        let skippedCount = 0;
+
+        setTasks((prev) =>
+            prev.map((t) => {
+                if (selectedTaskIds.has(t.id)) {
+                    if (mayEditTask(t)) {
+                        modifiedCount++;
+                        return { ...t, priority: newPriority };
+                    } else {
+                        skippedCount++;
+                    }
+                }
+                return t;
+            })
+        );
+        setActiveBulkMenu(null);
+
+        if (typeof (window as any).showToast === "function") {
+            if (modifiedCount > 0) {
+                (window as any).showToast(
+                    t(
+                        `${modifiedCount} tasks updated to ${priorityLabel(newPriority)} priority${skippedCount > 0 ? ` (${skippedCount} skipped)` : ""}`,
+                        `${modifiedCount} úloh aktualizovaných na prioritu ${priorityLabel(newPriority)}${skippedCount > 0 ? ` (${skippedCount} vynechaných)` : ""}`,
+                        `${modifiedCount} feladat prioritása módosítva: ${priorityLabel(newPriority)}${skippedCount > 0 ? ` (${skippedCount} kihagyva)` : ""}`
+                    )
+                );
+            } else if (skippedCount > 0) {
+                (window as any).showToast(
+                    t(
+                        "No tasks could be modified due to permissions.",
+                        "Žiadne úlohy nebolo možné upraviť z dôvodu oprávnení.",
+                        "A jogosultságok miatt egyetlen feladat sem módosítható."
+                    )
+                );
+            }
+        }
+    };
+
+    const handleBulkAssigneeChange = (assignedUser: string) => {
+        let modifiedCount = 0;
+        let skippedCount = 0;
+
+        setTasks((prev) =>
+            prev.map((t) => {
+                if (selectedTaskIds.has(t.id)) {
+                    if (mayEditTask(t)) {
+                        modifiedCount++;
+                        return {
+                            ...t,
+                            owner: assignedUser,
+                            assignedUsers: assignedUser ? [assignedUser] : [],
+                        };
+                    } else {
+                        skippedCount++;
+                    }
+                }
+                return t;
+            })
+        );
+        setActiveBulkMenu(null);
+
+        if (typeof (window as any).showToast === "function") {
+            if (modifiedCount > 0) {
+                (window as any).showToast(
+                    t(
+                        `${modifiedCount} tasks assigned to ${assignedUser || "unassigned"}${skippedCount > 0 ? ` (${skippedCount} skipped)` : ""}`,
+                        `${modifiedCount} úloh priradených používateľovi ${assignedUser || "nepriradené"}${skippedCount > 0 ? ` (${skippedCount} vynechaných)` : ""}`,
+                        `${modifiedCount} feladat hozzárendelve: ${assignedUser || "nincs felelős"}${skippedCount > 0 ? ` (${skippedCount} kihagyva)` : ""}`
+                    )
+                );
+            } else if (skippedCount > 0) {
+                (window as any).showToast(
+                    t(
+                        "No tasks could be modified due to permissions.",
+                        "Žiadne úlohy nebolo možné upraviť z dôvodu oprávnení.",
+                        "A jogosultságok miatt egyetlen feladat sem módosítható."
+                    )
+                );
+            }
+        }
+    };
+
+    const handleBulkReschedule = (newDateStr: string) => {
+        if (!newDateStr) return;
+        let modifiedCount = 0;
+        let skippedCount = 0;
+
+        setTasks((prev) =>
+            prev.map((t) => {
+                if (selectedTaskIds.has(t.id)) {
+                    if (mayEditTask(t)) {
+                        modifiedCount++;
+                        return { ...t, deadline: newDateStr };
+                    } else {
+                        skippedCount++;
+                    }
+                }
+                return t;
+            })
+        );
+        setActiveBulkMenu(null);
+
+        if (typeof (window as any).showToast === "function") {
+            if (modifiedCount > 0) {
+                (window as any).showToast(
+                    t(
+                        `${modifiedCount} tasks rescheduled to ${formatTaskDate(newDateStr)}${skippedCount > 0 ? ` (${skippedCount} skipped)` : ""}`,
+                        `${modifiedCount} úloh preplánovaných na ${formatTaskDate(newDateStr)}${skippedCount > 0 ? ` (${skippedCount} vynechaných)` : ""}`,
+                        `${modifiedCount} feladat átütemezve: ${formatTaskDate(newDateStr)}${skippedCount > 0 ? ` (${skippedCount} kihagyva)` : ""}`
+                    )
+                );
+            } else if (skippedCount > 0) {
+                (window as any).showToast(
+                    t(
+                        "No tasks could be modified due to permissions.",
+                        "Žiadne úlohy nebolo možné upraviť z dôvodu oprávnení.",
+                        "A jogosultságok miatt egyetlen feladat sem módosítható."
+                    )
+                );
+            }
+        }
+    };
+
+    const handleBulkArchive = () => {
+        let modifiedCount = 0;
+        let skippedCount = 0;
+
+        setTasks((prev) =>
+            prev.map((t) => {
+                if (selectedTaskIds.has(t.id) && !t.archived) {
+                    if (mayArchiveTask(t)) {
+                        modifiedCount++;
+                        return { ...t, archived: true };
+                    } else {
+                        skippedCount++;
+                    }
+                }
+                return t;
+            })
+        );
+        handleClearSelection();
+
+        if (typeof (window as any).showToast === "function") {
+            if (modifiedCount > 0) {
+                (window as any).showToast(
+                    t(
+                        `${modifiedCount} tasks archived`,
+                        `${modifiedCount} úloh archivovaných`,
+                        `${modifiedCount} feladat archiválva`
+                    )
+                );
+            } else if (skippedCount > 0) {
+                (window as any).showToast(
+                    t(
+                        "No tasks could be archived due to permissions.",
+                        "Žiadne úlohy nebolo možné archivovať z dôvodu oprávnení.",
+                        "A jogosultságok miatt egyetlen feladat sem archiválható."
+                    )
+                );
+            }
+        }
+    };
+
+    const handleBulkRestore = () => {
+        let modifiedCount = 0;
+        let skippedCount = 0;
+
+        setTasks((prev) =>
+            prev.map((t) => {
+                if (selectedTaskIds.has(t.id) && t.archived) {
+                    if (mayArchiveTask(t)) {
+                        modifiedCount++;
+                        return {
+                            ...t,
+                            archived: false,
+                            status: taskStates[0] || "New",
+                            completedAt: undefined,
+                            completedBy: undefined,
+                        };
+                    } else {
+                        skippedCount++;
+                    }
+                }
+                return t;
+            })
+        );
+        handleClearSelection();
+
+        if (typeof (window as any).showToast === "function") {
+            if (modifiedCount > 0) {
+                (window as any).showToast(
+                    t(
+                        `${modifiedCount} tasks restored`,
+                        `${modifiedCount} úloh obnovených z archívu`,
+                        `${modifiedCount} feladat visszaállítva az archívumból`
+                    )
+                );
+            } else if (skippedCount > 0) {
+                (window as any).showToast(
+                    t(
+                        "No tasks could be restored due to permissions.",
+                        "Žiadne úlohy nebolo možné obnoviť z dôvodu oprávnení.",
+                        "A jogosultságok miatt egyetlen feladat sem állítható vissza."
+                    )
+                );
+            }
+        }
+    };
+
+    const handleBulkDelete = async () => {
+        const deletableTasks = tasks.filter(
+            (t) => selectedTaskIds.has(t.id) && mayDeleteTask(t)
+        );
+        if (deletableTasks.length === 0) {
+            if (typeof (window as any).showToast === "function") {
+                (window as any).showToast(
+                    t(
+                        "You do not have permission to delete the selected tasks.",
+                        "Nemáte oprávnenie vymazať vybrané úlohy.",
+                        "Nincs jogosultsága a kiválasztott feladatok törlésére."
+                    )
+                );
+            }
+            return;
+        }
+
+        const count = deletableTasks.length;
+        const confirmed = window.confirm(
+            t(
+                `Permanently delete ${count} selected task${count > 1 ? "s" : ""}? This cannot be undone.`,
+                `Natrvalo odstrániť ${count} vybraných úloh? Túto akciu nemožno vrátiť späť.`,
+                `Véglegesen törli a(z) ${count} kiválasztott feladatot? Ez nem vonható vissza.`
+            )
+        );
+        if (!confirmed) return;
+
+        const idsToDelete = new Set(deletableTasks.map((t) => t.id));
+        setDeletingTaskIds((prev) => new Set([...prev, ...idsToDelete]));
+
+        try {
+            await Promise.all(
+                deletableTasks.map((t) =>
+                    requestTaskDeletion(t.id).catch((err) => {
+                        console.error(`Failed to delete task ${t.id}`, err);
+                        return null;
+                    })
+                )
+            );
+
+            setTasks((prev) => prev.filter((item) => !idsToDelete.has(item.id)));
+            setSelectedTaskIds((prev) => {
+                const next = new Set(prev);
+                idsToDelete.forEach((id) => next.delete(id));
+                return next;
+            });
+
+            if (typeof (window as any).showToast === "function") {
+                (window as any).showToast(
+                    t(
+                        `${count} tasks deleted`,
+                        `${count} úloh odstránených`,
+                        `${count} feladat törölve`
+                    )
+                );
+            }
+        } finally {
+            setDeletingTaskIds((prev) => {
+                const next = new Set(prev);
+                idsToDelete.forEach((id) => next.delete(id));
+                return next;
+            });
+        }
+    };
+
+    const renderBulkActionToolbar = () => {
+        if (selectedTaskIds.size === 0) return null;
+        if (typeof document === "undefined") return null;
+
+        const selectedCount = selectedTaskIds.size;
+        const countLabel =
+            systemLanguage === "sk"
+                ? selectedCount === 1
+                    ? "1 vybraná"
+                    : selectedCount >= 2 && selectedCount <= 4
+                      ? `${selectedCount} vybrané`
+                      : `${selectedCount} vybraných`
+                : systemLanguage === "hu"
+                  ? `${selectedCount} kiválasztva`
+                  : `${selectedCount} selected`;
+
+        return createPortal(
+            <div
+                ref={bulkToolbarRef}
+                className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100000] max-w-[95vw] sm:max-w-3xl lg:max-w-4xl bg-slate-900/95 text-white backdrop-blur-xl px-4 py-2.5 rounded-2xl shadow-2xl border border-slate-700/70 flex flex-wrap items-center justify-between gap-2.5 animate-in fade-in slide-in-from-bottom-5 duration-200"
+            >
+                {/* Left: Count and selection management */}
+                <div className="flex items-center gap-2">
+                    <span className="bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-xs font-black px-2.5 py-1 rounded-xl">
+                        {countLabel}
+                    </span>
+                    <button
+                        type="button"
+                        onClick={handleSelectAllVisible}
+                        className="text-[11px] font-bold text-slate-300 hover:text-white px-2 py-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                    >
+                        {areAllVisibleSelected
+                            ? t("Deselect visible", "Zrušiť výber zobrazených", "Láthatók kijelölésének törlése")
+                            : t(
+                                  `Select all visible (${visibleTasksInCurrentView.length})`,
+                                  `Vybrať všetky zobrazené (${visibleTasksInCurrentView.length})`,
+                                  `Összes látható kijelölése (${visibleTasksInCurrentView.length})`
+                              )}
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleClearSelection}
+                        title={t("Clear selection", "Zrušiť výber", "Kijelölés törlése")}
+                        className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+                    >
+                        <X className="h-4 w-4" />
+                    </button>
+                </div>
+
+                <div className="h-5 w-px bg-slate-700/80 hidden sm:block" />
+
+                {/* Right: Actions */}
+                <div className="flex items-center gap-1.5 flex-wrap">
+                    {/* Status Dropdown */}
+                    <div className="relative">
+                        <button
+                            type="button"
+                            onClick={() =>
+                                setActiveBulkMenu(
+                                    activeBulkMenu === "status" ? null : "status"
+                                )
+                            }
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-xs font-black transition-colors border border-slate-700/50 cursor-pointer"
+                        >
+                            <CheckSquare className="h-3.5 w-3.5 text-indigo-400" />
+                            <span>{t("Status", "Stav", "Státusz")}</span>
+                            <ChevronDown className="h-3 w-3 text-slate-400" />
+                        </button>
+                        {activeBulkMenu === "status" && (
+                            <div className="absolute bottom-full mb-2 left-0 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl p-1.5 min-w-[160px] space-y-0.5 animate-in fade-in zoom-in-95 duration-100 z-50">
+                                {taskStates.map((st) => (
+                                    <button
+                                        key={st}
+                                        type="button"
+                                        onClick={() => handleBulkStatusChange(st)}
+                                        className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:bg-indigo-600 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
+                                    >
+                                        <span
+                                            className="h-2 w-2 rounded-full shrink-0"
+                                            style={{
+                                                backgroundColor:
+                                                    taskStateColors[st] || "#94a3b8",
+                                            }}
+                                        />
+                                        <span>{stateLabel(st)}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Priority Dropdown */}
+                    <div className="relative">
+                        <button
+                            type="button"
+                            onClick={() =>
+                                setActiveBulkMenu(
+                                    activeBulkMenu === "priority" ? null : "priority"
+                                )
+                            }
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-xs font-black transition-colors border border-slate-700/50 cursor-pointer"
+                        >
+                            <Flame className="h-3.5 w-3.5 text-amber-400" />
+                            <span>{t("Priority", "Priorita", "Prioritás")}</span>
+                            <ChevronDown className="h-3 w-3 text-slate-400" />
+                        </button>
+                        {activeBulkMenu === "priority" && (
+                            <div className="absolute bottom-full mb-2 left-0 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl p-1.5 min-w-[140px] space-y-0.5 animate-in fade-in zoom-in-95 duration-100 z-50">
+                                {(["low", "medium", "high"] as const).map((prio) => (
+                                    <button
+                                        key={prio}
+                                        type="button"
+                                        onClick={() => handleBulkPriorityChange(prio)}
+                                        className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:bg-indigo-600 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
+                                    >
+                                        <span
+                                            className={`h-2 w-2 rounded-full shrink-0 ${
+                                                prio === "high"
+                                                    ? "bg-rose-500"
+                                                    : prio === "medium"
+                                                      ? "bg-amber-500"
+                                                      : "bg-slate-400"
+                                            }`}
+                                        />
+                                        <span>{priorityLabel(prio)}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Assignee Dropdown */}
+                    <div className="relative">
+                        <button
+                            type="button"
+                            onClick={() =>
+                                setActiveBulkMenu(
+                                    activeBulkMenu === "assignee" ? null : "assignee"
+                                )
+                            }
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-xs font-black transition-colors border border-slate-700/50 cursor-pointer"
+                        >
+                            <Users className="h-3.5 w-3.5 text-sky-400" />
+                            <span>{t("Assignee", "Riešiteľ", "Felelős")}</span>
+                            <ChevronDown className="h-3 w-3 text-slate-400" />
+                        </button>
+                        {activeBulkMenu === "assignee" && (
+                            <div className="absolute bottom-full mb-2 left-0 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl p-1.5 min-w-[170px] max-h-56 overflow-y-auto space-y-0.5 animate-in fade-in zoom-in-95 duration-100 z-50">
+                                {allUsersList.map((uName) => (
+                                    <button
+                                        key={uName}
+                                        type="button"
+                                        onClick={() => handleBulkAssigneeChange(uName)}
+                                        className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:bg-indigo-600 hover:text-white transition-colors flex items-center justify-between gap-2 cursor-pointer"
+                                    >
+                                        <span className="truncate">{uName}</span>
+                                        {uName === myName && (
+                                            <span className="text-[9px] bg-slate-800 px-1 py-0.5 rounded text-indigo-300">
+                                                {t("You", "Vy", "Ön")}
+                                            </span>
+                                        )}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Reschedule Popover */}
+                    <div className="relative">
+                        <button
+                            type="button"
+                            onClick={() =>
+                                setActiveBulkMenu(
+                                    activeBulkMenu === "reschedule" ? null : "reschedule"
+                                )
+                            }
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-xs font-black transition-colors border border-slate-700/50 cursor-pointer"
+                        >
+                            <CalendarIcon className="h-3.5 w-3.5 text-indigo-400" />
+                            <span>{t("Reschedule", "Termín", "Átütemezés")}</span>
+                            <ChevronDown className="h-3 w-3 text-slate-400" />
+                        </button>
+                        {activeBulkMenu === "reschedule" && (
+                            <div className="absolute bottom-full mb-2 left-0 sm:right-0 sm:left-auto bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl p-3 min-w-[220px] space-y-2 animate-in fade-in zoom-in-95 duration-100 z-50">
+                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                                    {t("Set Due Date", "Nastaviť termín", "Határidő beállítása")}
+                                </span>
+                                <div className="grid grid-cols-3 gap-1">
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            handleBulkReschedule(toLocalDateStr(new Date()))
+                                        }
+                                        className="px-2 py-1 rounded bg-slate-800 hover:bg-indigo-600 text-[10px] font-bold text-center transition-colors cursor-pointer"
+                                    >
+                                        {t("Today", "Dnes", "Ma")}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            handleBulkReschedule(
+                                                toLocalDateStr(
+                                                    new Date(Date.now() + 86400000)
+                                                )
+                                            )
+                                        }
+                                        className="px-2 py-1 rounded bg-slate-800 hover:bg-indigo-600 text-[10px] font-bold text-center transition-colors cursor-pointer"
+                                    >
+                                        {t("Tomorrow", "Zajtra", "Holnap")}
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            handleBulkReschedule(
+                                                toLocalDateStr(
+                                                    new Date(Date.now() + 7 * 86400000)
+                                                )
+                                            )
+                                        }
+                                        className="px-2 py-1 rounded bg-slate-800 hover:bg-indigo-600 text-[10px] font-bold text-center transition-colors cursor-pointer"
+                                    >
+                                        {t("+1 Week", "+1 týždeň", "+1 hét")}
+                                    </button>
+                                </div>
+                                <div className="pt-1 border-t border-slate-800">
+                                    <input
+                                        type="date"
+                                        onChange={(e) => {
+                                            if (e.target.value) {
+                                                handleBulkReschedule(e.target.value);
+                                            }
+                                        }}
+                                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
+                                    />
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Archive / Restore Button */}
+                    {hasActiveSelected && (
+                        <button
+                            type="button"
+                            onClick={handleBulkArchive}
+                            title={t("Archive selected tasks", "Archivovať vybrané úlohy", "Kiválasztott feladatok archiválása")}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-amber-900/40 text-amber-300 hover:text-amber-100 text-xs font-black transition-colors border border-slate-700/50 hover:border-amber-700/50 cursor-pointer"
+                        >
+                            <ArchiveIcon className="h-3.5 w-3.5 text-amber-400" />
+                            <span>{t("Archive", "Archivovať", "Archiválás")}</span>
+                        </button>
+                    )}
+                    {hasArchivedSelected && (
+                        <button
+                            type="button"
+                            onClick={handleBulkRestore}
+                            title={t("Restore selected tasks", "Obnoviť vybrané úlohy", "Kiválasztott feladatok visszaállítása")}
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-indigo-900/40 text-indigo-300 hover:text-indigo-100 text-xs font-black transition-colors border border-slate-700/50 hover:border-indigo-700/50 cursor-pointer"
+                        >
+                            <RotateCcw className="h-3.5 w-3.5 text-indigo-400" />
+                            <span>{t("Restore", "Obnoviť", "Visszaállítás")}</span>
+                        </button>
+                    )}
+
+                    {/* Delete Button */}
+                    <button
+                        type="button"
+                        onClick={handleBulkDelete}
+                        title={t("Delete selected tasks", "Odstrániť vybrané úlohy", "Kiválasztott feladatok törlése")}
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 hover:text-rose-100 text-xs font-black transition-colors border border-rose-800/60 cursor-pointer ml-1"
+                    >
+                        <Trash2 className="h-3.5 w-3.5 text-rose-400" />
+                        <span className="hidden sm:inline">{t("Delete", "Vymazať", "Törlés")}</span>
+                    </button>
+                </div>
+            </div>,
+            document.body
+        );
+    };
+
+    const handleCreateTask = (e?: React.FormEvent, closeAfterCreate: boolean = true) => {
+        if (e) e.preventDefault();
         if (!taskAccess.create) {
             closeAddDrawer();
             return;
         }
-        if (!newTitle.trim()) {
-            (window as any).showToast(
-                t(
-                    "Please enter a task title!",
-                    "Prosím zadajte názov úlohy!",
-                    "Kérjük, adja meg a feladat címét!",
-                ),
-            );
+        const lines = newTitle
+            .split("\n")
+            .map((line) => line.trim())
+            .filter((line) => line.length > 0);
+
+        if (lines.length === 0) {
+            if (typeof (window as any).showToast === "function") {
+                (window as any).showToast(
+                    t(
+                        "Please enter a task title!",
+                        "Prosím zadajte názov úlohy!",
+                        "Kérjük, adja meg a feladat címét!",
+                    ),
+                    "warning",
+                );
+            }
             return;
         }
 
-        const createdTask: Task = {
-            id: `task-${Date.now()}`,
-            title: newTitle.trim(),
-            description: newDescription.trim(),
+        const now = Date.now();
+        const createdTasks: Task[] = lines.map((title, index) => ({
+            id: `task-${now}-${index}-${Math.random().toString(36).slice(2, 7)}`,
+            title,
+            description: "",
+            tags: extractTagsFromText(title),
             status: taskStates[0] || "New",
             priority: newPriority,
-            startDate: newStartDate || undefined,
             deadline: newDeadline,
             deadlineTime: newDeadlineTime,
             owner: newAssignedUser,
@@ -954,13 +2041,38 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             relatedProjectId: newRelatedProjectId || undefined,
             isLocking: newRelatedLeadId ? newIsLocking : false,
             emailReminders: newEmailReminders,
-        };
+        }));
 
-        setTasks((prev) => [createdTask, ...prev]);
+        setTasks((prev) => [...createdTasks, ...prev]);
 
-        // Reset Form & Close Drawer
-        resetNewTaskForm();
-        closeAddDrawer();
+        // Success notification
+        if (typeof (window as any).showToast === "function") {
+            const successMsg =
+                createdTasks.length > 1
+                    ? t(
+                          `${createdTasks.length} tasks created successfully!`,
+                          `${createdTasks.length} úloh bolo úspešne vytvorených!`,
+                          `${createdTasks.length} feladat sikeresen létrehozva!`,
+                      )
+                    : t(
+                          "Task created successfully!",
+                          "Úloha bola úspešne vytvorená!",
+                          "Feladat sikeresen létrehozva!",
+                      );
+            (window as any).showToast(successMsg);
+        }
+
+        if (closeAfterCreate) {
+            resetNewTaskForm();
+            closeAddDrawer();
+        } else {
+            // Keep the form open for the next task: clear title and re-focus
+            setNewTitle("");
+            setTimeout(() => {
+                const textarea = document.querySelector('form textarea') as HTMLTextAreaElement | null;
+                if (textarea) textarea.focus();
+            }, 50);
+        }
     };
 
     // --- RENDERING ---
@@ -1263,117 +2375,161 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const renderCalendarNav = (cfg: {
         anchor: Date;
         onAnchorChange: (next: Date) => void;
-        scope: "month" | "week";
-        onScopeChange: (scope: "month" | "week") => void;
+        scope: "month" | "week" | "timeline" | "hide";
+        onScopeChange: (scope: "month" | "week" | "timeline" | "hide") => void;
         onSelectDay: (day: Date | null) => void;
         compact?: boolean;
-    }) => (
-        <div className="flex items-center gap-2 flex-wrap">
-            {/* Month/Week scope switch — week scope narrows the calendar to a
-                single week that can be paged. */}
-            <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-sm gap-1">
-                {(["month", "week"] as const).map((scope) => (
-                    <button
-                        key={scope}
-                        onClick={() => {
-                            cfg.onScopeChange(scope);
-                            cfg.onSelectDay(null);
-                        }}
-                        className={`px-3 py-1.5 rounded-lg font-black text-[10px] uppercase tracking-wider transition-all cursor-pointer ${
-                            cfg.scope === scope
-                                ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
-                                : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
-                        }`}
-                    >
-                        {scope === "month"
-                            ? t("Month", "Mesiac", "Hónap")
-                            : t("Week", "Týždeň", "Hét")}
-                    </button>
-                ))}
-            </div>
+        showTimelineOption?: boolean;
+        showHideOption?: boolean;
+    }) => {
+        const availableScopes = [
+            "month",
+            "week",
+            ...(cfg.showTimelineOption ? ["timeline" as const] : []),
+            ...(cfg.showHideOption ? ["hide" as const] : []),
+        ] as const;
 
-            <div className="flex items-center bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
-                <button
-                    onClick={() =>
-                        cfg.onAnchorChange(stepAnchor(cfg.anchor, cfg.scope, -1))
-                    }
-                    title={
-                        cfg.scope === "week"
-                            ? t(
-                                  "Previous week",
-                                  "Predchádzajúci týždeň",
-                                  "Előző hét",
-                              )
-                            : t(
-                                  "Previous month",
-                                  "Predchádzajúci mesiac",
-                                  "Előző hónap",
-                              )
-                    }
-                    className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 cursor-pointer transition-colors active:scale-95"
-                >
-                    <ChevronLeft className="h-5 w-5" />
-                </button>
-                <button
-                    onClick={() => cfg.onAnchorChange(new Date())}
-                    title={t(
-                        "Jump to today",
-                        "Prejsť na dnešok",
-                        "Ugrás a mai napra",
-                    )}
-                    className={`px-4 font-black text-indigo-950 text-center tracking-wider uppercase hover:text-indigo-600 cursor-pointer transition-colors ${
-                        cfg.compact
-                            ? "text-[11px] min-w-[130px]"
-                            : "text-sm min-w-[160px]"
-                    }`}
-                >
-                    {cfg.scope === "week"
-                        ? weekRangeLabelOf(cfg.anchor)
-                        : `${monthNames[cfg.anchor.getMonth()]} ${cfg.anchor.getFullYear()}`}
-                </button>
-                <button
-                    onClick={() =>
-                        cfg.onAnchorChange(stepAnchor(cfg.anchor, cfg.scope, 1))
-                    }
-                    title={
-                        cfg.scope === "week"
-                            ? t(
-                                  "Next week",
-                                  "Nasledujúci týždeň",
-                                  "Következő hét",
-                              )
-                            : t(
-                                  "Next month",
-                                  "Nasledujúci mesiac",
-                                  "Következő hónap",
-                              )
-                    }
-                    className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 cursor-pointer transition-colors active:scale-95"
-                >
-                    <ChevronRight className="h-5 w-5" />
-                </button>
-            </div>
-        </div>
-    );
+        const effectiveScopeForStep: "month" | "week" =
+            cfg.scope === "week" ? "week" : "month";
 
-    // --- TASK BUCKETS ---
+        return (
+            <div className="flex items-center gap-2 flex-wrap">
+                {/* Scope switcher */}
+                <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-sm gap-1 max-w-full overflow-x-auto">
+                    {availableScopes.map((scope) => (
+                        <button
+                            key={scope}
+                            onClick={() => {
+                                cfg.onScopeChange(scope);
+                                cfg.onSelectDay(null);
+                            }}
+                            className={`px-2.5 sm:px-3 py-1.5 rounded-lg font-black text-[10px] uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
+                                cfg.scope === scope
+                                    ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
+                                    : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
+                            }`}
+                        >
+                            {scope === "month"
+                                ? t("Month", "Mesiac", "Hónap")
+                                : scope === "week"
+                                  ? t("Week", "Týždeň", "Hét")
+                                  : scope === "timeline"
+                                    ? t("Timeline", "Časová os", "Idővonal")
+                                    : t("Hide", "Skryť", "Elrejtés")}
+                        </button>
+                    ))}
+                </div>
+
+                {cfg.scope !== "hide" && cfg.scope !== "timeline" && (
+                    <div className="flex items-center bg-white border border-slate-200 rounded-xl p-1 shadow-sm">
+                        <button
+                            onClick={() =>
+                                cfg.onAnchorChange(
+                                    stepAnchor(cfg.anchor, effectiveScopeForStep, -1),
+                                )
+                            }
+                            title={
+                                cfg.scope === "week"
+                                    ? t(
+                                          "Previous week",
+                                          "Predchádzajúci týždeň",
+                                          "Előző hét",
+                                      )
+                                    : t(
+                                          "Previous month",
+                                          "Predchádzajúci mesiac",
+                                          "Előző hónap",
+                                      )
+                            }
+                            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 cursor-pointer transition-colors active:scale-95"
+                        >
+                            <ChevronLeft className="h-5 w-5" />
+                        </button>
+                        <button
+                            onClick={() => cfg.onAnchorChange(new Date())}
+                            title={t(
+                                "Jump to today",
+                                "Prejsť na dnešok",
+                                "Ugrás a mai napra",
+                            )}
+                            className={`px-4 font-black text-indigo-950 text-center tracking-wider uppercase hover:text-indigo-600 cursor-pointer transition-colors ${
+                                cfg.compact
+                                    ? "text-[11px] min-w-[130px]"
+                                    : "text-sm min-w-[160px]"
+                            }`}
+                        >
+                            {cfg.scope === "week"
+                                ? weekRangeLabelOf(cfg.anchor)
+                                : `${monthNames[cfg.anchor.getMonth()]} ${cfg.anchor.getFullYear()}`}
+                        </button>
+                        <button
+                            onClick={() =>
+                                cfg.onAnchorChange(
+                                    stepAnchor(cfg.anchor, effectiveScopeForStep, 1),
+                                )
+                            }
+                            title={
+                                cfg.scope === "week"
+                                    ? t(
+                                          "Next week",
+                                          "Nasledujúci týždeň",
+                                          "Következő hét",
+                                      )
+                                    : t(
+                                          "Next month",
+                                          "Nasledujúci mesiac",
+                                          "Következő hónap",
+                                      )
+                            }
+                            className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-600 cursor-pointer transition-colors active:scale-95"
+                        >
+                            <ChevronRight className="h-5 w-5" />
+                        </button>
+                    </div>
+                )}
+            </div>
+        );
+    };
+
     const isTaskOverdue = (task: Task) => isTaskOverdueShared(task, taskStates, nowLocalStamp());
 
     const tomorrowStr = toLocalDateStr(new Date(today.getTime() + 86400000));
-    const overdueTasks = myTasks.filter((t) => isTaskOverdue(t)).sort(byDeadline);
+    // All personal and delegated tasks are grouped together in the same time divisions:
+    const overdueTasks = myTasks
+        .filter((t) => {
+            if (isTaskOverdue(t)) return true;
+            if (showClosedTasks && isClosedRecentTask(t)) {
+                return t.deadline < todayStr;
+            }
+            return false;
+        })
+        .sort(byDeadline);
     const todayTasks = myTasks
-        .filter(
-            (t) =>
-                t.deadline === todayStr &&
-                !isTaskOverdue(t) &&
-                !isDoneState(t.status),
-        )
+        .filter((t) => {
+            if (t.deadline === todayStr && !isTaskOverdue(t) && !isDoneState(t.status)) return true;
+            if (showClosedTasks && isClosedRecentTask(t)) {
+                return t.deadline === todayStr || !t.deadline;
+            }
+            return false;
+        })
         .sort(byDeadlineTime);
     const tomorrowTasks = myTasks
-        .filter((t) => t.deadline === tomorrowStr && !isDoneState(t.status))
+        .filter((t) => {
+            if (t.deadline === tomorrowStr && !isDoneState(t.status)) return true;
+            if (showClosedTasks && isClosedRecentTask(t)) {
+                return t.deadline === tomorrowStr;
+            }
+            return false;
+        })
         .sort(byDeadlineTime);
     const futureTasks = myTasks
-        .filter((t) => t.deadline > tomorrowStr && !isDoneState(t.status))
+        .filter((t) => {
+            if (t.deadline > tomorrowStr && !isDoneState(t.status)) return true;
+            if (showClosedTasks && isClosedRecentTask(t)) {
+                return t.deadline > tomorrowStr;
+            }
+            return false;
+        })
         .sort(byDeadline);
 
     // The lead a task is linked to, as a link straight to that lead's detail —
@@ -1406,195 +2562,337 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         );
     };
 
-    const renderTaskCard = (task: Task) => (
-        <div
-            key={task.id}
-            className={`${isCompact ? "p-2.5" : "p-4"} rounded-2xl bg-white border border-slate-200/80 shadow-sm flex gap-3 transition-all relative overflow-hidden hover:border-slate-300`}
-        >
-            {task.isLocking && (
-                <div className="absolute top-0 right-0 w-1.5 h-full bg-rose-500" />
-            )}
-
-            <div
-                className="max-w-[110px]"
-                style={
-                    {
-                        "--task-status-bg": `${taskStateColors[task.status] || "#64748b"}15`,
-                        "--task-status-color": taskStateColors[task.status] || "#64748b",
-                        "--task-status-border": `${taskStateColors[task.status] || "#64748b"}35`,
-                    } as React.CSSProperties
-                }
+    const renderPriorityIcon = (priority: Task["priority"], className: string = "h-3.5 w-3.5") => {
+        if (priority === "high") {
+            return (
+                <span
+                    title={`${t("Priority", "Priorita", "Prioritás")}: ${priorityLabel("high")}`}
+                    className="shrink-0 flex items-center text-rose-500"
+                >
+                    <Flame className={`${className} fill-rose-500/20`} />
+                </span>
+            );
+        }
+        if (priority === "medium") {
+            return (
+                <span
+                    title={`${t("Priority", "Priorita", "Prioritás")}: ${priorityLabel("medium")}`}
+                    className="shrink-0 flex items-center text-amber-500"
+                >
+                    <ArrowUpDown className={`${className} stroke-[2.5]`} />
+                </span>
+            );
+        }
+        return (
+            <span
+                title={`${t("Priority", "Priorita", "Prioritás")}: ${priorityLabel("low")}`}
+                className="shrink-0 flex items-center text-slate-400"
             >
-                <CustomSelect
-                    value={task.status}
-                    disabled={!mayEditTask(task)}
-                    size="sm"
-                    onChange={(newStatus) => {
-                        const now = new Date();
-                        const completedAtStr = isDoneState(newStatus)
-                            ? toLocalDateStr(now) +
-                              " " +
-                              now.toTimeString().split(" ")[0].substring(0, 5)
-                            : undefined;
-                        const completedByName = isDoneState(newStatus)
-                            ? currentUser?.name || defaultUserName
-                            : undefined;
+                <Minus className={`${className} stroke-[3]`} />
+            </span>
+        );
+    };
 
-                        setTasks((prev) =>
-                            prev.map((t) =>
-                                t.id === task.id
-                                    ? {
-                                          ...t,
-                                          status: newStatus,
-                                          completedBy: completedByName,
-                                          completedAt: completedAtStr,
-                                      }
-                                    : t,
-                            ),
-                        );
-                    }}
-                    className="!bg-[var(--task-status-bg)] !text-[var(--task-status-color)] !border-[var(--task-status-border)] font-black uppercase tracking-wider truncate"
-                    options={taskStates.map((st) => ({ value: st, label: stateLabel(st) }))}
-                />
-            </div>
+    const renderTaskCard = (task: Task) => {
+        const isSelected = selectedTaskIds.has(task.id);
+        const isClosed = isDoneState(task.status);
 
-            <div className="flex-1 space-y-1.5 min-w-0">
-                <div className="flex items-start justify-between gap-1.5">
-                    <h4 className="text-sm font-black text-slate-800 truncate">
-                        {task.title}
-                    </h4>
-                    <div className="flex items-center gap-0.5 shrink-0">
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                handleArchiveTask(task);
-                            }}
-                            className="p-1 hover:bg-slate-100 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 rounded-lg text-slate-400 hover:text-slate-600 transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-35"
-                            disabled={!mayArchiveTask(task)}
-                            title={
-                                mayArchiveTask(task)
-                                    ? t(
-                                          "Archive Task",
-                                          "Archivovať úlohu",
-                                          "Feladat archiválása",
-                                      )
-                                    : archiveDeniedHint()
-                            }
-                        >
-                            <ArchiveIcon className="h-3.5 w-3.5" />
-                        </button>
-                        {/* The drawer opens for everyone who can see the
-                            task; without edit rights it renders read-only. */}
-                        <button
-                            onClick={(e) => {
-                                e.stopPropagation();
-                                setEditingTask(task);
-                            }}
-                            className="p-1 hover:bg-slate-100 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 rounded-lg text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
-                            title={
-                                mayEditTask(task)
-                                    ? t(
-                                          "Edit Task",
-                                          "Upraviť úlohu",
-                                          "Feladat szerkesztése",
-                                      )
-                                    : t(
-                                          "View Task",
-                                          "Zobraziť úlohu",
-                                          "Feladat megtekintése",
-                                      )
-                            }
-                        >
-                            {mayEditTask(task) ? (
-                                <Settings className="h-3.5 w-3.5" />
-                            ) : (
-                                <Eye className="h-3.5 w-3.5" />
-                            )}
-                        </button>
-                    </div>
-                </div>
-                {!isCompact && task.description && (
-                    <p className="text-xs font-semibold text-slate-500 line-clamp-1">
-                        {task.description}
-                    </p>
+        return (
+            <div
+                key={task.id}
+                className={`group px-3.5 py-2.5 transition-colors border-b border-slate-100 last:border-b-0 flex items-start justify-between gap-3 text-xs ${
+                    isSelected
+                        ? "bg-indigo-50/70"
+                        : "bg-white hover:bg-slate-50/90"
+                } relative`}
+            >
+                {task.isLocking && (
+                    <div className="absolute top-0 right-0 w-1 h-full bg-rose-500" />
                 )}
-                <div className="flex flex-wrap items-center gap-2">
-                    <span
-                        className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-md border ${
-                            task.priority === "high"
-                                ? "bg-rose-50 text-rose-600 border-rose-200"
-                                : task.priority === "medium"
-                                  ? "bg-amber-50 text-amber-600 border-amber-200"
-                                  : "bg-slate-50 text-slate-600 border-slate-200"
-                        }`}
-                    >
-                        {priorityLabel(task.priority)}
-                    </span>
 
-                    {/* On your calendar because you created it, not because it is
-                        yours to do — say so, and name who is on the hook. */}
-                    {isDelegatedByMe(task) && (
+                {/* Left checkbox */}
+                <div className="pt-0.5 shrink-0">
+                    <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => {
+                            e.stopPropagation();
+                            handleToggleSelect(task.id);
+                        }}
+                        className="h-3.5 w-3.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600 shrink-0 block"
+                        aria-label={`Select ${task.title}`}
+                    />
+                </div>
+
+                {/* Main task body */}
+                <div className="flex-1 min-w-0 flex flex-col gap-1.5 sm:gap-1">
+                    {/* Top Row:
+                        - On mobile (<sm): Status dropdown + Priority Icon on Left, Quick action buttons on Right
+                        - On desktop (sm+): Status dropdown + Priority Icon + Title inline
+                    */}
+                    <div className="flex items-center justify-between sm:justify-start gap-2 min-w-0">
+                        <div className="flex items-center gap-2 min-w-0 flex-1 sm:flex-initial">
+                            <div
+                                className="w-[96px] shrink-0"
+                                style={
+                                    {
+                                        "--task-status-bg": `${taskStateColors[task.status] || "#64748b"}15`,
+                                        "--task-status-color": taskStateColors[task.status] || "#64748b",
+                                        "--task-status-border": `${taskStateColors[task.status] || "#64748b"}35`,
+                                    } as React.CSSProperties
+                                }
+                            >
+                                <CustomSelect
+                                    value={task.status}
+                                    disabled={!mayEditTask(task)}
+                                    size="sm"
+                                    onChange={(newStatus) => {
+                                        const now = new Date();
+                                        const completedAtStr = isDoneState(newStatus)
+                                            ? toLocalDateStr(now) +
+                                              " " +
+                                              now.toTimeString().split(" ")[0].substring(0, 5)
+                                            : undefined;
+                                        const completedByName = isDoneState(newStatus)
+                                            ? currentUser?.name || defaultUserName
+                                            : undefined;
+
+                                        setTasks((prev) =>
+                                            prev.map((t) =>
+                                                t.id === task.id
+                                                    ? {
+                                                          ...t,
+                                                          status: newStatus,
+                                                          completedBy: completedByName,
+                                                          completedAt: completedAtStr,
+                                                      }
+                                                    : t,
+                                            ),
+                                        );
+                                    }}
+                                    className="!bg-[var(--task-status-bg)] !text-[var(--task-status-color)] !border-[var(--task-status-border)] !text-[10px] !py-0.5 !px-2 font-black uppercase tracking-wider truncate"
+                                    options={taskStates.map((st) => ({ value: st, label: stateLabel(st) }))}
+                                />
+                            </div>
+
+                            {renderPriorityIcon(task.priority, "h-3.5 w-3.5 shrink-0")}
+
+                            {/* Desktop-only Title: inline with status dropdown */}
+                            <span
+                                onClick={() => setEditingTask(task)}
+                                className={`hidden sm:inline font-bold truncate cursor-pointer transition-colors ${
+                                    isClosed
+                                        ? "text-slate-400 line-through decoration-slate-400 hover:text-slate-600"
+                                        : "text-slate-800 hover:text-indigo-600"
+                                }`}
+                                title={task.title}
+                            >
+                                <TaskPillText
+                                    text={task.title}
+                                    onTagClick={handleTagClick}
+                                    knownEntities={mentionEntities}
+                                />
+                            </span>
+                        </div>
+
+                        {/* Mobile-only Quick Action Buttons placed at top right next to status */}
+                        <div className="flex sm:hidden items-center gap-0.5 shrink-0">
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleArchiveTask(task);
+                                }}
+                                className="p-1 hover:bg-slate-100 active:scale-95 rounded-md text-slate-400 hover:text-slate-600 transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-35"
+                                disabled={!mayArchiveTask(task)}
+                                title={
+                                    mayArchiveTask(task)
+                                        ? t(
+                                              "Archive Task",
+                                              "Archivovať úlohu",
+                                              "Feladat archiválása",
+                                          )
+                                        : archiveDeniedHint()
+                                }
+                            >
+                                <ArchiveIcon className="h-3.5 w-3.5" />
+                            </button>
+                            <button
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    setEditingTask(task);
+                                }}
+                                className="p-1 hover:bg-slate-100 active:scale-95 rounded-md text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+                                title={
+                                    mayEditTask(task)
+                                        ? t(
+                                              "Edit Task",
+                                              "Upraviť úlohu",
+                                              "Feladat szerkesztése",
+                                          )
+                                        : t(
+                                              "View Task",
+                                              "Zobraziť úlohu",
+                                              "Feladat megtekintése",
+                                          )
+                                }
+                            >
+                                {mayEditTask(task) ? (
+                                    <Settings className="h-3.5 w-3.5" />
+                                ) : (
+                                    <Eye className="h-3.5 w-3.5" />
+                                )}
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Mobile-only Dedicated Title Row (Full width, maximum visibility, no truncation pressure) */}
+                    <div className="sm:hidden w-full">
                         <span
-                            title={t(
-                                "You created this task for someone else. It stays on your calendar so you can follow it up.",
-                                "Túto úlohu ste vytvorili pre niekoho iného. Vo vašom kalendári zostáva, aby ste ju mohli sledovať.",
-                                "Ezt a feladatot másnak hozta létre. A naptárában marad, hogy nyomon követhesse.",
-                            )}
-                            className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md border bg-violet-50 text-violet-600 border-violet-200 cursor-help"
+                            onClick={() => setEditingTask(task)}
+                            className={`font-bold text-xs leading-snug cursor-pointer transition-colors break-words line-clamp-3 block ${
+                                isClosed
+                                    ? "text-slate-400 line-through decoration-slate-400 hover:text-slate-600"
+                                    : "text-slate-900 hover:text-indigo-600"
+                            }`}
+                            title={task.title}
                         >
-                            {t("Delegated", "Delegované", "Delegálva")}
-                            {task.assignedUsers?.[0]
-                                ? ` · ${task.assignedUsers[0]}`
-                                : ""}
+                            <TaskPillText
+                                text={task.title}
+                                onTagClick={handleTagClick}
+                                knownEntities={mentionEntities}
+                            />
                         </span>
-                    )}
+                    </div>
 
-                    {!isCompact && task.startDate && (
-                        <span className="text-[9px] font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-2 py-1 rounded-lg transition-colors hover:bg-slate-200/70">
-                            <CalendarIcon className="h-2.5 w-2.5 shrink-0 stroke-[2.5]" />
-                            <span className="uppercase tracking-wider text-slate-400">
-                                {t("Start", "Začiatok", "Kezdés")}
+                    {/* Line 2: Everything else (delegated badge, lead/client, project, due date/time, assignee) */}
+                    <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0 text-[10px]">
+                        {isDelegatedByMe(task) && (
+                            <span
+                                title={t(
+                                    "You created this task for someone else. It stays on your calendar so you can follow it up.",
+                                    "Túto úlohu ste vytvorili pre niekoho iného. Vo vašom kalendári zostáva, aby ste ju mohli sledovať.",
+                                    "Ezt a feladatot másnak hozta létre. A naptárában marad, hogy nyomon követhesse.",
+                                )}
+                                className="font-black uppercase px-1.5 py-0.5 rounded border bg-violet-50 text-violet-600 border-violet-200 cursor-help shrink-0"
+                            >
+                                {t("Delegated", "Delegované", "Delegálva")}
+                                {task.assignedUsers?.[0]
+                                    ? ` · ${task.assignedUsers[0]}`
+                                    : ""}
                             </span>
-                            <span className="text-slate-700">
-                                {formatTaskDate(task.startDate)}
-                            </span>
-                        </span>
-                    )}
+                        )}
 
-                    <span className="inline-flex max-w-full items-start gap-1.5 bg-indigo-50 px-2 py-1 rounded-lg border border-indigo-100 text-indigo-600 transition-colors hover:bg-indigo-100/70">
-                        <Clock className="h-2.5 w-2.5 shrink-0 mt-px stroke-[2.5]" />
-                        <span className="flex min-w-0 flex-col leading-tight">
-                            <span className="text-[8px] font-bold uppercase tracking-wider text-indigo-400">
-                                {t("Due", "Termín", "Határidő")}
+                        {renderLeadBadge(task, "max-w-[140px]")}
+
+                        {projectNameFor(task) && (
+                            <span className="font-bold text-purple-700 flex items-center gap-1 bg-purple-50 px-1.5 py-0.5 rounded-md truncate max-w-[140px] shrink-0 border border-purple-100">
+                                <FolderKanban className="h-2.5 w-2.5 shrink-0 text-purple-500" />
+                                <span className="truncate">{projectNameFor(task)}</span>
                             </span>
-                            <span className="text-[9px] font-black tabular-nums break-words">
+                        )}
+
+                        <span className="inline-flex items-center gap-1 bg-indigo-50/80 px-2 py-0.5 rounded-md border border-indigo-100/70 text-indigo-700 font-bold tabular-nums">
+                            <Clock className="h-2.5 w-2.5 shrink-0 text-indigo-500" />
+                            <span>
                                 {formatTaskDate(task.deadline)} ·{" "}
                                 {formatTimeDisplay(task.deadlineTime || "23:59")}
                             </span>
                         </span>
-                    </span>
 
-                    {renderLeadBadge(task, "max-w-[140px]")}
-
-                    {projectNameFor(task) && (
-                        <span className="text-[9px] font-bold text-purple-700 flex items-center gap-1 bg-purple-50 px-1.5 py-0.5 rounded-md truncate max-w-[140px]">
-                            <FolderKanban className="h-2.5 w-2.5 shrink-0" />
-                            <span className="truncate">{projectNameFor(task)}</span>
-                        </span>
-                    )}
-
-                    {task.assignedUsers && task.assignedUsers.length > 0 && (
-                        <span className="text-[9px] font-bold text-indigo-600 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-[120px]">
-                            <span className="h-1 w-1 rounded-full bg-indigo-500 shrink-0" />
-                            <span className="truncate">
-                                {task.assignedUsers.join(", ")}
+                        {task.assignedUsers && task.assignedUsers.length > 0 && (
+                            <span className="font-bold text-slate-600 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md truncate max-w-[120px] border border-slate-200">
+                                <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 shrink-0" />
+                                <span className="truncate">
+                                    {task.assignedUsers.join(", ")}
+                                </span>
                             </span>
-                        </span>
-                    )}
+                        )}
+
+                        {task.description && (
+                            <span className="text-slate-400 font-medium truncate max-w-[240px] sm:max-w-[180px]" title={task.description}>
+                                <TaskPillText
+                                    text={task.description}
+                                    onTagClick={handleTagClick}
+                                    knownEntities={mentionEntities}
+                                />
+                            </span>
+                        )}
+                        {task.tags && task.tags.length > 0 && (() => {
+                            const textTags = new Set([
+                                ...extractTagsFromText(task.title || "").map((t) => t.toLowerCase()),
+                                ...extractTagsFromText(task.description || "").map((t) => t.toLowerCase()),
+                            ]);
+                            const extraTags = task.tags.filter((t) => !textTags.has(t.toLowerCase()));
+                            if (extraTags.length === 0) return null;
+                            return extraTags.map((tag) => (
+                                <button
+                                    key={tag}
+                                    type="button"
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleTagClick(tag);
+                                    }}
+                                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-[#ff5d00]/10 text-[#ff5d00] border border-[#ff5d00]/25 hover:bg-[#ff5d00]/20 transition-all cursor-pointer"
+                                >
+                                    <Hash className="w-2.5 h-2.5" />
+                                    <span>{tag}</span>
+                                </button>
+                            ));
+                        })()}
+                    </div>
+                </div>
+
+                {/* Desktop-only right side quick action buttons */}
+                <div className="hidden sm:flex items-center gap-0.5 shrink-0 pt-0.5">
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            handleArchiveTask(task);
+                        }}
+                        className="p-1 hover:bg-slate-100 active:scale-95 rounded-md text-slate-400 hover:text-slate-600 transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-35"
+                        disabled={!mayArchiveTask(task)}
+                        title={
+                            mayArchiveTask(task)
+                                ? t(
+                                      "Archive Task",
+                                      "Archivovať úlohu",
+                                      "Feladat archiválása",
+                                  )
+                                : archiveDeniedHint()
+                        }
+                    >
+                        <ArchiveIcon className="h-3.5 w-3.5" />
+                    </button>
+                    <button
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            setEditingTask(task);
+                        }}
+                        className="p-1 hover:bg-slate-100 active:scale-95 rounded-md text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+                        title={
+                            mayEditTask(task)
+                                ? t(
+                                      "Edit Task",
+                                      "Upraviť úlohu",
+                                      "Feladat szerkesztése",
+                                  )
+                                : t(
+                                      "View Task",
+                                      "Zobraziť úlohu",
+                                      "Feladat megtekintése",
+                                  )
+                        }
+                    >
+                        {mayEditTask(task) ? (
+                            <Settings className="h-3.5 w-3.5" />
+                        ) : (
+                            <Eye className="h-3.5 w-3.5" />
+                        )}
+                    </button>
                 </div>
             </div>
-        </div>
-    );
+        );
+    };
 
     // One row of the completed-task archive. Shared by the grouped archive
     // list and the archive calendar's day view, so a completed task reads the
@@ -1609,32 +2907,41 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         const isOverdue =
             overdueDays !== null &&
             overdueDays > 0;
+        const isSelected = selectedTaskIds.has(task.id);
         return (
             <div
                 key={task.id}
-                className="p-2.5 rounded-xl border border-slate-200 bg-white hover:border-slate-300 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-sm hover:shadow"
+                className={`p-2.5 rounded-xl border ${
+                    isSelected
+                        ? "bg-indigo-50/50 ring-1 ring-indigo-300/80 border-indigo-300"
+                        : "bg-white border-slate-200 hover:border-slate-300"
+                } transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-sm hover:shadow`}
             >
                 <div className="flex-1 min-w-0 flex items-center gap-3">
-                    {/* Priority dot indicator */}
-                    <span
-                        className={`h-2.5 w-2.5 rounded-full shrink-0 ${
-                            task.priority ===
-                            "high"
-                                ? "bg-rose-500"
-                                : task.priority ===
-                                    "medium"
-                                  ? "bg-amber-500"
-                                  : "bg-slate-400"
-                        }`}
-                        title={`${t("Priority", "Priorita", "Prioritás")}: ${priorityLabel(task.priority)}`}
+                    <input
+                        type="checkbox"
+                        checked={isSelected}
+                        onChange={(e) => {
+                            e.stopPropagation();
+                            handleToggleSelect(task.id);
+                        }}
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600 shrink-0"
+                        aria-label={`Select ${task.title}`}
                     />
+                    {/* Priority indicator: distinct icon per level */}
+                    {renderPriorityIcon(task.priority, "h-3.5 w-3.5")}
 
                     <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
-                            <span className="font-extrabold text-slate-800 truncate">
-                                {
-                                    task.title
-                                }
+                            <span
+                                onClick={() => setEditingTask(task)}
+                                className="font-extrabold text-slate-800 truncate cursor-pointer hover:text-indigo-600 transition-colors"
+                            >
+                                <TaskPillText
+                                    text={task.title}
+                                    onTagClick={handleTagClick}
+                                    knownEntities={mentionEntities}
+                                />
                             </span>
                             {renderLeadBadge(task, "max-w-[140px]")}
                             {projectNameFor(task) && (
@@ -1645,11 +2952,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             )}
                         </div>
                         {task.description && (
-                            <p className="text-[10px] font-semibold text-slate-500 truncate mt-0.5">
-                                {
-                                    task.description
-                                }
-                            </p>
+                            <div className="text-[10px] font-semibold text-slate-500 truncate mt-0.5">
+                                <TaskPillText
+                                    text={task.description}
+                                    onTagClick={handleTagClick}
+                                    knownEntities={mentionEntities}
+                                />
+                            </div>
                         )}
                     </div>
                 </div>
@@ -1769,44 +3078,36 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         );
 
         return (
-            <div
-                className={`${tone.shell} rounded-3xl p-5 shadow-sm transition-all`}
-            >
+            <div className="border-b border-slate-200 last:border-b-0">
                 {collapsible ? (
                     <button
                         onClick={opts.onToggle}
-                        className="w-full flex items-center justify-between text-left focus:outline-none group/btn cursor-pointer"
+                        className={`w-full px-4 py-2.5 flex items-center justify-between text-left focus:outline-none cursor-pointer transition-colors ${tone.headerBg}`}
                     >
                         {heading}
                         <span className={`transition-colors ${tone.chevron}`}>
                             {isOpen ? (
-                                <ChevronUp className="h-5 w-5" />
+                                <ChevronUp className="h-4 w-4" />
                             ) : (
-                                <ChevronDown className="h-5 w-5" />
+                                <ChevronDown className="h-4 w-4" />
                             )}
                         </span>
                     </button>
                 ) : (
-                    <div className="w-full flex items-center justify-between text-left">
+                    <div className={`w-full px-4 py-2.5 flex items-center justify-between text-left ${tone.headerBg}`}>
                         {heading}
                     </div>
                 )}
                 {isOpen && (
-                    <div
-                        className={`mt-4 ${collapsible ? "animate-in fade-in slide-in-from-top-2 duration-200" : ""}`}
-                    >
+                    <div className={collapsible ? "animate-in fade-in slide-in-from-top-1 duration-150" : ""}>
                         {opts.tasks.length === 0 ? (
-                            <div
-                                className={`p-4 border-2 border-dashed bg-white/50 rounded-2xl text-center ${tone.emptyBorder}`}
-                            >
-                                <span
-                                    className={`text-xs font-bold ${tone.emptyText}`}
-                                >
+                            <div className="px-4 py-2.5 bg-slate-50/40 text-center">
+                                <span className="text-[11px] font-semibold text-slate-400 italic">
                                     {opts.emptyLabel}
                                 </span>
                             </div>
                         ) : (
-                            <div className="space-y-3">
+                            <div className="divide-y divide-slate-100 bg-white">
                                 {opts.tasks.map(renderTaskCard)}
                             </div>
                         )}
@@ -1819,54 +3120,43 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const renderGlobalTasksView = () => {
         // Team-wide by default; a role whose `tasks.view_all` is revoked keeps the
         // old single-column board of its own work (see resolveTaskViewAll).
-        const activeTasks = (canSeeAllTasks ? tasks : myTasks).filter((task) => isActiveTask(task, isDoneState));
-        // Picking one manager collapses the right-hand stack to their card
-        // alone, so the board reads as "this person's workload" end to end.
-        const isSingleUserView = canSeeAllTasks && globalUserFilter !== "all";
         const columnUsers = !canSeeAllTasks
             ? [myName]
             : isSingleUserView
               ? [globalUserFilter]
               : allUsersList;
 
-        // The filter bar drives both halves of the split view, so the time
-        // buckets on the left and the per-member cards on the right always
-        // describe exactly the same set of tasks.
-        const matchesGlobalFilters = (task: Task) => {
-            if (
-                globalPriorityFilter !== "all" &&
-                task.priority !== globalPriorityFilter
-            )
-                return false;
-            if (globalStateFilter !== "all" && task.status !== globalStateFilter)
-                return false;
-            // Same test the member cards use, so a filtered bucket and that
-            // manager's card always hold exactly the same tasks.
-            if (
-                isSingleUserView &&
-                !task.assignedUsers?.includes(globalUserFilter)
-            )
-                return false;
-            if (!dateInRange(task.deadline, globalDateStart, globalDateEnd))
-                return false;
-            return true;
-        };
-        const filteredTasks = activeTasks.filter(matchesGlobalFilters);
+        const filteredTasks = filteredGlobalTasks;
 
         // Same separation as My Calendar, with Tomorrow folded into Upcoming:
         // the team board answers "what is late / due now / still coming",
         // and a dedicated Tomorrow bucket only splits that last group in two.
         const globalOverdue = filteredTasks
-            .filter((task) => isTaskOverdue(task))
+            .filter((task) => {
+                if (isTaskOverdue(task)) return true;
+                if (showClosedTasks && isClosedRecentTask(task)) {
+                    return task.deadline < todayStr;
+                }
+                return false;
+            })
             .sort(byDeadline);
         const globalToday = filteredTasks
-            .filter(
-                (task) =>
-                    task.deadline === todayStr && !isTaskOverdue(task),
-            )
+            .filter((task) => {
+                if (task.deadline === todayStr && !isTaskOverdue(task) && !isDoneState(task.status)) return true;
+                if (showClosedTasks && isClosedRecentTask(task)) {
+                    return task.deadline === todayStr || !task.deadline;
+                }
+                return false;
+            })
             .sort(byDeadlineTime);
         const globalUpcoming = filteredTasks
-            .filter((task) => task.deadline > todayStr)
+            .filter((task) => {
+                if (task.deadline > todayStr && !isDoneState(task.status)) return true;
+                if (showClosedTasks && isClosedRecentTask(task)) {
+                    return task.deadline > todayStr;
+                }
+                return false;
+            })
             .sort(byDeadline);
 
         // Who a card collects. On the team-wide board that is the assignee, so a
@@ -2107,6 +3397,25 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 t={t}
                             />
                         </div>
+
+                        {/* Select All Visible */}
+                        <button
+                            type="button"
+                            onClick={handleSelectAllVisible}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border-2 text-xs font-extrabold cursor-pointer transition-all ${
+                                areAllVisibleSelected
+                                    ? "bg-indigo-50 border-indigo-200 text-indigo-700"
+                                    : "bg-slate-50 border-slate-200 text-slate-600 hover:border-indigo-400"
+                            }`}
+                            title={t("Select all visible tasks", "Vybrať všetky zobrazené úlohy", "Összes látható feladat kijelölése")}
+                        >
+                            <CheckSquare className="h-3.5 w-3.5 stroke-[2.5]" />
+                            <span>
+                                {areAllVisibleSelected
+                                    ? t("Deselect all", "Zrušiť výber", "Kijelölés törlése")
+                                    : t("Select all", "Vybrať všetky", "Összes kijelölése")}
+                            </span>
+                        </button>
                     </div>
                 </div>
 
@@ -2115,43 +3424,53 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     right. Below lg the two stack into a single column. */}
                 <div className="flex-1 min-h-0 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,480px)_minmax(0,1fr)]">
                     {/* LEFT: MISSED / TODAY / UPCOMING */}
-                    <div className="flex flex-col min-w-0 min-h-0 h-auto space-y-6 overflow-visible lg:h-full lg:overflow-y-auto lg:pr-2 pb-2 lg:pb-0">
-                        {renderTaskBucket({
-                            tone: "rose",
-                            icon: <AlertCircle className="h-5 w-5" />,
-                            title: t("Missed", "Zmeškané", "Lejárt"),
-                            tasks: globalOverdue,
-                            emptyLabel: t(
-                                "No missed tasks!",
-                                "Žiadne zmeškané úlohy!",
-                                "Nincs lemaradás!",
-                            ),
-                        })}
-                        {renderTaskBucket({
-                            tone: "indigo",
-                            icon: <CheckSquare className="h-5 w-5" />,
-                            title: t("Today", "Dnes", "Ma"),
-                            tasks: globalToday,
-                            emptyLabel: t(
-                                "Nothing due today.",
-                                "Dnes nie je nič v termíne.",
-                                "Ma nincs esedékes feladat.",
-                            ),
-                        })}
-                        {renderTaskBucket({
-                            tone: "slate",
-                            icon: <CalendarIcon className="h-5 w-5" />,
-                            title: t("Upcoming", "Nadchádzajúce", "Közelgő"),
-                            tasks: globalUpcoming,
-                            emptyLabel: t(
-                                "No upcoming tasks.",
-                                "Žiadne nadchádzajúce úlohy.",
-                                "Nincsenek közelgő feladatok.",
-                            ),
-                            expanded: isGlobalUpcomingExpanded,
-                            onToggle: () =>
-                                setIsGlobalUpcomingExpanded((open) => !open),
-                        })}
+                    <div className="flex flex-col min-w-0 min-h-0 h-auto overflow-visible lg:h-full lg:overflow-y-auto lg:pr-2 pb-2 lg:pb-8 scrollbar-thin">
+                        <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden shrink-0">
+                            {/* Header bar with discreet toggle switch & number input to show closed tasks */}
+                            <ClosedTasksToggleBar
+                                showClosedTasks={showClosedTasks}
+                                onToggleShowClosed={handleToggleShowClosedTasks}
+                                days={closedTasksDays}
+                                onChangeDays={handleClosedTasksDaysChange}
+                                t={t}
+                            />
+                            {renderTaskBucket({
+                                tone: "rose",
+                                icon: <AlertCircle className="h-4 w-4" />,
+                                title: t("Missed", "Zmeškané", "Lejárt"),
+                                tasks: globalOverdue,
+                                emptyLabel: t(
+                                    "No missed tasks!",
+                                    "Žiadne zmeškané úlohy!",
+                                    "Nincs lemaradás!",
+                                ),
+                            })}
+                            {renderTaskBucket({
+                                tone: "indigo",
+                                icon: <CheckSquare className="h-4 w-4" />,
+                                title: t("Today", "Dnes", "Ma"),
+                                tasks: globalToday,
+                                emptyLabel: t(
+                                    "Nothing due today.",
+                                    "Dnes nie je nič v termíne.",
+                                    "Ma nincs esedékes feladat.",
+                                ),
+                            })}
+                            {renderTaskBucket({
+                                tone: "slate",
+                                icon: <CalendarIcon className="h-4 w-4" />,
+                                title: t("Upcoming", "Nadchádzajúce", "Közelgő"),
+                                tasks: globalUpcoming,
+                                emptyLabel: t(
+                                    "No upcoming tasks.",
+                                    "Žiadne nadchádzajúce úlohy.",
+                                    "Nincsenek közelgő feladatok.",
+                                ),
+                                expanded: isGlobalUpcomingExpanded,
+                                onToggle: () =>
+                                    setIsGlobalUpcomingExpanded((open) => !open),
+                            })}
+                        </div>
                     </div>
 
                     {/* RIGHT: THE TEAM WORKLOAD STACKED ONE MEMBER PER ROW,
@@ -2307,6 +3626,770 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         );
     };
 
+    // The left task list column for My Calendar.
+    // If isCentered is true (when calendarScope === "hide"), it expands with max-w-3xl on mobile and max-w-5xl on desktop.
+    const renderMyTaskListColumn = (isCentered: boolean = false) => (
+        <div
+            className={`flex flex-col space-y-6 min-h-0 ${
+                isCentered
+                    ? "w-full max-w-3xl lg:max-w-5xl mx-auto p-2"
+                    : "lg:h-full lg:overflow-y-auto overflow-visible h-auto pr-2 pb-8 scrollbar-thin"
+            }`}
+        >
+            {/* Create New Task Section: Sticky action bar matching column width */}
+            <div className="sticky top-0 z-20 w-full shrink-0">
+                {!isAddDrawerOpen ? (
+                    <div className="w-full">
+                    <VoiceTaskActionBar
+                        canCreate={taskAccess.create}
+                        systemLanguage={systemLanguage}
+                        currentUser={currentUser}
+                        users={users}
+                        defaultAssignee={newAssignedUser || myName}
+                        defaultStatus={taskStates[0] || "New"}
+                        manualButtonText={t(
+                            "Create New Task",
+                            "Vytvoriť novú úlohu",
+                            "Új feladat",
+                        )}
+                        onManualCreateClick={() => {
+                            resetNewTaskForm();
+                            setIsAddDrawerOpen(true);
+                        }}
+                        onTasksCreated={(createdTasks) => {
+                            setTasks((prev) => [...createdTasks, ...prev]);
+                        }}
+                    />
+                </div>
+            ) : (
+                <div className="w-full bg-white rounded-3xl border-2 border-orange-200/90 shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-3 duration-200 max-h-[calc(100vh-8rem)] overflow-y-auto">
+                    <div className="p-4 bg-gradient-to-r from-orange-50/80 via-white to-orange-50/40 border-b border-orange-100 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                            <span className="p-1.5 rounded-xl bg-[#ff5d00] text-white shadow-sm">
+                                <Plus className="h-4 w-4 stroke-[3]" />
+                            </span>
+                            <div>
+                                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                                    {t("Create New Task(s)", "Vytvoriť novú úlohu / úlohy", "Új feladat(ok) létrehozása")}
+                                </h3>
+                                <p className="text-[10px] font-semibold text-slate-400">
+                                    {t("Shift + Enter for new lines / multiple tasks", "Shift + Enter pre nový riadok / viac úloh", "Shift + Enter új sorhoz / több feladathoz")}
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={closeAddDrawer}
+                            className="p-1.5 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
+                        >
+                            <X className="h-4 w-4" />
+                        </button>
+                    </div>
+
+                    <form onSubmit={(e) => handleCreateTask(e, true)} className="p-3.5 space-y-3 text-xs font-bold">
+                        <div className="space-y-1">
+                            <label className="text-[9px] font-black text-slate-500 uppercase flex items-center justify-between">
+                                <span>{t("Task Title(s)", "Názov úlohy / úloh", "Feladat címe(i)")}</span>
+                                <span className="text-[9px] font-normal text-[#ff5d00]">
+                                    {t("1 line = 1 task", "1 riadok = 1 úloha", "1 sor = 1 feladat")}
+                                </span>
+                            </label>
+                            <TaskTagMentionInput
+                                multiline
+                                rows={2}
+                                autoFocus
+                                required
+                                value={newTitle}
+                                onChange={setNewTitle}
+                                onKeyDown={(e) => {
+                                    if (e.key === "Enter" && !e.shiftKey) {
+                                        e.preventDefault();
+                                        handleCreateTask(e, true);
+                                    } else if (e.key === "Escape") {
+                                        e.preventDefault();
+                                        closeAddDrawer();
+                                    }
+                                }}
+                                existingTags={allExistingTags}
+                                mentionEntities={mentionEntities}
+                                onAssignEntity={(entity) => {
+                                    if (entity.type === "user") {
+                                        setNewAssignedUser(entity.name);
+                                    } else if (entity.type === "project") {
+                                        setNewRelatedProjectId(entity.id);
+                                    } else if (entity.type === "client" || entity.type === "lead") {
+                                        setNewRelatedLeadId(entity.id);
+                                    }
+                                }}
+                                placeholder={t(
+                                    "Enter task name... (Shift+Enter for next task, # for tags, @ for mentions)",
+                                    "Zadajte názov... (Shift+Enter pre ďalšiu úlohu, # pre tagy, @ pre zmienky)",
+                                    "Adja meg a feladatot... (Shift+Enter új feladathoz, # címkékhez, @ hivatkozáshoz)",
+                                )}
+                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-[#ff5d00] focus:outline-none transition-colors text-xs font-semibold placeholder:text-slate-400 leading-relaxed resize-y min-h-[50px]"
+                            />
+                        </div>
+
+                        {/* Row 1: Date, Time & Priority */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-black text-slate-500 uppercase">
+                                    {t("Deadline Date", "Termín", "Határidő")}
+                                </label>
+                                <input
+                                    type="date"
+                                    required
+                                    value={newDeadline}
+                                    onChange={(e) => setNewDeadline(e.target.value)}
+                                    className="w-full px-2.5 py-1.5 rounded-xl border-2 border-slate-200 focus:border-[#ff5d00] focus:outline-none text-xs h-[34px]"
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-black text-slate-500 uppercase">
+                                    {t("Deadline Time", "Čas termínu", "Határidő időpontja")}
+                                </label>
+                                <DeadlineTimePicker
+                                    value={newDeadlineTime}
+                                    onChange={setNewDeadlineTime}
+                                    t={t}
+                                />
+                            </div>
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">
+                                    {t("Priority", "Priorita", "Prioritás")}
+                                </label>
+                                <div className="grid grid-cols-3 gap-1 bg-slate-50 p-0.5 rounded-xl border border-slate-200 h-[34px] items-center">
+                                    {(["low", "medium", "high"] as const).map((prio) => (
+                                        <button
+                                            key={prio}
+                                            type="button"
+                                            onClick={() => setNewPriority(prio)}
+                                            className={`py-1 rounded-lg font-black text-[9px] uppercase transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                                                newPriority === prio
+                                                    ? prio === "high"
+                                                        ? "bg-rose-600 text-white shadow-xs"
+                                                        : prio === "medium"
+                                                          ? "bg-amber-500 text-white shadow-xs"
+                                                          : "bg-slate-600 text-white shadow-xs"
+                                                    : "bg-white text-slate-500 hover:bg-slate-100"
+                                            }`}
+                                        >
+                                            {renderPriorityIcon(prio, "h-2.5 w-2.5")}
+                                            <span className="hidden xl:inline">{priorityLabel(prio)}</span>
+                                        </button>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Row 2: Assignee, Lead/Client, Project (All on 1 row) */}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-black text-slate-500 uppercase">
+                                    {t("Assignee", "Priradiť", "Felelős")}
+                                </label>
+                                <CustomSelect
+                                    value={newAssignedUser}
+                                    onChange={(v) => setNewAssignedUser(v)}
+                                    size="sm"
+                                    options={[
+                                        {
+                                            value: "",
+                                            label: t("-- Unassigned --", "-- Nepriradený --", "-- Kijelöletlen --"),
+                                        },
+                                        ...users.map((u) => ({
+                                            value: u.name,
+                                            label: `${u.name} (${u.role})`,
+                                        })),
+                                    ]}
+                                />
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-black text-slate-500 uppercase">
+                                    {t("Link to Lead/Client", "Záujemca / Klient", "Ügyfél / Lead")}
+                                </label>
+                                <ClientSelect
+                                    leads={leads}
+                                    value={newRelatedLeadId}
+                                    onChange={(v) => {
+                                        setNewRelatedLeadId(v);
+                                        if (!v) setNewIsLocking(false);
+                                    }}
+                                    showCity={false}
+                                    addKind="lead"
+                                    noneLabel={t("-- None --", "-- Žiadny --", "-- Nincs --")}
+                                />
+                            </div>
+
+                            <div className="space-y-1">
+                                <label className="text-[9px] font-black text-slate-500 uppercase flex items-center gap-1">
+                                    <FolderKanban className="h-3 w-3" />
+                                    {t("Project", "Projekt", "Projekt")}
+                                </label>
+                                <CustomSelect
+                                    searchable
+                                    value={newRelatedProjectId}
+                                    onChange={setNewRelatedProjectId}
+                                    size="sm"
+                                    options={taskProjectOptions(projects, leads, t)}
+                                />
+                            </div>
+                        </div>
+
+                        {newRelatedLeadId && (
+                            <div className="p-2 rounded-xl bg-violet-50/60 border border-violet-100 flex items-center justify-between">
+                                <span className="text-[9px] font-black text-violet-700 uppercase flex items-center gap-1">
+                                    <Lock className="h-3 w-3" />{" "}
+                                    {t("Block Pipeline Stage", "Zablokovať fázu pipeline", "Folyamat szakasz zárolása")}
+                                </span>
+                                <input
+                                    type="checkbox"
+                                    checked={newIsLocking}
+                                    onChange={(e) => setNewIsLocking(e.target.checked)}
+                                    className="h-3.5 w-3.5 cursor-pointer accent-violet-600"
+                                />
+                            </div>
+                        )}
+
+                        <TaskEmailReminderField
+                            task={{
+                                deadline: newDeadline,
+                                deadlineTime: newDeadlineTime,
+                                emailReminders: newEmailReminders,
+                            }}
+                            onChange={setNewEmailReminders}
+                            currentUserName={myName}
+                            users={users}
+                            systemLanguage={systemLanguage}
+                            t={t}
+                            mailConfigured={mailConfigured}
+                        />
+
+                        <div className="flex items-center gap-2 pt-1">
+                            <button
+                                type="button"
+                                onClick={closeAddDrawer}
+                                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-black text-xs uppercase tracking-wider transition-colors cursor-pointer shrink-0"
+                            >
+                                {t("Cancel", "Zrušiť", "Mégse")}
+                            </button>
+                            <div className="flex-1 flex items-stretch rounded-xl overflow-hidden shadow-lg shadow-orange-500/25 bg-[#ff5d00] transition-all">
+                                <button
+                                    type="submit"
+                                    className="w-2/3 py-2.5 px-3 bg-[#ff5d00] hover:bg-[#e05200] active:bg-[#c94a00] text-white font-black text-[11px] sm:text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors cursor-pointer text-center truncate"
+                                    title={t("Create task & close form", "Vytvoriť úlohu a zatvoriť formulár", "Feladat létrehozása és bezárás")}
+                                >
+                                    {t("Create task", "Vytvoriť úlohu", "Feladat létrehozása")}
+                                </button>
+                                <div className="w-[1px] bg-white/30 self-stretch my-2 shrink-0" />
+                                <button
+                                    type="button"
+                                    onClick={(e) => handleCreateTask(e, false)}
+                                    className="w-1/3 py-2.5 px-3 bg-[#ff5d00] hover:bg-[#e05200] active:bg-[#c94a00] text-white font-black text-[11px] sm:text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors cursor-pointer text-center truncate"
+                                    title={t("Create task & add another", "Vytvoriť úlohu a pridať ďalšiu", "Létrehozás és újabb hozzáadása")}
+                                >
+                                    {t("Add another", "Pridať ďalšiu", "Újabb hozzáadása")}
+                                </button>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            )}
+            </div>
+
+            {/* One unified card for all task sections (including delegated tasks grouped in the same divisions) */}
+            <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden shrink-0">
+                {/* Header bar with discreet toggle switch & number input to show closed tasks */}
+                <ClosedTasksToggleBar
+                    showClosedTasks={showClosedTasks}
+                    onToggleShowClosed={handleToggleShowClosedTasks}
+                    days={closedTasksDays}
+                    onChangeDays={handleClosedTasksDaysChange}
+                    t={t}
+                />
+
+                {/* Overdue / Missed — always visible */}
+                {renderTaskBucket({
+                    tone: "rose",
+                    icon: <AlertCircle className="h-4 w-4" />,
+                    title: t("Overdue", "Zmeškané", "Lejárt"),
+                    tasks: overdueTasks,
+                    emptyLabel: t(
+                        "No overdue tasks!",
+                        "Žiadne zmeškané úlohy!",
+                        "Nincs lemaradás!",
+                    ),
+                })}
+
+                {/* Today — always visible */}
+                {renderTaskBucket({
+                    tone: "indigo",
+                    icon: <CheckSquare className="h-4 w-4" />,
+                    title: t("Today", "Dnes", "Ma"),
+                    tasks: todayTasks,
+                    emptyLabel: t(
+                        "All caught up!",
+                        "Všetko hotové!",
+                        "Minden kész!",
+                    ),
+                })}
+
+                {/* Tomorrow */}
+                {renderTaskBucket({
+                    tone: "amber",
+                    icon: <CalendarIcon className="h-4 w-4" />,
+                    title: t("Tomorrow", "Zajtra", "Holnap"),
+                    tasks: tomorrowTasks,
+                    emptyLabel: t(
+                        "No tasks for tomorrow.",
+                        "Žiadne úlohy na zajtra.",
+                        "Nincs feladat holnapra.",
+                    ),
+                    expanded: isTomorrowExpanded,
+                    onToggle: () =>
+                        setIsTomorrowExpanded(!isTomorrowExpanded),
+                })}
+
+                {/* Future */}
+                {renderTaskBucket({
+                    tone: "slate",
+                    icon: <CalendarIcon className="h-4 w-4" />,
+                    title: t("Future", "Budúce", "Jövőbeli"),
+                    tasks: futureTasks,
+                    emptyLabel: t(
+                        "No future tasks.",
+                        "Žiadne budúce úlohy.",
+                        "Nincsenek jövőbeli feladatok.",
+                    ),
+                    expanded: isFutureExpanded,
+                    onToggle: () =>
+                        setIsFutureExpanded(!isFutureExpanded),
+                })}
+            </div>
+        </div>
+    );
+
+    interface TimelineEvent {
+        id: string;
+        type: "created" | "completed";
+        task: Task;
+        dateStr: string;
+        timestamp: number;
+        timeDisplay: string;
+        actor: string;
+    }
+
+    const renderTimelineView = () => {
+        // Collect audit log events from tasks assigned to me or created by me
+        const rawEvents: TimelineEvent[] = [];
+        const now = Date.now();
+
+        // Only include tasks which I assigned or I was assigned to
+        const relevantTasks = tasks.filter((task) => {
+            const createdByMe = isTaskCreatedBy(task, myName);
+            const assignedToMe = isTaskAssignedTo(task, myName);
+            return createdByMe || assignedToMe;
+        });
+
+        relevantTasks.forEach((task) => {
+            // 1. Task Created event (strictly past or present, never in future)
+            let createdTimestamp: number | null = null;
+            const rawCreated = (task as any).createdAt || (task as any).created_at;
+            if (rawCreated) {
+                const d = new Date(rawCreated);
+                if (!isNaN(d.getTime())) createdTimestamp = d.getTime();
+            } else if (task.id.startsWith("task-")) {
+                const parts = task.id.split("-");
+                const ts = Number(parts[1]);
+                if (!isNaN(ts) && ts > 1600000000000 && ts <= now) {
+                    createdTimestamp = ts;
+                }
+            }
+            if (!createdTimestamp && task.startDate) {
+                const d = new Date(task.startDate);
+                if (!isNaN(d.getTime()) && d.getTime() <= now) {
+                    createdTimestamp = d.getTime();
+                }
+            }
+            if (!createdTimestamp && task.deadline) {
+                const d = new Date(task.deadline);
+                if (!isNaN(d.getTime()) && d.getTime() <= now) {
+                    createdTimestamp = d.getTime();
+                }
+            }
+
+            if (createdTimestamp && createdTimestamp <= now) {
+                const cDate = new Date(createdTimestamp);
+                const cDateStr = toLocalDateStr(cDate);
+                const hours = String(cDate.getHours()).padStart(2, "0");
+                const mins = String(cDate.getMinutes()).padStart(2, "0");
+                rawEvents.push({
+                    id: `${task.id}-created`,
+                    type: "created",
+                    task,
+                    dateStr: cDateStr,
+                    timestamp: createdTimestamp,
+                    timeDisplay: `${hours}:${mins}`,
+                    actor: task.createdBy || task.owner || unknownCompletedBy,
+                });
+            }
+
+            // 2. Task Completed event
+            if (isDoneState(task.status) && task.completedAt) {
+                const compDate = new Date(task.completedAt.replace(" ", "T"));
+                const validDate = !isNaN(compDate.getTime()) ? compDate : new Date(task.completedAt);
+                if (!isNaN(validDate.getTime()) && validDate.getTime() <= now) {
+                    const compDateStr = toLocalDateStr(validDate);
+                    const hours = String(validDate.getHours()).padStart(2, "0");
+                    const mins = String(validDate.getMinutes()).padStart(2, "0");
+                    rawEvents.push({
+                        id: `${task.id}-completed`,
+                        type: "completed",
+                        task,
+                        dateStr: compDateStr,
+                        timestamp: validDate.getTime(),
+                        timeDisplay: `${hours}:${mins}`,
+                        actor: task.completedBy || task.owner || myName,
+                    });
+                }
+            }
+        });
+
+        // Apply type filter
+        const filtered = rawEvents.filter((ev) => {
+            if (timelineFilter !== "all" && ev.type !== timelineFilter) return false;
+            if (timelineSearch.trim()) {
+                const q = timelineSearch.toLowerCase();
+                const titleMatch = ev.task.title.toLowerCase().includes(q);
+                const descMatch = (ev.task.description || "").toLowerCase().includes(q);
+                const creatorMatch = (ev.task.createdBy || "").toLowerCase().includes(q);
+                const actorMatch = ev.actor.toLowerCase().includes(q);
+                const assignedMatch = (ev.task.assignedUsers || []).some((u) =>
+                    u.toLowerCase().includes(q),
+                );
+                return titleMatch || descMatch || creatorMatch || actorMatch || assignedMatch;
+            }
+            return true;
+        });
+
+        // Sort events by timestamp
+        filtered.sort((a, b) =>
+            timelineSort === "newest"
+                ? b.timestamp - a.timestamp
+                : a.timestamp - b.timestamp,
+        );
+
+        // Group by dateStr
+        const dateGroups: { dateStr: string; events: TimelineEvent[] }[] = [];
+        filtered.forEach((ev) => {
+            let grp = dateGroups.find((g) => g.dateStr === ev.dateStr);
+            if (!grp) {
+                grp = { dateStr: ev.dateStr, events: [] };
+                dateGroups.push(grp);
+            }
+            grp.events.push(ev);
+        });
+
+        const formatDateHeading = (dStr: string) => {
+            if (dStr === todayStr) {
+                return `${t("Today", "Dnes", "Ma")} • ${formatTaskDate(dStr)}`;
+            }
+            if (dStr === yesterdayStr) {
+                return `${t("Yesterday", "Včera", "Tegnap")} • ${formatTaskDate(dStr)}`;
+            }
+            if (dStr === tomorrowStr) {
+                return `${t("Tomorrow", "Zajtra", "Holnap")} • ${formatTaskDate(dStr)}`;
+            }
+            return formatTaskDate(dStr);
+        };
+
+        return (
+            <div className="flex flex-col h-full bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden animate-in fade-in duration-300">
+                {/* Header & Controls */}
+                <div className="p-4 sm:p-5 border-b border-slate-100 bg-slate-50/50 flex flex-col gap-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                        <div className="flex items-center gap-2.5">
+                            <div className="h-9 w-9 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-xs">
+                                <History className="h-5 w-5" />
+                            </div>
+                            <div>
+                                <h3 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+                                    {t("Task Activity Log", "Záznam aktivity úloh", "Feladat aktivitási napló")}
+                                    <span className="text-[10px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
+                                        {filtered.length} {t("events", "záznamov", "bejegyzés")}
+                                    </span>
+                                </h3>
+                                <p className="text-[11px] text-slate-400 font-medium">
+                                    {t("Audit log of task creations and completions for tasks you assigned or are assigned to", "Záznam vytvorených a dokončených úloh, ktoré ste zadali alebo vám boli pridelené", "A létrehozott és befejezett feladatok naplója, amelyeket Ön adott ki vagy Önre bíztak")}
+                                </p>
+                            </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 flex-wrap">
+                            {/* Filter pills */}
+                            <div className="flex items-center gap-1 bg-white p-1 rounded-xl border border-slate-200 shadow-xs">
+                                {(
+                                    [
+                                        { id: "all", label: t("All", "Všetko", "Mind") },
+                                        { id: "created", label: t("Created", "Vytvorené", "Létrehozva") },
+                                        { id: "completed", label: t("Completed", "Dokončené", "Befejezve") },
+                                    ] as const
+                                ).map((filter) => (
+                                    <button
+                                        key={filter.id}
+                                        onClick={() => setTimelineFilter(filter.id)}
+                                        className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                                            timelineFilter === filter.id
+                                                ? "bg-indigo-600 text-white shadow-xs"
+                                                : "text-slate-500 hover:text-slate-800 hover:bg-slate-100"
+                                        }`}
+                                    >
+                                        {filter.label}
+                                    </button>
+                                ))}
+                            </div>
+
+                            {taskAccess.create && (
+                                <button
+                                    onClick={() => {
+                                        resetNewTaskForm();
+                                        setIsAddDrawerOpen(true);
+                                    }}
+                                    className="px-3.5 py-1.5 bg-[#ff5d00] hover:bg-[#e05200] text-white rounded-xl font-black text-xs uppercase tracking-wider shadow-sm shadow-orange-500/25 transition-all active:scale-[0.98] flex items-center gap-1.5 cursor-pointer shrink-0"
+                                    title={t("Create New Task", "Vytvoriť novú úlohu", "Új feladat")}
+                                >
+                                    <Plus className="h-3.5 w-3.5 stroke-[3]" />
+                                    <span>{t("New Task", "Nová úloha", "Új feladat")}</span>
+                                </button>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Search & Sort Row */}
+                    <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                            <input
+                                type="text"
+                                value={timelineSearch}
+                                onChange={(e) => setTimelineSearch(e.target.value)}
+                                placeholder={t("Search timeline activity, users...", "Hľadať v záznamoch aktivity, používateľoch...", "Keresés a naplóban, felhasználók között...")}
+                                className="w-full pl-8.5 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
+                            />
+                            {timelineSearch && (
+                                <button
+                                    onClick={() => setTimelineSearch("")}
+                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                >
+                                    <X className="h-3 w-3" />
+                                </button>
+                            )}
+                        </div>
+
+                        <button
+                            onClick={() =>
+                                setTimelineSort((s) =>
+                                    s === "newest" ? "oldest" : "newest",
+                                )
+                            }
+                            title={t("Toggle sort order", "Prepnúť radenie", "Rendezés váltása")}
+                            className="px-3 py-1.5 bg-white border border-slate-200 hover:border-slate-300 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-800 flex items-center gap-1.5 shrink-0 shadow-xs transition-all active:scale-95 cursor-pointer"
+                        >
+                            <ArrowUpDown className="h-3.5 w-3.5 text-slate-400" />
+                            <span className="text-[11px]">
+                                {timelineSort === "newest"
+                                    ? t("Newest", "Najnovšie", "Legújabb")
+                                    : t("Oldest", "Najstaršie", "Legrégebbi")}
+                            </span>
+                        </button>
+                    </div>
+                </div>
+
+                {/* Timeline scroll area */}
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+                    {dateGroups.length === 0 ? (
+                        <div className="h-64 flex flex-col items-center justify-center text-center p-6 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
+                            <History className="h-8 w-8 text-slate-300 mb-2" />
+                            <p className="text-xs font-extrabold text-slate-600">
+                                {t("No activity events found", "Nenašli sa žiadne záznamy aktivity", "Nem találhatók aktivitási bejegyzések")}
+                            </p>
+                            <p className="text-[11px] text-slate-400 mt-1 max-w-xs">
+                                {t("Try adjusting your filters or search terms.", "Skúste upraviť filtre alebo hľadaný text.", "Próbálja módosítani a szűrőket vagy a keresési feltételeket.")}
+                            </p>
+                        </div>
+                    ) : (
+                        dateGroups.map((group) => (
+                            <div key={group.dateStr} className="space-y-3">
+                                {/* Date Group Header */}
+                                <div className="sticky top-0 z-10 py-1 bg-white/95 backdrop-blur-sm flex items-center gap-2">
+                                    <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg shadow-2xs">
+                                        {formatDateHeading(group.dateStr)}
+                                    </span>
+                                    <div className="flex-1 h-px bg-slate-100" />
+                                    <span className="text-[10px] font-bold text-slate-400">
+                                        {group.events.length} {t("events", "záznamov", "bejegyzés")}
+                                    </span>
+                                </div>
+
+                                {/* Events List with vertical track */}
+                                <div className="relative pl-6 space-y-3 before:absolute before:left-2.5 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-200">
+                                    {group.events.map((ev) => {
+                                        const overdueDays =
+                                            ev.type === "completed" && ev.task.completedAt
+                                                ? calculateOverdueDays(
+                                                      ev.task.deadline,
+                                                      ev.task.completedAt,
+                                                      ev.task.deadlineTime,
+                                                  )
+                                                : null;
+                                        const isLateCompleted =
+                                            overdueDays !== null && overdueDays > 0;
+
+                                        return (
+                                            <div
+                                                key={ev.id}
+                                                className="relative group transition-all"
+                                            >
+                                                {/* Circle node on vertical track */}
+                                                <div
+                                                    className={`absolute -left-6 top-3 h-5 w-5 rounded-full border-2 bg-white flex items-center justify-center z-1 transition-transform group-hover:scale-110 shadow-2xs ${
+                                                        ev.type === "created"
+                                                            ? "border-emerald-500 text-emerald-600"
+                                                            : "border-indigo-500 text-indigo-600"
+                                                    }`}
+                                                >
+                                                    {ev.type === "created" ? (
+                                                        <PlusCircle className="h-3 w-3 stroke-[2.5]" />
+                                                    ) : (
+                                                        <CheckCircle2 className="h-3 w-3 stroke-[2.5]" />
+                                                    )}
+                                                </div>
+
+                                                {/* Card Content */}
+                                                <div className="p-3.5 bg-slate-50 hover:bg-white rounded-2xl border border-slate-200/80 hover:border-slate-300 shadow-2xs hover:shadow-sm transition-all flex flex-col gap-2">
+                                                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                                                        <div className="flex items-center gap-2 flex-wrap">
+                                                            {/* Event Type Badge */}
+                                                            <span
+                                                                className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md flex items-center gap-1 ${
+                                                                    ev.type === "created"
+                                                                        ? "bg-emerald-100 text-emerald-700"
+                                                                        : "bg-indigo-100 text-indigo-700"
+                                                                }`}
+                                                            >
+                                                                {ev.type === "created"
+                                                                    ? t("Created", "Vytvorené", "Létrehozva")
+                                                                    : t("Completed", "Dokončené", "Befejezve")}
+                                                            </span>
+
+                                                            {/* Event Time */}
+                                                            <span className="text-[10px] font-bold text-slate-500 flex items-center gap-1">
+                                                                <Clock className="h-2.5 w-2.5 text-slate-400" />
+                                                                {ev.timeDisplay}
+                                                            </span>
+
+                                                            {/* Late / On-Time status for completed events */}
+                                                            {ev.type === "completed" && (
+                                                                <span
+                                                                    className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                                                                        isLateCompleted
+                                                                            ? "bg-rose-50 text-rose-600 border border-rose-200/60"
+                                                                            : "bg-emerald-50 text-emerald-700 border border-emerald-200/60"
+                                                                    }`}
+                                                                >
+                                                                    {isLateCompleted
+                                                                        ? `${t("Late", "Omeškané", "Késve")} (+${overdueDays}d)`
+                                                                        : t("On Time", "Načas", "Időben")}
+                                                                </span>
+                                                            )}
+                                                        </div>
+
+                                                        {/* Priority dot + Quick edit */}
+                                                        <div className="flex items-center gap-2">
+                                                            <span
+                                                                className={`h-2 w-2 rounded-full shrink-0 ${
+                                                                    ev.task.priority === "high"
+                                                                        ? "bg-rose-500"
+                                                                        : ev.task.priority === "medium"
+                                                                          ? "bg-amber-500"
+                                                                          : "bg-slate-400"
+                                                                }`}
+                                                                title={`${t("Priority", "Priorita", "Prioritás")}: ${priorityLabel(ev.task.priority)}`}
+                                                            />
+                                                            {taskAccess.edit && (
+                                                                <button
+                                                                    onClick={() => setEditingTask(ev.task)}
+                                                                    className="p-1 hover:bg-slate-200/70 rounded-md text-slate-400 hover:text-indigo-600 transition-colors cursor-pointer"
+                                                                    title={t("Edit task", "Upraviť úlohu", "Feladat szerkesztése")}
+                                                                >
+                                                                    <Settings className="h-3 w-3" />
+                                                                </button>
+                                                            )}
+                                                        </div>
+                                                    </div>
+
+                                                    {/* Task Title */}
+                                                    <div
+                                                        onClick={() => {
+                                                             if (taskAccess.edit) setEditingTask(ev.task);
+                                                        }}
+                                                        className={`text-xs font-black text-slate-800 hover:text-indigo-600 transition-colors ${
+                                                            taskAccess.edit ? "cursor-pointer" : ""
+                                                        } ${isDoneState(ev.task.status) ? "text-slate-600" : ""}`}
+                                                    >
+                                                        <TaskPillText
+                                                            text={ev.task.title}
+                                                            onTagClick={handleTagClick}
+                                                            knownEntities={mentionEntities}
+                                                        />
+                                                    </div>
+
+                                                    {/* What changed & By Who + Metadata Badges */}
+                                                    <div className="flex items-center gap-2 flex-wrap pt-0.5">
+                                                        {/* By Who Attribution */}
+                                                        {ev.type === "created" ? (
+                                                            <>
+                                                                <span className="text-[9.5px] font-bold text-slate-700 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md">
+                                                                    <Users className="h-2.5 w-2.5 text-slate-400" />
+                                                                    <span>{t("By", "Od", "Által")}: <strong className="text-slate-800">{ev.actor}</strong></span>
+                                                                </span>
+                                                                {ev.task.assignedUsers && ev.task.assignedUsers.length > 0 && (
+                                                                    <span className="text-[9.5px] font-bold text-indigo-700 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-[150px]">
+                                                                        <span className="h-1 w-1 rounded-full bg-indigo-500 shrink-0" />
+                                                                        <span className="truncate">{t("Assigned to", "Priradené", "Felelős")}: <strong className="text-indigo-900">{ev.task.assignedUsers.join(", ")}</strong></span>
+                                                                    </span>
+                                                                )}
+                                                            </>
+                                                        ) : (
+                                                            <span className="text-[9.5px] font-bold text-emerald-800 flex items-center gap-1 bg-emerald-50 border border-emerald-200/60 px-1.5 py-0.5 rounded-md">
+                                                                <CheckCircle2 className="h-2.5 w-2.5 text-emerald-600" />
+                                                                <span>{t("Completed by", "Dokončil", "Befejezte")}: <strong className="text-emerald-950">{ev.actor}</strong></span>
+                                                            </span>
+                                                        )}
+
+                                                        {/* Lead & Project Badges */}
+                                                        {renderLeadBadge(ev.task, "max-w-[140px]")}
+                                                        {ev.task.relatedProjectId && projectNameFor(ev.task) && (
+                                                            <span className="text-[9px] font-bold text-slate-600 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md truncate max-w-[140px]">
+                                                                <FolderKanban className="h-2.5 w-2.5 text-slate-500 shrink-0" />
+                                                                <span className="truncate">{projectNameFor(ev.task)}</span>
+                                                            </span>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        ))
+                    )}
+                </div>
+            </div>
+        );
+    };
+
     // --- FULL CALENDAR MONTH VIEW WITH LEFT SIDEBAR (SPLIT VIEW) ---
     if (!taskAccess.view) {
         return (
@@ -2335,9 +4418,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         <CalendarIcon className="h-6 w-6 text-indigo-600" />
                         {viewMode === "calendar"
                             ? t(
-                                  "My Calendar",
-                                  "Môj kalendár",
-                                  "Saját naptár",
+                                  "My Tasks",
+                                  "Moje úlohy",
+                                  "Saját feladatok",
                               )
                             : viewMode === "global"
                               ? t(
@@ -2372,30 +4455,21 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     </p>
                 </div>
 
-                <div className="flex items-center gap-4">
-                    {viewMode === "calendar" &&
-                        renderCalendarNav({
-                            anchor: currentDate,
-                            onAnchorChange: setCurrentDate,
-                            scope: calendarScope,
-                            onScopeChange: setCalendarScope,
-                            onSelectDay: setSelectedDay,
-                        })}
-
-                    <div className="flex items-center bg-slate-100 p-1.5 rounded-xl border border-slate-200 shadow-sm gap-1">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 flex-wrap">
+                    <div className="flex items-center bg-slate-100 p-1.5 rounded-xl border border-slate-200 shadow-sm gap-1 self-start sm:self-auto overflow-x-auto max-w-full">
                         <button
                             onClick={() => setViewMode("calendar")}
-                            className={`px-4 py-2 rounded-lg font-black text-xs uppercase tracking-wider transition-all cursor-pointer ${
+                            className={`px-3 sm:px-4 py-2 rounded-lg font-black text-xs uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
                                 viewMode === "calendar"
                                     ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
                                     : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
                             }`}
                         >
-                            {t("My Calendar", "Môj kalendár", "Saját naptár")}
+                            {t("My Tasks", "Moje úlohy", "Saját feladatok")}
                         </button>
                         <button
                             onClick={() => setViewMode("global")}
-                            className={`px-4 py-2 rounded-lg font-black text-xs uppercase tracking-wider transition-all cursor-pointer ${
+                            className={`px-3 sm:px-4 py-2 rounded-lg font-black text-xs uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
                                 viewMode === "global"
                                     ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
                                     : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
@@ -2409,7 +4483,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         </button>
                         <button
                             onClick={() => setViewMode("archive")}
-                            className={`px-4 py-2 rounded-lg font-black text-xs uppercase tracking-wider transition-all cursor-pointer ${
+                            className={`px-3 sm:px-4 py-2 rounded-lg font-black text-xs uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
                                 viewMode === "archive"
                                     ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
                                     : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
@@ -2418,6 +4492,17 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             {t("Archive", "Archív", "Archívum")}
                         </button>
                     </div>
+
+                    {viewMode === "calendar" &&
+                        renderCalendarNav({
+                            anchor: currentDate,
+                            onAnchorChange: setCurrentDate,
+                            scope: calendarScope,
+                            onScopeChange: setCalendarScope,
+                            onSelectDay: setSelectedDay,
+                            showTimelineOption: true,
+                            showHideOption: true,
+                        })}
                 </div>
             </div>
 
@@ -2448,6 +4533,23 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     onSelectDay: setArchiveSelectedDay,
                                     compact: true,
                                 })}
+                            <button
+                                type="button"
+                                onClick={handleSelectAllVisible}
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                                    areAllVisibleSelected
+                                        ? "bg-indigo-50 border-indigo-200 text-indigo-700"
+                                        : "bg-slate-50 border-slate-200 text-slate-600 hover:border-indigo-400"
+                                }`}
+                                title={t("Select all visible tasks", "Vybrať všetky zobrazené úlohy", "Összes látható feladat kijelölése")}
+                            >
+                                <CheckSquare className="h-3.5 w-3.5 stroke-[2.5]" />
+                                <span>
+                                    {areAllVisibleSelected
+                                        ? t("Deselect all", "Zrušiť výber", "Kijelölés törlése")
+                                        : t("Select all", "Vybrať všetky", "Összes kijelölése")}
+                                </span>
+                            </button>
                             <div className="flex items-center bg-slate-100 p-1 rounded-xl border border-slate-200 shadow-sm gap-1">
                                 {(["list", "calendar"] as const).map((mode) => (
                                     <button
@@ -2595,6 +4697,23 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         </div>
                     </div>
 
+                    {archiveTagFilter && (
+                        <div className="flex items-center gap-2 mb-4 px-3 py-1.5 bg-[#ff5d00]/10 border border-[#ff5d00]/30 rounded-xl text-xs font-bold text-[#ff5d00] w-fit">
+                            <Hash className="w-3.5 h-3.5" />
+                            <span>
+                                {t("Tag filter:", "Filter tagu:", "Címke szűrő:")} #{archiveTagFilter}
+                            </span>
+                            <button
+                                type="button"
+                                onClick={() => setArchiveTagFilter(null)}
+                                className="ml-1 hover:text-red-600 transition-colors cursor-pointer"
+                                title={t("Clear tag filter", "Zrušiť filter tagu", "Címke szűrő törlése")}
+                            >
+                                <X className="w-3.5 h-3.5" />
+                            </button>
+                        </div>
+                    )}
+
                     {archiveView === "calendar" ? (
                         <div className="h-[560px] lg:h-[calc(100vh-22rem)] lg:min-h-[520px] flex flex-col rounded-3xl border border-slate-200 overflow-hidden bg-white">
                             {renderCalendarPanel({
@@ -2613,25 +4732,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         </div>
                     ) : (
                         <div className="pr-1">
-                            {filteredArchivedTasks.length === 0 ? (
-                                <div className="py-20 text-center text-slate-400">
-                                    <div className="text-4xl mb-3">🔍</div>
-                                    <div className="font-black text-slate-700 uppercase tracking-wider">
-                                        {t(
-                                            "No matching tasks",
-                                            "Žiadne zhodné úlohy",
-                                            "Nincsenek egyező feladatok",
-                                        )}
-                                    </div>
-                                    <p className="text-[10px] mt-1.5 uppercase tracking-wide font-extrabold text-slate-400">
-                                        {t(
-                                            "Try adjusting your filters.",
-                                            "Skúste upraviť filtre.",
-                                            "Próbálja módosítani a szűrőket.",
-                                        )}
-                                    </p>
-                                </div>
-                            ) : (
+                            {filteredArchivedTasks.length > 0 && (
                                 <div className="space-y-6">
                                     {archivedTasksGroupedByDate.map((group) => (
                                         <div key={group.date} className="space-y-2">
@@ -2652,248 +4753,203 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     ))}
                                 </div>
                             )}
-                        </div>
-                    )}
 
-                    {/* Manually archived tasks — hidden from active views independent of status.
-                        Team-wide, same as the completed-task archive above. */}
-                    {(() => {
-                        const archivedList = tasks.filter(
-                            (task) => task.archived,
-                        );
-                        if (archivedList.length === 0) return null;
-                        return (
-                            <div className="mt-8 pt-6 border-t border-slate-100">
-                                <div className="flex items-center gap-2 mb-4">
-                                    <ArchiveIcon className="h-4 w-4 text-slate-400" />
-                                    <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
-                                        {t(
-                                            "Archived Tasks",
-                                            "Archivované úlohy",
-                                            "Archivált feladatok",
-                                        )}
-                                    </span>
-                                    <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
-                                        {archivedList.length}
-                                    </span>
-                                </div>
-                                <div className="space-y-2">
-                                    {archivedList.map((task) => (
-                                        <div
-                                            key={task.id}
-                                            className="p-2.5 rounded-xl border border-slate-200 bg-slate-50/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs"
-                                        >
-                                            <div className="flex-1 min-w-0 flex items-center gap-3">
-                                                <span
-                                                    className={`h-2.5 w-2.5 rounded-full shrink-0 ${
-                                                        task.priority ===
-                                                        "high"
-                                                            ? "bg-rose-500"
-                                                            : task.priority ===
-                                                                "medium"
-                                                              ? "bg-amber-500"
-                                                              : "bg-slate-400"
-                                                    }`}
-                                                />
-                                                <div className="min-w-0 flex-1">
-                                                    <div className="flex items-center gap-2 flex-wrap">
-                                                        <span className="font-extrabold text-slate-700 truncate">
-                                                            {task.title}
-                                                        </span>
-                                                        {task.assignedUsers &&
-                                                            task.assignedUsers
-                                                                .length > 0 && (
-                                                                <span className="text-[9px] font-bold text-indigo-600 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-[120px]">
-                                                                    <span className="h-1 w-1 rounded-full bg-indigo-500 shrink-0" />
-                                                                    <span className="truncate">
-                                                                        {task.assignedUsers.join(
-                                                                            ", ",
-                                                                        )}
-                                                                    </span>
+                            {filteredManuallyArchivedTasks.length > 0 && (
+                                <div className={filteredArchivedTasks.length > 0 ? "mt-8 pt-6 border-t border-slate-100" : ""}>
+                                    <div className="flex items-center gap-2 mb-4">
+                                        <ArchiveIcon className="h-4 w-4 text-slate-400" />
+                                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                                            {t(
+                                                "Archived Tasks",
+                                                "Archivované úlohy",
+                                                "Archivált feladatok",
+                                            )}
+                                        </span>
+                                        <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+                                            {filteredManuallyArchivedTasks.length}
+                                        </span>
+                                    </div>
+                                    <div className="space-y-2">
+                                        {filteredManuallyArchivedTasks.map((task) => {
+                                            const isSelected = selectedTaskIds.has(task.id);
+                                            return (
+                                                <div
+                                                    key={task.id}
+                                                    className={`p-2.5 rounded-xl border ${
+                                                        isSelected
+                                                            ? "bg-indigo-50/50 ring-1 ring-indigo-300/80 border-indigo-300"
+                                                            : "border-slate-200 bg-slate-50/60"
+                                                    } flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs`}
+                                                >
+                                                    <div className="flex-1 min-w-0 flex items-center gap-3">
+                                                        <input
+                                                            type="checkbox"
+                                                            checked={isSelected}
+                                                            onChange={(e) => {
+                                                                e.stopPropagation();
+                                                                handleToggleSelect(task.id);
+                                                            }}
+                                                            className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer accent-indigo-600 shrink-0"
+                                                            aria-label={`Select ${task.title}`}
+                                                        />
+                                                        <span
+                                                            className={`h-2.5 w-2.5 rounded-full shrink-0 ${
+                                                                task.priority ===
+                                                                "high"
+                                                                    ? "bg-rose-500"
+                                                                    : task.priority ===
+                                                                        "medium"
+                                                                      ? "bg-amber-500"
+                                                                      : "bg-slate-400"
+                                                            }`}
+                                                        />
+                                                        <div className="min-w-0 flex-1">
+                                                            <div className="flex items-center gap-2 flex-wrap">
+                                                                <span
+                                                                    onClick={() => setEditingTask(task)}
+                                                                    className={`font-extrabold truncate cursor-pointer transition-colors ${
+                                                                        isDoneState(task.status)
+                                                                            ? "text-slate-400 line-through decoration-slate-400 hover:text-slate-600"
+                                                                            : "text-slate-700 hover:text-indigo-600"
+                                                                    }`}
+                                                                >
+                                                                    <TaskPillText
+                                                                        text={task.title}
+                                                                        onTagClick={handleTagClick}
+                                                                        knownEntities={mentionEntities}
+                                                                    />
                                                                 </span>
-                                                            )}
+                                                                {task.assignedUsers &&
+                                                                    task.assignedUsers
+                                                                        .length > 0 && (
+                                                                        <span className="text-[9px] font-bold text-indigo-600 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-[120px]">
+                                                                            <span className="h-1 w-1 rounded-full bg-indigo-500 shrink-0" />
+                                                                            <span className="truncate">
+                                                                                {task.assignedUsers.join(
+                                                                                    ", ",
+                                                                                )}
+                                                                            </span>
+                                                                        </span>
+                                                                    )}
+                                                            </div>
+                                                            <div className="text-[9px] font-bold text-slate-400 mt-0.5">
+                                                                {t(
+                                                                    "Due",
+                                                                    "Termín",
+                                                                    "Határidő",
+                                                                )}
+                                                                : {formatTaskDate(task.deadline)}
+                                                            </div>
+                                                        </div>
                                                     </div>
-                                                    <div className="text-[9px] font-bold text-slate-400 mt-0.5">
-                                                        {t(
-                                                            "Due",
-                                                            "Termín",
-                                                            "Határidő",
+                                                    <div className="flex items-center gap-1.5 shrink-0">
+                                                        <button
+                                                            onClick={() =>
+                                                                handleUnarchiveTask(
+                                                                    task,
+                                                                )
+                                                            }
+                                                            disabled={!mayArchiveTask(task)}
+                                                            title={
+                                                                mayArchiveTask(task)
+                                                                    ? undefined
+                                                                    : archiveDeniedHint()
+                                                            }
+                                                            className="px-2.5 py-1.5 border border-indigo-200 hover:bg-indigo-50 text-indigo-600 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:active:scale-100"
+                                                        >
+                                                            <RotateCcw className="h-3 w-3 stroke-[2.5]" />
+                                                            {t(
+                                                                "Unarchive",
+                                                                "Zrušiť archiváciu",
+                                                                "Archiválás visszavonása",
+                                                            )}
+                                                        </button>
+                                                        {mayDeleteTask(task) && (
+                                                            <button
+                                                                onClick={() =>
+                                                                    handleDeleteTask(task)
+                                                                }
+                                                                title={t(
+                                                                    "Delete permanently",
+                                                                    "Natrvalo odstrániť",
+                                                                    "Végleges törlés",
+                                                                )}
+                                                                className="px-2 py-1.5 border border-rose-200 hover:bg-rose-50 text-rose-600 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+                                                            >
+                                                                <Trash2 className="h-3 w-3 stroke-[2.5]" />
+                                                            </button>
                                                         )}
-                                                        : {formatTaskDate(task.deadline)}
                                                     </div>
                                                 </div>
-                                            </div>
-                                            <div className="flex items-center gap-1.5 shrink-0">
-                                                <button
-                                                    onClick={() =>
-                                                        handleUnarchiveTask(
-                                                            task,
-                                                        )
-                                                    }
-                                                    disabled={!mayArchiveTask(task)}
-                                                    title={
-                                                        mayArchiveTask(task)
-                                                            ? undefined
-                                                            : archiveDeniedHint()
-                                                    }
-                                                    className="px-2.5 py-1.5 border border-indigo-200 hover:bg-indigo-50 text-indigo-600 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:active:scale-100"
-                                                >
-                                                    <RotateCcw className="h-3 w-3 stroke-[2.5]" />
-                                                    {t(
-                                                        "Unarchive",
-                                                        "Zrušiť archiváciu",
-                                                        "Archiválás visszavonása",
-                                                    )}
-                                                </button>
-                                                {mayDeleteTask(task) && (
-                                                    <button
-                                                        onClick={() =>
-                                                            handleDeleteTask(task)
-                                                        }
-                                                        title={t(
-                                                            "Delete permanently",
-                                                            "Natrvalo odstrániť",
-                                                            "Végleges törlés",
-                                                        )}
-                                                        className="px-2 py-1.5 border border-rose-200 hover:bg-rose-50 text-rose-600 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
-                                                    >
-                                                        <Trash2 className="h-3 w-3 stroke-[2.5]" />
-                                                    </button>
-                                                )}
-                                            </div>
-                                        </div>
-                                    ))}
+                                            );
+                                        })}
+                                    </div>
                                 </div>
-                            </div>
-                        );
-                    })()}
+                            )}
+
+                            {filteredArchivedTasks.length === 0 && filteredManuallyArchivedTasks.length === 0 && (
+                                <div className="py-20 text-center text-slate-400">
+                                    <div className="text-4xl mb-3">🔍</div>
+                                    <div className="font-black text-slate-700 uppercase tracking-wider">
+                                        {t(
+                                            "No matching tasks",
+                                            "Žiadne zhodné úlohy",
+                                            "Nincsenek egyező feladatok",
+                                        )}
+                                    </div>
+                                    <p className="text-[10px] mt-1.5 uppercase tracking-wide font-extrabold text-slate-400">
+                                        {t(
+                                            "Try adjusting your filters.",
+                                            "Skúste upraviť filtre.",
+                                            "Próbálja módosítani a szűrőket.",
+                                        )}
+                                    </p>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
             ) : viewMode === "global" ? (
                 renderGlobalTasksView()
+            ) : calendarScope === "hide" ? (
+                <div className="flex-1 min-h-0 overflow-y-auto">
+                    {renderMyTaskListColumn(true)}
+                </div>
             ) : (
                 <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-2 gap-8">
                     {/* LEFT COLUMN: TASK LISTS */}
-                    <div className="flex flex-col lg:h-full lg:overflow-y-auto overflow-visible h-auto space-y-6 pr-2 pb-6 lg:pb-0">
-                        {/* Create New Task Button + Compact view toggle (item 10) */}
-                        <div className="flex items-center gap-2">
-                            <button
-                                onClick={() => {
-                                    if (!taskAccess.create) return;
-                                    resetNewTaskForm();
-                                    setIsAddDrawerOpen(true);
-                                }}
-                                className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-indigo-600/20 transition-all active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 flex items-center justify-center gap-2 cursor-pointer border-2 border-indigo-500 disabled:cursor-not-allowed disabled:opacity-50"
-                                disabled={!taskAccess.create}
-                            >
-                                <Plus className="h-4 w-4 stroke-[3]" />
-                                {t(
-                                    "Create New Task",
-                                    "Vytvoriť novú úlohu",
-                                    "Új feladat",
-                                )}
-                            </button>
-                            <button
-                                onClick={() => setIsCompact((c) => !c)}
-                                title={t(
-                                    "Toggle compact view",
-                                    "Prepnúť kompaktné zobrazenie",
-                                    "Kompakt nézet váltása",
-                                )}
-                                className={`shrink-0 py-2.5 px-4 rounded-2xl font-black text-xs uppercase tracking-widest transition-all active:scale-[0.99] flex items-center justify-center gap-2 cursor-pointer border-2 ${
-                                    isCompact
-                                        ? "bg-indigo-600 text-white border-indigo-500 shadow-lg shadow-indigo-600/20"
-                                        : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300 hover:text-indigo-600"
-                                }`}
-                            >
-                                <List className="h-4 w-4 stroke-[3]" />
-                                {t("Compact", "Kompaktné", "Kompakt")}
-                            </button>
+                    {renderMyTaskListColumn(false)}
+
+                    {/* RIGHT COLUMN: CALENDAR OR TIMELINE VIEW */}
+                    {calendarScope === "timeline" ? (
+                        <div className="flex flex-col lg:h-full h-auto min-h-[560px] lg:min-h-0 lg:overflow-hidden overflow-visible">
+                            {renderTimelineView()}
                         </div>
-
-                        {/* Overdue / Missed — always visible, not collapsible (item 1) */}
-                        {renderTaskBucket({
-                            tone: "rose",
-                            icon: <AlertCircle className="h-5 w-5" />,
-                            title: t("Overdue", "Zmeškané", "Lejárt"),
-                            tasks: overdueTasks,
-                            emptyLabel: t(
-                                "No overdue tasks!",
-                                "Žiadne zmeškané úlohy!",
-                                "Nincs lemaradás!",
-                            ),
-                        })}
-
-                        {/* Today — always visible, not collapsible (item 1) */}
-                        {renderTaskBucket({
-                            tone: "indigo",
-                            icon: <CheckSquare className="h-5 w-5" />,
-                            title: t("Today", "Dnes", "Ma"),
-                            tasks: todayTasks,
-                            emptyLabel: t(
-                                "All caught up!",
-                                "Všetko hotové!",
-                                "Minden kész!",
-                            ),
-                        })}
-
-                        {/* Tomorrow */}
-                        {renderTaskBucket({
-                            tone: "amber",
-                            icon: <CalendarIcon className="h-5 w-5" />,
-                            title: t("Tomorrow", "Zajtra", "Holnap"),
-                            tasks: tomorrowTasks,
-                            emptyLabel: t(
-                                "No tasks for tomorrow.",
-                                "Žiadne úlohy na zajtra.",
-                                "Nincs feladat holnapra.",
-                            ),
-                            expanded: isTomorrowExpanded,
-                            onToggle: () =>
-                                setIsTomorrowExpanded(!isTomorrowExpanded),
-                        })}
-
-                        {/* Future */}
-                        {renderTaskBucket({
-                            tone: "slate",
-                            icon: <CalendarIcon className="h-5 w-5" />,
-                            title: t("Upcoming", "Nadchádzajúce", "Közelgő"),
-                            tasks: futureTasks,
-                            emptyLabel: t(
-                                "No upcoming tasks.",
-                                "Žiadne nadchádzajúce úlohy.",
-                                "Nincsenek közelgő feladatok.",
-                            ),
-                            expanded: isFutureExpanded,
-                            onToggle: () =>
-                                setIsFutureExpanded(!isFutureExpanded),
-                        })}
-                    </div>
-
-                    {/* RIGHT COLUMN: CALENDAR OR DAY VIEW */}
-                    <div className="flex flex-col lg:h-full h-auto bg-white rounded-3xl border border-slate-200 shadow-[0_4px_24px_rgba(0,0,0,0.02)] lg:overflow-hidden overflow-visible">
-                        {renderCalendarPanel({
-                            anchor: currentDate,
-                            scope: calendarScope,
-                            selectedDay,
-                            onSelectDay: setSelectedDay,
-                            tasksForDate: myTasksForDate,
-                            renderDayItem: renderTaskCard,
-                            emptyDayLabel: t(
-                                "No tasks scheduled.",
-                                "Žiadne úlohy.",
-                                "Nincsenek feladatok.",
-                            ),
-                            onAddTask: (dateStr) => {
-                                if (!taskAccess.create) return;
-                                resetNewTaskForm(dateStr);
-                                setIsAddDrawerOpen(true);
-                            },
-                        })}
-                    </div>
+                    ) : (
+                        <div className="flex flex-col lg:h-full h-auto bg-white rounded-3xl border border-slate-200 shadow-[0_4px_24px_rgba(0,0,0,0.02)] lg:overflow-hidden overflow-visible">
+                            {renderCalendarPanel({
+                                anchor: currentDate,
+                                scope: calendarScope,
+                                selectedDay,
+                                onSelectDay: setSelectedDay,
+                                tasksForDate: myTasksForDate,
+                                renderDayItem: renderTaskCard,
+                                emptyDayLabel: t(
+                                    "No tasks scheduled.",
+                                    "Žiadne úlohy.",
+                                    "Nincsenek feladatok.",
+                                ),
+                                onAddTask: (dateStr) => {
+                                    if (!taskAccess.create) return;
+                                    resetNewTaskForm(dateStr);
+                                    setIsAddDrawerOpen(true);
+                                },
+                            })}
+                        </div>
+                    )}
                 </div>
             )}
 
-            {renderAddDrawer()}
             {editingTask && (
                 <TaskEditDrawer
                     key={editingTask.id}
@@ -2907,6 +4963,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     mailConfigured={mailConfigured}
                     canEdit={mayEditTask(editingTask)}
                     canArchive={mayArchiveTask(editingTask)}
+                    existingTags={allExistingTags}
+                    onTagClick={handleTagClick}
                     onSave={(next) => {
                         if (!mayEditTask(next)) return;
                         setTasks((prev) =>
@@ -2921,254 +4979,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     onClose={() => setEditingTask(null)}
                 />
             )}
+            {renderBulkActionToolbar()}
         </div>
     );
-
-    // Helper function to render drawer
-    function renderAddDrawer() {
-        if (!isAddDrawerOpen && !isClosingDrawer) return null;
-        if (typeof document === "undefined") return null;
-        return createPortal(
-            <div className="fixed inset-0 z-[100000] flex justify-end">
-                <div
-                    onClick={closeAddDrawer}
-                    className={`absolute inset-0 bg-slate-900/40 backdrop-blur-sm ${isClosingDrawer ? "animate-fade-out" : "animate-fade-in"}`}
-                />
-                <div
-                    className={`relative w-full max-w-md bg-white shadow-2xl h-full flex flex-col p-6 overflow-y-auto ${isClosingDrawer ? "animate-slide-out-right" : "animate-slide-in-right"}`}
-                >
-                    <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-                        <h2 className="text-sm font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                            <CheckSquare className="h-5 w-5 text-indigo-600" />
-                            {t(
-                                "Create New Task",
-                                "Vytvoriť novú úlohu",
-                                "Új feladat",
-                            )}
-                        </h2>
-                        <button
-                            onClick={closeAddDrawer}
-                            className="p-1 hover:bg-slate-100 rounded-lg text-slate-400"
-                        >
-                            <X className="h-5 w-5" />
-                        </button>
-                    </div>
-
-                    <form
-                        onSubmit={handleCreateTask}
-                        className="flex-1 py-5 space-y-5 text-xs font-bold"
-                    >
-                        <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase">
-                                {t("Task Title", "Názov", "Cím")}
-                            </label>
-                            <input
-                                type="text"
-                                required
-                                value={newTitle}
-                                onChange={(e) => setNewTitle(e.target.value)}
-                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none"
-                            />
-                        </div>
-
-                        <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase">
-                                {t("Description", "Popis", "Leírás")}
-                            </label>
-                            <textarea
-                                rows={3}
-                                value={newDescription}
-                                onChange={(e) =>
-                                    setNewDescription(e.target.value)
-                                }
-                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none resize-none"
-                            />
-                        </div>
-
-                        <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase">
-                                {t(
-                                    "Start Date",
-                                    "Dátum začiatku",
-                                    "Kezdő dátum",
-                                )}
-                            </label>
-                            <input
-                                type="date"
-                                value={newStartDate}
-                                onChange={(e) =>
-                                    setNewStartDate(e.target.value)
-                                }
-                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none"
-                            />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-3">
-                            <div className="space-y-1">
-                                <label className="text-[9px] font-black text-slate-500 uppercase">
-                                    {t("Deadline Date", "Termín", "Határidő")}
-                                </label>
-                                <input
-                                    type="date"
-                                    required
-                                    value={newDeadline}
-                                    onChange={(e) =>
-                                        setNewDeadline(e.target.value)
-                                    }
-                                    className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none"
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="text-[9px] font-black text-slate-500 uppercase">
-                                    {t(
-                                        "Deadline Time",
-                                        "Čas termínu",
-                                        "Határidő időpontja",
-                                    )}
-                                </label>
-                                <DeadlineTimePicker
-                                    value={newDeadlineTime}
-                                    onChange={setNewDeadlineTime}
-                                    t={t}
-                                />
-                            </div>
-                        </div>
-
-                        <div className="space-y-1.5">
-                            <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">
-                                {t("Priority", "Priorita", "Prioritás")}
-                            </label>
-                            <div className="grid grid-cols-3 gap-2 bg-slate-50 p-1.5 rounded-xl border-2 border-slate-200">
-                                {(["low", "medium", "high"] as const).map(
-                                    (prio) => (
-                                        <button
-                                            key={prio}
-                                            type="button"
-                                            onClick={() => setNewPriority(prio)}
-                                            className={`py-2 rounded-lg font-black text-[9px] uppercase transition-all ${
-                                                newPriority === prio
-                                                    ? prio === "high"
-                                                        ? "bg-rose-600 text-white"
-                                                        : prio === "medium"
-                                                          ? "bg-amber-500 text-white"
-                                                          : "bg-slate-600 text-white"
-                                                    : "bg-white text-slate-500 hover:bg-slate-100"
-                                            }`}
-                                        >
-                                            {priorityLabel(prio)}
-                                        </button>
-                                    ),
-                                )}
-                            </div>
-                        </div>
-
-                        <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase">
-                                {t(
-                                    "Assign Project Manager",
-                                    "Priradiť projektového manažéra",
-                                    "Projektmenedzser kijelölése",
-                                )}
-                            </label>
-                            <CustomSelect
-                                value={newAssignedUser}
-                                onChange={(v) => setNewAssignedUser(v)}
-                                options={[
-                                    {
-                                        value: "",
-                                        label: t(
-                                            "-- Unassigned --",
-                                            "-- Nepriradený --",
-                                            "-- Kijelöletlen --",
-                                        ),
-                                    },
-                                    ...users.map((u) => ({
-                                        value: u.name,
-                                        label: `${u.name} (${u.role})`,
-                                    })),
-                                ]}
-                            />
-                        </div>
-
-                        <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase flex items-center gap-1">
-                                <FolderKanban className="h-3 w-3" />
-                                {t("Project", "Projekt", "Projekt")}
-                            </label>
-                            <CustomSelect
-                                searchable
-                                value={newRelatedProjectId}
-                                onChange={setNewRelatedProjectId}
-                                options={taskProjectOptions(projects, leads, t)}
-                            />
-                        </div>
-
-                        <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase">
-                                {t(
-                                    "Link to Lead/Client",
-                                    "Prepojiť so záujemcom",
-                                    "Összekapcsolás ügyféllel",
-                                )}
-                            </label>
-                            <ClientSelect
-                                leads={leads}
-                                value={newRelatedLeadId}
-                                onChange={(v) => {
-                                    setNewRelatedLeadId(v);
-                                    if (!v) setNewIsLocking(false);
-                                }}
-                                showCity={false}
-                                addKind="lead"
-                                noneLabel={t("-- None --", "-- Žiadny --", "-- Nincs --")}
-                            />
-                        </div>
-
-                        {newRelatedLeadId && (
-                            <div className="p-3 rounded-xl bg-violet-50/50 border border-violet-100 flex items-center justify-between">
-                                <span className="text-[10px] font-black text-violet-700 uppercase flex items-center gap-1">
-                                    <Lock className="h-3 w-3" />{" "}
-                                    {t(
-                                        "Block Pipeline Stage",
-                                        "Zablokovať fázu pipeline",
-                                        "Folyamat szakasz zárolása",
-                                    )}
-                                </span>
-                                <input
-                                    type="checkbox"
-                                    checked={newIsLocking}
-                                    onChange={(e) =>
-                                        setNewIsLocking(e.target.checked)
-                                    }
-                                    className="h-4 w-4 cursor-pointer"
-                                />
-                            </div>
-                        )}
-
-                        <TaskEmailReminderField
-                            task={{
-                                deadline: newDeadline,
-                                deadlineTime: newDeadlineTime,
-                                emailReminders: newEmailReminders,
-                            }}
-                            onChange={setNewEmailReminders}
-                            currentUserName={myName}
-                            users={users}
-                            systemLanguage={systemLanguage}
-                            t={t}
-                            mailConfigured={mailConfigured}
-                        />
-
-                        <button
-                            type="submit"
-                            className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-xs uppercase shadow-lg shadow-indigo-600/20"
-                        >
-                            {t("Save Task", "Uložiť", "Mentés")}
-                        </button>
-                    </form>
-                </div>
-            </div>,
-            document.body,
-        );
-    }
 };

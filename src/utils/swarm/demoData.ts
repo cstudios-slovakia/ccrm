@@ -307,10 +307,17 @@ export const DEMO_METRICS_HISTORY: SwarmRoundMetrics[] = [
     simulatedHour: 9,
     averageSentiment: -0.32,
     supportiveCount: 1,
-    opposingCount: 4,
-    neutralCount: 1,
-    totalInteractions: 145,
-    viralIndex: 38
+    opposingCount: 3,
+    neutralCount: 2,
+    totalInteractions: 140,
+    viralIndex: 35,
+    answerDistribution: {
+      "Schvaľujem (s ochranou a kreditmi)": 1,
+      "Váham / Vyžadujem zmluvu": 2,
+      "Odmietam (konkurencia)": 3
+    },
+    leadingAnswer: "Odmietam (konkurencia)",
+    consensusPercentage: 50
   },
   {
     round: 2,
@@ -320,7 +327,14 @@ export const DEMO_METRICS_HISTORY: SwarmRoundMetrics[] = [
     opposingCount: 2,
     neutralCount: 2,
     totalInteractions: 290,
-    viralIndex: 64
+    viralIndex: 64,
+    answerDistribution: {
+      "Schvaľujem (s ochranou a kreditmi)": 3,
+      "Váham / Vyžadujem zmluvu": 1,
+      "Odmietam (konkurencia)": 2
+    },
+    leadingAnswer: "Schvaľujem (s ochranou a kreditmi)",
+    consensusPercentage: 50
   },
   {
     round: 3,
@@ -330,7 +344,14 @@ export const DEMO_METRICS_HISTORY: SwarmRoundMetrics[] = [
     opposingCount: 1,
     neutralCount: 1,
     totalInteractions: 480,
-    viralIndex: 82
+    viralIndex: 82,
+    answerDistribution: {
+      "Schvaľujem (s ochranou a kreditmi)": 4,
+      "Váham / Vyžadujem zmluvu": 1,
+      "Odmietam (konkurencia)": 1
+    },
+    leadingAnswer: "Schvaľujem (s ochranou a kreditmi)",
+    consensusPercentage: 72
   }
 ];
 
@@ -338,6 +359,65 @@ export const DEMO_STRATEGIC_REPORT: StrategicReport = {
   title: "Strategický briefing trhovej simulácie: Reštrukturalizácia cien balíka Enterprise & SLA v Q4",
   summary: "Simulované zavedenie 25% zvýšenia ceny enterprise balíka spojeného s 99.9% garanciou SLA a priamou WhatsApp podporou hlavných inžinierov. Trh sa posunul od počiatočnej skepsy nákupcov k 72% konsenzuálnemu schváleniu po vyjasnení automatických zľavových kreditov za výpadok a 6-mesačnej ochrannej lehoty pôvodných cien.",
   generatedAt: new Date().toISOString(),
+  executiveVerdict: {
+    question: "Akceptujú naši B2B zákazníci 25% zvýšenie cien balíka Enterprise, ak pridáme 99.9% SLA a WhatsApp podporu vývojárov?",
+    directAnswer: "ÁNO, trh zmenu akceptuje (72% schválenie s ochrannou lehotou a SLA kreditmi)",
+    confidenceScore: 88,
+    summary: "Po vyjasnení automatických zľavových kreditov pri výpadku SLA a 6-mesačnej ochrannej lehoty pre existujúcich klientov sa počiatočný odpor nákupcov zmenil na výraznú prevahu podpory.",
+    answerBreakdown: [
+      {
+        answer: "Schvaľujem (s ochranou a kreditmi)",
+        sharePercentage: 72,
+        count: 4,
+        sentiment: 0.65
+      },
+      {
+        answer: "Váham / Vyžadujem zmluvu na mieru",
+        sharePercentage: 18,
+        count: 1,
+        sentiment: 0.1
+      },
+      {
+        answer: "Odmietam (konkurencia)",
+        sharePercentage: 10,
+        count: 1,
+        sentiment: -0.8
+      }
+    ],
+    keyDrivers: [
+      {
+        title: "1. Priamy WhatsApp kanál na inžinierov",
+        explanation: "Agentúry a rastúce tímy ušetrili stovky eur mesačne za externých konzultantov vďaka okamžitému prístupu k vývojárom namiesto pomalých e-mailových ticketov.",
+        quotes: ["Ak môže môj tím napísať priamo inžinierovi na WhatsApp, 249 € mesačne je jednoznačná voľba."]
+      },
+      {
+        title: "2. Automatické zľavy pri porušení SLA",
+        explanation: "Nákupcovia vyžadovali finančné záruky namiesto marketingových sľubov, čo automatické kredity na faktúre bez byrokracie vyriešili.",
+        quotes: ["Dajte mi automatické zľavové kredity za porušenie SLA na papieri a obnovenie zmluvy podpíšem."]
+      },
+      {
+        title: "3. 6-mesačná ochranná lehota pôvodných cien",
+        explanation: "Grandfathering neutralizoval paniku u malých a stredných firiem a zamedzil odchodu ku konkurencii.",
+        quotes: ["Ochranná lehota nám dáva dosť času na rozpočet a overenie benefitov nového balíka."]
+      }
+    ],
+    tippingPoints: [
+      {
+        round: 2,
+        description: "Oznámenie automatických zľavových kreditov pri porušení SLA zlomilo odpor nákupkyne Sarah Jenkins.",
+        impact: "Preklopenie nákupného segmentu z odporu do podpory."
+      }
+    ],
+    whatWouldChangeOutcome: [
+      "Zrušenie 6-mesačnej ochrannej lehoty by zvýšilo mieru odchodu (churn) SMB klientov z 2% na 28%.",
+      "Absencia finančných sankcií za výpadok by odradila enterprise zákazníkov s rozpočtom nad 100 000 €."
+    ],
+    actionableRecommendations: [
+      "Osobne kontaktovať 20 najväčších klientov pred verejným oznámením a potvrdiť ochrannú lehotu.",
+      "Vizuálne zvýrazniť automatické SLA kredity a priamy WhatsApp prístup v marketingovom cenníku.",
+      "Pripraviť obchodníkov na námietky ohľadom makroekonomického tlaku cez kalkulačku TCO."
+    ]
+  },
   sections: [
     {
       title: "1. Výkonný konsenzus a polarizácia trhu",

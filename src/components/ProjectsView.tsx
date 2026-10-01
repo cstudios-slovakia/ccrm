@@ -1,6 +1,7 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
+import { createPortal } from "react-dom";
 import * as Icons from "lucide-react";
-import { Plus, Trash2, Settings, Search, Users, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, ListTree, Move, CalendarClock, Flag, ArrowUp, ArrowDown, ArrowUpDown, Lock, Star, Check, Minus, Paperclip, GripVertical, GripHorizontal } from "lucide-react";
+import { Plus, Trash2, Settings, Search, Users, User, Edit3, Briefcase, ChevronDown, ChevronLeft, LayoutGrid, Rows3, ListTree, Move, CalendarClock, Flag, ArrowUp, ArrowDown, ArrowUpDown, Lock, Star, Check, Minus, Paperclip, GripVertical, GripHorizontal, Archive, ArchiveRestore, CheckSquare, Square, MinusSquare, X } from "lucide-react";
 import type { Project, ProjectAttribute, ProjectAutoCreateSettings, ProjectStatus, ProjectType, Lead, UserProfile, FinancialRecord, FinancialCategory } from "../types";
 import { ProjectDetailsView } from "./ProjectDetailsView";
 import type { Task } from "../types";
@@ -9,13 +10,14 @@ import { ProjectSettings } from "./ProjectSettings";
 import { ProjectListViewMenu } from "./ProjectListViewMenu";
 import { CustomSelect } from "./ui/CustomSelect";
 import { StarRating } from "./ui/StarRating";
-import type { Language } from "../utils/translations";
+import { getTranslation, type Language } from "../utils/translations";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import type { ModuleAccess } from "../utils/permissions";
 import { readableOn } from "../utils/accentColor";
 import { parseAppHash } from "../utils/hash";
 import {
   DEFAULT_PROJECT_STATUS,
+  CLOSED_PROJECT_STATUSES,
   evaluateProjectDeadline,
   projectDisplayName,
   projectDelayReason,
@@ -26,6 +28,7 @@ import {
   projectStatusOptions,
   projectStatusOrder,
 } from "../utils/projects";
+import { StatusValueEquationStats, type StatusStatItem, type StatusStatDetailRow } from "./StatusValueEquationStats";
 import type { ProjectDeadlineStatus } from "../utils/projects";
 import { todayLocal, formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
 import { useUserPref } from "../utils/userPrefs";
@@ -46,7 +49,7 @@ import {
   toStoredColumns,
 } from "../utils/projectColumns";
 import type { BuiltinProjectColumnKey, ResolvedProjectColumn } from "../utils/projectColumns";
-import { currencyForRegion, formatMoney, isMoneyValueEmpty, parseMoneyValue } from "../utils/currency";
+import { formatMoney, isMoneyValueEmpty, parseMoneyValue } from "../utils/currency";
 
 /*
   The summary strip's chips. Each tone is written out in full because Tailwind
@@ -114,6 +117,7 @@ interface ProjectsViewProps {
   projectTypes: ProjectType[];
   setProjectTypes: React.Dispatch<React.SetStateAction<ProjectType[]>>;
   leads: Lead[];
+  setLeads?: (updater: Lead[] | ((prev: Lead[]) => Lead[])) => void;
   users: UserProfile[];
   userLanguage: Language;
   /**
@@ -155,6 +159,8 @@ interface ProjectsViewProps {
   currentUser?: UserProfile;
   /** False when no outgoing mail server is set up; task e-mail reminders then warn. */
   mailConfigured?: boolean;
+  divisions?: string[];
+  divisionColors?: Record<string, string>;
 }
 
 export const ProjectsView: React.FC<ProjectsViewProps> = ({
@@ -163,6 +169,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   projectTypes,
   setProjectTypes,
   leads,
+  setLeads,
   users,
   userLanguage,
   access = FULL_MODULE_ACCESS,
@@ -182,7 +189,9 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   taskStateColors,
   taskAccess,
   currentUser,
-  mailConfigured
+  mailConfigured,
+  divisions = ["Cstudios", "Cstudios Budapest"],
+  divisionColors = {},
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
 
@@ -192,14 +201,57 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
   const [activeSubTab, setActiveSubTab] = useState<"list" | "settings">("list");
   const [searchQuery, setSearchQuery] = useState("");
-  const [selectedStatusFilter, setSelectedStatusFilter] = useState("all");
+
+  /* Multi-status selection preference, same as the leads list (leadsVisibleStates).
+     null = never chosen by user, defaults to only open / active statuses (leaves out closed). */
+  const [visibleStatuses, setVisibleStatuses] = useUserPref("projectsVisibleStatuses");
+  const allProjectStatuses = useMemo(() => projectStatusOrder(), []);
+  const defaultOpenStatuses = useMemo(
+    () => (allProjectStatuses as ProjectStatus[]).filter(s => !CLOSED_PROJECT_STATUSES.includes(s)),
+    [allProjectStatuses]
+  );
+
+  const resolvedVisibleStatuses = useMemo<ProjectStatus[]>(() => {
+    if (visibleStatuses === null) {
+      // By default, only non-closed statuses are visible (same as leads)
+      return defaultOpenStatuses;
+    }
+    return visibleStatuses.filter((s): s is ProjectStatus => allProjectStatuses.includes(s as ProjectStatus));
+  }, [visibleStatuses, defaultOpenStatuses, allProjectStatuses]);
+
+  const toggleStatusVisibility = useCallback((status: ProjectStatus, solo = false) => {
+    if (solo) {
+      setVisibleStatuses([status]);
+      return;
+    }
+    const currentList =
+      visibleStatuses === null
+        ? defaultOpenStatuses
+        : visibleStatuses;
+
+    let next: string[];
+    if (currentList.includes(status)) {
+      next = currentList.filter(s => s !== status);
+    } else {
+      next = [...currentList, status];
+    }
+    setVisibleStatuses(next);
+  }, [visibleStatuses, defaultOpenStatuses, setVisibleStatuses]);
+
   const [selectedTypeFilter, setSelectedTypeFilter] = useState("all");
+  const [selectedDivisionFilter, setSelectedDivisionFilter] = useState("all");
   const [selectedManagerFilter, setSelectedManagerFilter] = useState("all");
   /* Star priority, same options as the leads list — see utils/rating.ts. */
   const [selectedRatingFilter, setSelectedRatingFilter] = useState("all");
+  const [selectedArchiveFilter, setSelectedArchiveFilter] = useState<"active" | "archived" | "all">("active");
   /* Its own dimension rather than another status: a project can be late in any
      status, so "overdue" cannot live in the status dropdown. */
   const [overdueOnly, setOverdueOnly] = useState(false);
+
+  // Batch Multi-Selection State
+  const [selectedProjectIds, setSelectedProjectIds] = useState<Set<string>>(new Set());
+  const [activeBulkMenu, setActiveBulkMenu] = useState<"status" | "manager" | null>(null);
+  const bulkToolbarRef = useRef<HTMLDivElement>(null);
 
   const [editingProject, setEditingProject] = useState<Project | null>(null);
   const [editingProjectType, setEditingProjectType] = useState<ProjectType | null>(null);
@@ -240,11 +292,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   const overdueIds = useMemo(() => {
     const ids = new Set<string>();
     projects.forEach(p => {
+      if (p.archived && selectedArchiveFilter === "active") return;
+      if (!p.archived && selectedArchiveFilter === "archived") return;
       const dl = evaluateProjectDeadline(p, projectTypes.find(pt => pt.id === p.projectTypeId), today);
       if (dl?.isOverdue) ids.add(p.id);
     });
     return ids;
-  }, [projects, projectTypes, today]);
+  }, [projects, projectTypes, today, selectedArchiveFilter]);
 
   /* Projects past their deadline with nobody having written down why — the red
      flag. Counted here so the flag filter and the badges on the rows are the
@@ -252,20 +306,33 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   const unexplainedIds = useMemo(() => {
     const ids = new Set<string>();
     projects.forEach(p => {
+      if (p.archived && selectedArchiveFilter === "active") return;
+      if (!p.archived && selectedArchiveFilter === "archived") return;
       const dl = evaluateProjectDeadline(p, projectTypes.find(pt => pt.id === p.projectTypeId), today);
       if (projectNeedsDelayReason(p, dl)) ids.add(p.id);
     });
     return ids;
-  }, [projects, projectTypes, today]);
+  }, [projects, projectTypes, today, selectedArchiveFilter]);
 
   // Counts behind the summary strip. One chip per real project status, so the
   // strip and the (now hidden) status dropdown can never offer different lists.
-  const totalProjects = projects.length;
+  const visibleProjectsForStats = useMemo(() => {
+    return projects.filter(p => {
+      const isArchived = Boolean(p.archived);
+      return selectedArchiveFilter === "all"
+        ? true
+        : selectedArchiveFilter === "archived"
+        ? isArchived
+        : !isArchived;
+    });
+  }, [projects, selectedArchiveFilter]);
+
+  const totalProjects = visibleProjectsForStats.length;
   const statusCounts = useMemo(() => {
     const counts: Record<string, number> = {};
-    projects.forEach(p => { counts[p.status] = (counts[p.status] || 0) + 1; });
+    visibleProjectsForStats.forEach(p => { counts[p.status] = (counts[p.status] || 0) + 1; });
     return counts;
-  }, [projects]);
+  }, [visibleProjectsForStats]);
   const overdueCount = overdueIds.size;
 
   /* Who the list can be narrowed to. Projects store manager NAMES, not ids (see
@@ -292,8 +359,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         p.id.toLowerCase().includes(needle) ||
         (pType?.name || "").toLowerCase().includes(needle);
       
-      const matchesStatus = selectedStatusFilter === "all" || p.status === selectedStatusFilter;
+      const statusKey = (p.status || DEFAULT_PROJECT_STATUS) as ProjectStatus;
+      const matchesStatus = resolvedVisibleStatuses.includes(statusKey);
       const matchesType = selectedTypeFilter === "all" || p.projectTypeId === selectedTypeFilter;
+      const matchesDivision =
+        selectedDivisionFilter === "all" ||
+        (selectedDivisionFilter === "none" && !p.division) ||
+        (p.division || "").toLowerCase() === selectedDivisionFilter.toLowerCase();
       const matchesManager =
         selectedManagerFilter === "all" ||
         (selectedManagerFilter === UNASSIGNED_MANAGER
@@ -301,10 +373,34 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           : (p.managers || []).includes(selectedManagerFilter));
       const matchesOverdue = !overdueOnly || overdueIds.has(p.id);
       const matchesRating = matchesRatingFilter(p.rating, selectedRatingFilter);
+      const isArchived = Boolean(p.archived);
+      const matchesArchive =
+        selectedArchiveFilter === "all"
+          ? true
+          : selectedArchiveFilter === "archived"
+          ? isArchived
+          : !isArchived;
 
-      return matchesSearch && matchesStatus && matchesType && matchesManager && matchesOverdue && matchesRating;
+      return matchesSearch && matchesStatus && matchesType && matchesDivision && matchesManager && matchesOverdue && matchesRating && matchesArchive;
     });
-  }, [projects, projectTypes, leads, searchQuery, selectedStatusFilter, selectedTypeFilter, selectedManagerFilter, selectedRatingFilter, overdueOnly, overdueIds]);
+  }, [projects, projectTypes, leads, searchQuery, resolvedVisibleStatuses, selectedTypeFilter, selectedDivisionFilter, selectedManagerFilter, selectedRatingFilter, selectedArchiveFilter, overdueOnly, overdueIds]);
+
+  // Close bulk menu when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (bulkToolbarRef.current && !bulkToolbarRef.current.contains(e.target as Node)) {
+        setActiveBulkMenu(null);
+      }
+    };
+    if (activeBulkMenu) {
+      document.addEventListener("mousedown", handleClickOutside);
+    }
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, [activeBulkMenu]);
+
+
 
   /* Deep link: `#projects?edit=<projectId>` opens that project directly.
      "Convert to Project" on a lead has always navigated here with that query,
@@ -382,7 +478,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       managers: [],
       data: {},
       timeline: [],
-      gantt: []
+      gantt: [],
+      archived: false
     };
 
     setEditingProjectType(type);
@@ -432,6 +529,19 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     (window as any).showToast(t("Project deleted.", "Projekt bol vymazaný.", "Projekt törölve."));
   };
 
+  const handleArchiveProject = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!canEdit) return;
+    const target = projects.find(p => p.id === id);
+    if (!target) return;
+    const nextArchived = !target.archived;
+    setProjects(prev => prev.map(p => (p.id === id ? { ...p, archived: nextArchived } : p)));
+    const msg = nextArchived
+      ? t("Project archived.", "Projekt bol archivovaný.", "Projekt archiválva.")
+      : t("Project restored.", "Projekt bol obnovený.", "Projekt visszaállítva.");
+    (window as any).showToast?.(msg);
+  };
+
   /**
    * Rating a project from the list, the way the leads list rates a lead: one
    * click on a star writes it straight into the project — no edit mode, no save
@@ -454,7 +564,175 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
   /* The currency a money attribute falls back to when it carries none of its
      own — the workspace default, or the one the language implies. */
-  const defaultCurrency = currencyCode || currencyForRegion(userLanguage);
+  const defaultCurrency = currencyCode || "EUR";
+
+  /**
+   * Derives project budget/value, invoiced amount, and remaining invoicable.
+   */
+  const getProjectFinancials = useCallback((p: Project, pType?: ProjectType, lead?: Lead) => {
+    const moneyAttrs = pType?.attributes?.filter((a) => a.type === "money") || [];
+    let pVal = 0;
+    let pCurrency = defaultCurrency;
+    let hasMoneyVal = false;
+    for (const attr of moneyAttrs) {
+      const raw = p.data?.[attr.id];
+      if (
+        raw !== undefined &&
+        raw !== null &&
+        !isMoneyValueEmpty(raw, defaultCurrency)
+      ) {
+        const parsed = parseMoneyValue(raw, defaultCurrency);
+        if (parsed.amount) {
+          pVal += parsed.amount;
+          if (parsed.currency) pCurrency = parsed.currency;
+          hasMoneyVal = true;
+        }
+      }
+    }
+    if (!hasMoneyVal && (p.data?._projectValue !== undefined || p.data?.value !== undefined)) {
+      const v = Number(p.data?._projectValue ?? p.data?.value);
+      if (Number.isFinite(v) && v > 0) {
+        pVal = v;
+        hasMoneyVal = true;
+      }
+    }
+    if (!hasMoneyVal && lead?.value) {
+      pVal = lead.value;
+    }
+
+    // Calculate invoiced for this project from financialRecords
+    let pInvoiced = 0;
+    if (financialRecords && financialRecords.length > 0) {
+      const pFinRecords = financialRecords.filter(
+        (r) => r.projectId === p.id && r.type === "income"
+      );
+      pInvoiced = pFinRecords.reduce(
+        (sum, r) =>
+          sum + (Number(r.amountReal) || Number(r.amountPlanned) || 0),
+        0
+      );
+    }
+
+    const pInvoicable = Math.max(0, pVal - pInvoiced);
+
+    return {
+      totalBudget: pVal,
+      invoiced: pInvoiced,
+      invoicable: pInvoicable,
+      currency: pCurrency,
+      hasValue: pVal > 0,
+    };
+  }, [defaultCurrency, financialRecords]);
+
+  /* Active project status items calculation for the expandable equation statistics */
+  const activeProjectStatusItems = useMemo<StatusStatItem[]>(() => {
+    const activeStatuses = (projectStatusOrder() as ProjectStatus[]).filter(
+      (s) => !CLOSED_PROJECT_STATUSES.includes(s)
+    );
+
+    const statusColors: Record<string, string> = {
+      new: "#0284c7",
+      active: "#9333ea",
+      on_hold: "#d97706",
+    };
+
+    return activeStatuses.map((status) => {
+      // Collect projects in this status matching other non-status filters
+      const projectsInStatus = projects.filter((p) => {
+        if (p.status !== status) return false;
+        const pType = projectTypes.find((t) => t.id === p.projectTypeId);
+        const lead = leads.find((l) => l.id === p.leadId);
+        const leadName = lead?.name || "";
+        const needle = searchQuery.toLowerCase();
+        const matchesSearch =
+          !needle ||
+          (p.name || "").toLowerCase().includes(needle) ||
+          leadName.toLowerCase().includes(needle) ||
+          p.id.toLowerCase().includes(needle) ||
+          (pType?.name || "").toLowerCase().includes(needle);
+
+        const matchesType =
+          selectedTypeFilter === "all" || p.projectTypeId === selectedTypeFilter;
+        const matchesDivision =
+          selectedDivisionFilter === "all" ||
+          (selectedDivisionFilter === "none" && !p.division) ||
+          (p.division || "").toLowerCase() === selectedDivisionFilter.toLowerCase();
+        const matchesManager =
+          selectedManagerFilter === "all" ||
+          (selectedManagerFilter === UNASSIGNED_MANAGER
+            ? !(p.managers && p.managers.length > 0)
+            : (p.managers || []).includes(selectedManagerFilter));
+        const matchesOverdue = !overdueOnly || overdueIds.has(p.id);
+        const matchesRating = matchesRatingFilter(
+          p.rating,
+          selectedRatingFilter
+        );
+
+        return (
+          matchesSearch &&
+          matchesType &&
+          matchesDivision &&
+          matchesManager &&
+          matchesOverdue &&
+          matchesRating
+        );
+      });
+
+      let statusInvoicableVal = 0;
+      let statusTotalBudgetValue = 0;
+      let statusTotalInvoicedValue = 0;
+      const statusRows: StatusStatDetailRow[] = [];
+
+      projectsInStatus.forEach((p) => {
+        const pType = projectTypes.find((t) => t.id === p.projectTypeId);
+        const pairedLead = p.leadId ? leads.find((l) => l.id === p.leadId) : undefined;
+        const fin = getProjectFinancials(p, pType, pairedLead);
+
+        statusInvoicableVal += fin.invoicable;
+        statusTotalBudgetValue += fin.totalBudget;
+        statusTotalInvoicedValue += fin.invoiced;
+
+        statusRows.push({
+          id: p.id,
+          name: p.name || `Project #${p.id}`,
+          clientName: pairedLead?.name || p.name || `Project #${p.id}`,
+          manager: p.managers?.[0],
+          division: p.division,
+          date: p.createdAt ? new Date(p.createdAt).toLocaleDateString() : undefined,
+          totalBudget: fin.totalBudget,
+          invoiced: fin.invoiced,
+          invoicable: fin.invoicable,
+          type: "project",
+          url: `#projects?edit=${encodeURIComponent(p.id)}`,
+        });
+      });
+
+      return {
+        key: status,
+        name: projectStatusLabel(status, t),
+        value: statusInvoicableVal,
+        count: projectsInStatus.length,
+        color: statusColors[status] || "#6366f1",
+        totalBudget: statusTotalBudgetValue,
+        invoiced: statusTotalInvoicedValue,
+        rows: statusRows,
+      };
+    });
+  }, [
+    projects,
+    projectTypes,
+    leads,
+    financialRecords,
+    searchQuery,
+    selectedTypeFilter,
+    selectedDivisionFilter,
+    selectedManagerFilter,
+    selectedRatingFilter,
+    overdueOnly,
+    overdueIds,
+    defaultCurrency,
+    t,
+  ]);
 
   /* Which project type's column layout the table follows.
 
@@ -577,6 +855,272 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     const visible = new Set(filteredProjects.map(p => p.id));
     return (isStructure ? structureProjects : orderedProjects).filter(p => visible.has(p.id));
   }, [isStructure, structureProjects, orderedProjects, filteredProjects]);
+
+  const areAllVisibleSelected = useMemo(() => {
+    if (sortedProjects.length === 0) return false;
+    return sortedProjects.every(p => selectedProjectIds.has(p.id));
+  }, [sortedProjects, selectedProjectIds]);
+
+  const isPartiallySelected = useMemo(() => {
+    if (selectedProjectIds.size === 0 || areAllVisibleSelected) return false;
+    return sortedProjects.some(p => selectedProjectIds.has(p.id));
+  }, [sortedProjects, selectedProjectIds, areAllVisibleSelected]);
+
+  const hasActiveSelected = useMemo(() => {
+    return projects.some(p => selectedProjectIds.has(p.id) && !p.archived);
+  }, [projects, selectedProjectIds]);
+
+  const hasArchivedSelected = useMemo(() => {
+    return projects.some(p => selectedProjectIds.has(p.id) && Boolean(p.archived));
+  }, [projects, selectedProjectIds]);
+
+  const handleToggleSelectProject = (id: string) => {
+    setSelectedProjectIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const handleSelectAllVisible = () => {
+    if (areAllVisibleSelected) {
+      setSelectedProjectIds(prev => {
+        const next = new Set(prev);
+        sortedProjects.forEach(p => next.delete(p.id));
+        return next;
+      });
+    } else {
+      setSelectedProjectIds(prev => {
+        const next = new Set(prev);
+        sortedProjects.forEach(p => next.add(p.id));
+        return next;
+      });
+    }
+  };
+
+  const handleClearSelection = () => {
+    setSelectedProjectIds(new Set());
+    setActiveBulkMenu(null);
+  };
+
+  const handleBulkStatusChange = (newStatus: string) => {
+    if (!canEdit || selectedProjectIds.size === 0) return;
+    setProjects(prev =>
+      prev.map(p => {
+        if (!selectedProjectIds.has(p.id)) return p;
+        const isClosing = CLOSED_PROJECT_STATUSES.includes(newStatus);
+        return {
+          ...p,
+          status: newStatus,
+          finishedAt: isClosing ? (p.finishedAt || todayLocal()) : null,
+        };
+      })
+    );
+    setActiveBulkMenu(null);
+    setSelectedProjectIds(new Set());
+  };
+
+  const handleBulkManagerChange = (managerName: string) => {
+    if (!canEdit || selectedProjectIds.size === 0) return;
+    const managersList = managerName === "unassigned" ? [] : [managerName];
+    setProjects(prev =>
+      prev.map(p => {
+        if (!selectedProjectIds.has(p.id)) return p;
+        return {
+          ...p,
+          managers: managersList,
+        };
+      })
+    );
+    setActiveBulkMenu(null);
+    setSelectedProjectIds(new Set());
+  };
+
+  const handleBulkArchive = (archive: boolean) => {
+    if (!canEdit || selectedProjectIds.size === 0) return;
+    const count = selectedProjectIds.size;
+    setProjects(prev =>
+      prev.map(p => {
+        if (!selectedProjectIds.has(p.id)) return p;
+        return {
+          ...p,
+          archived: archive,
+        };
+      })
+    );
+    setActiveBulkMenu(null);
+    setSelectedProjectIds(new Set());
+    const msg = archive
+      ? (userLanguage === "sk"
+          ? `${count} ${count === 1 ? "projekt bol archivovaný" : count < 5 ? "projekty boli archivované" : "projektov bolo archivovaných"}.`
+          : userLanguage === "hu"
+          ? `${count} projekt archiválva.`
+          : `${count} ${count === 1 ? "project" : "projects"} archived.`)
+      : (userLanguage === "sk"
+          ? `${count} ${count === 1 ? "projekt bol obnovený" : count < 5 ? "projekty boli obnovené" : "projektov bolo obnovených"}.`
+          : userLanguage === "hu"
+          ? `${count} projekt visszaállítva.`
+          : `${count} ${count === 1 ? "project" : "projects"} restored.`);
+    (window as any).showToast?.(msg);
+  };
+
+  const renderBulkActionToolbar = () => {
+    if (selectedProjectIds.size === 0) return null;
+    const selectedCount = selectedProjectIds.size;
+    const countLabel =
+      userLanguage === "sk"
+        ? selectedCount === 1
+          ? "1 vybraný"
+          : selectedCount >= 2 && selectedCount <= 4
+          ? `${selectedCount} vybrané`
+          : `${selectedCount} vybraných`
+        : userLanguage === "hu"
+        ? `${selectedCount} kiválasztva`
+        : `${selectedCount} selected`;
+
+    const statusList: { key: ProjectStatus; label: string; tone: string }[] = [
+      { key: "new", label: projectStatusLabel("new", t), tone: "bg-sky-500" },
+      { key: "active", label: projectStatusLabel("active", t), tone: "bg-purple-500" },
+      { key: "on_hold", label: projectStatusLabel("on_hold", t), tone: "bg-amber-500" },
+      { key: "completed", label: projectStatusLabel("completed", t), tone: "bg-emerald-500" },
+      { key: "cancelled", label: projectStatusLabel("cancelled", t), tone: "bg-rose-500" },
+    ];
+
+    return createPortal(
+      <div
+        ref={bulkToolbarRef}
+        className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100000] max-w-[95vw] sm:max-w-3xl lg:max-w-4xl bg-slate-900/95 text-white backdrop-blur-xl px-4 py-2.5 rounded-2xl shadow-2xl border border-slate-700/70 flex flex-wrap items-center justify-between gap-2.5 animate-in fade-in slide-in-from-bottom-5 duration-200"
+      >
+        {/* Left: Count and selection management */}
+        <div className="flex items-center gap-2">
+          <span className="bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-xs font-black px-2.5 py-1 rounded-xl">
+            {countLabel}
+          </span>
+          <button
+            type="button"
+            onClick={handleSelectAllVisible}
+            className="text-[11px] font-bold text-slate-300 hover:text-white px-2 py-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+          >
+            {areAllVisibleSelected
+              ? t("Deselect visible", "Zrušiť výber zobrazených", "Láthatók kijelölésének törlése")
+              : t(
+                  `Select all visible (${sortedProjects.length})`,
+                  `Vybrať všetky zobrazené (${sortedProjects.length})`,
+                  `Összes látható kijelölése (${sortedProjects.length})`
+                )}
+          </button>
+          <button
+            type="button"
+            onClick={handleClearSelection}
+            title={t("Clear selection", "Zrušiť výber", "Kijelölés törlése")}
+            className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors cursor-pointer"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="h-5 w-px bg-slate-700/80 hidden sm:block" />
+
+        {/* Right: Actions */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {/* Status Dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setActiveBulkMenu(activeBulkMenu === "status" ? null : "status")}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-xs font-black transition-colors border border-slate-700/50 cursor-pointer"
+            >
+              <CheckSquare className="h-3.5 w-3.5 text-indigo-400" />
+              <span>{t("Status", "Stav", "Státusz")}</span>
+              <ChevronDown className="h-3 w-3 text-slate-400" />
+            </button>
+            {activeBulkMenu === "status" && (
+              <div className="absolute bottom-full mb-2 left-0 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl p-1.5 min-w-[160px] space-y-0.5 animate-in fade-in zoom-in-95 duration-100 z-50">
+                {statusList.map((st) => (
+                  <button
+                    key={st.key}
+                    type="button"
+                    onClick={() => handleBulkStatusChange(st.key)}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:bg-indigo-600 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
+                  >
+                    <span className={`h-2 w-2 rounded-full shrink-0 ${st.tone}`} />
+                    <span>{st.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Project Manager Dropdown */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={() => setActiveBulkMenu(activeBulkMenu === "manager" ? null : "manager")}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-xs font-black transition-colors border border-slate-700/50 cursor-pointer"
+            >
+              <Users className="h-3.5 w-3.5 text-sky-400" />
+              <span>{t("Project Manager", "Manažér projektu", "Projektmenedzser")}</span>
+              <ChevronDown className="h-3 w-3 text-slate-400" />
+            </button>
+            {activeBulkMenu === "manager" && (
+              <div className="absolute bottom-full mb-2 left-0 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl p-1.5 min-w-[180px] max-h-56 overflow-y-auto space-y-0.5 animate-in fade-in zoom-in-95 duration-100 z-50">
+                <button
+                  type="button"
+                  onClick={() => handleBulkManagerChange("unassigned")}
+                  className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-bold text-rose-300 hover:bg-rose-900/40 hover:text-rose-100 transition-colors flex items-center gap-2 cursor-pointer border-b border-slate-800 pb-1 mb-1"
+                >
+                  <User className="h-3.5 w-3.5 text-rose-400 shrink-0" />
+                  <span>{t("Unassigned", "Bez manažéra", "Nincs hozzárendelve")}</span>
+                </button>
+                {managerOptions.map((name) => (
+                  <button
+                    key={name}
+                    type="button"
+                    onClick={() => handleBulkManagerChange(name)}
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:bg-indigo-600 hover:text-white transition-colors flex items-center justify-between gap-2 cursor-pointer"
+                  >
+                    <span className="truncate">{name}</span>
+                    {currentUser?.name === name && (
+                      <span className="text-[9px] bg-slate-800 px-1 py-0.5 rounded text-indigo-300">
+                        {t("You", "Vy", "Ön")}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Archive / Restore Buttons */}
+          {hasActiveSelected && (
+            <button
+              type="button"
+              onClick={() => handleBulkArchive(true)}
+              title={t("Archive selected projects", "Archivovať vybrané projekty", "Kiválasztott projektek archiválása")}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-amber-900/40 text-amber-300 hover:text-amber-100 text-xs font-black transition-colors border border-slate-700/50 hover:border-amber-700/50 cursor-pointer"
+            >
+              <Archive className="h-3.5 w-3.5 text-amber-400" />
+              <span>{t("Archive", "Archivovať", "Archiválás")}</span>
+            </button>
+          )}
+          {hasArchivedSelected && (
+            <button
+              type="button"
+              onClick={() => handleBulkArchive(false)}
+              title={t("Restore selected projects", "Obnoviť vybrané projekty", "Kiválasztott projektek visszaállítása")}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-emerald-900/40 text-emerald-300 hover:text-emerald-100 text-xs font-black transition-colors border border-slate-700/50 hover:border-emerald-700/50 cursor-pointer"
+            >
+              <ArchiveRestore className="h-3.5 w-3.5 text-emerald-400" />
+              <span>{t("Restore", "Obnoviť", "Visszaállítás")}</span>
+            </button>
+          )}
+        </div>
+      </div>,
+      document.body
+    );
+  };
+
 
   /* Drag a row or a card onto another to put it there. The structure is the
      user's own view preference, like the sort, so anyone who can see the list
@@ -898,7 +1442,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     <div className="relative select-none" ref={createDropdownRef}>
       <button
         onClick={() => setIsCreateDropdownOpen(!isCreateDropdownOpen)}
-        className="flex items-center gap-1.5 px-5 py-2.5 rounded-2xl bg-indigo-600 text-white font-black text-xs uppercase tracking-wider hover:bg-indigo-700 shadow-md shadow-indigo-600/10 cursor-pointer"
+        className="flex items-center gap-1.5 px-5 py-2.5 rounded-2xl bg-purple-600 text-white font-black text-xs uppercase tracking-wider hover:bg-purple-700 shadow-md shadow-purple-600/20 cursor-pointer"
       >
         <Plus className="h-4.5 w-4.5" />
         <span>{t("New Project", "Nový projekt", "Új projekt")}</span>
@@ -919,7 +1463,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               <button
                 key={type.id}
                 onClick={() => handleStartCreateProject(type)}
-                className="w-full text-left px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-indigo-50 hover:text-indigo-600 transition-colors flex items-center gap-2 cursor-pointer"
+                className="w-full text-left px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-purple-50 hover:text-purple-600 transition-colors flex items-center gap-2 cursor-pointer"
               >
                 <span className="h-2 w-2 rounded-full" style={{ backgroundColor: type.color }} />
                 <span>{type.name}</span>
@@ -931,7 +1475,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               another type without hunting through the settings tab. */}
           <button
             onClick={handleStartCreateProjectType}
-            className="w-full text-left px-4 py-2 mt-1.5 border-t border-slate-100 pt-2.5 text-xs font-bold text-indigo-600 hover:bg-indigo-50 transition-colors flex items-center gap-2 cursor-pointer"
+            className="w-full text-left px-4 py-2 mt-1.5 border-t border-slate-100 pt-2.5 text-xs font-bold text-purple-600 hover:bg-purple-50 transition-colors flex items-center gap-2 cursor-pointer"
           >
             <Plus className="h-3.5 w-3.5 shrink-0" />
             <span>{t("New project type", "Nový typ projektu", "Új projekt típus")}</span>
@@ -947,6 +1491,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         project={editingProject}
         projectType={editingProjectType}
         leads={leads}
+        setLeads={setLeads}
         users={users}
         userLanguage={userLanguage}
         financialRecords={financialRecords}
@@ -965,6 +1510,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         taskAccess={taskAccess}
         currentUser={currentUser}
         mailConfigured={mailConfigured}
+        divisions={divisions}
+        divisionColors={divisionColors}
         onClose={() => {
           setEditingProject(null);
           setEditingProjectType(null);
@@ -1063,7 +1610,37 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           />
         </div>
       ) : (
-        <>
+        <div className="space-y-4">
+          {/* Active Projects Value Equation Statistics */}
+          <StatusValueEquationStats
+            items={activeProjectStatusItems}
+            currency={defaultCurrency}
+            language={userLanguage}
+            title={
+              userLanguage === "sk"
+                ? "Prehľad rozpočtov aktívnych fáz"
+                : userLanguage === "hu"
+                  ? "Aktív fázisok összegének összesítése"
+                  : "Active Projects Budget Breakdown"
+            }
+            subtitle={
+              userLanguage === "sk"
+                ? "Kliknutím na stav ho zahrniete alebo vylúčite zo súčtu"
+                : userLanguage === "hu"
+                  ? "Kattintson egy állapotra a végösszegből való kizáráshoz/hozzáadáshoz"
+                  : "Click any status pill to toggle its inclusion in the equation total"
+            }
+            unitLabel={
+              userLanguage === "sk"
+                ? "projektov"
+                : userLanguage === "hu"
+                  ? "projekt"
+                  : "projects"
+            }
+            storageKey="ccrm_projects_equation_stats"
+            themeColor="purple"
+          />
+
           {/* Summary strip — and the status filter itself. It used to show four
               hand-picked chips next to a dropdown carrying the real list, so
               two controls filtered the same thing and disagreed about what the
@@ -1073,36 +1650,113 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               "Overdue" is deliberately not among them: it is not a status — a
               project can be late in any of them — so it sits apart, as the red
               flag it is. */}
-          <div className="flex flex-wrap items-center gap-2 select-none">
-            {([
-              { key: "all", label: t("All", "Všetky", "Összes"), count: totalProjects, tone: STAT_CHIP_TONES.slate },
-              ...projectStatusOrder().map(value => ({
-                key: value as string,
-                label: projectStatusLabel(value, t),
-                count: statusCounts[value] || 0,
-                tone: STATUS_CHIP_TONES[value],
-              })),
-            ]).map(({ key, label, count, tone }) => {
-              const active = selectedStatusFilter === key;
+          {/* Summary strip — and the status filter itself. It used to show four
+              hand-picked chips next to a dropdown carrying the real list, so
+              two controls filtered the same thing and disagreed about what the
+              statuses were. The chips are now the whole list, straight from
+              PROJECT_STATUSES, and the dropdown below is hidden.
+
+              "Overdue" is deliberately not among them: it is not a status — a
+              project can be late in any of them — so it sits apart, as the red
+              flag it is. */}
+          <div className="w-full flex items-center gap-2 overflow-x-auto scrollbar-none flex-nowrap sm:flex-wrap select-none pb-1 sm:pb-0">
+            {/* All toggle button */}
+            {(() => {
+              const isAllVisible =
+                allProjectStatuses.length > 0 &&
+                allProjectStatuses.every((s) => resolvedVisibleStatuses.includes(s));
 
               return (
                 <button
-                  key={key}
+                  key="all"
                   type="button"
-                  aria-pressed={active}
+                  aria-pressed={isAllVisible}
                   onClick={() => {
-                    // A second click on the chip you are already filtered by
-                    // clears the filter, rather than being a no-op.
-                    setSelectedStatusFilter(prev => (prev === key ? "all" : key));
+                    if (isAllVisible) {
+                      setVisibleStatuses(defaultOpenStatuses);
+                    } else {
+                      setVisibleStatuses(allProjectStatuses);
+                    }
                   }}
-                  className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl border shadow-sm transition-all cursor-pointer active:scale-[0.98] ${
-                    active ? tone.active : `bg-white/95 ${tone.idle}`
+                  title={
+                    isAllVisible
+                      ? t(
+                          "Showing all statuses. Click to show active only.",
+                          "Zobrazené všetky stavy. Kliknutím zobrazíte iba aktívne.",
+                          "Minden állapot látható. Kattintson csak az aktívak megjelenítéséhez.",
+                        )
+                      : t(
+                          "Click to show all statuses (including closed).",
+                          "Kliknutím zobrazíte všetky stavy (vrátane uzavretých).",
+                          "Kattintson az összes állapot megjelenítéséhez (beleértve a lezártakat is).",
+                        )
+                  }
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl border shadow-sm transition-all cursor-pointer active:scale-[0.98] shrink-0 ${
+                    isAllVisible
+                      ? STAT_CHIP_TONES.slate.active
+                      : "bg-white/95 border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700"
                   }`}
                 >
-                  <span className={`font-heading font-bold text-base leading-none tabular-nums ${active ? "text-white" : tone.count}`}>
-                    {count}
+                  <span
+                    className={`font-heading font-bold text-base leading-none tabular-nums ${
+                      isAllVisible ? "text-white" : "text-slate-800"
+                    }`}
+                  >
+                    {totalProjects}
                   </span>
                   <span className="text-[10px] font-black uppercase tracking-widest leading-none">
+                    {t("All", "Všetky", "Összes")}
+                  </span>
+                </button>
+              );
+            })()}
+
+            {/* Individual status chips — toggleable like the leads view */}
+            {allProjectStatuses.map((value) => {
+              const active = resolvedVisibleStatuses.includes(value);
+              const tone = STATUS_CHIP_TONES[value];
+              const count = statusCounts[value] || 0;
+              const label = projectStatusLabel(value, t);
+
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  aria-pressed={active}
+                  onClick={(e) => {
+                    toggleStatusVisibility(value, e.altKey || e.metaKey);
+                  }}
+                  title={
+                    active
+                      ? t(
+                          "Active — click to hide (Alt+Click to solo)",
+                          "Aktívny — kliknutím skryjete (Alt+Klik pre sólo)",
+                          "Aktív — kattintson az elrejtéshez (Alt+Kattintás csak ennek)",
+                        )
+                      : t(
+                          "Hidden — click to show (Alt+Click to solo)",
+                          "Skrytý — kliknutím zobrazíte (Alt+Klik pre sólo)",
+                          "Rejtett — kattintson a megjelenítéshez (Alt+Kattintás csak ennek)",
+                        )
+                  }
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl border shadow-sm transition-all cursor-pointer active:scale-[0.98] shrink-0 ${
+                    active
+                      ? tone.active
+                      : "bg-slate-100/60 border-slate-200 text-slate-400 opacity-60 hover:opacity-100 hover:border-slate-300 hover:text-slate-600 hover:bg-white/95"
+                  }`}
+                >
+                  <span
+                    className={`font-heading font-bold text-base leading-none tabular-nums ${
+                      active ? "text-white" : "text-slate-400"
+                    }`}
+                  >
+                    {count}
+                  </span>
+                  <span
+                    className={`text-[10px] font-black uppercase tracking-widest leading-none ${
+                      active ? "text-white" : "text-slate-400"
+                    }`}
+                  >
                     {label}
                   </span>
                 </button>
@@ -1111,7 +1765,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
             {/* The red flag, on its own side of a divider: late projects, and
                 how many of them still owe an explanation. */}
-            <span className="h-6 w-px bg-slate-200 mx-0.5 hidden sm:block" />
+            <span className="h-6 w-px bg-slate-200 mx-0.5 hidden sm:block shrink-0" />
             <button
               type="button"
               aria-pressed={overdueOnly}
@@ -1121,7 +1775,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 "Projekty po termíne",
                 "Határidőn túli projektek",
               )}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl border shadow-sm transition-all cursor-pointer active:scale-[0.98] ${
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl border shadow-sm transition-all cursor-pointer active:scale-[0.98] shrink-0 ${
                 overdueOnly ? STAT_CHIP_TONES.rose.active : `bg-white/95 ${STAT_CHIP_TONES.rose.idle}`
               }`}
             >
@@ -1149,84 +1803,167 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             </button>
           </div>
 
-          {/* One filter bar, one row. The three dropdowns used to be full-width
-              blocks stacked under the search box — a "bar" three rows tall —
-              because CustomSelect's trigger is w-100%; each now sits in a fixed
-              track of its own. The view switcher is parked on the right, away
-              from the filters it is not one of. */}
-          <div className="glass-panel relative z-20 flex flex-wrap items-center gap-2 sm:gap-2.5 p-2 sm:p-2.5 rounded-3xl border border-white/60 bg-white/95 shadow-glass">
-            {/* Search */}
-            <div className="relative flex-1 min-w-[10rem] sm:max-w-xs">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-              <input
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                placeholder={t("Search projects...", "Vyhľadať projekty...", "Projekt keresése...")}
-                className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-xs font-semibold text-slate-800 bg-white"
-              />
+          {/* One filter bar, one row. On mobile, search and switcher are on top, and dropdown filters are side scrollable. */}
+          <div className="glass-panel relative z-20 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-2.5 p-2 sm:p-2.5 rounded-3xl border border-white/60 bg-white/95 shadow-glass">
+            {/* Search + Action Menus Row on Mobile / Inline on Desktop */}
+            <div className="flex items-center gap-2 w-full sm:w-auto sm:flex-1 sm:max-w-xs">
+              {/* Search */}
+              <div className="relative flex-1 min-w-0">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                <input
+                  value={searchQuery}
+                  onChange={e => setSearchQuery(e.target.value)}
+                  placeholder={t("Search projects...", "Vyhľadať projekty...", "Projekt keresése...")}
+                  className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-xs font-semibold text-slate-800 bg-white"
+                />
+              </div>
+
+              {/* Mobile Only: project list view menu & view switcher inline with search */}
+              <div className="flex sm:hidden items-center gap-1.5 shrink-0">
+                <ProjectListViewMenu
+                  t={t}
+                  sort={effectiveSort}
+                  sortOptions={sortOptions}
+                  onSortChange={setSort}
+                  sortNote={isStructure
+                    ? t("The structure is always in its own order. Drag rows to rearrange it.", "Štruktúra má vždy vlastné poradie. Zmeníte ho potiahnutím riadkov.", "A struktúra mindig a saját sorrendjében van. Sorok húzásával rendezheti át.")
+                    : undefined}
+                  columns={allColumns}
+                  onColumnsChange={saveColumns}
+                  columnLabel={columnLabel}
+                  canEditColumns={canEditColumns}
+                  columnsScope={layoutType
+                    ? (settingsAccess.edit
+                      ? t(`Columns of the "${layoutType.name}" type — the same for everyone.`, `Stĺpce typu „${layoutType.name}“ — rovnaké pre všetkých.`, `A(z) „${layoutType.name}” típus oszlopai — mindenkinek ugyanazok.`)
+                      : t(`Columns of the "${layoutType.name}" type. Only someone who can edit project types can change them.`, `Stĺpce typu „${layoutType.name}“. Zmeniť ich môže len ten, kto smie upravovať typy projektov.`, `A(z) „${layoutType.name}” típus oszlopai. Csak projekt típusokat szerkeszteni jogosult felhasználó módosíthatja őket.`))
+                    : t("All types: built-in columns only. Filter the list by one type to show its own attributes as columns.", "Všetky typy: len vstavané stĺpce. Vyfiltrujte zoznam podľa typu a zobrazíte aj jeho atribúty.", "Minden típus: csak beépített oszlopok. Szűrjön egy típusra, hogy az attribútumai is oszlopként megjelenjenek.")}
+                  onReset={() => {
+                    setSort({ key: "default", direction: "asc" });
+                    if (canEditColumns) saveColumns(null);
+                  }}
+                />
+
+                <div className="flex items-center gap-0.5 p-1 rounded-xl bg-slate-100 border border-slate-200 select-none shrink-0">
+                  {([
+                    { mode: "structure" as const, Icon: ListTree, label: t("Structure view", "Zobrazenie štruktúry", "Struktúra nézet") },
+                    { mode: "list" as const, Icon: Rows3, label: t("List view", "Zobrazenie zoznamu", "Lista nézet") },
+                    { mode: "grid" as const, Icon: LayoutGrid, label: t("Grid view", "Zobrazenie kariet", "Kártyás nézet") },
+                  ]).map(({ mode, Icon, label }) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => setViewMode(mode)}
+                      title={label}
+                      aria-label={label}
+                      aria-pressed={viewMode === mode}
+                      className={`p-1.5 rounded-lg transition-all cursor-pointer ${
+                        viewMode === mode
+                          ? "bg-white text-indigo-600 shadow-sm"
+                          : "text-slate-400 hover:text-slate-600"
+                      }`}
+                    >
+                      <Icon className="h-4 w-4" />
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
 
-            {/* Status — hidden. The chips above are the status filter now;
-                this is kept wired to the same state so it can be brought back
-                by flipping SHOW_STATUS_DROPDOWN. */}
-            {SHOW_STATUS_DROPDOWN && (
-            <div className="w-full sm:w-auto sm:min-w-[130px] flex-1 sm:flex-initial shrink-0">
-              <CustomSelect
-                className="h-10"
-                value={selectedStatusFilter}
-                onChange={(v) => setSelectedStatusFilter(v)}
-                options={[
-                  { value: "all", label: t("All Statuses", "Všetky stavy", "Minden állapot") },
-                  ...projectStatusOptions(t),
-                ]}
-              />
-            </div>
-            )}
+            {/* Filter Dropdowns — side scrollable on mobile (< sm), inline flex on desktop (sm:) */}
+            <div className="w-full sm:w-auto flex items-center gap-2 overflow-x-auto scrollbar-none flex-nowrap sm:flex-wrap pb-0.5 sm:pb-0">
+              {/* Status — hidden by default */}
+              {SHOW_STATUS_DROPDOWN && (
+                <div className="w-[130px] shrink-0">
+                  <CustomSelect
+                    className="h-10"
+                    value={resolvedVisibleStatuses.length === 1 ? resolvedVisibleStatuses[0] : "all"}
+                    onChange={(v) => {
+                      if (v === "all") {
+                        setVisibleStatuses(allProjectStatuses);
+                      } else {
+                        setVisibleStatuses([v as ProjectStatus]);
+                      }
+                    }}
+                    options={[
+                      { value: "all", label: t("All Statuses", "Všetky stavy", "Minden állapot") },
+                      ...projectStatusOptions(t),
+                    ]}
+                  />
+                </div>
+              )}
 
-            {/* Type */}
-            <div className="w-full sm:w-auto sm:min-w-[130px] flex-1 sm:flex-initial shrink-0">
-              <CustomSelect
-                className="h-10"
-                value={selectedTypeFilter}
-                onChange={(v) => setSelectedTypeFilter(v)}
-                options={[
-                  { value: "all", label: t("All Types", "Všetky typy", "Minden típus") },
-                  ...projectTypes.map(pt => ({ value: pt.id, label: pt.name })),
-                ]}
-              />
+              {/* Type */}
+              <div className="w-[130px] shrink-0">
+                <CustomSelect
+                  className="h-10"
+                  value={selectedTypeFilter}
+                  onChange={(v) => setSelectedTypeFilter(v)}
+                  options={[
+                    { value: "all", label: t("All Types", "Všetky typy", "Minden típus") },
+                    ...projectTypes.map(pt => ({ value: pt.id, label: pt.name })),
+                  ]}
+                />
+              </div>
+
+              {/* Division */}
+              <div className="w-[140px] shrink-0">
+                <CustomSelect
+                  className="h-10"
+                  icon={<Icons.Building2 className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
+                  value={selectedDivisionFilter}
+                  onChange={(v) => setSelectedDivisionFilter(v)}
+                  options={[
+                    { value: "all", label: getTranslation(userLanguage, "filters.all_divisions") },
+                    { value: "none", label: getTranslation(userLanguage, "filters.no_division") },
+                    ...divisions.map(d => ({ value: d.toLowerCase(), label: d })),
+                  ]}
+                />
+              </div>
+
+              {/* Manager */}
+              <div className="w-[145px] shrink-0">
+                <CustomSelect
+                  className="h-10"
+                  icon={<Users className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
+                  value={selectedManagerFilter}
+                  onChange={(v) => setSelectedManagerFilter(v)}
+                  options={[
+                    { value: "all", label: t("All managers", "Všetci manažéri", "Minden menedzser") },
+                    ...managerOptions.map(name => ({ value: name, label: name })),
+                    { value: UNASSIGNED_MANAGER, label: t("Unassigned", "Bez manažéra", "Nincs menedzser") },
+                  ]}
+                />
+              </div>
+
+              {/* Star priority */}
+              <div className="w-[135px] shrink-0">
+                <CustomSelect
+                  className="h-10"
+                  icon={<Star className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
+                  value={selectedRatingFilter}
+                  onChange={(v) => setSelectedRatingFilter(v)}
+                  options={ratingFilterOptions(t)}
+                />
+              </div>
+
+              {/* Archive Filter */}
+              <div className="w-[140px] shrink-0">
+                <CustomSelect
+                  className="h-10"
+                  icon={<Archive className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
+                  value={selectedArchiveFilter}
+                  onChange={(v) => setSelectedArchiveFilter(v as any)}
+                  options={[
+                    { value: "active", label: t("Active only", "Len aktívne", "Csak aktívak") },
+                    { value: "archived", label: t("Archived only", "Len archív", "Csak archívum") },
+                    { value: "all", label: t("All projects", "Všetky projekty", "Összes projekt") },
+                  ]}
+                />
+              </div>
             </div>
 
-            {/* Manager. "Who is on this?" was the one question the bar could not
-                answer — the column was there to read but not to filter by. */}
-            <div className="w-full sm:w-auto sm:min-w-[145px] flex-1 sm:flex-initial shrink-0">
-              <CustomSelect
-                className="h-10"
-                icon={<Users className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
-                value={selectedManagerFilter}
-                onChange={(v) => setSelectedManagerFilter(v)}
-                options={[
-                  { value: "all", label: t("All managers", "Všetci manažéri", "Minden menedzser") },
-                  ...managerOptions.map(name => ({ value: name, label: name })),
-                  { value: UNASSIGNED_MANAGER, label: t("Unassigned", "Bez manažéra", "Nincs menedzser") },
-                ]}
-              />
-            </div>
-
-            {/* Star priority. The same dropdown, and the same meanings, as the
-                one over the leads list — both read utils/rating.ts. */}
-            <div className="w-full sm:w-auto sm:min-w-[135px] flex-1 sm:flex-initial shrink-0">
-              <CustomSelect
-                className="h-10"
-                icon={<Star className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
-                value={selectedRatingFilter}
-                onChange={(v) => setSelectedRatingFilter(v)}
-                options={ratingFilterOptions(t)}
-              />
-            </div>
-
-            {/* Order and columns — the only way to sort the cards; the table
-                headers write the same sort preference. */}
-            <div className="sm:ml-auto shrink-0 flex items-center gap-2">
+            {/* Order and columns — Desktop only (sm:flex) */}
+            <div className="hidden sm:flex sm:ml-auto shrink-0 items-center gap-2">
               <ProjectListViewMenu
                 t={t}
                 sort={effectiveSort}
@@ -1297,7 +2034,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     <button
                       type="button"
                       onClick={handleStartCreateProjectType}
-                      className="inline-flex items-center gap-1.5 mt-4 px-5 py-2.5 rounded-2xl bg-indigo-600 text-white font-black text-xs uppercase tracking-wider hover:bg-indigo-700 shadow-md shadow-indigo-600/10 cursor-pointer"
+                      className="inline-flex items-center gap-1.5 mt-4 px-5 py-2.5 rounded-2xl bg-purple-600 text-white font-black text-xs uppercase tracking-wider hover:bg-purple-700 shadow-md shadow-purple-600/20 cursor-pointer"
                     >
                       <Plus className="h-4.5 w-4.5" />
                       <span>{t("New project type", "Nový typ projektu", "Új projekt típus")}</span>
@@ -1311,13 +2048,29 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           ) : viewMode === "list" || isStructure ? (
             <div ref={resultsRef} className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass mt-6 overflow-hidden">
               <div className="overflow-x-auto scrollbar-thin">
-                <table className="w-full text-left border-collapse min-w-[840px]">
+                <table className="w-full text-left border-collapse min-w-0 lg:min-w-[840px]">
                   {/* The head is drawn from the layout the project type set —
                       built-in columns and its own attributes alike — so what a
                       column is, and whether it is here at all, is decided in one
                       place. See utils/projectColumns.ts. */}
-                  <thead>
+                  <thead className="hidden lg:table-header-group">
                     <tr className="border-b border-slate-200 bg-slate-50/70">
+                      <th className="px-3 py-3 w-10 text-center">
+                        <button
+                          type="button"
+                          onClick={handleSelectAllVisible}
+                          className="p-1 text-slate-400 hover:text-indigo-600 rounded transition-colors cursor-pointer inline-flex items-center justify-center"
+                          title={areAllVisibleSelected ? t("Deselect all", "Zrušiť výber", "Kijelölés törlése") : t("Select all", "Vybrať všetko", "Összes kijelölése")}
+                        >
+                          {areAllVisibleSelected ? (
+                            <CheckSquare className="h-4 w-4 text-indigo-600" />
+                          ) : isPartiallySelected ? (
+                            <MinusSquare className="h-4 w-4 text-indigo-600" />
+                          ) : (
+                            <Square className="h-4 w-4 text-slate-400" />
+                          )}
+                        </button>
+                      </th>
                       {activeColumns.map(col => {
                         const key = col.key as ProjectSortKey;
                         // Click to sort; again to flip; a third time returns to the default order.
@@ -1370,6 +2123,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                       const progress = calculateProgress(p);
                       const dl = evaluateProjectDeadline(p, pType, today);
                       const drop = projectDrag.dropAt(p.id);
+                      const financials = getProjectFinancials(p, pType, lead);
+                      const isSelected = selectedProjectIds.has(p.id);
 
                       return (
                         <tr
@@ -1380,7 +2135,9 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                             setEditingProjectType(pType);
                             setEditingProject(p);
                           }}
-                          className={`border-b border-slate-100 last:border-0 hover:bg-indigo-50/40 transition-[background-color,opacity] duration-150 cursor-pointer group ${
+                          className={`border-b border-slate-200/70 lg:border-slate-100 last:border-0 hover:bg-indigo-50/40 transition-[background-color,opacity] duration-150 cursor-pointer group block lg:table-row ${
+                            isSelected ? "bg-indigo-50/70" : ""
+                          } ${
                             projectDrag.draggedId === p.id ? "opacity-40" : ""
                           } ${
                             // A table row cannot hold a positioned marker, so the drop line is an inset edge on its cells.
@@ -1388,8 +2145,31 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                               : drop === "after" ? "[&>td]:shadow-[inset_0_-2px_0_0_var(--color-indigo-500)]" : ""
                           }`}
                         >
+                          {/* ============================================================ */}
+                          {/* --- DESKTOP TABLE CELLS (lg:table-cell) --- */}
+                          {/* ============================================================ */}
+                          <td
+                            className="hidden lg:table-cell px-3 py-3 w-10 text-center"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggleSelectProject(p.id);
+                            }}
+                          >
+                            <button
+                              type="button"
+                              className="p-1 text-slate-400 hover:text-indigo-600 rounded transition-colors cursor-pointer inline-flex items-center justify-center"
+                              title={isSelected ? t("Deselect", "Odznačiť", "Kijelölés megszüntetése") : t("Select", "Označiť", "Kijelölés")}
+                            >
+                              {isSelected ? (
+                                <CheckSquare className="h-4 w-4 text-indigo-600" />
+                              ) : (
+                                <Square className="h-4 w-4 text-slate-300 group-hover:text-slate-400" />
+                              )}
+                            </button>
+                          </td>
+
                           {activeColumns.map((col, colIndex) => (
-                            <td key={col.key} className={`px-4 py-3 ${colIndex === 0 ? "relative" : ""}`}>
+                            <td key={col.key} className={`hidden lg:table-cell px-4 py-3 ${colIndex === 0 ? "relative" : ""}`}>
                               {colIndex === 0 && isStructure ? (
                                 /* The structure's move handle sits in front of the
                                    first cell and is always shown, as in a CMS
@@ -1416,18 +2196,229 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                               )}
                             </td>
                           ))}
-                          <td className="px-4 py-3">
-                            {canDelete && (
-                              <button
-                                type="button"
-                                onClick={(e) => handleDeleteProject(p.id, e)}
-                                className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
-                                title={t("Delete Project", "Vymazať projekt", "Projekt törlése")}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </button>
-                            )}
+                          <td className="hidden lg:table-cell px-4 py-3">
+                            <div className="flex items-center gap-1 justify-end">
+                              {canEdit && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleArchiveProject(p.id, e)}
+                                  className="p-1.5 text-slate-300 hover:text-amber-500 hover:bg-amber-50 rounded-lg transition-all cursor-pointer"
+                                  title={p.archived ? t("Restore Project", "Obnoviť projekt", "Projekt visszaállítása") : t("Archive Project", "Archivovať projekt", "Projekt archiválása")}
+                                >
+                                  {p.archived ? <ArchiveRestore className="h-4 w-4" /> : <Archive className="h-4 w-4" />}
+                                </button>
+                              )}
+                              {canDelete && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => handleDeleteProject(p.id, e)}
+                                  className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all cursor-pointer"
+                                  title={t("Delete Project", "Vymazať projekt", "Projekt törlése")}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </button>
+                              )}
+                            </div>
                           </td>
+
+                          {/* ============================================================ */}
+                          {/* --- MOBILE DEDICATED LIST VIEW (< lg) --- */}
+                          {/* ============================================================ */}
+                          <td
+                            className="block lg:hidden p-0 border-none bg-transparent w-full"
+                          >
+                            <div
+                              className="py-3 px-3.5 sm:px-4 border-b border-slate-200/70 hover:bg-slate-500/5 transition-colors cursor-pointer space-y-1.5"
+                              style={{
+                                borderLeft: `3px solid ${pType.color || "#6366f1"}`,
+                              }}
+                            >
+                              {/* TOP ROW: Checkbox + Status badge + Deadlines / Delay (Left) | Quick Actions (Right) */}
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleToggleSelectProject(p.id);
+                                    }}
+                                    className="p-1 -ml-1 text-slate-400 hover:text-indigo-600 rounded transition-colors cursor-pointer inline-flex items-center justify-center shrink-0"
+                                    title={isSelected ? t("Deselect", "Odznačiť", "Kijelölés megszüntetése") : t("Select", "Označiť", "Kijelölés")}
+                                  >
+                                    {isSelected ? (
+                                      <CheckSquare className="h-4 w-4 text-indigo-600" />
+                                    ) : (
+                                      <Square className="h-4 w-4 text-slate-400" />
+                                    )}
+                                  </button>
+                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${projectStatusBadgeClass(p.status)}`}>
+                                    {projectStatusLabel(p.status, t)}
+                                  </span>
+                                  {dl && (
+                                    <div className="shrink-0 flex items-center gap-1">
+                                      {renderDeadlineBadge(dl)}
+                                      {renderDelayFlag(p, dl)}
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Right side: Quick Action Buttons */}
+                                <div
+                                  className="flex items-center gap-1 shrink-0"
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setEditingProjectType(pType);
+                                      setEditingProject(p);
+                                    }}
+                                    className="h-6 w-6 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-slate-200/60 flex items-center justify-center transition-colors cursor-pointer"
+                                    title={t("Edit project", "Upraviť projekt", "Projekt szerkesztése")}
+                                  >
+                                    <Edit3 className="h-3.5 w-3.5" />
+                                  </button>
+                                  {canEdit && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => handleArchiveProject(p.id, e)}
+                                      className="h-6 w-6 rounded-md text-slate-400 hover:text-amber-500 hover:bg-amber-50 flex items-center justify-center transition-colors cursor-pointer"
+                                      title={p.archived ? t("Restore Project", "Obnoviť projekt", "Projekt visszaállítása") : t("Archive Project", "Archivovať projekt", "Projekt archiválása")}
+                                    >
+                                      {p.archived ? <ArchiveRestore className="h-3.5 w-3.5" /> : <Archive className="h-3.5 w-3.5" />}
+                                    </button>
+                                  )}
+                                  {canDelete && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => handleDeleteProject(p.id, e)}
+                                      className="h-6 w-6 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center transition-colors cursor-pointer"
+                                      title={t("Delete Project", "Vymazať projekt", "Projekt törlése")}
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* FULL-WIDTH NAME ROW: Name (Its Own Line) + Rating */}
+                              <div className="flex items-center gap-2 min-w-0 py-0.5">
+                                <span className="font-bold text-slate-900 text-sm sm:text-base leading-snug break-words">
+                                  {title}
+                                </span>
+                                {ratingValue(p.rating) > 0 && (
+                                  <div
+                                    className="shrink-0 inline-flex items-center gap-0.5"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200/70 shadow-2xs">
+                                      <Star className="h-2.5 w-2.5 fill-amber-400 text-amber-500" />
+                                      <span>{ratingValue(p.rating)}</span>
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* METADATA ROW: Value / Remaining Invoicable, Type, Client, Manager, Division */}
+                              <div className="flex flex-wrap items-center gap-1.5 pt-0.5 text-xs">
+                                {/* Value / Remaining Invoicable Badge */}
+                                {financials.hasValue && (
+                                  <span
+                                    className="font-heading font-black text-xs text-blue-700 bg-blue-50/90 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800/60 px-2 py-0.5 rounded-md border border-blue-200/70 whitespace-nowrap shadow-2xs shrink-0"
+                                    title={financials.invoiced > 0
+                                      ? t(
+                                          `Remaining to invoice: ${formatMoney(financials.invoicable, financials.currency, userLanguage)} (Total: ${formatMoney(financials.totalBudget, financials.currency, userLanguage)}, Invoiced: ${formatMoney(financials.invoiced, financials.currency, userLanguage)})`,
+                                          `Na vyfakturovanie: ${formatMoney(financials.invoicable, financials.currency, userLanguage)} (Spolu: ${formatMoney(financials.totalBudget, financials.currency, userLanguage)}, Vyfakturované: ${formatMoney(financials.invoiced, financials.currency, userLanguage)})`,
+                                          `Számlázható: ${formatMoney(financials.invoicable, financials.currency, userLanguage)} (Összesen: ${formatMoney(financials.totalBudget, financials.currency, userLanguage)}, Számlázva: ${formatMoney(financials.invoiced, financials.currency, userLanguage)})`
+                                        )
+                                      : t(
+                                          `Project value: ${formatMoney(financials.totalBudget, financials.currency, userLanguage)}`,
+                                          `Hodnota projektu: ${formatMoney(financials.totalBudget, financials.currency, userLanguage)}`,
+                                          `Projekt értéke: ${formatMoney(financials.totalBudget, financials.currency, userLanguage)}`
+                                        )
+                                    }
+                                  >
+                                    {formatMoney(financials.invoicable > 0 ? financials.invoicable : financials.totalBudget, financials.currency, userLanguage)}
+                                    {financials.invoiced > 0 && financials.invoicable > 0 && (
+                                      <span className="text-[9px] font-bold text-blue-500/80 ml-1">
+                                        {t("rem.", "zost.", "fennm.")}
+                                      </span>
+                                    )}
+                                  </span>
+                                )}
+
+                                {/* Project Type Badge */}
+                                <span
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold shadow-2xs shrink-0"
+                                  style={{ backgroundColor: pType.color, color: readableOn(pType.color) }}
+                                >
+                                  {renderIcon(pType.icon, "h-3 w-3")}
+                                  <span>{pType.name}</span>
+                                </span>
+
+                                {/* Client Name */}
+                                {lead && lead.name !== title && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200/80 shrink-0">
+                                    <Briefcase className="h-3 w-3 text-slate-400 shrink-0" />
+                                    <span className="truncate max-w-[140px]">{lead.name}</span>
+                                  </span>
+                                )}
+                                {!lead && (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium text-slate-400 bg-slate-50 border border-slate-200/50 shrink-0">
+                                    {t("Unassigned", "Nepriradený", "Nincs")}
+                                  </span>
+                                )}
+
+                                {/* Managers */}
+                                {p.managers && p.managers.length > 0 ? (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-slate-200 text-[10px] font-bold text-slate-700 bg-slate-50 shrink-0">
+                                    <Users className="h-3 w-3 text-slate-400 shrink-0" />
+                                    <span className="truncate max-w-[140px]">{p.managers.join(", ")}</span>
+                                  </span>
+                                ) : (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-rose-200 text-[10px] font-semibold text-rose-600 bg-rose-50 shrink-0">
+                                    <User className="h-3 w-3 shrink-0" />
+                                    <span>{t("No manager", "Bez manažéra", "Nincs menedzser")}</span>
+                                  </span>
+                                )}
+
+                                {/* Division */}
+                                {p.division && (
+                                  <span
+                                    className="px-2 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-wider inline-flex items-center gap-1 shadow-2xs shrink-0"
+                                    style={{
+                                      backgroundColor: `${divisionColors[p.division] || "#3b82f6"}15`,
+                                      color: divisionColors[p.division] || "#3b82f6",
+                                      borderColor: `${divisionColors[p.division] || "#3b82f6"}30`,
+                                    }}
+                                  >
+                                    <Icons.Building2 className="h-2.5 w-2.5 shrink-0" />
+                                    <span>{p.division}</span>
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Roadmap Progress Bar */}
+                              {pType.hasGantt && p.gantt && p.gantt.length > 0 && (
+                                <div className="pt-1 select-none space-y-1">
+                                  <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase">
+                                    <span>{t("Progress", "Postup", "Haladás")}</span>
+                                    <span className="text-slate-700 font-bold">{progress}%</span>
+                                  </div>
+                                  <div className="h-1.5 rounded-full bg-slate-100 relative overflow-hidden border border-slate-200/50">
+                                    <div
+                                      className="h-full rounded-full transition-all duration-300"
+                                      style={{
+                                        width: `${progress}%`,
+                                        backgroundColor: pType.color,
+                                      }}
+                                    />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </td>
+
                         </tr>
                       );
                     })}
@@ -1449,6 +2440,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 const progress = calculateProgress(p);
                 const dl = evaluateProjectDeadline(p, pType, today);
                 const drop = projectDrag.dropAt(p.id);
+                const financials = getProjectFinancials(p, pType, lead);
+                const isSelected = selectedProjectIds.has(p.id);
 
                 return (
                   <div
@@ -1460,18 +2453,63 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                       setEditingProjectType(pType);
                       setEditingProject(p);
                     }}
-                    className={`glass-panel p-5 rounded-3xl border border-white/60 bg-white/95 shadow-glass hover:shadow-lg transition-all duration-300 cursor-pointer flex flex-col text-left group relative ${
+                    className={`glass-panel p-5 rounded-3xl border transition-all duration-300 cursor-pointer flex flex-col text-left group relative ${
+                      isSelected
+                        ? "border-indigo-400/80 bg-indigo-50/40 ring-2 ring-indigo-500/30 shadow-md"
+                        : "border-white/60 bg-white/95 shadow-glass hover:shadow-lg"
+                    } ${
                       projectDrag.draggedId === p.id ? "opacity-40" : ""
                     }`}
                   >
-                    {/* Project Type Badge */}
+                    {/* Project Type Badge + Value Badge */}
                     <div className="flex items-center justify-between mb-4">
-                      <div
-                        className="flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold shadow-sm"
-                        style={{ backgroundColor: pType.color, color: readableOn(pType.color) }}
-                      >
-                        {renderIcon(pType.icon, "h-3.5 w-3.5")}
-                        <span>{pType.name}</span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleToggleSelectProject(p.id);
+                          }}
+                          className="p-1 -ml-1 text-slate-400 hover:text-indigo-600 rounded transition-colors cursor-pointer inline-flex items-center justify-center shrink-0"
+                          title={isSelected ? t("Deselect", "Odznačiť", "Kijelölés megszüntetése") : t("Select", "Označiť", "Kijelölés")}
+                        >
+                          {isSelected ? (
+                            <CheckSquare className="h-4 w-4 text-indigo-600" />
+                          ) : (
+                            <Square className="h-4 w-4 text-slate-400 group-hover:text-slate-600" />
+                          )}
+                        </button>
+                        <div
+                          className="flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold shadow-sm"
+                          style={{ backgroundColor: pType.color, color: readableOn(pType.color) }}
+                        >
+                          {renderIcon(pType.icon, "h-3.5 w-3.5")}
+                          <span>{pType.name}</span>
+                        </div>
+                        {financials.hasValue && (
+                          <span
+                            className="font-heading font-black text-xs text-blue-700 bg-blue-50/90 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800/60 px-2 py-0.5 rounded-md border border-blue-200/70 whitespace-nowrap shadow-2xs shrink-0"
+                            title={financials.invoiced > 0
+                              ? t(
+                                  `Remaining to invoice: ${formatMoney(financials.invoicable, financials.currency, userLanguage)} (Total: ${formatMoney(financials.totalBudget, financials.currency, userLanguage)}, Invoiced: ${formatMoney(financials.invoiced, financials.currency, userLanguage)})`,
+                                  `Na vyfakturovanie: ${formatMoney(financials.invoicable, financials.currency, userLanguage)} (Spolu: ${formatMoney(financials.totalBudget, financials.currency, userLanguage)}, Vyfakturované: ${formatMoney(financials.invoiced, financials.currency, userLanguage)})`,
+                                  `Számlázható: ${formatMoney(financials.invoicable, financials.currency, userLanguage)} (Összesen: ${formatMoney(financials.totalBudget, financials.currency, userLanguage)}, Számlázva: ${formatMoney(financials.invoiced, financials.currency, userLanguage)})`
+                                )
+                              : t(
+                                  `Project value: ${formatMoney(financials.totalBudget, financials.currency, userLanguage)}`,
+                                  `Hodnota projektu: ${formatMoney(financials.totalBudget, financials.currency, userLanguage)}`,
+                                  `Projekt értéke: ${formatMoney(financials.totalBudget, financials.currency, userLanguage)}`
+                                )
+                            }
+                          >
+                            {formatMoney(financials.invoicable > 0 ? financials.invoicable : financials.totalBudget, financials.currency, userLanguage)}
+                            {financials.invoiced > 0 && financials.invoicable > 0 && (
+                              <span className="text-[9px] font-bold text-blue-500/80 ml-1">
+                                {t("rem.", "zost.", "fennm.")}
+                              </span>
+                            )}
+                          </span>
+                        )}
                       </div>
 
                       {/* Status badge */}
@@ -1516,6 +2554,23 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                       </div>
                     )}
 
+                    {/* Division */}
+                    {p.division && (
+                      <div className="flex items-center gap-1 text-[11px] font-bold mt-2">
+                        <span
+                          className="px-2 py-0.5 rounded-full border text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-sm"
+                          style={{
+                            backgroundColor: `${divisionColors[p.division] || "#3b82f6"}15`,
+                            color: divisionColors[p.division] || "#3b82f6",
+                            borderColor: `${divisionColors[p.division] || "#3b82f6"}30`,
+                          }}
+                        >
+                          <Icons.Building2 className="h-3 w-3 shrink-0" />
+                          <span>{p.division}</span>
+                        </span>
+                      </div>
+                    )}
+
                     <div className="flex-1 min-h-[20px]" />
 
                     {/* Deadline countdown */}
@@ -1543,6 +2598,18 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           />
                         </div>
                       </div>
+                    )}
+
+                    {/* Hover archive trigger */}
+                    {canEdit && (
+                      <button
+                        type="button"
+                        onClick={(e) => handleArchiveProject(p.id, e)}
+                        className="absolute right-12 top-14 opacity-0 group-hover:opacity-100 p-2 text-slate-400 hover:text-amber-500 hover:bg-amber-50 rounded-xl transition-all cursor-pointer z-10"
+                        title={p.archived ? t("Restore Project", "Obnoviť projekt", "Projekt visszaállítása") : t("Archive Project", "Archivovať projekt", "Projekt archiválása")}
+                      >
+                        {p.archived ? <ArchiveRestore className="h-4.5 w-4.5" /> : <Archive className="h-4.5 w-4.5" />}
+                      </button>
                     )}
 
                     {/* Hover delete trigger */}
@@ -1580,8 +2647,10 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             </div>
           )}
 
-        </>
+        </div>
       )}
+
+      {renderBulkActionToolbar()}
 
     </div>
   );

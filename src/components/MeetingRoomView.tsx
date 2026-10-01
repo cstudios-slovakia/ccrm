@@ -77,7 +77,7 @@ interface MeetingRoomViewProps {
   systemLanguage: "en" | "sk" | "hu";
   meetingNotes: MeetingNote[];
   setMeetingNotes: React.Dispatch<React.SetStateAction<MeetingNote[]>>;
-  initialView?: "list" | "new";
+  initialView?: "list" | "new" | "record";
   onClearInitialView?: () => void;
   integrationsConfig?: any;
   tasks: Task[];
@@ -110,7 +110,11 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
     if (!canEdit) return;
     setTasksRaw(updater);
   };
-  const [viewState, setViewState] = useState<"list" | "new" | "detail">(initialView === "new" && !canEdit ? "list" : initialView);
+  const [viewState, setViewState] = useState<"list" | "new" | "detail">(
+    (initialView === "new" || initialView === "record") && !canEdit
+      ? "list"
+      : (initialView === "record" ? "new" : initialView)
+  );
   const [selectedMeeting, setSelectedMeeting] = useState<MeetingNote | null>(null);
   
   // The app-wide "new lead / client" form, reached from the attach dropdowns.
@@ -296,6 +300,9 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
     try {
       const ctx = new AudioCtx();
+      if (ctx.state === "suspended") {
+        ctx.resume().catch(() => {});
+      }
       const src = ctx.createMediaStreamSource(stream);
       const ana = ctx.createAnalyser();
       ana.fftSize = 64;
@@ -329,24 +336,48 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         throw new Error(t("Microphone access is not supported by this browser.", "Tento prehliadač nepodporuje prístup k mikrofónu.", "Ez a böngésző nem támogatja a mikrofonhoz való hozzáférést."));
       }
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+
+      const audioConstraints: MediaStreamConstraints = {
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      };
+
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(audioConstraints);
+      } catch (err) {
+        console.warn("Retrying getUserMedia with basic audio:true fallback:", err);
+        stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      }
       setMicrophoneStream(stream);
 
       let mimeType = "audio/webm";
       if (typeof MediaRecorder !== "undefined") {
-        if (MediaRecorder.isTypeSupported("audio/webm")) {
+        if (MediaRecorder.isTypeSupported("audio/webm;codecs=opus")) {
+          mimeType = "audio/webm;codecs=opus";
+        } else if (MediaRecorder.isTypeSupported("audio/webm")) {
           mimeType = "audio/webm";
         } else if (MediaRecorder.isTypeSupported("audio/mp4")) {
           mimeType = "audio/mp4";
+        } else if (MediaRecorder.isTypeSupported("audio/ogg;codecs=opus")) {
+          mimeType = "audio/ogg;codecs=opus";
         } else if (MediaRecorder.isTypeSupported("audio/ogg")) {
           mimeType = "audio/ogg";
         } else if (MediaRecorder.isTypeSupported("audio/wav")) {
           mimeType = "audio/wav";
+        } else {
+          mimeType = "";
         }
       }
 
       const chunks: Blob[] = [];
-      const recorder = new MediaRecorder(stream, { mimeType });
+      const recorderOptions: MediaRecorderOptions = {
+        ...(mimeType ? { mimeType } : {}),
+      };
+      const recorder = new MediaRecorder(stream, recorderOptions);
       recorder.ondataavailable = (e) => {
         if (e.data && e.data.size > 0) {
           chunks.push(e.data);
@@ -408,7 +439,8 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
       setMediaRecorder(recorder);
       setRecordDuration(0);
-      recorder.start();
+      // Start in 100ms slices so audio chunks are buffered reliably on mobile/Android
+      recorder.start(100);
       setRecordingState("recording");
       startVisualizer(stream);
     } catch (err: any) {
@@ -434,14 +466,22 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
   const stopRecording = () => {
     if (mediaRecorder && mediaRecorder.state !== "inactive") {
-      mediaRecorder.stop();
+      try {
+        mediaRecorder.stop();
+      } catch (err) {
+        console.warn("Error stopping mediaRecorder:", err);
+      }
     }
     if (microphoneStream) {
-      microphoneStream.getTracks().forEach(track => track.stop());
+      try {
+        microphoneStream.getTracks().forEach(track => track.stop());
+      } catch (_) {}
       setMicrophoneStream(null);
     }
-    if (audioContext) {
-      audioContext.close().catch(() => {});
+    if (audioContext && audioContext.state !== "closed") {
+      try {
+        audioContext.close();
+      } catch (_) {}
       setAudioContext(null);
     }
     setRecordingState("stopped");
@@ -953,15 +993,23 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
 
   useEffect(() => {
     if (initialView && !window.location.hash.includes("/")) {
-      setViewState(initialView);
-      if (initialView === "list") {
+      if (initialView === "record") {
+        setViewState(canEdit ? "new" : "list");
         setSelectedMeeting(null);
+        if (canEdit) {
+          setRecordingState("idle");
+        }
+      } else {
+        setViewState(initialView === "new" && !canEdit ? "list" : initialView);
+        if (initialView === "list") {
+          setSelectedMeeting(null);
+        }
       }
       if (onClearInitialView) {
         onClearInitialView();
       }
     }
-  }, [initialView]);
+  }, [initialView, canEdit]);
 
   // Handle meeting detail select
   const handleSelectMeeting = (meeting: MeetingNote) => {

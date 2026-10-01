@@ -2,8 +2,9 @@ import React, { useState, useEffect, useMemo } from "react";
 import * as Icons from "lucide-react";
 import {
   Plus, Trash2, Upload, FileText, ArrowLeft, Mail, Phone,
-  Coins, TrendingUp, TrendingDown, DollarSign,
-  PieChart, X, Edit3, Wallet, Check, Paperclip, CircleCheck, CircleAlert
+  Coins, TrendingUp, TrendingDown, DollarSign, Receipt,
+  PieChart, X, Edit3, Wallet, Check, Paperclip, CircleCheck, CircleAlert,
+  Archive, ArchiveRestore
 } from "lucide-react";
 import type {
   Project, ProjectType, Lead, UserProfile,
@@ -14,7 +15,6 @@ import { getTranslation, type Language } from "../utils/translations";
 import { nowLocalStamp, formatTimestampLocalized, formatDateLocalized, todayLocal } from "../utils/localTime";
 import {
   CURRENCY_OPTIONS,
-  currencyForRegion,
   formatMoney,
   isMoneyValueEmpty,
   parseMoneyValue,
@@ -45,6 +45,7 @@ interface ProjectDetailsViewProps {
   project: Project | null;
   projectType: ProjectType | null;
   leads: Lead[];
+  setLeads?: (updater: Lead[] | ((prev: Lead[]) => Lead[])) => void;
   users: UserProfile[];
   userLanguage: Language;
   financialRecords?: FinancialRecord[];
@@ -98,6 +99,8 @@ interface ProjectDetailsViewProps {
   currentUser?: UserProfile;
   /** False when no outgoing mail server is set up; task e-mail reminders then warn. */
   mailConfigured?: boolean;
+  divisions?: string[];
+  divisionColors?: Record<string, string>;
 }
 
 /**
@@ -118,6 +121,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   project,
   projectType,
   leads,
+  setLeads,
   users,
   userLanguage,
   financialRecords = [],
@@ -138,7 +142,9 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   taskStateColors,
   taskAccess = FULL_TASK_ACCESS,
   currentUser,
-  mailConfigured
+  mailConfigured,
+  divisions = ["Cstudios", "Cstudios Budapest"],
+  divisionColors = {},
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
   // Removing something is a change, so the delete flag never outranks edit.
@@ -148,10 +154,10 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   // answer rather than inheriting canEdit/canDelete above.
   const canEditFinance = financeAccess.edit;
   const canDeleteFinance = financeAccess.edit && financeAccess.delete;
-  const money = (v: number) => formatMoney(v, currencyCode, userLanguage);
+  const money = (v: number) => formatMoney(v, currencyCode || "EUR", userLanguage);
   // What a money attribute starts on. Only the default: the currency is stored
   // with the value, so each record keeps whichever one it was actually filled in.
-  const defaultCurrency = currencyCode || currencyForRegion(userLanguage);
+  const defaultCurrency = currencyCode || "EUR";
 
   /**
    * The input pair behind a `money` attribute — amount on the left, its own
@@ -297,6 +303,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const [startDate, setStartDate] = useState("");
   const [finishedAt, setFinishedAt] = useState("");
   const [status, setStatus] = useState("active");
+  const [division, setDivision] = useState("");
   /* Star priority, 1-5, 0 while nobody has rated it. Like the status below it,
      a click saves on the spot. */
   const [rating, setRating] = useState(0);
@@ -416,6 +423,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     startDate: projectStartDate(p) || todayLocal(),
     finishedAt: p.finishedAt || "",
     status: p.status || "active",
+    division: p.division || "",
     rating: ratingValue(p.rating),
     leadId: p.leadId || "",
     clientId: p.clientId || "",
@@ -443,6 +451,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       startDate: startDate || null,
       finishedAt: finishedAt || null,
       status,
+      division: division || null,
       rating,
       leadId: associatedLeadId || null,
       clientId: associatedClientId || null,
@@ -520,6 +529,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     setStartDate(s.startDate);
     setFinishedAt(s.finishedAt);
     setStatus(s.status);
+    setDivision(s.division);
     setRating(s.rating);
     setAssociatedLeadId(s.leadId);
     setAssociatedClientId(s.clientId);
@@ -542,6 +552,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     startDate,
     finishedAt,
     status,
+    division,
     rating,
     leadId: associatedLeadId,
     clientId: associatedClientId,
@@ -664,6 +675,69 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     // Lives on the project, not in the view's state, so it is written directly.
     handleSave({ budget: value > 0 ? Math.round(value * 100) / 100 : null });
     setBudgetDraft(null);
+  };
+
+  const pairedLead = useMemo(() => leads.find((l) => l.id === associatedLeadId), [leads, associatedLeadId]);
+  const firstMoneyAttr = useMemo(() => (projectType?.attributes || []).find((a) => a.type === "money"), [projectType]);
+
+  const projectTotalValue = useMemo(() => {
+    if (firstMoneyAttr && dynamicData[firstMoneyAttr.id] !== undefined && dynamicData[firstMoneyAttr.id] !== null) {
+      const parsed = parseMoneyValue(dynamicData[firstMoneyAttr.id], defaultCurrency);
+      if (parsed.amount) return parsed.amount;
+    }
+    if (dynamicData._projectValue !== undefined && dynamicData._projectValue !== null && Number.isFinite(Number(dynamicData._projectValue)) && Number(dynamicData._projectValue) > 0) {
+      return Number(dynamicData._projectValue);
+    }
+    if (pairedLead?.value) {
+      return Number(pairedLead.value);
+    }
+    return 0;
+  }, [firstMoneyAttr, dynamicData, defaultCurrency, pairedLead]);
+
+  const invoicableAnalysis = useMemo(() => {
+    const total = projectTotalValue;
+    let totalInvoicedOrPlanned = 0;
+    projectInvoices.forEach((r) => {
+      totalInvoicedOrPlanned += (Number(r.amountReal) || Number(r.amountPlanned) || 0);
+    });
+    const remaining = Math.max(0, total - totalInvoicedOrPlanned);
+    const invoicedPct = total > 0 ? (totalInvoicedOrPlanned / total) * 100 : 0;
+    return {
+      total,
+      invoiced: totalInvoicedOrPlanned,
+      remaining,
+      invoicedPct: Math.min(100, invoicedPct),
+      isOverInvoiced: totalInvoicedOrPlanned > total && total > 0,
+    };
+  }, [projectTotalValue, projectInvoices]);
+
+  /* The project/contract value editor on the finance tab: null while closed, the typed amount while open. */
+  const [contractValueDraft, setContractValueDraft] = useState<string | null>(null);
+  useEffect(() => setContractValueDraft(null), [project?.id]);
+
+  const handleSaveContractValue = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canEdit || contractValueDraft === null) return;
+    const raw = contractValueDraft.replace(/\s/g, "").replace(",", ".");
+    const value = raw === "" ? 0 : Number(raw);
+    if (!Number.isFinite(value) || value < 0) return;
+    const rounded = Math.round(value * 100) / 100;
+
+    // 1. Update paired lead if linked
+    if (associatedLeadId && setLeads) {
+      setLeads((prevLeads: Lead[]) =>
+        prevLeads.map((l) => (l.id === associatedLeadId ? { ...l, value: rounded } : l))
+      );
+    }
+
+    // 2. Update dynamicData (and money custom attribute if present)
+    const nextDynamic: Record<string, any> = { ...dynamicData, _projectValue: rounded };
+    if (firstMoneyAttr) {
+      nextDynamic[firstMoneyAttr.id] = { amount: rounded, currency: defaultCurrency };
+    }
+    setDynamicData(nextDynamic);
+    handleSave({ data: nextDynamic });
+    setContractValueDraft(null);
   };
 
   const handleOpenProjectFinModal = (type: FinancialType, record?: FinancialRecord) => {
@@ -1352,7 +1426,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   };
 
   return (
-    <div className="w-full flex flex-col h-[calc(100vh-11rem)] animate-fade-in text-left">
+    <div className="w-full flex flex-col h-auto lg:h-[calc(100vh-11rem)] animate-fade-in text-left">
 
       {/* Header — the same shape the projects list opens with: a large
           heading with its icon, a caption under it, the actions on the right,
@@ -1424,6 +1498,26 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
         </div>
 
         <div className="flex items-center gap-2 self-start md:self-auto">
+          {/* Archive / Restore Button */}
+          {canEdit && !isNew && (
+            <button
+              type="button"
+              onClick={() => {
+                const nextArchived = !project.archived;
+                handleSave({ archived: nextArchived });
+                const msg = nextArchived
+                  ? t("Project archived.", "Projekt bol archivovaný.", "Projekt archiválva.")
+                  : t("Project restored.", "Projekt bol obnovený.", "Projekt visszaállítva.");
+                (window as any).showToast?.(msg);
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-amber-600 font-heading font-bold text-xs uppercase tracking-wider hover:bg-amber-50 hover:text-amber-800 transition-all active:scale-95 cursor-pointer"
+              title={project.archived ? t("Restore Project", "Obnoviť projekt", "Projekt visszaállítása") : t("Archive Project", "Archivovať projekt", "Projekt archiválása")}
+            >
+              {project.archived ? <ArchiveRestore className="h-4 w-4 shrink-0" /> : <Archive className="h-4 w-4 shrink-0" />}
+              <span className="hidden sm:inline">{project.archived ? t("Restore", "Obnoviť", "Visszaállítás") : t("Archive", "Archivovať", "Archiválás")}</span>
+            </button>
+          )}
+
           {/* Deleting a project that has never been saved would delete nothing,
               so the button only appears once the project exists. */}
           {canDelete && !isNew && onDelete && (
@@ -1480,13 +1574,13 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
       </div>
 
       {/* Workspace Body */}
-      <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-12 gap-6 pt-6 min-h-0">
+      <div className="flex-1 lg:overflow-hidden grid grid-cols-1 lg:grid-cols-12 gap-6 pt-6 min-h-0">
         
         {/* LEFT COLUMN: the project's own card, its custom attributes, then
             the paired client at the bottom. The project card is edited in
             place and every change saves itself; the attributes card keeps an
             Edit mode of its own. */}
-        <div className="lg:col-span-4 flex flex-col h-full min-h-0 overflow-y-auto gap-4 pr-1 scrollbar-thin text-left">
+        <div className="lg:col-span-4 flex flex-col h-auto lg:h-full min-h-0 lg:overflow-y-auto gap-4 lg:pr-1 scrollbar-thin text-left">
 
 
           {/* PROJECT CARD DETAILS */}
@@ -1525,6 +1619,46 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   icon: <span className={`h-2.5 w-2.5 rounded-full shrink-0 inline-block ${projectStatusDotClass(o.value)}`} />,
                 }))}
               />
+            </div>
+
+            {/* Division */}
+            <div>
+              <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
+                {getTranslation(userLanguage, "profile.division")}
+              </label>
+              {!canEdit ? (
+                division ? (
+                  <span
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-black uppercase tracking-wider shadow-sm"
+                    style={{
+                      backgroundColor: `${divisionColors[division] || "#3b82f6"}15`,
+                      color: divisionColors[division] || "#3b82f6",
+                      borderColor: `${divisionColors[division] || "#3b82f6"}30`,
+                    }}
+                  >
+                    <Icons.Building2 className="h-3.5 w-3.5 shrink-0" />
+                    {division}
+                  </span>
+                ) : (
+                  <span className="text-slate-300 italic font-semibold text-xs">
+                    {t("No division", "Bez divízie", "Divízió nélkül")}
+                  </span>
+                )
+              ) : (
+                <CustomSelect
+                  value={division}
+                  disabled={!canEdit}
+                  onChange={v => {
+                    if (!canEdit) return;
+                    setDivision(v);
+                  }}
+                  icon={<Icons.Building2 className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
+                  options={[
+                    { value: "", label: t("No division", "Bez divízie", "Divízió nélkül") },
+                    ...divisions.map(d => ({ value: d, label: d })),
+                  ]}
+                />
+              )}
             </div>
 
             {/* Star priority — the same 1-5 rating a lead carries, and the same
@@ -2365,7 +2499,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
         </div>
 
         {/* RIGHT COLUMN: Timeline & Gantt Tabs */}
-        <div className="lg:col-span-8 flex flex-col h-full overflow-hidden bg-white border border-slate-200 rounded-3xl p-5 shadow-sm text-left">
+        <div className="lg:col-span-8 flex flex-col h-auto lg:h-full lg:overflow-hidden bg-white border border-slate-200 rounded-3xl p-4 sm:p-5 shadow-sm text-left">
           {/* Tab Switched Header */}
           <div className="flex items-center justify-between pb-3 border-b border-slate-200 mb-4 shrink-0">
             {/* One shape for every tab: icon, label, optional badge. The row
@@ -2464,7 +2598,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
           {/* TAB CONTENT: Timeline */}
           {activeRightTab === "timeline" && projectType.hasTimeline && (
-            <div className="flex-1 overflow-hidden flex flex-col lg:flex-row gap-6">
+            <div className="flex-1 lg:overflow-hidden flex flex-col lg:flex-row gap-6">
               {/* Timeline Form — writes an event, so a read-only role gets the list alone. */}
               {canEdit && (
               <div className="lg:w-1/3 flex flex-col shrink-0 bg-slate-50 p-4 border border-slate-200 rounded-2xl h-fit">
@@ -2734,7 +2868,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
               )}
 
               {/* Timeline Events List */}
-              <div className="flex-1 overflow-y-auto space-y-3.5 pr-1 scrollbar-thin">
+              <div className="flex-1 lg:overflow-y-auto space-y-3.5 lg:pr-1 scrollbar-thin">
                 {timeline.length === 0 ? (
                   <div className="h-full min-h-[200px] flex items-center justify-center border-2 border-dashed border-slate-100 rounded-2xl p-6 text-slate-400 text-xs">
                     {t("No events logged for this project yet.", "Zatiaľ neboli zaznamenané žiadne udalosti.", "Még nincsenek események rögzítve.")}
@@ -2839,7 +2973,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
           {activeRightTab === "gantt" && projectType.hasGantt && (() => {
             const { weekdays, weekGroups, totalTimelineWidth } = getGanttTimelineData();
             return (
-              <div className="flex-1 overflow-hidden flex flex-col gap-4 text-xs font-semibold">
+              <div className="flex-1 lg:overflow-hidden flex flex-col gap-4 text-xs font-semibold">
                 
                 {/* Gantt Entry Form Inline — adds a row, so only for a role that may edit. */}
                 {canEdit && (
@@ -3276,7 +3410,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
           {/* TAB CONTENT: Files — the type's default files, then this project's own */}
           {activeRightTab === "files" && (
-            <div className="flex-1 overflow-y-auto space-y-5 scrollbar-thin pr-1 animate-in fade-in duration-150 text-left">
+            <div className="flex-1 lg:overflow-y-auto space-y-5 scrollbar-thin lg:pr-1 animate-in fade-in duration-150 text-left">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="flex flex-col min-w-0">
                   <span className="font-heading font-bold text-sm text-slate-800 flex items-center gap-1.5">
@@ -3365,100 +3499,196 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
 
           {/* TAB CONTENT: Finances & Revenue Analysis (CRITICAL REQUIREMENT #5, #6, #7) */}
           {activeRightTab === "finances" && (
-            <div className="flex-1 overflow-y-auto space-y-6 scrollbar-thin pr-1 animate-in fade-in duration-150 text-left">
-              {/* 0. Project Budget — the ceiling the direct costs are measured against */}
-              <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 min-w-0">
-                    <Wallet className="h-4 w-4 text-indigo-600 shrink-0" />
-                    <span className="text-xs font-bold text-slate-900 uppercase">
-                      {t("Project Budget", "Rozpočet projektu", "Projekt költségvetése")}
-                    </span>
-                    {budgetAnalysis && budgetDraft === null && (
-                      <span className="text-sm font-black text-slate-900">{money(budgetAnalysis.budget)}</span>
-                    )}
-                  </div>
+            <div className="flex-1 lg:overflow-y-auto space-y-6 scrollbar-thin lg:pr-1 animate-in fade-in duration-150 text-left">
+              {/* 0. Top Row: Project Value & Invoicable + Project Cost Budget */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* 0A. PROJECT VALUE & INVOICABLE */}
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Receipt className="h-4 w-4 text-blue-600 shrink-0" />
+                      <span className="text-xs font-bold text-slate-900 uppercase">
+                        {t("Project Value & Invoicable", "Hodnota projektu a fakturácia", "Projekt értéke és számlázható")}
+                      </span>
+                      {invoicableAnalysis.total > 0 && contractValueDraft === null && (
+                        <span className="text-sm font-black text-slate-900">{money(invoicableAnalysis.total)}</span>
+                      )}
+                    </div>
 
-                  {budgetDraft === null ? (
-                    <button
-                      type="button"
-                      onClick={() => setBudgetDraft(budgetAnalysis ? String(budgetAnalysis.budget) : "")}
-                      className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
-                    >
-                      {budgetAnalysis ? <Edit3 className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-                      {budgetAnalysis
-                        ? t("Edit Budget", "Upraviť rozpočet", "Költségvetés módosítása")
-                        : t("Set Budget", "Nastaviť rozpočet", "Költségvetés megadása")}
-                    </button>
-                  ) : (
-                    <form onSubmit={handleSaveBudget} className="flex items-center gap-1.5">
-                      <input
-                        autoFocus
-                        type="number"
-                        min="0"
-                        step="0.01"
-                        value={budgetDraft}
-                        onChange={(e) => setBudgetDraft(e.target.value)}
-                        onKeyDown={(e) => { if (e.key === "Escape") setBudgetDraft(null); }}
-                        placeholder="0.00"
-                        aria-label={t("Project Budget", "Rozpočet projektu", "Projekt költségvetése")}
-                        className="w-32 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold focus:outline-none focus:border-indigo-500 transition-colors"
-                      />
-                      <span className="text-[11px] font-bold text-slate-500">{currencyCode}</span>
-                      <button
-                        type="submit"
-                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
-                      >
-                        <Check className="h-3.5 w-3.5" />
-                        {t("Save", "Uložiť", "Mentés")}
-                      </button>
+                    {canEdit && (contractValueDraft === null ? (
                       <button
                         type="button"
-                        onClick={() => setBudgetDraft(null)}
-                        className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer transition-colors"
-                        aria-label={t("Cancel", "Zrušiť", "Mégse")}
+                        onClick={() => setContractValueDraft(invoicableAnalysis.total > 0 ? String(invoicableAnalysis.total) : "")}
+                        className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
                       >
-                        <X className="h-4 w-4" />
+                        {invoicableAnalysis.total > 0 ? <Edit3 className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                        {invoicableAnalysis.total > 0
+                          ? t("Edit Value", "Upraviť hodnotu", "Érték módosítása")
+                          : t("Set Value", "Nastaviť hodnotu", "Érték megadása")}
                       </button>
-                    </form>
+                    ) : (
+                      <form onSubmit={handleSaveContractValue} className="flex items-center gap-1.5">
+                        <input
+                          autoFocus
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={contractValueDraft}
+                          onChange={(e) => setContractValueDraft(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Escape") setContractValueDraft(null); }}
+                          placeholder="0.00"
+                          aria-label={t("Project Value", "Hodnota projektu", "Projekt értéke")}
+                          className="w-28 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold focus:outline-none focus:border-blue-500 transition-colors"
+                        />
+                        <span className="text-[11px] font-bold text-slate-500">{currencyCode || defaultCurrency}</span>
+                        <button
+                          type="submit"
+                          className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                          {t("Save", "Uložiť", "Mentés")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setContractValueDraft(null)}
+                          className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer transition-colors"
+                          aria-label={t("Cancel", "Zrušiť", "Mégse")}
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </form>
+                    ))}
+                  </div>
+
+                  {invoicableAnalysis.total <= 0 ? (
+                    <p className="text-[11px] text-slate-500">
+                      {t(
+                        "No project value set yet. Set one to track the total billable amount and remaining balance to invoice.",
+                        "Hodnota projektu zatiaľ nie je nastavená. Nastavte ju pre sledovanie celkovej fakturovateľnej sumy a zostávajúcej čiastky.",
+                        "Még nincs megadva a projekt értéke. Adja meg a teljes számlázható összeg és a hátralévő keret követéséhez.",
+                      )}
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <div className="relative w-full h-2 bg-slate-200/70 rounded-full overflow-hidden">
+                        <div
+                          className={`absolute inset-y-0 left-0 rounded-full transition-all duration-500 ${
+                            invoicableAnalysis.isOverInvoiced ? "bg-amber-500" : "bg-blue-500"
+                          }`}
+                          style={{ width: `${invoicableAnalysis.invoicedPct}%` }}
+                        />
+                      </div>
+                      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[11px] text-slate-500">
+                        <span>
+                          {t("Invoiced / Planned:", "Fakturované / Plán:", "Számlázva / Terv:")}{" "}
+                          <strong className="text-slate-700">{money(invoicableAnalysis.invoiced)}</strong> ({invoicableAnalysis.invoicedPct.toFixed(0)}%)
+                        </span>
+                        <span className={`font-bold ${invoicableAnalysis.isOverInvoiced ? "text-amber-600" : "text-blue-600"}`}>
+                          {invoicableAnalysis.remaining > 0
+                            ? `${t("Remaining:", "Zostáva:", "Számlázható:")} ${money(invoicableAnalysis.remaining)}`
+                            : invoicableAnalysis.isOverInvoiced
+                              ? `${t("Invoiced exceeds value by", "Vyfakturované presahuje o", "Túlszámlázva:")} ${money(invoicableAnalysis.invoiced - invoicableAnalysis.total)}`
+                              : `${t("Fully invoiced", "Plne vyfakturované", "Teljesen kiszámlázva")}`}
+                        </span>
+                      </div>
+                    </div>
                   )}
                 </div>
 
-                {!budgetAnalysis ? (
-                  <p className="text-[11px] text-slate-500">
-                    {t(
-                      "No budget set yet. Set one to see how the project's costs compare with it. (The \"Planned\" figures below are the sums of the planned amounts on invoices and expenses.)",
-                      "Rozpočet zatiaľ nie je nastavený. Po nastavení uvidíte, ako sa k nemu majú náklady projektu. (Hodnoty „Plán“ nižšie sú súčty plánovaných súm na faktúrach a výdavkoch.)",
-                      "Még nincs költségvetés megadva. Megadása után látható, hogyan viszonyulnak hozzá a projekt költségei. (Az alábbi „Terv” értékek a számlák és kiadások tervezett összegeinek összegei.)",
-                    )}
-                  </p>
-                ) : (
-                  <div className="space-y-1.5">
-                    <div className="relative w-full h-2 bg-slate-200/70 rounded-full overflow-hidden">
-                      <div
-                        className={`absolute inset-y-0 left-0 rounded-full transition-all duration-500 ${budgetAnalysis.tone === "ok" ? "bg-emerald-200" : "bg-amber-200"}`}
-                        style={{ width: `${Math.min(budgetAnalysis.plannedPct, 100)}%` }}
-                      />
-                      <div
-                        className={`absolute inset-y-0 left-0 rounded-full transition-all duration-500 ${budgetAnalysis.tone === "over" ? "bg-rose-500" : budgetAnalysis.tone === "atRisk" ? "bg-amber-500" : "bg-emerald-500"}`}
-                        style={{ width: `${Math.min(budgetAnalysis.spentPct, 100)}%` }}
-                      />
-                    </div>
-                    <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[11px] text-slate-500">
-                      <span>
-                        {t("Spent:", "Minuté:", "Elköltve:")} <strong className="text-slate-700">{money(budgetAnalysis.spent)}</strong> ({budgetAnalysis.spentPct.toFixed(0)}%)
-                        {" · "}
-                        {t("Planned costs:", "Plánované náklady:", "Tervezett költségek:")} <strong className="text-slate-700">{money(budgetAnalysis.planned)}</strong> ({budgetAnalysis.plannedPct.toFixed(0)}%)
+                {/* 0B. PROJECT BUDGET — the ceiling the direct costs are measured against */}
+                <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Wallet className="h-4 w-4 text-indigo-600 shrink-0" />
+                      <span className="text-xs font-bold text-slate-900 uppercase">
+                        {t("Project Budget", "Rozpočet projektu", "Projekt költségvetése")}
                       </span>
-                      <span className={`font-bold ${budgetAnalysis.tone === "over" ? "text-rose-600" : budgetAnalysis.tone === "atRisk" ? "text-amber-600" : "text-emerald-600"}`}>
-                        {budgetAnalysis.remaining >= 0
-                          ? `${t("Remaining:", "Zostáva:", "Hátralévő:")} ${money(budgetAnalysis.remaining)}`
-                          : `${t("Over budget by", "Prekročené o", "Túllépés:")} ${money(-budgetAnalysis.remaining)}`}
-                        {budgetAnalysis.tone === "atRisk" && ` · ${t("planned costs exceed the budget", "plánované náklady prekračujú rozpočet", "a tervezett költségek meghaladják a keretet")}`}
-                      </span>
+                      {budgetAnalysis && budgetDraft === null && (
+                        <span className="text-sm font-black text-slate-900">{money(budgetAnalysis.budget)}</span>
+                      )}
                     </div>
+
+                    {canEdit && (budgetDraft === null ? (
+                      <button
+                        type="button"
+                        onClick={() => setBudgetDraft(budgetAnalysis ? String(budgetAnalysis.budget) : "")}
+                        className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
+                      >
+                        {budgetAnalysis ? <Edit3 className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                        {budgetAnalysis
+                          ? t("Edit Budget", "Upraviť rozpočet", "Költségvetés módosítása")
+                          : t("Set Budget", "Nastaviť rozpočet", "Költségvetés megadása")}
+                      </button>
+                    ) : (
+                      <form onSubmit={handleSaveBudget} className="flex items-center gap-1.5">
+                        <input
+                          autoFocus
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={budgetDraft}
+                          onChange={(e) => setBudgetDraft(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Escape") setBudgetDraft(null); }}
+                          placeholder="0.00"
+                          aria-label={t("Project Budget", "Rozpočet projektu", "Projekt költségvetése")}
+                          className="w-28 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-xs font-bold focus:outline-none focus:border-indigo-500 transition-colors"
+                        />
+                        <span className="text-[11px] font-bold text-slate-500">{currencyCode || defaultCurrency}</span>
+                        <button
+                          type="submit"
+                          className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
+                        >
+                          <Check className="h-3.5 w-3.5" />
+                          {t("Save", "Uložiť", "Mentés")}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setBudgetDraft(null)}
+                          className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer transition-colors"
+                          aria-label={t("Cancel", "Zrušiť", "Mégse")}
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </form>
+                    ))}
                   </div>
-                )}
+
+                  {!budgetAnalysis ? (
+                    <p className="text-[11px] text-slate-500">
+                      {t(
+                        "No budget set yet. Set one to see how the project's costs compare with it. (The \"Planned\" figures below are the sums of the planned amounts on invoices and expenses.)",
+                        "Rozpočet zatiaľ nie je nastavený. Po nastavení uvidíte, ako sa k nemu majú náklady projektu. (Hodnoty „Plán“ nižšie sú súčty plánovaných súm na faktúrach a výdavkoch.)",
+                        "Még nincs költségvetés megadva. Megadása után látható, hogyan viszonyulnak hozzá a projekt költségei. (Az alábbi „Terv” értékek a számlák és kiadások tervezett összegeinek összegei.)",
+                      )}
+                    </p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <div className="relative w-full h-2 bg-slate-200/70 rounded-full overflow-hidden">
+                        <div
+                          className={`absolute inset-y-0 left-0 rounded-full transition-all duration-500 ${budgetAnalysis.tone === "ok" ? "bg-emerald-200" : "bg-amber-200"}`}
+                          style={{ width: `${Math.min(budgetAnalysis.plannedPct, 100)}%` }}
+                        />
+                        <div
+                          className={`absolute inset-y-0 left-0 rounded-full transition-all duration-500 ${budgetAnalysis.tone === "over" ? "bg-rose-500" : budgetAnalysis.tone === "atRisk" ? "bg-amber-500" : "bg-emerald-500"}`}
+                          style={{ width: `${Math.min(budgetAnalysis.spentPct, 100)}%` }}
+                        />
+                      </div>
+                      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-[11px] text-slate-500">
+                        <span>
+                          {t("Spent:", "Minuté:", "Elköltve:")} <strong className="text-slate-700">{money(budgetAnalysis.spent)}</strong> ({budgetAnalysis.spentPct.toFixed(0)}%)
+                          {" · "}
+                          {t("Planned costs:", "Plánované náklady:", "Tervezett költségek:")} <strong className="text-slate-700">{money(budgetAnalysis.planned)}</strong> ({budgetAnalysis.plannedPct.toFixed(0)}%)
+                        </span>
+                        <span className={`font-bold ${budgetAnalysis.tone === "over" ? "text-rose-600" : budgetAnalysis.tone === "atRisk" ? "text-amber-600" : "text-emerald-600"}`}>
+                          {budgetAnalysis.remaining >= 0
+                            ? `${t("Remaining:", "Zostáva:", "Hátralévő:")} ${money(budgetAnalysis.remaining)}`
+                            : `${t("Over budget by", "Prekročené o", "Túllépés:")} ${money(-budgetAnalysis.remaining)}`}
+                          {budgetAnalysis.tone === "atRisk" && ` · ${t("planned costs exceed the budget", "plánované náklady prekračujú rozpočet", "a tervezett költségek meghaladják a keretet")}`}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* 1. Project Revenue & Profitability Scorecard */}

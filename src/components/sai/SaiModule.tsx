@@ -547,6 +547,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
         simulationId: simId,
         title: config.title,
         hypothesis: config.hypothesis,
+        strategicQuestion: config.strategicQuestion || config.hypothesis,
         seedDocument: config.seedDocument,
         contextDocuments: config.contextDocuments,
         totalRounds: config.totalRounds,
@@ -579,6 +580,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
       const report = await generateStrategicReport({
         title: config.title,
         hypothesis: config.hypothesis,
+        strategicQuestion: config.strategicQuestion || config.hypothesis,
         seedDocument: config.seedDocument,
         graph: generatedGraph,
         agents: generatedAgents,
@@ -597,6 +599,7 @@ export const SaiModule: React.FC<SaiModuleProps> = ({
         simulationId: simId,
         title: config.title,
         hypothesis: config.hypothesis,
+        strategicQuestion: config.strategicQuestion || config.hypothesis,
         currentRound: config.totalRounds,
         totalRounds: config.totalRounds,
         status: 'completed',

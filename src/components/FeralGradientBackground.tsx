@@ -130,12 +130,19 @@ const FS_SOURCE = `
 `;
 
 interface FeralGradientBackgroundProps {
-  phaseId: TimePhaseId;
+  phaseId?: TimePhaseId;
+  timelapse?: boolean;
+  timelapseSpeed?: number;
   className?: string;
 }
 
+const TIMELAPSE_PHASES: TimePhaseId[] = ['dawn', 'day', 'sunset', 'night'];
+const TIMELAPSE_CONFIGS = TIMELAPSE_PHASES.map(id => LOGIN_PHASES[id].shaderConfig);
+
 export const FeralGradientBackground: React.FC<FeralGradientBackgroundProps> = ({
-  phaseId,
+  phaseId = 'day',
+  timelapse = false,
+  timelapseSpeed,
   className
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -160,6 +167,11 @@ export const FeralGradientBackground: React.FC<FeralGradientBackgroundProps> = (
   useEffect(() => {
     targetConfigRef.current = targetConfig;
   }, [targetConfig]);
+
+  const timelapseRef = useRef({ timelapse, timelapseSpeed });
+  useEffect(() => {
+    timelapseRef.current = { timelapse, timelapseSpeed };
+  }, [timelapse, timelapseSpeed]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -297,41 +309,82 @@ export const FeralGradientBackground: React.FC<FeralGradientBackgroundProps> = (
 
     const render = () => {
       if (isTabVisible && gl) {
-        const cur = currentUniformsRef.current;
-        const tgt = targetConfigRef.current;
-        const morphFactor = 0.045; // Smooth exponential color lerping
-
-        cur.u_main[0] = lerp(cur.u_main[0], tgt.u_main[0], morphFactor);
-        cur.u_main[1] = lerp(cur.u_main[1], tgt.u_main[1], morphFactor);
-        cur.u_main[2] = lerp(cur.u_main[2], tgt.u_main[2], morphFactor);
-
-        cur.u_low[0] = lerp(cur.u_low[0], tgt.u_low[0], morphFactor);
-        cur.u_low[1] = lerp(cur.u_low[1], tgt.u_low[1], morphFactor);
-        cur.u_low[2] = lerp(cur.u_low[2], tgt.u_low[2], morphFactor);
-
-        cur.u_mid[0] = lerp(cur.u_mid[0], tgt.u_mid[0], morphFactor);
-        cur.u_mid[1] = lerp(cur.u_mid[1], tgt.u_mid[1], morphFactor);
-        cur.u_mid[2] = lerp(cur.u_mid[2], tgt.u_mid[2], morphFactor);
-
-        cur.u_high[0] = lerp(cur.u_high[0], tgt.u_high[0], morphFactor);
-        cur.u_high[1] = lerp(cur.u_high[1], tgt.u_high[1], morphFactor);
-        cur.u_high[2] = lerp(cur.u_high[2], tgt.u_high[2], morphFactor);
-
-        cur.u_wind = lerp(cur.u_wind, tgt.u_wind, morphFactor);
-        cur.u_warp = lerp(cur.u_warp, tgt.u_warp, morphFactor);
-        cur.u_nscale = lerp(cur.u_nscale, tgt.u_nscale, morphFactor);
-
-        gl.uniform3f(uMainLoc, cur.u_main[0], cur.u_main[1], cur.u_main[2]);
-        gl.uniform3f(uLowLoc, cur.u_low[0], cur.u_low[1], cur.u_low[2]);
-        gl.uniform3f(uMidLoc, cur.u_mid[0], cur.u_mid[1], cur.u_mid[2]);
-        gl.uniform3f(uHighLoc, cur.u_high[0], cur.u_high[1], cur.u_high[2]);
-        gl.uniform1f(uWindLoc, cur.u_wind);
-        gl.uniform1f(uWarpLoc, cur.u_warp);
-        gl.uniform1f(uNscaleLoc, cur.u_nscale);
-
         const t = (performance.now() - startTime) / 1000.0;
-        gl.uniform1f(uTLoc, t);
-        gl.drawArrays(gl.TRIANGLES, 0, 6);
+        const { timelapse: isTimelapse, timelapseSpeed: customSpeed } = timelapseRef.current;
+
+        if (isTimelapse) {
+          // Continuous cinematic timelapse day-night cycle
+          const speed = customSpeed ?? 0.16; // ~6.25s full 24h day/night cycle
+          const progress = (t * speed) % 4.0;
+          const idxA = Math.floor(progress);
+          const idxB = (idxA + 1) % 4;
+          const rawFrac = progress - idxA;
+          // Smooth cosine curve for natural atmospheric transition easing
+          const smoothFrac = (1.0 - Math.cos(rawFrac * Math.PI)) * 0.5;
+
+          const cfgA = TIMELAPSE_CONFIGS[idxA];
+          const cfgB = TIMELAPSE_CONFIGS[idxB];
+
+          const lerpVec = (a: [number, number, number], b: [number, number, number], f: number): [number, number, number] => [
+            a[0] + (b[0] - a[0]) * f,
+            a[1] + (b[1] - a[1]) * f,
+            a[2] + (b[2] - a[2]) * f
+          ];
+
+          const tgtMain = lerpVec(cfgA.u_main, cfgB.u_main, smoothFrac);
+          const tgtLow = lerpVec(cfgA.u_low, cfgB.u_low, smoothFrac);
+          const tgtMid = lerpVec(cfgA.u_mid, cfgB.u_mid, smoothFrac);
+          const tgtHigh = lerpVec(cfgA.u_high, cfgB.u_high, smoothFrac);
+          const tgtWind = cfgA.u_wind + (cfgB.u_wind - cfgA.u_wind) * smoothFrac;
+          const tgtWarp = cfgA.u_warp + (cfgB.u_warp - cfgA.u_warp) * smoothFrac;
+          const tgtNscale = cfgA.u_nscale + (cfgB.u_nscale - cfgA.u_nscale) * smoothFrac;
+
+          gl.uniform3f(uMainLoc, tgtMain[0], tgtMain[1], tgtMain[2]);
+          gl.uniform3f(uLowLoc, tgtLow[0], tgtLow[1], tgtLow[2]);
+          gl.uniform3f(uMidLoc, tgtMid[0], tgtMid[1], tgtMid[2]);
+          gl.uniform3f(uHighLoc, tgtHigh[0], tgtHigh[1], tgtHigh[2]);
+          gl.uniform1f(uWindLoc, tgtWind);
+          gl.uniform1f(uWarpLoc, tgtWarp);
+          gl.uniform1f(uNscaleLoc, tgtNscale);
+
+          gl.uniform1f(uTLoc, t);
+          gl.drawArrays(gl.TRIANGLES, 0, 6);
+        } else {
+          const cur = currentUniformsRef.current;
+          const tgt = targetConfigRef.current;
+          const morphFactor = 0.045; // Smooth exponential color lerping
+
+          cur.u_main[0] = lerp(cur.u_main[0], tgt.u_main[0], morphFactor);
+          cur.u_main[1] = lerp(cur.u_main[1], tgt.u_main[1], morphFactor);
+          cur.u_main[2] = lerp(cur.u_main[2], tgt.u_main[2], morphFactor);
+
+          cur.u_low[0] = lerp(cur.u_low[0], tgt.u_low[0], morphFactor);
+          cur.u_low[1] = lerp(cur.u_low[1], tgt.u_low[1], morphFactor);
+          cur.u_low[2] = lerp(cur.u_low[2], tgt.u_low[2], morphFactor);
+
+          cur.u_mid[0] = lerp(cur.u_mid[0], tgt.u_mid[0], morphFactor);
+          cur.u_mid[1] = lerp(cur.u_mid[1], tgt.u_mid[1], morphFactor);
+          cur.u_mid[2] = lerp(cur.u_mid[2], tgt.u_mid[2], morphFactor);
+
+          cur.u_high[0] = lerp(cur.u_high[0], tgt.u_high[0], morphFactor);
+          cur.u_high[1] = lerp(cur.u_high[1], tgt.u_high[1], morphFactor);
+          cur.u_high[2] = lerp(cur.u_high[2], tgt.u_high[2], morphFactor);
+
+          cur.u_wind = lerp(cur.u_wind, tgt.u_wind, morphFactor);
+          cur.u_warp = lerp(cur.u_warp, tgt.u_warp, morphFactor);
+          cur.u_nscale = lerp(cur.u_nscale, tgt.u_nscale, morphFactor);
+
+          gl.uniform3f(uMainLoc, cur.u_main[0], cur.u_main[1], cur.u_main[2]);
+          gl.uniform3f(uLowLoc, cur.u_low[0], cur.u_low[1], cur.u_low[2]);
+          gl.uniform3f(uMidLoc, cur.u_mid[0], cur.u_mid[1], cur.u_mid[2]);
+          gl.uniform3f(uHighLoc, cur.u_high[0], cur.u_high[1], cur.u_high[2]);
+          gl.uniform1f(uWindLoc, cur.u_wind);
+          gl.uniform1f(uWarpLoc, cur.u_warp);
+          gl.uniform1f(uNscaleLoc, cur.u_nscale);
+
+          gl.uniform1f(uTLoc, t);
+          gl.drawArrays(gl.TRIANGLES, 0, 6);
+        }
       }
       animationId = requestAnimationFrame(render);
     };

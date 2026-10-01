@@ -5,7 +5,8 @@ import {
   Package, Coins, PencilLine, FolderOpen, Mail, Brain, Workflow,
   Globe, Sparkles, Settings, User, Search, X, ChevronRight,
   Check, Pencil, GripVertical, Pin, RotateCcw, Plus,
-  Archive, EyeOff, Trash2, FolderPlus, ListTodo
+  Archive, EyeOff, Trash2, FolderPlus, ListTodo, Home,
+  ChevronUp, ChevronDown
 } from "lucide-react";
 import type { UserProfile, RolePermission, UnifiedEntryRegistry, CustomDashboard } from "../types";
 import type { Language } from "../utils/translations";
@@ -16,6 +17,7 @@ import { normalizeStartMenuLayout } from "../utils/startMenuLayout";
 import { SOCIAL_MEDIA_ENABLED } from "../utils/featureFlags";
 import { FlockIcon } from "./icons/FlockIcon";
 import { isHomeDashboard } from "../utils/dashboardWidgets";
+import { cn } from "../utils/cn";
 
 interface StartMenuProps {
   isOpen: boolean;
@@ -35,6 +37,12 @@ interface StartMenuProps {
   onOpenCreateDashboard?: () => void;
   pinnedSidebarItems?: string[];
   onTogglePinToSidebar?: (itemId: string) => void;
+  initialEditing?: boolean;
+  onEditModeChange?: (editing: boolean) => void;
+  onAddSidebarGroup?: () => void;
+  defaultPage?: string;
+  onSaveDefaultPage?: (pageId: string) => void;
+  disabledModules?: string[];
 }
 
 /** The stored group shape, defined next to the layout it is persisted in. */
@@ -68,19 +76,56 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   unifiedEntries = [],
   onOpenCreateDashboard,
   pinnedSidebarItems = [],
-  onTogglePinToSidebar
+  onTogglePinToSidebar,
+  initialEditing = false,
+  onEditModeChange,
+  onAddSidebarGroup,
+  defaultPage,
+  onSaveDefaultPage,
+  disabledModules = []
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
 
+  const [storedDefaultPage, setStoredDefaultPage] = useUserPref("defaultPage");
+  const effectiveDefaultPage = defaultPage || storedDefaultPage || "dashboard";
+
+  const handleSetDefaultPage = (pageId: string) => {
+    if (onSaveDefaultPage) {
+      onSaveDefaultPage(pageId);
+    }
+    setStoredDefaultPage(pageId);
+    if (typeof (window as any).showToast === "function") {
+      (window as any).showToast(
+        t(
+          "Default start screen updated.",
+          "Predvolená úvodná obrazovka bola zmenená.",
+          "Az alapértelmezett kezdőképernyő frissítve."
+        )
+      );
+    }
+  };
+
   const [searchQuery, setSearchQuery] = useState("");
   const [isClosing, setIsClosing] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
-  const [isEditing, setIsEditing] = useState(false);
+  const [isEditing, setIsEditing] = useState(initialEditing);
+
+  const setEditingMode = (editing: boolean) => {
+    setIsEditing(editing);
+    onEditModeChange?.(editing);
+  };
+
+  useEffect(() => {
+    if (isOpen && initialEditing !== undefined) {
+      setIsEditing(initialEditing);
+    }
+  }, [initialEditing, isOpen]);
 
   // Group editing states
   const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
   const [editingGroupName, setEditingGroupName] = useState("");
+  const [addMenuGroupId, setAddMenuGroupId] = useState<string | null>(null);
 
   // Item drag & drop state
   const [draggedItemId, setDraggedItemId] = useState<string | null>(null);
@@ -94,6 +139,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
   const inputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [touchStartY, setTouchStartY] = useState<number | null>(null);
+  const [touchStartScrollTop, setTouchStartScrollTop] = useState<number>(0);
 
   // Default initial groups configuration
   const defaultGroups: MenuGroup[] = useMemo(() => [
@@ -165,6 +213,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   useEffect(() => {
     if (isOpen) {
       setIsClosing(false);
+      if (initialEditing) {
+        setEditingMode(true);
+      }
       const frame = requestAnimationFrame(() => {
         setIsVisible(true);
       });
@@ -173,10 +224,11 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     } else {
       setIsVisible(false);
       setSearchQuery("");
-      setIsEditing(false);
+      setEditingMode(false);
       setEditingGroupId(null);
+      setAddMenuGroupId(null);
     }
-  }, [isOpen]);
+  }, [isOpen, initialEditing]);
 
   const handleAnimatedClose = () => {
     setIsClosing(true);
@@ -185,6 +237,23 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       onClose();
       setIsClosing(false);
     }, 220);
+  };
+
+  // Touch handlers for mobile swipe-down to dismiss
+  const handleModalTouchStart = (e: React.TouchEvent) => {
+    setTouchStartY(e.touches[0].clientY);
+    setTouchStartScrollTop(scrollContainerRef.current?.scrollTop || 0);
+  };
+
+  const handleModalTouchEnd = (e: React.TouchEvent) => {
+    if (touchStartY === null) return;
+    const endY = e.changedTouches[0].clientY;
+    const deltaY = endY - touchStartY;
+    // Dismiss if swiped down by > 50px while scrolled near top
+    if (deltaY > 50 && touchStartScrollTop <= 10) {
+      handleAnimatedClose();
+    }
+    setTouchStartY(null);
   };
 
   // Keyboard shortcut listener (ESC to close)
@@ -204,12 +273,29 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (isOpen && !isClosing && menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        // Do NOT close if clicking inside the sidebar navigation (aside or [data-sidebar])
+        const target = e.target as HTMLElement | null;
+        if (target && target.closest("aside, [data-sidebar]")) {
+          return;
+        }
         handleAnimatedClose();
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [isOpen, isClosing]);
+
+  // Close menu group picker on outside click
+  useEffect(() => {
+    if (!addMenuGroupId) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && target.closest("[data-start-group-picker]")) return;
+      setAddMenuGroupId(null);
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [addMenuGroupId]);
 
   // Build all available navigation items
   const allItems: NavMenuItem[] = useMemo(() => {
@@ -445,9 +531,11 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       defaultSection: "system"
     });
 
-    // Drop every tile the role may not open (custom dashboards and registries
-    // included) so the launcher never advertises a route the router would deny.
-    return items.filter((item) => canOpenRoute(item.id));
+    // Drop disabled modules and items the role may not open
+    return items.filter((item) => {
+      if (disabledModules.includes(item.id)) return false;
+      return canOpenRoute(item.id);
+    });
   }, [
     systemLanguage,
     customDashboards,
@@ -455,6 +543,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     showRagAi,
     showSettings,
     canOpenRoute,
+    disabledModules,
     t
   ]);
 
@@ -601,6 +690,10 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     if (!isEditing) return;
     setDraggedItemId(id);
     setDraggedFromGroup(fromGroup);
+    (window as any).__draggedModuleId = id;
+    try {
+      e.dataTransfer.setData("application/json", JSON.stringify({ type: "module", id }));
+    } catch (err) {}
     e.dataTransfer.setData("text/plain", id);
     e.dataTransfer.effectAllowed = "move";
   };
@@ -629,6 +722,67 @@ export const StartMenu: React.FC<StartMenuProps> = ({
     setDraggedFromGroup(null);
     setDragOverGroup(null);
     setDragOverItemIndex(null);
+    (window as any).__draggedModuleId = null;
+  };
+
+  // Reorder item within a group
+  const handleMoveMenuItem = (groupId: string, indexInGroup: number, direction: -1 | 1) => {
+    const grp = resolvedGroupsData.groupsWithItems.find((g) => g.id === groupId);
+    if (!grp) return;
+    const newIndex = indexInGroup + direction;
+    if (newIndex < 0 || newIndex >= grp.items.length) return;
+
+    const nextItems = grp.items.map((i) => i.id);
+    const [moved] = nextItems.splice(indexInGroup, 1);
+    nextItems.splice(newIndex, 0, moved);
+
+    const nextGroupItems: Record<string, string[]> = {};
+    resolvedGroupsData.groupsWithItems.forEach((g) => {
+      nextGroupItems[g.id] = g.id === groupId ? nextItems : g.items.map((i) => i.id);
+    });
+    const nextUnused = resolvedGroupsData.unused.map((i) => i.id);
+
+    persistLayout(groups, nextGroupItems, nextUnused);
+  };
+
+  // Move item directly to another group
+  const handleMoveMenuItemToGroup = (itemId: string, fromGroupId: string, targetGroupId: string) => {
+    if (fromGroupId === targetGroupId) return;
+    const nextGroupItems: Record<string, string[]> = {};
+    resolvedGroupsData.groupsWithItems.forEach((g) => {
+      nextGroupItems[g.id] = g.items.map((i) => i.id).filter((id) => id !== itemId);
+    });
+    let nextUnused = resolvedGroupsData.unused.map((i) => i.id).filter((id) => id !== itemId);
+
+    if (targetGroupId === "unused") {
+      nextUnused.push(itemId);
+    } else {
+      if (!nextGroupItems[targetGroupId]) {
+        nextGroupItems[targetGroupId] = [];
+      }
+      nextGroupItems[targetGroupId].push(itemId);
+    }
+
+    persistLayout(groups, nextGroupItems, nextUnused);
+  };
+
+  // Add item directly to a group
+  const handleAddItemToMenuGroup = (itemId: string, targetGroupId: string) => {
+    const nextGroupItems: Record<string, string[]> = {};
+    resolvedGroupsData.groupsWithItems.forEach((g) => {
+      nextGroupItems[g.id] = g.items.map((i) => i.id).filter((id) => id !== itemId);
+    });
+    let nextUnused = resolvedGroupsData.unused.map((i) => i.id).filter((id) => id !== itemId);
+
+    if (!nextGroupItems[targetGroupId]) {
+      nextGroupItems[targetGroupId] = [];
+    }
+    if (!nextGroupItems[targetGroupId].includes(itemId)) {
+      nextGroupItems[targetGroupId].push(itemId);
+    }
+
+    persistLayout(groups, nextGroupItems, nextUnused);
+    setAddMenuGroupId(null);
   };
 
   const handleItemDropOnGroup = (e: React.DragEvent, targetGroupId: string, targetIndex?: number) => {
@@ -738,7 +892,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-4 sm:p-6 select-none">
+    <div className="fixed inset-0 z-[99999] flex items-end sm:items-center justify-center p-0 sm:p-6 lg:pl-72 lg:pr-8 select-none">
       {/* Backdrop overlay */}
       <div
         className={`fixed inset-0 bg-slate-950/40 backdrop-blur-md transition-opacity duration-250 ease-out ${
@@ -750,51 +904,71 @@ export const StartMenu: React.FC<StartMenuProps> = ({
       />
 
       {/* Start Menu Container */}
-      {/* 
-        Dark Theme Preset for Container:
-        className="... bg-slate-50  backdrop-blur-2xl border border-slate-200/90  ..."
-      */}
       <div
         ref={menuRef}
-        className={`relative z-10 w-full max-w-6xl bg-white backdrop-blur-2xl border border-slate-200/90 rounded-3xl shadow-[0_25px_70px_rgba(0,0,0,0.25)] overflow-hidden flex flex-col max-h-[92vh] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] transform ${
+        data-start-menu="true"
+        onTouchStart={handleModalTouchStart}
+        onTouchEnd={handleModalTouchEnd}
+        className={`relative z-10 w-full max-w-6xl bg-white backdrop-blur-2xl border-t sm:border border-slate-200/90 rounded-t-3xl sm:rounded-3xl shadow-[0_-15px_50px_rgba(0,0,0,0.3)] sm:shadow-[0_25px_70px_rgba(0,0,0,0.25)] overflow-hidden flex flex-col h-[90vh] sm:h-auto sm:max-h-[92vh] transition-all duration-300 ease-[cubic-bezier(0.16,1,0.3,1)] transform ${
           isVisible
-            ? "scale-100 opacity-100 translate-y-0 translate-x-0"
-            : "scale-95 opacity-0 pointer-events-none"
+            ? "scale-100 opacity-100 translate-y-0"
+            : "scale-95 sm:scale-95 opacity-0 translate-y-12 sm:translate-y-0 pointer-events-none"
         }`}
       >
+        {/* Mobile Top Grab Pill Handle */}
+        <div
+          className="sm:hidden w-full pt-3 pb-1 flex justify-center items-center cursor-pointer shrink-0"
+          onClick={handleAnimatedClose}
+          title={t("Swipe down or tap to close", "Potiahnutím nadol zatvoríte", "Húzza le a bezáráshoz")}
+        >
+          <div className="w-12 h-1.5 bg-slate-300 active:bg-slate-400 rounded-full transition-colors" />
+        </div>
+
         {/* Top Header & Search Bar & Edit Button */}
-        <div className="p-5 sm:p-6 border-b border-slate-100  bg-gradient-to-b from-slate-50/80  to-transparent flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div className="flex flex-col items-center justify-center gap-1 p-2 rounded-2xl bg-white  shadow-sm border border-slate-200/80 ">
-              <div className="flex items-center justify-center gap-1.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-orange-500 shadow-xs animate-pulse" />
-                <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-xs" />
-                <span className="h-2.5 w-2.5 rounded-full bg-indigo-500 shadow-xs" />
-              </div>
-              <span className="text-[7.5px] font-black tracking-widest text-indigo-600  uppercase leading-none">
-                START
-              </span>
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="font-heading font-black text-base text-slate-900  tracking-tight">
-                  {systemName}
-                </span>
-                <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600  border border-indigo-500/20">
-                  {t("Start Menu", "Štart menu", "Start menü")}
+        <div className="p-4 sm:p-6 border-b border-slate-100 bg-gradient-to-b from-slate-50/80 to-transparent flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+          <div className="flex items-center justify-between sm:justify-start gap-3 w-full sm:w-auto">
+            <div className="flex items-center gap-3">
+              <div className="flex flex-col items-center justify-center gap-1 p-2 rounded-2xl bg-white shadow-sm border border-slate-200/80">
+                <div className="flex items-center justify-center gap-1.5">
+                  <span className="h-2.5 w-2.5 rounded-full bg-orange-500 shadow-xs animate-pulse" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 shadow-xs" />
+                  <span className="h-2.5 w-2.5 rounded-full bg-indigo-500 shadow-xs" />
+                </div>
+                <span className="text-[7.5px] font-black tracking-widest text-indigo-600 uppercase leading-none">
+                  START
                 </span>
               </div>
-              <p className="text-[11px] text-slate-400 font-medium">
-                {(isEditing
-                  ? t("Drag groups to reorder columns • Add new group • Pin 📌 items to left sidebar", "Presúvajte celé skupiny • Vytvorte novú skupinu • Pripnite 📌 položky na bočný panel", "Csoportok átrendezése • Új csoport • Kitűzés 📌 a bal oldalsávra")
-                  : t("Quick access to all CRM modules & applications", "Rýchly prístup k modulom a evidenciám", "Gyors hozzáférés az összes modulhoz"))}
-              </p>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="font-heading font-black text-base text-slate-900 tracking-tight">
+                    {systemName}
+                  </span>
+                  <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 border border-indigo-500/20">
+                    {t("Start Menu", "Štart menu", "Start menü")}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 font-medium hidden sm:block">
+                  {(isEditing
+                    ? t("Drag groups to reorder columns • Add new group to sidebar • Pin 📌 items to left sidebar", "Presúvajte celé skupiny • Vytvorte novú skupinu pre bočný panel • Pripnite 📌 položky na bočný panel", "Csoportok átrendezése • Új csoport az oldalsávhoz • Kitűzés 📌 a bal oldalsávra")
+                    : t("Quick access to all CRM modules & applications", "Rýchly prístup k modulom a evidenciám", "Gyors hozzáférés az összes modulhoz"))}
+                </p>
+              </div>
             </div>
+
+            {/* Mobile close button top-right */}
+            <button
+              type="button"
+              onClick={handleAnimatedClose}
+              className="sm:hidden p-2 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-900 transition-colors cursor-pointer shrink-0"
+              title="Close"
+            >
+              <X className="h-4 w-4" />
+            </button>
           </div>
 
           {/* Search Bar & Actions */}
-          <div className="flex items-center gap-2 flex-1 max-w-xl justify-end">
-            <div className="relative w-full max-w-xs">
+          <div className="flex items-center gap-2 w-full sm:flex-1 sm:max-w-xl justify-between sm:justify-end">
+            <div className="relative w-full sm:max-w-xs flex-1 sm:flex-initial">
               <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
               <input
                 ref={inputRef}
@@ -802,52 +976,88 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={t("Search modules... (ESC)", "Hľadať v moduloch... (ESC)", "Keresés a modulok között...")}
-                className="w-full pl-10 pr-9 py-2.5 bg-white  border border-slate-200  rounded-2xl text-xs text-slate-900  placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-xs transition-all"
+                className="w-full pl-10 pr-9 py-2.5 bg-white border border-slate-200 rounded-2xl text-xs text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 shadow-xs transition-all"
               />
               {searchQuery && (
                 <button
                   type="button"
                   onClick={() => setSearchQuery("")}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600  cursor-pointer"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
                 >
                   <X className="h-3.5 w-3.5" />
                 </button>
               )}
             </div>
 
-            {/* Create New Group Button (in Edit Mode) */}
+            {/* Create New Group Button (in Edit Mode - adds group to Sidebar navigation) */}
             {isEditing && (
               <button
                 type="button"
-                onClick={handleCreateGroup}
-                className="px-3 py-2 rounded-2xl text-xs font-bold bg-purple-50  hover:bg-purple-100  text-purple-700  border border-purple-200  transition-all cursor-pointer flex items-center gap-1.5 shrink-0"
-                title={t("Create New Group Column", "Vytvoriť novú skupinu", "Új csoport létrehozása")}
+                onMouseDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onAddSidebarGroup) {
+                    onAddSidebarGroup();
+                  } else {
+                    handleCreateGroup();
+                  }
+                }}
+                className="px-3 py-2 rounded-2xl text-xs font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-all cursor-pointer flex items-center gap-1.5 shrink-0 shadow-xs"
+                title={t("Add New Group to Sidebar", "Pridať novú skupinu do bočného panelu", "Új csoport hozzáadása az oldalsávhoz")}
               >
                 <FolderPlus className="h-3.5 w-3.5" />
-                <span>{t("New Group", "Nová skupina", "Új csoport")}</span>
+                <span className="hidden sm:inline">{t("New Group", "Nová skupina", "Új csoport")}</span>
               </button>
+            )}
+
+            {/* Default Startup Screen Selector (in Edit Mode) */}
+            {isEditing && (
+              <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-2xl bg-amber-50 hover:bg-amber-100/80 border border-amber-200 text-amber-900 transition-all shadow-xs shrink-0">
+                <Home className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+                <span className="text-[11px] font-bold whitespace-nowrap hidden md:inline">
+                  {t("Start Screen:", "Úvodná obrazovka:", "Kezdőképernyő:")}
+                </span>
+                <select
+                  value={effectiveDefaultPage}
+                  onChange={(e) => handleSetDefaultPage(e.target.value)}
+                  className="bg-transparent text-xs font-bold text-amber-950 focus:outline-none cursor-pointer pr-1"
+                  title={t("Screen that opens when launching CCRM", "Obrazovka, ktorá sa otvorí pri spustení CCRM", "A CCRM indításakor megnyíló képernyő")}
+                >
+                  {allItems
+                    .filter((m) => canOpenRoute(m.id))
+                    .map((m) => (
+                      <option key={m.id} value={m.id} className="text-slate-800 bg-white">
+                        {m.label}
+                      </option>
+                    ))}
+                </select>
+              </div>
             )}
 
             {/* Edit / Customize Toggle Button */}
             <button
               type="button"
-              onClick={() => setIsEditing(!isEditing)}
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditingMode(!isEditing);
+              }}
               className={`px-3.5 py-2 rounded-2xl text-xs font-bold transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
                 isEditing
                   ? "bg-indigo-600 hover:bg-indigo-700 text-white shadow-md shadow-indigo-600/20 ring-2 ring-indigo-400/30"
-                  : "bg-slate-100  hover:bg-slate-200  text-slate-700 "
+                  : "bg-slate-100 hover:bg-slate-200 text-slate-700"
               }`}
               title={isEditing ? t("Finish Customization", "Ukončiť úpravy", "Módosítás befejezése") : t("Customize Order, Groups & Sidebar Pins", "Prispôsobiť menu a skupiny", "Menü és csoportok testreszabása")}
             >
               {isEditing ? (
                 <>
                   <Check className="h-3.5 w-3.5 stroke-[2.5]" />
-                  <span>{t("Done", "Hotovo", "Kész")}</span>
+                  <span className="hidden sm:inline">{t("Done", "Hotovo", "Kész")}</span>
                 </>
               ) : (
                 <>
                   <Pencil className="h-3.5 w-3.5" />
-                  <span>{t("Edit", "Upraviť", "Szerkesztés")}</span>
+                  <span className="hidden sm:inline">{t("Edit", "Upraviť", "Szerkesztés")}</span>
                 </>
               )}
             </button>
@@ -857,18 +1067,18 @@ export const StartMenu: React.FC<StartMenuProps> = ({
               <button
                 type="button"
                 onClick={handleResetLayout}
-                className="p-2 rounded-2xl bg-slate-100  hover:bg-slate-200  text-slate-500 hover:text-slate-800  transition-colors cursor-pointer shrink-0"
+                className="p-2 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 transition-colors cursor-pointer shrink-0"
                 title={t("Reset to Default Layout", "Obnoviť predvolené", "Alapértelmezett visszaállítása")}
               >
                 <RotateCcw className="h-4 w-4" />
               </button>
             )}
 
-            {/* Close Button */}
+            {/* Close Button on Desktop */}
             <button
               type="button"
               onClick={handleAnimatedClose}
-              className="p-2.5 rounded-2xl bg-slate-100  hover:bg-slate-200  text-slate-500 hover:text-slate-900  transition-colors cursor-pointer shrink-0"
+              className="hidden sm:flex p-2.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-900 transition-colors cursor-pointer shrink-0"
               title="Close (ESC)"
             >
               <X className="h-4 w-4" />
@@ -878,7 +1088,7 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
         {/* Edit Mode Instructions Banner */}
         {isEditing && (
-          <div className="bg-indigo-50/90  border-b border-indigo-100  px-6 py-2.5 flex items-center justify-between gap-3 text-xs text-indigo-900  animate-in fade-in slide-in-from-top-1 duration-200">
+          <div className="bg-indigo-50/90 border-b border-indigo-100 px-4 sm:px-6 py-2 sm:py-2.5 flex items-center justify-between gap-3 text-xs text-indigo-900 animate-in fade-in slide-in-from-top-1 duration-200">
             <div className="flex items-center gap-2">
               <span className="flex h-2 w-2 rounded-full bg-indigo-500 animate-ping shrink-0" />
               <span className="font-bold shrink-0">
@@ -890,8 +1100,12 @@ export const StartMenu: React.FC<StartMenuProps> = ({
             </div>
             <button
               type="button"
-              onClick={() => setIsEditing(false)}
-              className="text-xs font-bold text-indigo-600  hover:underline cursor-pointer shrink-0"
+              onMouseDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.stopPropagation();
+                setEditingMode(false);
+              }}
+              className="text-xs font-bold text-indigo-600 hover:underline cursor-pointer shrink-0"
             >
               {t("Done Editing ➔", "Hotovo ➔", "Kész ➔")}
             </button>
@@ -899,8 +1113,8 @@ export const StartMenu: React.FC<StartMenuProps> = ({
         )}
 
         {/* Dynamic Multi-Column Grouped Menu Grid */}
-        <div className="flex-1 overflow-y-auto p-6 scrollbar-thin space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 items-start">
+        <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4 sm:p-6 scrollbar-thin space-y-4 sm:space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 items-start">
             {resolvedGroupsData.groupsWithItems.map((group) => {
               const IconComp = (Icons as any)[group.iconName || "FolderOpen"] || FolderOpen;
               const filteredItems = searchFilter(group.items);
@@ -996,6 +1210,21 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                       </span>
                       {isEditing && editingGroupId !== group.id && (
                         <>
+                          {/* Add Module to this group button */}
+                          <button
+                            type="button"
+                            onClick={() => setAddMenuGroupId(addMenuGroupId === group.id ? null : group.id)}
+                            className={cn(
+                              "p-1 rounded-lg transition-colors cursor-pointer shrink-0",
+                              addMenuGroupId === group.id
+                                ? "bg-indigo-600 text-white shadow-xs"
+                                : "text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
+                            )}
+                            title={t("Add module to this group", "Pridať modul do tejto skupiny", "Modul hozzáadása ehhez a csoporthoz")}
+                          >
+                            <Plus className="h-3.5 w-3.5" />
+                          </button>
+
                           <button
                             type="button"
                             onClick={() => {
@@ -1022,6 +1251,56 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                     </div>
                   </div>
 
+                  {/* Inline Module Picker Popover for StartMenu Group */}
+                  {addMenuGroupId === group.id && (
+                    <div
+                      data-start-group-picker="true"
+                      className="mb-2 p-2 bg-white rounded-xl border border-indigo-200 shadow-lg flex flex-col gap-1.5 animate-in fade-in zoom-in-95 duration-150 max-h-56 overflow-y-auto z-20"
+                    >
+                      <div className="flex items-center justify-between px-1 pb-1 border-b border-slate-100">
+                        <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
+                          {t("Add to group", "Pridať do skupiny", "Hozzáadás a csoporthoz")}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setAddMenuGroupId(null)}
+                          className="p-0.5 rounded text-slate-400 hover:text-slate-600 cursor-pointer"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                      <div className="flex flex-col gap-1">
+                        {allItems
+                          .filter((i) => !group.items.some((gi) => gi.id === i.id))
+                          .map((mod) => {
+                            const ModIcon = mod.icon;
+                            return (
+                              <button
+                                key={mod.id}
+                                type="button"
+                                onClick={() => handleAddItemToMenuGroup(mod.id, group.id)}
+                                className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-indigo-50 text-slate-700 hover:text-indigo-700 text-left transition-colors cursor-pointer group"
+                              >
+                                <div
+                                  className="p-1 rounded-md shrink-0"
+                                  style={{ backgroundColor: mod.bgColor || `${mod.color}15`, color: mod.color }}
+                                >
+                                  <ModIcon className="h-3.5 w-3.5" />
+                                </div>
+                                <span className="text-xs font-medium truncate flex-1">{mod.label}</span>
+                                <Plus className="h-3 w-3 text-slate-400 group-hover:text-indigo-600 shrink-0" />
+                              </button>
+                            );
+                          })}
+                        {allItems.filter((i) => !group.items.some((gi) => gi.id === i.id)).length === 0 && (
+                          <p className="text-[11px] text-slate-400 text-center py-2">
+                            {t("All modules are in this group", "Všetky moduly sú v tejto skupine", "Minden modul ebben a csoportban van")}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
                   {/* Group Items Container */}
                   <div className="space-y-1.5 flex-1 min-h-[50px]">
                     {filteredItems.map((item, idx) => {
@@ -1030,27 +1309,9 @@ export const StartMenu: React.FC<StartMenuProps> = ({
 
                       return (
                         <React.Fragment key={item.id}>
-                          {/* Landing Target Slot matching card dimensions */}
+                          {/* Non-displacing insertion line indicator */}
                           {isDropTargetBefore && (
-                            <div
-                              onDragOver={(e) => handleItemDragOverItem(e, group.id, idx)}
-                              onDrop={(e) => handleItemDropOnGroup(e, group.id, idx)}
-                              className="w-full p-2.5 rounded-2xl border-2 border-dashed border-indigo-500 bg-indigo-50/90  shadow-sm flex flex-col gap-2 animate-in fade-in zoom-in-95 duration-150 ring-2 ring-indigo-400/30"
-                              style={{ minHeight: "72px" }}
-                            >
-                              <div className="flex items-center gap-2">
-                                <div className="p-1.5 rounded-xl bg-indigo-200/80  text-indigo-700  shrink-0 animate-bounce">
-                                  {draggedItemObj ? <draggedItemObj.icon className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-                                </div>
-                                <span className="text-xs font-bold text-indigo-900  truncate flex-1">
-                                  {draggedItemObj?.label || t("Drop item here", "Pustiť sem", "Ide helyezés")}
-                                </span>
-                                <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-indigo-200  text-indigo-800  shrink-0">
-                                  {t("Landing slot", "Miesto vloženia", "Beillesztési hely")}
-                                </span>
-                              </div>
-                              <div className="h-4 rounded-xl bg-indigo-200/40  w-full" />
-                            </div>
+                            <div className="w-full h-1.5 bg-indigo-500 rounded-full my-1 shadow-sm ring-2 ring-indigo-400/40 animate-pulse pointer-events-none" />
                           )}
 
                           <StartMenuItemTile
@@ -1059,19 +1320,29 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                             isEditing={isEditing}
                             isDragging={isBeingDragged}
                             isPinned={pinnedSidebarItems.includes(item.id)}
+                            isDefault={item.id === effectiveDefaultPage}
+                            onSetDefault={() => handleSetDefaultPage(item.id)}
                             onTogglePin={() => onTogglePinToSidebar?.(item.id)}
                             onHide={() => handleHideItem(item.id, group.id)}
+                            onMoveUp={() => handleMoveMenuItem(group.id, idx, -1)}
+                            onMoveDown={() => handleMoveMenuItem(group.id, idx, 1)}
+                            canMoveUp={idx > 0}
+                            canMoveDown={idx < filteredItems.length - 1}
+                            groups={groups}
+                            currentGroupId={group.id}
+                            onMoveToGroup={(targetGId) => handleMoveMenuItemToGroup(item.id, group.id, targetGId)}
                             onDragStart={(e) => handleItemDragStart(e, item.id, group.id)}
                             onDragEnd={handleItemDragEnd}
                             onDragOver={(e) => handleItemDragOverItem(e, group.id, idx)}
                             onDrop={(e) => handleItemDropOnGroup(e, group.id, idx)}
                             onClick={() => handleItemClick(item.id)}
+                            systemLanguage={systemLanguage}
                           />
                         </React.Fragment>
                       );
                     })}
 
-                    {/* Landing Target Slot at end of group list */}
+                    {/* Compact dropzone indicator at end of group list */}
                     {isEditing &&
                       draggedItemId &&
                       dragOverGroup === group.id &&
@@ -1080,21 +1351,10 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                         <div
                           onDragOver={(e) => handleItemDragOverContainer(e, group.id)}
                           onDrop={(e) => handleItemDropOnGroup(e, group.id, filteredItems.length)}
-                          className="w-full p-2.5 rounded-2xl border-2 border-dashed border-indigo-500 bg-indigo-50/90  shadow-sm flex flex-col gap-2 animate-in fade-in zoom-in-95 duration-150 ring-2 ring-indigo-400/30"
-                          style={{ minHeight: "72px" }}
+                          className="w-full p-2 rounded-xl border border-dashed border-indigo-400 bg-indigo-50/60 text-indigo-700 text-xs font-bold flex items-center justify-center gap-1.5 animate-in fade-in duration-100"
                         >
-                          <div className="flex items-center gap-2">
-                            <div className="p-1.5 rounded-xl bg-indigo-200/80  text-indigo-700  shrink-0 animate-bounce">
-                              {draggedItemObj ? <draggedItemObj.icon className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-                            </div>
-                            <span className="text-xs font-bold text-indigo-900  truncate flex-1">
-                              {draggedItemObj?.label || t("Drop item here", "Pustiť sem", "Ide helyezés")}
-                            </span>
-                            <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-md bg-indigo-200  text-indigo-800  shrink-0">
-                              {t("Landing slot", "Miesto vloženia", "Beillesztési hely")}
-                            </span>
-                          </div>
-                          <div className="h-4 rounded-xl bg-indigo-200/40  w-full" />
+                          <Plus className="h-3.5 w-3.5" />
+                          <span>{t("Drop item here", "Pustiť sem", "Ide helyezés")}</span>
                         </div>
                       )}
 
@@ -1252,6 +1512,29 @@ export const StartMenu: React.FC<StartMenuProps> = ({
                             <Plus className="h-3 w-3" />
                             <span>{t("Restore", "Vrátiť", "Vissza")}</span>
                           </button>
+
+                          {/* Restore directly to a specific group */}
+                          {groups.length > 1 && (
+                            <select
+                              defaultValue=""
+                              onChange={(e) => {
+                                if (e.target.value) {
+                                  handleAddItemToMenuGroup(item.id, e.target.value);
+                                }
+                              }}
+                              className="text-[9px] font-bold bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded px-1.5 py-1 text-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer max-w-[70px] truncate shrink-0"
+                              title={t("Restore to group...", "Vrátiť do skupiny...", "Visszaállítás ide...")}
+                            >
+                              <option value="" disabled>
+                                {t("To...", "Do...", "Hova...")}
+                              </option>
+                              {groups.map((g) => (
+                                <option key={g.id} value={g.id}>
+                                  {g.name}
+                                </option>
+                              ))}
+                            </select>
+                          )}
                         </div>
                       </div>
                     );
@@ -1262,27 +1545,49 @@ export const StartMenu: React.FC<StartMenuProps> = ({
           )}
         </div>
 
-        {/* Footer: User Profile & Quick Actions */}
-        <div className="p-4 sm:px-6 bg-slate-50/90  border-t border-slate-100  flex items-center justify-between gap-3 text-xs">
+        {/* Footer: User Profile & Default Start Screen Quick Selector */}
+        <div className="p-3.5 sm:px-6 bg-slate-50/90 border-t border-slate-100 flex items-center justify-between gap-2 sm:gap-3 text-xs">
           <button
             type="button"
             onClick={() => handleItemClick("personal-settings")}
             title={t("Profile", "Profil", "Profil")}
-            className="flex items-center gap-3 -mx-2 px-2 py-1.5 rounded-xl text-left hover:bg-white border border-transparent hover:border-slate-200 transition-colors cursor-pointer group"
+            className="flex items-center gap-2.5 sm:gap-3 -mx-1 sm:-mx-2 px-2 py-1.5 rounded-xl text-left hover:bg-white border border-transparent hover:border-slate-200 transition-colors cursor-pointer group shrink-0"
           >
-            <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-indigo-600 to-indigo-400 text-white font-bold flex items-center justify-center text-xs shadow-sm">
+            <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-indigo-600 to-indigo-400 text-white font-bold flex items-center justify-center text-xs shadow-sm shrink-0">
               {currentUser?.name ? currentUser.name.charAt(0).toUpperCase() : "U"}
             </div>
-            <div>
-              <span className="font-bold text-slate-800 block leading-tight">
+            <div className="min-w-0">
+              <span className="font-bold text-slate-800 block leading-tight truncate max-w-[100px] sm:max-w-none">
                 {currentUser?.name || "User"}
               </span>
-              <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider">
+              <span className="text-[10px] text-slate-400 font-semibold uppercase tracking-wider block truncate">
                 {currentUser?.role || "Member"}
               </span>
             </div>
-            <User className="h-3.5 w-3.5 text-slate-400 group-hover:text-slate-600 transition-colors" />
+            <User className="h-3.5 w-3.5 text-slate-400 group-hover:text-slate-600 transition-colors shrink-0 hidden sm:block" />
           </button>
+
+          {/* Quick Start Screen Selector */}
+          <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-white border border-slate-200/90 shadow-2xs hover:border-slate-300 transition-colors shrink-0">
+            <Home className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+            <span className="text-[11px] font-semibold text-slate-500 hidden md:inline">
+              {t("Start Screen:", "Úvodná obrazovka:", "Kezdőképernyő:")}
+            </span>
+            <select
+              value={effectiveDefaultPage}
+              onChange={(e) => handleSetDefaultPage(e.target.value)}
+              className="bg-transparent text-xs font-bold text-slate-800 focus:outline-none cursor-pointer pr-1 max-w-[110px] sm:max-w-[180px] truncate"
+              title={t("Screen that opens when launching CCRM", "Obrazovka, ktorá sa otvorí pri spustení CCRM", "A CCRM indításakor megnyíló képernyő")}
+            >
+              {allItems
+                .filter((m) => canOpenRoute(m.id))
+                .map((m) => (
+                  <option key={m.id} value={m.id} className="text-slate-800 bg-white">
+                    {m.label}
+                  </option>
+                ))}
+            </select>
+          </div>
         </div>
       </div>
     </div>
@@ -1295,13 +1600,23 @@ interface StartMenuItemTileProps {
   isEditing?: boolean;
   isDragging?: boolean;
   isPinned?: boolean;
+  isDefault?: boolean;
+  onSetDefault?: () => void;
   onTogglePin?: () => void;
   onHide?: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
+  groups?: MenuGroup[];
+  currentGroupId?: string;
+  onMoveToGroup?: (targetGroupId: string) => void;
   onDragStart?: (e: React.DragEvent) => void;
   onDragEnd?: (e: React.DragEvent) => void;
   onDragOver?: (e: React.DragEvent) => void;
   onDrop?: (e: React.DragEvent) => void;
   onClick: () => void;
+  systemLanguage?: Language;
 }
 
 const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
@@ -1310,15 +1625,27 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
   isEditing = false,
   isDragging = false,
   isPinned = false,
+  isDefault = false,
+  onSetDefault,
   onTogglePin,
   onHide,
+  onMoveUp,
+  onMoveDown,
+  canMoveUp,
+  canMoveDown,
+  groups,
+  currentGroupId,
+  onMoveToGroup,
   onDragStart,
   onDragEnd,
   onDragOver,
   onDrop,
-  onClick
+  onClick,
+  systemLanguage = "en"
 }) => {
   const Icon = item.icon;
+  const t = (en: string, sk: string, hu: string) =>
+    systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
 
   if (isEditing) {
     // EDIT MODE: Full-width title on top, NO description, actions row placed cleanly BELOW the title!
@@ -1335,8 +1662,8 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
             : "bg-white  border border-slate-200/90  shadow-2xs hover:shadow-md hover:border-indigo-300 "
         }`}
       >
-        {/* Top Row: Drag Handle + Icon + Full Title + Badge */}
-        <div className="flex items-center gap-2 min-w-0">
+        {/* Top Row: Drag Handle + Icon + Full Title + Up/Down + Group Select + Badge */}
+        <div className="flex items-center gap-1.5 min-w-0">
           <div className="shrink-0 text-slate-300  group-hover:text-slate-500">
             <GripVertical className="h-4 w-4" />
           </div>
@@ -1349,10 +1676,91 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
           >
             <Icon className="h-3.5 w-3.5" />
           </div>
-          <span className="text-xs font-bold text-slate-900  truncate flex-1">
+          <span className="text-xs font-bold text-slate-900  truncate flex-1 min-w-0">
             {item.label}
           </span>
-          {item.badge && (
+
+          {/* Up / Down Reorder Arrows */}
+          {(onMoveUp || onMoveDown) && (
+            <div className="flex items-center gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+              {onMoveUp && (
+                <button
+                  type="button"
+                  disabled={!canMoveUp}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onMoveUp();
+                  }}
+                  className={`p-0.5 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer ${
+                    !canMoveUp ? "opacity-20 cursor-not-allowed hover:bg-transparent hover:text-slate-400" : ""
+                  }`}
+                  title={t("Move up", "Posunúť nahor", "Mozgatás fel")}
+                >
+                  <ChevronUp className="h-3 w-3" />
+                </button>
+              )}
+              {onMoveDown && (
+                <button
+                  type="button"
+                  disabled={!canMoveDown}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onMoveDown();
+                  }}
+                  className={`p-0.5 rounded text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-colors cursor-pointer ${
+                    !canMoveDown ? "opacity-20 cursor-not-allowed hover:bg-transparent hover:text-slate-400" : ""
+                  }`}
+                  title={t("Move down", "Posunúť nadol", "Mozgatás le")}
+                >
+                  <ChevronDown className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Move to group selector if more than 1 group */}
+          {groups && groups.length > 1 && onMoveToGroup && currentGroupId && (
+            <select
+              value={currentGroupId}
+              onClick={(e) => e.stopPropagation()}
+              onMouseDown={(e) => e.stopPropagation()}
+              onChange={(e) => {
+                e.stopPropagation();
+                onMoveToGroup(e.target.value);
+              }}
+              className="text-[9px] font-bold bg-slate-100 hover:bg-slate-200 border border-slate-200 rounded px-1 py-0.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-indigo-500 cursor-pointer max-w-[65px] truncate shrink-0"
+              title={t("Move to group", "Presunúť do skupiny", "Áthelyezés csoportba")}
+            >
+              {groups.map((g) => (
+                <option key={g.id} value={g.id}>
+                  {g.name}
+                </option>
+              ))}
+            </select>
+          )}
+
+          {isDefault && (
+            <span
+              className="text-[9px] font-black uppercase px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 border border-amber-300/80 flex items-center gap-1 shrink-0"
+              title={
+                systemLanguage === "sk"
+                  ? "Predvolená úvodná obrazovka"
+                  : systemLanguage === "hu"
+                  ? "Alapértelmezett kezdőképernyő"
+                  : "Default start screen"
+              }
+            >
+              <Home className="h-2.5 w-2.5 fill-current" />
+              <span>
+                {systemLanguage === "sk"
+                  ? "Úvodná"
+                  : systemLanguage === "hu"
+                  ? "Kezdő"
+                  : "Start"}
+              </span>
+            </span>
+          )}
+          {item.badge && !isDefault && (
             <span className="text-[8px] font-black uppercase px-1.5 py-0.2 rounded-md bg-slate-100  text-slate-500  shrink-0">
               {item.badge}
             </span>
@@ -1361,6 +1769,50 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
 
         {/* Bottom Actions Row (Below the title) */}
         <div className="flex items-center gap-1.5 pt-1 border-t border-slate-100 ">
+          {/* Default Startup Screen Button */}
+          {onSetDefault && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                onSetDefault();
+              }}
+              className={`flex-1 py-1 px-2 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+                isDefault
+                  ? "bg-amber-600 text-white shadow-xs ring-1 ring-amber-500 hover:bg-amber-700"
+                  : "bg-slate-100 hover:bg-amber-50 hover:text-amber-700 text-slate-600"
+              }`}
+              title={
+                isDefault
+                  ? systemLanguage === "sk"
+                    ? "Predvolená úvodná obrazovka"
+                    : systemLanguage === "hu"
+                    ? "Alapértelmezett kezdőképernyő"
+                    : "Default start screen"
+                  : systemLanguage === "sk"
+                  ? "Nastaviť ako úvodnú obrazovku"
+                  : systemLanguage === "hu"
+                  ? "Beállítás kezdőképernyőként"
+                  : "Set as default start screen"
+              }
+            >
+              <Home className={`h-3 w-3 ${isDefault ? "fill-current" : ""}`} />
+              <span>
+                {isDefault
+                  ? systemLanguage === "sk"
+                    ? "Predvolená"
+                    : systemLanguage === "hu"
+                    ? "Kezdő"
+                    : "Default"
+                  : systemLanguage === "sk"
+                  ? "Úvodná"
+                  : systemLanguage === "hu"
+                  ? "Kezdő"
+                  : "Start"}
+              </span>
+            </button>
+          )}
+
           {/* Pin to Sidebar button */}
           {onTogglePin && (
             <button
@@ -1369,15 +1821,39 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
                 e.stopPropagation();
                 onTogglePin();
               }}
-              className={`flex-1 py-1 px-2 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
+              className={`py-1 px-2 rounded-xl text-[10px] font-bold flex items-center justify-center gap-1 transition-all cursor-pointer ${
                 isPinned
                   ? "bg-indigo-600 text-white shadow-xs ring-1 ring-indigo-500 hover:bg-indigo-700"
                   : "bg-slate-100  hover:bg-indigo-50 hover:text-indigo-600  text-slate-600 "
               }`}
-              title={isPinned ? "Pinned to left sidebar. Click to unpin." : "Pin to left sidebar"}
+              title={
+                isPinned
+                  ? systemLanguage === "sk"
+                    ? "Pripnuté v bočnom paneli. Kliknite pre odopnutie."
+                    : systemLanguage === "hu"
+                    ? "Kitűzve az oldalsávra."
+                    : "Pinned to left sidebar. Click to unpin."
+                  : systemLanguage === "sk"
+                  ? "Pripnúť na bočný panel"
+                  : systemLanguage === "hu"
+                  ? "Kitűzés az oldalsávra"
+                  : "Pin to left sidebar"
+              }
             >
               <Pin className={`h-3 w-3 ${isPinned ? "fill-current" : ""}`} />
-              <span>{isPinned ? "Pinned" : "Pin"}</span>
+              <span>
+                {isPinned
+                  ? systemLanguage === "sk"
+                    ? "Pripnuté"
+                    : systemLanguage === "hu"
+                    ? "Kitűzve"
+                    : "Pinned"
+                  : systemLanguage === "sk"
+                  ? "Pripnúť"
+                  : systemLanguage === "hu"
+                  ? "Kitűzés"
+                  : "Pin"}
+              </span>
             </button>
           )}
 
@@ -1389,11 +1865,23 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
                 e.stopPropagation();
                 onHide();
               }}
-              className="py-1 px-2.5 rounded-xl bg-slate-100  hover:bg-rose-50  hover:text-rose-600 text-slate-500  text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
-              title="Hide item (move to Unused)"
+              className="py-1 px-2 rounded-xl bg-slate-100  hover:bg-rose-50  hover:text-rose-600 text-slate-500  text-[10px] font-bold flex items-center justify-center gap-1 transition-colors cursor-pointer"
+              title={
+                systemLanguage === "sk"
+                  ? "Skryť modul"
+                  : systemLanguage === "hu"
+                  ? "Modul elrejtése"
+                  : "Hide item"
+              }
             >
               <EyeOff className="h-3 w-3" />
-              <span>Hide</span>
+              <span>
+                {systemLanguage === "sk"
+                  ? "Skryť"
+                  : systemLanguage === "hu"
+                  ? "Elrejtés"
+                  : "Hide"}
+              </span>
             </button>
           )}
         </div>
@@ -1403,12 +1891,6 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
 
   return (
     <>
-      {/*
-        Dark Theme Preset for Tile:
-        isActive
-          ? "bg-indigo-50/90  border-indigo-400  shadow-xs ring-1 ring-indigo-500/20"
-          : "bg-slate-50  border-transparent hover:border-slate-200  hover:bg-white  hover:shadow-md hover:scale-[1.015] hover:-translate-y-0.5 active:scale-[0.98]"
-      */}
       <div
         onClick={onClick}
         className={`w-full p-2.5 rounded-2xl text-left transition-all duration-200 flex items-start gap-2.5 group relative border cursor-pointer ${
@@ -1430,10 +1912,31 @@ const StartMenuItemTile: React.FC<StartMenuItemTileProps> = ({
 
       {/* Content */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 flex-wrap">
           <span className={`text-xs font-bold truncate transition-colors ${isActive ? "text-indigo-600 " : "text-slate-800  group-hover:text-slate-950 "}`}>
             {item.label}
           </span>
+          {isDefault && (
+            <span
+              className="text-[9px] font-bold px-1.5 py-0.2 rounded-md bg-amber-50 text-amber-700 border border-amber-200/80 flex items-center gap-1 shrink-0 shadow-2xs"
+              title={
+                systemLanguage === "sk"
+                  ? "Predvolená úvodná obrazovka"
+                  : systemLanguage === "hu"
+                  ? "Alapértelmezett kezdőképernyő"
+                  : "Default start screen"
+              }
+            >
+              <Home className="h-2.5 w-2.5 text-amber-600 fill-current" />
+              <span className="hidden sm:inline">
+                {systemLanguage === "sk"
+                  ? "Úvodná"
+                  : systemLanguage === "hu"
+                  ? "Kezdő"
+                  : "Start"}
+              </span>
+            </span>
+          )}
           {item.badge && (
             <span className="text-[9px] font-black uppercase px-1.5 py-0.2 rounded-md bg-slate-100  text-slate-500 ">
               {item.badge}

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useCallback } from "react";
+import React, { useState, useMemo, useEffect, useCallback, useRef } from "react";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { useUserPref } from "../utils/userPrefs";
 import { canArchiveTask, resolveAssigneeName, type TaskAccess } from "../utils/taskSelectors";
@@ -12,9 +12,15 @@ import {
     Plus,
     Search,
     Trash2,
+    Archive,
     ArchiveRestore,
+    CheckSquare,
+    Square,
+    MinusSquare,
     Clock,
+
     User,
+    UserPlus,
     Briefcase,
     Handshake,
     X,
@@ -38,7 +44,6 @@ import {
     FolderOpen,
     FileText,
     Minimize2,
-    CheckSquare,
     Lock,
     CornerDownLeft,
     CornerLeftDown,
@@ -56,7 +61,9 @@ import {
     Unlink,
     AlarmClock,
     AlertTriangle,
+    Building2,
 } from "lucide-react";
+import { VoiceTaskActionBar } from "./VoiceTaskActionBar";
 import type {
     Lead,
     TimelineEvent,
@@ -76,7 +83,9 @@ import {
   projectStatusBadgeClass,
   projectStatusLabel,
 } from "../utils/projects";
-import { evaluateLeadSla, type LeadSlaStatus, type LeadStateSla } from "../utils/leadSla";
+import { evaluateLeadSla, type LeadSlaStatus, type LeadStateSla, isClosedLeadState } from "../utils/leadSla";
+import { orderLeadStates } from "../utils/leadStates";
+import { StatusValueEquationStats, type StatusStatItem, type StatusStatDetailRow } from "./StatusValueEquationStats";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 
 // Named preset deadline times offered in the gate quick-add picker, mirroring the
@@ -851,6 +860,8 @@ interface LeadsDatagridProps {
      * collection this view's own permission does not cover.
      */
     taskAccess?: TaskAccess;
+    divisions?: string[];
+    divisionColors?: Record<string, string>;
 }
 
 export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
@@ -890,6 +901,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     currencyCode,
     access = FULL_MODULE_ACCESS,
     taskAccess,
+    divisions = ["Cstudios", "Cstudios Budapest"],
+    divisionColors = {},
 }) => {
     const t = (en: string, sk: string, hu: string) =>
         systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
@@ -1530,6 +1543,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const [searchQuery, setSearchQuery] = useState("");
     const [selectedState, setSelectedState] = useState("all");
     const [selectedSource, setSelectedSource] = useState("all");
+    const [selectedDivision, setSelectedDivision] = useState("all");
     const [selectedType, setSelectedType] = useState("all");
 
     // Offer date filter states
@@ -1548,6 +1562,28 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     // Client importance filter. "all" = off, "none" = leads nobody rated yet,
     // "5".."1" = that exact star count, "min4"/"min3" = that many stars and up.
     const [selectedRating, setSelectedRating] = useState("all");
+    const [selectedArchiveFilter, setSelectedArchiveFilter] = useState<"active" | "archived" | "all">("active");
+
+    // Multi-selection & Bulk action toolbar state
+    const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
+    const [activeBulkMenu, setActiveBulkMenu] = useState<"status" | "owner" | null>(null);
+    const bulkToolbarRef = useRef<HTMLDivElement>(null);
+
+    // Close bulk floating dropdowns on click outside
+    useEffect(() => {
+        const handleClickOutside = (e: MouseEvent) => {
+            if (bulkToolbarRef.current && !bulkToolbarRef.current.contains(e.target as Node)) {
+                setActiveBulkMenu(null);
+            }
+        };
+        if (activeBulkMenu) {
+            document.addEventListener("mousedown", handleClickOutside);
+        }
+        return () => {
+            document.removeEventListener("mousedown", handleClickOutside);
+        };
+    }, [activeBulkMenu]);
+
 
     // Category visibility toggle (local storage support)
     const majorStates = useMemo(() => {
@@ -1627,18 +1663,22 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             selectedOwner !== "all" ||
             selectedCity !== "all" ||
             selectedSource !== "all" ||
+            selectedDivision !== "all" ||
             selectedType !== "all" ||
             selectedState !== "all" ||
             selectedRating !== "all" ||
+            selectedArchiveFilter !== "active" ||
             offerPresetName !== "All Time"
         );
     }, [
         selectedOwner,
         selectedCity,
         selectedSource,
+        selectedDivision,
         selectedType,
         selectedState,
         selectedRating,
+        selectedArchiveFilter,
         offerPresetName,
     ]);
 
@@ -1652,6 +1692,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const [newLeadValue, setNewLeadValue] = useState("");
     const [newLeadStatus, setNewLeadStatus] = useState("");
     const [newLeadSource, setNewLeadSource] = useState("");
+    const [newLeadDivision, setNewLeadDivision] = useState("");
     const [newLeadOwner, setNewLeadOwner] = useState("");
     const [newLeadRating, setNewLeadRating] = useState(3);
     const [newLeadCategories, setNewLeadCategories] = useState<string[]>([]);
@@ -1662,7 +1703,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const [newLeadEmail, setNewLeadEmail] = useState("");
     const [newLeadInterestNote, setNewLeadInterestNote] = useState("");
 
-    const [clientMode, setClientMode] = useState<"existing" | "new">("new");
+    const [clientMode, setClientMode] = useState<"none" | "existing" | "new">("none");
     const [selectedExistingClient, setSelectedExistingClient] = useState("");
 
     const existingClients = useMemo(() => {
@@ -1677,6 +1718,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             }
         > = {};
         leads.forEach((lead) => {
+            // Only actual clients (explicit client-* record or non-zero adjustment/value)
+            const isClient =
+                (lead.id || "").startsWith("client-") ||
+                (Number(lead.adjustment) || 0) > 0 ||
+                (Number(lead.value) || 0) > 0;
+            if (!isClient) return;
+
             const key = lead.name.trim().toLowerCase();
             if (key && !profiles[key]) {
                 profiles[key] = {
@@ -1798,6 +1846,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             data: dynamicData,
             timeline: [],
             gantt: [],
+            archived: false,
         };
 
         setProjects((prev) => [newProj, ...prev]);
@@ -1881,6 +1930,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const [leadOwner, setLeadOwner] = useState("");
     const [leadStatus, setLeadStatus] = useState("");
     const [leadSource, setLeadSource] = useState("");
+    const [leadDivision, setLeadDivision] = useState("");
     const [leadRating, setLeadRating] = useState(3);
     const [leadCity, setLeadCity] = useState("");
     const [leadClientType, setLeadClientType] = useState<
@@ -2023,6 +2073,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             setLeadOwner(activeLead.owner);
             setLeadStatus(activeLead.status);
             setLeadSource(activeLead.source);
+            setLeadDivision(activeLead.division || "");
             setLeadRating(activeLead.rating || 3);
             setLeadCity(activeLead.city || "");
             setLeadClientType(activeLead.clientType || "person");
@@ -2037,39 +2088,55 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const clientCardData = useMemo(() => {
         if (!activeLead) return null;
         const clientName = activeLead.name.trim().toLowerCase();
+        if (!clientName) return null;
+
         const matchingLeads = leads.filter(
             (l) => l.name.trim().toLowerCase() === clientName,
         );
 
-        // The lead being viewed always wins. Leads are grouped into a client by name
-        // alone, and a name is not an identity: website forms set the client name from
-        // whatever the visitor typed, so two different people (different emails) end up
-        // in the same group. Taking the first sibling that happens to have a value —
-        // as this did — showed one person's email and phone on another person's lead,
-        // i.e. the details you would call back on were the wrong ones. Siblings may
-        // only fill in fields this lead left blank.
+        // Check if there is an actual client record or client association for this name:
+        // A client exists if there is an explicit client-* record or non-zero adjustment/value
+        const clientRecord = matchingLeads.find(
+            (l) =>
+                (l.id || "").startsWith("client-") ||
+                (Number(l.adjustment) || 0) > 0 ||
+                (Number(l.value) || 0) > 0,
+        );
+
+        if (!clientRecord) {
+            return null;
+        }
+
         const phone =
-            activeLead.phone || matchingLeads.find((l) => l.phone)?.phone || "";
+            activeLead.phone ||
+            matchingLeads.find((l) => l.phone)?.phone ||
+            clientRecord.phone ||
+            "";
         const email =
-            activeLead.email || matchingLeads.find((l) => l.email)?.email || "";
+            activeLead.email ||
+            matchingLeads.find((l) => l.email)?.email ||
+            clientRecord.email ||
+            "";
         const website =
             activeLead.website ||
             matchingLeads.find((l) => l.website)?.website ||
+            clientRecord.website ||
             "";
         const leadWithAddress = activeLead.address?.street
             ? activeLead
-            : matchingLeads.find((l) => l.address?.street) || activeLead;
+            : matchingLeads.find((l) => l.address?.street) || clientRecord;
         const leadWithCompanyId = activeLead.companyId
             ? activeLead
-            : matchingLeads.find((l) => l.companyId) || activeLead;
+            : matchingLeads.find((l) => l.companyId) || clientRecord;
 
         return {
-            name: activeLead.name,
-            clientType: activeLead.clientType || "person",
+            name: clientRecord.name || activeLead.name,
+            clientType:
+                clientRecord.clientType || activeLead.clientType || "person",
             phone,
             email,
             street: leadWithAddress.address?.street || "",
-            city: activeLead.city || "",
+            city: clientRecord.city || activeLead.city || "",
             postalCode: leadWithAddress.address?.postalCode || "",
             country: leadWithAddress.address?.country || "Slovakia",
             companyId: leadWithCompanyId.companyId || "",
@@ -2079,6 +2146,87 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             website,
         };
     }, [leads, activeLead]);
+
+    // Create a new client profile in the client registry from the active lead
+    const handleCreateClientFromLead = useCallback(
+        (lead: Lead) => {
+            if (!lead) return;
+            const clientName = lead.name.trim();
+            if (!clientName) {
+                (window as any).showToast?.(
+                    t(
+                        "Lead name cannot be empty to create a client.",
+                        "Názov leadu nemôže byť prázdny pre vytvorenie klienta.",
+                        "A lead neve nem lehet üres az ügyfél létrehozásához.",
+                    ),
+                );
+                return;
+            }
+
+            const newClientId = `client-${Date.now()}`;
+            const newClientRecord: Lead = {
+                id: newClientId,
+                name: clientName,
+                city: lead.city || "",
+                clientType: lead.clientType || "person",
+                status: "accepted",
+                owner: lead.owner || "",
+                source: lead.source || "direct",
+                value: 0,
+                adjustment: 0,
+                createdAt: todayLocal(),
+                phone: lead.phone || undefined,
+                email: lead.email || undefined,
+                address: lead.address || undefined,
+                companyId: lead.companyId || undefined,
+                taxId: lead.taxId || undefined,
+                vatId: lead.vatId || undefined,
+                contactPerson: lead.contactPerson || undefined,
+                website: lead.website || undefined,
+                interestNote: lead.interestNote || undefined,
+            };
+
+            setLeads((prev) => [newClientRecord, ...prev]);
+
+            (window as any).showToast?.(
+                t(
+                    `Client "${clientName}" created successfully!`,
+                    `Klient "${clientName}" bol úspešne vytvorený!`,
+                    `"${clientName}" ügyfél sikeresen létrehozva!`,
+                ),
+            );
+        },
+        [setLeads, t],
+    );
+
+    // Link this lead to an existing client profile
+    const handleLinkLeadToExistingClient = useCallback(
+        (clientName: string) => {
+            if (!activeLead || !clientName) return;
+            const found = existingClients.find((c) => c.name === clientName);
+            setLeads((prev) =>
+                prev.map((l) => {
+                    if (l.id !== activeLead.id) return l;
+                    return {
+                        ...l,
+                        name: clientName,
+                        city: l.city || found?.city || "",
+                        phone: l.phone || found?.phone || undefined,
+                        email: l.email || found?.email || undefined,
+                        clientType: l.clientType || found?.clientType || "person",
+                    };
+                }),
+            );
+            (window as any).showToast?.(
+                t(
+                    `Lead linked to client "${clientName}"`,
+                    `Lead bol prepojený s klientom "${clientName}"`,
+                    `A lead összekapcsolva a következő ügyféllel: "${clientName}"`,
+                ),
+            );
+        },
+        [activeLead, existingClients, setLeads, t],
+    );
 
     // Event Logging states
     const [logType, setLogType] = useState<LeadEventType | null>(null);
@@ -2815,6 +2963,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         // names, and lower-casing one with capitals on every edit
                         // rewrote the stored value so its colour/label lookups missed.
                         source: leadSource,
+                        division: leadDivision || undefined,
                         rating: leadRating,
                         categories: leadSelectedCategories,
                         referralLeadId: leadReferralId || undefined,
@@ -3555,6 +3704,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         setTimeout(() => {
             setIsModalOpen(false);
             setIsClosingModal(false);
+            setClientMode("none");
+            setSelectedExistingClient("");
         }, 350);
     };
 
@@ -3838,6 +3989,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             clientType: newLeadType,
             status: newLeadStatus || leadStates[0] || "new",
             source: newLeadSource || leadSources[0] || "website",
+            division: newLeadDivision || undefined,
             owner: newLeadOwner || "",
             value: valNum,
             // Date-only and in LOCAL time: `leads.created_at` is a DATE column, and a
@@ -3851,7 +4003,26 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             interestNote: newLeadInterestNote.trim() || undefined,
         };
 
-        setLeads((prev) => [newLead, ...prev]);
+        if (clientMode === "new") {
+            const newClientRecord: Lead = {
+                id: `client-${Date.now() + 1}`,
+                name: newLeadName.trim(),
+                city: newLeadCity.trim(),
+                clientType: newLeadType,
+                status: "accepted",
+                owner: newLeadOwner || "",
+                source: newLeadSource || leadSources[0] || "direct",
+                value: 0,
+                adjustment: 0,
+                createdAt: todayLocal(),
+                phone: newLeadPhone.trim() || undefined,
+                email: newLeadEmail.trim() || undefined,
+                interestNote: newLeadInterestNote.trim() || undefined,
+            };
+            setLeads((prev) => [newLead, newClientRecord, ...prev]);
+        } else {
+            setLeads((prev) => [newLead, ...prev]);
+        }
         closeLeadModal();
 
         setNewLeadName("");
@@ -3860,6 +4031,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         setNewLeadValue("");
         setNewLeadStatus("");
         setNewLeadSource("");
+        setNewLeadDivision("");
         setNewLeadOwner("");
         setNewLeadRating(3);
         setNewLeadCategories([]);
@@ -3867,7 +4039,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         setNewLeadPhone("");
         setNewLeadEmail("");
         setNewLeadInterestNote("");
-        setClientMode("new");
+        setClientMode("none");
         setSelectedExistingClient("");
     };
 
@@ -3910,6 +4082,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     selectedSource === "all" ||
                     (lead.source || "").toLowerCase() ===
                         selectedSource.toLowerCase();
+                const matchesDivision =
+                    selectedDivision === "all" ||
+                    (selectedDivision === "none" && !lead.division) ||
+                    (lead.division || "").toLowerCase() ===
+                        selectedDivision.toLowerCase();
                 const matchesType =
                     selectedType === "all" ||
                     (lead.clientType || "").toLowerCase() ===
@@ -3988,10 +4165,19 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     }
                 }
 
+                const matchesArchive =
+                    selectedArchiveFilter === "all"
+                        ? true
+                        : selectedArchiveFilter === "archived"
+                        ? !!lead.archived
+                        : !lead.archived;
+
                 return (
+                    matchesArchive &&
                     matchesSearch &&
                     matchesState &&
                     matchesSource &&
+                    matchesDivision &&
                     matchesType &&
                     matchesOwner &&
                     matchesCity &&
@@ -4005,6 +4191,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         searchQuery,
         selectedState,
         selectedSource,
+        selectedDivision,
         selectedType,
         selectedOwner,
         selectedCity,
@@ -4012,7 +4199,248 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         filterOfferStartDate,
         filterOfferEndDate,
         offerPresetName,
+        selectedArchiveFilter,
     ]);
+
+    // Bulk selection and action handlers
+    const handleToggleSelectLead = useCallback((leadId: string, e?: React.MouseEvent) => {
+        if (e) e.stopPropagation();
+        setSelectedLeadIds(prev => {
+            const next = new Set(prev);
+            if (next.has(leadId)) {
+                next.delete(leadId);
+            } else {
+                next.add(leadId);
+            }
+            return next;
+        });
+    }, []);
+
+    const handleSelectAllVisible = useCallback(() => {
+        if (selectedLeadIds.size === processedLeads.length && processedLeads.length > 0) {
+            setSelectedLeadIds(new Set());
+        } else {
+            setSelectedLeadIds(new Set(processedLeads.map(l => l.id)));
+        }
+    }, [processedLeads, selectedLeadIds]);
+
+    const handleClearSelection = useCallback(() => {
+        setSelectedLeadIds(new Set());
+        setActiveBulkMenu(null);
+    }, []);
+
+    const areAllVisibleSelected = useMemo(() => {
+        if (processedLeads.length === 0) return false;
+        return processedLeads.every(l => selectedLeadIds.has(l.id));
+    }, [processedLeads, selectedLeadIds]);
+
+    const isPartiallySelected = useMemo(() => {
+        if (selectedLeadIds.size === 0 || areAllVisibleSelected) return false;
+        return processedLeads.some(l => selectedLeadIds.has(l.id));
+    }, [processedLeads, selectedLeadIds, areAllVisibleSelected]);
+
+    const hasActiveSelected = useMemo(() => {
+        return pipelineLeads.some(l => selectedLeadIds.has(l.id) && !l.archived);
+    }, [pipelineLeads, selectedLeadIds]);
+
+    const hasArchivedSelected = useMemo(() => {
+        return pipelineLeads.some(l => selectedLeadIds.has(l.id) && Boolean(l.archived));
+    }, [pipelineLeads, selectedLeadIds]);
+
+    const handleBulkStatusChange = useCallback((newStatus: string) => {
+        if (selectedLeadIds.size === 0) return;
+        setLeads(prev => prev.map(lead => {
+            if (selectedLeadIds.has(lead.id)) {
+                return {
+                    ...lead,
+                    status: newStatus,
+                    updatedAt: new Date().toISOString(),
+                    timeline: [
+                        ...(lead.timeline || []),
+                        {
+                            id: `tl-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+                            type: 'status_change',
+                            title: 'Zmena stavu',
+                            content: `Status changed from ${lead.status} to ${newStatus} (Bulk Update)`,
+                            timestamp: new Date().toISOString()
+                        }
+                    ]
+                };
+            }
+            return lead;
+        }));
+        setActiveBulkMenu(null);
+    }, [selectedLeadIds, setLeads]);
+
+    const handleBulkOwnerChange = useCallback((newOwner: string) => {
+        if (selectedLeadIds.size === 0) return;
+        setLeads(prev => prev.map(lead => {
+            if (selectedLeadIds.has(lead.id)) {
+                return {
+                    ...lead,
+                    owner: newOwner,
+                    updatedAt: new Date().toISOString(),
+                    timeline: [
+                        ...(lead.timeline || []),
+                        {
+                            id: `tl-${Date.now()}-${Math.random().toString(36).substr(2, 4)}`,
+                            type: 'note',
+                            title: 'Priradenie manažéra',
+                            content: `Owner assigned to ${newOwner} (Bulk Update)`,
+                            timestamp: new Date().toISOString()
+                        }
+                    ]
+                };
+            }
+            return lead;
+        }));
+        setActiveBulkMenu(null);
+    }, [selectedLeadIds, setLeads]);
+
+    const handleBulkArchive = useCallback((archived: boolean) => {
+        if (selectedLeadIds.size === 0) return;
+        setLeads(prev => prev.map(lead => {
+            if (selectedLeadIds.has(lead.id)) {
+                return {
+                    ...lead,
+                    archived: archived,
+                    updatedAt: new Date().toISOString()
+                };
+            }
+            return lead;
+        }));
+        setSelectedLeadIds(new Set());
+        setActiveBulkMenu(null);
+    }, [selectedLeadIds, setLeads]);
+
+    const renderBulkActionToolbar = () => {
+        if (selectedLeadIds.size === 0) return null;
+
+        return createPortal(
+            <div
+                ref={bulkToolbarRef}
+                className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100000] flex items-center gap-3 px-4 py-2.5 bg-slate-900/95 backdrop-blur-xl border border-slate-700/70 rounded-2xl shadow-2xl shadow-black/40 text-white animate-in fade-in slide-in-from-bottom-5 duration-200"
+            >
+                <div className="flex items-center gap-2 pr-3 border-r border-slate-700/80">
+                    <span className="flex items-center justify-center w-6 h-6 rounded-full bg-blue-500 text-[11px] font-black text-white">
+                        {selectedLeadIds.size}
+                    </span>
+                    <span className="text-xs font-semibold text-slate-200 hidden sm:inline">
+                        {systemLanguage === "sk" ? "vybraných" : systemLanguage === "hu" ? "kiválasztva" : "selected"}
+                    </span>
+                    <button
+                        type="button"
+                        onClick={handleClearSelection}
+                        className="p-1 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors ml-1 cursor-pointer"
+                        title={t("Clear selection", "Zrušiť výber", "Kijelölés törlése")}
+                    >
+                        <X className="w-3.5 h-3.5" />
+                    </button>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                    {/* Status / Stage Menu */}
+                    <div className="relative">
+                        <button
+                            type="button"
+                            onClick={() => setActiveBulkMenu(prev => prev === "status" ? null : "status")}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all cursor-pointer ${
+                                activeBulkMenu === "status"
+                                    ? "bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-500/25"
+                                    : "bg-slate-800/80 hover:bg-slate-800 border-slate-700 text-slate-200 hover:text-white"
+                            }`}
+                        >
+                            <Layers className="w-3.5 h-3.5 text-blue-400" />
+                            <span>{t("Stage", "Fáza", "Fázis")}</span>
+                        </button>
+                        {activeBulkMenu === "status" && (
+                            <div className="absolute bottom-full mb-2 left-0 w-48 max-h-60 overflow-y-auto bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-1.5 space-y-1 z-[100001] scrollbar-thin animate-in fade-in zoom-in-95 duration-150">
+                                <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                    {t("Change Stage", "Zmeniť fázu", "Fázis módosítása")}
+                                </div>
+                                {leadStates.map(st => (
+                                    <button
+                                        key={st}
+                                        type="button"
+                                        onClick={() => handleBulkStatusChange(st)}
+                                        className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg hover:bg-blue-600/30 text-slate-200 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
+                                    >
+                                        <span
+                                            className="w-2 h-2 rounded-full shrink-0"
+                                            style={{ backgroundColor: getSafeStateColor(st) }}
+                                        />
+                                        <span className="truncate">{st}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Owner / PM Menu */}
+                    <div className="relative">
+                        <button
+                            type="button"
+                            onClick={() => setActiveBulkMenu(prev => prev === "owner" ? null : "owner")}
+                            className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border transition-all cursor-pointer ${
+                                activeBulkMenu === "owner"
+                                    ? "bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-500/25"
+                                    : "bg-slate-800/80 hover:bg-slate-800 border-slate-700 text-slate-200 hover:text-white"
+                            }`}
+                        >
+                            <Users className="w-3.5 h-3.5 text-emerald-400" />
+                            <span>{t("Owner", "Manažér", "Menedzser")}</span>
+                        </button>
+                        {activeBulkMenu === "owner" && (
+                            <div className="absolute bottom-full mb-2 left-0 w-48 max-h-60 overflow-y-auto bg-slate-900 border border-slate-700 rounded-xl shadow-2xl p-1.5 space-y-1 z-[100001] scrollbar-thin animate-in fade-in zoom-in-95 duration-150">
+                                <div className="px-2 py-1 text-[10px] font-bold text-slate-400 uppercase tracking-wider">
+                                    {t("Assign Owner", "Priradiť manažéra", "Menedzser kijelölése")}
+                                </div>
+                                {projectManagers.map(pm => (
+                                    <button
+                                        key={pm}
+                                        type="button"
+                                        onClick={() => handleBulkOwnerChange(pm)}
+                                        className="w-full text-left px-2.5 py-1.5 text-xs font-medium rounded-lg hover:bg-emerald-600/30 text-slate-200 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
+                                    >
+                                        <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                                        <span className="truncate">{pm}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Archive / Restore button */}
+                    {hasActiveSelected && (
+                        <button
+                            type="button"
+                            onClick={() => handleBulkArchive(true)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border border-amber-700/60 bg-amber-950/40 hover:bg-amber-900/60 text-amber-200 transition-colors cursor-pointer"
+                            title={t("Archive selected leads", "Archivovať vybrané leady", "Kijelölt leadek archiválása")}
+                        >
+                            <Archive className="w-3.5 h-3.5 text-amber-400" />
+                            <span className="hidden sm:inline">{t("Archive", "Archivovať", "Archiválás")}</span>
+                        </button>
+                    )}
+                    {hasArchivedSelected && (
+                        <button
+                            type="button"
+                            onClick={() => handleBulkArchive(false)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl border border-emerald-700/60 bg-emerald-950/40 hover:bg-emerald-900/60 text-emerald-200 transition-colors cursor-pointer"
+                            title={t("Restore selected leads", "Obnoviť vybrané leady", "Kijelölt leadek visszaállítása")}
+                        >
+                            <ArchiveRestore className="w-3.5 h-3.5 text-emerald-400" />
+                            <span className="hidden sm:inline">{t("Restore", "Obnoviť", "Visszaállítás")}</span>
+                        </button>
+                    )}
+                </div>
+            </div>,
+            document.body
+        );
+    };
+
+
+
 
     // Group processed leads by lead states dynamically (always used for Kanban & Top Summary counters)
     const stateGroupedLeads = useMemo(() => {
@@ -4037,6 +4465,69 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 leads: groups[state.toLowerCase()] || [],
             }));
     }, [processedLeads, leadStates, leadStateParents]);
+
+    // Active lead status items calculation for the expandable equation statistics
+    const activeLeadStatusItems = useMemo<StatusStatItem[]>(() => {
+        const ordered = orderLeadStates(
+            leadStates,
+            leadStageGroups,
+            leadStateParents,
+        );
+        // Only active (non-closed) top-level/major states
+        const activeStates = ordered.filter(
+            (s) =>
+                !leadStateParents[s.toLowerCase()] &&
+                !isClosedLeadState(s, leadStageGroups, leadStateParents),
+        );
+
+        return activeStates.map((state) => {
+            const stateLower = state.toLowerCase();
+            const leadsInState = processedLeads.filter((l) => {
+                const sKey = (l.status || "").toLowerCase();
+                const parent = leadStateParents[sKey];
+                const target = parent ? parent.toLowerCase() : sKey;
+                return target === stateLower;
+            });
+
+            const val = leadsInState.reduce(
+                (sum, l) => sum + (Number(l.value) || 0),
+                0,
+            );
+            const col = getSafeStateColor(state);
+
+            const rows: StatusStatDetailRow[] = leadsInState.map((l) => {
+                const lVal = Number(l.value) || 0;
+                return {
+                    id: l.id,
+                    name: l.name || `Lead #${l.id}`,
+                    clientName: l.contactPerson || l.name,
+                    manager: l.owner,
+                    division: l.division,
+                    date: l.createdAt ? new Date(l.createdAt).toLocaleDateString() : undefined,
+                    totalBudget: lVal,
+                    invoiced: 0,
+                    invoicable: lVal,
+                    type: "lead",
+                    url: `#leads?lead=${encodeURIComponent(l.id)}`,
+                };
+            });
+
+            return {
+                key: stateLower,
+                name: state.toUpperCase(),
+                value: val,
+                count: leadsInState.length,
+                color: col,
+                rows,
+            };
+        });
+    }, [
+        leadStates,
+        leadStageGroups,
+        leadStateParents,
+        processedLeads,
+        leadStateColors,
+    ]);
 
     // Dynamic consistent manager colors
     const getPMColor = (pmName: string) => {
@@ -4609,7 +5100,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     {/* LEFT PANEL: Client Card & Lead Details Form */}
                     <div className="lg:col-span-5 space-y-6">
                         {/* 1. Client Profile Card (On Top) */}
-                        {clientCardData && (
+                        {clientCardData ? (
                             <div className="glass-panel p-6 rounded-[28px] border-2 border-emerald-400 bg-emerald-50/70 shadow-xl space-y-4 text-emerald-950">
                                 <div className="border-b-2 border-emerald-200/50 pb-2 flex items-center justify-between gap-2">
                                     <span className="text-xs font-black text-emerald-700 uppercase tracking-wider flex items-center gap-1.5">
@@ -4813,7 +5304,81 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     </div>
                                 </div>
                             </div>
-                        )}
+                        ) : activeLead ? (
+                            <div className="glass-panel p-6 rounded-[28px] border-2 border-dashed border-slate-300 bg-white/80 shadow-sm space-y-4 text-slate-700">
+                                <div className="border-b border-slate-200 pb-2.5 flex items-center justify-between gap-2">
+                                    <span className="text-xs font-black text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                                        <Briefcase className="h-4.5 w-4.5 text-slate-400 stroke-[2.5] shrink-0" />
+                                        {t(
+                                            "Client Profile",
+                                            "Profil klienta",
+                                            "Ügyfélprofil",
+                                        )}
+                                    </span>
+                                    <span className="px-2.5 py-0.5 rounded-full text-[9px] font-black bg-slate-100 text-slate-500 border border-slate-200 uppercase tracking-wider shrink-0">
+                                        {t(
+                                            "No Client Linked",
+                                            "Bez klienta",
+                                            "Nincs ügyfél",
+                                        )}
+                                    </span>
+                                </div>
+
+                                <div className="space-y-3.5">
+                                    <p className="text-xs text-slate-600 leading-relaxed font-medium">
+                                        {t(
+                                            "This lead is not currently linked to an official client profile in the client registry. You can create a new client profile from this lead with one click.",
+                                            "Tento lead zatiaľ nie je prepojený s oficiálnym profilom v evidencii klientov. Môžete z tohto leadu vytvoriť nového klienta jedným kliknutím.",
+                                            "Ez a lead jelenleg nincs összekapcsolva hivatalos ügyfélprofillal a nyilvántartásban. Egy kattintással létrehozhat új ügyfelet ebből a leadből.",
+                                        )}
+                                    </p>
+
+                                    <div className="pt-1">
+                                        <button
+                                            type="button"
+                                            onClick={() => handleCreateClientFromLead(activeLead)}
+                                            className="w-full px-5 py-3 rounded-2xl bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-xs font-black uppercase tracking-wider shadow-md hover:shadow-lg transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+                                        >
+                                            <UserPlus className="h-4 w-4" />
+                                            {t(
+                                                "Create New Client from Lead",
+                                                "Vytvoriť nového klienta z leadu",
+                                                "Új ügyfél létrehozása a leadből",
+                                            )}
+                                        </button>
+                                    </div>
+
+                                    {existingClients.length > 0 && (
+                                        <div className="pt-3 border-t border-slate-100 space-y-1.5">
+                                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
+                                                {t(
+                                                    "Or link to existing client",
+                                                    "Alebo prepojiť s existujúcim klientom",
+                                                    "Vagy összekapcsolás meglévő ügyféllel",
+                                                )}
+                                            </label>
+                                            <CustomSelect
+                                                searchable
+                                                size="sm"
+                                                value=""
+                                                onChange={(clientName) => {
+                                                    if (clientName) handleLinkLeadToExistingClient(clientName);
+                                                }}
+                                                placeholder={t(
+                                                    "-- Choose Client to Link --",
+                                                    "-- Vyberte klienta na prepojenie --",
+                                                    "-- Válasszon ügyfelet --",
+                                                )}
+                                                options={existingClients.map((c) => ({
+                                                    value: c.name,
+                                                    label: `${c.name} (${c.city || t("No City", "Bez mesta", "Nincs város")})`,
+                                                }))}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                        ) : null}
 
                         {/* 2. Lead Details Panel (On Bottom) */}
                         <div className="glass-panel p-6 rounded-[28px] border-2 border-blue-400 bg-white shadow-xl space-y-6 overflow-hidden relative">
@@ -4842,6 +5407,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             setLeadOwner(activeLead.owner);
                                             setLeadStatus(activeLead.status);
                                             setLeadSource(activeLead.source);
+                                            setLeadDivision(activeLead.division || "");
                                             setLeadRating(
                                                 activeLead.rating || 3,
                                             );
@@ -5190,6 +5756,58 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             </div>
                                         )}
                                     </div>
+                                    {/* Division */}
+                                    <div className="space-y-1">
+                                        <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">
+                                            {getTranslation(
+                                                systemLanguage,
+                                                "profile.division",
+                                            )}
+                                        </label>
+                                        {isEditingLead ? (
+                                            <CustomSelect
+                                                value={leadDivision}
+                                                onChange={(v) =>
+                                                    setLeadDivision(v)
+                                                }
+                                                options={[
+                                                    {
+                                                        value: "",
+                                                        label: t(
+                                                            "No Division",
+                                                            "Bez divízie",
+                                                            "Divízió nélkül",
+                                                        ),
+                                                    },
+                                                    ...divisions.map((d) => ({
+                                                        value: d,
+                                                        label: d,
+                                                    })),
+                                                ]}
+                                            />
+                                        ) : (
+                                            <div className="pt-2 px-3 flex items-center">
+                                                {leadDivision ? (
+                                                    <span
+                                                        className="px-2.5 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider flex items-center gap-1 transition-all shadow-sm"
+                                                        style={{
+                                                            backgroundColor: `${divisionColors[leadDivision] || "#3b82f6"}15`,
+                                                            color: divisionColors[leadDivision] || "#3b82f6",
+                                                            borderColor: `${divisionColors[leadDivision] || "#3b82f6"}30`,
+                                                        }}
+                                                    >
+                                                        <Building2 className="h-3 w-3 shrink-0" />
+                                                        {leadDivision}
+                                                    </span>
+                                                ) : (
+                                                    <span className="text-slate-400 text-xs font-bold uppercase tracking-wider">
+                                                        —
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )}
+                                    </div>
+
                                     <div className="space-y-1">
                                         <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">
                                             {getTranslation(
@@ -6140,17 +6758,32 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     </div>
                                 </div>
 
-                                <button
-                                    type="submit"
-                                    className="w-full py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 text-white font-black text-[10px] uppercase tracking-wider shadow hover:shadow-violet-600/10 hover:scale-[1.01] transition-all cursor-pointer border border-violet-500/20 flex items-center justify-center gap-1.5"
-                                >
-                                    <Plus className="h-3.5 w-3.5" />
-                                    {systemLanguage === "sk"
-                                        ? "Pridať úlohu fázovej brány"
-                                        : systemLanguage === "hu"
-                                          ? "Kapu feladat hozzáadása"
-                                          : "Add Pipeline Gate Task"}
-                                </button>
+                                <VoiceTaskActionBar
+                                    canCreate={Boolean(canCreateTask && canEdit)}
+                                    systemLanguage={systemLanguage}
+                                    currentUser={currentUser}
+                                    users={_users || []}
+                                    defaultAssignee={resolveTaskAssignee(inlineTaskAssignee)}
+                                    defaultStatus={taskStates[0] || "New"}
+                                    relatedLeadId={activeLead.id}
+                                    isLocking={inlineTaskIsLocking}
+                                    manualButtonText={
+                                        systemLanguage === "sk"
+                                            ? "Pridať úlohu fázovej brány"
+                                            : systemLanguage === "hu"
+                                              ? "Kapu feladat hozzáadása"
+                                              : "Add Pipeline Gate Task"
+                                    }
+                                    manualButtonClassName="py-2.5 rounded-xl bg-gradient-to-r from-violet-600 to-indigo-600 hover:from-violet-700 hover:to-indigo-700 text-white font-black text-[10px] uppercase tracking-wider shadow hover:shadow-violet-600/10 hover:scale-[1.01] transition-all duration-300 ease-in-out cursor-pointer border border-violet-500/20 flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                                    voiceButtonClassName="w-[20%] py-2.5 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 text-white rounded-xl font-black text-[10px] uppercase tracking-wider shadow hover:scale-[1.01] transition-all duration-300 ease-in-out cursor-pointer border border-rose-400/30 flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                                    onManualCreateClick={(e) => {
+                                        if (e) e.preventDefault();
+                                        handleAddInlineLockingTask(e as any);
+                                    }}
+                                    onTasksCreated={(newTasks) => {
+                                        setTasks((prev) => [...newTasks, ...prev]);
+                                    }}
+                                />
                             </form>
                         </div>
                     </div>
@@ -8145,6 +8778,37 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 </p>
             </div>
 
+            {/* Active Leads Value Equation Statistics */}
+            <StatusValueEquationStats
+                items={activeLeadStatusItems}
+                currency={currencyCode}
+                language={systemLanguage}
+                title={
+                    systemLanguage === "sk"
+                        ? "Prehľad hodnôt aktívnych fáz"
+                        : systemLanguage === "hu"
+                          ? "Aktív fázisok értékének összesítése"
+                          : "Active Pipeline Value Breakdown"
+                }
+                subtitle={
+                    systemLanguage === "sk"
+                        ? "Kliknutím na fázu ju zahrniete alebo vylúčite zo súčtu"
+                        : systemLanguage === "hu"
+                          ? "Kattintson egy fázisra a végösszegből való kizáráshoz/hozzáadáshoz"
+                          : "Click any status pill to toggle its inclusion in the equation total"
+                }
+                unitLabel={
+                    systemLanguage === "sk"
+                        ? "leadov"
+                        : systemLanguage === "hu"
+                          ? "lead"
+                          : "leads"
+                }
+                storageKey="ccrm_leads_equation_stats"
+                themeColor="blue"
+                totalColor="emerald"
+            />
+
             {/* 1. Sleek Minimalist Stage Counter Statistics Strip */}
             <div className="glass-panel px-6 py-4 rounded-[26px] border border-blue-50 bg-white/85 shadow-glass flex flex-col lg:flex-row lg:items-center justify-between gap-4 select-none">
                 <div className="flex items-center gap-3">
@@ -8277,9 +8941,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     setSelectedOwner("all");
                                     setSelectedCity("all");
                                     setSelectedSource("all");
+                                    setSelectedDivision("all");
                                     setSelectedType("all");
                                     setSelectedState("all");
                                     setSelectedRating("all");
+                                    setSelectedArchiveFilter("active");
                                     setFilterOfferStartDate(null);
                                     setFilterOfferEndDate(null);
                                     setOfferPresetName("All Time");
@@ -8432,6 +9098,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             onClick={() => {
                                 setNewLeadStatus(leadStates[0] || "");
                                 setNewLeadSource(leadSources[0] || "");
+                                setNewLeadDivision("");
                                 setNewLeadOwner(
                                     autoAssignActive
                                         ? ""
@@ -8450,9 +9117,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     </div>
                 </div>
 
-                {/* Collapsible 7-column filter panels */}
+                {/* Collapsible filter panels */}
                 {showFilters && (
-                    <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3 bg-blue-50/10 p-3 rounded-2xl border border-blue-50 animate-fade-in relative z-40">
+                    <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-8 gap-3 bg-blue-50/10 p-3 rounded-2xl border border-blue-50 animate-fade-in relative z-40">
                         {/* Filter 1: Project Manager */}
                         <div className="flex flex-col gap-1">
                             <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider pl-1">
@@ -8546,6 +9213,46 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         ...leadSources.map((src) => ({
                                             value: src.toLowerCase(),
                                             label: src,
+                                        })),
+                                    ]}
+                                />
+                            </div>
+                        </div>
+
+                        {/* Filter: Division */}
+                        <div className="flex flex-col gap-1">
+                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider pl-1">
+                                {getTranslation(
+                                    systemLanguage,
+                                    "profile.division",
+                                )}
+                            </span>
+                            <div className="flex items-center gap-1.5 bg-white border border-slate-200/70 rounded-xl px-2.5 py-1.5">
+                                <Building2 className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                                <CustomSelect
+                                    value={selectedDivision}
+                                    onChange={(v) => setSelectedDivision(v)}
+                                    size="sm"
+                                    unstyled
+                                    className="text-[11px] font-bold text-slate-700 uppercase tracking-wider w-full justify-between gap-2"
+                                    options={[
+                                        {
+                                            value: "all",
+                                            label: getTranslation(
+                                                systemLanguage,
+                                                "filters.all_divisions",
+                                            ),
+                                        },
+                                        {
+                                            value: "none",
+                                            label: getTranslation(
+                                                systemLanguage,
+                                                "filters.no_division",
+                                            ),
+                                        },
+                                        ...divisions.map((d) => ({
+                                            value: d.toLowerCase(),
+                                            label: d,
                                         })),
                                     ]}
                                 />
@@ -9204,6 +9911,41 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 />
                             </div>
                         </div>
+
+                        {/* Filter 8: Archive Status */}
+                        <div className="flex flex-col gap-1">
+                            <span className="text-[8px] font-black text-slate-400 uppercase tracking-wider pl-1">
+                                {t(
+                                    "Archive",
+                                    "Archív",
+                                    "Archívum",
+                                )}
+                            </span>
+                            <div className="flex items-center gap-1.5 bg-white border border-slate-200/70 rounded-xl px-2.5 py-1.5">
+                                <Archive className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                                <CustomSelect
+                                    value={selectedArchiveFilter}
+                                    onChange={(v) => setSelectedArchiveFilter(v as any)}
+                                    size="sm"
+                                    unstyled
+                                    className="text-[11px] font-bold text-slate-700 uppercase tracking-wider w-full justify-between gap-2"
+                                    options={[
+                                        {
+                                            value: "active",
+                                            label: t("Active Only", "Iba aktívne", "Csak aktív"),
+                                        },
+                                        {
+                                            value: "archived",
+                                            label: t("Archived Only", "Iba archivované", "Csak archivált"),
+                                        },
+                                        {
+                                            value: "all",
+                                            label: t("All Leads", "Všetky leady", "Minden lead"),
+                                        },
+                                    ]}
+                                />
+                            </div>
+                        </div>
                     </div>
                 )}
 
@@ -9245,7 +9987,23 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                         <table className="w-full border-collapse text-left block lg:table">
                             <thead className="hidden lg:table-header-group">
                                 <tr className="bg-white text-blue-600 text-[10px] font-black uppercase tracking-wider">
-                                    <th className="sticky top-0 bg-white z-10 py-4 px-6 rounded-tl-[24px] border-b-2 border-slate-100">
+                                    <th className="sticky top-0 bg-white z-10 py-4 px-3 w-12 rounded-tl-[24px] border-b-2 border-slate-100 text-center">
+                                        <button
+                                            type="button"
+                                            onClick={handleSelectAllVisible}
+                                            className="text-slate-400 hover:text-blue-600 transition-colors p-1 rounded-lg hover:bg-slate-100 flex items-center justify-center mx-auto cursor-pointer"
+                                            title={areAllVisibleSelected ? "Deselect all" : "Select all"}
+                                        >
+                                            {areAllVisibleSelected ? (
+                                                <CheckSquare className="w-4 h-4 text-blue-600" />
+                                            ) : isPartiallySelected ? (
+                                                <MinusSquare className="w-4 h-4 text-blue-600" />
+                                            ) : (
+                                                <Square className="w-4 h-4 text-slate-300" />
+                                            )}
+                                        </button>
+                                    </th>
+                                    <th className="sticky top-0 bg-white z-10 py-4 px-6 border-b-2 border-slate-100">
                                         {getTranslation(
                                             systemLanguage,
                                             "leads.table.client",
@@ -9333,7 +10091,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 >
                                                     <th
                                                         scope="colgroup"
-                                                        colSpan={9}
+                                                        colSpan={10}
                                                         className={`px-4 lg:px-6 font-bold align-middle select-none block lg:table-cell w-full lg:w-auto ${compactMode ? "py-1" : "py-1.5"}`}
                                                         style={{
                                                             backgroundColor:
@@ -9445,7 +10203,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 (group.leads.length === 0 ? (
                                                     <tr className="block lg:table-row">
                                                         <td
-                                                            colSpan={9}
+                                                            colSpan={10}
                                                             className="py-5 px-6 text-center text-slate-400 select-none uppercase font-black text-[9px] tracking-wider bg-slate-50/10 border-l-4 block lg:table-cell w-full lg:w-auto"
                                                             style={{
                                                                 borderLeftColor: `${stateColor}15`,
@@ -9488,7 +10246,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                     null,
                                                                                 )
                                                                             }
-                                                                            className={`block lg:table-row border-b-[3px] border-slate-200/90 lg:border-b-0 p-4 lg:p-0 transition-colors duration-150 group`}
+                                                                            className={`block lg:table-row border-none lg:border-b lg:border-slate-100 p-0 lg:p-0 transition-colors duration-150 group`}
                                                                             style={{
                                                                                 backgroundColor:
                                                                                     isInlineEditing
@@ -9499,6 +10257,291 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                           : `${leadColor}06`,
                                                                             }}
                                                                         >
+                                                                            {/* ============================================================ */}
+                                                                            {/* --- MOBILE DEDICATED LIST VIEW (< lg) --- */}
+                                                                            {/* ============================================================ */}
+                                                                            <td
+                                                                                colSpan={10}
+                                                                                className="block lg:hidden p-0 border-none bg-transparent w-full"
+                                                                            >
+                                                                                {isInlineEditing ? (
+                                                                                    <div
+                                                                                        className="p-3.5 border-b border-blue-400/80 bg-blue-50/40 dark:bg-slate-900/80 space-y-3"
+                                                                                        onClick={(e) => e.stopPropagation()}
+                                                                                    >
+                                                                                        <div className="flex items-center justify-between gap-2">
+                                                                                            <span className="text-xs font-black text-blue-700 dark:text-blue-400 uppercase tracking-wider">
+                                                                                                {t("Edit Lead", "Upraviť lead", "Lead szerkesztése")}
+                                                                                            </span>
+                                                                                            <div className="flex items-center gap-1.5">
+                                                                                                <button
+                                                                                                    onClick={() => saveInlineEdit(lead.id)}
+                                                                                                    className="h-7 px-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-600 text-white flex items-center gap-1 text-xs font-bold shadow-xs transition-colors"
+                                                                                                >
+                                                                                                    <Check className="h-3.5 w-3.5" /> {t("Save", "Uložiť", "Mentés")}
+                                                                                                </button>
+                                                                                                <button
+                                                                                                    onClick={() => setEditingRowId(null)}
+                                                                                                    className="h-7 px-2 rounded-lg bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-300 flex items-center text-xs font-medium transition-colors"
+                                                                                                >
+                                                                                                    <X className="h-3.5 w-3.5" />
+                                                                                                </button>
+                                                                                            </div>
+                                                                                        </div>
+                                                                                        <div className="grid grid-cols-2 gap-2">
+                                                                                            <div className="col-span-2">
+                                                                                                <label className="text-[9px] font-bold text-slate-400 uppercase">
+                                                                                                    {t("Name", "Meno", "Név")}
+                                                                                                </label>
+                                                                                                <input
+                                                                                                    type="text"
+                                                                                                    value={inlineName}
+                                                                                                    onChange={(e) => setInlineName(e.target.value)}
+                                                                                                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs font-semibold focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-900 dark:text-slate-100"
+                                                                                                />
+                                                                                            </div>
+                                                                                            <div>
+                                                                                                <label className="text-[9px] font-bold text-slate-400 uppercase">
+                                                                                                    {t("City", "Mesto", "Város")}
+                                                                                                </label>
+                                                                                                <input
+                                                                                                    type="text"
+                                                                                                    value={inlineCity}
+                                                                                                    onChange={(e) => setInlineCity(e.target.value)}
+                                                                                                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-900 dark:text-slate-100"
+                                                                                                />
+                                                                                            </div>
+                                                                                            <div>
+                                                                                                <label className="text-[9px] font-bold text-slate-400 uppercase">
+                                                                                                    {t("Value", "Hodnota", "Érték")}
+                                                                                                </label>
+                                                                                                <input
+                                                                                                    type="number"
+                                                                                                    value={inlineValue}
+                                                                                                    onChange={(e) => setInlineValue(e.target.value)}
+                                                                                                    className="w-full px-2.5 py-1.5 rounded-lg bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-700 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-500 text-slate-900 dark:text-slate-100"
+                                                                                                />
+                                                                                            </div>
+                                                                                            <div>
+                                                                                                <label className="text-[9px] font-bold text-slate-400 uppercase">
+                                                                                                    {t("Type", "Typ", "Típus")}
+                                                                                                </label>
+                                                                                                <CustomSelect
+                                                                                                    value={inlineType}
+                                                                                                    onChange={(v) => setInlineType(v as any)}
+                                                                                                    size="sm"
+                                                                                                    options={[
+                                                                                                        { value: "person", label: t("Person", "Osoba", "Személy") },
+                                                                                                        { value: "business", label: t("Business", "Firma", "Cég") },
+                                                                                                        { value: "partner", label: t("Partner", "Partner", "Partner") },
+                                                                                                    ]}
+                                                                                                />
+                                                                                            </div>
+                                                                                            <div>
+                                                                                                <label className="text-[9px] font-bold text-slate-400 uppercase">
+                                                                                                    {t("Source", "Zdroj", "Forrás")}
+                                                                                                </label>
+                                                                                                <CustomSelect
+                                                                                                    value={inlineSource}
+                                                                                                    onChange={(v) => setInlineSource(v)}
+                                                                                                    size="sm"
+                                                                                                    options={leadSources.map((src) => ({ value: src, label: src }))}
+                                                                                                />
+                                                                                            </div>
+                                                                                            <div className="col-span-2">
+                                                                                                <label className="text-[9px] font-bold text-slate-400 uppercase">
+                                                                                                    {t("Manager", "Manažér", "Menedzser")}
+                                                                                                </label>
+                                                                                                <CustomSelect
+                                                                                                    value={inlineOwner}
+                                                                                                    onChange={(v) => setInlineOwner(v)}
+                                                                                                    size="sm"
+                                                                                                    options={projectManagers.map((pm) => ({ value: pm, label: pm }))}
+                                                                                                />
+                                                                                            </div>
+                                                                                        </div>
+                                                                                    </div>
+                                                                                ) : (
+                                                                                    <div
+                                                                                        onClick={() => {
+                                                                                            window.location.hash = `lead-${lead.id}`;
+                                                                                        }}
+                                                                                        className="py-3 px-3.5 sm:px-4 border-b border-slate-200/70 hover:bg-slate-500/5 transition-colors cursor-pointer space-y-1.5"
+                                                                                        style={{
+                                                                                            borderLeft: `3px solid ${leadColor}`,
+                                                                                        }}
+                                                                                    >
+                                                                                        {/* TOP ROW: Small Status Selector (Left) | Quick Actions (Right) */}
+                                                                                        <div className="flex items-center justify-between gap-2">
+                                                                                            <div
+                                                                                                className="flex items-center gap-1.5 flex-wrap min-w-0"
+                                                                                                onClick={(e) => e.stopPropagation()}
+                                                                                            >
+                                                                                                <button
+                                                                                                    type="button"
+                                                                                                    onClick={() => handleToggleSelectLead(lead.id)}
+                                                                                                    className="p-1 text-slate-400 hover:text-blue-600 transition-colors cursor-pointer"
+                                                                                                    title={selectedLeadIds.has(lead.id) ? "Deselect" : "Select"}
+                                                                                                >
+                                                                                                    {selectedLeadIds.has(lead.id) ? (
+                                                                                                        <CheckSquare className="w-4 h-4 text-blue-600" />
+                                                                                                    ) : (
+                                                                                                        <Square className="w-4 h-4 text-slate-300" />
+                                                                                                    )}
+                                                                                                </button>
+                                                                                                <div className="scale-85 origin-left">
+                                                                                                    <StatusSelector
+                                                                                                        status={lead.status}
+                                                                                                        onChange={(newStatus) => handleUpdateLeadState(lead.id, newStatus)}
+                                                                                                    />
+                                                                                                </div>
+                                                                                                {breachedSlaById[lead.id] && (
+                                                                                                    <SlaBreachBadge
+                                                                                                        sla={breachedSlaById[lead.id]}
+                                                                                                        lang={systemLanguage}
+                                                                                                    />
+                                                                                                )}
+                                                                                            </div>
+
+                                                                                            {/* Right side: Quick Action Buttons */}
+                                                                                            <div
+                                                                                                className="flex items-center gap-1 shrink-0"
+                                                                                                onClick={(e) => e.stopPropagation()}
+                                                                                            >
+                                                                                                <button
+                                                                                                    onClick={() => {
+                                                                                                        window.location.hash = `lead-${lead.id}`;
+                                                                                                    }}
+                                                                                                    className="h-6 w-6 rounded-md text-slate-400 hover:text-blue-600 hover:bg-slate-200/60 flex items-center justify-center transition-colors"
+                                                                                                    title={t("Open Edit Slideout", "Otvoriť panel úprav", "Szerkesztő panel megnyitása")}
+                                                                                                >
+                                                                                                    <Edit3 className="h-3.5 w-3.5" />
+                                                                                                </button>
+                                                                                                <button
+                                                                                                    onClick={() => {
+                                                                                                        handleDeleteLead(lead.id, lead.name);
+                                                                                                    }}
+                                                                                                    className="h-6 w-6 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center transition-colors"
+                                                                                                    title={t("Delete Lead", "Odstrániť lead", "Lead törlése")}
+                                                                                                >
+                                                                                                    <Trash2 className="h-3.5 w-3.5" />
+                                                                                                </button>
+                                                                                            </div>
+                                                                                        </div>
+
+                                                                                        {/* FULL-WIDTH NAME ROW: Name (Its Own Line) + Rating */}
+                                                                                        <div className="flex items-center gap-2 min-w-0 py-0.5">
+                                                                                            <span className="font-bold text-slate-900 text-sm sm:text-base leading-snug break-words">
+                                                                                                {lead.name}
+                                                                                            </span>
+                                                                                            {!compactMode && lead.rating ? (
+                                                                                                <div
+                                                                                                    className="scale-75 origin-left shrink-0"
+                                                                                                    onClick={(e) => e.stopPropagation()}
+                                                                                                >
+                                                                                                    {renderStars(lead.rating || 0, (newRating) => {
+                                                                                                        setLeads((prev) =>
+                                                                                                            prev.map((l) =>
+                                                                                                                l.id === lead.id ? { ...l, rating: newRating } : l
+                                                                                                            )
+                                                                                                        );
+                                                                                                    })}
+                                                                                                </div>
+                                                                                            ) : null}
+                                                                                        </div>
+
+                                                                                        {/* METADATA & VALUE ROW: Value, Source, PM, Date, City (No Person/Type Tag) */}
+                                                                                        <div className="flex flex-wrap items-center gap-1.5 pt-0.5 text-xs">
+                                                                                            {/* Value Badge */}
+                                                                                            <span className="font-heading font-black text-xs text-blue-700 bg-blue-50/90 px-2 py-0.5 rounded-md border border-blue-200/70 whitespace-nowrap shadow-2xs">
+                                                                                                {money(lead.value, { minimumFractionDigits: 2 })}
+                                                                                            </span>
+
+                                                                                            {/* Lead Source */}
+                                                                                            {lead.source && (
+                                                                                                <span
+                                                                                                    className="px-2 py-0.5 rounded-md text-[9px] font-extrabold uppercase border select-none transition-colors whitespace-nowrap"
+                                                                                                    style={{
+                                                                                                        backgroundColor: `${getSafeSourceColor(lead.source)}18`,
+                                                                                                        color: liftAccent(getSafeSourceColor(lead.source)),
+                                                                                                        borderColor: `${getSafeSourceColor(lead.source)}35`,
+                                                                                                    }}
+                                                                                                >
+                                                                                                    {lead.source}
+                                                                                                </span>
+                                                                                            )}
+
+                                                                                            {/* Project Manager */}
+                                                                                            {!lead.owner || lead.owner.toLowerCase() === "unassigned" ? (
+                                                                                                <span className="px-2 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-wider flex items-center gap-1 bg-rose-50 border-rose-300 text-rose-600">
+                                                                                                    <User className="h-2.5 w-2.5 shrink-0" />
+                                                                                                    {systemLanguage === "sk" ? "Nepriradený" : systemLanguage === "hu" ? "Nincs" : "Unassigned"}
+                                                                                                </span>
+                                                                                            ) : (
+                                                                                                <span
+                                                                                                    className="px-2 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-wider flex items-center gap-1 shadow-2xs"
+                                                                                                    style={{
+                                                                                                        backgroundColor: `${getSafePMColor(lead.owner)}18`,
+                                                                                                        color: liftAccent(getSafePMColor(lead.owner)),
+                                                                                                        borderColor: `${getSafePMColor(lead.owner)}30`,
+                                                                                                    }}
+                                                                                                >
+                                                                                                    <User className="h-2.5 w-2.5 shrink-0" />
+                                                                                                    {lead.owner}
+                                                                                                </span>
+                                                                                            )}
+
+                                                                                            {/* Date */}
+                                                                                            {lead.createdAt && (
+                                                                                                <div className="flex items-center gap-1 text-[11px] text-slate-500 font-medium ml-1">
+                                                                                                    <Calendar className="h-3 w-3 text-slate-400 shrink-0" />
+                                                                                                    <span>
+                                                                                                        {(() => {
+                                                                                                            const dateMatch = lead.createdAt.match(/^(\d{4})-(\d{2})-(\d{2})/);
+                                                                                                            if (!dateMatch) return lead.createdAt;
+                                                                                                            const [, yyyy, mm, dd] = dateMatch;
+                                                                                                            if (systemLanguage === "sk") return `${dd}.${mm}.${yyyy}`;
+                                                                                                            if (systemLanguage === "hu") return `${yyyy}.${mm}.${dd}.`;
+                                                                                                            return `${mm}/${dd}/${yyyy}`;
+                                                                                                        })()}
+                                                                                                    </span>
+                                                                                                </div>
+                                                                                            )}
+
+                                                                                            {/* City */}
+                                                                                            {lead.city && (
+                                                                                                <div className="flex items-center gap-1 text-[11px] text-slate-500 font-medium ml-1">
+                                                                                                    <MapPin className="h-3 w-3 text-slate-400 shrink-0" />
+                                                                                                    <span className="truncate max-w-[140px]">{lead.city}</span>
+                                                                                                </div>
+                                                                                            )}
+                                                                                        </div>
+                                                                                    </div>
+                                                                                )}
+                                                                            </td>
+
+                                                                            {/* ============================================================ */}
+                                                                            {/* --- DESKTOP TABLE CELLS (>= lg) --- */}
+                                                                            {/* ============================================================ */}
+                                                                            {/* --- SELECTION CHECKBOX CELL --- */}
+                                                                            <td
+                                                                                className="hidden lg:table-cell px-3 py-3 w-12 text-center align-middle"
+                                                                                onClick={(e) => e.stopPropagation()}
+                                                                            >
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={() => handleToggleSelectLead(lead.id)}
+                                                                                    className="text-slate-400 hover:text-blue-600 transition-colors p-1 rounded-lg hover:bg-slate-100 flex items-center justify-center mx-auto cursor-pointer"
+                                                                                    title={selectedLeadIds.has(lead.id) ? "Deselect" : "Select"}
+                                                                                >
+                                                                                    {selectedLeadIds.has(lead.id) ? (
+                                                                                        <CheckSquare className="w-4 h-4 text-blue-600" />
+                                                                                    ) : (
+                                                                                        <Square className="w-4 h-4 text-slate-300" />
+                                                                                    )}
+                                                                                </button>
+                                                                            </td>
+
                                                                             {/* --- COLUMN 1: CLIENT NAME --- */}
                                                                             <td
                                                                                 onClick={() => {
@@ -9508,7 +10551,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                         window.location.hash = `lead-${lead.id}`;
                                                                                     }
                                                                                 }}
-                                                                                className={`block lg:table-cell px-0 lg:px-6 font-bold text-slate-900 cursor-pointer mb-2 lg:mb-0 w-full lg:w-auto ${nameCellPy}`}
+                                                                                className={`hidden lg:table-cell px-0 lg:px-6 font-bold text-slate-900 cursor-pointer mb-2 lg:mb-0 w-full lg:w-auto ${nameCellPy}`}
                                                                             >
                                                                                 {isInlineEditing ? (
                                                                                     <input
@@ -9593,7 +10636,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                         lead,
                                                                                     )
                                                                                 }
-                                                                                className={`inline-flex items-center lg:table-cell px-0 lg:px-4 text-slate-500 font-semibold cursor-pointer mr-3.5 ${cellPy}`}
+                                                                                className={`hidden lg:table-cell px-0 lg:px-4 text-slate-500 font-semibold cursor-pointer ${cellPy}`}
                                                                             >
                                                                                 <div className="flex items-center gap-1.5 text-slate-600">
                                                                                     <Calendar className="h-3.5 w-3.5 text-blue-400 shrink-0" />
@@ -9619,9 +10662,6 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                             ] =
                                                                                                 dateMatch;
 
-                                                                                            // EN: MM/DD/YYYY
-                                                                                            // SK: DD.MM.YYYY
-                                                                                            // HU: YYYY.MM.DD.
                                                                                             if (
                                                                                                 systemLanguage ===
                                                                                                 "sk"
@@ -9648,7 +10688,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                         lead,
                                                                                     )
                                                                                 }
-                                                                                className={`inline-flex items-center lg:table-cell px-0 lg:px-4 text-slate-500 font-semibold cursor-pointer mr-3.5 ${cellPy}`}
+                                                                                className={`hidden lg:table-cell px-0 lg:px-4 text-slate-500 font-semibold cursor-pointer ${cellPy}`}
                                                                             >
                                                                                 {isInlineEditing ? (
                                                                                     <input
@@ -9692,7 +10732,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                         lead,
                                                                                     )
                                                                                 }
-                                                                                className={`inline-flex items-center lg:table-cell px-0 lg:px-4 cursor-pointer mr-3.5 ${cellPy}`}
+                                                                                className={`hidden lg:table-cell px-0 lg:px-4 cursor-pointer ${cellPy}`}
                                                                             >
                                                                                 {isInlineEditing ? (
                                                                                     <div
@@ -9789,7 +10829,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                         lead,
                                                                                     )
                                                                                 }
-                                                                                className={`inline-flex items-center lg:table-cell px-0 lg:px-4 cursor-pointer mr-3.5 ${cellPy}`}
+                                                                                className={`hidden lg:table-cell px-0 lg:px-4 cursor-pointer ${cellPy}`}
                                                                             >
                                                                                 {isInlineEditing ? (
                                                                                     <div
@@ -9848,7 +10888,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                         lead,
                                                                                     )
                                                                                 }
-                                                                                className={`inline-flex items-center lg:table-cell px-0 lg:px-4 text-slate-500 font-medium cursor-pointer mr-3.5 ${cellPy}`}
+                                                                                className={`hidden lg:table-cell px-0 lg:px-4 text-slate-500 font-medium cursor-pointer ${cellPy}`}
                                                                             >
                                                                                 {isInlineEditing ? (
                                                                                     <div
@@ -9882,9 +10922,6 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                     </div>
                                                                                 ) : (
                                                                                     <div className="flex items-center gap-1.5">
-                                                                                        <span className="text-[9px] font-black text-slate-400 lg:hidden uppercase tracking-wider">
-                                                                                            PM:
-                                                                                        </span>
                                                                                         {!lead.owner ||
                                                                                         lead.owner.toLowerCase() ===
                                                                                             "unassigned" ? (
@@ -9927,7 +10964,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                         lead,
                                                                                     )
                                                                                 }
-                                                                                className={`inline-flex items-center lg:table-cell px-0 lg:px-4 font-heading font-black text-blue-700 cursor-pointer mr-3.5 ${cellPy}`}
+                                                                                className={`hidden lg:table-cell px-0 lg:px-4 font-heading font-black text-blue-700 cursor-pointer ${cellPy}`}
                                                                             >
                                                                                 {isInlineEditing ? (
                                                                                     <input
@@ -9953,13 +10990,6 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                     />
                                                                                 ) : (
                                                                                     <div className="flex items-center gap-1">
-                                                                                        <span className="text-[9px] font-black text-slate-400 lg:hidden uppercase tracking-wider">
-                                                                                            {t(
-                                                                                                "Val:",
-                                                                                                "Hodn.:",
-                                                                                                "Érték:",
-                                                                                            )}
-                                                                                        </span>
                                                                                         <span className="border-b border-transparent hover:border-blue-400/50 transition-all font-black text-blue-700 whitespace-nowrap">
                                                                                             {money(
                                                                                                 lead.value,
@@ -9974,17 +11004,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                                                                             {/* --- COLUMN 7: LEAD STATE (Dropdown) --- */}
                                                                             <td
-                                                                                className={`inline-flex items-center lg:table-cell px-0 lg:px-4 mr-3.5 border-b border-slate-100 lg:border-b-0 ${cellPy}`}
+                                                                                className={`hidden lg:table-cell px-0 lg:px-4 ${cellPy}`}
                                                                             >
                                                                                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-3 w-full">
                                                                                     <div className="flex items-center gap-1 shrink-0">
-                                                                                        <span className="text-[9px] font-black text-slate-400 lg:hidden uppercase tracking-wider mr-1">
-                                                                                            {t(
-                                                                                                "Stage:",
-                                                                                                "Fáza:",
-                                                                                                "Fázis:",
-                                                                                            )}
-                                                                                        </span>
                                                                                         <StatusSelector
                                                                                             status={
                                                                                                 lead.status
@@ -10092,7 +11115,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                                                                             {/* --- COLUMN 8: ACTIONS --- */}
                                                                             <td
-                                                                                className={`block lg:table-cell px-0 lg:px-6 text-center border-t border-slate-100 lg:border-t-0 mt-2.5 lg:mt-0 pt-2.5 lg:pt-3 ${cellPy}`}
+                                                                                className={`hidden lg:table-cell px-0 lg:px-6 text-center pt-2.5 lg:pt-3 ${cellPy}`}
                                                                             >
                                                                                 {isInlineEditing ? (
                                                                                     <div className="flex items-center justify-center gap-2">
@@ -10189,7 +11212,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                         null,
                                                                                     )
                                                                                 }
-                                                                                className="block lg:table-row border-none hover:bg-transparent"
+                                                                                className="hidden lg:table-row border-none hover:bg-transparent"
                                                                             >
                                                                                 <td
                                                                                     colSpan={
@@ -10692,20 +11715,35 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                 : "p-4 gap-2.5"
                                                                         }`}
                                                                     >
-                                                                        {/* Row 1: SLA warning (always on) + hover actions */}
+                                                                        {/* Row 1: Selection + SLA warning (always on) + hover actions */}
                                                                         <div
                                                                             className={`flex items-center justify-between gap-1 shrink-0 ${compactMode ? "min-h-2" : "min-h-4"}`}
                                                                         >
-                                                                            {/* Kanban is the other reading of the same list, so a
-                                                                                breached lead has to be as obvious here as in a row. */}
-                                                                            {breachedSlaById[lead.id] ? (
-                                                                                <SlaBreachBadge
-                                                                                    sla={breachedSlaById[lead.id]}
-                                                                                    lang={systemLanguage}
-                                                                                />
-                                                                            ) : (
-                                                                                <span />
-                                                                            )}
+                                                                            <div className="flex items-center gap-1.5 min-w-0">
+                                                                                <button
+                                                                                    type="button"
+                                                                                    onClick={(e) => {
+                                                                                        e.stopPropagation();
+                                                                                        handleToggleSelectLead(lead.id);
+                                                                                    }}
+                                                                                    className="text-slate-400 hover:text-blue-600 transition-colors p-0.5 cursor-pointer"
+                                                                                    title={selectedLeadIds.has(lead.id) ? "Deselect" : "Select"}
+                                                                                >
+                                                                                    {selectedLeadIds.has(lead.id) ? (
+                                                                                        <CheckSquare className="w-3.5 h-3.5 text-blue-600" />
+                                                                                    ) : (
+                                                                                        <Square className="w-3.5 h-3.5 text-slate-300 group-hover:text-slate-400" />
+                                                                                    )}
+                                                                                </button>
+                                                                                {/* Kanban is the other reading of the same list, so a
+                                                                                    breached lead has to be as obvious here as in a row. */}
+                                                                                {breachedSlaById[lead.id] && (
+                                                                                    <SlaBreachBadge
+                                                                                        sla={breachedSlaById[lead.id]}
+                                                                                        lang={systemLanguage}
+                                                                                    />
+                                                                                )}
+                                                                            </div>
 
                                                                             {/* Card quick actions on hover */}
                                                                             <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -11152,7 +12190,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         <button
                                             type="button"
                                             onClick={() => {
-                                                setClientMode("new");
+                                                setClientMode("none");
                                                 setNewLeadName("");
                                                 setNewLeadCity("");
                                                 setNewLeadType("person");
@@ -11161,15 +12199,15 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 setSelectedExistingClient("");
                                             }}
                                             className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
-                                                clientMode === "new"
+                                                clientMode === "none"
                                                     ? "bg-white text-blue-600 shadow-sm font-black"
                                                     : "text-slate-500 hover:text-slate-800 font-bold"
                                             }`}
                                         >
                                             {t(
-                                                "New Client",
-                                                "Nový klient",
-                                                "Új ügyfél",
+                                                "No Client",
+                                                "Žiadny klient",
+                                                "Nincs ügyfél",
                                             )}
                                         </button>
                                         <button
@@ -11193,6 +12231,29 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                 "Existing Client",
                                                 "Existujúci klient",
                                                 "Meglévő ügyfél",
+                                            )}
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                setClientMode("new");
+                                                setNewLeadName("");
+                                                setNewLeadCity("");
+                                                setNewLeadType("person");
+                                                setNewLeadPhone("");
+                                                setNewLeadEmail("");
+                                                setSelectedExistingClient("");
+                                            }}
+                                            className={`px-3 py-1 rounded-lg text-[9px] font-black uppercase tracking-wider transition-all ${
+                                                clientMode === "new"
+                                                    ? "bg-white text-blue-600 shadow-sm font-black"
+                                                    : "text-slate-500 hover:text-slate-800 font-bold"
+                                            }`}
+                                        >
+                                            {t(
+                                                "New Client",
+                                                "Nový klient",
+                                                "Új ügyfél",
                                             )}
                                         </button>
                                     </div>
@@ -11224,21 +12285,54 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             }),
                                         )}
                                     />
+                                ) : clientMode === "new" ? (
+                                    <div className="space-y-1">
+                                        <input
+                                            type="text"
+                                            required
+                                            value={newLeadName}
+                                            onChange={(e) =>
+                                                setNewLeadName(e.target.value)
+                                            }
+                                            placeholder={t(
+                                                "e.g. Acme s.r.o. / John Doe",
+                                                "napr. Acme s.r.o. / Ján Novák",
+                                                "pl. Acme Kft. / Kovács János",
+                                            )}
+                                            className="w-full px-4 py-2.5 rounded-xl bg-blue-50/10 border border-blue-100 text-xs text-slate-800 focus:outline-none focus:bg-white focus:border-blue-500 focus:ring-1"
+                                        />
+                                        <p className="text-[10px] text-emerald-600 font-medium">
+                                            {t(
+                                                "Will automatically create both this lead and a new registered client profile.",
+                                                "Vytvorí tento lead a zároveň nový registrovaný profil klienta.",
+                                                "Létrehozza ezt a leadet és egy új regisztrált ügyfélprofilt is.",
+                                            )}
+                                        </p>
+                                    </div>
                                 ) : (
-                                    <input
-                                        type="text"
-                                        required
-                                        value={newLeadName}
-                                        onChange={(e) =>
-                                            setNewLeadName(e.target.value)
-                                        }
-                                        placeholder={t(
-                                            "e.g. John Doe",
-                                            "napr. Ján Novák",
-                                            "pl. Kovács János",
-                                        )}
-                                        className="w-full px-4 py-2.5 rounded-xl bg-blue-50/10 border border-blue-100 text-xs text-slate-800 focus:outline-none focus:bg-white focus:border-blue-500 focus:ring-1"
-                                    />
+                                    <div className="space-y-1">
+                                        <input
+                                            type="text"
+                                            required
+                                            value={newLeadName}
+                                            onChange={(e) =>
+                                                setNewLeadName(e.target.value)
+                                            }
+                                            placeholder={t(
+                                                "e.g. Website redesign / New deal",
+                                                "napr. Redizajn webu / Nová zákazka",
+                                                "pl. Weboldal áttervezés / Új ügylet",
+                                            )}
+                                            className="w-full px-4 py-2.5 rounded-xl bg-blue-50/10 border border-blue-100 text-xs text-slate-800 focus:outline-none focus:bg-white focus:border-blue-500 focus:ring-1"
+                                        />
+                                        <p className="text-[10px] text-slate-400 font-medium">
+                                            {t(
+                                                "Lead without a linked client profile. You can create a client later.",
+                                                "Lead bez prepojeného profilu klienta. Profil môžete vytvoriť neskôr.",
+                                                "Lead összekapcsolt ügyfélprofil nélkül. Később létrehozhatja az ügyfelet.",
+                                            )}
+                                        </p>
+                                    </div>
                                 )}
                             </div>
 
@@ -11470,6 +12564,36 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                             value: source.toLowerCase(),
                                             label: source,
                                         }))}
+                                    />
+                                </div>
+                                <div className="space-y-1">
+                                    <label className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                                        <Building2 className="h-3.5 w-3.5 text-blue-500" />{" "}
+                                        {getTranslation(
+                                            systemLanguage,
+                                            "profile.division",
+                                        )}
+                                    </label>
+                                    <CustomSelect
+                                        value={newLeadDivision}
+                                        onChange={(v) =>
+                                            setNewLeadDivision(v)
+                                        }
+                                        className="font-bold"
+                                        options={[
+                                            {
+                                                value: "",
+                                                label: t(
+                                                    "No Division",
+                                                    "Bez divízie",
+                                                    "Divízió nélkül",
+                                                ),
+                                            },
+                                            ...divisions.map((d) => ({
+                                                value: d,
+                                                label: d,
+                                            })),
+                                        ]}
                                     />
                                 </div>
                             </div>
@@ -11895,6 +13019,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 </div>,
                 document.body,
             )}
+            {/* Bulk Action Toolbar */}
+            {renderBulkActionToolbar()}
         </div>
     );
 };

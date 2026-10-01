@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 150 40" fill="none">
+  <g transform="translate(0, 3)">
+    <!-- Security Shield Icon -->
+    <path d="M16 2 L30 7 C30 18 24 27 16 31 C8 27 2 18 2 7 Z" fill="#0284c7" fill-opacity="0.12"/>
+    <path d="M16 2 L30 7 C30 18 24 27 16 31 C8 27 2 18 2 7 Z" stroke="#0284c7" stroke-width="2.5" stroke-linejoin="round"/>
+    <path d="M10 16 L14.5 20.5 L22 13" stroke="#0284c7" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  <text x="42" y="27" font-family="'Plus Jakarta Sans', sans-serif" font-weight="900" font-size="24" fill="#0b0b0b" letter-spacing="-0.03em">HiSec</text>
+</svg>

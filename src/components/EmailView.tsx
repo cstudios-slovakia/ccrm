@@ -569,9 +569,6 @@ export const EmailView: React.FC<EmailViewProps> = ({
   const expandThreadMessage = async (email: any) => {
     if (threadBodies[email.uid]) {
       setSelectedEmail(email);
-      // The body is cached but the mail client has since marked it unread:
-      // opening it again is reading it again.
-      if (!email.seen) setSeenFlag(email, true);
       return;
     }
     setIsLoadingDetail(true);
@@ -585,9 +582,9 @@ export const EmailView: React.FC<EmailViewProps> = ({
         setThreadBodies(prev => ({ ...prev, [email.uid]: data.email }));
         setSelectedEmail(email);
 
-        // Opening the message marked it read on the server; mirror the flag it reports.
-        const seenNow = data.email?.seen !== false;
-        setEmails(prev => prev.map(e => e.uid === email.uid ? { ...e, seen: seenNow } : e));
+        if (typeof data.email?.seen === "boolean") {
+          setEmails(prev => prev.map(e => e.uid === email.uid ? { ...e, seen: data.email.seen } : e));
+        }
       } else {
         notify(data.error || t("Could not retrieve email contents", "Nepodarilo sa načítať obsah e-mailu", "Az e-mail tartalmát nem sikerült lekérni"), "error");
       }
@@ -762,12 +759,6 @@ export const EmailView: React.FC<EmailViewProps> = ({
     const isExpanded = !expandedEmailUids[email.uid];
     setExpandedEmailUids(prev => ({ ...prev, [email.uid]: isExpanded }));
 
-    if (isExpanded && threadBodies[email.uid] && !email.seen) {
-      // Cached body, but the message is unread again (the mail client can do
-      // that): expanding it is reading it.
-      setSeenFlag(email, true);
-    }
-
     if (isExpanded && !threadBodies[email.uid]) {
       setIsLoadingDetail(true);
       const folderToUse = email.isSent ? "Sent" : activeFolder;
@@ -778,9 +769,9 @@ export const EmailView: React.FC<EmailViewProps> = ({
         const data = await res.json();
         if (data.success) {
           setThreadBodies(prev => ({ ...prev, [email.uid]: data.email }));
-          // Opening the message marked it read on the server; mirror the flag it reports.
-          const seenNow = data.email?.seen !== false;
-          setEmails(prev => prev.map(e => e.uid === email.uid ? { ...e, seen: seenNow } : e));
+          if (typeof data.email?.seen === "boolean") {
+            setEmails(prev => prev.map(e => e.uid === email.uid ? { ...e, seen: data.email.seen } : e));
+          }
         }
       } catch (err) {
         console.warn("Failed to retrieve threaded email detail", err);

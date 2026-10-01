@@ -133,7 +133,9 @@ export interface Lead {
   status: string;           // Lead state
   source: string;           // Lead source
   owner: string;            // Project manager
+  division?: string | null; // Assigned business division (e.g. Cstudios, Cstudios Budapest)
   value: number;            // Lead value
+  adjustment?: number;      // Client value adjustment (independent from deals/pipeline)
   createdAt: string;
   rating?: number;          // Star rating (1-5)
   
@@ -299,6 +301,7 @@ export interface Task {
    * by the server (api/task_reminders.php) through the system SMTP profile.
    */
   emailReminders?: Record<string, TaskEmailReminder>;
+  tags?: string[];
 }
 
 /** When a task e-mail reminder goes out: the deadline's morning, 1 hour or 1 day before. */
@@ -622,6 +625,7 @@ export interface Project {
   leadId?: string | null;
   clientId?: string | null;
   status: string; // one of PROJECT_STATUSES
+  division?: string | null; // Assigned business division (e.g. Cstudios, Cstudios Budapest)
   /**
    * How important this project is, 1-5 stars — the same hand-set priority a
    * lead carries (see {@link Lead.rating}), and filtered and sorted by the same
@@ -672,6 +676,7 @@ export interface Project {
    * "unchanged", so an older client cannot wipe them.
    */
   customFileFields?: ProjectCustomFileField[];
+  archived?: boolean;
 }
 
 // Warehouse & Inventory Management Types

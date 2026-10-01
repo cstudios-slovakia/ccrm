@@ -59,7 +59,9 @@ if (!function_exists('ccrm_schema_statements')) {
               `traffic_origin` VARCHAR(50) NULL COMMENT 'Channel that first brought the visitor to the site (facebook, instagram, google, direct, ...) - reported by the web form, not chosen in the CRM',
               `traffic_origin_detail` VARCHAR(255) NULL COMMENT 'Free-text detail for traffic_origin: medium, campaign, referring host, landing page',
               `owner` VARCHAR(100) NOT NULL COMMENT 'Assigned Project Manager Name',
+              `division` VARCHAR(100) NULL COMMENT 'Assigned Division (e.g. Cstudios, Cstudios Budapest)',
               `value` DECIMAL(12,2) NOT NULL DEFAULT 0.00 COMMENT 'Estimated Opportunity Worth',
+              `adjustment` DECIMAL(14,2) NOT NULL DEFAULT 0.00 COMMENT 'Client Value Adjustment',
               `rating` INT NOT NULL DEFAULT 3 COMMENT 'Star Rating 1-5',
               `phone` VARCHAR(30) NULL,
               `email` VARCHAR(150) NULL,
@@ -170,6 +172,25 @@ if (!function_exists('ccrm_schema_statements')) {
               `error` VARCHAR(500) NULL,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               PRIMARY KEY (`task_id`, `user_name`, `scheduled_for`),
+              FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON DELETE CASCADE
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Tags
+            "CREATE TABLE IF NOT EXISTS `tags` (
+              `id` VARCHAR(50) NOT NULL,
+              `name` VARCHAR(100) NOT NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (`id`),
+              UNIQUE KEY `idx_tag_name` (`name`)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // Task Tags (Relational linking)
+            "CREATE TABLE IF NOT EXISTS `task_tags` (
+              `task_id` VARCHAR(50) NOT NULL,
+              `tag_name` VARCHAR(100) NOT NULL,
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              PRIMARY KEY (`task_id`, `tag_name`),
+              INDEX `idx_task_tag_name` (`tag_name`),
               FOREIGN KEY (`task_id`) REFERENCES `tasks` (`id`) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
 
@@ -337,6 +358,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `lead_id` VARCHAR(50) NULL,
               `client_id` VARCHAR(50) NULL,
               `status` VARCHAR(50) NOT NULL DEFAULT 'active',
+              `division` VARCHAR(100) NULL COMMENT 'Assigned Division (e.g. Cstudios, Cstudios Budapest)',
               `rating` TINYINT NULL COMMENT 'Star Rating 1-5, 0 = not rated, NULL = never set',
               `deadline` DATE NULL,
               `delay_reason` VARCHAR(500) NULL,
@@ -344,6 +366,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `finished_at` DATE NULL,
               `budget` DECIMAL(14,2) NULL,
               `custom_files_json` LONGTEXT NULL,
+              `archived` TINYINT(1) NOT NULL DEFAULT 0,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
               `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
               FOREIGN KEY (`project_type_id`) REFERENCES `project_types` (`id`) ON DELETE CASCADE
@@ -760,6 +783,21 @@ if (!function_exists('ccrm_schema_statements')) {
               `custom_banner_text` TEXT NULL,
               `badge_style` VARCHAR(50) NOT NULL DEFAULT 'rounded',
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;",
+
+            // MCP Personal API Keys (Prístupové kľúče pre AI agentov)
+            "CREATE TABLE IF NOT EXISTS `mcp_keys` (
+              `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+              `user_id` VARCHAR(50) NOT NULL,
+              `key_hash` VARCHAR(64) NOT NULL UNIQUE,
+              `key_prefix` VARCHAR(20) NOT NULL,
+              `name` VARCHAR(100) NOT NULL DEFAULT 'Personal AI Assistant',
+              `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+              `last_used_at` TIMESTAMP NULL,
+              `revoked_at` TIMESTAMP NULL,
+              INDEX idx_mcp_user (`user_id`),
+              INDEX idx_mcp_hash (`key_hash`),
+              FOREIGN KEY (`user_id`) REFERENCES `users` (`id`) ON DELETE CASCADE
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;"
         ];
     }
@@ -952,6 +990,10 @@ if (!function_exists('ccrm_schema_statements')) {
         if (!ccrm_column_exists($pdo, 'projects', 'rating')) {
             $pdo->exec("ALTER TABLE `projects` ADD COLUMN `rating` TINYINT NULL AFTER `status`");
         }
+        // 1.11.87: Project archiving from active projects register
+        if (!ccrm_column_exists($pdo, 'projects', 'archived')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `archived` TINYINT(1) NOT NULL DEFAULT 0 AFTER `custom_files_json`");
+        }
         if (!ccrm_column_exists($pdo, 'tasks', 'deadline_time')) {
             $pdo->exec("ALTER TABLE `tasks` ADD COLUMN `deadline_time` VARCHAR(5) NULL AFTER `deadline`");
         }
@@ -1092,6 +1134,15 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         if (!ccrm_column_exists($pdo, 'financial_records', 'recurring_occurrence_date')) {
             $pdo->exec("ALTER TABLE `financial_records` ADD COLUMN `recurring_occurrence_date` DATE NULL AFTER `recurring_source_id`");
+        }
+        if (!ccrm_column_exists($pdo, 'leads', 'division')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `division` VARCHAR(100) NULL AFTER `owner`");
+        }
+        if (!ccrm_column_exists($pdo, 'leads', 'adjustment')) {
+            $pdo->exec("ALTER TABLE `leads` ADD COLUMN `adjustment` DECIMAL(14,2) NOT NULL DEFAULT 0.00 AFTER `value`");
+        }
+        if (!ccrm_column_exists($pdo, 'projects', 'division')) {
+            $pdo->exec("ALTER TABLE `projects` ADD COLUMN `division` VARCHAR(100) NULL AFTER `status`");
         }
         ccrm_migrate_updated_at_precision($pdo);
         ccrm_migrate_task_states($pdo);
@@ -1415,18 +1466,21 @@ if (!function_exists('ccrm_schema_statements')) {
                 'leadStates' => ['new', 'contacted', 'offer sent', 'accepted', 'rejected'],
                 'leadSources' => ['showroom', 'facebook', 'instagram', 'website'],
                 'leadCategories' => ['Products', 'Services'],
+                'divisions' => ['Cstudios', 'Cstudios Budapest'],
                 'taskStates' => ['New', 'In progress', 'Blocked', 'Done'],
             ],
             'sk' => [
                 'leadStates' => ['nový', 'kontaktovaný', 'ponuka odoslaná', 'prijatý', 'zamietnutý'],
                 'leadSources' => ['showroom', 'facebook', 'instagram', 'web'],
                 'leadCategories' => ['Produkty', 'Služby'],
+                'divisions' => ['Cstudios', 'Cstudios Budapest'],
                 'taskStates' => ['Nový', 'Prebieha', 'Blokovaný', 'Hotovo'],
             ],
             'hu' => [
                 'leadStates' => ['új', 'kapcsolatfelvétel', 'ajánlat elküldve', 'elfogadva', 'elutasítva'],
                 'leadSources' => ['bemutatóterem', 'facebook', 'instagram', 'weboldal'],
                 'leadCategories' => ['Termékek', 'Szolgáltatások'],
+                'divisions' => ['Cstudios', 'Cstudios Budapest'],
                 'taskStates' => ['Új', 'Folyamatban', 'Blokkolva', 'Kész'],
             ],
         ];
@@ -1529,6 +1583,7 @@ if (!function_exists('ccrm_schema_statements')) {
         $leadStates = $lists['leadStates'];
         $leadSources = $lists['leadSources'];
         $leadCategories = $lists['leadCategories'];
+        $divisions = $lists['divisions'] ?? ['Cstudios', 'Cstudios Budapest'];
         $taskStates = $lists['taskStates'];
 
         $enc = static function ($value): string {
@@ -1541,6 +1596,7 @@ if (!function_exists('ccrm_schema_statements')) {
             'LEAD_STATES' => $enc($leadStates),
             'LEAD_SOURCES' => $enc($leadSources),
             'LEAD_CATEGORIES' => $enc($leadCategories),
+            'DIVISIONS' => $enc($divisions),
             // Permanent ids for the two lists /api/pipeline.php addresses by
             // number. See ccrm_normalize_list_ids: these must never be derived
             // from list order, or reordering re-points live web forms.
@@ -1549,6 +1605,7 @@ if (!function_exists('ccrm_schema_statements')) {
             'LEAD_STATE_COLORS' => $enc(array_combine($leadStates, ['#3b82f6', '#0ea5e9', '#6366f1', '#10b981', '#ef4444'])),
             'LEAD_SOURCE_COLORS' => $enc(array_combine($leadSources, ['#10b981', '#3b82f6', '#ec4899', '#8b5cf6'])),
             'LEAD_CATEGORY_COLORS' => $enc(array_combine($leadCategories, ['#f59e0b', '#10b981'])),
+            'DIVISION_COLORS' => $enc(['Cstudios' => '#3b82f6', 'Cstudios Budapest' => '#8b5cf6']),
             'LEAD_STAGE_GROUPS' => $enc(array_combine($leadStates, ['new', 'in_progress', 'in_progress', 'closed', 'closed'])),
             'LEAD_STATE_PARENTS' => $enc((object)[]),
             'TASK_STATES' => $enc($taskStates),

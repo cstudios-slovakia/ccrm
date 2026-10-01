@@ -4,13 +4,13 @@ import { createPortal } from "react-dom";
 import { 
   Users, MapPin, Search, Clock, User, Briefcase, Handshake, 
   Euro, UserCheck, Check, Layers, Phone, Mail, Globe, 
-  Calendar, ArrowLeft, Plus, TrendingUp, PencilLine, FileText,
+  Calendar, ArrowLeft, ArrowUp, ArrowDown, ArrowUpDown, Plus, TrendingUp, PencilLine, FileText,
   X, FolderOpen, Download, Trash2, SlidersHorizontal,
   CornerDownLeft, CornerLeftDown, Loader2, Brain,
   ChevronLeft, ChevronRight, Milestone, Coins, Archive, ArchiveRestore, Settings,
-  AlertTriangle
+  AlertTriangle, CheckSquare, ListTodo, Lock, Pencil
 } from "lucide-react";
-import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus, ClientCategory } from "../types";
+import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus, ClientCategory, UserProfile, Project } from "../types";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import type { ModuleAccess } from "../utils/permissions";
 import { ClientCategoryBadge, ClientCategoryManager, ClientCategorySelect } from "./ClientCategories";
@@ -18,6 +18,8 @@ import { clientCategoryFilterIds, clientCategoryPath } from "../utils/clientCate
 import { cn } from "../utils/cn";
 import { BlockEditor } from "./BlockEditor";
 import { VoiceRecorderCard } from "./VoiceRecorderCard";
+import { VoiceTaskActionBar } from "./VoiceTaskActionBar";
+import { TaskEditDrawer } from "./TaskEditDrawer";
 import { CustomSelect } from "./ui/CustomSelect";
 import { CompanyLookupSpinner, CompanySuggestions } from "./ui/CompanySuggestions";
 import { useCompanyLookup } from "../utils/useCompanyLookup";
@@ -38,13 +40,26 @@ import {
   translateAiApiError,
 } from "../utils/aiConfig";
 import { resolveCurrencySymbol, formatMoney } from "../utils/currency";
-import { resolveAssigneeName, type TaskAccess } from "../utils/taskSelectors";
+import { resolveAssigneeName, canEditTask, canDeleteTask, type TaskAccess } from "../utils/taskSelectors";
+import { isDoneTaskState, isTaskOverdue, localDateStr, parseTaskLines, toggleTaskDone } from "../utils/projectTasks";
+import { taskPriorityLabel, taskStateLabel } from "../utils/taskLabels";
+import { requestTaskDeletion } from "../utils/taskApi";
 import { todayLocal, nowLocalStamp, formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
 import { chartTheme, useAppearance } from "../utils/theme";
 import { mergeFinancialRecord, derivePaidDate, FINANCIAL_STATUS_OPTIONS } from "../utils/financialRecordMerge";
 import { splitRecordAmounts } from "../utils/financialOverviewTable";
 import { categoryBreadcrumbs } from "../utils/financialCategoryTree";
 import { isOutgoingMail } from "../utils/mailTimeline";
+
+export type ClientSortKey = "name" | "phone" | "email" | "city" | "clientType" | "owner" | "leadsCount" | "totalValue";
+export type ClientSortDirection = "asc" | "desc";
+
+export interface ClientSortConfig {
+  key: ClientSortKey;
+  direction: ClientSortDirection;
+}
+
+const CLIENTS_SORT_STORAGE_KEY = "ccrm_clients_sort_config";
 
 interface ClientsViewProps {
   leads: Lead[];
@@ -89,6 +104,10 @@ interface ClientsViewProps {
    * event writes into a collection this view's own permission does not cover.
    */
   taskAccess?: TaskAccess;
+  currentUser?: UserProfile | null;
+  users?: UserProfile[];
+  projects?: Project[];
+  taskStateColors?: Record<string, string>;
 }
 
 /** The "without a category" row of the category filter. Not a real category id. */
@@ -408,9 +427,19 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   setClientCategories,
   access = FULL_MODULE_ACCESS,
   financeAccess = FULL_MODULE_ACCESS,
-  taskAccess
+  taskAccess,
+  currentUser: propCurrentUser,
+  users = [],
+  projects = [],
+  taskStateColors = {},
 }) => {
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
+  const userNames = useMemo(() => {
+    if (users && users.length > 0) return users.map((u) => u.name).filter(Boolean);
+    return projectManagers;
+  }, [users, projectManagers]);
+  const resolveTaskAssignee = (preferred?: string): string =>
+    resolveAssigneeName(preferred, currentUser?.name || "", userNames);
   // Role gates. `view` is what let the user in; read-only users still search,
   // filter, open a profile and download what they can see. Deleting is never
   // open to a role that cannot edit, whatever the delete toggle says.
@@ -440,10 +469,66 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   // The categories manager takes the list's place while it is open.
   const [clientsSubView, setClientsSubView] = useState<"list" | "settings">("list");
 
-  // Reset pagination to page 1 on filter changes
+  // Clients table column sort configuration
+  const [sortConfig, setSortConfig] = useState<ClientSortConfig | null>(() => {
+    try {
+      const raw = localStorage.getItem(CLIENTS_SORT_STORAGE_KEY);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.key === "string" && (parsed.direction === "asc" || parsed.direction === "desc")) {
+        return parsed as ClientSortConfig;
+      }
+    } catch {
+      // ignore
+    }
+    return null;
+  });
+
+  useEffect(() => {
+    try {
+      if (sortConfig) {
+        localStorage.setItem(CLIENTS_SORT_STORAGE_KEY, JSON.stringify(sortConfig));
+      } else {
+        localStorage.removeItem(CLIENTS_SORT_STORAGE_KEY);
+      }
+    } catch {
+      // ignore
+    }
+  }, [sortConfig]);
+
+  const handleSort = (key: ClientSortKey, keepDirection = false) => {
+    setSortConfig(current => {
+      if (keepDirection && current) {
+        return { key, direction: current.direction };
+      }
+      if (!current || current.key !== key) {
+        const defaultDirection: ClientSortDirection = (key === "totalValue" || key === "leadsCount") ? "desc" : "asc";
+        return { key, direction: defaultDirection };
+      }
+      if (current.direction === ((key === "totalValue" || key === "leadsCount") ? "desc" : "asc")) {
+        return { key, direction: current.direction === "asc" ? "desc" : "asc" };
+      }
+      return null;
+    });
+  };
+
+  const renderSortIcon = (columnKey: ClientSortKey) => {
+    if (sortConfig?.key !== columnKey) {
+      return (
+        <ArrowUpDown className="h-3 w-3 text-slate-300 opacity-60 group-hover/sort:opacity-100 group-hover/sort:text-emerald-600 transition-all shrink-0" />
+      );
+    }
+    return sortConfig.direction === "asc" ? (
+      <ArrowUp className="h-3.5 w-3.5 text-emerald-600 animate-in fade-in zoom-in-75 duration-150 stroke-[2.5] shrink-0" />
+    ) : (
+      <ArrowDown className="h-3.5 w-3.5 text-emerald-600 animate-in fade-in zoom-in-75 duration-150 stroke-[2.5] shrink-0" />
+    );
+  };
+
+  // Reset pagination to page 1 on filter or sort changes
   useEffect(() => {
     setCurrentPage(1);
-  }, [searchQuery, selectedType, filterCity, filterPM, clientArchiveScope, filterClientCategory]);
+  }, [searchQuery, selectedType, filterCity, filterPM, clientArchiveScope, filterClientCategory, sortConfig]);
   
   // State hook to toggle detail card edit mode
   const [isEditingProfile, setIsEditingProfile] = useState(false);
@@ -481,6 +566,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [newClientDistrict, setNewClientDistrict] = useState("");
   const [newClientOwner, setNewClientOwner] = useState(projectManagers[0] || "");
   const [newClientValue, setNewClientValue] = useState("");
+  const [newClientAdjustment, setNewClientAdjustment] = useState("");
   const [newClientCategories, setNewClientCategories] = useState<string[]>([]);
   const [newClientCategoryId, setNewClientCategoryId] = useState("");
 
@@ -780,6 +866,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       source: "website",
       owner: newClientOwner || projectManagers[0] || currentUser?.name || "",
       value: parseFloat(newClientValue) || 0,
+      adjustment: parseFloat(newClientAdjustment) || 0,
       // `leads.created_at` is a DATE column: a full ISO timestamp makes MySQL
       // reject the whole sync payload. Local date so a client registered just
       // after midnight is not filed under the previous day.
@@ -852,6 +939,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     setNewClientDistrict("");
     setNewClientOwner(projectManagers[0] || "");
     setNewClientValue("");
+    setNewClientAdjustment("");
     setNewClientCategories([]);
     setNewClientCategoryId("");
     setNewClientVatStatus("idle");
@@ -875,6 +963,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       source: string;
       owner: string;
       totalValue: number;
+      adjustment: number;
       leadsCount: number;
       associatedLeads: Lead[];
       createdAt: string;
@@ -925,6 +1014,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
           source: lead.source || "website",
           owner: lead.owner || "",
           totalValue: 0,
+          adjustment: Number(lead.adjustment) || 0,
           leadsCount: 0,
           associatedLeads: [],
           createdAt: lead.createdAt || "",
@@ -974,11 +1064,14 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         if (lead.vatValidationResult && !profilesMap[clientKey].vatValidationResult) {
           profilesMap[clientKey].vatValidationResult = lead.vatValidationResult;
         }
+        if (lead.adjustment !== undefined && lead.adjustment !== null && lead.adjustment !== 0 && !profilesMap[clientKey].adjustment) {
+          profilesMap[clientKey].adjustment = Number(lead.adjustment) || 0;
+        }
         if (lead.createdAt && (!profilesMap[clientKey].createdAt || lead.createdAt < profilesMap[clientKey].createdAt)) {
           profilesMap[clientKey].createdAt = lead.createdAt;
         }
       }
-      profilesMap[clientKey].totalValue += lead.value;
+      profilesMap[clientKey].totalValue += (Number(lead.value) || 0);
       profilesMap[clientKey].leadsCount += 1;
       profilesMap[clientKey].associatedLeads.push(lead);
 
@@ -1000,12 +1093,20 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       }
     });
 
-    // Sort timelines chronologically (Newest First)
+    // Add adjustment to total client value & sort timelines chronologically (Newest First)
     Object.values(profilesMap).forEach(profile => {
+      profile.totalValue += (Number(profile.adjustment) || 0);
       profile.timeline.sort((a, b) => b.timestamp.localeCompare(a.timestamp));
     });
 
-    return Object.values(profilesMap);
+    // A profile in the Clients registry must either have an explicit client record
+    // (id starts with 'client-') or non-zero client/adjustment value. Un-won pipeline
+    // leads with zero value belong strictly to the Sales Pipeline (#leads).
+    return Object.values(profilesMap).filter(profile => {
+      const hasClientRecord = profile.associatedLeads.some(l => (l.id || "").startsWith("client-"));
+      const hasValue = (Number(profile.totalValue) || 0) > 0 || (Number(profile.adjustment) || 0) > 0;
+      return hasClientRecord || hasValue;
+    });
   }, [leads, leadSources]);
 
   // Find active client details based on URL deep routing (resilient matching)
@@ -1090,13 +1191,18 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
   // Retrieve current user session to authenticate API requests to mail_broker.php
   const currentUser = useMemo(() => {
+    if (propCurrentUser) return propCurrentUser;
     try {
       const stored = sessionStorage.getItem("crm_current_user_rbac");
       return stored ? JSON.parse(stored) : null;
     } catch (e) {
       return null;
     }
-  }, []);
+  }, [propCurrentUser]);
+
+  const resolvedTaskAccess: TaskAccess = useMemo(() => {
+    return taskAccess || { view: true, viewAll: true, create: true, edit: true, delete: true };
+  }, [taskAccess]);
 
   const userEmailSettings = useMemo(() => {
     try {
@@ -1245,6 +1351,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
   // --- CLIENT DETAIL VIEW FORM STATE HOOKS ---
   const [profileName, setProfileName] = useState("");
+  const [profileAdjustment, setProfileAdjustment] = useState("");
   const [profileStreet, setProfileStreet] = useState("");
   const [profileCity, setProfileCity] = useState("");
   const [profilePostalCode, setProfilePostalCode] = useState("");
@@ -1380,18 +1487,18 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   });
 
   // --- DETAIL TABS & DOCUMENT UPLOADER STATE WITH URL SYNC ---
-  const getInitialDetailTab = (): "timeline" | "files" | "leads" | "financial_status" | "invoices" => {
+  const getInitialDetailTab = (): "timeline" | "tasks" | "files" | "leads" | "financial_status" | "invoices" => {
     const params = new URLSearchParams(window.location.hash.split("?")[1] || "");
     const tabParam = params.get("tab");
-    if (tabParam === "invoices" || tabParam === "files" || tabParam === "leads" || tabParam === "financial_status" || tabParam === "timeline") {
-      return tabParam;
+    if (tabParam === "invoices" || tabParam === "files" || tabParam === "leads" || tabParam === "financial_status" || tabParam === "timeline" || tabParam === "tasks") {
+      return tabParam as "timeline" | "tasks" | "files" | "leads" | "financial_status" | "invoices";
     }
     return "timeline";
   };
 
-  const [activeDetailTab, setActiveDetailTab] = useState<"timeline" | "files" | "leads" | "financial_status" | "invoices">(getInitialDetailTab);
+  const [activeDetailTab, setActiveDetailTab] = useState<"timeline" | "tasks" | "files" | "leads" | "financial_status" | "invoices">(getInitialDetailTab);
 
-  const handleDetailTabChange = (tab: "timeline" | "files" | "leads" | "financial_status" | "invoices") => {
+  const handleDetailTabChange = (tab: "timeline" | "tasks" | "files" | "leads" | "financial_status" | "invoices") => {
     setActiveDetailTab(tab);
     const hash = window.location.hash;
     const [base, query] = hash.split("?");
@@ -1690,12 +1797,128 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   const [isGeneratingSummary, setIsGeneratingSummary] = useState(false);
   const [localSummary, setLocalSummary] = useState<string | undefined>(undefined);
 
+  const clientPrimaryLeadId = activeClient?.associatedLeads?.[0]?.id || "";
+
   // Filter tasks belonging to the active client
   const activeClientTasks = useMemo(() => {
     if (!activeClient) return [];
     const clientLeadIds = (activeClient.associatedLeads || []).map((l: any) => l.id);
-    return _tasks.filter(t => t.relatedLeadId && clientLeadIds.includes(t.relatedLeadId));
-  }, [_tasks, activeClient]);
+    return _tasks.filter(
+      (t) =>
+        t.relatedLeadId &&
+        (clientLeadIds.includes(t.relatedLeadId) ||
+          t.relatedLeadId === clientPrimaryLeadId ||
+          t.relatedLeadId === activeClient.name)
+    );
+  }, [_tasks, activeClient, clientPrimaryLeadId]);
+
+  const [isClientTaskAddOpen, setIsClientTaskAddOpen] = useState(false);
+  const [clientTaskDraft, setClientTaskDraft] = useState("");
+  const [clientTaskDeadline, setClientTaskDeadline] = useState(() => localDateStr(new Date()));
+  const [clientTaskDeadlineTime, setClientTaskDeadlineTime] = useState("16:00");
+  const [clientTaskPriority, setClientTaskPriority] = useState<"low" | "medium" | "high">("medium");
+  const [clientTaskAssignee, setClientTaskAssignee] = useState("");
+  const [showClientFinishedTasks, setShowClientFinishedTasks] = useState(false);
+  const [editingClientTask, setEditingClientTask] = useState<Task | null>(null);
+
+  const { open: clientOpenTasks, finished: clientFinishedTasks } = useMemo(() => {
+    const own = activeClientTasks;
+    const due = (task: Task) => `${task.deadline || "9999-99-99"} ${task.deadlineTime || "23:59"}`;
+    const open = own
+      .filter((task) => !task.archived && !isDoneTaskState(task.status, taskStates))
+      .sort((a, b) => due(a).localeCompare(due(b)));
+    const finished = own
+      .filter((task) => task.archived || isDoneTaskState(task.status, taskStates))
+      .sort((a, b) => (b.completedAt || b.deadline || "").localeCompare(a.completedAt || a.deadline || ""));
+    return { open, finished };
+  }, [activeClientTasks, taskStates]);
+
+  const handleCreateClientManualTask = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!canCreateTask || !activeClient) return;
+    const lines = parseTaskLines(clientTaskDraft);
+    if (lines.length === 0) {
+      (window as any).showToast?.(
+        systemLanguage === "sk"
+          ? "Zadajte názov úlohy!"
+          : systemLanguage === "hu"
+            ? "Adja meg a feladat címét!"
+            : "Please enter a task title!"
+      );
+      return;
+    }
+    const today = localDateStr(new Date());
+    const now = Date.now();
+    const assigneeName = resolveTaskAssignee(clientTaskAssignee || profileOwner || currentUser?.name);
+    const newTasks: Task[] = lines.map((title, i) => ({
+      id: `task-${now}-${i}-${Math.random().toString(36).slice(2, 7)}`,
+      title,
+      description: t("Created from Client detail drawer", "Vytvorené v detaile klienta", "Ügyfél részleteinél létrehozva"),
+      status: taskStates[0] || "New",
+      priority: clientTaskPriority,
+      deadline: clientTaskDeadline || today,
+      deadlineTime: clientTaskDeadlineTime || undefined,
+      owner: assigneeName,
+      createdBy: currentUser?.name || "",
+      assignedUsers: assigneeName ? [assigneeName] : [],
+      relatedLeadId: clientPrimaryLeadId,
+    }));
+
+    setTasks((prev) => [...newTasks, ...prev]);
+    setClientTaskDraft("");
+    setIsClientTaskAddOpen(false);
+    (window as any).showToast?.(
+      t(
+        `${newTasks.length} task(s) added for ${activeClient.name}`,
+        `Pridané ${newTasks.length} úloh(y) pre ${activeClient.name}`,
+        `${newTasks.length} feladat hozzáadva a(z) ${activeClient.name} ügyfélhez`,
+      ),
+      "success"
+    );
+  };
+
+  const handleToggleClientTask = (task: Task) => {
+    if (!canEditTask(task, currentUser, resolvedTaskAccess)) return;
+    setTasks((prev) => prev.map((tk) => (tk.id === task.id ? toggleTaskDone(tk, taskStates, currentUser?.name || "") : tk)));
+  };
+
+  const handleDeleteClientTask = async (task: Task) => {
+    if (!canDeleteTask(task, currentUser, resolvedTaskAccess)) return;
+    const confirmed = window.confirm(
+      t(
+        `Permanently delete "${task.title}"? This cannot be undone.`,
+        `Natrvalo odstrániť úlohu "${task.title}"? Túto akciu nemožno vrátiť späť.`,
+        `Véglegesen törli a(z) "${task.title}" feladatot? Ez nem vonható vissza.`,
+      )
+    );
+    if (!confirmed) return;
+    try {
+      await requestTaskDeletion(task.id);
+      setTasks((prev) => prev.filter((tk) => tk.id !== task.id));
+      (window as any).showToast?.(t("Task deleted", "Úloha odstránená", "Feladat törölve"));
+    } catch (error) {
+      console.error("Task deletion failed", error);
+      (window as any).showToast?.(
+        t(
+          "Task was not deleted. Please try again.",
+          "Úloha nebola odstránená. Skúste to znova.",
+          "A feladat nem lett törölve. Próbálja újra.",
+        )
+      );
+    }
+  };
+
+  const formatClientTaskDue = (task: Task) => {
+    const [y, m, d] = (task.deadline || "").split("-").map(Number);
+    if (!y || !m || !d) return task.deadline;
+    const date = new Date(y, m - 1, d);
+    const locale = systemLanguage === "sk" ? "sk-SK" : systemLanguage === "hu" ? "hu-HU" : "en-US";
+    const day = date.toLocaleDateString(locale, {
+      day: "numeric",
+      month: "short",
+    });
+    return task.deadlineTime ? `${day} ${task.deadlineTime}` : day;
+  };
 
   // Compute active client data fingerprint to monitor changes
   const activeClientFingerprint = useMemo(() => {
@@ -2140,6 +2363,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       // Only sync form states if we transitioned to a different client, or if we are not currently editing
       if (clientNameChanged || !isEditingProfile) {
         setProfileName(activeClient.name);
+        setProfileAdjustment(activeClient.adjustment !== undefined && activeClient.adjustment !== null && activeClient.adjustment !== 0 ? String(activeClient.adjustment) : "");
         setProfileStreet(activeClient.street);
         setProfileCity(activeClient.city);
         setProfilePostalCode(activeClient.postalCode);
@@ -2257,6 +2481,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         return {
           ...lead,
           name: profileName.trim(),
+          adjustment: parseFloat(profileAdjustment) || 0,
           city: profileCity.trim(),
           clientType: profileType,
           owner: profileOwner,
@@ -2572,9 +2797,9 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     return counts;
   }, [clientProfiles]);
 
-  // Filter clients list
+  // Filter & sort clients list
   const processedClients = useMemo(() => {
-    return clientProfiles
+    const filtered = clientProfiles
       .filter(client => {
         const matchesSearch = 
           searchQuery === "" ||
@@ -2601,7 +2826,67 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
         return matchesSearch && matchesType && matchesCity && matchesPM && matchesArchive && matchesCategory;
       });
-  }, [clientProfiles, searchQuery, selectedType, filterCity, filterPM, clientArchiveScope, filterClientCategory, categoryFilterIds, clientCategories]);
+
+    if (!sortConfig) return filtered;
+
+    const { key, direction } = sortConfig;
+    const sign = direction === "desc" ? -1 : 1;
+    const collator = new Intl.Collator(undefined, { sensitivity: "base", numeric: true });
+
+    return [...filtered].sort((a, b) => {
+      let valA: string | number | null | undefined;
+      let valB: string | number | null | undefined;
+
+      switch (key) {
+        case "name":
+          valA = a.name;
+          valB = b.name;
+          break;
+        case "phone":
+          valA = a.phone;
+          valB = b.phone;
+          break;
+        case "email":
+          valA = a.email;
+          valB = b.email;
+          break;
+        case "city":
+          valA = a.city;
+          valB = b.city;
+          break;
+        case "clientType":
+          valA = a.clientType;
+          valB = b.clientType;
+          break;
+        case "owner":
+          valA = a.owner;
+          valB = b.owner;
+          break;
+        case "leadsCount":
+          valA = Number(a.leadsCount) || 0;
+          valB = Number(b.leadsCount) || 0;
+          break;
+        case "totalValue":
+          valA = Number(a.totalValue) || 0;
+          valB = Number(b.totalValue) || 0;
+          break;
+        default:
+          return 0;
+      }
+
+      if (typeof valA === "number" && typeof valB === "number") {
+        return (valA - valB) * sign;
+      }
+
+      const aEmpty = valA === null || valA === undefined || valA === "";
+      const bEmpty = valB === null || valB === undefined || valB === "";
+      if (aEmpty || bEmpty) {
+        return aEmpty === bEmpty ? 0 : aEmpty ? 1 : -1;
+      }
+
+      return collator.compare(String(valA), String(valB)) * sign;
+    });
+  }, [clientProfiles, searchQuery, selectedType, filterCity, filterPM, clientArchiveScope, filterClientCategory, categoryFilterIds, clientCategories, sortConfig]);
 
   // Paginated subset of clients
   const paginatedClients = useMemo(() => {
@@ -2836,6 +3121,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   if (isEditingProfile) {
                     // Revert changes on toggle off
                     setProfileName(activeClient.name);
+                    setProfileAdjustment(activeClient.adjustment !== undefined && activeClient.adjustment !== null && activeClient.adjustment !== 0 ? String(activeClient.adjustment) : "");
                     setProfileStreet(activeClient.street);
                     setProfileCity(activeClient.city);
                     setProfilePostalCode(activeClient.postalCode);
@@ -2975,15 +3261,48 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                 </div>
               </div>
 
-              {/* Date Added (read-only, derived from earliest associated lead) */}
-              {activeClient?.createdAt && (
-                <div className="space-y-1">
-                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1"><Calendar className="h-3 w-3 text-emerald-500" /> {getTranslation(systemLanguage, "profile.created_at")}</label>
-                  <div className="pt-2 pl-0 text-slate-900 text-sm font-black cursor-default select-all">
-                    {formatDateLocalized(activeClient.createdAt, systemLanguage)}
+              {/* Date Added & Financial Adjustment */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {activeClient?.createdAt ? (
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1"><Calendar className="h-3 w-3 text-emerald-500" /> {getTranslation(systemLanguage, "profile.created_at")}</label>
+                    <div className="pt-2 pl-0 text-slate-900 text-sm font-black cursor-default select-all">
+                      {formatDateLocalized(activeClient.createdAt, systemLanguage)}
+                    </div>
                   </div>
+                ) : <div />}
+
+                <div className="space-y-1">
+                  <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1">
+                    <TrendingUp className="h-3 w-3 text-emerald-500" />
+                    {systemLanguage === "sk" ? "Finančná úprava" : systemLanguage === "hu" ? "Pénzügyi korrekció" : "Financial Adjustment"}
+                  </label>
+                  {isEditingProfile ? (
+                    <div className="relative">
+                      <input
+                        type="number"
+                        step="0.01"
+                        value={profileAdjustment}
+                        onChange={(e) => setProfileAdjustment(e.target.value)}
+                        placeholder="0.00"
+                        className="w-full px-3 py-2 rounded-xl bg-slate-50 border-2 border-slate-200 focus:bg-white focus:border-emerald-500 text-slate-800 text-sm font-black focus:outline-none transition-all pr-8"
+                      />
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs font-black text-slate-400">
+                        {currencySymbol}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="pt-2 pl-0 text-emerald-700 text-sm font-black cursor-default select-all flex items-center gap-2">
+                      <span>{money(activeClient.adjustment || 0, { minimumFractionDigits: 2 })}</span>
+                      {Number(activeClient.adjustment || 0) !== 0 && (
+                        <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100/80 px-2 py-0.5 rounded-md border border-emerald-300">
+                          {t("Adjustment", "Úprava", "Korrekció")}
+                        </span>
+                      )}
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
 
               {/* Address details */}
               <div className="border-t-2 border-slate-100 pt-4 space-y-3">
@@ -3418,6 +3737,17 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   }`}
                 >
                   <Clock className="h-4.5 w-4.5 stroke-[2.5]" /> {getTranslation(systemLanguage, "common.history_timeline")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleDetailTabChange("tasks")}
+                  className={`px-5 py-2.5 rounded-2xl font-black text-xs uppercase tracking-wider transition-all text-center flex items-center justify-center gap-2 border-2 ${
+                    activeDetailTab === "tasks"
+                      ? "bg-orange-600 text-white shadow-md shadow-orange-500/10 border-orange-700"
+                      : "text-slate-500 hover:text-slate-800 bg-slate-50 hover:bg-slate-100 border-slate-200"
+                  }`}
+                >
+                  <CheckSquare className="h-4.5 w-4.5 stroke-[2.5]" /> {t("Tasks", "Úlohy", "Feladatok")} ({clientOpenTasks.length})
                 </button>
                 <button
                   type="button"
@@ -4079,6 +4409,356 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                     )}
                   </div>
                 </>
+              )}
+
+              {activeDetailTab === "tasks" && (
+                <div className="space-y-5 text-left animate-in fade-in duration-150">
+                  {/* Top Bar with VoiceTaskActionBar */}
+                  <div className="flex flex-col gap-3 border-b-2 border-slate-100 pb-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
+                          <CheckSquare className="h-4.5 w-4.5 text-orange-600 stroke-[2.5]" />
+                          {t("Client Tasks", "Úlohy klienta", "Ügyfél feladatai")}
+                        </h3>
+                        <p className="text-[11px] text-slate-500 mt-0.5">
+                          {t(
+                            `Tasks associated with ${activeClient.name}`,
+                            `Úlohy priradené ku klientovi ${activeClient.name}`,
+                            `A(z) ${activeClient.name} ügyfélhez rendelt feladatok`,
+                          )}
+                        </p>
+                      </div>
+                      <span className="px-2.5 py-1 rounded-xl bg-orange-50 text-orange-700 border border-orange-200 text-xs font-black">
+                        {clientOpenTasks.length} {t("open", "otvorených", "nyitott")}
+                      </span>
+                    </div>
+
+                    <VoiceTaskActionBar
+                      canCreate={Boolean(canCreateTask && canEdit)}
+                      systemLanguage={systemLanguage}
+                      currentUser={currentUser}
+                      users={users}
+                      defaultAssignee={profileOwner || currentUser?.name}
+                      defaultStatus={taskStates[0] || "New"}
+                      relatedLeadId={clientPrimaryLeadId}
+                      manualButtonText={
+                        isClientTaskAddOpen
+                          ? t("Close Task Creator", "Zavrieť zadávanie úloh", "Feladatkészítő bezárása")
+                          : t("Add Task(s)", "Pridať úlohu / úlohy", "Feladat(ok) hozzáadása")
+                      }
+                      manualButtonClassName="py-2.5 px-4 rounded-2xl bg-orange-600 hover:bg-orange-700 text-white font-black text-xs uppercase tracking-wider shadow-md shadow-orange-500/20 transition-all duration-300 ease-in-out cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed"
+                      voiceButtonClassName="w-[20%] py-2.5 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 text-white rounded-2xl font-black text-xs uppercase tracking-wider shadow-md shadow-rose-500/20 transition-all duration-300 ease-in-out cursor-pointer flex items-center justify-center gap-1.5 disabled:opacity-50 disabled:cursor-not-allowed shrink-0"
+                      onManualCreateClick={() => setIsClientTaskAddOpen((prev) => !prev)}
+                      onTasksCreated={(createdTasks) => {
+                        setTasks((prev) => [...createdTasks, ...prev]);
+                      }}
+                    />
+                  </div>
+
+                  {/* Inline Manual Task Creator */}
+                  {isClientTaskAddOpen && (
+                    <form
+                      onSubmit={handleCreateClientManualTask}
+                      className="p-4 bg-orange-50/40 rounded-2xl border-2 border-orange-200/90 shadow-sm space-y-3 animate-in fade-in slide-in-from-top-2 duration-150 text-xs font-bold"
+                    >
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-500 uppercase flex items-center justify-between">
+                          <span>{t("Task Title(s)", "Názov úlohy / úloh", "Feladat címe(i)")}</span>
+                          <span className="text-[9px] font-normal text-orange-600">
+                            {t("1 line = 1 task (Shift+Enter for next line)", "1 riadok = 1 úloha (Shift+Enter pre ďalší)", "1 sor = 1 feladat (Shift+Enter új sorhoz)")}
+                          </span>
+                        </label>
+                        <textarea
+                          autoFocus
+                          required
+                          rows={2}
+                          value={clientTaskDraft}
+                          onChange={(e) => setClientTaskDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !e.shiftKey) {
+                              e.preventDefault();
+                              handleCreateClientManualTask(e);
+                            }
+                          }}
+                          placeholder={t(
+                            "Enter task name... (Shift+Enter for next task)",
+                            "Zadajte názov... (Shift+Enter pre ďalšiu úlohu)",
+                            "Adja meg a feladatot... (Shift+Enter új feladathoz)",
+                          )}
+                          className="w-full px-3 py-2 rounded-xl bg-white border-2 border-slate-200 focus:border-orange-500 focus:outline-none transition-colors text-xs font-semibold placeholder:text-slate-400 leading-relaxed resize-y min-h-[50px]"
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-black text-slate-500 uppercase">
+                            {t("Deadline Date", "Termín", "Határidő")}
+                          </label>
+                          <input
+                            type="date"
+                            required
+                            value={clientTaskDeadline}
+                            onChange={(e) => setClientTaskDeadline(e.target.value)}
+                            className="w-full px-2.5 py-1.5 rounded-xl border-2 border-slate-200 bg-white focus:border-orange-500 focus:outline-none text-xs h-[34px]"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-black text-slate-500 uppercase">
+                            {t("Deadline Time", "Čas termínu", "Határidő ideje")}
+                          </label>
+                          <input
+                            type="time"
+                            value={clientTaskDeadlineTime}
+                            onChange={(e) => setClientTaskDeadlineTime(e.target.value)}
+                            className="w-full px-2.5 py-1.5 rounded-xl border-2 border-slate-200 bg-white focus:border-orange-500 focus:outline-none text-xs h-[34px]"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-black text-slate-500 uppercase">
+                            {t("Priority", "Priorita", "Prioritás")}
+                          </label>
+                          <select
+                            value={clientTaskPriority}
+                            onChange={(e) => setClientTaskPriority(e.target.value as any)}
+                            className="w-full px-2.5 py-1.5 rounded-xl border-2 border-slate-200 bg-white focus:border-orange-500 focus:outline-none text-xs h-[34px]"
+                          >
+                            <option value="low">{t("Low Priority", "Nízka priorita", "Alacsony prioritás")}</option>
+                            <option value="medium">{t("Medium Priority", "Stredná priorita", "Közepes prioritás")}</option>
+                            <option value="high">{t("High Priority", "Vysoká priorita", "Magas prioritás")}</option>
+                          </select>
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-black text-slate-500 uppercase">
+                            {t("Assignee", "Zodpovedný", "Felelős")}
+                          </label>
+                          <CustomSelect
+                            size="sm"
+                            value={resolveTaskAssignee(clientTaskAssignee || profileOwner)}
+                            onChange={setClientTaskAssignee}
+                            options={userNames.map((name) => ({
+                              value: name,
+                              label: name + (name === currentUser?.name ? ` (${t("me", "ja", "én")})` : ""),
+                            }))}
+                          />
+                        </div>
+                        <div className="flex items-end justify-end gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setIsClientTaskAddOpen(false)}
+                            className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 font-bold hover:bg-slate-50 text-xs cursor-pointer"
+                          >
+                            {t("Cancel", "Zrušiť", "Mégse")}
+                          </button>
+                          <button
+                            type="submit"
+                            className="px-4 py-2 rounded-xl bg-orange-600 hover:bg-orange-700 text-white font-black text-xs uppercase tracking-wider shadow-sm transition-all cursor-pointer flex items-center gap-1.5"
+                          >
+                            <Plus className="h-3.5 w-3.5 stroke-[3]" />
+                            <span>{t("Create Task", "Vytvoriť úlohu", "Feladat létrehozása")}</span>
+                          </button>
+                        </div>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Tasks list */}
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                        <ListTodo className="h-3.5 w-3.5" />
+                        {t("Open tasks", "Otvorené úlohy", "Nyitott feladatok")}
+                        <span className="px-1.5 rounded-full bg-slate-100 text-slate-600">{clientOpenTasks.length}</span>
+                      </span>
+                      {clientFinishedTasks.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setShowClientFinishedTasks((prev) => !prev)}
+                          className="text-[10px] font-bold text-slate-500 hover:text-slate-800 transition-colors flex items-center gap-1 cursor-pointer"
+                        >
+                          <span>
+                            {showClientFinishedTasks
+                              ? t("Hide completed", "Skryť dokončené", "Befejezettek elrejtése")
+                              : t(`Show completed (${clientFinishedTasks.length})`, `Zobraziť dokončené (${clientFinishedTasks.length})`, `Befejezettek mutatása (${clientFinishedTasks.length})`)}
+                          </span>
+                        </button>
+                      )}
+                    </div>
+
+                    {clientOpenTasks.length > 0 ? (
+                      <ul className="flex flex-col gap-2">
+                        {clientOpenTasks.map((task) => {
+                          const mayEdit = canEditTask(task, currentUser, resolvedTaskAccess);
+                          const mayDelete = canDeleteTask(task, currentUser, resolvedTaskAccess);
+                          const overdue = isTaskOverdue(task, taskStates, nowLocalStamp());
+                          const stateColor = taskStateColors[task.status] || "#64748b";
+                          const isDone = isDoneTaskState(task.status, taskStates);
+
+                          return (
+                            <li
+                              key={task.id}
+                              className="group flex items-center gap-3 p-3 rounded-2xl border border-slate-200 bg-white hover:border-orange-300 hover:shadow-sm transition-all"
+                            >
+                              <button
+                                type="button"
+                                onClick={() => handleToggleClientTask(task)}
+                                disabled={!mayEdit}
+                                title={isDone ? t("Mark open", "Označiť ako otvorené", "Megjelölés nyitottként") : t("Mark done", "Označiť ako hotové", "Megjelölés készként")}
+                                className={`h-5 w-5 rounded-lg border-2 flex items-center justify-center transition-all shrink-0 cursor-pointer ${
+                                  isDone ? "bg-emerald-500 border-emerald-500 text-white" : "border-slate-300 hover:border-orange-500 bg-slate-50"
+                                }`}
+                              >
+                                {isDone && <Check className="h-3 w-3 stroke-[3]" />}
+                              </button>
+
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className={`text-xs font-bold text-slate-800 ${isDone ? "line-through text-slate-400" : ""}`}>
+                                    {task.title}
+                                  </span>
+                                  {task.isLocking && <Lock className="h-3 w-3 text-rose-500" />}
+                                  {task.isAiGenerated && (
+                                    <span className="px-1.5 py-0.5 rounded-md bg-rose-50 text-rose-600 text-[9px] font-black uppercase tracking-wider border border-rose-200/60">
+                                      AI
+                                    </span>
+                                  )}
+                                </div>
+                                {task.description && (
+                                  <p className="text-[10px] text-slate-400 line-clamp-1 mt-0.5">{task.description}</p>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-1.5 text-[9px] font-bold shrink-0">
+                                <span
+                                  className={`px-1.5 py-0.5 rounded-md border text-[9px] font-black uppercase tracking-wider`}
+                                  style={{
+                                    backgroundColor: `${stateColor}15`,
+                                    color: stateColor,
+                                    borderColor: `${stateColor}40`,
+                                  }}
+                                >
+                                  {taskStateLabel(task.status, t)}
+                                </span>
+                                <span
+                                  className={`px-1.5 py-0.5 rounded-md ${
+                                    task.priority === "high"
+                                      ? "bg-rose-50 text-rose-600 border border-rose-200"
+                                      : task.priority === "low"
+                                        ? "bg-slate-50 text-slate-400 border border-slate-200"
+                                        : "bg-amber-50 text-amber-600 border border-amber-200"
+                                  }`}
+                                >
+                                  {taskPriorityLabel(task.priority, t)}
+                                </span>
+                                <span
+                                  className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md tabular-nums ${
+                                    overdue ? "bg-rose-50 text-rose-600 font-black border border-rose-200" : "bg-slate-100 text-slate-600"
+                                  }`}
+                                >
+                                  <Clock className="h-2.5 w-2.5" />
+                                  {formatClientTaskDue(task)}
+                                </span>
+                                {task.owner && (
+                                  <span className="px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-600 border border-indigo-100 truncate max-w-[120px]">
+                                    {task.owner}
+                                  </span>
+                                )}
+                              </div>
+
+                              <div className="flex items-center gap-0.5 shrink-0 opacity-80 group-hover:opacity-100">
+                                <button
+                                  type="button"
+                                  onClick={() => setEditingClientTask(task)}
+                                  title={mayEdit ? t("Edit Task", "Upraviť úlohu", "Feladat szerkesztése") : t("View Task", "Zobraziť úlohu", "Feladat megtekintése")}
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-orange-600 hover:bg-orange-50 active:scale-95 transition-all cursor-pointer"
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </button>
+                                {mayDelete && (
+                                  <button
+                                    type="button"
+                                    onClick={() => void handleDeleteClientTask(task)}
+                                    title={t("Delete Task", "Odstrániť úlohu", "Feladat törlése")}
+                                    className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 active:scale-95 transition-all cursor-pointer"
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    ) : (
+                      <div className="py-8 text-center text-slate-400 text-xs font-semibold flex flex-col items-center justify-center gap-2 bg-slate-50 rounded-2xl border border-dashed border-slate-200">
+                        <CheckSquare className="h-6 w-6 text-slate-300" />
+                        <div>{t("No open tasks for this client.", "Žiadne otvorené úlohy pre tohto klienta.", "Nincsenek nyitott feladatok ehhez az ügyfélhez.")}</div>
+                      </div>
+                    )}
+
+                    {/* Finished Tasks List */}
+                    {showClientFinishedTasks && clientFinishedTasks.length > 0 && (
+                      <div className="space-y-2 pt-3 border-t border-slate-100">
+                        <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                          {t("Completed & Archived Tasks", "Dokončené a archivované úlohy", "Befejezett és archivált feladatok")} ({clientFinishedTasks.length})
+                        </span>
+                        <ul className="flex flex-col gap-2">
+                          {clientFinishedTasks.map((task) => {
+                            const mayEdit = canEditTask(task, currentUser, resolvedTaskAccess);
+                            const mayDelete = canDeleteTask(task, currentUser, resolvedTaskAccess);
+
+                            return (
+                              <li
+                                key={task.id}
+                                className="flex items-center gap-3 p-2.5 rounded-2xl border border-slate-100 bg-slate-50/70 opacity-75 hover:opacity-100 transition-all"
+                              >
+                                <button
+                                  type="button"
+                                  onClick={() => handleToggleClientTask(task)}
+                                  disabled={!mayEdit}
+                                  className="h-5 w-5 rounded-lg bg-emerald-500 border-2 border-emerald-500 text-white flex items-center justify-center shrink-0 cursor-pointer"
+                                >
+                                  <Check className="h-3 w-3 stroke-[3]" />
+                                </button>
+                                <div className="flex-1 min-w-0">
+                                  <span className="text-xs font-semibold text-slate-500 line-through">
+                                    {task.title}
+                                  </span>
+                                </div>
+                                {task.owner && (
+                                  <span className="text-[9px] font-bold text-slate-400">
+                                    {task.owner}
+                                  </span>
+                                )}
+                                <div className="flex items-center gap-0.5 shrink-0">
+                                  <button
+                                    type="button"
+                                    onClick={() => setEditingClientTask(task)}
+                                    className="p-1 text-slate-400 hover:text-slate-600 cursor-pointer"
+                                  >
+                                    <Pencil className="h-3.5 w-3.5" />
+                                  </button>
+                                  {mayDelete && (
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleDeleteClientTask(task)}
+                                      className="p-1 text-slate-400 hover:text-rose-600 cursor-pointer"
+                                    >
+                                      <Trash2 className="h-3.5 w-3.5" />
+                                    </button>
+                                  )}
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                </div>
               )}
 
               {activeDetailTab === "files" && (
@@ -4979,9 +5659,72 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
 
       </div>
 
-      {/* Active clients or the archive — aligned to the right */}
-      <div className="flex justify-end">
-        <div className="flex items-center gap-1 p-1 w-fit rounded-2xl bg-slate-100 border border-slate-200 select-none">
+      {/* Table controls row: Quick sort selector & Active/Archive scope toggle */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        {/* Sort Controls (Quick selector, especially powerful on mobile where table headers are hidden) */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 bg-white border-2 border-emerald-100 rounded-2xl px-3.5 py-1.5 text-xs text-slate-700 shadow-sm">
+            <ArrowUpDown className="h-3.5 w-3.5 text-emerald-600 shrink-0 stroke-[2.5]" />
+            <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+              {t("Sort:", "Zoradiť:", "Rendezés:")}
+            </span>
+            <select
+              value={sortConfig?.key || ""}
+              onChange={(e) => {
+                const val = e.target.value as ClientSortKey | "";
+                if (!val) {
+                  setSortConfig(null);
+                } else {
+                  handleSort(val, true);
+                }
+              }}
+              className="bg-transparent text-xs font-black text-slate-800 focus:outline-none cursor-pointer pr-1"
+            >
+              <option value="">{t("Default", "Predvolené", "Alapértelmezett")}</option>
+              <option value="name">{getTranslation(systemLanguage, "leads.table.client")}</option>
+              <option value="totalValue">{getTranslation(systemLanguage, "clients.card.total_value")}</option>
+              <option value="leadsCount">{getTranslation(systemLanguage, "clients.card.leads_count")}</option>
+              <option value="city">{getTranslation(systemLanguage, "leads.table.city")}</option>
+              <option value="clientType">{getTranslation(systemLanguage, "leads.table.type")}</option>
+              <option value="owner">{getTranslation(systemLanguage, "leads.table.pm")}</option>
+              <option value="phone">{t("Contact Phone", "Kontaktný telefón", "Kapcsolattartó telefon")}</option>
+              <option value="email">{getTranslation(systemLanguage, "login.email")}</option>
+            </select>
+            {sortConfig && (
+              <button
+                type="button"
+                onClick={() => setSortConfig(prev => prev ? { ...prev, direction: prev.direction === "asc" ? "desc" : "asc" } : null)}
+                className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100 transition-colors cursor-pointer font-bold text-[10px]"
+                title={sortConfig.direction === "asc" ? t("Ascending (click to switch to descending)", "Vzostupne (kliknite pre zostupné)", "Növekvő (kattintson a csökkenőhöz)") : t("Descending (click to switch to ascending)", "Zostupne (kliknite pre vzostupné)", "Csökkenő (kattintson a növekvőhöz)")}
+              >
+                {sortConfig.direction === "asc" ? (
+                  <>
+                    <ArrowUp className="h-3 w-3 stroke-[2.5]" />
+                    <span>ASC</span>
+                  </>
+                ) : (
+                  <>
+                    <ArrowDown className="h-3 w-3 stroke-[2.5]" />
+                    <span>DESC</span>
+                  </>
+                )}
+              </button>
+            )}
+            {sortConfig && (
+              <button
+                type="button"
+                onClick={() => setSortConfig(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
+                title={t("Clear sort", "Zrušiť zoradenie", "Rendezés törlése")}
+              >
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Active clients or the archive */}
+        <div className="flex items-center gap-1 p-1 w-fit rounded-2xl bg-slate-100 border border-slate-200 select-none self-end sm:self-auto">
           {([
             { scope: "active" as const, Icon: Users, label: t("Active clients", "Aktívni klienti", "Aktív ügyfelek"), count: clientProfiles.length - archivedClientsCount },
             { scope: "archived" as const, Icon: Archive, label: t("Archived", "Archivovaní", "Archivált"), count: archivedClientsCount },
@@ -5010,16 +5753,128 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         <div className="overflow-x-auto lg:overflow-x-auto scrollbar-thin">
           <table className="w-full border-collapse text-left block lg:table">
             <thead className="hidden lg:table-header-group">
-              <tr className="bg-white text-emerald-700 text-[10px] font-black uppercase tracking-wider">
-                <th className="sticky top-0 bg-white z-10 py-4 px-6 rounded-tl-[24px] border-b-2 border-slate-100">{getTranslation(systemLanguage, "leads.table.client")}</th>
-                <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{t("Contact Phone", "Kontaktný telefón", "Kapcsolattartó telefon")}</th>
-                <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "login.email")}</th>
-                <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "leads.table.city")}</th>
-                <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "leads.table.type")}</th>
-                <th className="sticky top-0 bg-white z-10 py-4 px-4 border-b-2 border-slate-100">{getTranslation(systemLanguage, "leads.table.pm")}</th>
-                <th className="sticky top-0 bg-white z-10 py-4 px-4 text-center border-b-2 border-slate-100">{getTranslation(systemLanguage, "clients.card.leads_count")}</th>
-                <th className="sticky top-0 bg-white z-10 py-4 px-6 text-right border-b-2 border-slate-100">{getTranslation(systemLanguage, "clients.card.total_value")}</th>
-                <th className="sticky top-0 bg-white z-10 py-4 px-4 rounded-tr-[24px] border-b-2 border-slate-100 w-12">
+              <tr className="bg-white text-emerald-700 text-[10px] font-black uppercase tracking-wider select-none">
+                <th
+                  className={`sticky top-0 bg-white z-10 py-3.5 px-6 rounded-tl-[24px] border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "name" ? "bg-emerald-50/40" : ""}`}
+                  aria-sort={sortConfig?.key === "name" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleSort("name")}
+                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-black cursor-pointer transition-colors ${
+                      sortConfig?.key === "name" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
+                    }`}
+                  >
+                    <span>{getTranslation(systemLanguage, "leads.table.client")}</span>
+                    {renderSortIcon("name")}
+                  </button>
+                </th>
+                <th
+                  className={`sticky top-0 bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "phone" ? "bg-emerald-50/40" : ""}`}
+                  aria-sort={sortConfig?.key === "phone" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleSort("phone")}
+                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-black cursor-pointer transition-colors ${
+                      sortConfig?.key === "phone" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
+                    }`}
+                  >
+                    <span>{t("Contact Phone", "Kontaktný telefón", "Kapcsolattartó telefon")}</span>
+                    {renderSortIcon("phone")}
+                  </button>
+                </th>
+                <th
+                  className={`sticky top-0 bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "email" ? "bg-emerald-50/40" : ""}`}
+                  aria-sort={sortConfig?.key === "email" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleSort("email")}
+                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-black cursor-pointer transition-colors ${
+                      sortConfig?.key === "email" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
+                    }`}
+                  >
+                    <span>{getTranslation(systemLanguage, "login.email")}</span>
+                    {renderSortIcon("email")}
+                  </button>
+                </th>
+                <th
+                  className={`sticky top-0 bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "city" ? "bg-emerald-50/40" : ""}`}
+                  aria-sort={sortConfig?.key === "city" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleSort("city")}
+                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-black cursor-pointer transition-colors ${
+                      sortConfig?.key === "city" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
+                    }`}
+                  >
+                    <span>{getTranslation(systemLanguage, "leads.table.city")}</span>
+                    {renderSortIcon("city")}
+                  </button>
+                </th>
+                <th
+                  className={`sticky top-0 bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "clientType" ? "bg-emerald-50/40" : ""}`}
+                  aria-sort={sortConfig?.key === "clientType" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleSort("clientType")}
+                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-black cursor-pointer transition-colors ${
+                      sortConfig?.key === "clientType" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
+                    }`}
+                  >
+                    <span>{getTranslation(systemLanguage, "leads.table.type")}</span>
+                    {renderSortIcon("clientType")}
+                  </button>
+                </th>
+                <th
+                  className={`sticky top-0 bg-white z-10 py-3.5 px-4 border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "owner" ? "bg-emerald-50/40" : ""}`}
+                  aria-sort={sortConfig?.key === "owner" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleSort("owner")}
+                    className={`group/sort inline-flex items-center gap-1.5 uppercase tracking-wider font-black cursor-pointer transition-colors ${
+                      sortConfig?.key === "owner" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
+                    }`}
+                  >
+                    <span>{getTranslation(systemLanguage, "leads.table.pm")}</span>
+                    {renderSortIcon("owner")}
+                  </button>
+                </th>
+                <th
+                  className={`sticky top-0 bg-white z-10 py-3.5 px-4 text-center border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "leadsCount" ? "bg-emerald-50/40" : ""}`}
+                  aria-sort={sortConfig?.key === "leadsCount" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleSort("leadsCount")}
+                    className={`group/sort inline-flex items-center justify-center gap-1.5 uppercase tracking-wider font-black cursor-pointer transition-colors ${
+                      sortConfig?.key === "leadsCount" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
+                    }`}
+                  >
+                    <span>{getTranslation(systemLanguage, "clients.card.leads_count")}</span>
+                    {renderSortIcon("leadsCount")}
+                  </button>
+                </th>
+                <th
+                  className={`sticky top-0 bg-white z-10 py-3.5 px-6 text-right border-b-2 border-slate-100 transition-colors ${sortConfig?.key === "totalValue" ? "bg-emerald-50/40" : ""}`}
+                  aria-sort={sortConfig?.key === "totalValue" ? (sortConfig.direction === "asc" ? "ascending" : "descending") : "none"}
+                >
+                  <button
+                    type="button"
+                    onClick={() => handleSort("totalValue")}
+                    className={`group/sort inline-flex items-center justify-end gap-1.5 uppercase tracking-wider font-black cursor-pointer transition-colors ${
+                      sortConfig?.key === "totalValue" ? "text-emerald-700" : "text-slate-600 hover:text-emerald-700"
+                    }`}
+                  >
+                    <span>{getTranslation(systemLanguage, "clients.card.total_value")}</span>
+                    {renderSortIcon("totalValue")}
+                  </button>
+                </th>
+                <th className="sticky top-0 bg-white z-10 py-3.5 px-4 rounded-tr-[24px] border-b-2 border-slate-100 w-12">
                   <span className="sr-only">{t("Actions", "Akcie", "Műveletek")}</span>
                 </th>
               </tr>
@@ -5421,7 +6276,7 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   </div>
                 </div>
                 
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
                   <div className="space-y-1">
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
                       {systemLanguage === "sk" ? "Krajina" : systemLanguage === "hu" ? "Ország" : "Country"}
@@ -5459,12 +6314,26 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                   
                   <div className="md:col-span-1 space-y-1">
                     <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
-                      {systemLanguage === "sk" ? `Odhadovaná hodnota (${currencySymbol})` : systemLanguage === "hu" ? `Becsült érték (${currencySymbol})` : `Estimated Worth (${currencySymbol})`}
+                      {systemLanguage === "sk" ? `Odhad (${currencySymbol})` : systemLanguage === "hu" ? `Becsült (${currencySymbol})` : `Est. (${currencySymbol})`}
                     </label>
                     <input
                       type="number"
                       value={newClientValue}
                       onChange={(e) => setNewClientValue(e.target.value)}
+                      placeholder="0.00"
+                      className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
+                    />
+                  </div>
+
+                  <div className="md:col-span-1 space-y-1">
+                    <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
+                      {systemLanguage === "sk" ? `Úprava (${currencySymbol})` : systemLanguage === "hu" ? `Korrekció (${currencySymbol})` : `Adjust. (${currencySymbol})`}
+                    </label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={newClientAdjustment}
+                      onChange={(e) => setNewClientAdjustment(e.target.value)}
                       placeholder="0.00"
                       className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:outline-none focus:bg-white focus:border-emerald-500 transition-all font-semibold"
                     />
@@ -5737,6 +6606,32 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
             </form>
           </div>
         </div>
+      )}
+      {/* TASK EDIT DRAWER MODAL */}
+      {editingClientTask && (
+        <TaskEditDrawer
+          key={editingClientTask.id}
+          task={editingClientTask}
+          leads={leads}
+          projects={projects}
+          users={users.length > 0 ? users : projectManagers.map((name) => ({ name } as UserProfile))}
+          taskStates={taskStates}
+          systemLanguage={systemLanguage}
+          currentUserName={currentUser?.name || ""}
+          canEdit={canEditTask(editingClientTask, currentUser, resolvedTaskAccess)}
+          canDelete={canDeleteTask(editingClientTask, currentUser, resolvedTaskAccess)}
+          onSave={(updatedTask) => {
+            setTasks((prev) => prev.map((tk) => (tk.id === updatedTask.id ? updatedTask : tk)));
+            setEditingClientTask(null);
+          }}
+          onDelete={async (t: Task) => {
+            await requestTaskDeletion(t.id);
+            setTasks((prev) => prev.filter((tk) => tk.id !== t.id));
+            setEditingClientTask(null);
+            return true;
+          }}
+          onClose={() => setEditingClientTask(null)}
+        />
       )}
     </div>
   );

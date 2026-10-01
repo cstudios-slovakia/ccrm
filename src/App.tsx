@@ -8,6 +8,7 @@ import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAs
 import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils/projectAutoCreate";
 import { normalizeLeadStateSla, type LeadStateSla } from "./utils/leadSla";
 import { isSystemMailConfigured } from "./utils/taskReminders";
+import { requestBrowserNotificationPermission, sendBrowserNotification } from "./utils/browserNotifications";
 import { listIdsSignature, normalizeListIds, type ListIds } from "./utils/listIds";
 import { VERSION } from "./utils/version";
 import { reconcileInvoiceMovements } from "./utils/invoiceFinanceBridge";
@@ -29,11 +30,11 @@ import { QuickAddClientProvider } from "./components/ui/QuickAddClient";
 import FilePreviewPane from "./components/FilePreviewPane";
 import { FloatingCopilotOrb, type CopilotCorner } from "./components/executive/FloatingCopilotOrb";
 import { CopilotSidebar } from "./components/executive/CopilotSidebar";
+import { AuroraBackground } from "./components/ui/AuroraBackground";
 import { useCurrentScreenContext } from "./hooks/useCurrentScreenContext";
 import { RefreshCw, AlertOctagon, Trash2, Copy, Brain, Mail } from "lucide-react";
-import { ShaderGradient } from "shadergradient";
-import { Canvas, type EventManager } from "@react-three/fiber";
-import { ShaderChunk } from "three";
+import { FeralGradientBackground } from "./components/FeralGradientBackground";
+import { OrganicNodeDatabaseLoader } from "./components/OrganicNodeDatabaseLoader";
 import { getStoredTheme, getStoredThemeMode, isThemeMode, startThemeWatcher, type Appearance, type ThemeMode } from "./utils/theme";
 import { hasPersistentStorage } from "./utils/safeStorage";
 import { LicenseBanner } from "./components/LicenseBanner";
@@ -53,6 +54,7 @@ import {
   clearLegacyStartMenuLayout,
   readLegacyStartMenuLayout,
 } from "./utils/startMenuLayout";
+import type { SidebarGroup } from "./utils/sidebarLayout";
 import type { FinancialTrendSettings } from "./utils/financialTrend";
 import {
   EMPTY_FINANCIAL_TREND,
@@ -62,6 +64,7 @@ import {
   readLegacyFinancialTrend,
 } from "./utils/financialTrend";
 import { flushPendingSaves } from "./utils/pendingSaves";
+import { updatePwaManifest } from "./utils/pwaManifest";
 
 /**
  * Routes whose whole purpose depends on OpenAI. Visiting one without a
@@ -123,44 +126,6 @@ const WarehouseView = safeLazy(() => import("./components/WarehouseView").then(m
 const FinancialManagementView = safeLazy(() => import("./components/FinancialManagementView").then(m => ({ default: m.FinancialManagementView })));
 const InvoicingView = safeLazy(() => import("./components/InvoicingView").then(m => ({ default: m.InvoicingView })));
 
-const ShaderGradientAny = ShaderGradient as any;
-
-/**
- * shadergradient's own ShaderGradientCanvas, minus pointer events.
- *
- * Its Canvas wires r3f's pointer handlers to the wrapper div once WebGL is up.
- * The loading screen that hosts it often unmounts before that happens, and r3f
- * then calls addEventListener on a null ref — an uncaught exception on nearly
- * every load. The gradient is pointer-events:none and never needed events, so
- * an event manager with no connect step removes the race rather than hiding it.
- * The rest mirrors the wrapper: its Canvas props, and blanking the uv2/encodings
- * chunks its shaders still #include but current three no longer ships.
- */
-const NO_POINTER_EVENTS = (): EventManager<HTMLElement> => ({ enabled: false, priority: 0 });
-const BackgroundGradientCanvas: React.FC<{ style: React.CSSProperties; children: React.ReactNode }> = ({ style, children }) => {
-  useEffect(() => {
-    const chunks = ShaderChunk as unknown as Record<string, string>;
-    chunks.uv2_pars_vertex = "";
-    chunks.uv2_vertex = "";
-    chunks.uv2_pars_fragment = "";
-    chunks.encodings_fragment = "";
-  }, []);
-  return (
-    <Canvas
-      style={style}
-      resize={{ offsetSize: true }}
-      dpr={1}
-      camera={{ fov: 45 }}
-      linear
-      flat
-      gl={{ preserveDrawingBuffer: true }}
-      events={NO_POINTER_EVENTS}
-    >
-      {children}
-    </Canvas>
-  );
-};
-
 // Stable, order-fixed fingerprint of the settings block. Used to tell a genuine
 // user edit apart from merely re-receiving the server's own settings, so the
 // settings-sync effect never echoes server data back. Field order must be fixed
@@ -181,6 +146,7 @@ const computeSettingsSig = (s: any): string => {
     s.leadStates ?? [],
     s.leadSources ?? [],
     s.leadCategories ?? [],
+    s.divisions ?? [],
     // Normalized on both sides so an install that has never stored an id map
     // compares equal to the one the server derives. Reduced to a sorted array
     // of pairs because two equal maps with their keys written in a different
@@ -190,6 +156,7 @@ const computeSettingsSig = (s: any): string => {
     s.leadStateColors && Object.keys(s.leadStateColors).length ? s.leadStateColors : null,
     s.leadSourceColors && Object.keys(s.leadSourceColors).length ? s.leadSourceColors : null,
     s.leadCategoryColors && Object.keys(s.leadCategoryColors).length ? s.leadCategoryColors : null,
+    s.divisionColors && Object.keys(s.divisionColors).length ? s.divisionColors : null,
     s.leadStageGroups && Object.keys(s.leadStageGroups).length ? s.leadStageGroups : null,
     s.leadStateParents && Object.keys(s.leadStateParents).length ? s.leadStateParents : null,
     s.leadStateFollowUp && Object.keys(s.leadStateFollowUp).length ? s.leadStateFollowUp : null,
@@ -543,7 +510,15 @@ function App() {
       displayToast(next);
     };
   }, []);
-  const [systemName, setSystemName] = useState("CCRM");
+  const [systemName, setSystemName] = useState(() => {
+    const stored = typeof window !== 'undefined' ? localStorage.getItem("crm_system_name") : null;
+    return stored || "CCRM";
+  });
+
+  // Synchronize PWA manifest & mobile app title with systemName
+  useEffect(() => {
+    updatePwaManifest(systemName);
+  }, [systemName]);
   const [systemLanguage, setSystemLanguage] = useState<"en" | "sk" | "hu">(() => {
     const stored = typeof window !== 'undefined' ? localStorage.getItem("crm_language") : null;
     return (stored === "en" || stored === "sk" || stored === "hu") ? stored : "sk";
@@ -580,7 +555,7 @@ function App() {
   const [systemCurrency, setSystemCurrency] = useState<string>("");
 
   // Meeting Room state
-  const [meetingsAction, setMeetingsAction] = useState<"list" | "new">("list");
+  const [meetingsAction, setMeetingsAction] = useState<"list" | "new" | "record">("list");
   const [autoOpenAddTask, setAutoOpenAddTask] = useState(false);
   // Server-backed state. The real rows arrive with the first sync GET (see
   // meeting_notes / project_types / projects in sync.php) and every edit is
@@ -620,6 +595,8 @@ function App() {
   // Initial states set to empty / defaults without localStorage or mockData loaders
   const [leads, setLeads] = useState<Lead[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const lastKnownTasksRef = useRef<Task[] | null>(null);
+
   const [unifiedEntries, setUnifiedEntries] = useState<UnifiedEntryRegistry[]>([]);
   const [unifiedEntriesData, setUnifiedEntriesData] = useState<Record<string, UnifiedEntryRow[]>>({});
   const [customDashboards, setCustomDashboards] = useState<CustomDashboard[]>([]);
@@ -648,6 +625,15 @@ function App() {
   const [leadCategories, setLeadCategories] = useState<string[]>([
     "Products", "Services"
   ]);
+
+  const [divisions, setDivisions] = useState<string[]>([
+    "Cstudios", "Cstudios Budapest"
+  ]);
+
+  const [divisionColors, setDivisionColors] = useState<Record<string, string>>({
+    "Cstudios": "#3b82f6",
+    "Cstudios Budapest": "#8b5cf6"
+  });
 
   // The permanent id each source / category answers to when a website form
   // names it (`source_id` / `category_id` in the /api/pipeline.php payload).
@@ -770,6 +756,13 @@ function App() {
       sessionStorage.removeItem("crm_current_user_rbac");
     }
   }, [currentUser]);
+
+  // Request browser notification permission once user is logged in
+  useEffect(() => {
+    if (currentUser) {
+      requestBrowserNotificationPermission();
+    }
+  }, [currentUser?.email]);
 
   // Licence for this installation. Fetched once per session and re-checked on a
   // slow timer — it changes about once a year, and api/license.php throttles the
@@ -1174,6 +1167,8 @@ ${log.payload || ''}
         leadStates,
         leadSources,
         leadCategories,
+        divisions,
+        divisionColors,
         leadSourceIds,
         leadCategoryIds,
         leadStateColors,
@@ -1771,16 +1766,22 @@ ${log.payload || ''}
       setAnonPrefs(prev => ({ ...prev, [key]: value }));
       return;
     }
-    const nextMeta = {
-      ...parseUserMetadata(currentUser),
-      preferences: { ...readUserPrefs(currentUser), [key]: value }
-    };
-    updateUsersAndSync(prevUsers => prevUsers.map(u =>
-      u.email === currentUser.email ? { ...u, metadata_json: nextMeta } : u
-    ));
-    // Keep the in-memory profile in step so the change paints immediately rather
-    // than waiting for the users list to round-trip.
-    setCurrentUser(prev => prev ? { ...prev, metadata_json: nextMeta } : prev);
+    let updatedMeta: any = null;
+    updateUsersAndSync(prevUsers => prevUsers.map(u => {
+      if (u.email === currentUser.email) {
+        const meta = parseUserMetadata(u);
+        const nextMeta = {
+          ...meta,
+          preferences: { ...readUserPrefs(u), [key]: value }
+        };
+        updatedMeta = nextMeta;
+        return { ...u, metadata_json: nextMeta };
+      }
+      return u;
+    }));
+    if (updatedMeta) {
+      setCurrentUser(prev => prev ? { ...prev, metadata_json: updatedMeta } : prev);
+    }
   };
 
   // The context value must not close over a stale setter: pushStateToServer reads
@@ -1957,25 +1958,38 @@ ${log.payload || ''}
     });
   }, [currentUser, users, isInitialSyncResolved]);
 
-  const handleSaveUserLayout = (layout: string[], hidden?: string[]) => {
+  const handleSaveUserLayout = (layout: string[], hidden?: string[], sidebarGroups?: SidebarGroup[]) => {
     if (!currentUser) return;
-    let currentMeta: any = {};
-    try {
-      currentMeta = typeof currentUser.metadata_json === "string"
-        ? JSON.parse(currentUser.metadata_json || "{}")
-        : (currentUser.metadata_json || {});
-    } catch (e) {
-      console.error("Error parsing user metadata_json", e);
-    }
-    // navHidden records what the user removed on purpose, so a module added to
-    // the product later can be told apart from one they chose to hide.
-    const nextMeta = { ...currentMeta, navLayout: layout, ...(hidden ? { navHidden: hidden } : {}) };
+    let updatedMeta: any = null;
     updateUsersAndSync(prevUsers => prevUsers.map(u => {
       if (u.email === currentUser.email) {
+        let existingMeta: any = {};
+        try {
+          existingMeta = typeof u.metadata_json === "string"
+            ? JSON.parse(u.metadata_json || "{}")
+            : (u.metadata_json || {});
+        } catch (e) {
+          console.error("Error parsing user metadata_json", e);
+        }
+        const nextMeta = {
+          ...existingMeta,
+          navLayout: layout,
+          ...(hidden !== undefined ? { navHidden: hidden } : {}),
+          ...(sidebarGroups !== undefined ? {
+            preferences: {
+              ...(existingMeta.preferences || {}),
+              sidebarGroups: sidebarGroups
+            }
+          } : {})
+        };
+        updatedMeta = nextMeta;
         return { ...u, metadata_json: nextMeta };
       }
       return u;
     }));
+    if (updatedMeta) {
+      setCurrentUser(prev => prev ? { ...prev, metadata_json: updatedMeta } : prev);
+    }
   };
 
   // Resolve the default landing page stored in a user's metadata (falls back to caller default)
@@ -1985,7 +1999,7 @@ ${log.payload || ''}
       const meta = typeof user.metadata_json === "string"
         ? JSON.parse(user.metadata_json || "{}")
         : (user.metadata_json || {});
-      return meta?.defaultPage || null;
+      return meta?.preferences?.defaultPage || meta?.defaultPage || null;
     } catch (e) {
       return null;
     }
@@ -1993,21 +2007,31 @@ ${log.payload || ''}
 
   const handleSaveDefaultPage = (pageId: string) => {
     if (!currentUser) return;
-    let currentMeta: any = {};
-    try {
-      currentMeta = typeof currentUser.metadata_json === "string"
-        ? JSON.parse(currentUser.metadata_json || "{}")
-        : (currentUser.metadata_json || {});
-    } catch (e) {
-      console.error("Error parsing user metadata_json", e);
-    }
-    const nextMeta = { ...currentMeta, defaultPage: pageId };
+    let updatedMeta: any = null;
     updateUsersAndSync(prevUsers => prevUsers.map(u => {
       if (u.email === currentUser.email) {
+        let currentMeta: any = {};
+        try {
+          currentMeta = typeof u.metadata_json === "string"
+            ? JSON.parse(u.metadata_json || "{}")
+            : (u.metadata_json || {});
+        } catch (e) {
+          console.error("Error parsing user metadata_json", e);
+        }
+        const currentPrefs = currentMeta.preferences || {};
+        const nextMeta = {
+          ...currentMeta,
+          defaultPage: pageId,
+          preferences: { ...currentPrefs, defaultPage: pageId }
+        };
+        updatedMeta = nextMeta;
         return { ...u, metadata_json: nextMeta };
       }
       return u;
     }));
+    if (updatedMeta) {
+      setCurrentUser(prev => prev ? { ...prev, metadata_json: updatedMeta } : prev);
+    }
     if (typeof (window as any).showToast === "function") {
       (window as any).showToast(t("Default landing page set.", "Predvolená úvodná stránka nastavená.", "Az alapértelmezett kezdőoldal beállítva."));
     }
@@ -2040,7 +2064,7 @@ ${log.payload || ''}
   useEffect(() => {
     if (!isInstalled || !isInitialSyncResolved) return;
     const currentSig = computeSettingsSig({
-      leadStates, leadSources, leadCategories, leadSourceIds, leadCategoryIds,
+      leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds,
       systemName, systemLanguage, systemCurrency,
       leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups,
       leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors,
@@ -2071,7 +2095,7 @@ ${log.payload || ''}
       // newest values.
       pushStateToServer();
     }, 700);
-  }, [leadStates, leadSources, leadCategories, leadSourceIds, leadCategoryIds, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, isInitialSyncResolved]);
+  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, isInitialSyncResolved]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -2171,6 +2195,55 @@ ${log.payload || ''}
         setLeads((prev) => JSON.stringify(prev) === JSON.stringify(data.leads) ? prev : data.leads);
       }
       if (data.tasks && Array.isArray(data.tasks)) {
+        const incomingTasks = data.tasks as Task[];
+        const prevTasks = lastKnownTasksRef.current;
+        const myName = currentUser?.name;
+
+        if (prevTasks !== null && myName) {
+          const prevMap = new Map<string, Task>(prevTasks.map((t) => [t.id, t]));
+
+          incomingTasks.forEach((task) => {
+            const old = prevMap.get(task.id);
+
+            // 1. Newly created or reassigned task assigned to current user (and not created by me)
+            const isAssignedToMe =
+              task.owner === myName ||
+              (Array.isArray(task.assignedUsers) && task.assignedUsers.includes(myName));
+            const wasAssignedToMe =
+              old &&
+              (old.owner === myName ||
+                (Array.isArray(old.assignedUsers) && old.assignedUsers.includes(myName)));
+
+            if (isAssignedToMe && (!old || !wasAssignedToMe)) {
+              if (task.createdBy !== myName) {
+                sendBrowserNotification(
+                  t("New Task Assigned", "Priradená nová úloha", "Új feladat kijelölve"),
+                  {
+                    body: `${task.title} (${task.createdBy || t("System", "Systém", "Rendszer")})`,
+                    onClickUrl: "tasks",
+                  }
+                );
+              }
+            }
+
+            // 2. Task created by me has been marked as completed/done
+            const isDone = String(task.status || "").toLowerCase() === "done";
+            const wasDone = old ? String(old.status || "").toLowerCase() === "done" : false;
+
+            if (old && !wasDone && isDone && task.createdBy === myName) {
+              const completer = task.completedBy || task.owner || task.assignedUsers?.[0] || t("Team member", "Člen tímu", "Csapattag");
+              sendBrowserNotification(
+                t("Task Completed", "Úloha dokončená", "Feladat befejezve"),
+                {
+                  body: `${task.title} · ${t("Completed by", "Dokončil", "Befejezte")}: ${completer}`,
+                  onClickUrl: "tasks",
+                }
+              );
+            }
+          });
+        }
+
+        lastKnownTasksRef.current = incomingTasks;
         setTasks((prev) => JSON.stringify(prev) === JSON.stringify(data.tasks) ? prev : data.tasks);
       }
       if (data.users && Array.isArray(data.users)) {
@@ -2270,6 +2343,8 @@ ${log.payload || ''}
         setLeadStates((prev) => s.leadStates && JSON.stringify(s.leadStates) !== JSON.stringify(prev) ? s.leadStates : prev);
         setLeadSources((prev) => s.leadSources && JSON.stringify(s.leadSources) !== JSON.stringify(prev) ? s.leadSources : prev);
         setLeadCategories((prev) => s.leadCategories && JSON.stringify(s.leadCategories) !== JSON.stringify(prev) ? s.leadCategories : prev);
+        setDivisions((prev) => s.divisions && JSON.stringify(s.divisions) !== JSON.stringify(prev) ? s.divisions : prev);
+        setDivisionColors((prev) => s.divisionColors && JSON.stringify(s.divisionColors) !== JSON.stringify(prev) ? s.divisionColors : prev);
         setLeadStateColors((prev) => s.leadStateColors && JSON.stringify(s.leadStateColors) !== JSON.stringify(prev) ? s.leadStateColors : prev);
         setLeadSourceColors((prev) => s.leadSourceColors && JSON.stringify(s.leadSourceColors) !== JSON.stringify(prev) ? s.leadSourceColors : prev);
         setLeadCategoryColors((prev) => s.leadCategoryColors && JSON.stringify(s.leadCategoryColors) !== JSON.stringify(prev) ? s.leadCategoryColors : prev);
@@ -2523,7 +2598,7 @@ ${log.payload || ''}
     // Raw currency code (or "" for "auto, follow region") — passed down so each
     // view can resolve the symbol AND its correct prefix/suffix position using
     // its own display language (see src/utils/currency.ts).
-    const currencyCode = systemCurrency || null;
+    const currencyCode = systemCurrency || "EUR";
     const activeUser = currentUser || users[0] || {
       id: "guest",
       name: t("Guest User", "Hosť", "Vendég"),
@@ -2584,6 +2659,10 @@ ${log.payload || ''}
           setLeadStateColors={setLeadStateColors}
           leadCategories={leadCategories}
           setLeadCategories={setLeadCategories}
+          divisions={divisions}
+          setDivisions={setDivisions}
+          divisionColors={divisionColors}
+          setDivisionColors={setDivisionColors}
           leadSourceIds={leadSourceIds}
           setLeadSourceIds={setLeadSourceIds}
           leadCategoryIds={leadCategoryIds}
@@ -2625,6 +2704,7 @@ ${log.payload || ''}
           setAiCustomTemplates={updateAiCustomTemplatesAndSync}
           licenseState={licenseState}
           onLicenseStateChange={setLicenseState}
+          customDashboards={customDashboards}
         />
       );
     }
@@ -2651,6 +2731,13 @@ ${log.payload || ''}
             taskStateColors={taskStateColors}
             currentUserName={currentUser?.name || ""}
             onNavigate={(route) => { window.location.hash = route; }}
+            leads={leads}
+            projects={projects}
+            projectTypes={projectTypes}
+            financialRecords={financialRecords}
+            invoicesOffers={invoicesOffers}
+            leadStageGroups={leadStageGroups}
+            leadStateParents={leadStateParents}
           />
         );
       }
@@ -2684,9 +2771,12 @@ ${log.payload || ''}
           leads={leads}
           setLeads={updateLeadsAndSync}
           projectManagers={projectManagers}
+          projectManagerColors={projectManagerColors}
           leadSources={leadSources}
           initialSelectedClient={clientName}
           access={access.module("clients")}
+          financeAccess={access.module("financial")}
+          taskAccess={taskAccess}
           clientCategories={clientCategories}
           setClientCategories={updateClientCategoriesAndSync}
           systemLanguage={userLanguage}
@@ -2697,6 +2787,14 @@ ${log.payload || ''}
           taskStates={taskStates}
           systemName={systemName}
           currencyCode={currencyCode}
+          financialRecords={financialRecords}
+          setFinancialRecords={updateFinancialRecordsAndSync}
+          financialCategories={financialCategories}
+          setFinancialCategories={updateFinancialCategoriesAndSync}
+          currentUser={currentUser}
+          users={users}
+          projects={projects}
+          taskStateColors={taskStateColors}
         />
       );
     }
@@ -2761,6 +2859,10 @@ ${log.payload || ''}
           setLeadStateColors={setLeadStateColors}
           leadCategories={leadCategories}
           setLeadCategories={setLeadCategories}
+          divisions={divisions}
+          setDivisions={setDivisions}
+          divisionColors={divisionColors}
+          setDivisionColors={setDivisionColors}
           leadSourceIds={leadSourceIds}
           setLeadSourceIds={setLeadSourceIds}
           leadCategoryIds={leadCategoryIds}
@@ -2811,6 +2913,7 @@ ${log.payload || ''}
           settingsActionId={settingsActionId}
           licenseState={licenseState}
           onLicenseStateChange={setLicenseState}
+          customDashboards={customDashboards}
         />
       );
     }
@@ -2832,6 +2935,8 @@ ${log.payload || ''}
             leadStateParents={leadStateParents}
             projectManagerColors={projectManagerColors}
             leadCategories={leadCategories}
+            divisions={divisions}
+            divisionColors={divisionColors}
             leadSourceColors={leadSourceColors}
             leadCategoryColors={leadCategoryColors}
             systemLanguage={userLanguage}
@@ -2861,6 +2966,7 @@ ${log.payload || ''}
             projectTypes={projectTypes}
             setProjectTypes={updateProjectTypesAndSync}
             leads={leads}
+            setLeads={updateLeadsAndSync}
             users={users}
             userLanguage={userLanguage}
             access={access.module("projects")}
@@ -2869,6 +2975,8 @@ ${log.payload || ''}
             projectAutoCreate={projectAutoCreate}
             setProjectAutoCreate={setProjectAutoCreate}
             leadCategories={leadCategories}
+            divisions={divisions}
+            divisionColors={divisionColors}
             financialRecords={financialRecords}
             setFinancialRecords={updateFinancialRecordsAndSync}
             financialCategories={financialCategories}
@@ -2908,6 +3016,10 @@ ${log.payload || ''}
             setFinancialCategories={updateFinancialCategoriesAndSync}
             clientCategories={clientCategories}
             setClientCategories={updateClientCategoriesAndSync}
+            currentUser={currentUser}
+            users={users}
+            projects={projects}
+            taskStateColors={taskStateColors}
           />
         );
       case "financial":
@@ -3054,6 +3166,13 @@ ${log.payload || ''}
             taskStateColors={taskStateColors}
             currentUserName={currentUser?.name || ""}
             onNavigate={(route) => { window.location.hash = route; }}
+            leads={leads}
+            projects={projects}
+            projectTypes={projectTypes}
+            financialRecords={financialRecords}
+            invoicesOffers={invoicesOffers}
+            leadStageGroups={leadStageGroups}
+            leadStateParents={leadStateParents}
           />
         );
       case "overview":
@@ -3070,6 +3189,10 @@ ${log.payload || ''}
             leadStateParents={leadStateParents}
             campaigns={integrationsConfig.campaigns}
             currencyCode={currencyCode}
+            projects={projects}
+            projectTypes={projectTypes}
+            financialRecords={financialRecords}
+            invoicesOffers={invoicesOffers}
           />
         );
       case "rag_ai":
@@ -3213,108 +3336,48 @@ ${log.payload || ''}
     );
   }
 
-  // While loading initial sync data from the database, show a premium glassmorphic loader
+  // While loading initial sync data from the database, show a premium timelapse atmospheric loader
   if (isInstalled && !isInitialSyncResolved) {
     return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-gradient-to-br from-slate-50 via-slate-100 to-indigo-50/50 p-6 relative overflow-hidden select-none font-sans">
+      <div className="min-h-screen w-full flex items-center justify-center p-6 relative overflow-hidden select-none font-sans">
         <style dangerouslySetInnerHTML={{__html: `
-          .loader {
-            width: 65px;
-            aspect-ratio: 1;
-            position: relative;
+          @keyframes pulse-ring {
+            0% { transform: scale(0.95); opacity: 0.8; }
+            50% { transform: scale(1.05); opacity: 0.4; }
+            100% { transform: scale(0.95); opacity: 0.8; }
           }
-          .loader:before,
-          .loader:after {
-            content: "";
-            position: absolute;
-            border-radius: 50px;
-            box-shadow: 0 0 0 3px inset rgba(255,255,255,0.95);
-            filter: drop-shadow(0 1px 4px rgba(30,27,75,0.45));
-            animation: l4 2.5s infinite;
+          @keyframes spin-slow {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
           }
-          .loader:after {
-            animation-delay: -1.25s;
+          .loader-spin {
+            animation: spin-slow 2.4s linear infinite;
           }
-          @keyframes l4 {
-            0% { inset: 0 35px 35px 0; }
-            12.5% { inset: 0 35px 0 0; }
-            25% { inset: 35px 35px 0 0; }
-            37.5% { inset: 35px 0 0 0; }
-            50% { inset: 35px 0 0 35px; }
-            62.5% { inset: 0 0 0 35px; }
-            75% { inset: 0 0 35px 35px; }
-            87.5% { inset: 0 0 35px 0; }
-            100% { inset: 0 35px 35px 0; }
+          .pulse-ring {
+            animation: pulse-ring 3s ease-in-out infinite;
           }
         `}} />
 
-        {/* Animated 3D Shader Background */}
-        <div className="absolute inset-0 z-0 pointer-events-none overflow-hidden">
-          <BackgroundGradientCanvas
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              width: '100%',
-              height: '100%',
-              pointerEvents: 'none'
-            }}
-          >
-            <ShaderGradientAny
-              animate="on"
-              axesHelper="off"
-              brightness={1.5}
-              cAzimuthAngle={250}
-              cDistance={1.5}
-              cPolarAngle={140}
-              cameraZoom={12.5}
-              color1="#809bd6"
-              color2="#910aff"
-              color3="#af38ff"
-              destination="onCanvas"
-              embedMode="off"
-              envPreset="city"
-              format="gif"
-              fov={45}
-              frameRate={10}
-              gizmoHelper="hide"
-              grain="on"
-              lightType="3d"
-              pixelDensity={1}
-              positionX={0}
-              positionY={0}
-              positionZ={0}
-              range="disabled"
-              rangeEnd={40}
-              rangeStart={0}
-              reflection={0.5}
-              rotationX={0}
-              rotationY={0}
-              rotationZ={140}
-              shader="defaults"
-              type="sphere"
-              uAmplitude={7}
-              uDensity={0.8}
-              uFrequency={5.5}
-              uSpeed={0.3}
-              uStrength={0.4}
-              wireframe={false}
-            />
-          </BackgroundGradientCanvas>
-        </div>
+        {/* Dynamic Animated Timelapse Atmospheric Background (matching Login View) */}
+        <FeralGradientBackground timelapse timelapseSpeed={0.16} />
 
-        <div className="relative z-10 flex flex-col items-center max-w-sm text-center">
-          {/* Custom Loader Animation */}
-          <div className="mb-8 flex items-center justify-center h-16 w-16">
-            <div className="loader"></div>
+        {/* Glassmorphic Executive Card */}
+        <div className="relative z-10 flex flex-col items-center max-w-sm text-center px-10 py-8 rounded-[36px] border backdrop-blur-2xl bg-white/40 dark:bg-slate-950/40 border-white/50 dark:border-white/10 shadow-2xl shadow-indigo-950/20 transition-all duration-700 animate-in fade-in zoom-in-95">
+          {/* Organic Node Database Construction Animation */}
+          <div className="relative mb-3 flex items-center justify-center">
+            <OrganicNodeDatabaseLoader size={155} />
           </div>
           
-          <h2 className="text-xl font-heading font-black tracking-widest text-white uppercase [text-shadow:0_2px_8px_rgba(30,27,75,0.55)]">
-            CCRM
+          <h2 className="text-xl font-heading font-black tracking-widest text-slate-900 dark:text-white uppercase drop-shadow-sm">
+            {systemName || "CCRM"}
           </h2>
-          <p className="text-[10px] font-black text-white/90 uppercase tracking-widest mt-3.5 animate-pulse [text-shadow:0_1px_5px_rgba(30,27,75,0.6)]">
-            {t("Syncing database connection...", "Pripájam sa k databáze...", "Kapcsolódás az adatbázishoz...")}
-          </p>
+          
+          <div className="flex items-center gap-2 mt-3.5 px-4 py-1.5 rounded-full bg-white/50 dark:bg-slate-900/50 border border-white/60 dark:border-white/10 backdrop-blur-md shadow-sm">
+            <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shadow-sm shadow-emerald-500/50"></span>
+            <p className="text-[10px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">
+              {t("Syncing database connection...", "Pripájam sa k databáze...", "Kapcsolódás az adatbázishoz...")}
+            </p>
+          </div>
         </div>
       </div>
     );
@@ -3382,10 +3445,16 @@ ${log.payload || ''}
       leadSources={leadSources}
       canCreate={access.canEdit("leads") || access.canEdit("clients")}
     >
-    <div className="flex h-screen overflow-hidden relative font-sans antialiased text-slate-800 bg-slate-50/50">
+    <div className="flex h-screen overflow-hidden relative font-sans antialiased text-slate-800 bg-slate-50/50 transition-colors duration-[230ms]">
+      {/* Dynamic Aurora Ambient Background Blobs (Themed per active view) */}
+      <AuroraBackground
+        activeTab={activeTab}
+        customDashboards={customDashboards}
+        unifiedEntries={unifiedEntries}
+      />
 
       {/* Blurred application background layout if not logged in */}
-      <div className={`flex flex-1 overflow-hidden transition-all duration-500 ${!currentUser ? "filter blur-md pointer-events-none select-none" : ""}`}>
+      <div className={`flex flex-1 overflow-hidden transition-all duration-500 relative z-10 ${!currentUser ? "filter blur-md pointer-events-none select-none" : ""}`}>
         {/* Sidebar navigation with role-gated settings visibility */}
         <Sidebar 
           activeTab={activeTab} 
@@ -3414,6 +3483,7 @@ ${log.payload || ''}
           onSaveCustomDashboards={updateCustomDashboardsAndSync}
           defaultPage={getDefaultPageForUser(currentUser) || "dashboard"}
           onSaveDefaultPage={handleSaveDefaultPage}
+          disabledModules={integrationsConfig?.disabledModules || []}
         />
         
         {/* Workspace Area - Add pb-20 on mobile viewports so that the bottom navigation bar never overlaps content */}
@@ -3439,7 +3509,13 @@ ${log.payload || ''}
             onNavigateMeetings={(action) => {
               setMeetingsAction(action);
               setActiveTab("meetings");
-              window.location.hash = "meetings";
+              if (action === "record") {
+                window.location.hash = "meetings/new?record=true";
+              } else if (action === "new") {
+                window.location.hash = "meetings/new";
+              } else {
+                window.location.hash = "meetings";
+              }
             }}
             onAddTask={() => {
               const route = parseAppHash(activeTab).route;

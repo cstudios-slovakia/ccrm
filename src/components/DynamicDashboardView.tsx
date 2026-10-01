@@ -23,12 +23,38 @@ import {
   Sparkles,
   Trash2,
   Check,
-  Pencil
+  Pencil,
+  Briefcase
 } from "lucide-react";
-import type { CustomDashboard } from "../types";
+import type {
+  CustomDashboard,
+  Lead,
+  Project,
+  ProjectType,
+  FinancialRecord,
+  InvoiceOffer,
+  ProjectStatus
+} from "../types";
 import { cn } from "../utils/cn";
 import type { Language } from "../utils/translations";
-import { formatMoney } from "../utils/currency";
+import {
+  formatMoney,
+  isMoneyValueEmpty,
+  parseMoneyValue,
+  currencyForRegion
+} from "../utils/currency";
+import { isClosedLeadState } from "../utils/leadSla";
+import {
+  CLOSED_PROJECT_STATUSES,
+  projectStatusOrder,
+  projectStatusLabel
+} from "../utils/projects";
+import {
+  GroupedStatusValueEquationStats,
+  type StatusStatGroup,
+  type StatusStatItem,
+  type StatusStatDetailRow,
+} from "./GroupedStatusValueEquationStats";
 import { localeCodeFor } from "../utils/localTime";
 import { chartTheme, useAppearance } from "../utils/theme";
 import { useDragAutoScroll } from "../hooks/useDragAutoScroll";
@@ -102,6 +128,13 @@ interface DynamicDashboardViewProps {
   currentUserName?: string;
   /** Opens another section — the "See all" links and the table rows. */
   onNavigate?: (route: string) => void;
+  leads?: Lead[];
+  projects?: Project[];
+  projectTypes?: ProjectType[];
+  financialRecords?: FinancialRecord[];
+  invoicesOffers?: InvoiceOffer[];
+  leadStageGroups?: Record<string, "new" | "in_progress" | "closed">;
+  leadStateParents?: Record<string, string>;
 }
 
 /** Where a `tabs` widget's per-tab query result is stored in the data/error maps. */
@@ -356,7 +389,14 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   taskStates = [],
   taskStateColors = null,
   currentUserName = "",
-  onNavigate
+  onNavigate,
+  leads = [],
+  projects = [],
+  projectTypes = [],
+  financialRecords = [],
+  invoicesOffers = [],
+  leadStageGroups = {},
+  leadStateParents = {},
 }) => {
   const isHome = variant === "home";
   const t: Translate = (en, sk, hu) => (systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en);
@@ -366,12 +406,245 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     if (!canEdit) return;
     onSaveDashboardRaw(updated);
   };
+  const defaultCurrency = currencyCode || currencyForRegion(systemLanguage as Language);
   const money = (value: number, opts?: Intl.NumberFormatOptions) =>
     formatMoney(value, currencyCode, (systemLanguage as Language) || "en", opts);
   const navigate = (route: string) => {
     if (onNavigate) onNavigate(route);
     else window.location.hash = route;
   };
+
+  // Leads group items calculation
+  const leadGroupItems = useMemo<StatusStatItem[]>(() => {
+    if (!leads || leads.length === 0) return [];
+    const stages =
+      pipelineStages && pipelineStages.length > 0
+        ? pipelineStages
+        : Array.from(new Set(leads.map((l) => l.status || "new")));
+    const stageGroups = leadStageGroups || {};
+    const stateParents = leadStateParents || {};
+
+    const activeStates = stages.filter(
+      (s) =>
+        !stateParents[s.toLowerCase()] &&
+        !isClosedLeadState(s, stageGroups, stateParents)
+    );
+
+    return activeStates.map((state) => {
+      const stateLower = state.toLowerCase();
+      const leadsInState = leads.filter((l) => {
+        const sKey = (l.status || "").toLowerCase();
+        const parent = stateParents[sKey];
+        const target = parent ? parent.toLowerCase() : sKey;
+        return target === stateLower;
+      });
+
+      const val = leadsInState.reduce(
+        (sum, l) => sum + (Number(l.value) || 0),
+        0
+      );
+      const col =
+        leadStateColors?.[stateLower] || leadStateColors?.[state] || "#3b82f6";
+
+      const rows: StatusStatDetailRow[] = leadsInState.map((l) => {
+        const lVal = Number(l.value) || 0;
+        return {
+          id: l.id,
+          name: l.name || `Lead #${l.id}`,
+          clientName: l.contactPerson || l.name,
+          manager: l.owner,
+          division: l.division,
+          date: l.createdAt ? new Date(l.createdAt).toLocaleDateString() : undefined,
+          totalBudget: lVal,
+          invoiced: 0,
+          invoicable: lVal,
+          type: "lead",
+          url: `#leads?lead=${encodeURIComponent(l.id)}`,
+        };
+      });
+
+      return {
+        key: stateLower,
+        name: state.toUpperCase(),
+        value: val,
+        count: leadsInState.length,
+        color: col,
+        rows,
+      };
+    });
+  }, [leads, pipelineStages, leadStageGroups, leadStateParents, leadStateColors]);
+
+  // Projects group items calculation
+  const projectGroupItems = useMemo<StatusStatItem[]>(() => {
+    if (!projects || projects.length === 0) {
+      return [];
+    }
+
+    const activeStatuses: ProjectStatus[] = (
+      projectStatusOrder() as ProjectStatus[]
+    ).filter((s) => !CLOSED_PROJECT_STATUSES.includes(s));
+
+    const statusColors: Record<string, string> = {
+      new: "#0284c7",
+      active: "#9333ea",
+      on_hold: "#d97706",
+    };
+
+    let totalProjectBudgetValue = 0;
+    let totalInvoicedValue = 0;
+
+    return activeStatuses.map((status) => {
+      const projectsInStatus = projects.filter((p) => p.status === status);
+      let statusInvoicableVal = 0;
+      let statusTotalBudgetValue = 0;
+      let statusTotalInvoicedValue = 0;
+      const statusRows: StatusStatDetailRow[] = [];
+
+      projectsInStatus.forEach((p) => {
+        const pType = (projectTypes || []).find((t) => t.id === p.projectTypeId);
+        const moneyAttrs =
+          pType?.attributes?.filter((a) => a.type === "money") || [];
+        let pVal = 0;
+        let hasMoneyVal = false;
+        for (const attr of moneyAttrs) {
+          const raw = p.data?.[attr.id];
+          if (
+            raw !== undefined &&
+            raw !== null &&
+            !isMoneyValueEmpty(raw, defaultCurrency)
+          ) {
+            const parsed = parseMoneyValue(raw, defaultCurrency);
+            if (parsed.amount) {
+              pVal += parsed.amount;
+              hasMoneyVal = true;
+            }
+          }
+        }
+        if (!hasMoneyVal && p.leadId && leads) {
+          const pairedLead = leads.find((l) => l.id === p.leadId);
+          if (pairedLead?.value) {
+            pVal = Number(pairedLead.value) || 0;
+            hasMoneyVal = true;
+          }
+        }
+        if (!hasMoneyVal && p.budget) {
+          pVal = Number(p.budget) || 0;
+        }
+
+        // Calculate invoiced on this project
+        let pInvoiced = 0;
+        if (financialRecords && financialRecords.length > 0) {
+          const pFinRecords = financialRecords.filter(
+            (r) => r.projectId === p.id && r.type === "income"
+          );
+          pInvoiced = pFinRecords.reduce(
+            (sum, r) =>
+              sum + (Number(r.amountReal) || Number(r.amountPlanned) || 0),
+            0
+          );
+        } else if (invoicesOffers && invoicesOffers.length > 0) {
+          const pInvoices = invoicesOffers.filter(
+            (io) =>
+              p.leadId &&
+              io.leadId === p.leadId &&
+              io.type === "invoice" &&
+              io.status !== "cancelled"
+          );
+          pInvoiced = pInvoices.reduce(
+            (sum, io) => sum + (Number(io.totalPrice) || 0),
+            0
+          );
+        }
+
+        const pInvoicable = Math.max(0, pVal - pInvoiced);
+
+        statusInvoicableVal += pInvoicable;
+        statusTotalBudgetValue += pVal;
+        statusTotalInvoicedValue += pInvoiced;
+
+        totalProjectBudgetValue += pVal;
+        totalInvoicedValue += pInvoiced;
+
+        const leadName =
+          p.leadId && leads ? leads.find((l) => l.id === p.leadId)?.name : undefined;
+
+        statusRows.push({
+          id: p.id,
+          name: p.name || `Project #${p.id}`,
+          clientName: leadName || p.name || `Project #${p.id}`,
+          manager: p.managers?.[0],
+          division: p.division,
+          date: p.createdAt ? new Date(p.createdAt).toLocaleDateString() : undefined,
+          totalBudget: pVal,
+          invoiced: pInvoiced,
+          invoicable: pInvoicable,
+          type: "project",
+          url: `#projects?edit=${encodeURIComponent(p.id)}`,
+        });
+      });
+
+      return {
+        key: status,
+        name: projectStatusLabel(status, t).toUpperCase(),
+        value: statusInvoicableVal,
+        count: projectsInStatus.length,
+        color: statusColors[status] || "#9333ea",
+        totalBudget: statusTotalBudgetValue,
+        invoiced: statusTotalInvoicedValue,
+        rows: statusRows,
+      };
+    });
+  }, [
+    projects,
+    projectTypes,
+    leads,
+    financialRecords,
+    invoicesOffers,
+    defaultCurrency,
+    t,
+  ]);
+
+  const dashboardEquationGroups: StatusStatGroup[] = useMemo(() => {
+    const list: StatusStatGroup[] = [];
+
+    if (leadGroupItems.length > 0) {
+      list.push({
+        id: "leads",
+        name: t("Sales & Pipeline", "Obchody a Pipeline", "Értékesítés és Pipeline"),
+        subtitle: t(
+          "Active phase values in sales funnel",
+          "Hodnoty aktívnych fáz obchodného lievika",
+          "Aktív értékesítési fázisok"
+        ),
+        icon: Layers,
+        colorTheme: "blue",
+        items: leadGroupItems,
+        unitLabel: t("leads", "leadov", "lead"),
+      });
+    }
+
+    if (projectGroupItems.length > 0) {
+      list.push({
+        id: "projects",
+        name: t("Projects & Deliverables", "Projekty a Realizácie", "Projektek és Kivitelezés"),
+        subtitle: t(
+          "Active project budgets & scopes",
+          "Rozpočty a rozsah aktívnych projektov",
+          "Aktív projektek költségvetése"
+        ),
+        icon: Briefcase,
+        colorTheme: "purple",
+        items: projectGroupItems,
+        unitLabel: t("projects", "projektov", "projekt"),
+      });
+    }
+
+    return list;
+  }, [
+    leadGroupItems,
+    projectGroupItems,
+    t,
+  ]);
   // AI-generated widget titles/column labels come back either as a plain
   // string (legacy panels, or a model that ignored the schema) or as an
   // { en, sk, hu } object — pick the current app language, falling back
@@ -1330,7 +1603,8 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
             <button
               type="button"
               onClick={() => setIsAddOpen(true)}
-              className={cn(headerButton, "bg-indigo-600 text-white border border-indigo-600 shadow-md shadow-indigo-600/30 hover:bg-indigo-700")}
+              style={dashboard.color ? { backgroundColor: dashboard.color, borderColor: dashboard.color } : undefined}
+              className={cn(headerButton, "bg-indigo-600 text-white border border-indigo-600 shadow-md shadow-indigo-600/30 hover:opacity-90 transition-opacity")}
             >
               <Plus className="h-4 w-4" strokeWidth={2.25} />
               {t("Add widget", "Pridať modul", "Modul hozzáadása")}
@@ -1376,6 +1650,16 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
           )}
         </div>
       </div>
+
+      {/* Combined Grouped Status Equation Statistics (Leads + Projects + Remaining Invoicable) */}
+      {dashboardEquationGroups.length > 0 && (
+        <GroupedStatusValueEquationStats
+          groups={dashboardEquationGroups}
+          currency={currencyCode}
+          language={(systemLanguage as Language) || "sk"}
+          storageKey="ccrm_dashboard_equation_stats"
+        />
+      )}
 
       <div>
         {errorMsg && (

@@ -25,7 +25,7 @@ const DROP_HINT = /Drop files here|Pretiahnite súbory sem|Húzza ide a fájloka
 async function openProjectFiles(page: Page) {
   await gotoView(page, '#projects');
   await page.getByText(PROJECT_NAME).first().click();
-  await page.getByRole('button', { name: TAB }).first().click();
+  await page.locator('main').getByRole('button', { name: TAB }).first().click();
   await expect(page.getByText(/Default files|Predvolené súbory|Alapértelmezett fájlok/).first()).toBeVisible();
 }
 
@@ -36,7 +36,7 @@ function firstSlot(page: Page) {
 
 /** Still on the project, with its tabs — not back on the project list. */
 async function stillOnTheProject(page: Page) {
-  await expect(page.getByRole('button', { name: TAB }).first()).toBeVisible();
+  await expect(page.locator('main').getByRole('button', { name: TAB }).first()).toBeVisible();
   await expect(page.getByText(PROJECT_NAME).first()).toBeVisible();
 }
 

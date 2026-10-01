@@ -7,7 +7,7 @@ import type {
 } from '../../utils/swarm/types';
 import { SwarmGraphCanvas } from './SwarmGraphCanvas';
 import { SocialFeedStream } from './SocialFeedStream';
-import { Sun, Moon, Pause, Play, Edit3, Activity, TrendingUp, Users } from 'lucide-react';
+import { Sun, Moon, Pause, Play, Edit3, Activity, TrendingUp, Users, Target } from 'lucide-react';
 
 interface LiveWarRoomProps {
   title: string;
@@ -131,6 +131,24 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
             </div>
           </div>
 
+          {/* Answer Mode Leading Answer Meter */}
+          {latestMetrics?.leadingAnswer && (
+            <div className="flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-purple-50/80 border border-purple-200/80 shadow-xs">
+              <Target className="w-4 h-4 text-purple-600 shrink-0" />
+              <div className="min-w-0">
+                <span className="text-[10px] text-purple-600 block font-bold uppercase tracking-wider">
+                  {t('Leading Answer', 'Vedúca odpoveď', 'Vezető válasz')}
+                </span>
+                <div className="flex items-center gap-1.5 font-bold text-[11px] text-purple-900 truncate max-w-[170px]">
+                  <span className="truncate" title={latestMetrics.leadingAnswer}>{latestMetrics.leadingAnswer}</span>
+                  <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-purple-200/70 text-purple-800 font-extrabold shrink-0">
+                    {latestMetrics.consensusPercentage ?? 0}%
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Action Buttons */}
           {isPreparing ? (
             <div className="px-4 py-2 rounded-2xl bg-purple-50 text-purple-700 border border-purple-200 font-bold text-xs flex items-center gap-2 shadow-xs">
@@ -176,11 +194,63 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
         <div 
           className="bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 h-full transition-all duration-500" 
           style={{ width: `${progressPercent}%` }}
-        ></div>
+        />
       </div>
 
+      {/* Dynamic Answer Consensus Live Bar */}
+      {latestMetrics?.answerDistribution && Object.keys(latestMetrics.answerDistribution).length > 0 && (() => {
+        const sortedEntries = Object.entries(latestMetrics.answerDistribution).sort((a, b) => b[1] - a[1]);
+        const topEntries = sortedEntries.slice(0, 4);
+        const remainingEntries = sortedEntries.slice(4);
+        const remainingVotes = remainingEntries.reduce((sum, [, cnt]) => sum + cnt, 0);
+        const total = agents.length || 1;
+        const remainingPct = Math.round((remainingVotes / total) * 100);
+
+        return (
+          <div className="px-4 py-2 bg-white rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between gap-3 shrink-0 overflow-hidden min-h-[44px] max-h-[50px] animate-in fade-in duration-200">
+            <div className="flex items-center gap-2 text-xs text-slate-500 font-semibold shrink-0">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>{t('Live Answer Consensus:', 'Priebežný konsenzus odpovedí:', 'Élő válaszkonszenzus:')}</span>
+            </div>
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar whitespace-nowrap min-w-0 flex-1 justify-end">
+              {topEntries.map(([ans, count], i) => {
+                const pct = Math.round((count / total) * 100);
+                const isLeader = i === 0;
+                return (
+                  <div 
+                    key={ans}
+                    title={`${ans}: ${pct}% (${count})`}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold transition border shrink-0 ${
+                      isLeader 
+                        ? 'bg-purple-100/90 text-purple-900 border-purple-300 ring-1 ring-purple-300 shadow-xs' 
+                        : 'bg-slate-50 text-slate-700 border-slate-200'
+                    }`}
+                  >
+                    <span className="truncate max-w-[170px]">{ans}</span>
+                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full shrink-0 ${isLeader ? 'bg-purple-600 text-white font-extrabold' : 'bg-slate-200 text-slate-700'}`}>
+                      {pct}% ({count})
+                    </span>
+                  </div>
+                );
+              })}
+              {remainingEntries.length > 0 && (
+                <div 
+                  title={remainingEntries.map(([a, c]) => `${a}: ${Math.round((c / total) * 100)}% (${c})`).join('\n')}
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium bg-slate-50 text-slate-500 border border-slate-200 shrink-0 cursor-default"
+                >
+                  <span>{t(`+${remainingEntries.length} others`, `+${remainingEntries.length} ďalších`, `+${remainingEntries.length} további`)}</span>
+                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-600 font-bold shrink-0">
+                    {remainingPct}%
+                  </span>
+                </div>
+              )}
+            </div>
+          </div>
+        );
+      })()}
+
       {/* Main Dual Grid: Ontology Graph (Left 60%) + Feed Stream (Right 40%) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 flex-1 min-h-0 overflow-hidden">
+      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 flex-1 min-h-0 overflow-hidden">
         
         {/* Left: Swarm Ontology Graph Canvas */}
         <div className="lg:col-span-7 xl:col-span-8 flex flex-col h-full min-h-0">
@@ -188,6 +258,7 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
             graph={graph} 
             agents={agents}
             activeEntityId={activeEntityId} 
+            className="w-full h-full flex-1 min-h-0"
             systemLanguage={systemLanguage}
             isPreparing={isPreparing}
             prepStepMessage={prepStepMessage}
@@ -198,6 +269,7 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
         <div className="lg:col-span-5 xl:col-span-4 flex flex-col h-full min-h-0">
           <SocialFeedStream 
             posts={posts} 
+            className="w-full h-full flex-1 min-h-0"
             systemLanguage={systemLanguage}
             onRestart={onRestart}
             onEditDraft={onEditDraft}
@@ -205,7 +277,6 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
             prepStepMessage={prepStepMessage}
           />
         </div>
-
       </div>
 
     </div>

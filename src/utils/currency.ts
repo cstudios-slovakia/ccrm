@@ -21,8 +21,8 @@ const CURRENCY_POSITIONS: Record<string, CurrencyPosition> = Object.fromEntries(
 
 // Region (system/user language) implies a sensible currency default until
 // an admin explicitly overrides it in Settings.
-export function currencyForRegion(language: Language): CurrencyCode {
-  return language === "en" ? "USD" : "EUR";
+export function currencyForRegion(_language?: Language): CurrencyCode {
+  return "EUR";
 }
 
 export function resolveCurrencySymbol(currency: string | null | undefined, language: Language): string {
@@ -40,8 +40,7 @@ export function resolveCurrencyPosition(currency: string | null | undefined, lan
 
 // Formats an amount with the symbol on the correct side for the resolved
 // currency (region default unless overridden in Settings). Number formatting
-// itself (thousand/decimal separators) is left to toLocaleOpts / the caller —
-// this only decides symbol placement and spacing.
+// itself (thousand/decimal separators) follows locale conventions.
 export function formatMoney(
   value: number,
   currency: string | null | undefined,
@@ -50,7 +49,8 @@ export function formatMoney(
 ): string {
   const symbol = resolveCurrencySymbol(currency, language);
   const position = resolveCurrencyPosition(currency, language);
-  const numStr = value.toLocaleString(undefined, toLocaleOpts);
+  const locale = language === "sk" ? "sk-SK" : language === "hu" ? "hu-HU" : "sk-SK";
+  const numStr = value.toLocaleString(locale, toLocaleOpts);
   return position === "suffix" ? `${numStr} ${symbol}` : `${symbol}${numStr}`;
 }
 
