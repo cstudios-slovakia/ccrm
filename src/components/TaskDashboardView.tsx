@@ -41,6 +41,7 @@ import { TaskEmailReminderField } from "./TaskEmailReminderField";
 import { TaskTagMentionInput } from "./TaskTagMentionInput";
 import { TaskPillText, extractTagsFromText, type MentionEntity } from "./TaskPillText";
 import { projectDisplayName } from "../utils/projects";
+import { isClientRecord, recordHref } from "../utils/clientRecord";
 import { taskPriorityLabel, taskStateLabel } from "../utils/taskLabels";
 import { requestTaskDeletion } from "../utils/taskApi";
 import { isTaskOverdue as isTaskOverdueShared } from "../utils/projectTasks";
@@ -357,7 +358,9 @@ const ClosedTasksToggleBar: React.FC<{
     days: number;
     onChangeDays: (days: number) => void;
     t: (en: string, sk: string, hu: string) => string;
-}> = ({ showClosedTasks, onToggleShowClosed, days, onChangeDays, t }) => {
+    /** Sits at the left of the bar, e.g. the client filter. */
+    leading?: React.ReactNode;
+}> = ({ showClosedTasks, onToggleShowClosed, days, onChangeDays, t, leading }) => {
     const daysLabel = t(
         days === 1 ? "day)" : "days)",
         days === 1 ? "deň)" : (days >= 2 && days <= 4 ? "dni)" : "dní)"),
@@ -365,7 +368,8 @@ const ClosedTasksToggleBar: React.FC<{
     );
 
     return (
-        <div className="px-4 py-2 bg-slate-50/50 border-b border-slate-100 flex items-center justify-end gap-2.5 select-none">
+        <div className="px-4 py-2 bg-slate-50/50 border-b border-slate-100 flex flex-wrap items-center justify-end gap-x-4 gap-y-2 select-none">
+            {leading && <div className="min-w-0 flex-1 basis-56">{leading}</div>}
             <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-400">
                 <span
                     onClick={() => onToggleShowClosed(!showClosedTasks)}
@@ -520,7 +524,14 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                   "Úlohu môže archivovať iba ten, kto ju vytvoril.",
                   "Csak a feladat létrehozója archiválhatja.",
               );
-    const myTasks = tasks.filter(isMyTask).filter((task) => !task.archived);
+    // One client / lead filter for My Tasks and Global Tasks; "" shows everything.
+    const [clientFilter, setClientFilter] = useState("");
+    const matchesClientFilter = (task: Task) =>
+        !clientFilter || String(task.relatedLeadId ?? "") === clientFilter;
+    const myTasks = tasks
+        .filter(isMyTask)
+        .filter((task) => !task.archived)
+        .filter(matchesClientFilter);
 
     // Inclusive date-range check against a YYYY-MM-DD string (item 9 calendar filters)
     const dateInRange = (dateStr: string, start: Date | null, end: Date | null) => {
@@ -842,8 +853,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
         // Clients and Leads
         leads.forEach((l) => {
-            const isClient = (l.id || "").startsWith("client-") || (Number(l.adjustment) || 0) > 0;
-            if (isClient) {
+            if (isClientRecord(l)) {
                 list.push({
                     id: l.id,
                     name: l.name,
@@ -1328,9 +1338,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 return false;
             if (!dateInRange(task.deadline, globalDateStart, globalDateEnd))
                 return false;
+            if (!matchesClientFilter(task)) return false;
             return true;
         },
-        [globalPriorityFilter, globalStateFilter, isSingleUserView, globalUserFilter, globalDateStart, globalDateEnd]
+        [globalPriorityFilter, globalStateFilter, isSingleUserView, globalUserFilter, globalDateStart, globalDateEnd, clientFilter]
     );
 
     const filteredGlobalTasks = useMemo(() => {
@@ -2540,10 +2551,14 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         }
         return (
             <a
-                href={`#lead-${encodeURIComponent(lead.id)}`}
+                href={recordHref(lead)}
                 onClick={(e) => e.stopPropagation()}
                 data-testid="task-lead-link"
-                title={t("Open lead", "Otvoriť lead", "Lead megnyitása")}
+                title={
+                    isClientRecord(lead)
+                        ? t("Open client", "Otvoriť klienta", "Ügyfél megnyitása")
+                        : t("Open lead", "Otvoriť lead", "Lead megnyitása")
+                }
                 className={`group/lead text-[9px] font-bold text-slate-600 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md ${maxWidth} hover:bg-indigo-100 hover:text-indigo-700 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 transition-all cursor-pointer`}
             >
                 <Briefcase className="h-2.5 w-2.5 shrink-0" />
@@ -3329,6 +3344,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             />
                         </div>
 
+                        {renderClientFilter("min-w-[16rem]")}
+
                         {/* Project Manager Filter — only meaningful on the
                             team-wide board; a restricted role already sees
                             nothing but its own work. */}
@@ -3618,6 +3635,39 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         );
     };
 
+    // Only leads / clients that have a task show up here — the register can be
+    // hundreds long, and picking one with nothing to show is a dead end.
+    const renderClientFilter = (className = "") => {
+        const withTasks = new Set(
+            tasks.map((task) => String(task.relatedLeadId ?? "")).filter(Boolean),
+        );
+        if (clientFilter) withTasks.add(clientFilter);
+        const idsWithoutTasks = leads
+            .filter((l) => !withTasks.has(String(l.id)))
+            .map((l) => l.id);
+        if (withTasks.size === 0) return null;
+        return (
+            <div className={`flex items-center gap-1.5 text-xs font-bold ${className}`} data-testid="task-client-filter">
+                <span className="text-slate-500 shrink-0">
+                    {t("Client / Lead:", "Klient / Lead:", "Ügyfél / Lead:")}
+                </span>
+                <div className="min-w-0 flex-1">
+                    <ClientSelect
+                        leads={leads}
+                        value={clientFilter}
+                        onChange={setClientFilter}
+                        excludeIds={idsWithoutTasks}
+                        showCity={false}
+                        showKind
+                        allowAdd={false}
+                        size="sm"
+                        noneLabel={t("All clients & leads", "Všetci klienti a leady", "Minden ügyfél és lead")}
+                    />
+                </div>
+            </div>
+        );
+    };
+
     // The left task list column for My Calendar.
     // If isCentered is true (when calendarScope === "hide"), it expands with max-w-3xl on mobile and max-w-5xl on desktop.
     const renderMyTaskListColumn = (isCentered: boolean = false) => (
@@ -3799,7 +3849,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                             <div className="space-y-1">
                                 <label className="text-[9px] font-black text-slate-500 uppercase">
-                                    {t("Link to Lead/Client", "Záujemca / Klient", "Ügyfél / Lead")}
+                                    {t("Link to Lead / Client", "Prepojiť s leadom / klientom", "Összekapcsolás leaddel / ügyféllel")}
                                 </label>
                                 <ClientSelect
                                     leads={leads}
@@ -3809,6 +3859,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                         if (!v) setNewIsLocking(false);
                                     }}
                                     showCity={false}
+                                    showKind
                                     addKind="lead"
                                     noneLabel={t("-- None --", "-- Žiadny --", "-- Nincs --")}
                                 />
@@ -3899,6 +3950,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     days={closedTasksDays}
                     onChangeDays={handleClosedTasksDaysChange}
                     t={t}
+                    leading={renderClientFilter("max-w-xs")}
                 />
 
                 {/* Overdue / Missed — always visible */}

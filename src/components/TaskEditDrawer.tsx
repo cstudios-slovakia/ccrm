@@ -17,6 +17,7 @@ import { CustomSelect, type DropdownOption } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { TaskEmailReminderField } from "./TaskEmailReminderField";
 import { projectDisplayName } from "../utils/projects";
+import { isClientRecord, recordHref } from "../utils/clientRecord";
 import { isDoneTaskState, localStampStr } from "../utils/projectTasks";
 import { taskPriorityLabel, taskStateLabel, type Translate } from "../utils/taskLabels";
 import { TaskTagMentionInput } from "./TaskTagMentionInput";
@@ -233,8 +234,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
 
         // Clients and Leads
         leads.forEach((l) => {
-            const isClient = (l.id || "").startsWith("client-") || (Number(l.adjustment) || 0) > 0;
-            if (isClient) {
+            if (isClientRecord(l)) {
                 list.push({
                     id: l.id,
                     name: l.name,
@@ -554,18 +554,20 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                         <div className="space-y-1">
                             <div className="flex items-center justify-between gap-2">
                                 <label className="text-[9px] font-black text-slate-500 uppercase">
-                                    {t("Link to Lead/Client", "Prepojiť so záujemcom", "Összekapcsolás ügyféllel")}
+                                    {t("Link to Lead / Client", "Prepojiť s leadom / klientom", "Összekapcsolás leaddel / ügyféllel")}
                                 </label>
                                 {/* Straight to the linked lead, instead of hunting for
                                     it in the pipeline. Leaving the page drops unsaved
                                     edits, so it only shows once the link is saved. */}
                                 {linkedLead && draft.relatedLeadId === task.relatedLeadId && (
                                     <a
-                                        href={`#lead-${encodeURIComponent(linkedLead.id)}`}
+                                        href={recordHref(linkedLead)}
                                         data-testid="task-drawer-lead-link"
                                         className="group/lead text-[9px] font-black uppercase text-indigo-600 hover:text-indigo-800 flex items-center gap-0.5 rounded focus-visible:outline-2 focus-visible:outline-offset-2 transition-colors"
                                     >
-                                        {t("Open lead", "Otvoriť lead", "Lead megnyitása")}
+                                        {isClientRecord(linkedLead)
+                                            ? t("Open client", "Otvoriť klienta", "Ügyfél megnyitása")
+                                            : t("Open lead", "Otvoriť lead", "Lead megnyitása")}
                                         <ArrowUpRight className="h-3 w-3 transition-transform group-hover/lead:translate-x-px group-hover/lead:-translate-y-px" />
                                     </a>
                                 )}
@@ -583,6 +585,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                     }));
                                 }}
                                 showCity={false}
+                                showKind
                                 addKind="lead"
                                 noneLabel={t("-- None --", "-- Žiadny --", "-- Nincs --")}
                             />
