@@ -2056,7 +2056,10 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           meetingId: activeMeetingId,
-          manualNotes: manualNotesText
+          manualNotes: manualNotesText,
+          // A timeline note has no meeting_notes row to look the recording up
+          // by, so say which stored file to transcribe.
+          audioFile: uploadedAudioFile || undefined
         })
       });
       const data = await res.json();

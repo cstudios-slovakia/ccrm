@@ -30,37 +30,53 @@ $data = json_decode($input, true);
 
 $meetingId = $data['meetingId'] ?? '';
 $manualNotes = $data['manualNotes'] ?? '';
+$audioPath = trim((string)($data['audioFile'] ?? ''));
 
-if (empty($meetingId)) {
+// A voice note recorded onto a lead/client timeline entry has no meeting_notes row
+// (upload_audio.php deliberately creates none for `note_event_*` ids), so it is
+// transcribed straight from its stored recording. Only the exact path shape that
+// upload_audio.php produces is accepted: no traversal, nothing outside uploads/.
+$transcribeOnly = $audioPath !== '';
+
+if (!$transcribeOnly && empty($meetingId)) {
     http_response_code(400);
     echo json_encode(['success' => false, 'message' => 'Missing meetingId parameter']);
     exit;
 }
 
-try {
-    $pdo = get_db_connection();
-} catch (\Exception $e) {
-    http_response_code(500);
-    echo json_encode(['success' => false, 'message' => 'Database connection failed.']);
-    exit;
-}
+if ($transcribeOnly) {
+    if (!preg_match('#^/uploads/meeting_audio_[A-Za-z0-9_-]+\.(webm|mp3|wav|ogg|m4a|mp4|mpga)$#', $audioPath)) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'Invalid audioFile path']);
+        exit;
+    }
+    $audioFile = $audioPath;
+} else {
+    try {
+        $pdo = get_db_connection();
+    } catch (\Exception $e) {
+        http_response_code(500);
+        echo json_encode(['success' => false, 'message' => 'Database connection failed.']);
+        exit;
+    }
 
-// Fetch meeting details to find the audio file
-$stmt = $pdo->prepare("SELECT * FROM `meeting_notes` WHERE `id` = ?");
-$stmt->execute([$meetingId]);
-$meeting = $stmt->fetch(PDO::FETCH_ASSOC);
+    // Fetch meeting details to find the audio file
+    $stmt = $pdo->prepare("SELECT * FROM `meeting_notes` WHERE `id` = ?");
+    $stmt->execute([$meetingId]);
+    $meeting = $stmt->fetch(PDO::FETCH_ASSOC);
 
-if (!$meeting) {
-    http_response_code(404);
-    echo json_encode(['success' => false, 'message' => 'Meeting note not found']);
-    exit;
-}
+    if (!$meeting) {
+        http_response_code(404);
+        echo json_encode(['success' => false, 'message' => 'Meeting note not found']);
+        exit;
+    }
 
-$audioFile = $meeting['audio_file'] ?? '';
-if (empty($audioFile)) {
-    http_response_code(400);
-    echo json_encode(['success' => false, 'message' => 'This meeting does not have an associated audio recording']);
-    exit;
+    $audioFile = $meeting['audio_file'] ?? '';
+    if (empty($audioFile)) {
+        http_response_code(400);
+        echo json_encode(['success' => false, 'message' => 'This meeting does not have an associated audio recording']);
+        exit;
+    }
 }
 
 // Resolve physical file path
@@ -72,6 +88,15 @@ if (!file_exists($localPath)) {
 }
 
 // Fetch integrations config to get OpenAI API key
+if (!isset($pdo)) {
+    try {
+        $pdo = get_db_connection();
+    } catch (\Exception $e) {
+        http_response_code(500);
+        echo json_encode(['success' => false, 'message' => 'Database connection failed.']);
+        exit;
+    }
+}
 $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'INTEGRATIONS_CONFIG'");
 $stmt->execute();
 $configJson = $stmt->fetchColumn();
@@ -92,6 +117,7 @@ if ($ext === 'mp3') $mimeType = 'audio/mp3';
 elseif ($ext === 'wav') $mimeType = 'audio/wav';
 elseif ($ext === 'm4a') $mimeType = 'audio/m4a';
 elseif ($ext === 'mp4') $mimeType = 'audio/mp4';
+elseif ($ext === 'ogg') $mimeType = 'audio/ogg';
 
 $cFile = new CURLFile($localPath, $mimeType, basename($localPath));
 
@@ -130,6 +156,13 @@ $transcription = $whisperJson['text'] ?? '';
 if (empty($transcription)) {
     http_response_code(500);
     echo json_encode(['success' => false, 'message' => 'Whisper returned empty transcription text.']);
+    exit;
+}
+
+// A timeline voice note only needs the text; the minutes/summary step below is
+// for meetings and is one more call that could fail after the transcript exists.
+if ($transcribeOnly) {
+    echo json_encode(['success' => true, 'transcription' => $transcription]);
     exit;
 }
 
