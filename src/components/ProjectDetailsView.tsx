@@ -22,7 +22,8 @@ import {
 import { mergeFinancialRecord, derivePaidDate, FINANCIAL_STATUS_OPTIONS } from "../utils/financialRecordMerge";
 import { splitRecordAmounts } from "../utils/financialOverviewTable";
 import { categoryBreadcrumbs } from "../utils/financialCategoryTree";
-import { evaluateProjectDeadline, finishedAtForStatus, projectDisplayName, projectMissedDeadline, projectPipelineSegments, projectStartDate, projectStatusBadgeClass, projectStatusDotClass, projectStatusOptions } from "../utils/projects";
+import { evaluateProjectDeadline, finishedAtForStatus, projectDisplayName, projectMissedDeadline, projectPipelineSegments, projectStartDate, projectStatusBadgeStyle, projectStatusDotStyle, projectStatusOptions } from "../utils/projects";
+import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { PipelineStrip } from "./ui/PipelineStrip";
@@ -148,6 +149,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   divisionColors = {},
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
+  const projectStatuses = useProjectStatuses();
   // Removing something is a change, so the delete flag never outranks edit.
   const canDelete = canEdit && canDeleteProp;
   // The finance tab writes financialRecords, which the server gates on the
@@ -836,6 +838,50 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     }
 
     setIsFinModalOpen(false);
+  };
+
+  /* "Paid in full": settles what is left of the project value in one go, for
+     a project that is not billed invoice by invoice. It is an ordinary income
+     row tied to the project — so the finance module, the client and every
+     overview count it like any other — for the remaining amount only, so a
+     project already partly invoiced lands on exactly 100% rather than over. */
+  const canMarkValuePaid = canEditFinance && !!setFinancialRecords && invoicableAnalysis.remaining > 0;
+
+  const handleMarkValuePaid = () => {
+    if (!canMarkValuePaid || !project) return;
+    const amount = Math.round(invoicableAnalysis.remaining * 100) / 100;
+    if (!confirm(t(
+      `Record a one-time payment of ${money(amount)} and mark the project value as fully paid?`,
+      `Zaznamenať jednorazovú úhradu ${money(amount)} a označiť hodnotu projektu ako plne uhradenú?`,
+      `Rögzít egy ${money(amount)} összegű egyszeri befizetést, és teljesen kifizetettnek jelöli a projekt értékét?`,
+    ))) return;
+
+    const today = todayLocal();
+    const payload = mergeFinancialRecord(null, {
+      id: `fr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      type: "income",
+      subtype: "regular",
+      title: t("Project value — paid in full", "Hodnota projektu — uhradená v plnej výške", "Projekt értéke — teljes kifizetés"),
+      description: null,
+      categoryId: null,
+      categoryPath: null,
+      amountPlanned: amount,
+      amountReal: amount,
+      currency: currencyCode || "EUR",
+      status: "paid",
+      issueDate: today,
+      dueDate: null,
+      paidDate: today,
+      invoiceNumber: null,
+      paymentMethod: "bank_transfer",
+      isRecurring: false,
+      projectId: project.id,
+      clientId: associatedClientId || associatedLeadId || null,
+      taxRate: 20,
+      createdBy: (window as any).ccrmCurrentUser?.email || "Admin",
+      createdAt: new Date().toISOString(),
+    });
+    setFinancialRecords!((prev) => [payload, ...prev]);
   };
 
   const handleDeleteProjectFinancial = (id: string) => {
@@ -1615,7 +1661,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             {/* Pipeline strip — edge to edge under the header, in place of its
                 divider, the way the lead drawer shows the lead pipeline. Follows
                 the live status, so it moves the moment the select below does. */}
-            <PipelineStrip segments={projectPipelineSegments(status, t)} className="-mx-5 mb-4" />
+            <PipelineStrip segments={projectPipelineSegments(status, t, projectStatuses)} className="-mx-5 mb-4" />
 
           <div className="space-y-4">
             {/* Status. Each status wears its own colour, badge and dropdown row alike. */}
@@ -1629,15 +1675,16 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                   setStatus(v);
                   // Completing stamps today as the real finish, reopening clears
                   // it — see finishedAtForStatus. Only where the field is shown.
-                  const nextFinished = projectType.hasDeadline ? finishedAtForStatus(v, finishedAt, todayLocal()) : finishedAt;
+                  const nextFinished = projectType.hasDeadline ? finishedAtForStatus(v, finishedAt, todayLocal(), projectStatuses) : finishedAt;
                   setFinishedAt(nextFinished);
                 }}
-                className={`!font-black ${projectStatusBadgeClass(status)}`}
-                icon={<span className={`h-2 w-2 rounded-full shrink-0 inline-block ${projectStatusDotClass(status)}`} />}
-                options={projectStatusOptions(t).map(o => ({
+                className="!font-black"
+                style={projectStatusBadgeStyle(status, projectStatuses)}
+                icon={<span className="h-2 w-2 rounded-full shrink-0 inline-block" style={projectStatusDotStyle(status, projectStatuses)} />}
+                options={projectStatusOptions(t, projectStatuses).map(o => ({
                   value: o.value,
                   label: o.label,
-                  icon: <span className={`h-2.5 w-2.5 rounded-full shrink-0 inline-block ${projectStatusDotClass(o.value)}`} />,
+                  icon: <span className="h-2.5 w-2.5 rounded-full shrink-0 inline-block" style={projectStatusDotStyle(o.value, projectStatuses)} />,
                 }))}
               />
             </div>
@@ -1708,7 +1755,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
             {/* Deadline. Only for a project type that is time-boxed — see
                 hasDeadline in Projects -> Settings -> project type. */}
             {projectType.hasDeadline && (() => {
-              const dl = evaluateProjectDeadline({ deadline, status, finishedAt }, projectType, todayLocal());
+              const dl = evaluateProjectDeadline({ deadline, status, finishedAt }, projectType, todayLocal(), projectStatuses);
               const missedDeadline = projectMissedDeadline(dl);
               const dateInputClass = "flex-1 min-w-0 px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold bg-white text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500";
               return (
@@ -3612,6 +3659,18 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                               : `${t("Fully invoiced", "Plne vyfakturované", "Teljesen kiszámlázva")}`}
                         </span>
                       </div>
+                      {canMarkValuePaid && contractValueDraft === null && (
+                        <button
+                          type="button"
+                          onClick={handleMarkValuePaid}
+                          className="mt-1.5 w-full px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
+                        >
+                          <CircleCheck className="h-3.5 w-3.5" />
+                          {invoicableAnalysis.invoiced > 0
+                            ? `${t("Mark remaining as paid", "Označiť zvyšok ako uhradený", "Hátralévő kifizetettnek jelölése")} (${money(invoicableAnalysis.remaining)})`
+                            : `${t("Mark whole value as paid", "Označiť celú hodnotu ako uhradenú", "Teljes érték kifizetettnek jelölése")} (${money(invoicableAnalysis.remaining)})`}
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>

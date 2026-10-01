@@ -12,8 +12,8 @@ import {
 } from "lucide-react";
 import type { Language } from "../utils/translations";
 import type { ProjectType } from "../types";
-import { PROJECT_STATUSES } from "../types";
-import { projectStatusLabel } from "../utils/projects";
+import { projectStatusOptions } from "../utils/projects";
+import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import { CustomSelect } from "./ui/CustomSelect";
 import { FULL_MODULE_ACCESS, type ModuleAccess } from "../utils/permissions";
 
@@ -877,6 +877,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
 }) => {
   const canEdit = access.edit;
   const canDelete = access.delete;
+  const projectStatuses = useProjectStatuses();
   const [workflows, setWorkflows] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<"list" | "editor" | "logs" | "settings">("list");
@@ -3269,7 +3270,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                     <CustomSelect
                                       value={node.data.status || "active"}
                                       onChange={(v) => updateActionField("status", v)}
-                                      options={PROJECT_STATUSES.map((s) => ({ value: s, label: projectStatusLabel(s, t) }))}
+                                      options={projectStatusOptions(t, projectStatuses)}
                                     />
                                   </div>
                                 </div>
@@ -3328,7 +3329,7 @@ export const AutomationView: React.FC<AutomationViewProps> = ({
                                         size="sm"
                                         value={node.data.status || "new"}
                                         onChange={(v) => updateActionField("status", v)}
-                                        options={PROJECT_STATUSES.map((s) => ({ value: s, label: projectStatusLabel(s, t) }))}
+                                        options={projectStatusOptions(t, projectStatuses)}
                                       />
                                     </div>
                                   </div>

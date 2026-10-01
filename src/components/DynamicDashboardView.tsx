@@ -45,8 +45,8 @@ import {
 } from "../utils/currency";
 import { isClosedLeadState } from "../utils/leadSla";
 import {
-  CLOSED_PROJECT_STATUSES,
-  projectStatusOrder,
+  openProjectStatuses,
+  projectStatusColor,
   projectStatusLabel
 } from "../utils/projects";
 import {
@@ -98,6 +98,7 @@ import {
 } from "./dashboard/presetWidgets";
 import { AddWidgetDrawer } from "./dashboard/AddWidgetDrawer";
 import { WidgetSettingsDrawer } from "./dashboard/WidgetSettingsDrawer";
+import { useProjectStatuses } from "../hooks/useProjectStatuses";
 
 interface DynamicDashboardViewProps {
   dashboard: CustomDashboard;
@@ -398,6 +399,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   leadStageGroups = {},
   leadStateParents = {},
 }) => {
+  const projectStatuses = useProjectStatuses();
   const isHome = variant === "home";
   const t: Translate = (en, sk, hu) => (systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en);
   const canEdit = access.edit;
@@ -480,15 +482,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
       return [];
     }
 
-    const activeStatuses: ProjectStatus[] = (
-      projectStatusOrder() as ProjectStatus[]
-    ).filter((s) => !CLOSED_PROJECT_STATUSES.includes(s));
-
-    const statusColors: Record<string, string> = {
-      new: "#0284c7",
-      active: "#9333ea",
-      on_hold: "#d97706",
-    };
+    const activeStatuses: ProjectStatus[] = openProjectStatuses(projectStatuses);
 
     let totalProjectBudgetValue = 0;
     let totalInvoicedValue = 0;
@@ -591,10 +585,10 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
 
       return {
         key: status,
-        name: projectStatusLabel(status, t).toUpperCase(),
+        name: projectStatusLabel(status, t, projectStatuses).toUpperCase(),
         value: statusInvoicableVal,
         count: projectsInStatus.length,
-        color: statusColors[status] || "#9333ea",
+        color: projectStatusColor(status, projectStatuses),
         totalBudget: statusTotalBudgetValue,
         invoiced: statusTotalInvoicedValue,
         rows: statusRows,
@@ -607,6 +601,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     financialRecords,
     invoicesOffers,
     defaultCurrency,
+    projectStatuses,
     t,
   ]);
 

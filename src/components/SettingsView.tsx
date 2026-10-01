@@ -6,17 +6,21 @@ import {
   Eye, Pencil, Minus, GripVertical, ArrowLeft, Activity, Clock, CheckSquare, Check,
   Menu, ArrowUp, FolderOpen, Search, FileText, Building2, Sparkles
 } from "lucide-react";
-import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, ProjectType, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, CustomDashboard } from "../types";
+import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, Project, ProjectType, FinancialCategory, FinancialRecord, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, CustomDashboard } from "../types";
 import { leadAssignmentPanel, resolveAssignmentPool, type LeadAssignmentPanel } from "../utils/leadAssignment";
 import { normalizeSlaDays, type LeadStateSla } from "../utils/leadSla";
 import { listIdFor, nextListId, type ListIds } from "../utils/listIds";
 import { getTranslation, formatTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import { ProjectSettings } from "./ProjectSettings";
+import { ProjectStatusSettings } from "./ProjectStatusSettings";
+import { FinanceSettings } from "./FinanceSettings";
+import type { ProjectStatusDef } from "../utils/projects";
 import { VisibleModulesSettings } from "./VisibleModulesSettings";
 import { PasswordInput } from "./PasswordInput";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ColorPicker } from "./ui/ColorPicker";
+import { InlineRenameName } from "./ui/InlineRenameName";
 import { CompanyLookupSpinner, CompanySuggestions } from "./ui/CompanySuggestions";
 import { useCompanyLookup } from "../utils/useCompanyLookup";
 import { EUROPEAN_COUNTRIES, registryCountryOf } from "../utils/companyRegistry";
@@ -43,60 +47,6 @@ import {
   withSectionGranted,
 } from "../utils/permissions";
 import type { PermissionDef, PermissionSection, PermissionValue } from "../utils/permissions";
-
-// Inline "double-click / pencil to rename" field.
-//
-// IMPORTANT: this MUST live at module scope, not inside SettingsView. When it was
-// declared in the render body React saw a brand-new component type on every parent
-// re-render (each sync tick, each isSyncing toggle) and remounted the <input>,
-// wiping the in-progress edit — so typing in a source/category/state name "kicked
-// the user out" mid-edit. Hoisting it gives the component a stable identity.
-const InlineRenameName: React.FC<{
-  value: string;
-  canEdit: boolean;
-  onCommit: (next: string) => void;
-  renameTitle: string;
-  children: React.ReactNode;
-}> = ({ value, canEdit, onCommit, renameTitle, children }) => {
-  const [editing, setEditing] = React.useState(false);
-  const [draft, setDraft] = React.useState(value);
-  const commit = () => {
-    setEditing(false);
-    const trimmed = draft.trim();
-    if (trimmed && trimmed !== value) onCommit(trimmed);
-  };
-  if (editing) {
-    return (
-      <input
-        autoFocus
-        value={draft}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") { e.preventDefault(); commit(); }
-          if (e.key === "Escape") { setEditing(false); setDraft(value); }
-        }}
-        className="px-2.5 py-1 rounded-full border border-indigo-300 bg-white text-slate-800 text-xs font-black uppercase tracking-wider focus:outline-none focus:ring-1 focus:ring-indigo-400 min-w-[110px]"
-      />
-    );
-  }
-  const startEdit = () => { if (canEdit) { setDraft(value); setEditing(true); } };
-  return (
-    <span className="inline-flex items-center gap-1.5">
-      <span onDoubleClick={startEdit} className={canEdit ? "cursor-text" : undefined}>{children}</span>
-      {canEdit && (
-        <button
-          type="button"
-          onClick={startEdit}
-          className="text-slate-300 hover:text-indigo-600 transition-colors p-1 rounded-md hover:bg-indigo-50 shrink-0"
-          title={renameTitle}
-        >
-          <Pencil className="h-3 w-3" />
-        </button>
-      )}
-    </span>
-  );
-};
 
 const LeadAssignmentCard: React.FC<{
   users: UserProfile[];
@@ -563,6 +513,17 @@ interface SettingsViewProps {
 
   projectTypes: ProjectType[];
   setProjectTypes: React.Dispatch<React.SetStateAction<ProjectType[]>>;
+  /** The project statuses, edited on the Project settings tab. */
+  projectStatuses?: ProjectStatusDef[];
+  setProjectStatuses?: React.Dispatch<React.SetStateAction<ProjectStatusDef[]>>;
+  /** For the status editor's usage counts, and to move projects off a deleted status. */
+  projects?: Project[];
+  setProjects?: (updater: Project[] | ((prev: Project[]) => Project[])) => void;
+
+  /** Finance tab: the movement-category tree, and the records a deleted category un-files. */
+  financialCategories?: FinancialCategory[];
+  setFinancialCategories?: React.Dispatch<React.SetStateAction<FinancialCategory[]>>;
+  setFinancialRecords?: React.Dispatch<React.SetStateAction<FinancialRecord[]>>;
 
   companyBillingSettings?: CompanyBillingSettings | null;
   setCompanyBillingSettings?: React.Dispatch<React.SetStateAction<CompanyBillingSettings | null>>;
@@ -595,6 +556,7 @@ const SETTINGS_TABS = [
   { id: "license", permKey: "general_config" },
   { id: "invoicing", permKey: "general_config" },
   { id: "projects", permKey: "general_config" },
+  { id: "finance", permKey: "financial" },
   { id: "unified", permKey: "general_config" },
   { id: "sources", permKey: "traffic_sources" },
   { id: "states", permKey: "pipeline_stages" },
@@ -673,6 +635,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   setTasks,
   projectTypes,
   setProjectTypes,
+  projectStatuses,
+  setProjectStatuses,
+  projects = [],
+  setProjects,
+  financialCategories,
+  setFinancialCategories,
+  setFinancialRecords,
   companyBillingSettings,
   setCompanyBillingSettings,
   invoicingIntegrations,
@@ -1091,7 +1060,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Role creation states
   const [newRoleName, setNewRoleName] = React.useState("");
 
-  const [activeSubTab, setActiveSubTab] = React.useState<"branding" | "modules" | "license" | "invoicing" | "managers" | "rbac" | "states" | "sources" | "danger" | "ads" | "social" | "api" | "email" | "ai" | "unified" | "errors" | "projects">((initialSubTab as any) || "branding");
+  const [activeSubTab, setActiveSubTab] = React.useState<"branding" | "modules" | "license" | "invoicing" | "finance" | "managers" | "rbac" | "states" | "sources" | "danger" | "ads" | "social" | "api" | "email" | "ai" | "unified" | "errors" | "projects">((initialSubTab as any) || "branding");
 
   // Zernio Social Media Integration State
   const [zernioApiKey, setZernioApiKey] = React.useState<string>(integrationsConfig?.zernioApiKey || "");
@@ -4069,6 +4038,37 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               userLanguage={userLanguage}
               canEdit={getPermission("general_config") === "edit"}
             />
+            {projectStatuses && setProjectStatuses && (
+              <ProjectStatusSettings
+                statuses={projectStatuses}
+                setStatuses={setProjectStatuses}
+                projects={projects}
+                setProjects={setProjects}
+                userLanguage={userLanguage}
+                canEdit={getPermission("general_config") === "edit"}
+              />
+            )}
+          </div>
+        )}
+
+        {/* TAB: Finance — movement categories, ledger behaviour, currency */}
+        {activeSubTab === "finance" && getPermission("financial") !== "nothing" && (
+          <div className="lg:col-span-12 space-y-6">
+            {renderReadOnlyBanner("financial")}
+            {financialCategories && setFinancialCategories && setFinancialRecords && (
+              <FinanceSettings
+                userLanguage={userLanguage}
+                systemLanguage={systemLanguage}
+                systemCurrency={systemCurrency}
+                setSystemCurrency={setSystemCurrency}
+                canEditCurrency={getPermission("general_config") === "edit"}
+                financialCategories={financialCategories}
+                setFinancialCategories={setFinancialCategories}
+                setFinancialRecords={setFinancialRecords}
+                canEdit={getPermission("financial") === "edit"}
+                canDelete={getPermission("financial") === "edit" && getPermission("financial.delete") === "edit"}
+              />
+            )}
           </div>
         )}
 

@@ -81,10 +81,11 @@ import { DOCUMENT_EVENT_TYPES } from "../types";
 import { DEFAULT_LEAD_ASSIGNMENT, isAutoAssignActive } from "../utils/leadAssignment";
 import { pairableProjects, projectsForLead } from "../utils/projectAutoCreate";
 import {
-  DEFAULT_PROJECT_STATUS,
-  projectStatusBadgeClass,
+  defaultProjectStatus,
+  projectStatusBadgeStyle,
   projectStatusLabel,
 } from "../utils/projects";
+import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import { evaluateLeadSla, type LeadSlaStatus, type LeadStateSla, isClosedLeadState } from "../utils/leadSla";
 import { orderLeadStates } from "../utils/leadStates";
 import { StatusValueEquationStats, type StatusStatItem, type StatusStatDetailRow } from "./StatusValueEquationStats";
@@ -907,6 +908,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     divisions = ["Cstudios", "Cstudios Budapest"],
     divisionColors = {},
 }) => {
+    const projectStatuses = useProjectStatuses();
     const t = (en: string, sk: string, hu: string) =>
         systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
 
@@ -1411,6 +1413,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 body: JSON.stringify({
                     meetingId: activeMeetingId,
                     manualNotes: manualNotesText,
+                    // A timeline note has no meeting_notes row to look the
+                    // recording up by, so say which stored file to transcribe.
+                    audioFile: uploadedAudioFile || undefined,
                 }),
             });
             const data = await res.json();
@@ -1853,7 +1858,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             projectTypeId: type.id,
             leadId: activeLead.id,
             clientId: activeLead.id,
-            status: DEFAULT_PROJECT_STATUS,
+            status: defaultProjectStatus(projectStatuses),
             managers: activeLead.owner ? [activeLead.owner] : [],
             data: dynamicData,
             timeline: [],
@@ -2338,7 +2343,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     );
     const [inlineTaskDeadlineTime, setInlineTaskDeadlineTime] =
         useState("16:00");
-    const [inlineTaskIsLocking, setInlineTaskIsLocking] = useState(true);
+    const [inlineTaskIsLocking, setInlineTaskIsLocking] = useState(false);
 
     // Retrieve current user session to authenticate API requests to mail_broker.php
     const currentUser = useMemo(() => {
@@ -3702,7 +3707,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         setInlineTaskTitle("");
         setInlineTaskDeadline(todayLocalPlusDays(3));
         setInlineTaskDeadlineTime("16:00");
-        setInlineTaskIsLocking(true);
+        setInlineTaskIsLocking(false);
         setInlineTaskAssignee(assignee);
         (window as any).showToast?.(
             t(
@@ -6316,6 +6321,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             )}
 
                             {/* Tasks List */}
+                            <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider block">
+                                {t("Linked tasks", "Prepojené úlohy", "Kapcsolódó feladatok")}
+                            </span>
                             <div className="space-y-2.5 max-h-[220px] overflow-y-auto pr-1 scrollbar-thin">
                                 {tasks.filter(
                                     (t) => t.relatedLeadId === activeLead.id,
@@ -6672,20 +6680,23 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 )}
                             </div>
 
-                            {/* Inline Create Locking Task Form */}
+                            {/* New gate task — its own recessed panel so it reads as
+                                a separate step from the task list above, not as
+                                more of the same list. */}
                             <form
                                 onSubmit={handleAddInlineLockingTask}
-                                className="border-t border-slate-100 pt-3 space-y-2.5 text-xs"
+                                className="rounded-2xl border border-slate-200 bg-slate-50/60 p-3.5 space-y-3 text-xs"
                             >
-                                <span className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest block">
-                                    {systemLanguage === "sk"
-                                        ? "RÝCHLE PRIDANIE ÚLOHY BRÁNY"
-                                        : systemLanguage === "hu"
-                                          ? "KAPU FELADAT GYORS HOZZÁADÁSA"
-                                          : "QUICK ADD GATE TASK"}
+                                <span className="text-[10px] font-black text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                                    <Plus className="h-3.5 w-3.5 text-violet-600 stroke-[2.5]" />
+                                    {t(
+                                        "New gate task",
+                                        "Nová úloha brány",
+                                        "Új kapu feladat",
+                                    )}
                                 </span>
 
-                                <div className="space-y-2">
+                                <div className="space-y-2.5">
                                     <input
                                         type="text"
                                         required
@@ -6700,7 +6711,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         onChange={(e) =>
                                             setInlineTaskTitle(e.target.value)
                                         }
-                                        className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:outline-none font-bold text-[11px]"
+                                        className="w-full px-3 py-2 rounded-xl bg-white border border-slate-200 focus:border-violet-400 focus:outline-none font-bold text-[11px]"
                                     />
 
                                     <div className="grid grid-cols-2 gap-2">
@@ -6713,7 +6724,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     e.target.value,
                                                 )
                                             }
-                                            className="px-3 py-1.5 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:outline-none font-bold text-[10px]"
+                                            className="px-3 py-1.5 rounded-xl bg-white border border-slate-200 focus:border-violet-400 focus:outline-none font-bold text-[10px]"
                                         />
 
                                         <InlineDeadlineTimePicker
@@ -6723,22 +6734,24 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         />
                                     </div>
 
-                                    {/* Assignee — the task appears in this
-                                        person's calendar and task list only.
-                                        Defaults to the logged-in user: before
-                                        this picker existed the task silently
-                                        went to the lead's owner, so a note you
-                                        wrote for yourself never reached your
-                                        own calendar. */}
+                                    {/* Assignee — same labelled picker as the other
+                                        task forms (EntityTasksPanel, Tasks view). The
+                                        task appears in this person's calendar and
+                                        task list only. Defaults to the logged-in
+                                        user: before this picker existed the task
+                                        silently went to the lead's owner, so a note
+                                        you wrote for yourself never reached your own
+                                        calendar. */}
                                     <div className="space-y-1">
-                                        <label className="text-[8.5px] font-black text-slate-400 uppercase tracking-widest block">
+                                        <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider block">
                                             {t(
-                                                "Shows in whose calendar",
-                                                "Zobrazí sa v kalendári",
-                                                "Kinek a naptárában jelenik meg",
+                                                "Assignee",
+                                                "Zodpovedný",
+                                                "Felelős",
                                             )}
                                         </label>
                                         <CustomSelect
+                                            size="sm"
                                             value={resolveTaskAssignee(
                                                 inlineTaskAssignee,
                                             )}
@@ -6759,77 +6772,36 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                         />
                                     </div>
 
-                                    <div className="space-y-1.5">
-                                        {/* Locking switch — the label alone ("BLOKUJE" / "VOĽNÁ") did
-                        not tell anyone what the two states actually do, so the
-                        meaning of the currently selected one is spelled out
-                        underneath the button. */}
-                                        <button
-                                            type="button"
-                                            onClick={() =>
+                                    {/* Blocking — one checkbox; the sentence is the
+                                        whole explanation, so no separate state
+                                        label or "switch to…" link is needed. */}
+                                    <label
+                                        className={`flex items-start gap-2.5 px-3 py-2.5 rounded-xl border cursor-pointer select-none transition-colors ${
+                                            inlineTaskIsLocking
+                                                ? "bg-rose-50/60 border-rose-200"
+                                                : "bg-white border-slate-200 hover:border-slate-300"
+                                        }`}
+                                    >
+                                        <input
+                                            type="checkbox"
+                                            checked={inlineTaskIsLocking}
+                                            onChange={(e) =>
                                                 setInlineTaskIsLocking(
-                                                    !inlineTaskIsLocking,
+                                                    e.target.checked,
                                                 )
                                             }
-                                            className={`w-full px-3 py-1.5 rounded-xl border font-black text-[9px] uppercase tracking-wider transition-all flex items-center justify-center gap-1 ${
-                                                inlineTaskIsLocking
-                                                    ? "bg-rose-50 border-rose-200 text-rose-700 font-extrabold"
-                                                    : "bg-slate-50 border-slate-200 text-slate-500"
-                                            }`}
+                                            className="mt-0.5 h-4 w-4 shrink-0 rounded border-slate-300 accent-rose-600 cursor-pointer"
+                                        />
+                                        <span
+                                            className={`text-[11px] font-bold leading-snug ${inlineTaskIsLocking ? "text-rose-700" : "text-slate-600"}`}
                                         >
-                                            <Lock className="h-3 w-3" />
-                                            <span>
-                                                {inlineTaskIsLocking
-                                                    ? systemLanguage === "sk"
-                                                        ? "BLOKUJE"
-                                                        : systemLanguage ===
-                                                            "hu"
-                                                          ? "BLOKKOL"
-                                                          : "LOCKING"
-                                                    : systemLanguage === "sk"
-                                                      ? "VOĽNÁ"
-                                                      : systemLanguage === "hu"
-                                                        ? "SZABAD"
-                                                        : "NORMAL"}
-                                            </span>
-                                        </button>
-                                        <p
-                                            className={`text-[8.5px] font-bold leading-snug px-1 ${inlineTaskIsLocking ? "text-rose-600" : "text-slate-500"}`}
-                                        >
-                                            {inlineTaskIsLocking
-                                                ? t(
-                                                      "LOCKING: the lead cannot move to the next pipeline stage until this task is done.",
-                                                      "BLOKUJE: lead sa nedá posunúť do ďalšej fázy, kým nie je táto úloha dokončená.",
-                                                      "BLOKKOL: a lead nem léphet a következő fázisba, amíg ez a feladat el nem készül.",
-                                                  )
-                                                : t(
-                                                      "NORMAL: an ordinary task — the lead can move to the next pipeline stage even while it is open.",
-                                                      "VOĽNÁ: bežná úloha — lead sa môže posunúť do ďalšej fázy, aj keď nie je dokončená.",
-                                                      "SZABAD: normál feladat — a lead akkor is továbbléphet, ha ez még nyitva van.",
-                                                  )}
-                                        </p>
-                                        <button
-                                            type="button"
-                                            onClick={() =>
-                                                setInlineTaskIsLocking(
-                                                    !inlineTaskIsLocking,
-                                                )
-                                            }
-                                            className="text-[8.5px] font-black uppercase tracking-wider text-violet-600 hover:text-violet-800 transition-colors px-1"
-                                        >
-                                            {inlineTaskIsLocking
-                                                ? t(
-                                                      "Switch to NORMAL",
-                                                      "Prepnúť na VOĽNÚ",
-                                                      "Váltás SZABAD-ra",
-                                                  )
-                                                : t(
-                                                      "Switch to LOCKING",
-                                                      "Prepnúť na BLOKUJE",
-                                                      "Váltás BLOKKOL-ra",
-                                                  )}
-                                        </button>
-                                    </div>
+                                            {t(
+                                                "Block moving to other phase until this task is done",
+                                                "Zablokovať presun do inej fázy, kým nie je táto úloha dokončená",
+                                                "A következő fázisba lépés tiltása, amíg ez a feladat el nem készül",
+                                            )}
+                                        </span>
+                                    </label>
                                 </div>
 
                                 <VoiceTaskActionBar
@@ -8607,8 +8579,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     const available = pairableProjects(projects);
                     const typeOf = (typeId: string) =>
                         projectTypes.find((pt) => pt.id === typeId);
-                    const statusLabel = (status: string) => projectStatusLabel(status, t);
-                    const statusClass = projectStatusBadgeClass;
+                    const statusLabel = (status: string) => projectStatusLabel(status, t, projectStatuses);
 
                     return (
                         <div className="glass-panel p-6 rounded-[28px] border-2 border-purple-400 bg-white shadow-xl space-y-4">
@@ -8670,7 +8641,8 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                         )}
                                                 </div>
                                                 <span
-                                                    className={`px-2 py-0.5 rounded-full text-[8px] font-black border shrink-0 ${statusClass(p.status)}`}
+                                                    className="px-2 py-0.5 rounded-full text-[8px] font-black border shrink-0"
+                                                    style={projectStatusBadgeStyle(p.status, projectStatuses)}
                                                 >
                                                     {statusLabel(p.status)}
                                                 </span>

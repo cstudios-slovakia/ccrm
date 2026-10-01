@@ -2,22 +2,28 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   DEFAULT_DEADLINE_WARNING_DAYS,
-  DEFAULT_PROJECT_STATUS,
+  DEFAULT_PROJECT_STATUS_DEFS,
+  defaultProjectStatus,
   evaluateProjectDeadline,
   finishedAtForStatus,
+  isClosedProjectStatus,
   normalizeDeadlineWarningDays,
+  normalizeProjectStatusDefs,
+  openProjectStatuses,
   projectDelayReason,
   projectDisplayName,
   projectMissedDeadline,
   projectNeedsDelayReason,
   projectPipelineSegments,
   projectStartDate,
-  projectStatusBadgeClass,
+  projectStatusBadgeStyle,
+  projectStatusColor,
+  projectStatusKeyFor,
   projectStatusLabel,
   projectStatusOptions,
   projectStatusOrder,
+  type ProjectStatusDef,
 } from "./projects.ts";
-import { PROJECT_STATUSES } from "../types/index.ts";
 import type { Lead, Project, ProjectType } from "../types/index.ts";
 
 const TODAY = "2026-09-03";
@@ -168,28 +174,46 @@ test("projectDisplayName falls back to the paired lead, then to the caller's lab
 const en = (e: string, _s: string, _h: string) => e;
 const sk = (_e: string, s: string, _h: string) => s;
 
-test("the status labels cover PROJECT_STATUSES, in the same order", () => {
-  // utils/projects.ts cannot import PROJECT_STATUSES at runtime (node's test
-  // runner will not resolve the directory import), so its label table repeats
-  // the order by hand. This is what stops the two from drifting apart.
-  assert.deepEqual(projectStatusOrder(), [...PROJECT_STATUSES]);
+const BUILTINS = ["new", "active", "on_hold", "completed", "cancelled"];
+
+/** An installation that renamed, added and regrouped. */
+const CUSTOM: ProjectStatusDef[] = [
+  { key: "new", label: "Inquiry", color: "#0ea5e9", group: "new" },
+  { key: "active", color: "#a855f7", group: "in_progress" },
+  { key: "waiting_for_client", label: "Waiting for client", color: "#f59e0b", group: "in_progress" },
+  { key: "completed", color: "#10b981", group: "completed" },
+  { key: "lost", label: "Lost", color: "#64748b", group: "cancelled" },
+];
+
+test("the built-ins come in pipeline order: open first, closed last", () => {
+  assert.deepEqual(projectStatusOrder(), BUILTINS);
+  assert.deepEqual(openProjectStatuses(), ["new", "active", "on_hold"]);
 });
 
-test("a new project starts on the first status", () => {
-  assert.equal(DEFAULT_PROJECT_STATUS, PROJECT_STATUSES[0]);
-  assert.equal(DEFAULT_PROJECT_STATUS, "new");
+test("a new project starts on the first status of the New group", () => {
+  assert.equal(defaultProjectStatus(), "new");
+  // No New group left: the first open status takes over.
+  assert.equal(defaultProjectStatus(CUSTOM.filter((d) => d.group !== "new")), "active");
 });
 
-test("every status is spoken and painted", () => {
-  PROJECT_STATUSES.forEach((s) => {
+test("every built-in is spoken and painted", () => {
+  BUILTINS.forEach((s) => {
     assert.notEqual(projectStatusLabel(s, en), s, `${s} still reads as its raw key`);
-    assert.notEqual(
-      projectStatusBadgeClass(s),
-      projectStatusBadgeClass("something-else"),
-      `${s} falls through to the unknown-status badge`,
-    );
+    assert.notEqual(projectStatusColor(s), projectStatusColor("something-else"), `${s} falls through to the unknown colour`);
   });
   assert.equal(projectStatusLabel("new", sk), "Nový");
+  assert.deepEqual(projectStatusBadgeStyle("completed"), {
+    backgroundColor: "#10b98114",
+    color: "#10b981",
+    borderColor: "#10b98140",
+  });
+});
+
+test("a renamed status reads by its new name in every language; the others stay translated", () => {
+  assert.equal(projectStatusLabel("new", en, CUSTOM), "Inquiry");
+  assert.equal(projectStatusLabel("new", sk, CUSTOM), "Inquiry");
+  assert.equal(projectStatusLabel("active", sk, CUSTOM), "Aktívny");
+  assert.equal(projectStatusLabel("waiting_for_client", en, CUSTOM), "Waiting for client");
 });
 
 test("an unrecognised status is shown as it is, not swallowed", () => {
@@ -198,12 +222,61 @@ test("an unrecognised status is shown as it is, not swallowed", () => {
   assert.equal(projectStatusLabel("archived", en), "archived");
   assert.equal(projectStatusLabel("", en), "");
   assert.equal(projectStatusLabel(undefined, en), "");
+  // A deleted built-in still has its translation, so projects left on it read well.
+  assert.equal(projectStatusLabel("on_hold", en, CUSTOM), "On Hold");
 });
 
-test("the dropdown offers every status, new first", () => {
+test("the dropdown offers every configured status, in order", () => {
   const options = projectStatusOptions(en);
-  assert.deepEqual(options.map((o) => o.value), [...PROJECT_STATUSES]);
+  assert.deepEqual(options.map((o) => o.value), BUILTINS);
   assert.equal(options[0].label, "New");
+  assert.deepEqual(
+    projectStatusOptions(en, CUSTOM).map((o) => o.label),
+    ["Inquiry", "Active", "Waiting for client", "Completed", "Lost"],
+  );
+});
+
+test("closed means the completed and cancelled groups, whatever the key", () => {
+  assert.equal(isClosedProjectStatus("completed"), true);
+  assert.equal(isClosedProjectStatus("cancelled"), true);
+  assert.equal(isClosedProjectStatus("active"), false);
+  assert.equal(isClosedProjectStatus("lost", CUSTOM), true);
+  assert.equal(isClosedProjectStatus("waiting_for_client", CUSTOM), false);
+  assert.equal(isClosedProjectStatus("archived"), false);
+});
+
+test("normalizing a stored list", () => {
+  // Nothing stored, or nothing usable: the built-ins.
+  assert.deepEqual(normalizeProjectStatusDefs(null), DEFAULT_PROJECT_STATUS_DEFS);
+  assert.deepEqual(normalizeProjectStatusDefs("junk"), DEFAULT_PROJECT_STATUS_DEFS);
+  assert.deepEqual(normalizeProjectStatusDefs([]), DEFAULT_PROJECT_STATUS_DEFS);
+  // Only closed statuses would leave a new project nowhere to start.
+  assert.deepEqual(
+    normalizeProjectStatusDefs([{ key: "done", color: "#000000", group: "completed" }]),
+    DEFAULT_PROJECT_STATUS_DEFS,
+  );
+  // Duplicates and blank keys dropped, a bad colour or group repaired, group order restored.
+  assert.deepEqual(
+    normalizeProjectStatusDefs([
+      { key: "done", color: "#ABCDEF", group: "completed" },
+      { key: "new", color: "nope", group: "bogus" },
+      { key: "new", color: "#111111", group: "new" },
+      { key: " ", color: "#111111", group: "new" },
+      { key: "review", label: "  Review ", color: "#222222", group: "in_progress" },
+    ]),
+    [
+      { key: "new", color: "#0ea5e9", group: "new" },
+      { key: "review", label: "Review", color: "#222222", group: "in_progress" },
+      { key: "done", color: "#abcdef", group: "completed" },
+    ],
+  );
+});
+
+test("a new status gets a stable ASCII key, unique against those taken", () => {
+  assert.equal(projectStatusKeyFor("Čaká na klienta", []), "caka_na_klienta");
+  assert.equal(projectStatusKeyFor("On hold", BUILTINS), "on_hold_2");
+  assert.equal(projectStatusKeyFor("On hold", [...BUILTINS, "on_hold_2"]), "on_hold_3");
+  assert.equal(projectStatusKeyFor("!!!", []), "status");
 });
 
 /* ── project pipeline strip ─────────────────────────────── */
@@ -226,9 +299,17 @@ test("the pipeline lights every step up to the current one", () => {
 test("a closed project lights every step, the last in its own outcome's colour", () => {
   assert.deepEqual(lit("completed"), [true, true, true, true]);
   assert.deepEqual(lit("cancelled"), [true, true, true, true]);
-  assert.equal(projectPipelineSegments("completed", en)[3].colorClass, "bg-emerald-500");
-  assert.equal(projectPipelineSegments("cancelled", en)[3].colorClass, "bg-rose-500");
+  assert.equal(projectPipelineSegments("completed", en)[3].color, "#10b981");
+  assert.equal(projectPipelineSegments("cancelled", en)[3].color, "#f43f5e");
   assert.match(projectPipelineSegments("cancelled", en)[3].tooltip, /Cancelled/);
+});
+
+test("the pipeline follows the configured list", () => {
+  const segments = projectPipelineSegments("waiting_for_client", en, CUSTOM);
+  assert.deepEqual(segments.map((s) => s.key), ["new", "active", "waiting_for_client", "closed"]);
+  assert.equal(segments[3].title, "Completed / Lost");
+  assert.deepEqual(segments.map((s) => s.filled), [true, true, true, false]);
+  assert.equal(segments[2].color, "#f59e0b");
 });
 
 test("an unknown status lights no step", () => {
@@ -273,6 +354,17 @@ test("completing a project stamps today as its finish date, reopening clears it"
   for (const open of ["new", "active", "on_hold"]) {
     assert.equal(finishedAtForStatus(open, "2026-08-30", TODAY), "", open);
   }
+  // Asked by group: an added status behaves like the built-in it sits with.
+  assert.equal(finishedAtForStatus("lost", "2026-08-30", TODAY, CUSTOM), "2026-08-30");
+  assert.equal(finishedAtForStatus("lost", "", TODAY, CUSTOM), "");
+  assert.equal(finishedAtForStatus("waiting_for_client", "2026-08-30", TODAY, CUSTOM), "");
+});
+
+test("a project in an added closed status is never late", () => {
+  const late = project({ deadline: "2026-08-20", status: "lost" });
+  assert.equal(evaluateProjectDeadline(late, type(), TODAY, CUSTOM)?.tone, "closed");
+  // Without the list that defines it, "lost" is unknown — and so still open.
+  assert.equal(evaluateProjectDeadline(late, type(), TODAY)?.tone, "overdue");
 });
 
 test("the start date falls back to the creation day", () => {

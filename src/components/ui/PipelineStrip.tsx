@@ -19,6 +19,8 @@ export interface PipelineStripSegment {
   filled: boolean;
   /** Tailwind background class for the segment. */
   colorClass: string;
+  /** A hex background instead, for colours configured in settings. */
+  color?: string;
 }
 
 interface PipelineStripProps {
@@ -114,6 +116,7 @@ export function PipelineStrip({ segments, className = "" }: PipelineStripProps) 
             flexBasis: 0,
             minWidth: 0,
             clipPath: clipPathFor(index, segments.length),
+            ...(seg.color ? { backgroundColor: seg.color } : null),
           }}
           title={seg.tooltip}
         >

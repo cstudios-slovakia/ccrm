@@ -548,12 +548,22 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
                 $activeCount = 0;
                 $overdueProjCount = 0;
                 $totalBudget = 0;
+                // Closed by group, so a status added in settings ("Lost") counts
+                // as closed like the built-in it is grouped with. Falls back to
+                // the built-in keys where auth.php is not loaded.
+                $projectClosed = function ($st) use ($pdo) {
+                    if (function_exists('ccrm_project_status_group')) {
+                        $group = ccrm_project_status_group((string)$st, $pdo);
+                        if ($group !== null) return $group === 'completed' || $group === 'cancelled';
+                    }
+                    return $st === 'completed' || $st === 'cancelled';
+                };
 
                 foreach ($projectsAll as $pr) {
                     $totalBudget += (float)($pr['budget'] ?? 0);
                     $st = $pr['status'] ?? 'active';
                     if ($st === 'active' || $st === 'in_progress') $activeCount++;
-                    if (!empty($pr['deadline']) && $st !== 'completed' && $st !== 'cancelled') {
+                    if (!empty($pr['deadline']) && !$projectClosed($st)) {
                         if (strtotime($pr['deadline']) < strtotime($todayDate)) {
                             $overdueProjCount++;
                         }
@@ -600,7 +610,7 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
 
                     $deadlineStr = !empty($pr['deadline']) ? substr($pr['deadline'], 0, 10) : 'None';
                     $dlStatus = "";
-                    if (!empty($pr['deadline']) && ($pr['status'] ?? '') !== 'completed') {
+                    if (!empty($pr['deadline']) && !$projectClosed($pr['status'] ?? '')) {
                         $diff = (int)round((strtotime($deadlineStr) - strtotime($todayDate)) / 86400);
                         if ($diff < 0) {
                             $dlStatus = " [PO TERMÍNE / OVERDUE by " . abs($diff) . " days]";

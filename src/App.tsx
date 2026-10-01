@@ -6,6 +6,8 @@ import { TaskDashboardView } from "./components/TaskDashboardView";
 import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, FinancialRecord, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings } from "./types";
 import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAssignment";
 import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils/projectAutoCreate";
+import { normalizeProjectStatusDefs, type ProjectStatusDef } from "./utils/projects";
+import { ProjectStatusesProvider } from "./hooks/useProjectStatuses";
 import { normalizeLeadStateSla, type LeadStateSla } from "./utils/leadSla";
 import { isSystemMailConfigured } from "./utils/taskReminders";
 import {
@@ -180,6 +182,9 @@ const computeSettingsSig = (s: any): string => {
     normalizeProjectAutoCreate(s.projectAutoCreate),
     s.taskStates ?? [],
     s.taskStateColors && Object.keys(s.taskStateColors).length ? s.taskStateColors : null,
+    // Normalized on both sides: an install that never opened the editor has
+    // nothing stored, and that must compare equal to the built-ins it is shown.
+    normalizeProjectStatusDefs(s.projectStatuses),
     s.integrationsConfig ?? null,
     s.companyBillingSettings ?? null,
     s.invoicingIntegrations ?? null,
@@ -645,6 +650,10 @@ function App() {
     "Blocked": "#ef4444",
     "Done": "#10b981"
   });
+
+  // The project statuses, configured in Settings → Project settings. Handed to
+  // every view through ProjectStatusesProvider.
+  const [projectStatuses, setProjectStatuses] = useState<ProjectStatusDef[]>(() => normalizeProjectStatusDefs(null));
 
   const [leadSources, setLeadSources] = useState<string[]>([
     "showroom", "facebook", "instagram", "website"
@@ -1232,6 +1241,7 @@ ${log.payload || ''}
         projectAutoCreate,
         taskStates,
         taskStateColors,
+        projectStatuses,
         integrationsConfig: nextIntegrationsConfig ?? integrationsConfigRef.current,
         companyBillingSettings: companyBillingSettingsRef.current,
         invoicingIntegrations: invoicingIntegrationsRef.current
@@ -2159,6 +2169,7 @@ ${log.payload || ''}
       systemName, systemLanguage, systemCurrency,
       leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups,
       leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors,
+      projectStatuses,
     });
     // Before we have ever seen the server's settings, just record the current
     // signature — there is nothing to push yet, and pushing here would echo the
@@ -2186,7 +2197,7 @@ ${log.payload || ''}
       // newest values.
       pushStateToServer();
     }, 700);
-  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, isInitialSyncResolved]);
+  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, projectStatuses, isInitialSyncResolved]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -2490,6 +2501,10 @@ ${log.payload || ''}
         });
         setTaskStates((prev) => s.taskStates && JSON.stringify(s.taskStates) !== JSON.stringify(prev) ? s.taskStates : prev);
         setTaskStateColors((prev) => s.taskStateColors && JSON.stringify(s.taskStateColors) !== JSON.stringify(prev) ? s.taskStateColors : prev);
+        setProjectStatuses((prev) => {
+          const next = normalizeProjectStatusDefs(s.projectStatuses);
+          return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
+        });
         if (s.integrationsConfig) syncIntegrationsConfig(s.integrationsConfig);
         serverSettingsAppliedRef.current = true;
         // Remember what the server just gave us. The settings-sync effect compares
@@ -2817,6 +2832,10 @@ ${log.payload || ''}
           dbInfo={dbInfo || undefined}
           projectTypes={projectTypes}
           setProjectTypes={updateProjectTypesAndSync}
+          projectStatuses={projectStatuses}
+          setProjectStatuses={setProjectStatuses}
+          projects={projects}
+          setProjects={updateProjectsAndSync}
           companyBillingSettings={companyBillingSettings}
           setCompanyBillingSettings={updateCompanyBillingSettingsAndSync}
           invoicingIntegrations={invoicingIntegrations}
@@ -3058,6 +3077,13 @@ ${log.payload || ''}
           setTasks={updateTasksAndSync}
           projectTypes={projectTypes}
           setProjectTypes={updateProjectTypesAndSync}
+          projectStatuses={projectStatuses}
+          setProjectStatuses={setProjectStatuses}
+          projects={projects}
+          setProjects={updateProjectsAndSync}
+          financialCategories={financialCategories}
+          setFinancialCategories={updateFinancialCategoriesAndSync}
+          setFinancialRecords={updateFinancialRecordsAndSync}
           companyBillingSettings={companyBillingSettings}
           setCompanyBillingSettings={updateCompanyBillingSettingsAndSync}
           invoicingIntegrations={invoicingIntegrations}
@@ -3631,6 +3657,7 @@ ${log.payload || ''}
 
   return (
     <UserPrefsContext.Provider value={userPrefsApi}>
+    <ProjectStatusesProvider value={projectStatuses}>
     {/* One "new lead / client" form for every picker in the app — see QuickAddClient. */}
     <QuickAddClientProvider
       setLeads={updateLeadsAndSync}
@@ -4110,6 +4137,7 @@ ${log.payload || ''}
       )}
     </div>
     </QuickAddClientProvider>
+    </ProjectStatusesProvider>
     </UserPrefsContext.Provider>
   );
 }

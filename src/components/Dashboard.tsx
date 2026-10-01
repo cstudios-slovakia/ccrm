@@ -11,7 +11,8 @@ import { resolveCurrencySymbol, resolveCurrencyPosition, formatMoney, isMoneyVal
 import { formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
 import { liftAccent, readableOn } from "../utils/accentColor";
 import { isClosedLeadState } from "../utils/leadSla";
-import { CLOSED_PROJECT_STATUSES, projectStatusOrder, projectStatusLabel } from "../utils/projects";
+import { openProjectStatuses, projectStatusColor, projectStatusLabel } from "../utils/projects";
+import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import { GroupedStatusValueEquationStats, type StatusStatGroup, type StatusStatItem, type StatusStatDetailRow } from "./GroupedStatusValueEquationStats";
 
 interface DashboardProps {
@@ -262,6 +263,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   financialRecords = [],
   invoicesOffers = []
 }) => {
+  const projectStatuses = useProjectStatuses();
   // Inline translation helper for short UI strings
   const t = (en: string, sk: string, hu: string) => systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
   const currencySymbol = resolveCurrencySymbol(currencyCode, systemLanguage);
@@ -323,15 +325,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       return [];
     }
 
-    const activeStatuses: ProjectStatus[] = (projectStatusOrder() as ProjectStatus[]).filter(
-      (s) => !CLOSED_PROJECT_STATUSES.includes(s)
-    );
-
-    const statusColors: Record<string, string> = {
-      new: "#0284c7",
-      active: "#9333ea",
-      on_hold: "#d97706",
-    };
+    const activeStatuses: ProjectStatus[] = openProjectStatuses(projectStatuses);
 
     let totalProjectBudgetValue = 0;
     let totalInvoicedValue = 0;
@@ -419,16 +413,16 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       return {
         key: status,
-        name: projectStatusLabel(status, t).toUpperCase(),
+        name: projectStatusLabel(status, t, projectStatuses).toUpperCase(),
         value: statusInvoicableVal,
         count: projectsInStatus.length,
-        color: statusColors[status] || "#9333ea",
+        color: projectStatusColor(status, projectStatuses),
         totalBudget: statusTotalBudgetValue,
         invoiced: statusTotalInvoicedValue,
         rows: statusRows,
       };
     });
-  }, [projects, projectTypes, leads, financialRecords, invoicesOffers, defaultCurrency, t]);
+  }, [projects, projectTypes, projectStatuses, leads, financialRecords, invoicesOffers, defaultCurrency, t]);
 
   const dashboardEquationGroups: StatusStatGroup[] = useMemo(() => {
     const list: StatusStatGroup[] = [];
