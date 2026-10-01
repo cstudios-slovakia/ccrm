@@ -42,6 +42,7 @@ import { RefreshCw, AlertOctagon, Trash2, Copy, Brain, Mail, Bell, X } from "luc
 import { FeralGradientBackground } from "./components/FeralGradientBackground";
 import { OrganicNodeDatabaseLoader } from "./components/OrganicNodeDatabaseLoader";
 import { getStoredTheme, getStoredThemeMode, isThemeMode, startThemeWatcher, type Appearance, type ThemeMode } from "./utils/theme";
+import { startViewSizeWatcher } from "./utils/viewSize";
 import { hasPersistentStorage } from "./utils/safeStorage";
 import { LicenseBanner } from "./components/LicenseBanner";
 import { fetchLicenseState } from "./utils/licenseApi";
@@ -567,6 +568,11 @@ function App() {
     () => startThemeWatcher(() => themeStateRef.current, setAppearance),
     [themeMode, userTheme]
   );
+
+  // View size (docs/VIEW-SIZE.md): index.html painted the first frame; this keeps
+  // the attribute true when the window crosses an Auto threshold or another tab
+  // changes the setting.
+  useEffect(() => startViewSizeWatcher(), []);
 
   // Same three-language shorthand every view uses for one-off copy that has no
   // entry in translations.ts.
@@ -3726,7 +3732,7 @@ ${log.payload || ''}
             canRunWorkflows={access.canEdit("automation")}
           />
           
-          <main className="flex-1 p-4 md:p-6 overflow-y-auto [scrollbar-gutter:stable] max-w-[1600px] mx-auto w-full relative flex flex-col justify-between">
+          <main className="workspace flex-1 overflow-y-auto [scrollbar-gutter:stable] relative flex flex-col justify-between">
             <div className="shrink-0 w-full">
               {showNotifBanner && currentUser && getBrowserNotificationPermission() === "default" && (
                 <div className="mb-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 py-3 rounded-2xl flex items-center justify-between shadow-md animate-in fade-in slide-in-from-top-2 duration-200">

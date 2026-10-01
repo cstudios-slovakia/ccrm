@@ -114,7 +114,7 @@ export const CustomAiOfferTemplate: React.FC<CustomAiOfferTemplateProps> = ({
   const hasParameters = Boolean(offer.durationText || offer.startDateText || offer.warrantyText);
 
   return (
-    <div className="print-document force-light bg-white text-slate-900 font-sans p-8 md:p-12 max-w-[920px] mx-auto shadow-2xl rounded-3xl border border-slate-200 print:shadow-none print:border-none print:max-w-none print:rounded-none text-[13px] leading-relaxed select-text">
+    <div className="view-size-fixed print-document force-light bg-white text-slate-900 font-sans p-8 md:p-12 max-w-[920px] mx-auto shadow-2xl rounded-3xl border border-slate-200 print:shadow-none print:border-none print:max-w-none print:rounded-none text-[13px] leading-relaxed select-text">
       {/* Accent bar */}
       <div
         className="h-2 w-full rounded-full mb-6"

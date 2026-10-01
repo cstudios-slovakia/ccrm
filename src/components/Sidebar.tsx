@@ -1417,7 +1417,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           e.dataTransfer.dropEffect = "move";
         }}
         className={cn(
-          "h-screen fixed left-0 top-0 bg-white flex flex-col transition-all duration-300 select-none shrink-0 hidden lg:flex",
+          "view-size-fixed h-screen fixed left-0 top-0 bg-white flex flex-col transition-all duration-300 select-none shrink-0 hidden lg:flex",
           isStartMenuOpen ? "z-[100001]" : "z-[1000]",
           isDockMode && !isExpanded && "overflow-visible",
           isExpanded ? widthClasses.expanded : widthClasses.collapsed,
@@ -1721,7 +1721,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   {isPickerOpenForThisGroup && (
                     <div
                       data-module-picker="true"
-                      className="mx-2 mb-2 p-2 bg-white rounded-xl border border-indigo-200 shadow-lg flex flex-col gap-1.5 animate-in fade-in zoom-in-95 duration-150 max-h-56 overflow-y-auto z-20"
+                      className="view-size-fixed mx-2 mb-2 p-2 bg-white rounded-xl border border-indigo-200 shadow-lg flex flex-col gap-1.5 animate-in fade-in zoom-in-95 duration-150 max-h-56 overflow-y-auto z-20"
                     >
                       <div className="flex items-center justify-between px-1 pb-1 border-b border-slate-100">
                         <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
@@ -1815,7 +1815,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   {isPickerOpenForThisDropzone && (
                     <div
                       data-module-picker="true"
-                      className="mx-1 mb-2 p-2 bg-white rounded-xl border border-indigo-200 shadow-lg flex flex-col gap-1.5 animate-in fade-in zoom-in-95 duration-150 max-h-56 overflow-y-auto z-20"
+                      className="view-size-fixed mx-1 mb-2 p-2 bg-white rounded-xl border border-indigo-200 shadow-lg flex flex-col gap-1.5 animate-in fade-in zoom-in-95 duration-150 max-h-56 overflow-y-auto z-20"
                     >
                       <div className="flex items-center justify-between px-1 pb-1 border-b border-slate-100">
                         <span className="text-[10px] font-bold text-slate-600 uppercase tracking-wider">
@@ -2081,7 +2081,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div
         onTouchStart={handleTouchStart}
         onTouchEnd={handleTouchEnd}
-        className="lg:hidden fixed left-0 right-0 bottom-0 h-16 w-full px-2 sm:px-4 py-2 bg-white/95 backdrop-blur-md z-[20000] border-t border-slate-200/80 shadow-[0_-15px_42px_rgba(0,0,0,0.18)] select-none shrink-0 flex flex-col justify-center"
+        className="view-size-fixed lg:hidden fixed left-0 right-0 bottom-0 h-16 w-full px-2 sm:px-4 py-2 bg-white/95 backdrop-blur-md z-[20000] border-t border-slate-200/80 shadow-[0_-15px_42px_rgba(0,0,0,0.18)] select-none shrink-0 flex flex-col justify-center"
       >
         <button
           type="button"
