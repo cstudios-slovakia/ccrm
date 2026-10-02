@@ -18,6 +18,7 @@ import { ClientSelect } from "./ui/ClientSelect";
 import { TaskEmailReminderField } from "./TaskEmailReminderField";
 import { projectDisplayName } from "../utils/projects";
 import { isClientRecord, recordHref } from "../utils/clientRecord";
+import { staleLeadIdsForTasks } from "../utils/taskLeadPicker";
 import { isDoneTaskState, localStampStr } from "../utils/projectTasks";
 import { taskPriorityLabel, taskStateLabel, type Translate } from "../utils/taskLabels";
 import { TaskTagMentionInput } from "./TaskTagMentionInput";
@@ -151,6 +152,9 @@ interface TaskEditDrawerProps {
     /** False when no outgoing mail server is set up; the e-mail reminder then warns. */
     mailConfigured?: boolean;
     existingTags?: string[];
+    /** Lead-state settings, to keep closed leads out of the lead / client picker. */
+    leadStageGroups?: Record<string, string>;
+    leadStateParents?: Record<string, string>;
     onTagClick?: (tag: string) => void;
     onSave: (task: Task) => void;
     onToggleArchive?: (task: Task) => void;
@@ -178,6 +182,8 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
     canDelete = false,
     mailConfigured,
     existingTags = [],
+    leadStageGroups,
+    leadStateParents,
     onTagClick,
     onSave,
     onToggleArchive,
@@ -574,6 +580,13 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                             </div>
                             <ClientSelect
                                 leads={leads}
+                                excludeIds={staleLeadIdsForTasks(
+                                    leads,
+                                    projects,
+                                    leadStageGroups,
+                                    leadStateParents,
+                                    draft.relatedLeadId || task.relatedLeadId,
+                                )}
                                 value={draft.relatedLeadId || ""}
                                 disabled={!canEdit}
                                 onChange={(v) => {

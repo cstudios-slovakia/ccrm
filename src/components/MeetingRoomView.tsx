@@ -128,8 +128,8 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
   const [showArchived, setShowArchived] = useState(false);
   
   // Leads & Clients lists
-  const clientsList = useMemo(() => leads.filter((l) => l.status === "accepted" && l.id !== "unassigned-docs"), [leads]);
-  const leadsList = useMemo(() => leads.filter((l) => l.status !== "accepted" && l.id !== "unassigned-docs"), [leads]);
+  const clientsList = useMemo(() => leads.filter((l) => !l.archived && l.status === "accepted" && l.id !== "unassigned-docs"), [leads]);
+  const leadsList = useMemo(() => leads.filter((l) => !l.archived && l.status !== "accepted" && l.id !== "unassigned-docs"), [leads]);
 
   // New Meeting Form state
   const [newTitle, setNewTitle] = useState("");

@@ -3,6 +3,7 @@ import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { LoginView } from "./components/LoginView";
 import { TaskDashboardView } from "./components/TaskDashboardView";
+import { QuickTaskModal } from "./components/QuickTaskModal";
 import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, FinancialRecord, FinancialOperatingMode, FinancialSimplifiedTable, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings } from "./types";
 import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAssignment";
 import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils/projectAutoCreate";
@@ -593,7 +594,7 @@ function App() {
 
   // Meeting Room state
   const [meetingsAction, setMeetingsAction] = useState<"list" | "new" | "record">("list");
-  const [autoOpenAddTask, setAutoOpenAddTask] = useState(false);
+  const [quickTaskOpen, setQuickTaskOpen] = useState(false);
   // Server-backed state. The real rows arrive with the first sync GET (see
   // meeting_notes / project_types / projects in sync.php) and every edit is
   // pushed back through updateMeetingNotesAndSync & friends, exactly like leads
@@ -3592,8 +3593,8 @@ ${log.payload || ''}
             taskStateColors={taskStateColors}
             taskAccess={taskAccess}
             mailConfigured={isSystemMailConfigured(integrationsConfig)}
-            autoOpenAddTask={autoOpenAddTask}
-            setAutoOpenAddTask={setAutoOpenAddTask}
+            leadStageGroups={leadStageGroups}
+            leadStateParents={leadStateParents}
           />
         );
     }
@@ -3794,17 +3795,7 @@ ${log.payload || ''}
                 window.location.hash = "meetings";
               }
             }}
-            onAddTask={() => {
-              const route = parseAppHash(activeTab).route;
-              // Already on the task panel: navigating to it again would remount
-              // the calendar (ErrorBoundary resetKey) and race the create drawer
-              // against that remount.
-              if (route !== "tasks") {
-                setActiveTab("tasks");
-                window.location.hash = "tasks";
-              }
-              setAutoOpenAddTask(true);
-            }}
+            onAddTask={() => setQuickTaskOpen(true)}
             onNavigateUpdates={() => {
               setActiveTab("updates");
               window.location.hash = "updates";
@@ -3814,6 +3805,22 @@ ${log.payload || ''}
             canCreateMeeting={access.canEdit("meetings")}
             canRunWorkflows={access.canEdit("automation")}
           />
+          {quickTaskOpen && taskAccess.create && (
+            <QuickTaskModal
+              tasks={tasks}
+              leads={leads}
+              projects={projects}
+              users={users}
+              taskStates={taskStates}
+              systemLanguage={userLanguage}
+              currentUserName={displayUser.name}
+              mailConfigured={isSystemMailConfigured(integrationsConfig)}
+              leadStageGroups={leadStageGroups}
+              leadStateParents={leadStateParents}
+              onCreate={(created) => updateTasksAndSync((prev) => [...created, ...prev])}
+              onClose={() => setQuickTaskOpen(false)}
+            />
+          )}
           
           <main className="workspace flex-1 overflow-y-auto [scrollbar-gutter:stable] relative flex flex-col justify-between">
             <div className="shrink-0 w-full">

@@ -1,1 +1,0 @@
-import{As as e,Jn as t,Kn as n,js as r,qn as i}from"./index-CTT6L5IC.js";var a=r(e(),1);function o(){!i.current&&n();let[e]=(0,a.useState)(t.current);return e}export{o as t};

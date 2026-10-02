@@ -283,6 +283,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     return activeStates.map((state) => {
       const stateLower = state.toLowerCase();
       const leadsInState = leads.filter((l) => {
+        if (l.archived) return false;
         const sKey = (l.status || "").toLowerCase();
         const parent = leadStateParents[sKey];
         const target = parent ? parent.toLowerCase() : sKey;
@@ -502,7 +503,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
   // Filter leads based on selected date interval
   const filteredLeads = useMemo(() => {
     return leads.filter(l => {
-      if (l.id === "unassigned-docs") return false;
+      if (l.id === "unassigned-docs" || l.archived) return false;
       if (!l.createdAt) return false;
       const date = new Date(l.createdAt);
       if (filterStartDate && date < filterStartDate) return false;

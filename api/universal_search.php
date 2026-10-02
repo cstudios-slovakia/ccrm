@@ -137,7 +137,7 @@ $searchErrors = [];
 
 // 1. LEADS & CLIENTS
 try {
-    $stmt = $pdo->query("SELECT `id`, `name`, `status`, `city`, `client_type`, `value`, `email`, `phone`, `contact_person`, `ai_summary` FROM `leads`");
+    $stmt = $pdo->query("SELECT `id`, `name`, `status`, `city`, `client_type`, `value`, `email`, `phone`, `contact_person`, `ai_summary` FROM `leads` WHERE `archived` = 0");
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $isClient = $row['status'] === 'accepted';
         $type = $isClient ? 'client' : 'lead';
@@ -195,7 +195,7 @@ try {
         SELECT te.`id`, te.`lead_id`, te.`title`, te.`content`, te.`timestamp`, l.`name` as `lead_name`
         FROM `timeline_events` te
         LEFT JOIN `leads` l ON te.`lead_id` = l.`id`
-        WHERE te.`type` = 'email'
+        WHERE te.`type` = 'email' AND (l.`id` IS NULL OR l.`archived` = 0)
     ");
     while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
         $fieldsToMatch = [

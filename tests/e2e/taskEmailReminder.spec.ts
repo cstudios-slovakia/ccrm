@@ -72,22 +72,41 @@ test.describe('Task e-mail reminder', () => {
     await expect.poll(() => pushedByTitle(pushed, EDIT_TASK)?.emailReminders).toEqual({ Mária: '1d', Erik: '1h' });
   });
 
-  test('the new-task drawer creates the task with my reminder', async ({ page }) => {
+  test('the new-task popup creates the task with my reminder', async ({ page }) => {
     await startSession(page);
     const pushed = recordSyncedTasks(page);
     await gotoView(page, '#tasks');
 
     await page.getByRole('button', { name: /Create New Task|Vytvoriť novú úlohu|Új feladat/ }).first().click();
-    const drawer = page.locator('div.fixed.inset-0').filter({ has: page.getByRole('button', { name: /Save Task|Uložiť|Mentés/ }) }).last();
-    await drawer.locator('input[type="text"]').first().fill(NEW_TASK);
+    const popup = page.getByRole('dialog');
+    await popup.locator('textarea').first().fill(NEW_TASK);
 
-    const field = drawer.getByTestId('task-email-reminder');
+    const field = popup.getByTestId('task-email-reminder');
     await field.getByTestId('task-email-reminder-toggle').check();
     await field.getByTestId('task-email-reminder-1d').click();
     await expect(field.getByTestId('task-email-reminder-1d')).toHaveAttribute('aria-checked', 'true');
 
-    await drawer.getByRole('button', { name: /^(Save Task|Uložiť|Mentés)$/ }).click();
+    await popup.getByRole('button', { name: /^(Create task|Vytvoriť úlohu|Feladat létrehozása)$/ }).click();
     await expect.poll(() => pushedByTitle(pushed, NEW_TASK)?.emailReminders).toEqual({ Erik: '1d' });
+  });
+
+  // The header's quick-create button is a popup over whatever page is open: it
+  // must not navigate to the Tasks board.
+  test('the header button opens the popup without leaving the page', async ({ page }) => {
+    await startSession(page);
+    const pushed = recordSyncedTasks(page);
+    await gotoView(page, '#dashboard');
+
+    await page.locator('header').getByRole('button', { name: /Create New Task|Vytvoriť novú úlohu|Új feladat/ }).click();
+    const popup = page.getByRole('dialog');
+    await expect(popup).toBeVisible();
+    expect(new URL(page.url()).hash).toBe('#dashboard');
+
+    await popup.locator('textarea').first().fill(NEW_TASK);
+    await popup.getByRole('button', { name: /^(Create task|Vytvoriť úlohu|Feladat létrehozása)$/ }).click();
+    await expect(popup).toBeHidden();
+    await expect.poll(() => pushedByTitle(pushed, NEW_TASK)).toBeTruthy();
+    expect(new URL(page.url()).hash).toBe('#dashboard');
   });
 
   // The server skips every reminder when no outgoing mail server is set up, so
