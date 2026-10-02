@@ -125,7 +125,9 @@ export const ClientSelect: React.FC<ClientSelectProps> = ({
   // Last picked first, then the newest records, then the register as it stands.
   // Each section pages ten at a time — the register can be hundreds long.
   const { recent, newest, rest } = splitClientsForPicker(
-    leads.filter(l => !excluded || !excluded.has(l.id)),
+    // Archived records live only in the Archived section — but a record that is
+    // already chosen stays visible so an existing link still shows its name.
+    leads.filter(l => (!l.archived || l.id === value) && (!excluded || !excluded.has(l.id))),
     recentIds,
   );
   const options: DropdownOption[] = [

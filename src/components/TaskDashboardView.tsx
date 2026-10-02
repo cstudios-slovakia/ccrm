@@ -35,10 +35,9 @@ import type { Language } from "../utils/translations";
 import { CalendarPane } from "./Dashboard";
 import { CustomSelect } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
-import { DeadlineTimePicker, TaskEditDrawer, taskProjectOptions } from "./TaskEditDrawer";
+import { TaskEditDrawer } from "./TaskEditDrawer";
+import { QuickTaskModal } from "./QuickTaskModal";
 import { VoiceTaskActionBar } from "./VoiceTaskActionBar";
-import { TaskEmailReminderField } from "./TaskEmailReminderField";
-import { TaskTagMentionInput } from "./TaskTagMentionInput";
 import { TaskPillText, extractTagsFromText, type MentionEntity } from "./TaskPillText";
 import { projectDisplayName } from "../utils/projects";
 import { isClientRecord, recordHref } from "../utils/clientRecord";
@@ -319,11 +318,12 @@ interface TaskDashboardViewProps {
     currentUser?: UserProfile;
     taskStates?: string[];
     taskStateColors?: Record<string, string>;
-    autoOpenAddTask?: boolean;
-    setAutoOpenAddTask?: (val: boolean) => void;
     taskAccess?: TaskAccess;
     /** False when no outgoing mail server is set up; task e-mail reminders then warn. */
     mailConfigured?: boolean;
+    /** Lead-state settings, to keep closed leads out of the lead / client picker. */
+    leadStageGroups?: Record<string, string>;
+    leadStateParents?: Record<string, string>;
 };
 
 /** A compact micro-switch used on task cards. */
@@ -446,11 +446,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         Blocked: "#ef4444",
         Done: "#10b981",
     },
-    autoOpenAddTask,
-    setAutoOpenAddTask,
     taskAccess = { view: true, create: true, edit: true, delete: true, viewAll: true },
     mailConfigured,
-
+    leadStageGroups,
+    leadStateParents,
 }) => {
     const isDoneState = (status: string) => {
         return (
@@ -757,6 +756,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     // Add Task Inline Card State
     const [isAddDrawerOpen, setIsAddDrawerOpen] = useState(false);
+    const [addDeadline, setAddDeadline] = useState<string | undefined>(undefined);
 
     // Edit Task Drawer State
     const [editingTask, setEditingTask] = useState<Task | null>(null);
@@ -881,68 +881,14 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         setArchiveTagFilter(tag.replace(/^#/, ""));
     }, []);
 
-    React.useEffect(() => {
-        if (autoOpenAddTask) {
-            if (taskAccess.create) {
-                resetNewTaskForm();
-                setIsAddDrawerOpen(true);
-            } else if (typeof (window as any).showToast === "function") {
-                (window as any).showToast(
-                    t(
-                        "You do not have permission to create tasks.",
-                        "Nemáte oprávnenie vytvárať úlohy.",
-                        "Nincs jogosultsága feladatok létrehozására.",
-                    ),
-                );
-            }
-            if (setAutoOpenAddTask) {
-                setAutoOpenAddTask(false);
-            }
-        }
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [autoOpenAddTask, setAutoOpenAddTask]);
-
-    const closeAddDrawer = () => {
-        setIsAddDrawerOpen(false);
+    // The create popup; `addDeadline` pre-fills its date (the calendar's "+" on a day).
+    const openAddTask = (deadline?: string) => {
+        if (!taskAccess.create) return;
+        setAddDeadline(deadline);
+        setIsAddDrawerOpen(true);
     };
 
-    React.useEffect(() => {
-        if (!isAddDrawerOpen) return;
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === "Escape") {
-                closeAddDrawer();
-            }
-        };
-        window.addEventListener("keydown", handleKeyDown);
-        return () => window.removeEventListener("keydown", handleKeyDown);
-    }, [isAddDrawerOpen]);
-
-    const [newTitle, setNewTitle] = useState("");
-    const [newPriority, setNewPriority] = useState<"low" | "medium" | "high">(
-        "medium",
-    );
-    const [newDeadline, setNewDeadline] = useState(() =>
-        toLocalDateStr(new Date()),
-    );
-    const [newDeadlineTime, setNewDeadlineTime] = useState("16:00");
-    const [newRelatedLeadId, setNewRelatedLeadId] = useState("");
-    const [newRelatedProjectId, setNewRelatedProjectId] = useState("");
-    const [newIsLocking, setNewIsLocking] = useState(false);
-    const [newEmailReminders, setNewEmailReminders] = useState<Task["emailReminders"]>(undefined);
-    const [newAssignedUser, setNewAssignedUser] = useState(defaultUserName);
-
-    // Resets the "New Task" form to fresh defaults
-    const resetNewTaskForm = (deadlineDateStr?: string) => {
-        setNewTitle("");
-        setNewPriority("medium");
-        setNewDeadline(deadlineDateStr || toLocalDateStr(new Date()));
-        setNewDeadlineTime("16:00");
-        setNewRelatedLeadId("");
-        setNewRelatedProjectId("");
-        setNewIsLocking(false);
-        setNewEmailReminders(undefined);
-        setNewAssignedUser(defaultUserName);
-    };
+    const closeAddDrawer = useCallback(() => setIsAddDrawerOpen(false), []);
 
     // Helpers
     const today = new Date();
@@ -2023,82 +1969,6 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             </div>,
             document.body
         );
-    };
-
-    const handleCreateTask = (e?: React.FormEvent, closeAfterCreate: boolean = true) => {
-        if (e) e.preventDefault();
-        if (!taskAccess.create) {
-            closeAddDrawer();
-            return;
-        }
-        const lines = newTitle
-            .split("\n")
-            .map((line) => line.trim())
-            .filter((line) => line.length > 0);
-
-        if (lines.length === 0) {
-            if (typeof (window as any).showToast === "function") {
-                (window as any).showToast(
-                    t(
-                        "Please enter a task title!",
-                        "Prosím zadajte názov úlohy!",
-                        "Kérjük, adja meg a feladat címét!",
-                    ),
-                    "warning",
-                );
-            }
-            return;
-        }
-
-        const now = Date.now();
-        const createdTasks: Task[] = lines.map((title, index) => ({
-            id: `task-${now}-${index}-${Math.random().toString(36).slice(2, 7)}`,
-            title,
-            description: "",
-            tags: extractTagsFromText(title),
-            status: taskStates[0] || "New",
-            priority: newPriority,
-            deadline: newDeadline,
-            deadlineTime: newDeadlineTime,
-            owner: newAssignedUser,
-            createdBy: myName,
-            assignedUsers: newAssignedUser ? [newAssignedUser] : [],
-            relatedLeadId: newRelatedLeadId || undefined,
-            relatedProjectId: newRelatedProjectId || undefined,
-            isLocking: newRelatedLeadId ? newIsLocking : false,
-            emailReminders: newEmailReminders,
-        }));
-
-        setTasks((prev) => [...createdTasks, ...prev]);
-
-        // Success notification
-        if (typeof (window as any).showToast === "function") {
-            const successMsg =
-                createdTasks.length > 1
-                    ? t(
-                          `${createdTasks.length} tasks created successfully!`,
-                          `${createdTasks.length} úloh bolo úspešne vytvorených!`,
-                          `${createdTasks.length} feladat sikeresen létrehozva!`,
-                      )
-                    : t(
-                          "Task created successfully!",
-                          "Úloha bola úspešne vytvorená!",
-                          "Feladat sikeresen létrehozva!",
-                      );
-            (window as any).showToast(successMsg);
-        }
-
-        if (closeAfterCreate) {
-            resetNewTaskForm();
-            closeAddDrawer();
-        } else {
-            // Keep the form open for the next task: clear title and re-focus
-            setNewTitle("");
-            setTimeout(() => {
-                const textarea = document.querySelector('form textarea') as HTMLTextAreaElement | null;
-                if (textarea) textarea.focus();
-            }, 50);
-        }
     };
 
     // --- RENDERING ---
@@ -3581,11 +3451,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                         "Žiadne úlohy.",
                                         "Nincsenek feladatok.",
                                     ),
-                                    onAddTask: (dateStr) => {
-                                        if (!taskAccess.create) return;
-                                        resetNewTaskForm(dateStr);
-                                        setIsAddDrawerOpen(true);
-                                    },
+                                    onAddTask: (dateStr) => openAddTask(dateStr),
                                 })}
                             </div>
                         ) : (
@@ -3684,266 +3550,24 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             }`}
         >
             {/* Create New Task Section: Sticky action bar matching column width */}
-            <div className="sticky top-0 z-20 w-full shrink-0">
-                {!isAddDrawerOpen ? (
-                    <div className="w-full">
-                    <VoiceTaskActionBar
-                        canCreate={taskAccess.create}
-                        systemLanguage={systemLanguage}
-                        currentUser={currentUser}
-                        users={users}
-                        defaultAssignee={newAssignedUser || myName}
-                        defaultStatus={taskStates[0] || "New"}
-                        manualButtonText={t(
-                            "Create New Task",
-                            "Vytvoriť novú úlohu",
-                            "Új feladat",
-                        )}
-                        onManualCreateClick={() => {
-                            resetNewTaskForm();
-                            setIsAddDrawerOpen(true);
-                        }}
-                        onTasksCreated={(createdTasks) => {
-                            setTasks((prev) => [...createdTasks, ...prev]);
-                        }}
-                    />
-                </div>
-            ) : (
-                <div className="w-full bg-white rounded-3xl border-2 border-orange-200/90 shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-3 duration-200 max-h-[calc(100vh-8rem)] overflow-y-auto">
-                    <div className="p-4 bg-gradient-to-r from-orange-50/80 via-white to-orange-50/40 border-b border-orange-100 flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                            <span className="p-1.5 rounded-xl bg-[#ff5d00] text-white shadow-sm">
-                                <Plus className="h-4 w-4 stroke-[3]" />
-                            </span>
-                            <div>
-                                <h3 className="text-ui font-bold text-slate-800">
-                                    {t("Create New Task(s)", "Vytvoriť novú úlohu / úlohy", "Új feladat(ok) létrehozása")}
-                                </h3>
-                                <p className="text-micro font-semibold text-slate-400">
-                                    {t("Shift + Enter for new lines / multiple tasks", "Shift + Enter pre nový riadok / viac úloh", "Shift + Enter új sorhoz / több feladathoz")}
-                                </p>
-                            </div>
-                        </div>
-                        <button
-                            type="button"
-                            onClick={closeAddDrawer}
-                            className="p-1.5 hover:bg-slate-100 rounded-xl text-slate-400 hover:text-slate-600 transition-colors cursor-pointer"
-                        >
-                            <X className="h-4 w-4" />
-                        </button>
-                    </div>
-
-                    <form onSubmit={(e) => handleCreateTask(e, true)} className="p-3.5 space-y-3 text-ui font-bold">
-                        <div className="space-y-1">
-                            <label className="type-overline text-slate-500 flex items-center justify-between">
-                                <span>{t("Task Title(s)", "Názov úlohy / úloh", "Feladat címe(i)")}</span>
-                                <span className="text-micro font-normal text-[#ff5d00]">
-                                    {t("1 line = 1 task", "1 riadok = 1 úloha", "1 sor = 1 feladat")}
-                                </span>
-                            </label>
-                            <TaskTagMentionInput
-                                multiline
-                                rows={2}
-                                autoFocus
-                                required
-                                value={newTitle}
-                                onChange={setNewTitle}
-                                onKeyDown={(e) => {
-                                    if (e.key === "Enter" && !e.shiftKey) {
-                                        e.preventDefault();
-                                        handleCreateTask(e, true);
-                                    } else if (e.key === "Escape") {
-                                        e.preventDefault();
-                                        closeAddDrawer();
-                                    }
-                                }}
-                                existingTags={allExistingTags}
-                                mentionEntities={mentionEntities}
-                                onAssignEntity={(entity) => {
-                                    if (entity.type === "user") {
-                                        setNewAssignedUser(entity.name);
-                                    } else if (entity.type === "project") {
-                                        setNewRelatedProjectId(entity.id);
-                                    } else if (entity.type === "client" || entity.type === "lead") {
-                                        setNewRelatedLeadId(entity.id);
-                                    }
-                                }}
-                                placeholder={t(
-                                    "Enter task name... (Shift+Enter for next task, # for tags, @ for mentions)",
-                                    "Zadajte názov... (Shift+Enter pre ďalšiu úlohu, # pre tagy, @ pre zmienky)",
-                                    "Adja meg a feladatot... (Shift+Enter új feladathoz, # címkékhez, @ hivatkozáshoz)",
-                                )}
-                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-[#ff5d00] focus:outline-none transition-colors text-ui font-semibold placeholder:text-slate-400 leading-relaxed resize-y min-h-12.5"
-                            />
-                        </div>
-
-                        {/* Row 1: Date, Time & Priority */}
-                        <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-2.5">
-                            <div className="space-y-1">
-                                <label className="type-overline text-slate-500">
-                                    {t("Deadline Date", "Termín", "Határidő")}
-                                </label>
-                                <input
-                                    type="date"
-                                    required
-                                    value={newDeadline}
-                                    onChange={(e) => setNewDeadline(e.target.value)}
-                                    className="w-full px-2.5 py-1.5 rounded-xl border-2 border-slate-200 focus:border-[#ff5d00] focus:outline-none text-ui h-8.5"
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="type-overline text-slate-500">
-                                    {t("Deadline Time", "Čas termínu", "Határidő időpontja")}
-                                </label>
-                                <DeadlineTimePicker
-                                    value={newDeadlineTime}
-                                    onChange={setNewDeadlineTime}
-                                    t={t}
-                                />
-                            </div>
-                            <div className="space-y-1">
-                                <label className="type-overline text-slate-500">
-                                    {t("Priority", "Priorita", "Prioritás")}
-                                </label>
-                                <div className="grid grid-cols-3 gap-1 bg-slate-50 p-0.5 rounded-xl border border-slate-200 h-8.5 items-center">
-                                    {(["low", "medium", "high"] as const).map((prio) => (
-                                        <button
-                                            key={prio}
-                                            type="button"
-                                            onClick={() => setNewPriority(prio)}
-                                            className={`py-1 rounded-lg type-overline transition-all cursor-pointer flex items-center justify-center gap-1 ${
-                                                newPriority === prio
-                                                    ? prio === "high"
-                                                        ? "bg-rose-600 text-white shadow-xs"
-                                                        : prio === "medium"
-                                                          ? "bg-amber-500 text-white shadow-xs"
-                                                          : "bg-slate-600 text-white shadow-xs"
-                                                    : "bg-white text-slate-500 hover:bg-slate-100"
-                                            }`}
-                                        >
-                                            {renderPriorityIcon(prio, "h-2.5 w-2.5")}
-                                            <span className="hidden ws-xl:inline">{priorityLabel(prio)}</span>
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
-
-                        {/* Row 2: Assignee, Lead/Client, Project (All on 1 row) */}
-                        <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-2.5">
-                            <div className="space-y-1">
-                                <label className="type-overline text-slate-500">
-                                    {t("Assignee", "Priradiť", "Felelős")}
-                                </label>
-                                <CustomSelect
-                                    value={newAssignedUser}
-                                    onChange={(v) => setNewAssignedUser(v)}
-                                    size="sm"
-                                    options={[
-                                        {
-                                            value: "",
-                                            label: t("-- Unassigned --", "-- Nepriradený --", "-- Kijelöletlen --"),
-                                        },
-                                        ...users.map((u) => ({
-                                            value: u.name,
-                                            label: `${u.name} (${u.role})`,
-                                        })),
-                                    ]}
-                                />
-                            </div>
-
-                            <div className="space-y-1">
-                                <label className="type-overline text-slate-500">
-                                    {t("Link to Lead / Client", "Prepojiť s leadom / klientom", "Összekapcsolás leaddel / ügyféllel")}
-                                </label>
-                                <ClientSelect
-                                    leads={leads}
-                                    value={newRelatedLeadId}
-                                    onChange={(v) => {
-                                        setNewRelatedLeadId(v);
-                                        if (!v) setNewIsLocking(false);
-                                    }}
-                                    showCity={false}
-                                    showKind
-                                    addKind="lead"
-                                    noneLabel={t("-- None --", "-- Žiadny --", "-- Nincs --")}
-                                />
-                            </div>
-
-                            <div className="space-y-1">
-                                <label className="type-overline text-slate-500 flex items-center gap-1">
-                                    <FolderKanban className="h-3 w-3" />
-                                    {t("Project", "Projekt", "Projekt")}
-                                </label>
-                                <CustomSelect
-                                    searchable
-                                    value={newRelatedProjectId}
-                                    onChange={setNewRelatedProjectId}
-                                    size="sm"
-                                    options={taskProjectOptions(projects, leads, t)}
-                                />
-                            </div>
-                        </div>
-
-                        {newRelatedLeadId && (
-                            <div className="p-2 rounded-xl bg-violet-50/60 border border-violet-100 flex items-center justify-between">
-                                <span className="type-overline text-violet-700 flex items-center gap-1">
-                                    <Lock className="h-3 w-3" />{" "}
-                                    {t("Block Pipeline Stage", "Zablokovať fázu pipeline", "Folyamat szakasz zárolása")}
-                                </span>
-                                <input
-                                    type="checkbox"
-                                    checked={newIsLocking}
-                                    onChange={(e) => setNewIsLocking(e.target.checked)}
-                                    className="h-3.5 w-3.5 cursor-pointer accent-violet-600"
-                                />
-                            </div>
-                        )}
-
-                        <TaskEmailReminderField
-                            task={{
-                                deadline: newDeadline,
-                                deadlineTime: newDeadlineTime,
-                                emailReminders: newEmailReminders,
-                            }}
-                            onChange={setNewEmailReminders}
-                            currentUserName={myName}
-                            users={users}
-                            systemLanguage={systemLanguage}
-                            t={t}
-                            mailConfigured={mailConfigured}
-                        />
-
-                        <div className="flex items-center gap-2 pt-1">
-                            <button
-                                type="button"
-                                onClick={closeAddDrawer}
-                                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold text-ui transition-colors cursor-pointer shrink-0"
-                            >
-                                {t("Cancel", "Zrušiť", "Mégse")}
-                            </button>
-                            <div className="flex-1 flex items-stretch rounded-xl overflow-hidden shadow-lg shadow-orange-500/25 bg-[#ff5d00] transition-all">
-                                <button
-                                    type="submit"
-                                    className="w-2/3 py-2.5 px-3 bg-[#ff5d00] hover:bg-[#e05200] active:bg-[#c94a00] text-white type-overline flex items-center justify-center gap-1.5 transition-colors cursor-pointer text-center truncate"
-                                    title={t("Create task & close form", "Vytvoriť úlohu a zatvoriť formulár", "Feladat létrehozása és bezárás")}
-                                >
-                                    {t("Create task", "Vytvoriť úlohu", "Feladat létrehozása")}
-                                </button>
-                                <div className="w-px bg-white/30 self-stretch my-2 shrink-0" />
-                                <button
-                                    type="button"
-                                    onClick={(e) => handleCreateTask(e, false)}
-                                    className="w-1/3 py-2.5 px-3 bg-[#ff5d00] hover:bg-[#e05200] active:bg-[#c94a00] text-white type-overline flex items-center justify-center gap-1.5 transition-colors cursor-pointer text-center truncate"
-                                    title={t("Create task & add another", "Vytvoriť úlohu a pridať ďalšiu", "Létrehozás és újabb hozzáadása")}
-                                >
-                                    {t("Add another", "Pridať ďalšiu", "Újabb hozzáadása")}
-                                </button>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-            )}
+            <div className="w-full shrink-0 sticky top-0 z-20">
+                <VoiceTaskActionBar
+                    canCreate={taskAccess.create}
+                    systemLanguage={systemLanguage}
+                    currentUser={currentUser}
+                    users={users}
+                    defaultAssignee={myName}
+                    defaultStatus={taskStates[0] || "New"}
+                    manualButtonText={t(
+                        "Create New Task",
+                        "Vytvoriť novú úlohu",
+                        "Új feladat",
+                    )}
+                    onManualCreateClick={() => openAddTask()}
+                    onTasksCreated={(createdTasks) => {
+                        setTasks((prev) => [...createdTasks, ...prev]);
+                    }}
+                />
             </div>
 
             {/* One unified card for all task sections (including delegated tasks grouped in the same divisions) */}
@@ -4217,10 +3841,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                             {taskAccess.create && (
                                 <button
-                                    onClick={() => {
-                                        resetNewTaskForm();
-                                        setIsAddDrawerOpen(true);
-                                    }}
+                                    onClick={() => openAddTask()}
                                     className="px-3.5 py-1.5 bg-[#ff5d00] hover:bg-[#e05200] text-white rounded-xl font-bold text-ui shadow-sm shadow-orange-500/25 transition-all active:scale-[0.98] flex items-center gap-1.5 cursor-pointer shrink-0"
                                     title={t("Create New Task", "Vytvoriť novú úlohu", "Új feladat")}
                                 >
@@ -5003,15 +4624,29 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     "Žiadne úlohy.",
                                     "Nincsenek feladatok.",
                                 ),
-                                onAddTask: (dateStr) => {
-                                    if (!taskAccess.create) return;
-                                    resetNewTaskForm(dateStr);
-                                    setIsAddDrawerOpen(true);
-                                },
+                                onAddTask: (dateStr) => openAddTask(dateStr),
                             })}
                         </div>
                     )}
                 </div>
+            )}
+
+            {isAddDrawerOpen && taskAccess.create && (
+                <QuickTaskModal
+                    tasks={tasks}
+                    leads={leads}
+                    projects={projects}
+                    users={users}
+                    taskStates={taskStates}
+                    systemLanguage={systemLanguage}
+                    currentUserName={myName}
+                    mailConfigured={mailConfigured}
+                    leadStageGroups={leadStageGroups}
+                    leadStateParents={leadStateParents}
+                    initialDeadline={addDeadline}
+                    onCreate={(created) => setTasks((prev) => [...created, ...prev])}
+                    onClose={closeAddDrawer}
+                />
             )}
 
             {editingTask && (
@@ -5028,6 +4663,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     canEdit={mayEditTask(editingTask)}
                     canArchive={mayArchiveTask(editingTask)}
                     existingTags={allExistingTags}
+                    leadStageGroups={leadStageGroups}
+                    leadStateParents={leadStateParents}
                     onTagClick={handleTagClick}
                     onSave={(next) => {
                         if (!mayEditTask(next)) return;

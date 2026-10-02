@@ -119,8 +119,8 @@ export const FilesView: React.FC<FilesViewProps> = ({
 
   const getSuggestions = (queueFileId: string) => {
     const query = (searchInputs[queueFileId] || "").toLowerCase().trim();
-    const validLeads = leads.filter(l => l.id !== "unassigned-docs");
-    
+    const validLeads = leads.filter(l => l.id !== "unassigned-docs" && !l.archived);
+
     if (!query) {
       return [...validLeads]
         .sort((a, b) => a.name.localeCompare(b.name))

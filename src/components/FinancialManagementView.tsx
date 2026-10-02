@@ -615,9 +615,10 @@ const SearchableScopeSelect: React.FC<SearchableScopeSelectProps> = ({
   }, [projects, leads, search]);
 
   const filteredLeads = useMemo(() => {
-    if (!search.trim()) return leads;
+    const visible = leads.filter((l) => !l.archived);
+    if (!search.trim()) return visible;
     const q = search.toLowerCase().trim();
-    return leads.filter((l) => {
+    return visible.filter((l) => {
       const matchName = l.name.toLowerCase().includes(q);
       const matchCity = (l.city || "").toLowerCase().includes(q);
       const matchPhone = (l.phone || "").toLowerCase().includes(q);
