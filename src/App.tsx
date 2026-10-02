@@ -3,7 +3,7 @@ import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { LoginView } from "./components/LoginView";
 import { TaskDashboardView } from "./components/TaskDashboardView";
-import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, FinancialRecord, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings } from "./types";
+import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, FinancialRecord, FinancialOperatingMode, FinancialSimplifiedTable, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings } from "./types";
 import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAssignment";
 import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils/projectAutoCreate";
 import { normalizeProjectStatusDefs, type ProjectStatusDef } from "./utils/projects";
@@ -188,6 +188,8 @@ const computeSettingsSig = (s: any): string => {
     s.integrationsConfig ?? null,
     s.companyBillingSettings ?? null,
     s.invoicingIntegrations ?? null,
+    s.financialMode ?? "connected",
+    s.financialSimplifiedTable ?? null,
   ]);
 };
 
@@ -202,6 +204,7 @@ const computePushSig = (p: {
   warehouses?: unknown; suppliers?: unknown; warehouseItems?: unknown;
   warehouseStock?: unknown; warehouseBatches?: unknown; warehouseMovements?: unknown;
   financialCategories?: unknown; financialRecords?: unknown;
+  financialMode?: unknown; financialSimplifiedTable?: unknown;
   invoicesOffers?: unknown; aiCustomTemplates?: unknown; clientCategories?: unknown;
   employees?: unknown; employeeSalaries?: unknown; employeeVacations?: unknown; employeeSettings?: unknown;
   settings?: any;
@@ -210,6 +213,7 @@ const computePushSig = (p: {
   p.unifiedEntriesData, p.customDashboards, p.projectTypes, p.projects,
   p.warehouses, p.suppliers, p.warehouseItems, p.warehouseStock, p.warehouseBatches, p.warehouseMovements,
   p.financialCategories, p.financialRecords,
+  p.financialMode, p.financialSimplifiedTable,
   p.invoicesOffers, p.aiCustomTemplates, p.clientCategories,
   p.employees, p.employeeSalaries, p.employeeVacations, p.employeeSettings,
   computeSettingsSig(p.settings),
@@ -331,6 +335,8 @@ function App() {
   const aiCustomTemplatesRef = useRef<AiCustomTemplate[]>([]);
   const clientCategoriesRef = useRef<ClientCategory[]>([]);
   const financialTrendRef = useRef<FinancialTrendSettings>(EMPTY_FINANCIAL_TREND);
+  const financialModeRef = useRef<FinancialOperatingMode>("connected");
+  const financialSimplifiedTableRef = useRef<FinancialSimplifiedTable>({});
   const companyBillingSettingsRef = useRef<CompanyBillingSettings | null>(null);
   const invoicingIntegrationsRef = useRef<ExternalInvoicingConfig | null>(null);
   const employeesRef = useRef<Employee[]>([]);
@@ -620,6 +626,8 @@ function App() {
    * setting — see utils/financialTrend.ts for why it moved out of localStorage.
    */
   const [financialTrend, setFinancialTrend] = useState<FinancialTrendSettings>(EMPTY_FINANCIAL_TREND);
+  const [financialMode, setFinancialMode] = useState<FinancialOperatingMode>("connected");
+  const [financialSimplifiedTable, setFinancialSimplifiedTable] = useState<FinancialSimplifiedTable>({});
   const [companyBillingSettings, setCompanyBillingSettings] = useState<CompanyBillingSettings | null>(null);
   const [invoicingIntegrations, setInvoicingIntegrations] = useState<ExternalInvoicingConfig | null>(null);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -1112,6 +1120,8 @@ ${log.payload || ''}
   aiCustomTemplatesRef.current = aiCustomTemplates;
   clientCategoriesRef.current = clientCategories;
   financialTrendRef.current = financialTrend;
+  financialModeRef.current = financialMode;
+  financialSimplifiedTableRef.current = financialSimplifiedTable;
   companyBillingSettingsRef.current = companyBillingSettings;
   invoicingIntegrationsRef.current = invoicingIntegrations;
   employeesRef.current = employees;
@@ -1219,6 +1229,8 @@ ${log.payload || ''}
       // "omitted means unchanged", so narrowing it would be indistinguishable
       // from a client that predates the key.
       financialTrend: financialTrendRef.current,
+      financialMode: financialModeRef.current,
+      financialSimplifiedTable: financialSimplifiedTableRef.current,
       settings: {
         systemName,
         systemLanguage,
@@ -1244,7 +1256,9 @@ ${log.payload || ''}
         projectStatuses,
         integrationsConfig: nextIntegrationsConfig ?? integrationsConfigRef.current,
         companyBillingSettings: companyBillingSettingsRef.current,
-        invoicingIntegrations: invoicingIntegrationsRef.current
+        invoicingIntegrations: invoicingIntegrationsRef.current,
+        financialMode: financialModeRef.current,
+        financialSimplifiedTable: financialSimplifiedTableRef.current
       }
     };
     // No server settings seen yet → these are defaults, not edits. sync.php
@@ -1713,6 +1727,22 @@ ${log.payload || ''}
     pushStateToServer();
   };
 
+  const updateFinancialModeAndSync = (next: FinancialOperatingMode) => {
+    financialModeRef.current = next;
+    setFinancialMode(next);
+    pushStateToServer();
+  };
+
+  const updateFinancialSimplifiedTableAndSync = (
+    updater: FinancialSimplifiedTable | ((prev: FinancialSimplifiedTable) => FinancialSimplifiedTable)
+  ) => {
+    const prev = financialSimplifiedTableRef.current;
+    const next = typeof updater === "function" ? updater(prev) : updater;
+    financialSimplifiedTableRef.current = next;
+    setFinancialSimplifiedTable(next);
+    pushStateToServer();
+  };
+
   /**
    * Every invoice change is mirrored into the finance ledger (audit F27): an
    * issued invoice owns one linked `pending` income movement. Resolved against
@@ -2170,6 +2200,7 @@ ${log.payload || ''}
       leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups,
       leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors,
       projectStatuses,
+      financialMode, financialSimplifiedTable,
     });
     // Before we have ever seen the server's settings, just record the current
     // signature — there is nothing to push yet, and pushing here would echo the
@@ -2197,7 +2228,7 @@ ${log.payload || ''}
       // newest values.
       pushStateToServer();
     }, 700);
-  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, projectStatuses, isInitialSyncResolved]);
+  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, projectStatuses, financialMode, financialSimplifiedTable, isInitialSyncResolved]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -2461,6 +2492,20 @@ ${log.payload || ''}
           JSON.stringify(incoming) !== JSON.stringify(prev) ? incoming : prev
         );
       }
+      if (data.financialMode !== undefined || (data.settings && data.settings.financialMode !== undefined)) {
+        const rawMode = data.financialMode ?? data.settings?.financialMode;
+        const incomingMode: FinancialOperatingMode = rawMode === "simplified" ? "simplified" : "connected";
+        financialModeRef.current = incomingMode;
+        setFinancialMode((prev) => prev !== incomingMode ? incomingMode : prev);
+      }
+      if (data.financialSimplifiedTable !== undefined || (data.settings && data.settings.financialSimplifiedTable !== undefined)) {
+        const rawTable = data.financialSimplifiedTable ?? data.settings?.financialSimplifiedTable;
+        const incomingTable: FinancialSimplifiedTable = (rawTable && typeof rawTable === "object") ? rawTable : {};
+        financialSimplifiedTableRef.current = incomingTable;
+        setFinancialSimplifiedTable((prev) =>
+          JSON.stringify(incomingTable) !== JSON.stringify(prev) ? incomingTable : prev
+        );
+      }
       if (data.settings) {
         const s = data.settings;
         if (s.systemName && s.systemName !== systemName) setSystemName(s.systemName);
@@ -2575,6 +2620,8 @@ ${log.payload || ''}
         warehouseMovements: data.warehouseMovements ?? warehouseMovementsRef.current,
         financialCategories: data.financialCategories ?? financialCategoriesRef.current,
         financialRecords: data.financialRecords ?? financialRecordsRef.current,
+        financialMode: data.financialMode ?? data.settings?.financialMode ?? financialModeRef.current,
+        financialSimplifiedTable: data.financialSimplifiedTable ?? data.settings?.financialSimplifiedTable ?? financialSimplifiedTableRef.current,
         invoicesOffers: data.invoicesOffers ?? invoicesOffersRef.current,
         aiCustomTemplates: data.aiCustomTemplates ?? aiCustomTemplatesRef.current,
         clientCategories: data.clientCategories ?? clientCategoriesRef.current,
@@ -3087,6 +3134,8 @@ ${log.payload || ''}
           financialCategories={financialCategories}
           setFinancialCategories={updateFinancialCategoriesAndSync}
           setFinancialRecords={updateFinancialRecordsAndSync}
+          financialMode={financialMode}
+          setFinancialMode={updateFinancialModeAndSync}
           companyBillingSettings={companyBillingSettings}
           setCompanyBillingSettings={updateCompanyBillingSettingsAndSync}
           invoicingIntegrations={invoicingIntegrations}
@@ -3237,6 +3286,10 @@ ${log.payload || ''}
             setFinancialCategories={updateFinancialCategoriesAndSync}
             financialTrend={financialTrend}
             setFinancialTrend={updateFinancialTrendAndSync}
+            financialMode={financialMode}
+            setFinancialMode={updateFinancialModeAndSync}
+            financialSimplifiedTable={financialSimplifiedTable}
+            setFinancialSimplifiedTable={updateFinancialSimplifiedTableAndSync}
             projects={projects}
             leads={leads}
             users={users}
