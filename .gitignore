@@ -109,3 +109,8 @@ __pycache__/
 /AST_Driven_Development_Research_Paper.pdf
 /ast-driven-development.zip
 
+
+# Automated release notes (docs/RELEASE-NOTES.md): local state, run artefacts,
+# the Craft token, and the specs the agent generates per release.
+/.release-notes/
+/tests/release-notes/generated/
