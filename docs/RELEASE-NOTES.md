@@ -63,14 +63,16 @@ validator and the app's GraphQL query all use these layout handles:
 
 | Entry type (in `contentMatrix`) | Fields — layout handle ← field |
 |---|---|
-| `heading` | `headingText` ← textfield · `headingLevel` · `moduleTag` ← textfield |
+| `heading` | **Title** (the heading text) · `headingLevel` · `moduleTag` ← textfield |
 | `gallery` | `images` · `galleryColumns` |
 | `callout` | `calloutType` · `text` ← ckeditorExtended |
-| `changeList` | `listType` · `headingText` ← textfield · `listItems` ← textfieldMultiline |
+| `changeList` | `listType` · **Title** (the list heading, required) · `listItems` ← textfieldMultiline |
 | `news` (the article) | add `releaseType` and `sourceCommit` ← textfieldNotTranslatable — optional |
 
-Title field off on the four block types; add them to `contentMatrix`'s entry
-types. Then check **GraphQL → Schemas → Public**: the four new entry types and
+`heading` and `changeList` keep their text in the block's own Title (*Use a
+title field* on, per site); the module writes `headingText` there and the app
+reads `title`. `gallery` and `callout` have no title field. All four are in
+`contentMatrix`'s entry types. Then check **GraphQL → Schemas → Public**: the four new entry types and
 the `images` volume must be readable, or the app keeps falling back to the old
 three blocks. If the news section is also rendered by the public Craft site,
 its templates need the four new blocks too.

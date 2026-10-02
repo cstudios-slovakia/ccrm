@@ -67,6 +67,13 @@ test("splitListItems drops blanks and list markers", () => {
   assert.deepEqual(splitListItems(null), []);
 });
 
+test("heading and change-list text comes from the block title", () => {
+  const extended = buildUpdateNotesQuery(true);
+  assert.match(extended, /heading_Entry { title headingLevel moduleTag }/);
+  assert.match(extended, /changeList_Entry { title listType listItems }/);
+  assert.ok(!extended.includes("headingText"), "headingText is not a field in Craft");
+});
+
 test("the legacy query never names the extended block types", () => {
   const legacy = buildUpdateNotesQuery(false);
   for (const type of ["heading_Entry", "gallery_Entry", "callout_Entry", "changeList_Entry"]) {
