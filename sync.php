@@ -1898,6 +1898,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         // the person who reconciled a week against the bank statement saw one
         // projection and every colleague saw another.
         'financialTrend' => ccrm_normalize_financial_trend($settings['FINANCIAL_TREND'] ?? null),
+        'financialMode' => $settings['FINANCIAL_MODE'] ?? 'connected',
+        'financialSimplifiedTable' => json_decode($settings['FINANCIAL_SIMPLIFIED_TABLE'] ?? '{}', true) ?: (object)[],
         'settings' => [
             'systemName' => $settings['SYSTEM_NAME'] ?? 'CCRM',
             'systemLanguage' => $settings['SYSTEM_LANGUAGE'] ?? 'sk',
@@ -4371,6 +4373,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $trend = ccrm_normalize_financial_trend($payload['financialTrend']);
             $insTrend = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('FINANCIAL_TREND', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
             $insTrend->execute([json_encode($trend)]);
+        }
+
+        // 4.14c. Financial mode and simplified table matrix
+        if (isset($payload['financialMode']) && is_string($payload['financialMode'])
+            && !$ccrm_skip_writes('financial', 'financialMode')) {
+            $fMode = in_array($payload['financialMode'], ['connected', 'simplified'], true) ? $payload['financialMode'] : 'connected';
+            $insFMode = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('FINANCIAL_MODE', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
+            $insFMode->execute([$fMode]);
+        }
+        if (isset($payload['financialSimplifiedTable']) && is_array($payload['financialSimplifiedTable'])
+            && !$ccrm_skip_writes('financial', 'financialSimplifiedTable')) {
+            $insFSimp = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('FINANCIAL_SIMPLIFIED_TABLE', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
+            $insFSimp->execute([json_encode($payload['financialSimplifiedTable'])]);
         }
 
         // 4.15. Synchronize Invoices & Price Offers

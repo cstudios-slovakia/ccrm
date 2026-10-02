@@ -6,7 +6,7 @@ import {
   Eye, Pencil, Minus, GripVertical, ArrowLeft, Activity, Clock, CheckSquare, Check,
   Menu, ArrowUp, FolderOpen, Search, FileText, Building2, Sparkles
 } from "lucide-react";
-import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, Project, ProjectType, FinancialCategory, FinancialRecord, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, CustomDashboard } from "../types";
+import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, Project, ProjectType, FinancialCategory, FinancialRecord, FinancialOperatingMode, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, CustomDashboard } from "../types";
 import { leadAssignmentPanel, resolveAssignmentPool, type LeadAssignmentPanel } from "../utils/leadAssignment";
 import { normalizeSlaDays, type LeadStateSla } from "../utils/leadSla";
 import { listIdFor, nextListId, type ListIds } from "../utils/listIds";
@@ -525,6 +525,8 @@ interface SettingsViewProps {
   financialCategories?: FinancialCategory[];
   setFinancialCategories?: React.Dispatch<React.SetStateAction<FinancialCategory[]>>;
   setFinancialRecords?: React.Dispatch<React.SetStateAction<FinancialRecord[]>>;
+  financialMode?: FinancialOperatingMode;
+  setFinancialMode?: (mode: FinancialOperatingMode) => void;
 
   companyBillingSettings?: CompanyBillingSettings | null;
   setCompanyBillingSettings?: React.Dispatch<React.SetStateAction<CompanyBillingSettings | null>>;
@@ -643,6 +645,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   financialCategories,
   setFinancialCategories,
   setFinancialRecords,
+  financialMode,
+  setFinancialMode,
   companyBillingSettings,
   setCompanyBillingSettings,
   invoicingIntegrations,
@@ -4063,6 +4067,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 financialCategories={financialCategories}
                 setFinancialCategories={setFinancialCategories}
                 setFinancialRecords={setFinancialRecords}
+                financialMode={financialMode}
+                setFinancialMode={setFinancialMode}
                 canEdit={getPermission("financial") === "edit"}
                 canDelete={getPermission("financial") === "edit" && getPermission("financial.delete") === "edit"}
               />

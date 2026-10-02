@@ -20,6 +20,8 @@ import type {
   FinancialType,
   FinancialStatus,
   FinancialRecurringFrequency,
+  FinancialOperatingMode,
+  FinancialSimplifiedTable,
   Project,
   Lead,
   UserProfile
@@ -66,6 +68,7 @@ import {
 import {
   UNCATEGORIZED_ROW_ID,
   aggregateOverviewTable,
+  aggregateSimplifiedOverviewTable,
   isRecurringChargeSettled,
   overviewRecordDate,
   recurringOwnRowCharge,
@@ -615,9 +618,10 @@ const SearchableScopeSelect: React.FC<SearchableScopeSelectProps> = ({
   }, [projects, leads, search]);
 
   const filteredLeads = useMemo(() => {
-    if (!search.trim()) return leads;
+    const visible = leads.filter((l) => !l.archived);
+    if (!search.trim()) return visible;
     const q = search.toLowerCase().trim();
-    return leads.filter((l) => {
+    return visible.filter((l) => {
       const matchName = l.name.toLowerCase().includes(q);
       const matchCity = (l.city || "").toLowerCase().includes(q);
       const matchPhone = (l.phone || "").toLowerCase().includes(q);
@@ -847,6 +851,10 @@ interface FinancialManagementViewProps {
    */
   financialTrend?: FinancialTrendSettings;
   setFinancialTrend?: (next: FinancialTrendSettings) => void;
+  financialMode?: FinancialOperatingMode;
+  setFinancialMode?: (mode: FinancialOperatingMode) => void;
+  financialSimplifiedTable?: FinancialSimplifiedTable;
+  setFinancialSimplifiedTable?: React.Dispatch<React.SetStateAction<FinancialSimplifiedTable>> | ((updater: FinancialSimplifiedTable | ((prev: FinancialSimplifiedTable) => FinancialSimplifiedTable)) => void);
   projects: Project[];
   leads: Lead[];
   users: UserProfile[];
@@ -865,6 +873,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   setFinancialCategories,
   financialTrend = EMPTY_FINANCIAL_TREND,
   setFinancialTrend,
+  financialMode = "connected",
+  setFinancialMode,
+  financialSimplifiedTable = {},
+  setFinancialSimplifiedTable,
   projects = [],
   leads = [],
   userLanguage,
@@ -973,6 +985,41 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   const [tableValueMode, setTableValueMode] = useState<"both" | "real" | "estimated" | "total">("both");
   const [expandedCatIds, setExpandedCatIds] = useState<Set<string>>(() => new Set());
   const [tableSearchQuery, setTableSearchQuery] = useState("");
+
+  // Simplified Mode Spreadsheet Editing State
+  const [editingCell, setEditingCell] = useState<{ catId: string; colId: string } | null>(null);
+  const [editingValue, setEditingValue] = useState<string>("");
+  const editInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editingCell && editInputRef.current) {
+      editInputRef.current.focus();
+      editInputRef.current.select();
+    }
+  }, [editingCell]);
+
+  const commitCellEdit = () => {
+    if (!editingCell || !setFinancialSimplifiedTable) {
+      setEditingCell(null);
+      return;
+    }
+    const cellKey = `${editingCell.catId}:${editingCell.colId}`;
+    const trimmed = editingValue.trim();
+    setFinancialSimplifiedTable((prev) => {
+      const next = { ...prev };
+      if (trimmed) {
+        next[cellKey] = trimmed;
+      } else {
+        delete next[cellKey];
+      }
+      return next;
+    });
+    setEditingCell(null);
+  };
+
+  const cancelCellEdit = () => {
+    setEditingCell(null);
+  };
 
   const toggleCategoryExpand = (catId: string) => {
     setExpandedCatIds((prev) => {
@@ -2656,99 +2703,131 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       });
     }
 
-    // 1. Distribute Single (Non-recurring) Records
-    financialRecords.forEach((rec) => {
-      if (rec.isRecurring) return;
-
-      const recDateStr = overviewRecordDate(rec);
-      if (!recDateStr) return;
-
+    if (financialMode === "simplified") {
+      const monthCols = buckets.map((b) => ({
+        id: `${b.year}-${pad(b.weekNum)}`,
+        startIso: b.startIso,
+        endIso: b.endIso,
+        isFuture: b.isFuture
+      }));
+      const simAgg = aggregateSimplifiedOverviewTable(financialSimplifiedTable, financialCategories, monthCols);
       buckets.forEach((b) => {
-        if (recDateStr >= b.startIso && recDateStr <= b.endIso) {
-          const { real, estimated } = splitRecordAmounts(rec);
+        const colId = `${b.year}-${pad(b.weekNum)}`;
+        const exp = simAgg.totalExpensesByCol[colId]?.total || 0;
+        const inc = simAgg.totalIncomesByCol[colId]?.total || 0;
+        b.expenseReal = exp;
+        b.incomeReal = inc;
+        b.totalExpense = exp;
+        b.totalIncome = inc;
+        b.netDifference = inc - exp;
 
-          if (rec.type === "income") {
-            b.incomeReal += real;
-            if (b.isFuture) b.incomeProjected += estimated;
-            else b.incomePlanned += estimated;
-          } else {
-            b.expenseReal += real;
-            if (b.isFuture) b.expenseProjected += estimated;
-            else b.expensePlanned += estimated;
+        financialCategories.forEach((cat) => {
+          const cell = simAgg.cells[cat.id]?.[colId];
+          if (cell && cell.total !== 0) {
+            b.items.push({
+              title: cat.name,
+              amount: cell.total,
+              type: cat.type,
+              isRecurring: false
+            });
           }
-
-          b.items.push({
-            title: rec.title,
-            amount: rec.amountPlanned || rec.amountReal,
-            type: rec.type,
-            isRecurring: false
-          });
-        }
+        });
       });
-    });
+    } else {
+      // 1. Distribute Single (Non-recurring) Records
+      financialRecords.forEach((rec) => {
+        if (rec.isRecurring) return;
 
-    // 2. Project Recurring Movements across the months
-    financialRecords.forEach((rec) => {
-      if (!rec.isRecurring) return;
-      const freq = rec.recurringFrequency || "monthly";
+        const recDateStr = overviewRecordDate(rec);
+        if (!recDateStr) return;
 
-      buckets.forEach((b) => {
-        recurringCharges(rec, b.startIso, b.endIso).forEach(({ date, amount: amt }) => {
-          if (!amt) return;
-          const settled = isRecurringChargeSettled(date, todayIso);
+        buckets.forEach((b) => {
+          if (recDateStr >= b.startIso && recDateStr <= b.endIso) {
+            const { real, estimated } = splitRecordAmounts(rec);
 
-          if (rec.type === "income") {
-            if (settled) {
-              b.incomeReal += amt;
+            if (rec.type === "income") {
+              b.incomeReal += real;
+              if (b.isFuture) b.incomeProjected += estimated;
+              else b.incomePlanned += estimated;
             } else {
-              b.incomeProjected += amt;
+              b.expenseReal += real;
+              if (b.isFuture) b.expenseProjected += estimated;
+              else b.expensePlanned += estimated;
             }
-          } else {
-            if (settled) {
-              b.expenseReal += amt;
-            } else {
-              b.expenseProjected += amt;
-            }
+
+            b.items.push({
+              title: rec.title,
+              amount: rec.amountPlanned || rec.amountReal,
+              type: rec.type,
+              isRecurring: false
+            });
           }
+        });
+      });
 
-          b.items.push({
+      // 2. Project Recurring Movements across the months
+      financialRecords.forEach((rec) => {
+        if (!rec.isRecurring) return;
+        const freq = rec.recurringFrequency || "monthly";
+
+        buckets.forEach((b) => {
+          recurringCharges(rec, b.startIso, b.endIso).forEach(({ date, amount: amt }) => {
+            if (!amt) return;
+            const settled = isRecurringChargeSettled(date, todayIso);
+
+            if (rec.type === "income") {
+              if (settled) {
+                b.incomeReal += amt;
+              } else {
+                b.incomeProjected += amt;
+              }
+            } else {
+              if (settled) {
+                b.expenseReal += amt;
+              } else {
+                b.expenseProjected += amt;
+              }
+            }
+
+            b.items.push({
+              title: `🔄 ${rec.title}`,
+              amount: amt,
+              type: rec.type,
+              isRecurring: true,
+              frequency: freq
+            });
+          });
+        });
+
+        const ownRow = recurringOwnRowCharge(rec);
+        const ownBucket = ownRow && buckets.find((b) => ownRow.date >= b.startIso && ownRow.date <= b.endIso);
+        if (ownRow && ownBucket) {
+          if (rec.type === "income") {
+            ownBucket.incomeReal += ownRow.real;
+            if (ownBucket.isFuture) ownBucket.incomeProjected += ownRow.estimated;
+            else ownBucket.incomePlanned += ownRow.estimated;
+          } else {
+            ownBucket.expenseReal += ownRow.real;
+            if (ownBucket.isFuture) ownBucket.expenseProjected += ownRow.estimated;
+            else ownBucket.expensePlanned += ownRow.estimated;
+          }
+          ownBucket.items.push({
             title: `🔄 ${rec.title}`,
-            amount: amt,
+            amount: ownRow.real + ownRow.estimated,
             type: rec.type,
             isRecurring: true,
             frequency: freq
           });
-        });
+        }
       });
 
-      const ownRow = recurringOwnRowCharge(rec);
-      const ownBucket = ownRow && buckets.find((b) => ownRow.date >= b.startIso && ownRow.date <= b.endIso);
-      if (ownRow && ownBucket) {
-        if (rec.type === "income") {
-          ownBucket.incomeReal += ownRow.real;
-          if (ownBucket.isFuture) ownBucket.incomeProjected += ownRow.estimated;
-          else ownBucket.incomePlanned += ownRow.estimated;
-        } else {
-          ownBucket.expenseReal += ownRow.real;
-          if (ownBucket.isFuture) ownBucket.expenseProjected += ownRow.estimated;
-          else ownBucket.expensePlanned += ownRow.estimated;
-        }
-        ownBucket.items.push({
-          title: `🔄 ${rec.title}`,
-          amount: ownRow.real + ownRow.estimated,
-          type: rec.type,
-          isRecurring: true,
-          frequency: freq
-        });
-      }
-    });
-
-    // 3. Final totals & Net Difference per month
-    buckets.forEach((b) => {
-      b.totalIncome = b.incomeReal + b.incomePlanned + b.incomeProjected;
-      b.totalExpense = b.expenseReal + b.expensePlanned + b.expenseProjected;
-      b.netDifference = b.totalIncome - b.totalExpense;
-    });
+      // 3. Final totals & Net Difference per month
+      buckets.forEach((b) => {
+        b.totalIncome = b.incomeReal + b.incomePlanned + b.incomeProjected;
+        b.totalExpense = b.expenseReal + b.expensePlanned + b.expenseProjected;
+        b.netDifference = b.totalIncome - b.totalExpense;
+      });
+    }
 
     // 4. Calculate Cumulative Running Bank Account Balance across Months
     const explicitAnchors: number[] = [];
@@ -2806,7 +2885,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     }
 
     return buckets;
-  }, [financialRecords, weeklyBankBalances, defaultBankBalance, projectionMonths, TREND_PAST_MONTHS, userLanguage, weeklyTrendData]);
+  }, [financialRecords, financialCategories, financialMode, financialSimplifiedTable, weeklyBankBalances, defaultBankBalance, projectionMonths, TREND_PAST_MONTHS, userLanguage, weeklyTrendData]);
 
   // Active dataset for the trend visualization (either weekly or monthly resolution)
   const trendData = activeResolution === "month" ? monthlyTrendData : weeklyTrendData;
@@ -2991,11 +3070,12 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
       }));
     }
 
-    // 2. Aggregate every movement into the matrix — which row it lands on, how
-    // much of it is settled versus still expected, and how the category levels
-    // roll up — lives in utils/financialOverviewTable.ts so it can be unit-tested.
+    // 2. Aggregate into the matrix
+    if (financialMode === "simplified") {
+      return { columns, ...aggregateSimplifiedOverviewTable(financialSimplifiedTable, financialCategories, columns) };
+    }
     return { columns, ...aggregateOverviewTable(financialRecords, financialCategories, columns, todayIso) };
-  }, [financialCategories, financialRecords, tableGranularity, tableYear, weeklyTrendData]);
+  }, [financialCategories, financialRecords, financialMode, financialSimplifiedTable, tableGranularity, tableYear, weeklyTrendData]);
 
   // Helper to render a cell value formatted by tableValueMode with distinct colors (Expense = Red, Income = Green)
   // and reduced font size for expanded child categories (Level 2 & Level 3)
@@ -3149,14 +3229,69 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
           {/* Period Columns */}
           {overviewTableData.columns.map((col) => {
             const cellVal = overviewTableData.cells[cat.id]?.[col.id] || { real: 0, estimated: 0, total: 0 };
+            const isEditing = editingCell?.catId === cat.id && editingCell?.colId === col.id;
+            const rawExpr = financialSimplifiedTable[`${cat.id}:${col.id}`];
+            const isSimplified = financialMode === "simplified";
+            const canEditCell = isSimplified && canEdit && !hasChildren;
+            const hasFormula = Boolean(
+              rawExpr && (rawExpr.includes("+") || rawExpr.includes("-") || rawExpr.includes("*") || rawExpr.includes("/") || rawExpr.startsWith("="))
+            );
+
             return (
               <td
                 key={cat.id + "-" + col.id}
-                className={`py-1 ws-sm:py-1.5 px-2 ws-sm:px-3 text-right ${
+                onClick={() => {
+                  if (canEditCell && !isEditing) {
+                    setEditingCell({ catId: cat.id, colId: col.id });
+                    setEditingValue(rawExpr !== undefined ? rawExpr : cellVal.real !== 0 ? String(cellVal.real) : "");
+                  }
+                }}
+                className={`py-1 ws-sm:py-1.5 px-2 ws-sm:px-3 text-right select-none transition-colors ${
                   col.isCurrent ? "bg-indigo-50/20  border-x border-indigo-100 " : ""
+                } ${
+                  canEditCell
+                    ? "cursor-pointer hover:bg-purple-50/60 hover:ring-1 hover:ring-inset hover:ring-purple-300"
+                    : isSimplified && hasChildren
+                    ? "cursor-default text-slate-500"
+                    : ""
                 }`}
+                title={
+                  isSimplified && hasChildren
+                    ? t("Calculated from subcategories", "Vypočítané z podkategórií", "Alkategóriákból számítva")
+                    : hasFormula
+                    ? `= ${rawExpr}`
+                    : undefined
+                }
               >
-                {renderTableCellValue(cellVal, type, level)}
+                {isEditing ? (
+                  <input
+                    ref={editInputRef}
+                    type="text"
+                    value={editingValue}
+                    onChange={(e) => setEditingValue(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        commitCellEdit();
+                      } else if (e.key === "Escape") {
+                        e.preventDefault();
+                        cancelCellEdit();
+                      }
+                    }}
+                    onBlur={commitCellEdit}
+                    placeholder="0"
+                    className="w-full min-w-16 px-1.5 py-0.5 text-right text-caption font-bold bg-white text-slate-900 border-2 border-purple-500 rounded-lg shadow-sm focus:outline-none focus:ring-1 focus:ring-purple-400"
+                  />
+                ) : (
+                  <div className="flex items-center justify-end gap-1">
+                    {isSimplified && hasFormula && (
+                      <span className="text-micro text-purple-600 font-mono font-bold select-none" title={`= ${rawExpr}`}>
+                        ƒ
+                      </span>
+                    )}
+                    {renderTableCellValue(cellVal, type, level)}
+                  </div>
+                )}
               </td>
             );
           })}
@@ -4599,6 +4734,35 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
             </button>
             )}
 
+            {setFinancialMode && (
+              <div className="hidden ws-sm:flex items-center gap-0.5 bg-slate-100 p-0.5 rounded-xl border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setFinancialMode("connected")}
+                  className={`px-2 py-1 rounded-lg text-micro font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    financialMode === "connected"
+                      ? "bg-white text-emerald-700 shadow-2xs border border-slate-200"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
+                  title={t("Connected: synced with financial movements", "Prepojený: synchronizovaný s pohybmi", "Összekapcsolt: mozgásokkal szinkronizálva")}
+                >
+                  {t("Connected", "Prepojený", "Összekapcsolt")}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFinancialMode("simplified")}
+                  className={`px-2 py-1 rounded-lg text-micro font-bold transition-all cursor-pointer whitespace-nowrap ${
+                    financialMode === "simplified"
+                      ? "bg-purple-600 text-white shadow-2xs"
+                      : "text-slate-500 hover:text-slate-800"
+                  }`}
+                  title={t("Simplified: Excel-like editable table with equations", "Zjednodušený: excelovská tabuľka s rovnicami", "Egyszerűsített: excel táblázat egyenletekkel")}
+                >
+                  ⚡ {t("Simplified", "Zjednodušený", "Egyszerűsített")}
+                </button>
+              </div>
+            )}
+
             <button
               type="button"
               onClick={() => setShowSettings(true)}
@@ -5793,6 +5957,36 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                     {t("Combined", "Spolu", "Összesen")}
                   </button>
                 </div>
+
+                {/* Operating Mode Quick Toggle */}
+                {setFinancialMode && (
+                  <div className="bg-slate-100  p-0.5 rounded-xl flex items-center gap-0.5 border border-slate-200 shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setFinancialMode("connected")}
+                      className={`px-2 py-1 rounded-lg text-micro font-bold transition-all cursor-pointer whitespace-nowrap ${
+                        financialMode === "connected"
+                          ? "bg-white  text-emerald-700  shadow-2xs border border-slate-200 "
+                          : "text-slate-500 hover:text-slate-800 "
+                      }`}
+                      title={t("Connected: synced with financial movements", "Prepojený: synchronizovaný s pohybmi", "Összekapcsolt: mozgásokkal szinkronizálva")}
+                    >
+                      {t("Connected", "Prepojený", "Összekapcsolt")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setFinancialMode("simplified")}
+                      className={`px-2 py-1 rounded-lg text-micro font-bold transition-all cursor-pointer whitespace-nowrap ${
+                        financialMode === "simplified"
+                          ? "bg-purple-600 text-white shadow-2xs"
+                          : "text-slate-500 hover:text-slate-800 "
+                      }`}
+                      title={t("Simplified: Excel-like editable table with equations", "Zjednodušený: excelovská tabuľka s rovnicami", "Egyszerűsített: excel táblázat egyenletekkel")}
+                    >
+                      ⚡ {t("Simplified", "Zjednodušený", "Egyszerűsített")}
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
 

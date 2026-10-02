@@ -787,6 +787,8 @@ export interface WarehouseMovement {
 export type FinancialType = 'income' | 'expense';
 export type FinancialStatus = 'planned' | 'pending' | 'paid' | 'partially_paid' | 'overdue' | 'cancelled';
 export type FinancialRecurringFrequency = 'weekly' | 'monthly' | 'yearly';
+export type FinancialOperatingMode = 'connected' | 'simplified';
+export type FinancialSimplifiedTable = Record<string, string>;
 
 export interface FinancialCategory {
   id: string;

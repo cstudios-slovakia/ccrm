@@ -1,6 +1,7 @@
 import type { FinancialCategory, FinancialRecord, FinancialType } from "../types";
 import { effectiveParentId } from "./financialCategoryTree.ts";
 import { isRecurringDateSkipped, recurringAmountsAt, recurringCharges } from "./recurringExpenses.ts";
+import { evaluateEquation } from "./equationEvaluator.ts";
 
 // The finance "Overview Table" is a matrix of category rows × period columns.
 // Everything that decides which row a movement lands on, how much of it counts
@@ -368,5 +369,134 @@ export function aggregateOverviewTable(
       income: !isEmptyOverviewCell(rowTotals[UNCATEGORIZED_ROW_ID.income])
     },
     outsideHorizon
+  };
+}
+
+/**
+ * Aggregates a detached / simplified matrix of user-entered numbers or equations.
+ * Each entry in `simplifiedTable` is keyed as `${categoryId}:${colId}`.
+ * Ancestor categories roll up child values; column totals and summaries match standard matrix shape.
+ */
+export function aggregateSimplifiedOverviewTable(
+  simplifiedTable: Record<string, string>,
+  categories: FinancialCategory[],
+  columns: OverviewColumn[]
+): OverviewTableAggregate {
+  const byId = new Map(categories.map((c) => [c.id, c]));
+  const uniqueCategories = Array.from(byId.values());
+
+  const direct: Record<string, Record<string, OverviewCell>> = {};
+  const addDirect = (rowId: string, colId: string, real: number, estimated: number) => {
+    if (real === 0 && estimated === 0) return;
+    const row = (direct[rowId] ||= {});
+    addTo((row[colId] ||= emptyOverviewCell()), real, estimated);
+  };
+
+  // Evaluate direct cells
+  uniqueCategories.forEach((cat) => {
+    columns.forEach((col) => {
+      const rawExpr = simplifiedTable[`${cat.id}:${col.id}`];
+      if (rawExpr !== undefined && rawExpr !== null && String(rawExpr).trim() !== "") {
+        const val = evaluateEquation(String(rawExpr));
+        if (val !== null && val !== 0) {
+          addDirect(cat.id, col.id, val, 0);
+        }
+      }
+    });
+  });
+
+  const cells: Record<string, Record<string, OverviewCell>> = {};
+  const cellOf = (rowId: string, colId: string): OverviewCell => (cells[rowId] ||= {})[colId] ||= emptyOverviewCell();
+
+  const chainOf = (cat: FinancialCategory): { ancestors: FinancialCategory[]; root: FinancialCategory } => {
+    const ancestors: FinancialCategory[] = [];
+    const seen = new Set<string>([cat.id]);
+    let current = cat;
+    for (;;) {
+      const parentId = effectiveParentId(current, byId);
+      if (parentId === null) return { ancestors, root: current };
+      if (seen.has(parentId)) return { ancestors: [], root: cat };
+      const parent = byId.get(parentId)!;
+      ancestors.push(parent);
+      seen.add(parent.id);
+      current = parent;
+    }
+  };
+
+  uniqueCategories.forEach((cat) => {
+    const own = direct[cat.id];
+    const targets = [cat, ...chainOf(cat).ancestors];
+    columns.forEach((col) => {
+      const value = own?.[col.id];
+      targets.forEach((target) => {
+        const cell = cellOf(target.id, col.id);
+        if (value) addCell(cell, value);
+      });
+    });
+  });
+
+  const rowTotals: Record<string, OverviewCell> = {};
+  Object.keys(cells).forEach((rowId) => {
+    const total = emptyOverviewCell();
+    columns.forEach((col) => addCell(total, cellOf(rowId, col.id)));
+    rowTotals[rowId] = total;
+  });
+
+  const rootsOf = (type: FinancialType): string[] => {
+    const ids = new Set<string>();
+    uniqueCategories.forEach((c) => {
+      if (c.type === type) ids.add(chainOf(c).root.id);
+    });
+    return [...ids];
+  };
+  const expenseRoots = rootsOf("expense");
+  const incomeRoots = rootsOf("income");
+
+  const totalExpensesByCol: Record<string, OverviewCell> = {};
+  const totalIncomesByCol: Record<string, OverviewCell> = {};
+  const netCashFlowByCol: Record<string, OverviewCell> = {};
+  const totalExpenseSummary = emptyOverviewCell();
+  const totalIncomeSummary = emptyOverviewCell();
+  const netSummary = emptyOverviewCell();
+
+  columns.forEach((col) => {
+    const exp = emptyOverviewCell();
+    expenseRoots.forEach((id) => addCell(exp, cellOf(id, col.id)));
+    totalExpensesByCol[col.id] = exp;
+    addCell(totalExpenseSummary, exp);
+
+    const inc = emptyOverviewCell();
+    incomeRoots.forEach((id) => addCell(inc, cellOf(id, col.id)));
+    totalIncomesByCol[col.id] = inc;
+    addCell(totalIncomeSummary, inc);
+
+    const net: OverviewCell = {
+      real: inc.real - exp.real,
+      estimated: inc.estimated - exp.estimated,
+      total: inc.total - exp.total
+    };
+    netCashFlowByCol[col.id] = net;
+    netSummary.real += net.real;
+    netSummary.estimated += net.estimated;
+    netSummary.total += net.total;
+  });
+
+  return {
+    cells,
+    rowTotals,
+    totalExpensesByCol,
+    totalIncomesByCol,
+    netCashFlowByCol,
+    totalExpenseSummary,
+    totalIncomeSummary,
+    netSummary,
+    hasUncategorized: {
+      expense: false,
+      income: false
+    },
+    outsideHorizon: {
+      expense: { count: 0, real: 0, estimated: 0 },
+      income: { count: 0, real: 0, estimated: 0 }
+    }
   };
 }

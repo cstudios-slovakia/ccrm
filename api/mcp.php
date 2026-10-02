@@ -116,6 +116,73 @@ function mcp_audit(\PDO $pdo, array $user, string $action, ?string $detail = nul
     }
 }
 
+/**
+ * Safe arithmetic equation evaluator for MCP simplified financial table.
+ */
+function ccrm_mcp_eval_equation($expr): ?float {
+    if ($expr === null || $expr === '') return null;
+    $s = trim((string)$expr);
+    if (strpos($s, '=') === 0) $s = trim(substr($s, 1));
+    $s = preg_replace('/(\d)\s+(\d{3})(?!\d)/', '$1$2', $s);
+    $s = str_replace(',', '.', $s);
+    $s = preg_replace('/\s+/', '', $s);
+    if (!preg_match('/^[-+*\/0-9.()]+$/', $s)) return null;
+
+    preg_match_all('/([0-9]+(?:\.[0-9]+)?|[-+*\/()])/i', $s, $matches);
+    $tokens = $matches[0] ?? [];
+    if (empty($tokens)) return null;
+
+    $pos = 0;
+    $parseFactor = function() use (&$tokens, &$pos, &$parseFactor, &$parseExpr): ?float {
+        if ($pos >= count($tokens)) return null;
+        $tok = $tokens[$pos++];
+        if ($tok === '-') {
+            $f = $parseFactor();
+            return $f !== null ? -$f : null;
+        }
+        if ($tok === '+') return $parseFactor();
+        if ($tok === '(') {
+            $val = $parseExpr();
+            if ($pos >= count($tokens) || $tokens[$pos++] !== ')') return null;
+            return $val;
+        }
+        if (is_numeric($tok)) return (float)$tok;
+        return null;
+    };
+    $parseTerm = function() use (&$tokens, &$pos, &$parseFactor): ?float {
+        $left = $parseFactor();
+        if ($left === null) return null;
+        while ($pos < count($tokens) && ($tokens[$pos] === '*' || $tokens[$pos] === '/')) {
+            $op = $tokens[$pos++];
+            $right = $parseFactor();
+            if ($right === null) return null;
+            if ($op === '*') {
+                $left *= $right;
+            } else {
+                if ($right == 0.0) return null;
+                $left /= $right;
+            }
+        }
+        return $left;
+    };
+    $parseExpr = function() use (&$tokens, &$pos, &$parseTerm): ?float {
+        $left = $parseTerm();
+        if ($left === null) return null;
+        while ($pos < count($tokens) && ($tokens[$pos] === '+' || $tokens[$pos] === '-')) {
+            $op = $tokens[$pos++];
+            $right = $parseTerm();
+            if ($right === null) return null;
+            if ($op === '+') $left += $right;
+            else $left -= $right;
+        }
+        return $left;
+    };
+
+    $res = $parseExpr();
+    if ($pos < count($tokens) || $res === null || !is_finite($res)) return null;
+    return round($res, 4);
+}
+
 // 4. Handle HTTP GET (SSE transport or info probe)
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $accept = $_SERVER['HTTP_ACCEPT'] ?? '';
@@ -652,6 +719,52 @@ function mcp_get_tool_definitions(): array {
                     'period' => ['type' => 'string', 'description' => 'Period: month, quarter, year, all (default year)'],
                     'year' => ['type' => 'integer', 'description' => 'Year to evaluate (e.g. 2026)']
                 ]
+            ]
+        ],
+        [
+            'name' => 'get_financial_mode',
+            'description' => 'Get the current financial operating mode: connected (live movements) or simplified (detached spreadsheet).',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => (object)[]
+            ]
+        ],
+        [
+            'name' => 'set_financial_mode',
+            'description' => 'Set the financial operating mode: connected (live movements) or simplified (detached spreadsheet).',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'mode' => [
+                        'type' => 'string',
+                        'enum' => ['connected', 'simplified'],
+                        'description' => 'Operating mode: connected or simplified'
+                    ]
+                ],
+                'required' => ['mode']
+            ]
+        ],
+        [
+            'name' => 'get_financial_simplified_table',
+            'description' => 'Get the simplified spreadsheet matrix: categories, period columns, raw equations, and evaluated cell values.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'year' => ['type' => 'integer', 'description' => 'Filter by year (e.g. 2026)']
+                ]
+            ]
+        ],
+        [
+            'name' => 'set_financial_simplified_cell',
+            'description' => 'Set or update an equation or numerical value for a specific category and period in the simplified financial table.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'category_id' => ['type' => 'string', 'description' => 'Category ID'],
+                    'period' => ['type' => 'string', 'description' => 'Period column ID, e.g. YYYY-MM (e.g. 2026-03)'],
+                    'equation' => ['type' => 'string', 'description' => 'Equation or value string (e.g. 1200 + 450 or 500)']
+                ],
+                'required' => ['category_id', 'period', 'equation']
             ]
         ],
         [
@@ -1614,9 +1727,169 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             return ['success' => true, 'id' => $id, 'project_id' => $projId, 'title' => $title, 'deadline' => $deadline];
 
         // --- 5. Financials & Invoicing ---
+        case 'get_financial_mode':
+            $modeStmt = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'FINANCIAL_MODE'");
+            $currentMode = $modeStmt->fetchColumn() ?: 'connected';
+            return [
+                'mode' => $currentMode,
+                'description' => $currentMode === 'simplified' 
+                    ? 'Simplified mode: Detached spreadsheet matrix where overview and graph derive from cell equations/totals.' 
+                    : 'Connected mode: Live financial movements, payments, and recurring schedules.'
+            ];
+
+        case 'set_financial_mode':
+            $targetMode = isset($args['mode']) && in_array($args['mode'], ['connected', 'simplified'], true)
+                ? $args['mode'] 
+                : 'connected';
+            $insFMode = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('FINANCIAL_MODE', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
+            $insFMode->execute([$targetMode]);
+            mcp_audit($pdo, $user, 'set_financial_mode', "Financial operating mode changed to: {$targetMode}");
+            return [
+                'ok' => true,
+                'mode' => $targetMode,
+                'message' => "Financial operating mode set to '{$targetMode}'."
+            ];
+
+        case 'get_financial_simplified_table':
+            $modeStmt = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'FINANCIAL_MODE'");
+            $currentMode = $modeStmt->fetchColumn() ?: 'connected';
+
+            $simpStmt = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'FINANCIAL_SIMPLIFIED_TABLE'");
+            $simpJson = $simpStmt->fetchColumn();
+            $cells = json_decode($simpJson ?: '{}', true) ?: [];
+
+            $catStmt = $pdo->query("SELECT id, name, type, parent_id, color FROM financial_categories ORDER BY `sort_order` ASC, name ASC");
+            $categories = $catStmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            $filterYear = isset($args['year']) ? (int)$args['year'] : null;
+            $filteredCells = [];
+            $evaluated = [];
+            $totalExpenses = 0.0;
+            $totalIncomes = 0.0;
+
+            $catMap = [];
+            foreach ($categories as $c) {
+                $catMap[$c['id']] = $c;
+            }
+
+            foreach ($cells as $k => $expr) {
+                $parts = explode(':', $k, 2);
+                if (count($parts) !== 2) continue;
+                list($cId, $colId) = $parts;
+                if ($filterYear !== null && strpos($colId, (string)$filterYear) !== 0) continue;
+
+                $filteredCells[$k] = $expr;
+                $val = ccrm_mcp_eval_equation($expr);
+                $evaluated[$k] = $val;
+
+                if ($val !== null) {
+                    $catType = $catMap[$cId]['type'] ?? 'expense';
+                    if ($catType === 'income') {
+                        $totalIncomes += $val;
+                    } else {
+                        $totalExpenses += $val;
+                    }
+                }
+            }
+
+            return [
+                'mode' => $currentMode,
+                'year_filter' => $filterYear,
+                'categories' => $categories,
+                'cells' => $filteredCells,
+                'evaluated_values' => $evaluated,
+                'summary' => [
+                    'total_income' => round($totalIncomes, 2),
+                    'total_expense' => round($totalExpenses, 2),
+                    'net_profit' => round($totalIncomes - $totalExpenses, 2)
+                ]
+            ];
+
+        case 'set_financial_simplified_cell':
+            $catId = trim((string)($args['category_id'] ?? ''));
+            $period = trim((string)($args['period'] ?? ''));
+            $equation = trim((string)($args['equation'] ?? ''));
+
+            if ($catId === '' || $period === '') {
+                throw new \InvalidArgumentException("category_id and period are required.");
+            }
+
+            $simpStmt = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'FINANCIAL_SIMPLIFIED_TABLE'");
+            $simpJson = $simpStmt->fetchColumn();
+            $cells = json_decode($simpJson ?: '{}', true) ?: [];
+
+            $cellKey = "{$catId}:{$period}";
+            if ($equation === '') {
+                unset($cells[$cellKey]);
+                $evalVal = null;
+            } else {
+                $evalVal = ccrm_mcp_eval_equation($equation);
+                if ($evalVal === null) {
+                    throw new \InvalidArgumentException("Invalid arithmetic equation: '{$equation}'");
+                }
+                $cells[$cellKey] = $equation;
+            }
+
+            $insFSimp = $pdo->prepare("INSERT INTO `system_settings` (`key`, `value`) VALUES ('FINANCIAL_SIMPLIFIED_TABLE', ?) ON DUPLICATE KEY UPDATE `value` = VALUES(`value`)");
+            $insFSimp->execute([json_encode($cells)]);
+            mcp_audit($pdo, $user, 'set_financial_simplified_cell', "Updated cell {$cellKey} = '{$equation}'");
+
+            return [
+                'ok' => true,
+                'cell_key' => $cellKey,
+                'equation' => $equation,
+                'evaluated_value' => $evalVal
+            ];
+
         case 'get_financial_summary':
             $year = isset($args['year']) ? (int)$args['year'] : (int)date('Y');
             
+            // Check operating mode
+            $modeStmt = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'FINANCIAL_MODE'");
+            $currentMode = $modeStmt->fetchColumn() ?: 'connected';
+
+            if ($currentMode === 'simplified') {
+                $simpStmt = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'FINANCIAL_SIMPLIFIED_TABLE'");
+                $simpJson = $simpStmt->fetchColumn();
+                $cells = json_decode($simpJson ?: '{}', true) ?: [];
+
+                $catStmt = $pdo->query("SELECT id, type FROM financial_categories");
+                $catTypes = $catStmt->fetchAll(\PDO::FETCH_KEY_PAIR);
+
+                $paidRevenue = 0.0;
+                $paidCost = 0.0;
+                $yearPrefix = (string)$year;
+
+                foreach ($cells as $k => $expr) {
+                    $parts = explode(':', $k, 2);
+                    if (count($parts) !== 2) continue;
+                    list($cId, $colId) = $parts;
+                    if (strpos($colId, $yearPrefix) !== 0) continue;
+
+                    $val = ccrm_mcp_eval_equation($expr);
+                    if ($val === null) continue;
+
+                    $type = $catTypes[$cId] ?? 'expense';
+                    if ($type === 'income') {
+                        $paidRevenue += $val;
+                    } else {
+                        $paidCost += $val;
+                    }
+                }
+
+                return [
+                    'mode' => 'simplified',
+                    'year' => $year,
+                    'currency' => 'EUR',
+                    'paid_revenue' => round($paidRevenue, 2),
+                    'planned_revenue' => round($paidRevenue, 2),
+                    'paid_expenses' => round($paidCost, 2),
+                    'planned_expenses' => round($paidCost, 2),
+                    'net_profit' => round($paidRevenue - $paidCost, 2),
+                    'unpaid_invoices_count' => 0
+                ];
+            }
+
             // Income
             $incStmt = $pdo->prepare(
                 "SELECT 
@@ -1649,6 +1922,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $netProfit = $paidRevenue - $paidCost;
 
             return [
+                'mode' => 'connected',
                 'year' => $year,
                 'currency' => 'EUR',
                 'paid_revenue' => $paidRevenue,
