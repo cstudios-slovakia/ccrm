@@ -4,7 +4,7 @@
  * the last release we handled? Deterministic and cheap — the scheduled run only
  * starts an AI agent when this says so.
  *
- *   node scripts/release-notes/detect.mjs                  check HEAD (the origin/main worktree)
+ *   node scripts/release-notes/detect.mjs                  check HEAD (main, in the cloud routine's clone)
  *   node scripts/release-notes/detect.mjs --init           set the baseline to HEAD, write nothing else
  *   node scripts/release-notes/detect.mjs --init --baseline <sha>
  *   node scripts/release-notes/detect.mjs --force          ignore the give-up counter and Craft's existing entry
@@ -41,18 +41,21 @@ const MAX_FAILURES = 3;
 const args = parseArgs();
 const say = (msg) => console.log(`[release-notes] ${msg}`);
 
+// Cloud sessions may clone shallowly; the range and the baseline's version need history.
+if (git('rev-parse', '--is-shallow-repository') === 'true') git('fetch', '--unshallow', '--quiet');
+
 const head = git('rev-parse', args.ref ?? 'HEAD');
 const headVersion = versionAt(head);
 
 if (args.init) {
   const baseline = git('rev-parse', typeof args.baseline === 'string' ? args.baseline : head);
   const v = versionAt(baseline);
-  writeState({ lastSha: baseline, lastVersion: v.full, initialisedAt: new Date().toISOString(), failures: {}, history: [] });
+  await writeState({ lastSha: baseline, lastVersion: v.full, initialisedAt: new Date().toISOString(), failures: {}, history: [] });
   say(`Baseline set to ${baseline.slice(0, 9)} (${v.full}). Releases after it will be announced.`);
   process.exit(0);
 }
 
-const state = readState();
+const state = await readState();
 if (!state?.lastSha) {
   say(`Not initialised. Run: node scripts/release-notes/detect.mjs --init [--baseline <sha>]  (state: ${HOME})`);
   process.exit(3);
@@ -103,7 +106,7 @@ try {
 const existing = published.find((e) => e.version === craftVersion);
 if (existing?.enabled && !args.force) {
   say(`Craft already has a live "${craftVersion}" entry (#${existing.id} "${existing.title}"). Recording it as handled.`);
-  writeState({
+  await writeState({
     ...state,
     lastSha: head,
     lastVersion: headVersion.full,

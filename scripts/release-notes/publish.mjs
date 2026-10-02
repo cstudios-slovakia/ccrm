@@ -8,43 +8,24 @@
  *   node scripts/release-notes/publish.mjs <runDir> --dry-run   build the payload, send nothing
  *   node scripts/release-notes/publish.mjs --check              ask the module whether Craft is set up
  *
+ * Refuses to send anything unless validate.mjs passes with DECISION=publish —
+ * in the cloud routine the agent runs this itself, so the gate lives here.
+ *
  * Configuration, from the environment or RELEASE_NOTES_HOME/.env:
  *   CRAFT_NEWS_BASE         https://ccrm.softwaresolutions.sk   (site URL the module answers on)
- *   CRAFT_NEWS_TOKEN        shared secret, same value as CCRM_NEWS_API_TOKEN in Craft's .env
+ *   CRAFT_NEWS_TOKEN        manual runs only; a cloud session gets it from the environment's API credential
  *   RELEASE_NOTES_PUBLISH   live (default) | draft — draft saves the entry disabled
  */
+import { spawnSync } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { LANGS, SITE_FOR_LANG, loadEnv, parseArgs, readJson, writeJson } from './lib.mjs';
+import { fileURLToPath } from 'node:url';
+import { LANGS, SITE_FOR_LANG, craftNews as call, loadEnv, parseArgs, readJson, writeJson } from './lib.mjs';
 
 loadEnv();
 const args = parseArgs();
-const BASE = (process.env.CRAFT_NEWS_BASE ?? 'https://ccrm.softwaresolutions.sk').replace(/\/+$/, '');
-const TOKEN = process.env.CRAFT_NEWS_TOKEN ?? '';
 const MODE = (process.env.RELEASE_NOTES_PUBLISH ?? 'live').toLowerCase();
 const dryRun = !!args['dry-run'];
-
-async function call(route, init = {}) {
-  const res = await fetch(`${BASE}/${route}`, {
-    ...init,
-    // Both headers: some Apache/FastCGI setups drop Authorization before PHP sees it.
-    headers: { Accept: 'application/json', Authorization: `Bearer ${TOKEN}`, 'X-CCRM-News-Token': TOKEN, ...(init.headers ?? {}) },
-  });
-  const text = await res.text();
-  let json;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    throw new Error(`${route}: HTTP ${res.status}, not JSON — is the ccrm-news module installed? ${text.slice(0, 200)}`);
-  }
-  if (!res.ok || !json.success) throw new Error(`${route}: HTTP ${res.status} ${json.error ?? ''} ${json.details ? JSON.stringify(json.details) : ''}`.trim());
-  return json;
-}
-
-if (!dryRun && !TOKEN) {
-  console.error('CRAFT_NEWS_TOKEN is not set (environment or .release-notes/.env).');
-  process.exit(1);
-}
 
 /* ---------------------------------------------------------------- check -- */
 
@@ -66,6 +47,13 @@ if (!runDir) {
   console.error('Usage: node scripts/release-notes/publish.mjs <runDir> [--dry-run] | --check');
   process.exit(1);
 }
+const gate = spawnSync(process.execPath, [path.join(path.dirname(fileURLToPath(import.meta.url)), 'validate.mjs'), runDir], { encoding: 'utf8' });
+if (gate.status !== 0 || !/DECISION=publish/.test(gate.stdout)) {
+  console.error(`Not publishing: validate.mjs did not pass with DECISION=publish.
+${gate.stdout}${gate.stderr}`);
+  process.exit(1);
+}
+
 const context = readJson(path.join(runDir, 'context.json'));
 const article = readJson(path.join(runDir, 'article.json'));
 

@@ -18,7 +18,7 @@
  *
  * and set in Craft's `.env`:
  *
- *     CCRM_NEWS_API_TOKEN="<at least 32 random characters, same as CRAFT_NEWS_TOKEN on the publishing PC>"
+ *     CCRM_NEWS_API_TOKEN="<at least 32 random characters — also stored as the cloud environment's API credential>"
  *     CCRM_NEWS_VOLUME="images"          # asset volume handle for screenshots (optional, default "images")
  *     CCRM_NEWS_AUTHOR_ID="1"            # user id the entries are authored by (optional, default: first admin)
  *
@@ -58,6 +58,7 @@ class CcrmNews extends Module
                 $event->rules['ccrm-news/ping'] = 'ccrm-news/api/ping';
                 $event->rules['ccrm-news/asset'] = 'ccrm-news/api/asset';
                 $event->rules['ccrm-news/publish'] = 'ccrm-news/api/publish';
+                $event->rules['ccrm-news/state'] = 'ccrm-news/api/state';
             }
         );
     }

@@ -1,20 +1,20 @@
 # Automated release notes
 
-Twice a day this PC checks `origin/main` for a new CCRM version. When there is
-one, an AI agent decides whether users would notice anything, captures annotated
-screenshots in Slovak, English and Hungarian, writes the article, and the
-pipeline publishes it to the `updateNotes` section in Craft CMS — the same place
-the in-app **Novinky** screen reads from (`.agents/rules/news-craft-cms.md`).
+When a new CCRM version reaches `main`, a Claude Code **cloud routine** decides
+whether users would notice anything, captures annotated screenshots in Slovak,
+English and Hungarian, writes the article, and publishes it to the
+`updateNotes` section in Craft CMS — the place the in-app **Novinky** screen
+reads from (`.agents/rules/news-craft-cms.md`). Nothing runs on anyone's PC.
 
 ```
-Task Scheduler 09:00 / 15:00
-  └─ .release-notes/run.ps1
-       1. git fetch; origin/main → .claude/worktrees/release-notes (detached; your checkout is untouched)
-       2. detect.mjs        new version since the last handled one?   no → stop (no AI, no cost)
-       3. claude -p         skill .agents/skills/ccrm-release-notes   classification.json, shots, article.json
-       4. validate.mjs      the gate — nothing unvalidated reaches Craft
-       5. publish.mjs       screenshots → Craft assets, article → entry  (ccrm-news module)
-       6. finish.mjs        baseline moves on; a failure is counted (3 strikes → stops and waits for you)
+Triggers: PR merged into main  +  daily 07:07 (catches direct pushes)
+  └─ cloud routine "CCRM release notes" — fresh clone of main, 4 vCPU / 16 GB
+       1. detect.mjs        new version since the last handled one?   no → reply one line, end
+       2. npm ci
+       3. the ccrm-release-notes skill: classification.json, screenshots (sk/en/hu), article.json
+       4. publish.mjs       re-validates, then screenshots → Craft assets, article → entry
+       5. finish.mjs        baseline moves on; a failure is counted (3 strikes → waits for you)
+State ("last handled release") lives in Craft: storage/ccrm-news/state.json via /ccrm-news/state
 ```
 
 ## What gets written
@@ -25,11 +25,12 @@ Task Scheduler 09:00 / 15:00
 | 1.11.140 → 1.11.143 | `patch` | `1.11.143` | Only if something is user-visible: same style, shorter. Polish, refactors, backend and tooling alone → no article |
 | new commits, same version | — | — | Not a release; picked up with the next bump |
 
-The rubric the agent follows — what counts as a feature, an improvement, a fix,
-and the long list of what is excluded — is in
+The rubric — what counts as a feature, an improvement, a fix, and what is
+excluded — is in
 [`.agents/skills/ccrm-release-notes/SKILL.md`](../.agents/skills/ccrm-release-notes/SKILL.md),
-calibrated on real commits from this repository. Every run leaves its reasoning
-in `.release-notes/runs/<time>-<version>/classification.json` and `report.md`.
+calibrated on real commits from this repository. The routine's procedure is the
+skill's **Routine run** section, so changing the procedure is a commit, not an
+edit in the routine's settings.
 
 ## Screenshots
 
@@ -41,7 +42,7 @@ every article has the same look:
 - `marks` — numbered rose-coloured boxes with label pills; the article text explains them as (1), (2) ….
 - `spotlight` — dims everything except the marked elements, for "where do I find it".
 
-The style lives in one constant (`ANNOTATION_STYLE`). Try the kit:
+The style lives in one constant (`ANNOTATION_STYLE`). Try the kit locally:
 
 ```bash
 node scripts/release-notes/shoot.mjs --spec example.spec.ts --out test-results/release-shots
@@ -49,152 +50,131 @@ node scripts/release-notes/shoot.mjs --spec example.spec.ts --out test-results/r
 
 ## Setting it up
 
-### 1. Craft CMS changes
+### 1. Craft CMS content model
 
-Do these in the Craft control panel of `ccrm.softwaresolutions.sk`. Handles must
-match exactly — the app's GraphQL query and the module use them.
+Already in the project config (2026-10-02): the dropdowns `headingLevel`,
+`galleryColumns`, `calloutType`, `listType`, `releaseType`, the `images` Assets
+field, and three reusable plain-text fields — `textfield`, `textfieldMultiline`,
+`textfieldNotTranslatable`.
 
-**a) New fields** (Settings → Fields). "Per site" = *Translation method: Translate for each site*.
+A reusable field gets its meaning from the **handle override** in each layout
+(Craft 5: click the field in the layout designer → *Handle*). The module, the
+validator and the app's GraphQL query all use these layout handles:
 
-| Handle | Type | Settings |
-|---|---|---|
-| `headingText` | Plain Text | single line, per site |
-| `headingLevel` | Dropdown | options `h2` "Section", `h3` "Feature" (default `h2`) |
-| `moduleTag` | Plain Text | single line, per site; optional |
-| `images` | Assets | volume `images`, images only, max 12, **Manage relations on a per-site basis: on** |
-| `galleryColumns` | Dropdown | options `2` (default), `3` |
-| `calloutType` | Dropdown | options `where` "Where to find it", `tip`, `info`, `warning` |
-| `listType` | Dropdown | options `fixes` (default), `improvements` |
-| `listItems` | Plain Text | **multi-line**, per site; one item per line |
-| `releaseType` | Dropdown | options `major`, `patch` — optional, for filtering in the CP |
-| `sourceCommit` | Plain Text | optional, traceability; can be hidden in the layout |
-
-**b) New entry types in the `contentMatrix` field** (Settings → Fields → contentMatrix → Entry Types → New). Title field off.
-
-| Entry type handle | Fields in its layout |
+| Entry type (in `contentMatrix`) | Fields — layout handle ← field |
 |---|---|
-| `heading` | `headingText`, `headingLevel`, `moduleTag` |
-| `gallery` | `images`, `galleryColumns` |
-| `callout` | `calloutType`, `text` (the existing CKEditor field) |
-| `changeList` | `listType`, `headingText`, `listItems` |
+| `heading` | `headingText` ← textfield · `headingLevel` · `moduleTag` ← textfield |
+| `gallery` | `images` · `galleryColumns` |
+| `callout` | `calloutType` · `text` ← ckeditorExtended |
+| `changeList` | `listType` · `headingText` ← textfield · `listItems` ← textfieldMultiline |
+| `news` (the article) | add `releaseType` and `sourceCommit` ← textfieldNotTranslatable — optional |
 
-**c) Changes to what exists**
+Title field off on the four block types; add them to `contentMatrix`'s entry
+types. Then check **GraphQL → Schemas → Public**: the four new entry types and
+the `images` volume must be readable, or the app keeps falling back to the old
+three blocks. If the news section is also rendered by the public Craft site,
+its templates need the four new blocks too.
 
-| Where | Change | Why |
-|---|---|---|
-| `news` entry type | Add `releaseType` and `sourceCommit` to the field layout | Optional metadata |
-| `news` entry type | **Title translation method: Translate for each site** | Today the title is shared, so en/hu readers see the Slovak title |
-| Field `text` (CKEditor) | **Translation method: Translate for each site** | Today en/hu show the Slovak text. Existing articles keep their text on every site — only new edits diverge |
-| Field `image` (Assets) | **Manage relations on a per-site basis: on** | Lets each language show screenshots of the app in that language |
-| Section `updateNotes` | Confirm sites `default`, `en`, `hu` are enabled | The publisher fills all three |
-| GraphQL → Schemas → Public | Confirm `updateNotes` and the `images` volume are readable after the new entry types exist | The app reads the new blocks through the public schema |
-| Craft website templates (if the news section is also rendered on the public site) | Render the four new block types | Otherwise they are invisible there; the CCRM app already renders them |
+Translation is already right: `textfield`, `textfieldMultiline`,
+`ckeditorExtended` and `image` are per language, `images` per site, the `news`
+title per site. Existing articles show Slovak on the en/hu sites only because
+they were never translated.
 
-Until (c) is done the pipeline still works: the module reports which fields are
-not translatable, writes the Slovak values, and never overwrites them with
-English. Until (a)/(b) are done the app keeps working too — it falls back to the
-old three block types when Craft rejects the new ones.
+### 2. The Craft module
 
-**d) Install the module** — `docs/release-notes/craft-module/ccrmnews/` →
-`modules/ccrmnews/` in the Craft project. Register it in `config/app.php`:
+See [`release-notes/craft-module/INSTALL.md`](release-notes/craft-module/INSTALL.md).
 
-```php
-return [
-    'modules'   => [
-        'ccrm-license' => \modules\ccrmlicense\CcrmLicense::class,
-        'ccrm-news'    => \modules\ccrmnews\CcrmNews::class,
-    ],
-    'bootstrap' => ['ccrm-license', 'ccrm-news'],
-];
-```
+### 3. The cloud routine
 
-and add to Craft's `.env`:
+**a) Cloud environment** — at [claude.ai/code](https://claude.ai/code), environment selector → *Add cloud environment*, name `ccrm-release-notes`:
 
-```
-CCRM_NEWS_API_TOKEN="<48 random characters>"
-CCRM_NEWS_VOLUME="images"
-CCRM_NEWS_AUTHOR_ID="1"
-```
-
-The module has three token-protected routes: `GET /ccrm-news/ping`,
-`POST /ccrm-news/asset`, `POST /ccrm-news/publish`. It is idempotent per
-version — re-publishing `1.11.150` replaces that entry instead of creating a
-second one. Screenshots go to `images/release-notes/<version>/`.
-
-> Like the licence module, it is written against the Craft 5 API but has not
-> been run against the live install. That is why the first articles go out as
-> **drafts** (below).
-
-### 2. This PC
-
-```powershell
-pwsh -File scripts\release-notes\install-schedule.ps1      # task "CCRM Release Notes", 09:00 and 15:00
-notepad .release-notes\.env                                 # CRAFT_NEWS_TOKEN = the same token
-node scripts/release-notes/publish.mjs --check              # Craft answers and nothing is missing
-```
-
-`.release-notes/.env`:
-
-| Key | Meaning |
+| Setting | Value |
 |---|---|
-| `CRAFT_NEWS_BASE` | `https://ccrm.softwaresolutions.sk` |
-| `CRAFT_NEWS_TOKEN` | Same as `CCRM_NEWS_API_TOKEN` in Craft |
-| `RELEASE_NOTES_PUBLISH` | `draft` (entry saved disabled — review and enable in the CP) or `live` |
-| `RELEASE_NOTES_MODEL` | `opus` by default |
+| Network access | **Custom**, *Also include default list of common package managers* checked, plus: `archive.ubuntu.com`, `security.ubuntu.com`, `cdn.playwright.dev`, `playwright.download.prss.microsoft.com`, `playwright.azureedge.net` |
+| Environment variables | `RELEASE_NOTES_PUBLISH=draft` (→ `live` once articles look right)<br>`BASH_DEFAULT_TIMEOUT_MS=600000` (npm ci and screenshot runs exceed the 2-minute default) |
+| Setup script | `npx -y playwright@1.62.1 install --with-deps chromium \|\| true` — keep the version equal to `@playwright/test` in package.json |
 
-The baseline is already set: releases after **1.11.143** (`4850bf8`, covered by
-the published 1.11 article) are announced. To change it:
-`node scripts/release-notes/detect.mjs --init --baseline <sha>`.
+Save, reopen the environment for editing, then **API credentials → Add credential**:
 
-**The tooling runs from `origin/main`.** Until this branch is merged there, a
-run logs "tooling not on main yet" and stops.
+| Field | Value |
+|---|---|
+| Name | `CCRM news` |
+| Credential type | Bearer |
+| Allowed websites | `ccrm.softwaresolutions.sk` |
+| Custom headers | Name `X-CCRM-News-Token`, **Prefix empty**, Value = the `CCRM_NEWS_API_TOKEN` from Craft's `.env` |
 
-Requirements: the PC is on and you are logged in at the scheduled time (missed
-runs catch up at next logon); `claude` is logged in; Playwright's Chromium is
-installed (`npm run test:qa:setup`).
+Not `Authorization: Bearer` — Craft's GraphQL on the same host would read it as
+a GraphQL token and reject the public queries. The routine never sees the token.
+
+**b) The routine** — [claude.ai/code/routines](https://claude.ai/code/routines) → *New routine*:
+
+| Setting | Value |
+|---|---|
+| Name | CCRM release notes |
+| Repository | `cstudios-slovakia/ccrm` |
+| Environment | `ccrm-release-notes` |
+| Model | Opus |
+| Connectors | remove all — it needs none |
+| Trigger 1 | GitHub event: Pull request → closed; filters *Is merged* = true, *Base branch* = `main` (needs the Claude GitHub App on the repo) |
+| Trigger 2 | Schedule: daily 07:07 — catches commits pushed to `main` without a PR |
+
+Prompt:
+
+```
+Release-notes run for CCRM. Follow the "Routine run" section of
+.agents/skills/ccrm-release-notes/SKILL.md exactly, from step 1. You run
+unattended: never ask, decide by the skill's rules. Do not commit, push or open
+pull requests.
+```
+
+**c) Baseline** — once, after the module is installed, from a PC with
+`CRAFT_NEWS_TOKEN` in `.release-notes/.env`:
+
+```bash
+node scripts/release-notes/publish.mjs --check                        # module answers, nothing missing
+node scripts/release-notes/detect.mjs --init --baseline 4850bf8      # releases after 1.11.143 get announced
+```
+
+`4850bf8` is the merge that brought 1.11.143 to `main`; the published 1.11
+article already covers it.
 
 ## Running it
 
-```powershell
-Start-ScheduledTask -TaskName 'CCRM Release Notes'           # now
-pwsh -File .release-notes\run.ps1 -Repo (Get-Location) -DryRun   # everything except the upload
-pwsh -File .release-notes\run.ps1 -Repo (Get-Location) -Force    # retry after 3 failures
-```
+- **Now**: the routine's page → *Run now*.
+- **What happened**: every run is a session in your Claude Code session list.
+  A run with nothing new ends after one line. A release run ends with the
+  report and the Craft edit link. The green status only means the session
+  ended cleanly — read the transcript for the outcome.
+- **Drafts**: with `RELEASE_NOTES_PUBLISH=draft` the entry is saved disabled;
+  enable it in the Craft CP.
+- **After three failures** on one commit the routine stops retrying and says so.
+  Fix the cause, then run `node scripts/release-notes/detect.mjs --force` once
+  (by hand, or tell the routine via *Run now* text).
+- **Unhappy with a published article**: edit it in the Craft CP. The pipeline
+  never touches an entry again once its version is handled.
+- **Skip a release on purpose**: run `finish.mjs <runDir> --outcome skipped`
+  in that run's session.
+- **By hand on a PC**: `.release-notes/.env` from
+  `scripts/release-notes/release-notes.env.example`, add
+  `RELEASE_NOTES_STATE=file` to keep the baseline local instead of in Craft,
+  then follow the skill's Routine run yourself.
 
-Where to look:
-
-| Path | Contents |
-|---|---|
-| `.release-notes/logs/<date>.log` | Every run, one line per step |
-| `.release-notes/runs/<time>-<version>/` | `context.md`, `classification.json`, `report.md`, `article.json`, `shots/<lang>/`, `claude.log`, `publish-payload.json`, `publish.json` |
-| `.release-notes/state.json` | Last handled commit and version, failure counts, history |
-
-Desktop toasts appear when the BurntToast module is installed
-(`Install-Module BurntToast -Scope CurrentUser`).
-
-### Changing or redoing an article
-
-- **Unhappy with a published one**: edit it in the Craft CP — the pipeline never
-  touches an entry again once its version is handled.
-- **Regenerate**: re-run the agent on the same run directory by hand (open
-  Claude Code in the worktree and ask it to follow the skill for that
-  `RUN_DIR`), then `node scripts/release-notes/publish.mjs <runDir>` — it
-  updates the same entry.
-- **Skip a release on purpose**: `node scripts/release-notes/finish.mjs <runDir> --outcome skipped`.
+Usage: runs count against your Claude subscription. A "nothing new" run is a
+few cheap steps; a major article with ~20 screenshots in three languages is a
+long session.
 
 ## Files
 
 | File | Role |
 |---|---|
-| `scripts/release-notes/run.ps1` | Scheduled entry point (copied to `.release-notes/`) |
-| `scripts/release-notes/install-schedule.ps1` | Registers / removes the Windows task |
+| `.agents/skills/ccrm-release-notes/SKILL.md` | The routine's procedure, the significance rubric, the article contract and style |
 | `scripts/release-notes/detect.mjs` | Version jump, commit range, changelog sections → run directory |
 | `scripts/release-notes/shoot.mjs` | Runs a screenshot spec in sk, en, hu |
 | `scripts/release-notes/validate.mjs` | Article contract and editorial rules |
-| `scripts/release-notes/publish.mjs` | Uploads to Craft; `--check`, `--dry-run` |
+| `scripts/release-notes/publish.mjs` | Gate + upload to Craft; `--check`, `--dry-run` |
 | `scripts/release-notes/finish.mjs` | Records the outcome |
-| `.agents/skills/ccrm-release-notes/SKILL.md` | The agent's instructions and the significance rubric |
+| `scripts/release-notes/lib.mjs` | Versions, git, state (Craft or file), the module client |
 | `tests/release-notes/shotkit.ts`, `example.spec.ts` | Screenshot kit and its reference spec |
 | `playwright.release-notes.config.ts` | Port 5473, 1440×900 @2×, one project per language |
-| `docs/release-notes/craft-module/ccrmnews/` | The Craft module |
+| `docs/release-notes/craft-module/` | The Craft module and its install guide |
 | `src/utils/updateNotes.ts`, `src/components/UpdateNoteBlocks.tsx` | The app side: one query with fallback, one renderer for all block types |

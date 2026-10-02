@@ -19,7 +19,7 @@ if (!runDir || !['published', 'skipped', 'failed'].includes(outcome)) {
 }
 
 const context = readJson(path.join(runDir, 'context.json'));
-const state = readState() ?? { failures: {}, history: [] };
+const state = (await readState()) ?? { failures: {}, history: [] };
 const entry = {
   at: new Date().toISOString(),
   sha: context.headSha,
@@ -35,7 +35,7 @@ const failures = { ...(state.failures ?? {}) };
 if (outcome === 'failed') failures[context.headSha] = (failures[context.headSha] ?? 0) + 1;
 else delete failures[context.headSha];
 
-writeState({
+await writeState({
   ...state,
   ...(outcome === 'failed' ? {} : { lastSha: context.headSha, lastVersion: context.toVersion }),
   failures,

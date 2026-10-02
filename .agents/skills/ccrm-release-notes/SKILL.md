@@ -1,6 +1,6 @@
 ---
 name: ccrm-release-notes
-description: Writes the "What's new" article for a new CCRM version from the commits on main — decides whether the release is worth announcing, captures annotated screenshots in sk/en/hu, and produces article.json for the Craft CMS publisher. Runs unattended from scripts/release-notes/run.ps1; can also be run by hand on a prepared run directory.
+description: Writes the "What's new" article for a new CCRM version from the commits on main — decides whether the release is worth announcing, captures annotated screenshots in sk/en/hu, and produces article.json for the Craft CMS publisher. Runs unattended as a Claude Code cloud routine (see "Routine run" below); can also be run by hand on a prepared run directory.
 ---
 
 # CCRM release notes
@@ -15,18 +15,40 @@ You are running **unattended**. Nobody will answer a question. When something
 is ambiguous, decide using the rules below and write your reasoning into
 `classification.json` / `report.md`. Never stop to ask.
 
+## Routine run
+
+When a cloud routine starts you (scheduled, or on a pull request merged into
+`main`), this is the whole job, in order. Run each step as its own command
+from the repository root and read its output before the next.
+
+1. `node scripts/release-notes/detect.mjs`
+   - exit **0**: nothing to announce. Reply with its one-line message and stop.
+     Do not install anything, do not open the app.
+   - exit **10**: a release candidate. The last line is `RUN_DIR=<path>`; that
+     is your `$RUN_DIR` below.
+   - any other exit: stop, and reply with its output — it needs a human
+     (missing baseline, rewritten history, three failed attempts).
+2. `npm ci --no-audit --no-fund` — the screenshots need the app's dependencies.
+3. The **Workflow** below, steps 1–10.
+4. Decision `skip`: `node scripts/release-notes/finish.mjs $RUN_DIR --outcome skipped`, then stop.
+5. Decision `publish`: `node scripts/release-notes/publish.mjs $RUN_DIR`. It
+   re-runs the validator and refuses to send anything that fails it.
+   - success: `node scripts/release-notes/finish.mjs $RUN_DIR --outcome published`
+   - failure, here or anywhere in step 3 that you cannot recover from:
+     `node scripts/release-notes/finish.mjs $RUN_DIR --outcome failed --note "<one line why>"`
+     (after three failures on the same commit, detect.mjs stops retrying it).
+6. Reply with `report.md` plus the Craft edit link that publish.mjs printed.
+
 ## Hard rules
 
-- **You do not publish.** The runner publishes `article.json` after you exit, if
-  `validate.mjs` passes. You never call Craft, never `curl`, never `git commit`,
-  `git push`, `npm install`, or change anything under `src/`, `api/`, `public/`.
-- **Write only** into the run directory (`$RUN_DIR`, given in your prompt) and
+- **Craft only through `publish.mjs`**, and only in step 5 of the routine run.
+  Never `curl` Craft, never write its state by hand, never `git commit` or
+  `git push`, never open a pull request, never change anything under `src/`,
+  `api/`, `public/` — this run reports on the code, it does not touch it.
+- **Write only** into the run directory (`$RUN_DIR`) and
   `tests/release-notes/generated/`.
-- **One plain command per Bash call** — no `cd`, `&&`, pipes or redirects. The
-  unattended run allows exactly these shapes and refuses everything else:
-  `git log …`, `git show …`, `git diff …`, `git rev-parse …`, `ls …`,
-  `node scripts/release-notes/shoot.mjs …`, `node scripts/release-notes/validate.mjs …`.
-  Use Read, Glob and Grep for files.
+- **Don't work around a failing gate.** If `validate.mjs` or `publish.mjs`
+  refuses, fix the article — never edit the scripts, the kit or the rubric.
 - **Every commit in the range is accounted for** in `classification.json` —
   either in an announced item or as an excluded one with a reason.
 - **Never invent.** Every sentence in the article must be backed by the diff, the
@@ -57,7 +79,7 @@ is ambiguous, decide using the rules below and write your reasoning into
 
 ## Workflow
 
-1. **Read** `context.md`, then for every commit at least `git show --stat <sha>`.
+1. **Read** `$RUN_DIR/context.md`, then for every commit at least `git show --stat <sha>`.
    For anything that might be user-visible read the actual diff of `src/`
    (components, `utils/translations*`, `App.tsx` routes). Backend-only commits
    (`api/`, `*.php`) matter only if they change what a user sees.

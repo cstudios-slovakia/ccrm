@@ -2,8 +2,9 @@
 /**
  * The three endpoints the release-notes publisher calls. All require
  *   Authorization: Bearer <CCRM_NEWS_API_TOKEN>
- * (or the same value in X-CCRM-News-Token, for hosts whose Apache/FastCGI
- * strips the Authorization header).
+ * or the same value in X-CCRM-News-Token. The publisher uses the latter: it
+ * survives Apache/FastCGI setups that strip Authorization, and it does not
+ * collide with Craft's GraphQL, which reads any Bearer token as its own.
  *
  * GET  /ccrm-news/ping     Is Craft set up? Lists missing block types and fields,
  *                          and which fields are translatable per site.
@@ -15,6 +16,10 @@
  *                          → { success, entryId, created, cpEditUrl, skippedSites }.
  *                          Idempotent per version: a second call replaces the
  *                          entry's content instead of creating a duplicate.
+ * GET  /ccrm-news/state    → { success, state } — the pipeline's memory between runs
+ * POST /ccrm-news/state    JSON body replaces it. A cloud routine keeps no disk,
+ *                          so "last handled release" lives here, in
+ *                          storage/ccrm-news/state.json.
  *
  * Multi-site: every site gets the same block structure. The primary site is
  * saved first; the other sites then receive only the values Craft actually
@@ -372,6 +377,30 @@ class ApiController extends Controller
         ]);
     }
 
+    /* ----------------------------------------------------------------- state */
+
+    public function actionState(): Response
+    {
+        $file = Craft::$app->getPath()->getStoragePath() . '/ccrm-news/state.json';
+        $request = Craft::$app->getRequest();
+
+        if ($request->getIsPost()) {
+            $raw = (string) $request->getRawBody();
+            if (strlen($raw) > 256 * 1024) {
+                return $this->fail('state_too_large', 413);
+            }
+            $state = json_decode($raw, true);
+            if (!is_array($state)) {
+                return $this->fail('bad_json', 400);
+            }
+            FileHelper::writeToFile($file, json_encode($state, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE));
+            return $this->asJson(['success' => true]);
+        }
+
+        $state = is_file($file) ? json_decode((string) file_get_contents($file), true) : null;
+        return $this->asJson(['success' => true, 'state' => is_array($state) ? $state : null]);
+    }
+
     /* --------------------------------------------------------------- helpers */
 
     private function section(): ?Section
@@ -417,10 +446,12 @@ class ApiController extends Controller
     /** Does this field keep a separate value per site? */
     private function isPerSite(FieldInterface $field): bool
     {
-        if ($field instanceof BaseRelationField) {
-            return (bool) $field->localizeRelations;
+        // Current Craft 5 gives relation fields a translation method too; older
+        // releases only had the "Manage relations on a per-site basis" switch.
+        if (($field->translationMethod ?? 'none') !== 'none') {
+            return true;
         }
-        return ($field->translationMethod ?? 'none') !== 'none';
+        return $field instanceof BaseRelationField && property_exists($field, 'localizeRelations') && $field->localizeRelations;
     }
 
     private function cleanTitle(mixed $title, string $version): string
