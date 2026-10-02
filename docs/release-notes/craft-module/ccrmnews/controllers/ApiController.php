@@ -69,6 +69,23 @@ class ApiController extends Controller
         'changeList' => ['listType', 'headingText', 'listItems'],
     ];
 
+    /**
+     * Handles that may live in the block's own Title instead of a field — an
+     * entry type with "Use a title field" on and no field of that handle.
+     */
+    private const TITLE_HANDLES = ['headingText'];
+
+    /** Without these a block is useless; the other handles are optional. */
+    private const REQUIRED_FIELDS = [
+        'textblock' => ['text'],
+        'image' => ['image'],
+        'imageWithText' => ['image', 'text'],
+        'gallery' => ['images'],
+        'heading' => ['headingText', 'headingLevel'],
+        'callout' => ['text'],
+        'changeList' => ['listItems'],
+    ];
+
     /** Set on the article entry when its layout has them; never required. */
     private const OPTIONAL_ENTRY_FIELDS = ['releaseType', 'sourceCommit'];
 
@@ -101,6 +118,7 @@ class ApiController extends Controller
     public function actionPing(): Response
     {
         $missing = [];
+        $optional = [];
         $translatable = [];
 
         $section = $this->section();
@@ -127,11 +145,15 @@ class ApiController extends Controller
                 }
                 foreach ($fields as $fieldHandle) {
                     $field = $type->getFieldLayout()->getFieldByHandle($fieldHandle);
-                    if (!$field) {
+                    if ($field) {
+                        $translatable[$fieldHandle] = ($translatable[$fieldHandle] ?? true) && $this->isPerSite($field);
+                    } elseif (in_array($fieldHandle, self::TITLE_HANDLES, true) && $type->hasTitleField) {
+                        $translatable[$fieldHandle] = ($translatable[$fieldHandle] ?? true) && $type->titleTranslationMethod !== 'none';
+                    } elseif (in_array($fieldHandle, self::REQUIRED_FIELDS[$handle], true)) {
                         $missing[] = "field:$handle.$fieldHandle";
-                        continue;
+                    } else {
+                        $optional[] = "field:$handle.$fieldHandle";
                     }
-                    $translatable[$fieldHandle] = ($translatable[$fieldHandle] ?? true) && $this->isPerSite($field);
                 }
             }
         }
@@ -149,6 +171,7 @@ class ApiController extends Controller
             'volume' => $volume?->handle,
             'translatable' => $translatable,
             'missing' => $missing,
+            'optionalNotInLayout' => $optional,
         ]);
     }
 
@@ -331,20 +354,14 @@ class ApiController extends Controller
                     $value = ['sortOrder' => [], 'entries' => []];
                     $skippedFields = [];
                     foreach ($existing as $i => $nested) {
-                        $fields = [];
-                        foreach ($siteData['blocks'][$i]['fields'] ?? [] as $fieldHandle => $raw) {
-                            $field = $nested->getFieldLayout()->getFieldByHandle($fieldHandle);
-                            if (!$field || !in_array($fieldHandle, self::BLOCK_FIELDS[$shape[$i]], true)) {
-                                continue;
-                            }
-                            if ($this->isPerSite($field)) {
-                                $fields[$fieldHandle] = $this->fieldValue($fieldHandle, $raw);
-                            } else {
-                                $skippedFields[$fieldHandle] = true;
-                            }
-                        }
                         $value['sortOrder'][] = $nested->id;
-                        $value['entries'][$nested->id] = ['type' => $shape[$i], 'enabled' => true, 'fields' => $fields];
+                        $value['entries'][$nested->id] = $this->blockData(
+                            $blockTypes[$shape[$i]],
+                            $shape[$i],
+                            $siteData['blocks'][$i]['fields'] ?? [],
+                            true,
+                            $skippedFields,
+                        );
                     }
                     if ($skippedFields) {
                         $skipped[] = "$handle: " . implode(', ', array_keys($skippedFields)) . ' (not translatable — shared with the primary site)';
@@ -502,20 +519,44 @@ class ApiController extends Controller
     private function newMatrixValue(array $blocks, array $blockTypes): array
     {
         $value = ['sortOrder' => [], 'entries' => []];
+        $unused = [];
         foreach (array_values($blocks) as $i => $block) {
-            $type = $block['type'];
             $key = 'new' . ($i + 1);
-            $fields = [];
-            foreach ($block['fields'] ?? [] as $fieldHandle => $raw) {
-                if (in_array($fieldHandle, self::BLOCK_FIELDS[$type], true)
-                    && $blockTypes[$type]->getFieldLayout()->getFieldByHandle($fieldHandle)) {
-                    $fields[$fieldHandle] = $this->fieldValue($fieldHandle, $raw);
-                }
-            }
             $value['sortOrder'][] = $key;
-            $value['entries'][$key] = ['type' => $type, 'enabled' => true, 'fields' => $fields];
+            $value['entries'][$key] = $this->blockData($blockTypes[$block['type']], $block['type'], $block['fields'] ?? [], false, $unused);
         }
         return $value;
+    }
+
+    /**
+     * One nested entry's serialized data. A handle the layout has goes into
+     * `fields`; a TITLE_HANDLES handle the layout lacks goes into the entry's
+     * own title. With $perSiteOnly, values Craft shares between sites are left
+     * out (and named in $skipped) so a translation never overwrites the original.
+     */
+    private function blockData(EntryType $type, string $blockHandle, array $incoming, bool $perSiteOnly, array &$skipped): array
+    {
+        $data = ['type' => $blockHandle, 'enabled' => true, 'fields' => []];
+        foreach ($incoming as $fieldHandle => $raw) {
+            if (!in_array($fieldHandle, self::BLOCK_FIELDS[$blockHandle], true)) {
+                continue;
+            }
+            $field = $type->getFieldLayout()->getFieldByHandle($fieldHandle);
+            if ($field) {
+                if ($perSiteOnly && !$this->isPerSite($field)) {
+                    $skipped[$fieldHandle] = true;
+                    continue;
+                }
+                $data['fields'][$fieldHandle] = $this->fieldValue($fieldHandle, $raw);
+            } elseif (in_array($fieldHandle, self::TITLE_HANDLES, true) && $type->hasTitleField) {
+                if ($perSiteOnly && $type->titleTranslationMethod === 'none') {
+                    $skipped["$blockHandle title"] = true;
+                    continue;
+                }
+                $data['title'] = $this->fieldValue($fieldHandle, $raw);
+            }
+        }
+        return $data;
     }
 
     /** Coerces one incoming value to what the field type expects. */

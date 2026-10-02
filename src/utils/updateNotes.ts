@@ -27,6 +27,8 @@ export interface UpdateBlock {
   image?: UpdateImage[];
   /** Lightswitch in Craft; older entries were read as strings, hence the union. */
   imageDirection?: string | boolean | null;
+  /** heading and changeList keep their heading text in the block's own Title. */
+  title?: string | null;
   headingText?: string | null;
   headingLevel?: string | null;
   moduleTag?: string | null;
@@ -54,10 +56,10 @@ const LEGACY_BLOCKS = `
                 ... on imageWithText_Entry { text { html } image { url title } imageDirection }`;
 
 const EXTENDED_BLOCKS = `${LEGACY_BLOCKS}
-                ... on heading_Entry { headingText headingLevel moduleTag }
+                ... on heading_Entry { title headingLevel moduleTag }
                 ... on gallery_Entry { images { url title } galleryColumns }
                 ... on callout_Entry { calloutType text { html } }
-                ... on changeList_Entry { listType headingText listItems }`;
+                ... on changeList_Entry { title listType listItems }`;
 
 export const buildUpdateNotesQuery = (extended: boolean): string => `
         query GetUpdateNotes {

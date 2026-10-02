@@ -80,13 +80,14 @@ export const UpdateNoteBlocks: React.FC<UpdateNoteBlocksProps> = ({ blocks, grou
           }
 
           case "heading_Entry": {
-            if (!block.headingText) return null;
+            const headingText = block.headingText || block.title;
+            if (!headingText) return null;
             const isSub = block.headingLevel === "h3";
             const Tag = isSub ? "h4" : "h3";
             return (
               <div key={idx} className={`flex flex-wrap items-center gap-2.5 ${isSub ? "pt-2" : "pt-4 border-t border-slate-100"}`}>
                 <Tag className={`font-heading font-extrabold text-slate-800 ${isSub ? "text-title-sm" : "text-title"}`}>
-                  {block.headingText}
+                  {headingText}
                 </Tag>
                 {block.moduleTag && (
                   <span className="px-2.5 py-0.5 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 type-overline">
@@ -145,6 +146,7 @@ export const UpdateNoteBlocks: React.FC<UpdateNoteBlocksProps> = ({ blocks, grou
               <div key={idx} className="rounded-2xl border border-slate-200/80 bg-slate-50/60 p-5">
                 <h4 className="font-heading font-extrabold text-title-sm text-slate-800 mb-3">
                   {block.headingText ||
+                    block.title ||
                     (isFixes
                       ? t("Bug fixes", "Opravené chyby", "Javított hibák")
                       : t("Improvements", "Vylepšenia", "Fejlesztések"))}

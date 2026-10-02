@@ -103,6 +103,12 @@ writeJson(cacheFile, cache);
 
 const assetId = (lang, name) => (cache[`${perSiteImages ? lang : 'sk'}/${name}`] ?? {}).assetId;
 
+/** Same defaults the app shows for a list without a heading (UpdateNoteBlocks.tsx). */
+const LIST_HEADINGS = {
+  fixes: { sk: 'Opravené chyby', en: 'Bug fixes', hu: 'Javított hibák' },
+  improvements: { sk: 'Vylepšenia', en: 'Improvements', hu: 'Fejlesztések' },
+};
+
 function toCraftBlock(b, lang) {
   switch (b.type) {
     case 'textblock':
@@ -118,7 +124,8 @@ function toCraftBlock(b, lang) {
     case 'callout':
       return { type: 'callout', fields: { calloutType: b.calloutType, text: b.text[lang] } };
     case 'changeList':
-      return { type: 'changeList', fields: { listType: b.listType, headingText: b.headingText?.[lang] ?? '', listItems: b.listItems[lang].join('\n') } };
+      // The heading is the block's (required) Title in Craft, so it is never sent empty.
+      return { type: 'changeList', fields: { listType: b.listType, headingText: b.headingText?.[lang] || LIST_HEADINGS[b.listType][lang], listItems: b.listItems[lang].join('\n') } };
     default:
       throw new Error(`Unknown block type ${b.type}`);
   }
