@@ -28,7 +28,7 @@ import * as Icons from "lucide-react";
 import type { UserProfile } from "../types";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
-import type { UpdateEntry } from "./UpdateNotesModal";
+import { fetchUpdateNotes, type UpdateEntry } from "../utils/updateNotes";
 import { useUserPref } from "../utils/userPrefs";
 import { useFavorites } from "../utils/favorites";
 import { FavoritesDrawer } from "./FavoritesDrawer";
@@ -220,88 +220,9 @@ export const Header: React.FC<HeaderProps> = ({
     seenUpdateIdRef.current = seenUpdateId;
 
     useEffect(() => {
-        const fetchUpdateNotes = async () => {
-            const query = `
-        query GetUpdateNotes {
-          entries(section: "updateNotes", site: "*") {
-            id
-            title
-            siteHandle
-            postDate @formatDateTime(format: "Y-m-d")
-            ... on news_Entry {
-              version
-              contentMatrix {
-                __typename
-                ... on textblock_Entry {
-                  text { html }
-                }
-                ... on image_Entry {
-                  image {
-                    url
-                    title
-                  }
-                }
-                ... on imageWithText_Entry {
-                  text { html }
-                  image {
-                    url
-                    title
-                  }
-                  imageDirection
-                }
-              }
-            }
-          }
-        }
-      `;
+        const loadUpdateNotes = async () => {
             try {
-                const res = await fetch(
-                    "https://ccrm.softwaresolutions.sk/index.php?action=graphql/api",
-                    {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            Accept: "application/json",
-                        },
-                        body: JSON.stringify({ query }),
-                    },
-                );
-                if (!res.ok) throw new Error("Network response was not ok");
-                const json = await res.json();
-                const rawEntries = json.data?.entries || [];
-
-                // Helper to group by version and select best localized entry
-                const groups: Record<string, UpdateEntry[]> = {};
-                rawEntries.forEach((e: any) => {
-                    if (!e.version) return;
-                    if (!groups[e.version]) groups[e.version] = [];
-                    groups[e.version].push(e);
-                });
-
-                const localizedList: UpdateEntry[] = [];
-                Object.keys(groups).forEach((ver) => {
-                    const group = groups[ver];
-                    let best =
-                        group.find((e) => e.siteHandle === systemLanguage) ||
-                        (systemLanguage === "sk"
-                            ? group.find((e) => e.siteHandle === "default")
-                            : undefined);
-                    if (!best) {
-                        best =
-                            group.find((e) => e.siteHandle === "default") ||
-                            group.find((e) => e.siteHandle === "en") ||
-                            group[0];
-                    }
-                    if (best) localizedList.push(best);
-                });
-
-                // The CMS is the only source of release notes, so an entry that is
-                // not published there must never show up in the app.
-                const sortedUpdates = [...localizedList].sort(
-                    (a, b) =>
-                        new Date(b.postDate).getTime() -
-                        new Date(a.postDate).getTime(),
-                );
+                const sortedUpdates = await fetchUpdateNotes(systemLanguage);
                 setUpdatesList(sortedUpdates);
 
                 // Check if there is a new unseen update
@@ -317,7 +238,7 @@ export const Header: React.FC<HeaderProps> = ({
                 setHasNewUpdate(false);
             }
         };
-        fetchUpdateNotes();
+        loadUpdateNotes();
     }, [systemLanguage]);
 
     // Search hits carry their hash ("#lead-42", "#meetings/7"); the gate wants the route id.

@@ -2,9 +2,10 @@ import { PageHeader } from "./layout";
 import React, { useState, useEffect } from "react";
 import { Sparkles, Calendar, Loader2 } from "lucide-react";
 import type { Language } from "../utils/translations";
-import type { UpdateEntry } from "./UpdateNotesModal";
 import { useUserPref } from "../utils/userPrefs";
-import { useUpdateFancybox, ZoomableUpdateImage } from "./ZoomableUpdateImage";
+import { fetchUpdateNotes, type UpdateEntry } from "../utils/updateNotes";
+import { useUpdateFancybox } from "./ZoomableUpdateImage";
+import { UpdateNoteBlocks } from "./UpdateNoteBlocks";
 
 interface UpdateNotesViewProps {
     systemLanguage: Language;
@@ -33,87 +34,9 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
     };
 
     useEffect(() => {
-        const fetchUpdateNotes = async () => {
-            const query = `
-        query GetUpdateNotes {
-          entries(section: "updateNotes", site: "*") {
-            id
-            title
-            siteHandle
-            postDate @formatDateTime(format: "Y-m-d")
-            ... on news_Entry {
-              version
-              contentMatrix {
-                __typename
-                ... on textblock_Entry {
-                  text { html }
-                }
-                ... on image_Entry {
-                  image {
-                    url
-                    title
-                  }
-                }
-                ... on imageWithText_Entry {
-                  text { html }
-                  image {
-                    url
-                    title
-                  }
-                  imageDirection
-                }
-              }
-            }
-          }
-        }
-      `;
+        const loadUpdateNotes = async () => {
             try {
-                const res = await fetch(
-                    "https://ccrm.softwaresolutions.sk/index.php?action=graphql/api",
-                    {
-                        method: "POST",
-                        headers: {
-                            "Content-Type": "application/json",
-                            Accept: "application/json",
-                        },
-                        body: JSON.stringify({ query }),
-                    },
-                );
-                if (!res.ok) throw new Error("Network response was not ok");
-                const json = await res.json();
-                const rawEntries = json.data?.entries || [];
-
-                const groups: Record<string, UpdateEntry[]> = {};
-                rawEntries.forEach((e: any) => {
-                    if (!e.version) return;
-                    if (!groups[e.version]) groups[e.version] = [];
-                    groups[e.version].push(e);
-                });
-
-                const localizedList: UpdateEntry[] = [];
-                Object.keys(groups).forEach((ver) => {
-                    const group = groups[ver];
-                    let best =
-                        group.find((e) => e.siteHandle === systemLanguage) ||
-                        (systemLanguage === "sk"
-                            ? group.find((e) => e.siteHandle === "default")
-                            : undefined);
-                    if (!best) {
-                        best =
-                            group.find((e) => e.siteHandle === "default") ||
-                            group.find((e) => e.siteHandle === "en") ||
-                            group[0];
-                    }
-                    if (best) localizedList.push(best);
-                });
-
-                // The CMS is the only source of release notes, so an entry that is
-                // not published there must never show up in the app.
-                const sortedUpdates = [...localizedList].sort(
-                    (a, b) =>
-                        new Date(b.postDate).getTime() -
-                        new Date(a.postDate).getTime(),
-                );
+                const sortedUpdates = await fetchUpdateNotes(systemLanguage);
                 setUpdates(sortedUpdates);
 
                 // Mark as read when entering this view. The header reads the same
@@ -136,7 +59,7 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
                 setLoading(false);
             }
         };
-        fetchUpdateNotes();
+        loadUpdateNotes();
     }, [systemLanguage]);
 
     if (loading) {
@@ -295,120 +218,12 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
                             </div>
 
                             {/* Content Matrix blocks */}
-                            <div className="space-y-6 flex-1">
-                                {activeUpdate.contentMatrix?.map(
-                                    (block, idx) => {
-                                        if (
-                                            block.__typename ===
-                                                "textblock_Entry" &&
-                                            block.text?.html
-                                        ) {
-                                            return (
-                                                <div
-                                                    key={idx}
-                                                    className="prose prose-slate max-w-none text-body text-slate-600 leading-relaxed font-sans ck-content"
-                                                    dangerouslySetInnerHTML={{
-                                                        __html: block.text.html,
-                                                    }}
-                                                />
-                                            );
-                                        }
-
-                                        if (
-                                            block.__typename ===
-                                                "image_Entry" &&
-                                            block.image &&
-                                            block.image[0]
-                                        ) {
-                                            const img = block.image[0];
-                                            return (
-                                                <ZoomableUpdateImage
-                                                    key={idx}
-                                                    src={img.url}
-                                                    alt={
-                                                        img.title ||
-                                                        t(
-                                                            "Update Image",
-                                                            "Obrázok novinky",
-                                                            "Frissítés képe",
-                                                        )
-                                                    }
-                                                    caption={img.title}
-                                                    group={`update-${activeUpdate.id}`}
-                                                    openLabel={t(
-                                                        "Open full size",
-                                                        "Otvoriť v plnej veľkosti",
-                                                        "Megnyitás teljes méretben",
-                                                    )}
-                                                    className="border border-slate-200/80 shadow-md"
-                                                    imageClassName="h-auto max-h-120"
-                                                />
-                                            );
-                                        }
-
-                                        if (
-                                            block.__typename ===
-                                            "imageWithText_Entry"
-                                        ) {
-                                            const img =
-                                                block.image && block.image[0];
-                                            const isRight =
-                                                block.imageDirection === true ||
-                                                block.imageDirection ===
-                                                    "right" ||
-                                                block.imageDirection ===
-                                                    "Right" ||
-                                                block.imageDirection === "on" ||
-                                                block.imageDirection === "On";
-                                            return (
-                                                <div
-                                                    key={idx}
-                                                    className={`flex flex-col ws-md:flex-row gap-6 items-center ${isRight ? "md:flex-row-reverse" : ""}`}
-                                                >
-                                                    {img && (
-                                                        <div className="w-full ws-md:w-1/2 rounded-2xl overflow-hidden border border-slate-200/80 shadow-sm shrink-0">
-                                                            <ZoomableUpdateImage
-                                                                src={img.url}
-                                                                alt={
-                                                                    img.title ||
-                                                                    t(
-                                                                        "Update Image",
-                                                                        "Obrázok novinky",
-                                                                        "Frissítés képe",
-                                                                    )
-                                                                }
-                                                                caption={
-                                                                    img.title
-                                                                }
-                                                                group={`update-${activeUpdate.id}`}
-                                                                openLabel={t(
-                                                                    "Open full size",
-                                                                    "Otvoriť v plnej veľkosti",
-                                                                    "Megnyitás teljes méretben",
-                                                                )}
-                                                                imageClassName="h-auto max-h-80"
-                                                            />
-                                                        </div>
-                                                    )}
-                                                    <div className="flex-1">
-                                                        {block.text?.html && (
-                                                            <div
-                                                                className="prose prose-slate max-w-none text-body text-slate-600 leading-relaxed font-sans ck-content"
-                                                                dangerouslySetInnerHTML={{
-                                                                    __html: block
-                                                                        .text
-                                                                        .html,
-                                                                }}
-                                                            />
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            );
-                                        }
-
-                                        return null;
-                                    },
-                                )}
+                            <div className="flex-1">
+                                <UpdateNoteBlocks
+                                    blocks={activeUpdate.contentMatrix}
+                                    group={`update-${activeUpdate.id}`}
+                                    language={systemLanguage}
+                                />
                             </div>
                         </>
                     )}

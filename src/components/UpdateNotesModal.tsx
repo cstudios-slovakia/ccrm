@@ -1,21 +1,11 @@
 import React, { useState } from "react";
 import { X, Sparkles, ChevronLeft, ChevronRight, Calendar } from "lucide-react";
 import type { Language } from "../utils/translations";
-import { useUpdateFancybox, ZoomableUpdateImage } from "./ZoomableUpdateImage";
+import type { UpdateEntry } from "../utils/updateNotes";
+import { useUpdateFancybox } from "./ZoomableUpdateImage";
+import { UpdateNoteBlocks } from "./UpdateNoteBlocks";
 
-export interface UpdateEntry {
-  id: string;
-  title: string;
-  siteHandle: string;
-  postDate: string;
-  version: string;
-  contentMatrix: Array<{
-    __typename: string;
-    text?: { html: string };
-    image?: Array<{ url: string; title: string }>;
-    imageDirection?: string | boolean;
-  }>;
-}
+export type { UpdateEntry };
 
 interface UpdateNotesModalProps {
   isOpen: boolean;
@@ -114,69 +104,11 @@ export const UpdateNotesModal: React.FC<UpdateNotesModalProps> = ({
           </div>
 
           {/* Matrix Content Rendering */}
-          <div className="space-y-6">
-            {activeUpdate.contentMatrix?.map((block, idx) => {
-              if (block.__typename === "textblock_Entry" && block.text?.html) {
-                return (
-                  <div 
-                    key={idx}
-                    className="prose prose-slate max-w-none text-body text-slate-600 leading-relaxed font-sans ck-content"
-                    dangerouslySetInnerHTML={{ __html: block.text.html }}
-                  />
-                );
-              }
-
-              if (block.__typename === "image_Entry" && block.image && block.image[0]) {
-                const img = block.image[0];
-                return (
-                  <ZoomableUpdateImage
-                    key={idx}
-                      src={img.url} 
-                      alt={img.title || t("Update Image", "Obrázok novinky", "Frissítés képe")} 
-                      caption={img.title}
-                      group={`update-${activeUpdate.id}`}
-                      openLabel={t("Open full size", "Otvoriť v plnej veľkosti", "Megnyitás teljes méretben")}
-                      className="border border-slate-200/80 shadow-md"
-                      imageClassName="h-auto max-h-120"
-                  />
-                );
-              }
-
-              if (block.__typename === "imageWithText_Entry") {
-                const img = block.image && block.image[0];
-                const isRight = block.imageDirection === true || block.imageDirection === "right" || block.imageDirection === "Right" || block.imageDirection === "on" || block.imageDirection === "On";
-                return (
-                  <div 
-                    key={idx} 
-                    className={`flex flex-col md:flex-row gap-6 items-center ${isRight ? "md:flex-row-reverse" : ""}`}
-                  >
-                    {img && (
-                      <div className="w-full md:w-1/2 rounded-2xl overflow-hidden border border-slate-200/80 shadow-sm shrink-0">
-                        <ZoomableUpdateImage
-                          src={img.url} 
-                          alt={img.title || t("Update Image", "Obrázok novinky", "Frissítés képe")} 
-                          caption={img.title}
-                          group={`update-${activeUpdate.id}`}
-                          openLabel={t("Open full size", "Otvoriť v plnej veľkosti", "Megnyitás teljes méretben")}
-                          imageClassName="h-auto max-h-80"
-                        />
-                      </div>
-                    )}
-                    <div className="flex-1">
-                      {block.text?.html && (
-                        <div 
-                          className="prose prose-slate max-w-none text-body text-slate-600 leading-relaxed font-sans ck-content"
-                          dangerouslySetInnerHTML={{ __html: block.text.html }}
-                        />
-                      )}
-                    </div>
-                  </div>
-                );
-              }
-
-              return null;
-            })}
-          </div>
+          <UpdateNoteBlocks
+            blocks={activeUpdate.contentMatrix}
+            group={`update-${activeUpdate.id}`}
+            language={systemLanguage}
+          />
         </div>
 
         {/* Pager / Footer */}

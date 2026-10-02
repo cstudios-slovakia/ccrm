@@ -13,3 +13,8 @@ description: News, release notes, and product update entries must be managed exc
 
 - News and update entries must NEVER be hardcoded in frontend source files.
 - News and update entries must NEVER be stored in the application's local MySQL/SQLite database.
+
+## 3. Written and Published Automatically
+
+- A scheduled pipeline writes the article for each new version on `main` and publishes it through the `ccrm-news` Craft module — see [`docs/RELEASE-NOTES.md`](../../docs/RELEASE-NOTES.md).
+- The app reads every block type through `src/utils/updateNotes.ts` and renders it with `src/components/UpdateNoteBlocks.tsx`. A new Craft block type needs both, plus the module's `BLOCK_FIELDS` and the validator.
