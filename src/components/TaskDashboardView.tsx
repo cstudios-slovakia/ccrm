@@ -3550,24 +3550,43 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             }`}
         >
             {/* Create New Task Section: Sticky action bar matching column width */}
-            <div className="w-full shrink-0 sticky top-0 z-20">
-                <VoiceTaskActionBar
-                    canCreate={taskAccess.create}
-                    systemLanguage={systemLanguage}
-                    currentUser={currentUser}
-                    users={users}
-                    defaultAssignee={myName}
-                    defaultStatus={taskStates[0] || "New"}
-                    manualButtonText={t(
-                        "Create New Task",
-                        "Vytvoriť novú úlohu",
-                        "Új feladat",
-                    )}
-                    onManualCreateClick={() => openAddTask()}
-                    onTasksCreated={(createdTasks) => {
-                        setTasks((prev) => [...createdTasks, ...prev]);
-                    }}
-                />
+            <div className={`w-full shrink-0 ${isAddDrawerOpen ? "relative" : "sticky top-0 z-20"}`}>
+                {isAddDrawerOpen && taskAccess.create ? (
+                    <QuickTaskModal
+                        inline
+                        tasks={tasks}
+                        leads={leads}
+                        projects={projects}
+                        users={users}
+                        taskStates={taskStates}
+                        systemLanguage={systemLanguage}
+                        currentUserName={myName}
+                        mailConfigured={mailConfigured}
+                        leadStageGroups={leadStageGroups}
+                        leadStateParents={leadStateParents}
+                        initialDeadline={addDeadline}
+                        onCreate={(created) => setTasks((prev) => [...created, ...prev])}
+                        onClose={closeAddDrawer}
+                    />
+                ) : (
+                    <VoiceTaskActionBar
+                        canCreate={taskAccess.create}
+                        systemLanguage={systemLanguage}
+                        currentUser={currentUser}
+                        users={users}
+                        defaultAssignee={myName}
+                        defaultStatus={taskStates[0] || "New"}
+                        manualButtonText={t(
+                            "Create New Task",
+                            "Vytvoriť novú úlohu",
+                            "Új feladat",
+                        )}
+                        onManualCreateClick={() => openAddTask()}
+                        onTasksCreated={(createdTasks) => {
+                            setTasks((prev) => [...createdTasks, ...prev]);
+                        }}
+                    />
+                )}
             </div>
 
             {/* One unified card for all task sections (including delegated tasks grouped in the same divisions) */}
@@ -4629,24 +4648,6 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         </div>
                     )}
                 </div>
-            )}
-
-            {isAddDrawerOpen && taskAccess.create && (
-                <QuickTaskModal
-                    tasks={tasks}
-                    leads={leads}
-                    projects={projects}
-                    users={users}
-                    taskStates={taskStates}
-                    systemLanguage={systemLanguage}
-                    currentUserName={myName}
-                    mailConfigured={mailConfigured}
-                    leadStageGroups={leadStageGroups}
-                    leadStateParents={leadStateParents}
-                    initialDeadline={addDeadline}
-                    onCreate={(created) => setTasks((prev) => [...created, ...prev])}
-                    onClose={closeAddDrawer}
-                />
             )}
 
             {editingTask && (

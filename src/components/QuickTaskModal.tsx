@@ -46,12 +46,14 @@ interface QuickTaskModalProps {
     /** Receives the new tasks (one per title line); persisting them is the caller's job. */
     onCreate: (tasks: Task[]) => void;
     onClose: () => void;
+    /** Renders in place (under the button that opened it) instead of floating under the header. */
+    inline?: boolean;
 }
 
 /**
- * Quick task creation as a panel that rolls out under the header, opened from
- * the header button and from the Tasks page. It never navigates: the page
- * underneath stays where it is.
+ * Quick task creation. By default a panel that floats under the header, opened
+ * by the header button on any page without navigating. With `inline` it renders
+ * in place instead, for the Tasks page's own "Create New Task" button.
  */
 export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
     tasks,
@@ -67,6 +69,7 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
     initialDeadline,
     onCreate,
     onClose,
+    inline = false,
 }) => {
     const t = (en: string, sk: string, hu: string) =>
         systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en;
@@ -194,20 +197,21 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
         }
     };
 
-    if (typeof document === "undefined") return null;
+    if (!inline && typeof document === "undefined") return null;
 
-    return createPortal(
-        <>
-            {/* Transparent catcher below the header: a click outside closes the panel, the header stays usable. */}
+    const panel = (
             <div
-                onClick={onClose}
-                className="fixed inset-x-0 bottom-0 top-20 z-[100000]"
-                aria-hidden="true"
-            />
-            <div
-                role="dialog"
-                aria-label={t("Create New Task(s)", "Vytvoriť novú úlohu / úlohy", "Új feladat(ok) létrehozása")}
-                className="fixed top-22.5 right-2 sm:right-4 md:right-6 z-[100000] w-[calc(100vw-1rem)] sm:w-[calc(100vw-2rem)] max-w-2xl max-h-[calc(100vh-6.5rem)] overflow-y-auto bg-white rounded-3xl border border-slate-200/80 shadow-2xl animate-in fade-in slide-in-from-top-2 duration-200"
+                {...(inline
+                    ? {
+                          className:
+                              "w-full bg-white rounded-3xl border-2 border-orange-200/90 shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-3 duration-200",
+                      }
+                    : {
+                          role: "dialog",
+                          "aria-label": t("Create New Task(s)", "Vytvoriť novú úlohu / úlohy", "Új feladat(ok) létrehozása"),
+                          className:
+                              "fixed top-22.5 right-2 sm:right-4 md:right-6 z-[100000] w-[calc(100vw-1rem)] sm:w-[calc(100vw-2rem)] max-w-2xl max-h-[calc(100vh-6.5rem)] overflow-y-auto bg-white rounded-3xl border border-slate-200/80 shadow-2xl animate-in fade-in slide-in-from-top-2 duration-200",
+                      })}
             >
                 <div className="p-4 bg-gradient-to-r from-orange-50/80 via-white to-orange-50/40 border-b border-orange-100 flex items-center justify-between rounded-t-3xl">
                     <div className="flex items-center gap-2">
@@ -449,6 +453,19 @@ export const QuickTaskModal: React.FC<QuickTaskModalProps> = ({
                     </div>
                 </form>
             </div>
+    );
+
+    if (inline) return panel;
+
+    return createPortal(
+        <>
+            {/* Transparent catcher below the header: a click outside closes the panel, the header stays usable. */}
+            <div
+                onClick={onClose}
+                className="fixed inset-x-0 bottom-0 top-20 z-[100000]"
+                aria-hidden="true"
+            />
+            {panel}
         </>,
         document.body,
     );

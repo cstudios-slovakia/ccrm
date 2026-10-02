@@ -72,13 +72,13 @@ test.describe('Task e-mail reminder', () => {
     await expect.poll(() => pushedByTitle(pushed, EDIT_TASK)?.emailReminders).toEqual({ Mária: '1d', Erik: '1h' });
   });
 
-  test('the new-task popup creates the task with my reminder', async ({ page }) => {
+  test('the Tasks page form creates the task with my reminder', async ({ page }) => {
     await startSession(page);
     const pushed = recordSyncedTasks(page);
     await gotoView(page, '#tasks');
 
     await page.getByRole('button', { name: /Create New Task|Vytvoriť novú úlohu|Új feladat/ }).first().click();
-    const popup = page.getByRole('dialog');
+    const popup = page.locator('[data-quick-task-form]');
     await popup.locator('textarea').first().fill(NEW_TASK);
 
     const field = popup.getByTestId('task-email-reminder');
