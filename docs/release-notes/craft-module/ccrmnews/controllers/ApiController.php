@@ -398,6 +398,16 @@ class ApiController extends Controller
 
     public function actionState(): Response
     {
+        try {
+            return $this->stateResponse();
+        } catch (Throwable $e) {
+            Craft::error('ccrm-news state failed: ' . $e->getMessage(), __METHOD__);
+            return $this->fail('exception', 500, ['message' => $e->getMessage(), 'at' => basename($e->getFile()) . ':' . $e->getLine()]);
+        }
+    }
+
+    private function stateResponse(): Response
+    {
         $file = Craft::$app->getPath()->getStoragePath() . '/ccrm-news/state.json';
         $request = Craft::$app->getRequest();
 

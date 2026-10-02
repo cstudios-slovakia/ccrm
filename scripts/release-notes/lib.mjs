@@ -107,7 +107,8 @@ export async function craftNews(route, init = {}) {
   } catch {
     throw new Error(`${route}: HTTP ${res.status}, not JSON — is the ccrm-news module installed? ${text.slice(0, 200)}`);
   }
-  if (!res.ok || !json.success) throw new Error(`${route}: HTTP ${res.status} ${json.error ?? ''} ${json.details ? JSON.stringify(json.details) : ''}`.trim());
+  // Craft's own error pages answer JSON as { message } rather than the module's { error, details }.
+  if (!res.ok || !json.success) throw new Error(`${route}: HTTP ${res.status} ${json.error ?? ''} ${json.details ? JSON.stringify(json.details) : ''} ${json.message ?? ''}`.trim());
   return json;
 }
 
