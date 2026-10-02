@@ -41,6 +41,7 @@ import { TaskEmailReminderField } from "./TaskEmailReminderField";
 import { TaskTagMentionInput } from "./TaskTagMentionInput";
 import { TaskPillText, extractTagsFromText, type MentionEntity } from "./TaskPillText";
 import { projectDisplayName } from "../utils/projects";
+import { isClientRecord, recordHref } from "../utils/clientRecord";
 import { taskPriorityLabel, taskStateLabel } from "../utils/taskLabels";
 import { requestTaskDeletion } from "../utils/taskApi";
 import { isTaskOverdue as isTaskOverdueShared } from "../utils/projectTasks";
@@ -55,6 +56,7 @@ import {
     isTaskCreatedBy,
     type TaskAccess,
 } from "../utils/taskSelectors";
+import { PageHeader } from "./layout";
 
 // Format a Date as a LOCAL calendar date (YYYY-MM-DD). Task deadlines are stored
 // as plain local date strings, so we must NOT go through toISOString() (which
@@ -132,7 +134,7 @@ const DateRangeCalendarFilter: React.FC<{
             <button
                 type="button"
                 onClick={() => setOpen((o) => !o)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border-2 text-xs font-extrabold cursor-pointer transition-all ${
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border-2 text-ui font-extrabold cursor-pointer transition-all ${
                     start
                         ? "bg-indigo-50 border-indigo-200 text-indigo-700"
                         : "bg-slate-50 border-slate-200 text-slate-600 hover:border-indigo-400"
@@ -155,7 +157,7 @@ const DateRangeCalendarFilter: React.FC<{
                 )}
             </button>
             {open && (
-                <div className="absolute right-0 z-[999] mt-2 w-[300px] bg-white border border-slate-200 rounded-2xl shadow-xl p-3 animate-in fade-in zoom-in-95 duration-150">
+                <div className="absolute right-0 z-[999] mt-2 w-75 bg-white border border-slate-200 rounded-2xl shadow-xl p-3 animate-in fade-in zoom-in-95 duration-150">
                     <div className="flex items-center justify-between mb-2">
                         <button
                             type="button"
@@ -164,7 +166,7 @@ const DateRangeCalendarFilter: React.FC<{
                         >
                             <ChevronLeft className="h-4 w-4" />
                         </button>
-                        <span className="text-[11px] font-black uppercase tracking-wider text-slate-700">
+                        <span className="type-overline text-slate-700">
                             {viewDate.toLocaleDateString(locale, { month: "long", year: "numeric" })}
                         </span>
                         <button
@@ -187,7 +189,7 @@ const DateRangeCalendarFilter: React.FC<{
                     <button
                         type="button"
                         onClick={() => setOpen(false)}
-                        className="mt-2 w-full py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg text-[10px] font-black uppercase tracking-wider cursor-pointer transition-colors"
+                        className="mt-2 w-full py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-lg type-overline cursor-pointer transition-colors"
                     >
                         {t("Done", "Hotovo", "Kész")}
                     </button>
@@ -357,7 +359,9 @@ const ClosedTasksToggleBar: React.FC<{
     days: number;
     onChangeDays: (days: number) => void;
     t: (en: string, sk: string, hu: string) => string;
-}> = ({ showClosedTasks, onToggleShowClosed, days, onChangeDays, t }) => {
+    /** Sits at the left of the bar, e.g. the client filter. */
+    leading?: React.ReactNode;
+}> = ({ showClosedTasks, onToggleShowClosed, days, onChangeDays, t, leading }) => {
     const daysLabel = t(
         days === 1 ? "day)" : "days)",
         days === 1 ? "deň)" : (days >= 2 && days <= 4 ? "dni)" : "dní)"),
@@ -365,8 +369,9 @@ const ClosedTasksToggleBar: React.FC<{
     );
 
     return (
-        <div className="px-4 py-2 bg-slate-50/50 border-b border-slate-100 flex items-center justify-end gap-2.5 select-none">
-            <div className="flex items-center gap-1.5 text-[11px] font-medium text-slate-400">
+        <div className="px-4 py-2 bg-slate-50/50 border-b border-slate-100 flex flex-wrap items-center justify-end gap-x-4 gap-y-2 select-none">
+            {leading && <div className="min-w-0 flex-1 basis-56">{leading}</div>}
+            <div className="flex items-center gap-1.5 text-caption font-medium text-slate-400">
                 <span
                     onClick={() => onToggleShowClosed(!showClosedTasks)}
                     className="hover:text-slate-600 transition-colors cursor-pointer"
@@ -404,7 +409,7 @@ const ClosedTasksToggleBar: React.FC<{
                         "Počet dní pre zobrazenie dokončených úloh",
                         "Napok száma lezárt feladatokhoz",
                     )}
-                    className="w-10 h-5 px-1 py-0 text-center font-bold text-slate-700 bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs text-[11px] select-text"
+                    className="w-10 h-5 px-1 py-0 text-center font-bold text-slate-700 bg-white border border-slate-200 rounded-md focus:outline-none focus:ring-1 focus:ring-indigo-500 shadow-2xs text-caption select-text"
                 />
                 <span
                     onClick={() => onToggleShowClosed(!showClosedTasks)}
@@ -520,7 +525,14 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                   "Úlohu môže archivovať iba ten, kto ju vytvoril.",
                   "Csak a feladat létrehozója archiválhatja.",
               );
-    const myTasks = tasks.filter(isMyTask).filter((task) => !task.archived);
+    // One client / lead filter for My Tasks and Global Tasks; "" shows everything.
+    const [clientFilter, setClientFilter] = useState("");
+    const matchesClientFilter = (task: Task) =>
+        !clientFilter || String(task.relatedLeadId ?? "") === clientFilter;
+    const myTasks = tasks
+        .filter(isMyTask)
+        .filter((task) => !task.archived)
+        .filter(matchesClientFilter);
 
     // Inclusive date-range check against a YYYY-MM-DD string (item 9 calendar filters)
     const dateInRange = (dateStr: string, start: Date | null, end: Date | null) => {
@@ -668,15 +680,17 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const [archiveTimingFilter, setArchiveTimingFilter] = useState("all");
 
     // Expand/collapse states for task buckets.
-    // Missed (Overdue) and Today are always visible (no collapse) — only Tomorrow and
-    // Future stay collapsible.
+    // Missed (Overdue) and Today are always visible (no collapse) — only Tomorrow,
+    // Future, and Done tasks stay collapsible.
     const [isTomorrowExpanded, setIsTomorrowExpanded] = useState(false);
     const [isFutureExpanded, setIsFutureExpanded] = useState(false);
+    const [isDoneExpanded, setIsDoneExpanded] = useState(true);
 
     // Global Tasks: the left panel keeps the same convention — Missed and Today
-    // are always open, Upcoming (tomorrow and later) folds away.
+    // are always open, Upcoming (tomorrow and later) and Done tasks fold away.
     const [isGlobalUpcomingExpanded, setIsGlobalUpcomingExpanded] =
         useState(false);
+    const [isGlobalDoneExpanded, setIsGlobalDoneExpanded] = useState(true);
     // Global Tasks: which member rows on the right are folded shut. Stacking the
     // whole team vertically makes a long page, so each card can be collapsed to
     // its header; they all start open.
@@ -840,8 +854,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
         // Clients and Leads
         leads.forEach((l) => {
-            const isClient = (l.id || "").startsWith("client-") || (Number(l.adjustment) || 0) > 0;
-            if (isClient) {
+            if (isClientRecord(l)) {
                 list.push({
                     id: l.id,
                     name: l.name,
@@ -993,6 +1006,14 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         return byDeadlineTime(a, b);
     };
 
+    const byCompletionDesc = (a: Task, b: Task) => {
+        const timeA = a.completedAt || (a.deadline ? a.deadline + " 23:59" : "");
+        const timeB = b.completedAt || (b.deadline ? b.deadline + " 23:59" : "");
+        const comp = timeB.localeCompare(timeA);
+        if (comp !== 0) return comp;
+        return a.title.localeCompare(b.title);
+    };
+
     // Item 12: the dashboard calendar shows ONLY tasks (no lead timeline events).
     // Item 11: only the logged-in user's tasks.
     const myTasksForDate = (dateStr: string) =>
@@ -1048,6 +1069,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const filteredArchivedTasks = useMemo(() => {
         return tasks.filter((task) => {
             if (!isDoneState(task.status)) return false;
+            if (!matchesClientFilter(task)) return false;
 
             // The archive is a team-wide history: every user sees the completed
             // tasks of the whole team, not just their own. Use the "Completed By"
@@ -1121,6 +1143,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         archiveDateEnd,
         archiveTagFilter,
         unknownCompletedBy,
+        clientFilter,
     ]);
 
     const archivedTasksGroupedByDate = useMemo(() => {
@@ -1145,6 +1168,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const filteredManuallyArchivedTasks = useMemo(() => {
         return tasks.filter((task) => {
             if (!task.archived) return false;
+            if (!matchesClientFilter(task)) return false;
 
             // Search Query
             if (archiveSearchQuery.trim()) {
@@ -1190,6 +1214,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         archiveDateStart,
         archiveDateEnd,
         archiveTagFilter,
+        clientFilter,
     ]);
 
     // Completed tasks land on the archive calendar by their due date, which is
@@ -1318,9 +1343,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 return false;
             if (!dateInRange(task.deadline, globalDateStart, globalDateEnd))
                 return false;
+            if (!matchesClientFilter(task)) return false;
             return true;
         },
-        [globalPriorityFilter, globalStateFilter, isSingleUserView, globalUserFilter, globalDateStart, globalDateEnd]
+        [globalPriorityFilter, globalStateFilter, isSingleUserView, globalUserFilter, globalDateStart, globalDateEnd, clientFilter]
     );
 
     const filteredGlobalTasks = useMemo(() => {
@@ -1743,13 +1769,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             >
                 {/* Left: Count and selection management */}
                 <div className="flex items-center gap-2">
-                    <span className="bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-xs font-black px-2.5 py-1 rounded-xl">
+                    <span className="bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-ui font-bold px-2.5 py-1 rounded-xl">
                         {countLabel}
                     </span>
                     <button
                         type="button"
                         onClick={handleSelectAllVisible}
-                        className="text-[11px] font-bold text-slate-300 hover:text-white px-2 py-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+                        className="text-caption font-bold text-slate-300 hover:text-white px-2 py-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
                     >
                         {areAllVisibleSelected
                             ? t("Deselect visible", "Zrušiť výber zobrazených", "Láthatók kijelölésének törlése")
@@ -1782,20 +1808,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     activeBulkMenu === "status" ? null : "status"
                                 )
                             }
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-xs font-black transition-colors border border-slate-700/50 cursor-pointer"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-ui font-bold transition-colors border border-slate-700/50 cursor-pointer"
                         >
                             <CheckSquare className="h-3.5 w-3.5 text-indigo-400" />
                             <span>{t("Status", "Stav", "Státusz")}</span>
                             <ChevronDown className="h-3 w-3 text-slate-400" />
                         </button>
                         {activeBulkMenu === "status" && (
-                            <div className="absolute bottom-full mb-2 left-0 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl p-1.5 min-w-[160px] space-y-0.5 animate-in fade-in zoom-in-95 duration-100 z-50">
+                            <div className="absolute bottom-full mb-2 left-0 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl p-1.5 min-w-40 space-y-0.5 animate-in fade-in zoom-in-95 duration-100 z-50">
                                 {taskStates.map((st) => (
                                     <button
                                         key={st}
                                         type="button"
                                         onClick={() => handleBulkStatusChange(st)}
-                                        className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:bg-indigo-600 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
+                                        className="w-full text-left px-2.5 py-1.5 rounded-lg text-ui font-bold text-slate-200 hover:bg-indigo-600 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
                                     >
                                         <span
                                             className="h-2 w-2 rounded-full shrink-0"
@@ -1820,20 +1846,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     activeBulkMenu === "priority" ? null : "priority"
                                 )
                             }
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-xs font-black transition-colors border border-slate-700/50 cursor-pointer"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-ui font-bold transition-colors border border-slate-700/50 cursor-pointer"
                         >
                             <Flame className="h-3.5 w-3.5 text-amber-400" />
                             <span>{t("Priority", "Priorita", "Prioritás")}</span>
                             <ChevronDown className="h-3 w-3 text-slate-400" />
                         </button>
                         {activeBulkMenu === "priority" && (
-                            <div className="absolute bottom-full mb-2 left-0 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl p-1.5 min-w-[140px] space-y-0.5 animate-in fade-in zoom-in-95 duration-100 z-50">
+                            <div className="absolute bottom-full mb-2 left-0 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl p-1.5 min-w-35 space-y-0.5 animate-in fade-in zoom-in-95 duration-100 z-50">
                                 {(["low", "medium", "high"] as const).map((prio) => (
                                     <button
                                         key={prio}
                                         type="button"
                                         onClick={() => handleBulkPriorityChange(prio)}
-                                        className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:bg-indigo-600 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
+                                        className="w-full text-left px-2.5 py-1.5 rounded-lg text-ui font-bold text-slate-200 hover:bg-indigo-600 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
                                     >
                                         <span
                                             className={`h-2 w-2 rounded-full shrink-0 ${
@@ -1860,24 +1886,24 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     activeBulkMenu === "assignee" ? null : "assignee"
                                 )
                             }
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-xs font-black transition-colors border border-slate-700/50 cursor-pointer"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-ui font-bold transition-colors border border-slate-700/50 cursor-pointer"
                         >
                             <Users className="h-3.5 w-3.5 text-sky-400" />
                             <span>{t("Assignee", "Riešiteľ", "Felelős")}</span>
                             <ChevronDown className="h-3 w-3 text-slate-400" />
                         </button>
                         {activeBulkMenu === "assignee" && (
-                            <div className="absolute bottom-full mb-2 left-0 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl p-1.5 min-w-[170px] max-h-56 overflow-y-auto space-y-0.5 animate-in fade-in zoom-in-95 duration-100 z-50">
+                            <div className="absolute bottom-full mb-2 left-0 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl p-1.5 min-w-42.5 max-h-56 overflow-y-auto space-y-0.5 animate-in fade-in zoom-in-95 duration-100 z-50">
                                 {allUsersList.map((uName) => (
                                     <button
                                         key={uName}
                                         type="button"
                                         onClick={() => handleBulkAssigneeChange(uName)}
-                                        className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:bg-indigo-600 hover:text-white transition-colors flex items-center justify-between gap-2 cursor-pointer"
+                                        className="w-full text-left px-2.5 py-1.5 rounded-lg text-ui font-bold text-slate-200 hover:bg-indigo-600 hover:text-white transition-colors flex items-center justify-between gap-2 cursor-pointer"
                                     >
                                         <span className="truncate">{uName}</span>
                                         {uName === myName && (
-                                            <span className="text-[9px] bg-slate-800 px-1 py-0.5 rounded text-indigo-300">
+                                            <span className="text-micro bg-slate-800 px-1 py-0.5 rounded text-indigo-300">
                                                 {t("You", "Vy", "Ön")}
                                             </span>
                                         )}
@@ -1896,15 +1922,15 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     activeBulkMenu === "reschedule" ? null : "reschedule"
                                 )
                             }
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-xs font-black transition-colors border border-slate-700/50 cursor-pointer"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-ui font-bold transition-colors border border-slate-700/50 cursor-pointer"
                         >
                             <CalendarIcon className="h-3.5 w-3.5 text-indigo-400" />
                             <span>{t("Reschedule", "Termín", "Átütemezés")}</span>
                             <ChevronDown className="h-3 w-3 text-slate-400" />
                         </button>
                         {activeBulkMenu === "reschedule" && (
-                            <div className="absolute bottom-full mb-2 left-0 sm:right-0 sm:left-auto bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl p-3 min-w-[220px] space-y-2 animate-in fade-in zoom-in-95 duration-100 z-50">
-                                <span className="text-[10px] font-black uppercase tracking-wider text-slate-400 block">
+                            <div className="absolute bottom-full mb-2 left-0 sm:right-0 sm:left-auto bg-slate-900 border border-slate-700/80 rounded-2xl shadow-2xl p-3 min-w-55 space-y-2 animate-in fade-in zoom-in-95 duration-100 z-50">
+                                <span className="type-overline text-slate-400 block">
                                     {t("Set Due Date", "Nastaviť termín", "Határidő beállítása")}
                                 </span>
                                 <div className="grid grid-cols-3 gap-1">
@@ -1913,7 +1939,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                         onClick={() =>
                                             handleBulkReschedule(toLocalDateStr(new Date()))
                                         }
-                                        className="px-2 py-1 rounded bg-slate-800 hover:bg-indigo-600 text-[10px] font-bold text-center transition-colors cursor-pointer"
+                                        className="px-2 py-1 rounded bg-slate-800 hover:bg-indigo-600 text-micro font-bold text-center transition-colors cursor-pointer"
                                     >
                                         {t("Today", "Dnes", "Ma")}
                                     </button>
@@ -1926,7 +1952,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                 )
                                             )
                                         }
-                                        className="px-2 py-1 rounded bg-slate-800 hover:bg-indigo-600 text-[10px] font-bold text-center transition-colors cursor-pointer"
+                                        className="px-2 py-1 rounded bg-slate-800 hover:bg-indigo-600 text-micro font-bold text-center transition-colors cursor-pointer"
                                     >
                                         {t("Tomorrow", "Zajtra", "Holnap")}
                                     </button>
@@ -1939,7 +1965,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                 )
                                             )
                                         }
-                                        className="px-2 py-1 rounded bg-slate-800 hover:bg-indigo-600 text-[10px] font-bold text-center transition-colors cursor-pointer"
+                                        className="px-2 py-1 rounded bg-slate-800 hover:bg-indigo-600 text-micro font-bold text-center transition-colors cursor-pointer"
                                     >
                                         {t("+1 Week", "+1 týždeň", "+1 hét")}
                                     </button>
@@ -1952,7 +1978,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                 handleBulkReschedule(e.target.value);
                                             }
                                         }}
-                                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-xs text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
+                                        className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2.5 py-1.5 text-ui text-white focus:outline-none focus:border-indigo-500 cursor-pointer"
                                     />
                                 </div>
                             </div>
@@ -1965,7 +1991,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             type="button"
                             onClick={handleBulkArchive}
                             title={t("Archive selected tasks", "Archivovať vybrané úlohy", "Kiválasztott feladatok archiválása")}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-amber-900/40 text-amber-300 hover:text-amber-100 text-xs font-black transition-colors border border-slate-700/50 hover:border-amber-700/50 cursor-pointer"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-amber-900/40 text-amber-300 hover:text-amber-100 text-ui font-bold transition-colors border border-slate-700/50 hover:border-amber-700/50 cursor-pointer"
                         >
                             <ArchiveIcon className="h-3.5 w-3.5 text-amber-400" />
                             <span>{t("Archive", "Archivovať", "Archiválás")}</span>
@@ -1976,7 +2002,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             type="button"
                             onClick={handleBulkRestore}
                             title={t("Restore selected tasks", "Obnoviť vybrané úlohy", "Kiválasztott feladatok visszaállítása")}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-indigo-900/40 text-indigo-300 hover:text-indigo-100 text-xs font-black transition-colors border border-slate-700/50 hover:border-indigo-700/50 cursor-pointer"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-indigo-900/40 text-indigo-300 hover:text-indigo-100 text-ui font-bold transition-colors border border-slate-700/50 hover:border-indigo-700/50 cursor-pointer"
                         >
                             <RotateCcw className="h-3.5 w-3.5 text-indigo-400" />
                             <span>{t("Restore", "Obnoviť", "Visszaállítás")}</span>
@@ -1988,7 +2014,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         type="button"
                         onClick={handleBulkDelete}
                         title={t("Delete selected tasks", "Odstrániť vybrané úlohy", "Kiválasztott feladatok törlése")}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 hover:text-rose-100 text-xs font-black transition-colors border border-rose-800/60 cursor-pointer ml-1"
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 hover:text-rose-100 text-ui font-bold transition-colors border border-rose-800/60 cursor-pointer ml-1"
                     >
                         <Trash2 className="h-3.5 w-3.5 text-rose-400" />
                         <span className="hidden sm:inline">{t("Delete", "Vymazať", "Törlés")}</span>
@@ -2095,7 +2121,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     {weekdayNames.map((d) => (
                         <div
                             key={d}
-                            className="py-2.5 text-center text-[10px] font-black text-slate-500 uppercase tracking-widest border-r border-slate-100 last:border-0"
+                            className="py-2.5 text-center type-overline text-slate-500 border-r border-slate-100 last:border-0"
                         >
                             {d}
                         </div>
@@ -2103,11 +2129,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 </div>
 
                 {/* Grid Cells */}
-                <div className="flex-1 grid grid-cols-7 grid-rows-5 lg:overflow-y-auto overflow-visible">
+                <div className="flex-1 grid grid-cols-7 grid-rows-5 ws-lg:overflow-y-auto overflow-visible">
                     {Array.from({ length: padding }).map((_, i) => (
                         <div
                             key={`pad-${i}`}
-                            className="bg-slate-50/50 border-b border-r border-slate-100 min-h-[80px]"
+                            className="bg-slate-50/50 border-b border-r border-slate-100 min-h-20"
                         />
                     ))}
 
@@ -2134,10 +2160,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             <div
                                 key={idx}
                                 onClick={() => cfg.onSelectDay(date)}
-                                className={`min-h-[80px] border-b border-r border-slate-100 p-1.5 flex flex-col gap-1 transition-all cursor-pointer group relative hover:bg-slate-50 ${cellBgClass}`}
+                                className={`min-h-20 border-b border-r border-slate-100 p-1.5 flex flex-col gap-1 transition-all cursor-pointer group relative hover:bg-slate-50 ${cellBgClass}`}
                             >
                                 <div
-                                    className={`text-[10px] font-black self-end mb-0.5 w-5 h-5 flex items-center justify-center rounded-full ${
+                                    className={`text-micro font-bold self-end mb-0.5 w-5 h-5 flex items-center justify-center rounded-full ${
                                         isToday
                                             ? "bg-indigo-600 text-white shadow-sm"
                                             : isPast
@@ -2155,7 +2181,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     {displayTasks.map((t) => (
                                         <div
                                             key={t.id}
-                                            className={`truncate text-[8px] font-bold px-1 py-0.5 rounded border shadow-[0_1px_2px_rgba(0,0,0,0.02)] ${
+                                            className={`truncate text-micro font-bold px-1 py-0.5 rounded border shadow-[0_1px_2px_rgba(0,0,0,0.02)] ${
                                                 t.priority === "high"
                                                     ? "bg-rose-50 text-rose-700 border-rose-200"
                                                     : t.priority === "medium"
@@ -2171,7 +2197,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     ))}
 
                                     {hiddenCount > 0 && (
-                                        <div className="text-[8px] font-black text-slate-400 pl-1">
+                                        <div className="text-micro font-bold text-slate-400 pl-1">
                                             +{hiddenCount}
                                         </div>
                                     )}
@@ -2203,11 +2229,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     isToday ? "bg-indigo-50/60" : ""
                                 }`}
                             >
-                                <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                                <div className="type-overline text-slate-500">
                                     {weekdayNames[idx]}
                                 </div>
                                 <div
-                                    className={`mt-1 mx-auto text-[11px] font-black w-6 h-6 flex items-center justify-center rounded-full ${
+                                    className={`mt-1 mx-auto text-caption font-bold w-6 h-6 flex items-center justify-center rounded-full ${
                                         isToday
                                             ? "bg-indigo-600 text-white shadow-sm"
                                             : "text-slate-600"
@@ -2221,7 +2247,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 </div>
 
                 {/* Day Columns */}
-                <div className="flex-1 grid grid-cols-7 lg:overflow-y-auto overflow-visible">
+                <div className="flex-1 grid grid-cols-7 ws-lg:overflow-y-auto overflow-visible">
                     {weekDays.map((date) => {
                         const dateStr = toLocalDateStr(date);
                         const isToday = dateStr === todayStr;
@@ -2232,7 +2258,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             <div
                                 key={dateStr}
                                 onClick={() => cfg.onSelectDay(date)}
-                                className={`min-h-[220px] border-r border-slate-100 last:border-0 p-1.5 flex flex-col gap-1.5 transition-all cursor-pointer hover:bg-slate-50 ${
+                                className={`min-h-55 border-r border-slate-100 last:border-0 p-1.5 flex flex-col gap-1.5 transition-all cursor-pointer hover:bg-slate-50 ${
                                     isToday
                                         ? "bg-indigo-50/30"
                                         : isPast
@@ -2241,14 +2267,14 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 }`}
                             >
                                 {dayTasks.length === 0 ? (
-                                    <span className="text-[8px] font-bold text-slate-300 uppercase tracking-wider text-center mt-2">
+                                    <span className="type-overline text-slate-300 text-center mt-2">
                                         —
                                     </span>
                                 ) : (
                                     dayTasks.map((tk) => (
                                         <div
                                             key={tk.id}
-                                            className={`text-[8.5px] font-bold px-1.5 py-1 rounded-lg border shadow-[0_1px_2px_rgba(0,0,0,0.02)] ${
+                                            className={`text-micro font-bold px-1.5 py-1 rounded-lg border shadow-[0_1px_2px_rgba(0,0,0,0.02)] ${
                                                 tk.priority === "high"
                                                     ? "bg-rose-50 text-rose-700 border-rose-200"
                                                     : tk.priority === "medium"
@@ -2256,7 +2282,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                       : "bg-slate-50 text-slate-700 border-slate-200"
                                             }`}
                                         >
-                                            <span className="block font-black tabular-nums opacity-70">
+                                            <span className="block font-bold tabular-nums opacity-70">
                                                 {formatTimeDisplay(
                                                     tk.deadlineTime || "23:59",
                                                 )}
@@ -2291,7 +2317,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     <div>
                         <button
                             onClick={() => cfg.onSelectDay(null)}
-                            className="flex items-center gap-1.5 text-indigo-600 hover:text-indigo-800 font-black text-[10px] uppercase tracking-wider transition-colors cursor-pointer mb-2"
+                            className="flex items-center gap-1.5 text-indigo-600 hover:text-indigo-800 type-overline transition-colors cursor-pointer mb-2"
                         >
                             <ChevronLeft className="h-4 w-4" />
                             {cfg.scope === "week"
@@ -2306,7 +2332,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                       "Vissza a havi naptárhoz",
                                   )}
                         </button>
-                        <h2 className="text-2xl font-black text-slate-800 tracking-tight flex items-center gap-2">
+                        <h2 className="type-metric text-slate-800 flex items-center gap-2">
                             <CalendarIcon className="h-6 w-6 text-indigo-600 stroke-[2.5]" />
                             {dayDate.toLocaleDateString(dateLocale, {
                                 weekday: "long",
@@ -2319,7 +2345,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     {cfg.onAddTask && (
                         <button
                             onClick={() => cfg.onAddTask?.(selectedDateStr)}
-                            className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-black text-[10px] uppercase tracking-wider shadow-md shadow-indigo-600/30 transition-all active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
+                            className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl type-overline shadow-md shadow-indigo-600/30 transition-all active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 cursor-pointer disabled:cursor-not-allowed disabled:opacity-50"
                             disabled={!taskAccess.create}
                         >
                             <Plus className="h-4 w-4 stroke-[3]" />
@@ -2328,7 +2354,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     )}
                 </div>
 
-                <div className="flex-1 lg:overflow-y-auto overflow-visible p-6 space-y-3 bg-slate-50/30">
+                <div className="flex-1 ws-lg:overflow-y-auto overflow-visible p-6 space-y-3 bg-slate-50/30">
                     {/* The day reads as a timeline: tasks run strictly from the
                         earliest deadline time at the top to the latest at the
                         bottom. They used to be bucketed by status, which pushed a
@@ -2336,14 +2362,14 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         differed. The status stays visible on each card. */}
                     {dayTasks.length === 0 ? (
                         <div className="p-6 border-2 border-dashed border-slate-200 rounded-2xl text-center bg-white">
-                            <span className="text-xs font-bold text-slate-400">
+                            <span className="text-ui font-bold text-slate-400">
                                 {cfg.emptyDayLabel}
                             </span>
                         </div>
                     ) : (
                         dayTasks.map((tk) => (
                             <div key={tk.id} className="flex items-start gap-3">
-                                <span className="shrink-0 mt-4 w-[52px] text-right text-[10px] font-black tabular-nums text-indigo-500">
+                                <span className="shrink-0 mt-4 w-13 text-right text-micro font-bold tabular-nums text-indigo-500">
                                     {formatTimeDisplay(
                                         tk.deadlineTime || "23:59",
                                     )}
@@ -2403,7 +2429,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 cfg.onScopeChange(scope);
                                 cfg.onSelectDay(null);
                             }}
-                            className={`px-2.5 sm:px-3 py-1.5 rounded-lg font-black text-[10px] uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
+                            className={`px-2.5 ws-sm:px-3 py-1.5 rounded-lg type-overline transition-all cursor-pointer whitespace-nowrap ${
                                 cfg.scope === scope
                                     ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
                                     : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
@@ -2452,10 +2478,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 "Prejsť na dnešok",
                                 "Ugrás a mai napra",
                             )}
-                            className={`px-4 font-black text-indigo-950 text-center tracking-wider uppercase hover:text-indigo-600 cursor-pointer transition-colors ${
+                            className={`px-4 font-bold text-indigo-950 text-center tracking-wider uppercase hover:text-indigo-600 cursor-pointer transition-colors ${
                                 cfg.compact
-                                    ? "text-[11px] min-w-[130px]"
-                                    : "text-sm min-w-[160px]"
+                                    ? "text-caption min-w-32.5"
+                                    : "text-body min-w-40"
                             }`}
                         >
                             {cfg.scope === "week"
@@ -2496,41 +2522,22 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const tomorrowStr = toLocalDateStr(new Date(today.getTime() + 86400000));
     // All personal and delegated tasks are grouped together in the same time divisions:
     const overdueTasks = myTasks
-        .filter((t) => {
-            if (isTaskOverdue(t)) return true;
-            if (showClosedTasks && isClosedRecentTask(t)) {
-                return t.deadline < todayStr;
-            }
-            return false;
-        })
+        .filter((t) => isTaskOverdue(t))
         .sort(byDeadline);
     const todayTasks = myTasks
-        .filter((t) => {
-            if (t.deadline === todayStr && !isTaskOverdue(t) && !isDoneState(t.status)) return true;
-            if (showClosedTasks && isClosedRecentTask(t)) {
-                return t.deadline === todayStr || !t.deadline;
-            }
-            return false;
-        })
+        .filter((t) => t.deadline === todayStr && !isTaskOverdue(t) && !isDoneState(t.status))
         .sort(byDeadlineTime);
     const tomorrowTasks = myTasks
-        .filter((t) => {
-            if (t.deadline === tomorrowStr && !isDoneState(t.status)) return true;
-            if (showClosedTasks && isClosedRecentTask(t)) {
-                return t.deadline === tomorrowStr;
-            }
-            return false;
-        })
+        .filter((t) => t.deadline === tomorrowStr && !isDoneState(t.status))
         .sort(byDeadlineTime);
     const futureTasks = myTasks
-        .filter((t) => {
-            if (t.deadline > tomorrowStr && !isDoneState(t.status)) return true;
-            if (showClosedTasks && isClosedRecentTask(t)) {
-                return t.deadline > tomorrowStr;
-            }
-            return false;
-        })
+        .filter((t) => t.deadline > tomorrowStr && !isDoneState(t.status))
         .sort(byDeadline);
+    const doneTasks = showClosedTasks
+        ? myTasks
+              .filter((t) => isClosedRecentTask(t))
+              .sort(byCompletionDesc)
+        : [];
 
     // The lead a task is linked to, as a link straight to that lead's detail —
     // so a task on the calendar can be followed to its client without leaving
@@ -2541,7 +2548,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         const lead = leads.find((l) => String(l.id) === String(task.relatedLeadId));
         if (!lead) {
             return (
-                <span className={`text-[9px] font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md truncate ${maxWidth}`}>
+                <span className={`text-micro font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md truncate ${maxWidth}`}>
                     <Briefcase className="h-2.5 w-2.5 shrink-0" />
                     <span className="truncate">Lead</span>
                 </span>
@@ -2549,11 +2556,15 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         }
         return (
             <a
-                href={`#lead-${encodeURIComponent(lead.id)}`}
+                href={recordHref(lead)}
                 onClick={(e) => e.stopPropagation()}
                 data-testid="task-lead-link"
-                title={t("Open lead", "Otvoriť lead", "Lead megnyitása")}
-                className={`group/lead text-[9px] font-bold text-slate-600 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md ${maxWidth} hover:bg-indigo-100 hover:text-indigo-700 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 transition-all cursor-pointer`}
+                title={
+                    isClientRecord(lead)
+                        ? t("Open client", "Otvoriť klienta", "Ügyfél megnyitása")
+                        : t("Open lead", "Otvoriť lead", "Lead megnyitása")
+                }
+                className={`group/lead text-micro font-bold text-slate-600 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md ${maxWidth} hover:bg-indigo-100 hover:text-indigo-700 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 transition-all cursor-pointer`}
             >
                 <Briefcase className="h-2.5 w-2.5 shrink-0" />
                 <span className="truncate">{lead.name || "Lead"}</span>
@@ -2600,7 +2611,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         return (
             <div
                 key={task.id}
-                className={`group px-3.5 py-2.5 transition-colors border-b border-slate-100 last:border-b-0 flex items-start justify-between gap-3 text-xs ${
+                className={`group px-3.5 py-2.5 transition-colors border-b border-slate-100 last:border-b-0 flex items-start justify-between gap-3 text-ui ${
                     isSelected
                         ? "bg-indigo-50/70"
                         : "bg-white hover:bg-slate-50/90"
@@ -2625,15 +2636,15 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 </div>
 
                 {/* Main task body */}
-                <div className="flex-1 min-w-0 flex flex-col gap-1.5 sm:gap-1">
+                <div className="flex-1 min-w-0 flex flex-col gap-1.5 ws-sm:gap-1">
                     {/* Top Row:
                         - On mobile (<sm): Status dropdown + Priority Icon on Left, Quick action buttons on Right
                         - On desktop (sm+): Status dropdown + Priority Icon + Title inline
                     */}
-                    <div className="flex items-center justify-between sm:justify-start gap-2 min-w-0">
-                        <div className="flex items-center gap-2 min-w-0 flex-1 sm:flex-initial">
+                    <div className="flex items-center justify-between ws-sm:justify-start gap-2 min-w-0">
+                        <div className="flex items-center gap-2 min-w-0 flex-1 ws-sm:flex-initial">
                             <div
-                                className="w-[96px] shrink-0"
+                                className="w-24 shrink-0"
                                 style={
                                     {
                                         "--task-status-bg": `${taskStateColors[task.status] || "#64748b"}15`,
@@ -2670,7 +2681,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                             ),
                                         );
                                     }}
-                                    className="!bg-[var(--task-status-bg)] !text-[var(--task-status-color)] !border-[var(--task-status-border)] !text-[10px] !py-0.5 !px-2 font-black uppercase tracking-wider truncate"
+                                    className="!bg-[var(--task-status-bg)] !text-[var(--task-status-color)] !border-[var(--task-status-border)] type-overline !py-0.5 !px-2 truncate"
                                     options={taskStates.map((st) => ({ value: st, label: stateLabel(st) }))}
                                 />
                             </div>
@@ -2680,7 +2691,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             {/* Desktop-only Title: inline with status dropdown */}
                             <span
                                 onClick={() => setEditingTask(task)}
-                                className={`hidden sm:inline font-bold truncate cursor-pointer transition-colors ${
+                                className={`hidden ws-sm:inline font-bold truncate cursor-pointer transition-colors ${
                                     isClosed
                                         ? "text-slate-400 line-through decoration-slate-400 hover:text-slate-600"
                                         : "text-slate-800 hover:text-indigo-600"
@@ -2696,7 +2707,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         </div>
 
                         {/* Mobile-only Quick Action Buttons placed at top right next to status */}
-                        <div className="flex sm:hidden items-center gap-0.5 shrink-0">
+                        <div className="flex ws-sm:hidden items-center gap-0.5 shrink-0">
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();
@@ -2746,10 +2757,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     </div>
 
                     {/* Mobile-only Dedicated Title Row (Full width, maximum visibility, no truncation pressure) */}
-                    <div className="sm:hidden w-full">
+                    <div className="ws-sm:hidden w-full">
                         <span
                             onClick={() => setEditingTask(task)}
-                            className={`font-bold text-xs leading-snug cursor-pointer transition-colors break-words line-clamp-3 block ${
+                            className={`font-bold text-ui leading-snug cursor-pointer transition-colors break-words line-clamp-3 block ${
                                 isClosed
                                     ? "text-slate-400 line-through decoration-slate-400 hover:text-slate-600"
                                     : "text-slate-900 hover:text-indigo-600"
@@ -2765,7 +2776,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     </div>
 
                     {/* Line 2: Everything else (delegated badge, lead/client, project, due date/time, assignee) */}
-                    <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap min-w-0 text-[10px]">
+                    <div className="flex items-center gap-1.5 ws-sm:gap-2 flex-wrap min-w-0 text-micro">
                         {isDelegatedByMe(task) && (
                             <span
                                 title={t(
@@ -2773,7 +2784,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     "Túto úlohu ste vytvorili pre niekoho iného. Vo vašom kalendári zostáva, aby ste ju mohli sledovať.",
                                     "Ezt a feladatot másnak hozta létre. A naptárában marad, hogy nyomon követhesse.",
                                 )}
-                                className="font-black uppercase px-1.5 py-0.5 rounded border bg-violet-50 text-violet-600 border-violet-200 cursor-help shrink-0"
+                                className="font-bold uppercase px-1.5 py-0.5 rounded border bg-violet-50 text-violet-600 border-violet-200 cursor-help shrink-0"
                             >
                                 {t("Delegated", "Delegované", "Delegálva")}
                                 {task.assignedUsers?.[0]
@@ -2782,10 +2793,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             </span>
                         )}
 
-                        {renderLeadBadge(task, "max-w-[140px]")}
+                        {renderLeadBadge(task, "max-w-35")}
 
                         {projectNameFor(task) && (
-                            <span className="font-bold text-purple-700 flex items-center gap-1 bg-purple-50 px-1.5 py-0.5 rounded-md truncate max-w-[140px] shrink-0 border border-purple-100">
+                            <span className="font-bold text-purple-700 flex items-center gap-1 bg-purple-50 px-1.5 py-0.5 rounded-md truncate max-w-35 shrink-0 border border-purple-100">
                                 <FolderKanban className="h-2.5 w-2.5 shrink-0 text-purple-500" />
                                 <span className="truncate">{projectNameFor(task)}</span>
                             </span>
@@ -2800,7 +2811,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         </span>
 
                         {task.assignedUsers && task.assignedUsers.length > 0 && (
-                            <span className="font-bold text-slate-600 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md truncate max-w-[120px] border border-slate-200">
+                            <span className="font-bold text-slate-600 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md truncate max-w-30 border border-slate-200">
                                 <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 shrink-0" />
                                 <span className="truncate">
                                     {task.assignedUsers.join(", ")}
@@ -2809,7 +2820,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         )}
 
                         {task.description && (
-                            <span className="text-slate-400 font-medium truncate max-w-[240px] sm:max-w-[180px]" title={task.description}>
+                            <span className="text-slate-400 font-medium truncate max-w-60 ws-sm:max-w-45" title={task.description}>
                                 <TaskPillText
                                     text={task.description}
                                     onTagClick={handleTagClick}
@@ -2832,7 +2843,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                         e.stopPropagation();
                                         handleTagClick(tag);
                                     }}
-                                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9.5px] font-bold bg-[#ff5d00]/10 text-[#ff5d00] border border-[#ff5d00]/25 hover:bg-[#ff5d00]/20 transition-all cursor-pointer"
+                                    className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-micro font-bold bg-[#ff5d00]/10 text-[#ff5d00] border border-[#ff5d00]/25 hover:bg-[#ff5d00]/20 transition-all cursor-pointer"
                                 >
                                     <Hash className="w-2.5 h-2.5" />
                                     <span>{tag}</span>
@@ -2843,7 +2854,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 </div>
 
                 {/* Desktop-only right side quick action buttons */}
-                <div className="hidden sm:flex items-center gap-0.5 shrink-0 pt-0.5">
+                <div className="hidden ws-sm:flex items-center gap-0.5 shrink-0 pt-0.5">
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
@@ -2915,7 +2926,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     isSelected
                         ? "bg-indigo-50/50 ring-1 ring-indigo-300/80 border-indigo-300"
                         : "bg-white border-slate-200 hover:border-slate-300"
-                } transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs shadow-sm hover:shadow`}
+                } transition-all flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3 text-ui shadow-sm hover:shadow`}
             >
                 <div className="flex-1 min-w-0 flex items-center gap-3">
                     <input
@@ -2943,16 +2954,16 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     knownEntities={mentionEntities}
                                 />
                             </span>
-                            {renderLeadBadge(task, "max-w-[140px]")}
+                            {renderLeadBadge(task, "max-w-35")}
                             {projectNameFor(task) && (
-                                <span className="text-[9px] font-bold text-purple-700 flex items-center gap-0.5 bg-purple-50 px-1.5 py-0.5 rounded-md truncate max-w-[140px]">
+                                <span className="text-micro font-bold text-purple-700 flex items-center gap-0.5 bg-purple-50 px-1.5 py-0.5 rounded-md truncate max-w-35">
                                     <FolderKanban className="h-2.5 w-2.5 shrink-0" />
                                     <span className="truncate">{projectNameFor(task)}</span>
                                 </span>
                             )}
                         </div>
                         {task.description && (
-                            <div className="text-[10px] font-semibold text-slate-500 truncate mt-0.5">
+                            <div className="text-micro font-semibold text-slate-500 truncate mt-0.5">
                                 <TaskPillText
                                     text={task.description}
                                     onTagClick={handleTagClick}
@@ -2964,9 +2975,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 </div>
 
                 {/* Log details and actions */}
-                <div className="flex items-center gap-4 shrink-0 justify-between sm:justify-end">
+                <div className="flex items-center gap-4 shrink-0 justify-between ws-sm:justify-end">
                     <div className="text-right space-y-0.5">
-                        <div className="text-[10px] font-bold text-slate-600">
+                        <div className="text-micro font-bold text-slate-600">
                             <span
                                 className={`font-extrabold ${isEstimatedCompleter(task) ? "text-slate-500 italic" : "text-slate-800"}`}
                                 title={
@@ -2989,7 +3000,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         </div>
                         <div>
                             {isOverdue ? (
-                                <span className="px-1.5 py-0.5 rounded bg-rose-50 border border-rose-200 text-[8px] font-black text-rose-600 uppercase tracking-wide">
+                                <span className="px-1.5 py-0.5 rounded bg-rose-50 border border-rose-200 type-overline text-rose-600">
                                     ⚠️{" "}
                                     {t(
                                         `Overdue by ${overdueDays}d`,
@@ -2998,7 +3009,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     )}
                                 </span>
                             ) : (
-                                <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 text-[8px] font-black text-emerald-600 uppercase tracking-wide">
+                                <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 type-overline text-emerald-600">
                                     ✓{" "}
                                     {t(
                                         "On time",
@@ -3021,7 +3032,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             title={
                                 mayEditTask(task) ? undefined : readOnlyHint()
                             }
-                            className="px-2.5 py-1.5 border border-indigo-200 hover:bg-indigo-50 text-indigo-600 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:active:scale-100"
+                            className="px-2.5 py-1.5 border border-indigo-200 hover:bg-indigo-50 text-indigo-600 rounded-lg type-overline shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:active:scale-100"
                         >
                             <RotateCcw className="h-3 w-3 stroke-[2.5]" />
                             {t(
@@ -3042,7 +3053,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     "Natrvalo odstrániť",
                                     "Végleges törlés",
                                 )}
-                                className="px-2 py-1.5 border border-rose-200 hover:bg-rose-50 text-rose-600 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+                                className="px-2 py-1.5 border border-rose-200 hover:bg-rose-50 text-rose-600 rounded-lg type-overline shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
                             >
                                 <Trash2 className="h-3 w-3 stroke-[2.5]" />
                             </button>
@@ -3071,7 +3082,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         const isOpen = !collapsible || opts.expanded === true;
         const heading = (
             <h3
-                className={`text-xs font-black uppercase tracking-widest flex items-center gap-2 select-none ${tone.title}`}
+                className={`text-ui font-bold flex items-center gap-2 select-none ${tone.title}`}
             >
                 {opts.icon} {opts.title} ({opts.tasks.length})
             </h3>
@@ -3102,7 +3113,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     <div className={collapsible ? "animate-in fade-in slide-in-from-top-1 duration-150" : ""}>
                         {opts.tasks.length === 0 ? (
                             <div className="px-4 py-2.5 bg-slate-50/40 text-center">
-                                <span className="text-[11px] font-semibold text-slate-400 italic">
+                                <span className="text-caption font-semibold text-slate-400 italic">
                                     {opts.emptyLabel}
                                 </span>
                             </div>
@@ -3132,32 +3143,19 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         // the team board answers "what is late / due now / still coming",
         // and a dedicated Tomorrow bucket only splits that last group in two.
         const globalOverdue = filteredTasks
-            .filter((task) => {
-                if (isTaskOverdue(task)) return true;
-                if (showClosedTasks && isClosedRecentTask(task)) {
-                    return task.deadline < todayStr;
-                }
-                return false;
-            })
+            .filter((task) => isTaskOverdue(task))
             .sort(byDeadline);
         const globalToday = filteredTasks
-            .filter((task) => {
-                if (task.deadline === todayStr && !isTaskOverdue(task) && !isDoneState(task.status)) return true;
-                if (showClosedTasks && isClosedRecentTask(task)) {
-                    return task.deadline === todayStr || !task.deadline;
-                }
-                return false;
-            })
+            .filter((task) => task.deadline === todayStr && !isTaskOverdue(task) && !isDoneState(task.status))
             .sort(byDeadlineTime);
         const globalUpcoming = filteredTasks
-            .filter((task) => {
-                if (task.deadline > todayStr && !isDoneState(task.status)) return true;
-                if (showClosedTasks && isClosedRecentTask(task)) {
-                    return task.deadline > todayStr;
-                }
-                return false;
-            })
+            .filter((task) => task.deadline > todayStr && !isDoneState(task.status))
             .sort(byDeadline);
+        const globalDone = showClosedTasks
+            ? filteredTasks
+                  .filter((task) => isClosedRecentTask(task))
+                  .sort(byCompletionDesc)
+            : [];
 
         // Who a card collects. On the team-wide board that is the assignee, so a
         // task hangs under whoever has to do it. On the restricted board there is
@@ -3185,11 +3183,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     className="h-2.5 w-2.5 rounded-full shrink-0"
                     style={{ backgroundColor: memberColor(userName) }}
                 />
-                <span className="font-extrabold text-slate-800 text-xs uppercase tracking-wider truncate">
+                <span className="font-extrabold text-slate-800 text-ui truncate">
                     {userName}
                 </span>
                 {userName === myName && (
-                    <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-indigo-50 border border-indigo-100 text-[9px] font-black uppercase tracking-wider text-indigo-600">
+                    <span className="shrink-0 px-1.5 py-0.5 rounded-md bg-indigo-50 border border-indigo-100 type-overline text-indigo-600">
                         {t("You", "Vy", "Ön")}
                     </span>
                 )}
@@ -3208,7 +3206,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         className="shrink-0 flex items-center justify-between gap-3 rounded-2xl border border-dashed border-slate-200 bg-white/50 px-4 py-2.5"
                     >
                         {renderMemberHeading(userName)}
-                        <span className="shrink-0 text-[10px] font-black uppercase tracking-wider text-slate-400">
+                        <span className="shrink-0 type-overline text-slate-400">
                             {t(
                                 "No active tasks",
                                 "Žiadne aktívne úlohy",
@@ -3241,12 +3239,12 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         {renderMemberHeading(userName)}
                         <span className="flex items-center gap-2 shrink-0">
                             {lateCount > 0 && (
-                                <span className="px-2 py-0.5 rounded-full bg-rose-50 border border-rose-200 text-[9px] font-black uppercase tracking-wider text-rose-600">
+                                <span className="px-2 py-0.5 rounded-full bg-rose-50 border border-rose-200 type-overline text-rose-600">
                                     {lateCount}{" "}
                                     {t("late", "po termíne", "késés")}
                                 </span>
                             )}
-                            <span className="px-2.5 py-0.5 rounded-full bg-white border border-slate-200 text-[10px] font-black text-slate-500 shadow-sm">
+                            <span className="px-2.5 py-0.5 rounded-full bg-white border border-slate-200 text-micro font-bold text-slate-500 shadow-sm">
                                 {memberTasks.length}
                             </span>
                             <span className="text-slate-400 group-hover/member:text-slate-600 transition-colors">
@@ -3291,7 +3289,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 {/* FILTERS */}
                 <div className="flex flex-wrap items-center justify-between gap-4 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm shrink-0">
                     <div className="flex items-center gap-2">
-                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
+                        <span className="type-overline text-slate-500 bg-slate-100 px-3 py-1.5 rounded-xl border border-slate-200">
                             {t(
                                 "Filter Workloads",
                                 "Filtrovať vyťaženie",
@@ -3302,7 +3300,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                     <div className="flex items-center gap-4 flex-wrap">
                         {/* Priority Filter */}
-                        <div className="flex items-center gap-1.5 text-xs font-bold">
+                        <div className="flex items-center gap-1.5 text-ui font-bold">
                             <span className="text-slate-500">
                                 {t("Priority:", "Priorita:", "Prioritás:")}
                             </span>
@@ -3327,7 +3325,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         </div>
 
                         {/* State Filter */}
-                        <div className="flex items-center gap-1.5 text-xs font-bold">
+                        <div className="flex items-center gap-1.5 text-ui font-bold">
                             <span className="text-slate-500">
                                 {t("Status:", "Stav:", "Státusz:")}
                             </span>
@@ -3351,11 +3349,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             />
                         </div>
 
+                        {renderClientFilter("min-w-[16rem]")}
+
                         {/* Project Manager Filter — only meaningful on the
                             team-wide board; a restricted role already sees
                             nothing but its own work. */}
                         {canSeeAllTasks && (
-                            <div className="flex items-center gap-1.5 text-xs font-bold">
+                            <div className="flex items-center gap-1.5 text-ui font-bold">
                                 <span className="text-slate-500">
                                     {t(
                                         "Project Manager:",
@@ -3382,7 +3382,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         )}
 
                         {/* Date Filter (item 9) */}
-                        <div className="flex items-center gap-1.5 text-xs font-bold">
+                        <div className="flex items-center gap-1.5 text-ui font-bold">
                             <span className="text-slate-500">
                                 {t("Date:", "Dátum:", "Dátum:")}
                             </span>
@@ -3402,7 +3402,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         <button
                             type="button"
                             onClick={handleSelectAllVisible}
-                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border-2 text-xs font-extrabold cursor-pointer transition-all ${
+                            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border-2 text-ui font-extrabold cursor-pointer transition-all ${
                                 areAllVisibleSelected
                                     ? "bg-indigo-50 border-indigo-200 text-indigo-700"
                                     : "bg-slate-50 border-slate-200 text-slate-600 hover:border-indigo-400"
@@ -3422,9 +3422,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 {/* SPLIT VIEW — the same time buckets as My Calendar on the
                     left, the team's workload stacked one member per row on the
                     right. Below lg the two stack into a single column. */}
-                <div className="flex-1 min-h-0 grid grid-cols-1 gap-6 lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)] 2xl:grid-cols-[minmax(0,480px)_minmax(0,1fr)]">
+                <div className="flex-1 min-h-0 grid grid-cols-1 gap-6 ws-lg:grid-cols-[minmax(0,340px)_minmax(0,1fr)] ws-xl:grid-cols-[minmax(0,420px)_minmax(0,1fr)] ws-2xl:grid-cols-[minmax(0,480px)_minmax(0,1fr)]">
                     {/* LEFT: MISSED / TODAY / UPCOMING */}
-                    <div className="flex flex-col min-w-0 min-h-0 h-auto overflow-visible lg:h-full lg:overflow-y-auto lg:pr-2 pb-2 lg:pb-8 scrollbar-thin">
+                    <div className="flex flex-col min-w-0 min-h-0 h-auto overflow-visible ws-lg:h-full ws-lg:overflow-y-auto ws-lg:pr-2 pb-2 ws-lg:pb-8 scrollbar-thin">
                         <div className="bg-white rounded-3xl border border-slate-200/90 shadow-sm overflow-hidden shrink-0">
                             {/* Header bar with discreet toggle switch & number input to show closed tasks */}
                             <ClosedTasksToggleBar
@@ -3470,6 +3470,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 onToggle: () =>
                                     setIsGlobalUpcomingExpanded((open) => !open),
                             })}
+                            {showClosedTasks && globalDone.length > 0 && renderTaskBucket({
+                                tone: "emerald",
+                                icon: <CheckCircle2 className="h-4 w-4" />,
+                                title: t("Done tasks", "Hotové úlohy", "Kész feladatok"),
+                                tasks: globalDone,
+                                emptyLabel: t(
+                                    "No done tasks.",
+                                    "Žiadne hotové úlohy.",
+                                    "Nincsenek kész feladatok.",
+                                ),
+                                expanded: isGlobalDoneExpanded,
+                                onToggle: () =>
+                                    setIsGlobalDoneExpanded((open) => !open),
+                            })}
                         </div>
                     </div>
 
@@ -3478,12 +3492,12 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         how the right half is drawn — both halves still describe
                         exactly the tasks the filter bar selected. */}
                     <div
-                        className={`flex flex-col min-w-0 min-h-0 h-auto space-y-4 overflow-visible lg:h-full lg:pr-2 pb-2 lg:pb-0 ${
+                        className={`flex flex-col min-w-0 min-h-0 h-auto space-y-4 overflow-visible ws-lg:h-full ws-lg:pr-2 pb-2 ws-lg:pb-0 ${
                             isGlobalCalendar ? "" : "lg:overflow-y-auto"
                         }`}
                     >
                         <div className="flex flex-wrap items-center justify-between gap-3 shrink-0">
-                            <h3 className="text-xs font-black text-slate-600 uppercase tracking-widest flex items-center gap-2 select-none">
+                            <h3 className="text-ui font-bold text-slate-600 flex items-center gap-2 select-none">
                                 {isGlobalCalendar ? (
                                     <CalendarIcon className="h-5 w-5" />
                                 ) : (
@@ -3526,7 +3540,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                     setGlobalRightView(mode);
                                                     setGlobalSelectedDay(null);
                                                 }}
-                                                className={`px-3 py-1.5 rounded-lg font-black text-[10px] uppercase tracking-wider transition-all cursor-pointer ${
+                                                className={`px-3 py-1.5 rounded-lg type-overline transition-all cursor-pointer ${
                                                     globalRightView === mode
                                                         ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
                                                         : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
@@ -3547,14 +3561,14 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                         ),
                                     )}
                                 </div>
-                                <span className="px-2.5 py-0.5 rounded-full bg-white border border-slate-200 text-[10px] font-black text-slate-500 shadow-sm">
+                                <span className="px-2.5 py-0.5 rounded-full bg-white border border-slate-200 text-micro font-bold text-slate-500 shadow-sm">
                                     {filteredTasks.length}
                                 </span>
                             </div>
                         </div>
 
                         {isGlobalCalendar ? (
-                            <div className="flex-1 min-h-[520px] lg:min-h-0 flex flex-col bg-white rounded-3xl border border-slate-200 shadow-[0_4px_24px_rgba(0,0,0,0.02)] lg:overflow-hidden overflow-visible">
+                            <div className="flex-1 min-h-130 ws-lg:min-h-0 flex flex-col bg-white rounded-3xl border border-slate-200 shadow-[0_4px_24px_rgba(0,0,0,0.02)] ws-lg:overflow-hidden overflow-visible">
                                 {renderCalendarPanel({
                                     anchor: globalCalendarDate,
                                     scope: globalCalendarScope,
@@ -3590,7 +3604,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     >
                                         <span className="flex items-center gap-2 min-w-0">
                                             <span className="h-2.5 w-2.5 rounded-full bg-rose-500 shrink-0" />
-                                            <span className="font-extrabold text-rose-800 text-xs uppercase tracking-wider truncate">
+                                            <span className="font-extrabold text-rose-800 text-ui truncate">
                                                 {t(
                                                     "Unassigned",
                                                     "Nepriradené",
@@ -3599,7 +3613,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                             </span>
                                         </span>
                                         <span className="flex items-center gap-2 shrink-0">
-                                            <span className="px-2.5 py-0.5 rounded-full bg-white border border-rose-200/60 text-[10px] font-black text-rose-500 shadow-sm">
+                                            <span className="px-2.5 py-0.5 rounded-full bg-white border border-rose-200/60 text-micro font-bold text-rose-500 shadow-sm">
                                                 {unassignedTasks.length}
                                             </span>
                                             <span className="text-rose-400 group-hover/member:text-rose-600 transition-colors">
@@ -3626,14 +3640,47 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         );
     };
 
+    // Only leads / clients that have a task show up here — the register can be
+    // hundreds long, and picking one with nothing to show is a dead end.
+    const renderClientFilter = (className = "") => {
+        const withTasks = new Set(
+            tasks.map((task) => String(task.relatedLeadId ?? "")).filter(Boolean),
+        );
+        if (clientFilter) withTasks.add(clientFilter);
+        const idsWithoutTasks = leads
+            .filter((l) => !withTasks.has(String(l.id)))
+            .map((l) => l.id);
+        if (withTasks.size === 0) return null;
+        return (
+            <div className={`flex items-center gap-1.5 text-ui font-bold ${className}`} data-testid="task-client-filter">
+                <span className="text-slate-500 shrink-0">
+                    {t("Client / Lead:", "Klient / Lead:", "Ügyfél / Lead:")}
+                </span>
+                <div className="min-w-0 flex-1">
+                    <ClientSelect
+                        leads={leads}
+                        value={clientFilter}
+                        onChange={setClientFilter}
+                        excludeIds={idsWithoutTasks}
+                        showCity={false}
+                        showKind
+                        allowAdd={false}
+                        size="sm"
+                        noneLabel={t("All clients & leads", "Všetci klienti a leady", "Minden ügyfél és lead")}
+                    />
+                </div>
+            </div>
+        );
+    };
+
     // The left task list column for My Calendar.
     // If isCentered is true (when calendarScope === "hide"), it expands with max-w-3xl on mobile and max-w-5xl on desktop.
     const renderMyTaskListColumn = (isCentered: boolean = false) => (
         <div
             className={`flex flex-col space-y-6 min-h-0 ${
                 isCentered
-                    ? "w-full max-w-3xl lg:max-w-5xl mx-auto p-2"
-                    : "lg:h-full lg:overflow-y-auto overflow-visible h-auto pr-2 pb-8 scrollbar-thin"
+                    ? "w-full max-w-3xl ws-lg:max-w-4xl mx-auto p-2"
+                    : "lg:h-full ws-lg:overflow-y-auto overflow-visible h-auto pr-2 pb-8 scrollbar-thin"
             }`}
         >
             {/* Create New Task Section: Sticky action bar matching column width */}
@@ -3669,10 +3716,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 <Plus className="h-4 w-4 stroke-[3]" />
                             </span>
                             <div>
-                                <h3 className="text-xs font-black text-slate-800 uppercase tracking-wider">
+                                <h3 className="text-ui font-bold text-slate-800">
                                     {t("Create New Task(s)", "Vytvoriť novú úlohu / úlohy", "Új feladat(ok) létrehozása")}
                                 </h3>
-                                <p className="text-[10px] font-semibold text-slate-400">
+                                <p className="text-micro font-semibold text-slate-400">
                                     {t("Shift + Enter for new lines / multiple tasks", "Shift + Enter pre nový riadok / viac úloh", "Shift + Enter új sorhoz / több feladathoz")}
                                 </p>
                             </div>
@@ -3686,11 +3733,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         </button>
                     </div>
 
-                    <form onSubmit={(e) => handleCreateTask(e, true)} className="p-3.5 space-y-3 text-xs font-bold">
+                    <form onSubmit={(e) => handleCreateTask(e, true)} className="p-3.5 space-y-3 text-ui font-bold">
                         <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase flex items-center justify-between">
+                            <label className="type-overline text-slate-500 flex items-center justify-between">
                                 <span>{t("Task Title(s)", "Názov úlohy / úloh", "Feladat címe(i)")}</span>
-                                <span className="text-[9px] font-normal text-[#ff5d00]">
+                                <span className="text-micro font-normal text-[#ff5d00]">
                                     {t("1 line = 1 task", "1 riadok = 1 úloha", "1 sor = 1 feladat")}
                                 </span>
                             </label>
@@ -3726,14 +3773,14 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     "Zadajte názov... (Shift+Enter pre ďalšiu úlohu, # pre tagy, @ pre zmienky)",
                                     "Adja meg a feladatot... (Shift+Enter új feladathoz, # címkékhez, @ hivatkozáshoz)",
                                 )}
-                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-[#ff5d00] focus:outline-none transition-colors text-xs font-semibold placeholder:text-slate-400 leading-relaxed resize-y min-h-[50px]"
+                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-[#ff5d00] focus:outline-none transition-colors text-ui font-semibold placeholder:text-slate-400 leading-relaxed resize-y min-h-12.5"
                             />
                         </div>
 
                         {/* Row 1: Date, Time & Priority */}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-2.5">
                             <div className="space-y-1">
-                                <label className="text-[9px] font-black text-slate-500 uppercase">
+                                <label className="type-overline text-slate-500">
                                     {t("Deadline Date", "Termín", "Határidő")}
                                 </label>
                                 <input
@@ -3741,11 +3788,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     required
                                     value={newDeadline}
                                     onChange={(e) => setNewDeadline(e.target.value)}
-                                    className="w-full px-2.5 py-1.5 rounded-xl border-2 border-slate-200 focus:border-[#ff5d00] focus:outline-none text-xs h-[34px]"
+                                    className="w-full px-2.5 py-1.5 rounded-xl border-2 border-slate-200 focus:border-[#ff5d00] focus:outline-none text-ui h-8.5"
                                 />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-[9px] font-black text-slate-500 uppercase">
+                                <label className="type-overline text-slate-500">
                                     {t("Deadline Time", "Čas termínu", "Határidő időpontja")}
                                 </label>
                                 <DeadlineTimePicker
@@ -3755,16 +3802,16 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">
+                                <label className="type-overline text-slate-500">
                                     {t("Priority", "Priorita", "Prioritás")}
                                 </label>
-                                <div className="grid grid-cols-3 gap-1 bg-slate-50 p-0.5 rounded-xl border border-slate-200 h-[34px] items-center">
+                                <div className="grid grid-cols-3 gap-1 bg-slate-50 p-0.5 rounded-xl border border-slate-200 h-8.5 items-center">
                                     {(["low", "medium", "high"] as const).map((prio) => (
                                         <button
                                             key={prio}
                                             type="button"
                                             onClick={() => setNewPriority(prio)}
-                                            className={`py-1 rounded-lg font-black text-[9px] uppercase transition-all cursor-pointer flex items-center justify-center gap-1 ${
+                                            className={`py-1 rounded-lg type-overline transition-all cursor-pointer flex items-center justify-center gap-1 ${
                                                 newPriority === prio
                                                     ? prio === "high"
                                                         ? "bg-rose-600 text-white shadow-xs"
@@ -3775,7 +3822,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                             }`}
                                         >
                                             {renderPriorityIcon(prio, "h-2.5 w-2.5")}
-                                            <span className="hidden xl:inline">{priorityLabel(prio)}</span>
+                                            <span className="hidden ws-xl:inline">{priorityLabel(prio)}</span>
                                         </button>
                                     ))}
                                 </div>
@@ -3783,9 +3830,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         </div>
 
                         {/* Row 2: Assignee, Lead/Client, Project (All on 1 row) */}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                        <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-2.5">
                             <div className="space-y-1">
-                                <label className="text-[9px] font-black text-slate-500 uppercase">
+                                <label className="type-overline text-slate-500">
                                     {t("Assignee", "Priradiť", "Felelős")}
                                 </label>
                                 <CustomSelect
@@ -3806,8 +3853,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             </div>
 
                             <div className="space-y-1">
-                                <label className="text-[9px] font-black text-slate-500 uppercase">
-                                    {t("Link to Lead/Client", "Záujemca / Klient", "Ügyfél / Lead")}
+                                <label className="type-overline text-slate-500">
+                                    {t("Link to Lead / Client", "Prepojiť s leadom / klientom", "Összekapcsolás leaddel / ügyféllel")}
                                 </label>
                                 <ClientSelect
                                     leads={leads}
@@ -3817,13 +3864,14 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                         if (!v) setNewIsLocking(false);
                                     }}
                                     showCity={false}
+                                    showKind
                                     addKind="lead"
                                     noneLabel={t("-- None --", "-- Žiadny --", "-- Nincs --")}
                                 />
                             </div>
 
                             <div className="space-y-1">
-                                <label className="text-[9px] font-black text-slate-500 uppercase flex items-center gap-1">
+                                <label className="type-overline text-slate-500 flex items-center gap-1">
                                     <FolderKanban className="h-3 w-3" />
                                     {t("Project", "Projekt", "Projekt")}
                                 </label>
@@ -3839,7 +3887,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                         {newRelatedLeadId && (
                             <div className="p-2 rounded-xl bg-violet-50/60 border border-violet-100 flex items-center justify-between">
-                                <span className="text-[9px] font-black text-violet-700 uppercase flex items-center gap-1">
+                                <span className="type-overline text-violet-700 flex items-center gap-1">
                                     <Lock className="h-3 w-3" />{" "}
                                     {t("Block Pipeline Stage", "Zablokovať fázu pipeline", "Folyamat szakasz zárolása")}
                                 </span>
@@ -3870,23 +3918,23 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             <button
                                 type="button"
                                 onClick={closeAddDrawer}
-                                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-black text-xs uppercase tracking-wider transition-colors cursor-pointer shrink-0"
+                                className="px-5 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold text-ui transition-colors cursor-pointer shrink-0"
                             >
                                 {t("Cancel", "Zrušiť", "Mégse")}
                             </button>
                             <div className="flex-1 flex items-stretch rounded-xl overflow-hidden shadow-lg shadow-orange-500/25 bg-[#ff5d00] transition-all">
                                 <button
                                     type="submit"
-                                    className="w-2/3 py-2.5 px-3 bg-[#ff5d00] hover:bg-[#e05200] active:bg-[#c94a00] text-white font-black text-[11px] sm:text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors cursor-pointer text-center truncate"
+                                    className="w-2/3 py-2.5 px-3 bg-[#ff5d00] hover:bg-[#e05200] active:bg-[#c94a00] text-white type-overline flex items-center justify-center gap-1.5 transition-colors cursor-pointer text-center truncate"
                                     title={t("Create task & close form", "Vytvoriť úlohu a zatvoriť formulár", "Feladat létrehozása és bezárás")}
                                 >
                                     {t("Create task", "Vytvoriť úlohu", "Feladat létrehozása")}
                                 </button>
-                                <div className="w-[1px] bg-white/30 self-stretch my-2 shrink-0" />
+                                <div className="w-px bg-white/30 self-stretch my-2 shrink-0" />
                                 <button
                                     type="button"
                                     onClick={(e) => handleCreateTask(e, false)}
-                                    className="w-1/3 py-2.5 px-3 bg-[#ff5d00] hover:bg-[#e05200] active:bg-[#c94a00] text-white font-black text-[11px] sm:text-xs uppercase tracking-wider flex items-center justify-center gap-1.5 transition-colors cursor-pointer text-center truncate"
+                                    className="w-1/3 py-2.5 px-3 bg-[#ff5d00] hover:bg-[#e05200] active:bg-[#c94a00] text-white type-overline flex items-center justify-center gap-1.5 transition-colors cursor-pointer text-center truncate"
                                     title={t("Create task & add another", "Vytvoriť úlohu a pridať ďalšiu", "Létrehozás és újabb hozzáadása")}
                                 >
                                     {t("Add another", "Pridať ďalšiu", "Újabb hozzáadása")}
@@ -3907,6 +3955,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     days={closedTasksDays}
                     onChangeDays={handleClosedTasksDaysChange}
                     t={t}
+                    leading={renderClientFilter("max-w-xs")}
                 />
 
                 {/* Overdue / Missed — always visible */}
@@ -3965,6 +4014,22 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     expanded: isFutureExpanded,
                     onToggle: () =>
                         setIsFutureExpanded(!isFutureExpanded),
+                })}
+
+                {/* Done tasks */}
+                {showClosedTasks && doneTasks.length > 0 && renderTaskBucket({
+                    tone: "emerald",
+                    icon: <CheckCircle2 className="h-4 w-4" />,
+                    title: t("Done tasks", "Hotové úlohy", "Kész feladatok"),
+                    tasks: doneTasks,
+                    emptyLabel: t(
+                        "No done tasks.",
+                        "Žiadne hotové úlohy.",
+                        "Nincsenek kész feladatok.",
+                    ),
+                    expanded: isDoneExpanded,
+                    onToggle: () =>
+                        setIsDoneExpanded(!isDoneExpanded),
                 })}
             </div>
         </div>
@@ -4107,20 +4172,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         return (
             <div className="flex flex-col h-full bg-white rounded-3xl border border-slate-200 shadow-sm overflow-hidden animate-in fade-in duration-300">
                 {/* Header & Controls */}
-                <div className="p-4 sm:p-5 border-b border-slate-100 bg-slate-50/50 flex flex-col gap-3">
+                <div className="p-4 ws-sm:p-5 border-b border-slate-100 bg-slate-50/50 flex flex-col gap-3">
                     <div className="flex items-center justify-between flex-wrap gap-2">
                         <div className="flex items-center gap-2.5">
                             <div className="h-9 w-9 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 shadow-xs">
                                 <History className="h-5 w-5" />
                             </div>
                             <div>
-                                <h3 className="text-sm font-extrabold text-slate-800 flex items-center gap-2">
+                                <h3 className="text-body font-extrabold text-slate-800 flex items-center gap-2">
                                     {t("Task Activity Log", "Záznam aktivity úloh", "Feladat aktivitási napló")}
-                                    <span className="text-[10px] font-black uppercase tracking-wider bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
+                                    <span className="type-overline bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded-full">
                                         {filtered.length} {t("events", "záznamov", "bejegyzés")}
                                     </span>
                                 </h3>
-                                <p className="text-[11px] text-slate-400 font-medium">
+                                <p className="text-caption text-slate-400 font-medium">
                                     {t("Audit log of task creations and completions for tasks you assigned or are assigned to", "Záznam vytvorených a dokončených úloh, ktoré ste zadali alebo vám boli pridelené", "A létrehozott és befejezett feladatok naplója, amelyeket Ön adott ki vagy Önre bíztak")}
                                 </p>
                             </div>
@@ -4139,7 +4204,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     <button
                                         key={filter.id}
                                         onClick={() => setTimelineFilter(filter.id)}
-                                        className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                                        className={`px-2.5 py-1 rounded-lg type-overline transition-all cursor-pointer ${
                                             timelineFilter === filter.id
                                                 ? "bg-indigo-600 text-white shadow-xs"
                                                 : "text-slate-500 hover:text-slate-800 hover:bg-slate-100"
@@ -4156,7 +4221,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                         resetNewTaskForm();
                                         setIsAddDrawerOpen(true);
                                     }}
-                                    className="px-3.5 py-1.5 bg-[#ff5d00] hover:bg-[#e05200] text-white rounded-xl font-black text-xs uppercase tracking-wider shadow-sm shadow-orange-500/25 transition-all active:scale-[0.98] flex items-center gap-1.5 cursor-pointer shrink-0"
+                                    className="px-3.5 py-1.5 bg-[#ff5d00] hover:bg-[#e05200] text-white rounded-xl font-bold text-ui shadow-sm shadow-orange-500/25 transition-all active:scale-[0.98] flex items-center gap-1.5 cursor-pointer shrink-0"
                                     title={t("Create New Task", "Vytvoriť novú úlohu", "Új feladat")}
                                 >
                                     <Plus className="h-3.5 w-3.5 stroke-[3]" />
@@ -4175,7 +4240,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 value={timelineSearch}
                                 onChange={(e) => setTimelineSearch(e.target.value)}
                                 placeholder={t("Search timeline activity, users...", "Hľadať v záznamoch aktivity, používateľoch...", "Keresés a naplóban, felhasználók között...")}
-                                className="w-full pl-8.5 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-xs font-semibold text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
+                                className="w-full pl-8.5 pr-3 py-1.5 bg-white border border-slate-200 rounded-xl text-ui font-semibold text-slate-700 placeholder:text-slate-400 focus:outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all"
                             />
                             {timelineSearch && (
                                 <button
@@ -4194,10 +4259,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 )
                             }
                             title={t("Toggle sort order", "Prepnúť radenie", "Rendezés váltása")}
-                            className="px-3 py-1.5 bg-white border border-slate-200 hover:border-slate-300 rounded-xl text-xs font-bold text-slate-600 hover:text-slate-800 flex items-center gap-1.5 shrink-0 shadow-xs transition-all active:scale-95 cursor-pointer"
+                            className="px-3 py-1.5 bg-white border border-slate-200 hover:border-slate-300 rounded-xl text-ui font-bold text-slate-600 hover:text-slate-800 flex items-center gap-1.5 shrink-0 shadow-xs transition-all active:scale-95 cursor-pointer"
                         >
                             <ArrowUpDown className="h-3.5 w-3.5 text-slate-400" />
-                            <span className="text-[11px]">
+                            <span className="text-caption">
                                 {timelineSort === "newest"
                                     ? t("Newest", "Najnovšie", "Legújabb")
                                     : t("Oldest", "Najstaršie", "Legrégebbi")}
@@ -4207,14 +4272,14 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 </div>
 
                 {/* Timeline scroll area */}
-                <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+                <div className="flex-1 overflow-y-auto p-4 ws-sm:p-6 space-y-6">
                     {dateGroups.length === 0 ? (
                         <div className="h-64 flex flex-col items-center justify-center text-center p-6 border-2 border-dashed border-slate-200 rounded-2xl bg-slate-50/50">
                             <History className="h-8 w-8 text-slate-300 mb-2" />
-                            <p className="text-xs font-extrabold text-slate-600">
+                            <p className="text-ui font-extrabold text-slate-600">
                                 {t("No activity events found", "Nenašli sa žiadne záznamy aktivity", "Nem találhatók aktivitási bejegyzések")}
                             </p>
-                            <p className="text-[11px] text-slate-400 mt-1 max-w-xs">
+                            <p className="text-caption text-slate-400 mt-1 max-w-xs">
                                 {t("Try adjusting your filters or search terms.", "Skúste upraviť filtre alebo hľadaný text.", "Próbálja módosítani a szűrőket vagy a keresési feltételeket.")}
                             </p>
                         </div>
@@ -4223,11 +4288,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             <div key={group.dateStr} className="space-y-3">
                                 {/* Date Group Header */}
                                 <div className="sticky top-0 z-10 py-1 bg-white/95 backdrop-blur-sm flex items-center gap-2">
-                                    <span className="text-[11px] font-black uppercase tracking-wider text-slate-700 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg shadow-2xs">
+                                    <span className="type-overline text-slate-700 bg-slate-100 border border-slate-200 px-2.5 py-1 rounded-lg shadow-2xs">
                                         {formatDateHeading(group.dateStr)}
                                     </span>
                                     <div className="flex-1 h-px bg-slate-100" />
-                                    <span className="text-[10px] font-bold text-slate-400">
+                                    <span className="text-micro font-bold text-slate-400">
                                         {group.events.length} {t("events", "záznamov", "bejegyzés")}
                                     </span>
                                 </div>
@@ -4272,7 +4337,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                         <div className="flex items-center gap-2 flex-wrap">
                                                             {/* Event Type Badge */}
                                                             <span
-                                                                className={`text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md flex items-center gap-1 ${
+                                                                className={`type-overline px-2 py-0.5 rounded-md flex items-center gap-1 ${
                                                                     ev.type === "created"
                                                                         ? "bg-emerald-100 text-emerald-700"
                                                                         : "bg-indigo-100 text-indigo-700"
@@ -4284,7 +4349,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                             </span>
 
                                                             {/* Event Time */}
-                                                            <span className="text-[10px] font-bold text-slate-500 flex items-center gap-1">
+                                                            <span className="text-micro font-bold text-slate-500 flex items-center gap-1">
                                                                 <Clock className="h-2.5 w-2.5 text-slate-400" />
                                                                 {ev.timeDisplay}
                                                             </span>
@@ -4292,7 +4357,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                             {/* Late / On-Time status for completed events */}
                                                             {ev.type === "completed" && (
                                                                 <span
-                                                                    className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded ${
+                                                                    className={`type-overline px-1.5 py-0.5 rounded ${
                                                                         isLateCompleted
                                                                             ? "bg-rose-50 text-rose-600 border border-rose-200/60"
                                                                             : "bg-emerald-50 text-emerald-700 border border-emerald-200/60"
@@ -4334,7 +4399,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                         onClick={() => {
                                                              if (taskAccess.edit) setEditingTask(ev.task);
                                                         }}
-                                                        className={`text-xs font-black text-slate-800 hover:text-indigo-600 transition-colors ${
+                                                        className={`text-ui font-bold text-slate-800 hover:text-indigo-600 transition-colors ${
                                                             taskAccess.edit ? "cursor-pointer" : ""
                                                         } ${isDoneState(ev.task.status) ? "text-slate-600" : ""}`}
                                                     >
@@ -4350,28 +4415,28 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                         {/* By Who Attribution */}
                                                         {ev.type === "created" ? (
                                                             <>
-                                                                <span className="text-[9.5px] font-bold text-slate-700 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md">
+                                                                <span className="text-micro font-bold text-slate-700 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md">
                                                                     <Users className="h-2.5 w-2.5 text-slate-400" />
                                                                     <span>{t("By", "Od", "Által")}: <strong className="text-slate-800">{ev.actor}</strong></span>
                                                                 </span>
                                                                 {ev.task.assignedUsers && ev.task.assignedUsers.length > 0 && (
-                                                                    <span className="text-[9.5px] font-bold text-indigo-700 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-[150px]">
+                                                                    <span className="text-micro font-bold text-indigo-700 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-37.5">
                                                                         <span className="h-1 w-1 rounded-full bg-indigo-500 shrink-0" />
                                                                         <span className="truncate">{t("Assigned to", "Priradené", "Felelős")}: <strong className="text-indigo-900">{ev.task.assignedUsers.join(", ")}</strong></span>
                                                                     </span>
                                                                 )}
                                                             </>
                                                         ) : (
-                                                            <span className="text-[9.5px] font-bold text-emerald-800 flex items-center gap-1 bg-emerald-50 border border-emerald-200/60 px-1.5 py-0.5 rounded-md">
+                                                            <span className="text-micro font-bold text-emerald-800 flex items-center gap-1 bg-emerald-50 border border-emerald-200/60 px-1.5 py-0.5 rounded-md">
                                                                 <CheckCircle2 className="h-2.5 w-2.5 text-emerald-600" />
                                                                 <span>{t("Completed by", "Dokončil", "Befejezte")}: <strong className="text-emerald-950">{ev.actor}</strong></span>
                                                             </span>
                                                         )}
 
                                                         {/* Lead & Project Badges */}
-                                                        {renderLeadBadge(ev.task, "max-w-[140px]")}
+                                                        {renderLeadBadge(ev.task, "max-w-35")}
                                                         {ev.task.relatedProjectId && projectNameFor(ev.task) && (
-                                                            <span className="text-[9px] font-bold text-slate-600 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md truncate max-w-[140px]">
+                                                            <span className="text-micro font-bold text-slate-600 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md truncate max-w-35">
                                                                 <FolderKanban className="h-2.5 w-2.5 text-slate-500 shrink-0" />
                                                                 <span className="truncate">{projectNameFor(ev.task)}</span>
                                                             </span>
@@ -4393,13 +4458,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     // --- FULL CALENDAR MONTH VIEW WITH LEFT SIDEBAR (SPLIT VIEW) ---
     if (!taskAccess.view) {
         return (
-            <div className="w-full min-h-[360px] flex items-center justify-center animate-in fade-in slide-in-from-top-2 duration-300">
+            <div className="w-full min-h-90 flex items-center justify-center animate-in fade-in slide-in-from-top-2 duration-300">
                 <div className="max-w-md rounded-3xl border border-slate-200 bg-white p-8 text-center shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg">
                     <AlertCircle className="mx-auto h-9 w-9 text-slate-400" />
-                    <h1 className="mt-4 text-lg font-black text-slate-800">
+                    <h1 className="mt-4 text-title font-bold text-slate-800">
                         {t("Tasks are not available", "Úlohy nie sú dostupné", "A feladatok nem érhetők el")}
                     </h1>
-                    <p className="mt-2 text-xs font-semibold leading-relaxed text-slate-500">
+                    <p className="mt-2 text-ui font-semibold leading-relaxed text-slate-500">
                         {t("Your role does not have permission to view the task board.", "Vaša rola nemá oprávnenie zobraziť nástenku úloh.", "A szerepköre nem jogosult a feladattábla megtekintésére.")}
                     </p>
                 </div>
@@ -4412,11 +4477,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             className={`w-full ${viewMode === "archive" ? "h-auto shrink-0" : "lg:h-[calc(100vh-8rem)] h-auto flex flex-col"} animate-in fade-in slide-in-from-top-4 duration-300`}
         >
             {/* HEADER */}
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-slate-100 pb-4 mb-6 shrink-0">
-                <div>
-                    <h1 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-                        <CalendarIcon className="h-6 w-6 text-indigo-600" />
-                        {viewMode === "calendar"
+            <PageHeader
+              icon={<CalendarIcon className="h-6 w-6 text-indigo-600" />}
+              title={viewMode === "calendar"
                             ? t(
                                   "My Tasks",
                                   "Moje úlohy",
@@ -4433,9 +4496,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                   "Archív dokončených úloh",
                                   "Feladat archívum",
                               )}
-                    </h1>
-                    <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
-                        {viewMode === "calendar"
+              subtitle={viewMode === "calendar"
                             ? t(
                                   "Tasks assigned to you. Team tasks remain available in Global Tasks.",
                                   "Úlohy priradené vám. Tímové úlohy zostávajú v Globálnych úlohách.",
@@ -4452,66 +4513,65 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                   "História dokončených úloh s informáciami o dobe omeškania.",
                                   "Befejezett feladatok előzményei és késési státuszai.",
                               )}
-                    </p>
-                </div>
+              actions={<>
+                  <div className="flex flex-col ws-sm:flex-row ws-sm:items-center gap-3 ws-sm:gap-4 flex-wrap">
+                      <div className="flex items-center bg-slate-100 p-1.5 rounded-xl border border-slate-200 shadow-sm gap-1 self-start ws-sm:self-auto overflow-x-auto max-w-full">
+                          <button
+                              onClick={() => setViewMode("calendar")}
+                className={`px-3 ws-sm:px-4 py-2 rounded-lg font-bold text-ui transition-all cursor-pointer whitespace-nowrap ${
+                                  viewMode === "calendar"
+                                      ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
+                                      : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
+                              }`}
+                          >
+                              {t("My Tasks", "Moje úlohy", "Saját feladatok")}
+                          </button>
+                          <button
+                              onClick={() => setViewMode("global")}
+                className={`px-3 ws-sm:px-4 py-2 rounded-lg font-bold text-ui transition-all cursor-pointer whitespace-nowrap ${
+                                  viewMode === "global"
+                                      ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
+                                      : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
+                              }`}
+                          >
+                              {t(
+                                  "Global Tasks",
+                                  "Globálne úlohy",
+                                  "Globális feladatok",
+                              )}
+                          </button>
+                          <button
+                              onClick={() => setViewMode("archive")}
+                className={`px-3 ws-sm:px-4 py-2 rounded-lg font-bold text-ui transition-all cursor-pointer whitespace-nowrap ${
+                                  viewMode === "archive"
+                                      ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
+                                      : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
+                              }`}
+                          >
+                              {t("Archive", "Archív", "Archívum")}
+                          </button>
+                      </div>
 
-                <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4 flex-wrap">
-                    <div className="flex items-center bg-slate-100 p-1.5 rounded-xl border border-slate-200 shadow-sm gap-1 self-start sm:self-auto overflow-x-auto max-w-full">
-                        <button
-                            onClick={() => setViewMode("calendar")}
-                            className={`px-3 sm:px-4 py-2 rounded-lg font-black text-xs uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
-                                viewMode === "calendar"
-                                    ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
-                                    : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
-                            }`}
-                        >
-                            {t("My Tasks", "Moje úlohy", "Saját feladatok")}
-                        </button>
-                        <button
-                            onClick={() => setViewMode("global")}
-                            className={`px-3 sm:px-4 py-2 rounded-lg font-black text-xs uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
-                                viewMode === "global"
-                                    ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
-                                    : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
-                            }`}
-                        >
-                            {t(
-                                "Global Tasks",
-                                "Globálne úlohy",
-                                "Globális feladatok",
-                            )}
-                        </button>
-                        <button
-                            onClick={() => setViewMode("archive")}
-                            className={`px-3 sm:px-4 py-2 rounded-lg font-black text-xs uppercase tracking-wider transition-all cursor-pointer whitespace-nowrap ${
-                                viewMode === "archive"
-                                    ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
-                                    : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
-                            }`}
-                        >
-                            {t("Archive", "Archív", "Archívum")}
-                        </button>
-                    </div>
-
-                    {viewMode === "calendar" &&
-                        renderCalendarNav({
-                            anchor: currentDate,
-                            onAnchorChange: setCurrentDate,
-                            scope: calendarScope,
-                            onScopeChange: setCalendarScope,
-                            onSelectDay: setSelectedDay,
-                            showTimelineOption: true,
-                            showHideOption: true,
-                        })}
-                </div>
-            </div>
+                      {viewMode === "calendar" &&
+                          renderCalendarNav({
+                              anchor: currentDate,
+                              onAnchorChange: setCurrentDate,
+                              scope: calendarScope,
+                              onScopeChange: setCalendarScope,
+                              onSelectDay: setSelectedDay,
+                              showTimelineOption: true,
+                              showHideOption: true,
+                          })}
+                  </div>
+              </>}
+            />
 
             {viewMode === "archive" ? (
                 <div className="bg-white rounded-3xl border border-slate-200 shadow-sm p-6">
                     <div className="flex flex-wrap items-center justify-between gap-3 pb-4 border-b border-slate-100 mb-4 shrink-0">
                         <button
                             onClick={() => setViewMode("calendar")}
-                            className="flex items-center gap-1.5 text-indigo-600 hover:text-indigo-800 font-black text-[10px] uppercase tracking-wider transition-colors cursor-pointer"
+                            className="flex items-center gap-1.5 text-indigo-600 hover:text-indigo-800 type-overline transition-colors cursor-pointer"
                         >
                             <ChevronLeft className="h-4 w-4" />
                             {t(
@@ -4536,7 +4596,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             <button
                                 type="button"
                                 onClick={handleSelectAllVisible}
-                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-xs font-bold transition-all cursor-pointer ${
+                                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl border text-ui font-bold transition-all cursor-pointer ${
                                     areAllVisibleSelected
                                         ? "bg-indigo-50 border-indigo-200 text-indigo-700"
                                         : "bg-slate-50 border-slate-200 text-slate-600 hover:border-indigo-400"
@@ -4558,7 +4618,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                             setArchiveView(mode);
                                             setArchiveSelectedDay(null);
                                         }}
-                                        className={`px-3 py-1.5 rounded-lg font-black text-[10px] uppercase tracking-wider transition-all cursor-pointer ${
+                                        className={`px-3 py-1.5 rounded-lg type-overline transition-all cursor-pointer ${
                                             archiveView === mode
                                                 ? "bg-white text-indigo-600 shadow-sm border border-slate-200/50"
                                                 : "text-slate-500 hover:bg-slate-200/80 hover:text-slate-700"
@@ -4574,7 +4634,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     </button>
                                 ))}
                             </div>
-                            <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest bg-slate-100 px-3 py-1 rounded-full">
+                            <span className="type-overline text-slate-400 bg-slate-100 px-3 py-1 rounded-full">
                                 {t(
                                     "Total Done:",
                                     "Celkovo hotovo:",
@@ -4586,10 +4646,14 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     </div>
 
                     {/* FILTER ROW */}
-                    <div className="grid grid-cols-1 sm:grid-cols-5 gap-4 pb-4 border-b border-slate-100 mb-4 shrink-0 text-[10px] font-bold">
+                    <div className="grid grid-cols-1 ws-sm:grid-cols-5 gap-4 pb-4 border-b border-slate-100 mb-4 shrink-0 text-micro font-bold">
+                        {/* Client / Lead */}
+                        <div className="ws-sm:col-span-5 empty:hidden">
+                            {renderClientFilter("max-w-md")}
+                        </div>
                         {/* Search */}
                         <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">
+                            <label className="type-overline text-slate-400">
                                 {t("Search", "Hľadať", "Keresés")}
                             </label>
                             <input
@@ -4603,13 +4667,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 onChange={(e) =>
                                     setArchiveSearchQuery(e.target.value)
                                 }
-                                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:outline-none font-bold text-xs"
+                                className="w-full px-3 py-2 rounded-xl bg-slate-50 border border-slate-200 focus:bg-white focus:outline-none font-bold text-ui"
                             />
                         </div>
 
                         {/* Priority */}
                         <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">
+                            <label className="type-overline text-slate-400">
                                 {t("Priority", "Priorita", "Prioritás")}
                             </label>
                             <CustomSelect
@@ -4634,7 +4698,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                         {/* Completed By */}
                         <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">
+                            <label className="type-overline text-slate-400">
                                 {t("Completed By", "Dokončil", "Befejezte")}
                             </label>
                             <CustomSelect
@@ -4653,7 +4717,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                         {/* Timing Status */}
                         <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">
+                            <label className="type-overline text-slate-400">
                                 {t(
                                     "Timing Status",
                                     "Stav omeškania",
@@ -4681,7 +4745,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                         {/* Date filter (item 9) */}
                         <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider">
+                            <label className="type-overline text-slate-400">
                                 {t("Date", "Dátum", "Dátum")}
                             </label>
                             <DateRangeCalendarFilter
@@ -4698,7 +4762,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     </div>
 
                     {archiveTagFilter && (
-                        <div className="flex items-center gap-2 mb-4 px-3 py-1.5 bg-[#ff5d00]/10 border border-[#ff5d00]/30 rounded-xl text-xs font-bold text-[#ff5d00] w-fit">
+                        <div className="flex items-center gap-2 mb-4 px-3 py-1.5 bg-[#ff5d00]/10 border border-[#ff5d00]/30 rounded-xl text-ui font-bold text-[#ff5d00] w-fit">
                             <Hash className="w-3.5 h-3.5" />
                             <span>
                                 {t("Tag filter:", "Filter tagu:", "Címke szűrő:")} #{archiveTagFilter}
@@ -4715,7 +4779,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     )}
 
                     {archiveView === "calendar" ? (
-                        <div className="h-[560px] lg:h-[calc(100vh-22rem)] lg:min-h-[520px] flex flex-col rounded-3xl border border-slate-200 overflow-hidden bg-white">
+                        <div className="h-140 ws-lg:h-[calc(100vh-22rem)] ws-lg:min-h-130 flex flex-col rounded-3xl border border-slate-200 overflow-hidden bg-white">
                             {renderCalendarPanel({
                                 anchor: archiveCalendarDate,
                                 scope: archiveCalendarScope,
@@ -4736,7 +4800,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 <div className="space-y-6">
                                     {archivedTasksGroupedByDate.map((group) => (
                                         <div key={group.date} className="space-y-2">
-                                            <div className="text-[10px] font-black text-slate-500 uppercase tracking-widest pl-1 pt-1 flex items-center gap-1.5 border-l-2 border-indigo-500">
+                                            <div className="type-overline text-slate-500 pl-1 pt-1 flex items-center gap-1.5 border-l-2 border-indigo-500">
                                                 <CalendarIcon className="h-3.5 w-3.5 text-indigo-500" />
                                                 {group.date === "no-date"
                                                     ? t(
@@ -4758,14 +4822,14 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 <div className={filteredArchivedTasks.length > 0 ? "mt-8 pt-6 border-t border-slate-100" : ""}>
                                     <div className="flex items-center gap-2 mb-4">
                                         <ArchiveIcon className="h-4 w-4 text-slate-400" />
-                                        <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                                        <span className="type-overline text-slate-500">
                                             {t(
                                                 "Archived Tasks",
                                                 "Archivované úlohy",
                                                 "Archivált feladatok",
                                             )}
                                         </span>
-                                        <span className="text-[10px] font-black text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+                                        <span className="text-micro font-bold text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
                                             {filteredManuallyArchivedTasks.length}
                                         </span>
                                     </div>
@@ -4779,7 +4843,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                         isSelected
                                                             ? "bg-indigo-50/50 ring-1 ring-indigo-300/80 border-indigo-300"
                                                             : "border-slate-200 bg-slate-50/60"
-                                                    } flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs`}
+                                                    } flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3 text-ui`}
                                                 >
                                                     <div className="flex-1 min-w-0 flex items-center gap-3">
                                                         <input
@@ -4822,7 +4886,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                                 {task.assignedUsers &&
                                                                     task.assignedUsers
                                                                         .length > 0 && (
-                                                                        <span className="text-[9px] font-bold text-indigo-600 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-[120px]">
+                                                                        <span className="text-micro font-bold text-indigo-600 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-30">
                                                                             <span className="h-1 w-1 rounded-full bg-indigo-500 shrink-0" />
                                                                             <span className="truncate">
                                                                                 {task.assignedUsers.join(
@@ -4832,7 +4896,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                                         </span>
                                                                     )}
                                                             </div>
-                                                            <div className="text-[9px] font-bold text-slate-400 mt-0.5">
+                                                            <div className="text-micro font-bold text-slate-400 mt-0.5">
                                                                 {t(
                                                                     "Due",
                                                                     "Termín",
@@ -4855,7 +4919,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                                     ? undefined
                                                                     : archiveDeniedHint()
                                                             }
-                                                            className="px-2.5 py-1.5 border border-indigo-200 hover:bg-indigo-50 text-indigo-600 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:active:scale-100"
+                                                            className="px-2.5 py-1.5 border border-indigo-200 hover:bg-indigo-50 text-indigo-600 rounded-lg type-overline shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:active:scale-100"
                                                         >
                                                             <RotateCcw className="h-3 w-3 stroke-[2.5]" />
                                                             {t(
@@ -4874,7 +4938,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                                     "Natrvalo odstrániť",
                                                                     "Végleges törlés",
                                                                 )}
-                                                                className="px-2 py-1.5 border border-rose-200 hover:bg-rose-50 text-rose-600 rounded-lg font-black text-[9px] uppercase tracking-wider shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+                                                                className="px-2 py-1.5 border border-rose-200 hover:bg-rose-50 text-rose-600 rounded-lg type-overline shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
                                                             >
                                                                 <Trash2 className="h-3 w-3 stroke-[2.5]" />
                                                             </button>
@@ -4889,15 +4953,15 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                             {filteredArchivedTasks.length === 0 && filteredManuallyArchivedTasks.length === 0 && (
                                 <div className="py-20 text-center text-slate-400">
-                                    <div className="text-4xl mb-3">🔍</div>
-                                    <div className="font-black text-slate-700 uppercase tracking-wider">
+                                    <div className="text-display mb-3">🔍</div>
+                                    <div className="font-bold text-slate-700 uppercase tracking-wider">
                                         {t(
                                             "No matching tasks",
                                             "Žiadne zhodné úlohy",
                                             "Nincsenek egyező feladatok",
                                         )}
                                     </div>
-                                    <p className="text-[10px] mt-1.5 uppercase tracking-wide font-extrabold text-slate-400">
+                                    <p className="type-overline mt-1.5 text-slate-400">
                                         {t(
                                             "Try adjusting your filters.",
                                             "Skúste upraviť filtre.",
@@ -4916,17 +4980,17 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     {renderMyTaskListColumn(true)}
                 </div>
             ) : (
-                <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-2 gap-8">
+                <div className="flex-1 min-h-0 grid grid-cols-1 ws-lg:grid-cols-2 gap-8">
                     {/* LEFT COLUMN: TASK LISTS */}
                     {renderMyTaskListColumn(false)}
 
                     {/* RIGHT COLUMN: CALENDAR OR TIMELINE VIEW */}
                     {calendarScope === "timeline" ? (
-                        <div className="flex flex-col lg:h-full h-auto min-h-[560px] lg:min-h-0 lg:overflow-hidden overflow-visible">
+                        <div className="flex flex-col ws-lg:h-full h-auto min-h-140 ws-lg:min-h-0 ws-lg:overflow-hidden overflow-visible">
                             {renderTimelineView()}
                         </div>
                     ) : (
-                        <div className="flex flex-col lg:h-full h-auto bg-white rounded-3xl border border-slate-200 shadow-[0_4px_24px_rgba(0,0,0,0.02)] lg:overflow-hidden overflow-visible">
+                        <div className="flex flex-col ws-lg:h-full h-auto bg-white rounded-3xl border border-slate-200 shadow-[0_4px_24px_rgba(0,0,0,0.02)] ws-lg:overflow-hidden overflow-visible">
                             {renderCalendarPanel({
                                 anchor: currentDate,
                                 scope: calendarScope,

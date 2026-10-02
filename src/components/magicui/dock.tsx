@@ -83,7 +83,7 @@ export const Dock = React.forwardRef<HTMLDivElement, DockProps>(
             mouseY.set(Infinity);
           }}
           className={cn(
-            "flex select-none",
+            "view-size-fixed flex select-none",
             orientation === "vertical"
               ? "flex-col w-max h-auto items-center"
               : "flex-row h-max w-max items-center justify-center",

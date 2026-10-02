@@ -3,6 +3,7 @@ import { createPortal, flushSync } from "react-dom";
 import { motion } from "framer-motion";
 import { Check, ChevronDown, Plus, Search } from "lucide-react";
 import { getStoredLanguage } from "../../utils/translations";
+import { viewSizeScale } from "../../utils/viewSize";
 
 export interface DropdownOption {
   value: string;
@@ -11,6 +12,18 @@ export interface DropdownOption {
   disabled?: boolean;
   /** Text the search box matches against — needed when `label` is not a plain string. */
   searchText?: string;
+  /** Section this option belongs to — an id from the `groups` prop. Left out, it sits above every section. */
+  group?: string;
+  /** Hidden while the same value is on screen in this other section, so a record paged into one is not repeated in the next. */
+  hideIfShownIn?: string;
+}
+
+/** A labelled section of the list, optionally showing only a page at a time. */
+export interface DropdownGroup {
+  id: string;
+  label: string;
+  /** Rows shown at first, and added by each press of the "show more" button. Left out, the whole section shows. */
+  pageSize?: number;
 }
 
 type RawOption = DropdownOption | string;
@@ -31,6 +44,10 @@ interface CustomSelectProps {
   /** Search box at the top of the panel. Defaults to on once the list is long enough to be worth filtering. */
   searchable?: boolean;
   searchPlaceholder?: string;
+  /** Sections the options are split into, in display order. */
+  groups?: DropdownGroup[];
+  /** Label of a section's "show more" button; gets the number of rows it will add. */
+  moreLabel?: (count: number) => string;
   /** Action button beside the search box — "add a new one" for the thing being picked. Only shown with the search box. */
   onAddNew?: () => void;
   /** Tooltip/aria label of the add-new button. */
@@ -67,7 +84,8 @@ interface Coords {
   openUp: boolean;
 }
 
-const PANEL_MAX_HEIGHT = 260;
+const PANEL_MAX_HEIGHT_BASE = 260;
+const panelMaxHeight = () => PANEL_MAX_HEIGHT_BASE * viewSizeScale();
 /** Below this many options, scanning the list beats typing. */
 const SEARCH_THRESHOLD = 8;
 /** Above drawers (`z-[100000]`) and modals (`z-[9999]`) so portaled options paint on top. */
@@ -75,9 +93,9 @@ const PANEL_Z = 100001;
 
 /** The select is a leaf reused across trees that do not pass the language down. */
 const SEARCH_COPY = {
-  en: { search: "Search...", noMatches: "No matches", noOptions: "No options", addNew: "Add new" },
-  sk: { search: "Hľadať...", noMatches: "Žiadne výsledky", noOptions: "Žiadne možnosti", addNew: "Pridať nový" },
-  hu: { search: "Keresés...", noMatches: "Nincs találat", noOptions: "Nincs lehetőség", addNew: "Új hozzáadása" },
+  en: { search: "Search...", noMatches: "No matches", noOptions: "No options", addNew: "Add new", more: "Show {n} more" },
+  sk: { search: "Hľadať...", noMatches: "Žiadne výsledky", noOptions: "Žiadne možnosti", addNew: "Pridať nový", more: "Zobraziť ďalších {n}" },
+  hu: { search: "Keresés...", noMatches: "Nincs találat", noOptions: "Nincs lehetőség", addNew: "Új hozzáadása", more: "Még {n} megjelenítése" },
 } as const;
 
 /**
@@ -116,7 +134,7 @@ export const DropdownSearchRow: React.FC<{
             onKeyDown={onKeyDown}
             onClick={(e) => e.stopPropagation()}
             placeholder={placeholder ?? copy.search}
-            className="w-full rounded-lg border border-slate-200 bg-slate-50 py-1.5 pl-8 pr-2.5 text-sm font-medium text-slate-700 outline-none transition-colors placeholder:font-medium placeholder:text-slate-400 focus:border-accent focus:bg-white"
+            className="w-full rounded-lg border border-slate-200 bg-slate-50 py-1.5 pl-8 pr-2.5 text-body font-medium text-slate-700 outline-none transition-colors placeholder:font-medium placeholder:text-slate-400 focus:border-accent focus:bg-white"
           />
         </div>
         {onAddNew && (
@@ -129,7 +147,7 @@ export const DropdownSearchRow: React.FC<{
               e.stopPropagation();
               onAddNew();
             }}
-            className="shrink-0 flex h-[30px] w-[30px] items-center justify-center rounded-lg border border-accent/20 bg-accent/10 text-accent transition-all hover:bg-accent/20 active:scale-95 cursor-pointer"
+            className="shrink-0 flex h-7.5 w-7.5 items-center justify-center rounded-lg border border-accent/20 bg-accent/10 text-accent transition-all hover:bg-accent/20 active:scale-95 cursor-pointer"
           >
             {addNewIcon ?? <Plus className="h-4 w-4" />}
           </button>
@@ -153,6 +171,8 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   unstyled = false,
   searchable,
   searchPlaceholder,
+  groups,
+  moreLabel,
   onAddNew,
   addNewLabel,
   addNewIcon,
@@ -162,6 +182,8 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   const [highlighted, setHighlighted] = useState(0);
   const [coords, setCoords] = useState<Coords | null>(null);
   const [query, setQuery] = useState("");
+  // Extra pages revealed per section; reset when the panel opens or the search changes.
+  const [extraPages, setExtraPages] = useState<Record<string, number>>({});
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -171,14 +193,34 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   const showSearch = searchable ?? allOpts.length >= SEARCH_THRESHOLD;
   const copy = SEARCH_COPY[getStoredLanguage()];
   const needle = showSearch ? foldText(query.trim()) : "";
-  const opts = needle ? allOpts.filter((o) => foldText(optionSearchText(o)).includes(needle)) : allOpts;
+  const matching = needle ? allOpts.filter((o) => foldText(optionSearchText(o)).includes(needle)) : allOpts;
+
+  // With sections, the visible rows are the ungrouped ones, then each section's
+  // current page. `opts` stays the flat list of what is on screen, because the
+  // keyboard walks it by index.
+  const ungrouped = groups ? matching.filter((o) => !groups.some((g) => g.id === o.group)) : [];
+  const sections = groups
+    ? (() => {
+        const shownIn = new Map<string, Set<string>>();
+        return groups.map((g) => {
+          const items = matching.filter(
+            (o) => o.group === g.id && !(o.hideIfShownIn && shownIn.get(o.hideIfShownIn)?.has(o.value)),
+          );
+          const limit = g.pageSize ? g.pageSize * (1 + (extraPages[g.id] ?? 0)) : items.length;
+          const visible = items.slice(0, limit);
+          shownIn.set(g.id, new Set(visible.map((o) => o.value)));
+          return { group: g, visible, hidden: items.length - visible.length };
+        });
+      })()
+    : null;
+  const opts = sections ? [...ungrouped, ...sections.flatMap((s) => s.visible)] : matching;
 
   const updatePosition = () => {
     const el = triggerRef.current;
     if (!el) return;
     const rect = el.getBoundingClientRect();
     const spaceBelow = window.innerHeight - rect.bottom;
-    const openUp = spaceBelow < PANEL_MAX_HEIGHT && rect.top > spaceBelow;
+    const openUp = spaceBelow < panelMaxHeight() && rect.top > spaceBelow;
     const margin = 8;
     const width = rect.width;
     let left = align === "right" ? undefined : rect.left;
@@ -253,6 +295,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   useEffect(() => {
     if (isOpen) {
       setQuery("");
+      setExtraPages({});
       const idx = allOpts.findIndex((o) => o.value === value);
       setHighlighted(idx >= 0 ? idx : 0);
     }
@@ -329,7 +372,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
     }
   };
 
-  const sizeClasses = size === "sm" ? "px-2.5 py-1.5 text-xs gap-1" : "px-3.5 py-2.5 text-sm gap-1.5";
+  const sizeClasses = size === "sm" ? "px-2.5 py-1.5 text-ui gap-1" : "px-3.5 py-2.5 text-body gap-1.5";
 
   return (
     <>
@@ -390,7 +433,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                   right: coords?.right,
                   minWidth: coords?.width ?? 160,
                   maxWidth: coords?.maxWidth,
-                  maxHeight: PANEL_MAX_HEIGHT,
+                  maxHeight: panelMaxHeight(),
                   zIndex: PANEL_Z,
                   transformOrigin: coords?.openUp ? "bottom" : "top",
                   visibility: coords ? "visible" : "hidden",
@@ -403,6 +446,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                     value={query}
                     onChange={(next) => {
                       setQuery(next);
+                      setExtraPages({});
                       setHighlighted(0);
                     }}
                     onKeyDown={handleSearchKeyDown}
@@ -426,37 +470,70 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                     the list, and a listbox may only contain options. */}
                 <div role="listbox" className="flex-1 overflow-y-auto py-1.5">
                   {opts.length === 0 && (
-                    <div className="px-3.5 py-2.5 text-sm text-slate-400 italic">
+                    <div className="px-3.5 py-2.5 text-body text-slate-400 italic">
                       {needle ? copy.noMatches : copy.noOptions}
                     </div>
                   )}
-                  {opts.map((opt, i) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      role="option"
-                      aria-selected={opt.value === value}
-                      disabled={opt.disabled}
-                      onMouseEnter={() => setHighlighted(i)}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        pick(opt);
-                      }}
-                      className={`w-full flex items-center gap-2 px-3.5 py-2.5 text-left text-sm font-medium transition-colors cursor-pointer ${
-                        opt.disabled
-                          ? "opacity-40 cursor-not-allowed"
-                          : opt.value === value
-                          ? "bg-accent/10 text-accent"
-                          : i === highlighted
-                          ? "bg-slate-50 text-slate-800"
-                          : "text-slate-700"
-                      }`}
-                    >
-                      {opt.icon}
-                      <span className="flex-1 truncate">{opt.label}</span>
-                      {opt.value === value && <Check className="h-3.5 w-3.5 shrink-0 text-accent" />}
-                    </button>
-                  ))}
+                  {(() => {
+                    const renderOption = (opt: DropdownOption, i: number, keyPrefix = "") => (
+                      <button
+                        key={keyPrefix + opt.value}
+                        type="button"
+                        role="option"
+                        aria-selected={opt.value === value}
+                        disabled={opt.disabled}
+                        onMouseEnter={() => setHighlighted(i)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          pick(opt);
+                        }}
+                        className={`w-full flex items-center gap-2 px-3.5 py-2.5 text-left text-body font-medium transition-colors cursor-pointer ${
+                          opt.disabled
+                            ? "opacity-40 cursor-not-allowed"
+                            : opt.value === value
+                            ? "bg-accent/10 text-accent"
+                            : i === highlighted
+                            ? "bg-slate-50 text-slate-800"
+                            : "text-slate-700"
+                        }`}
+                      >
+                        {opt.icon}
+                        <span className="flex-1 truncate">{opt.label}</span>
+                        {opt.value === value && <Check className="h-3.5 w-3.5 shrink-0 text-accent" />}
+                      </button>
+                    );
+                    if (!sections) return opts.map((opt, i) => renderOption(opt, i));
+                    let index = 0;
+                    return (
+                      <>
+                        {ungrouped.map((opt) => renderOption(opt, index++))}
+                        {sections.map(({ group, visible, hidden }) =>
+                          visible.length === 0 ? null : (
+                            <div key={group.id} role="presentation">
+                              <div className="px-3.5 pb-1 pt-2.5 type-overline text-slate-400">{group.label}</div>
+                              {visible.map((opt) => renderOption(opt, index++, `${group.id}:`))}
+                              {hidden > 0 && group.pageSize && (
+                                <button
+                                  type="button"
+                                  data-testid={`select-more-${group.id}`}
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExtraPages((prev) => ({ ...prev, [group.id]: (prev[group.id] ?? 0) + 1 }));
+                                  }}
+                                  className="w-full px-3.5 py-2 text-left text-ui font-semibold text-accent transition-colors hover:bg-accent/10 cursor-pointer"
+                                >
+                                  {(moreLabel ?? ((n: number) => copy.more.replace("{n}", String(n))))(
+                                    Math.min(group.pageSize, hidden),
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                          ),
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </motion.div>
           ) : null,

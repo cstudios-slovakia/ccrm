@@ -133,6 +133,14 @@ export const PERMISSION_SECTIONS: PermissionSection[] = [
     permissions: [access("financial"), deleteToggle("financial")],
   },
   {
+    id: "employees",
+    permissions: [
+      access("employees"),
+      deleteToggle("employees"),
+      toggle("employees.salaries", "edit", "nothing", { key: "employees", level: "view" }),
+    ],
+  },
+  {
     id: "meetings",
     permissions: [access("meetings"), deleteToggle("meetings")],
   },
@@ -330,6 +338,7 @@ export const permissionKeyForRoute = (routeId: string): string | null => {
   if (base.startsWith("ue_")) return "unified_entries";
   if (base.startsWith("lead-")) return "leads";
   if (base.startsWith("client-")) return "clients";
+  if (base.startsWith("project-")) return "projects";
   if (base === "" || base === "tasks") return "tasks";
   if (PERMISSION_DEFS[base]) return base;
   return "tasks";
@@ -397,6 +406,6 @@ export const buildAccess = (user: UserProfile | null | undefined, roles: RolePer
 
 /** The first route the user may open, for a landing page or a denied redirect. */
 export const firstAllowedRoute = (accessResolver: AccessResolver): string | null => {
-  const candidates = ["dashboard", "tasks", "leads", "clients", "projects", "invoices", "warehouse", "financial", "meetings", "files", "email", "automation", "overview", "updates", "settings", "personal-settings"];
+  const candidates = ["dashboard", "tasks", "leads", "clients", "projects", "invoices", "warehouse", "financial", "employees", "meetings", "files", "email", "automation", "overview", "updates", "settings", "personal-settings"];
   return candidates.find((r) => accessResolver.canOpenRoute(r)) ?? null;
 };

@@ -446,4 +446,69 @@ Core financial movement records representing current and planned/future incomes,
 * `created_at` TIMESTAMP
 * `updated_at` TIMESTAMP
 
+---
+
+## 10. Human Resources & Employees
+
+### `employees`
+Staff profiles, compensation baseline, Toggl Track integration mapping, and employment contracts/documents.
+* `id` VARCHAR(50) [PK] (e.g. `emp-1727650000000-abcd`)
+* `name` VARCHAR(150) (Employee full name)
+* `pin` VARCHAR(50) [NULLable] (Personal identification number / Rodné číslo / Tax ID)
+* `email` VARCHAR(150) [NULLable]
+* `phone` VARCHAR(50) [NULLable]
+* `address_street` VARCHAR(255) [NULLable]
+* `address_city` VARCHAR(100) [NULLable]
+* `address_zip` VARCHAR(20) [NULLable]
+* `address_country` VARCHAR(100) (Default `Slovakia`)
+* `salary_type` ENUM('monthly', 'daily', 'hourly') (Default `monthly`)
+* `salary_amount` DECIMAL(12, 2) (Base compensation rate)
+* `salary_due_day` INT [NULLable] (Individual payout day of month 1-31 or week 1-7; defaults to global setting if NULL)
+* `vacation_allowances_json` TEXT [NULLable] (JSON map of allowance days per vacation type, e.g. `{"annual":25,"sick":10,"doctor":7}`)
+* `time_tracking_provider` VARCHAR(50) (Default `toggl`)
+* `time_tracking_user_id` VARCHAR(100) [NULLable] (Toggl user ID)
+* `time_tracking_user_name` VARCHAR(150) [NULLable] (Toggl user name / email for display)
+* `auto_expense` TINYINT(1) (1 = Automatically create/link record in `financial_records`, 0 = Disabled)
+* `expense_category_id` VARCHAR(50) [NULLable] (Target expense category in `financial_categories`)
+* `files_json` LONGTEXT [NULLable] (JSON array of employee attachments/contracts `[{ id, name, url, size, uploadedAt }]` stored under `/uploads/employees/`)
+* `is_active` TINYINT(1) (1 = Active staff, 0 = Inactive / Archived)
+* `notes` TEXT [NULLable]
+* `created_at` TIMESTAMP
+* `updated_at` TIMESTAMP
+
+### `employee_salaries`
+Periodic payroll statements (monthly or weekly) tracking multi-category salary breakdowns, payments, and financial expense linkage.
+* `id` VARCHAR(50) [PK] (e.g. `sal-1727650000000-efgh`)
+* `employee_id` VARCHAR(50) (References `employees.id`)
+* `period_type` ENUM('monthly', 'weekly') (Default `monthly`)
+* `period_key` VARCHAR(20) (Period key, e.g. `2026-09` or `2026-W39`)
+* `year` INT
+* `period_number` INT (Month 1-12 or Week 1-53)
+* `items_json` TEXT (JSON array of category line items `[{ categoryId, categoryName, salary, paid }]`)
+* `total_salary` DECIMAL(12, 2) (Total gross/net compensation calculated for the period)
+* `total_paid` DECIMAL(12, 2) (Total amount paid out so far)
+* `status` ENUM('pending', 'partially_paid', 'paid') (Mapped to `financial_records.status`: pending = planned, paid = paid, partially_paid = partially_paid)
+* `due_date` DATE [NULLable] (Calculated salary due date based on period and salaryDueDay)
+* `payment_date` DATE [NULLable] (Date of actual payment settlement)
+* `payment_method` VARCHAR(50) (Default `bank_transfer`)
+* `financial_record_id` VARCHAR(50) [NULLable] (Linked `financial_records.id` for automatic expense tracking)
+* `note` TEXT [NULLable]
+* `created_at` TIMESTAMP
+* `updated_at` TIMESTAMP
+
+### `employee_vacations`
+Employee leave and absence logs (holidays, doctor visits, sick leave, unpaid time off) with day count tracking and approval workflow.
+* `id` VARCHAR(50) [PK] (e.g. `vac-1727650000000-ijkl`)
+* `employee_id` VARCHAR(50) (References `employees.id`)
+* `vacation_type_id` VARCHAR(50) (References vacation type from system/employee settings, e.g. `annual`, `sick`, `doctor`, `unpaid`)
+* `start_date` DATE (Leave start date)
+* `end_date` DATE (Leave end date)
+* `days_count` DECIMAL(5, 1) (Calculated working days excluding weekends)
+* `status` ENUM('requested', 'approved', 'rejected', 'taken') (Approval status)
+* `note` TEXT [NULLable]
+* `approved_by` VARCHAR(100) [NULLable] (Name/ID of authorizer)
+* `created_at` TIMESTAMP
+* `updated_at` TIMESTAMP
+
+
 

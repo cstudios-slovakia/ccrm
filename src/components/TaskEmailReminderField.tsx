@@ -127,7 +127,7 @@ export const TaskEmailReminderField: React.FC<TaskEmailReminderFieldProps> = ({
     return (
         <div data-testid="task-email-reminder" className="p-3 rounded-xl bg-indigo-50/50 border border-indigo-100 space-y-2.5">
             <label className="flex items-center justify-between gap-3 cursor-pointer has-[:disabled]:cursor-not-allowed">
-                <span className="text-[10px] font-black text-indigo-700 uppercase flex items-center gap-1">
+                <span className="type-overline text-indigo-700 flex items-center gap-1">
                     <Mail className="h-3 w-3 shrink-0" />
                     {t("Notify me about the task by e-mail", "Upozorniť ma na úlohu e-mailom", "Értesítés a feladatról e-mailben")}
                 </span>
@@ -157,7 +157,7 @@ export const TaskEmailReminderField: React.FC<TaskEmailReminderFieldProps> = ({
                                 data-testid={`task-email-reminder-${when}`}
                                 disabled={disabled}
                                 onClick={() => set(when)}
-                                className={`py-1.5 px-1 rounded-md font-black text-[9px] uppercase leading-tight transition-all active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed ${
+                                className={`py-1.5 px-1 rounded-md type-overline leading-tight transition-all active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 disabled:cursor-not-allowed ${
                                     mine === when ? "bg-indigo-600 text-white shadow-sm" : "text-slate-500 hover:bg-indigo-50 hover:text-indigo-700"
                                 }`}
                             >
@@ -168,7 +168,7 @@ export const TaskEmailReminderField: React.FC<TaskEmailReminderFieldProps> = ({
                     {hint && (
                         <p
                             data-testid="task-email-reminder-hint"
-                            className={`text-[10px] font-semibold leading-snug ${hint.tone === "warn" ? "text-amber-700" : "text-slate-500"}`}
+                            className={`text-micro font-semibold leading-snug ${hint.tone === "warn" ? "text-amber-700" : "text-slate-500"}`}
                         >
                             {hint.text}
                         </p>
@@ -177,7 +177,7 @@ export const TaskEmailReminderField: React.FC<TaskEmailReminderFieldProps> = ({
             )}
 
             {others.length > 0 && (
-                <p className="text-[10px] font-semibold text-slate-500 leading-snug">
+                <p className="text-micro font-semibold text-slate-500 leading-snug">
                     {t("Also reminded by e-mail:", "E-mailom sa pripomenie aj:", "E-mailben emlékeztetjük még:")} {others.join(", ")}
                 </p>
             )}

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
+import { createPortal } from "react-dom";
 import {
   RotateCcw,
   Sparkles,
@@ -6,13 +7,14 @@ import {
   Mic,
   MicOff,
   PhoneOff,
-  ChevronRight
+  X
 } from "lucide-react";
 import { BlobatarAvatar } from "../common/BlobatarAvatar";
 import { Markdown } from "../../utils/markdown";
 import { VERSION_CODENAME } from "../../utils/version";
 import type { Language } from "../../utils/translations";
 import type { ScreenContextInfo } from "../../hooks/useCurrentScreenContext";
+import { viewSizeScale } from "../../utils/viewSize";
 
 interface CopilotSidebarProps {
   isOpen: boolean;
@@ -51,12 +53,39 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
       const saved = localStorage.getItem(STORAGE_WIDTH_KEY);
       if (saved) {
         const parsed = parseInt(saved, 10);
-        if (!isNaN(parsed) && parsed >= MIN_WIDTH) return parsed;
+        if (!isNaN(parsed) && parsed >= MIN_WIDTH * viewSizeScale()) return parsed;
       }
     }
-    return DEFAULT_WIDTH;
+    return DEFAULT_WIDTH * viewSizeScale();
   });
+  // Mobile detection (< 1024px)
+  const [isMobile, setIsMobile] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      return window.innerWidth < 1024;
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 1024);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
   const [isResizing, setIsResizing] = useState(false);
+
+  // Prevent background scrolling on mobile when Copilot is open
+  useEffect(() => {
+    if (isMobile && isOpen) {
+      const prevOverflow = document.body.style.overflow;
+      document.body.style.overflow = "hidden";
+      return () => {
+        document.body.style.overflow = prevOverflow;
+      };
+    }
+  }, [isMobile, isOpen]);
+
 
   // Chat State
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -100,8 +129,9 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
 
     const handlePointerMove = (moveEvent: PointerEvent) => {
       const delta = startX - moveEvent.clientX;
-      const maxAllowed = Math.max(MIN_WIDTH, window.innerWidth - 360);
-      const newWidth = Math.max(MIN_WIDTH, Math.min(maxAllowed, startWidth + delta));
+      const minWidth = MIN_WIDTH * viewSizeScale();
+      const maxAllowed = Math.max(minWidth, window.innerWidth - minWidth);
+      const newWidth = Math.max(minWidth, Math.min(maxAllowed, startWidth + delta));
       setSidebarWidth(newWidth);
     };
 
@@ -162,16 +192,16 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
     }
   }, [hasIntroduced]);
 
-  // Auto-focus input bar when opening chat
+  // Auto-focus input bar when opening chat (desktop only to prevent mobile keyboard layout jumps)
   const inputRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
-    if (isOpen && !isVoiceMode) {
+    if (isOpen && !isVoiceMode && !isMobile) {
       const timer = setTimeout(() => {
         inputRef.current?.focus();
       }, 150);
       return () => clearTimeout(timer);
     }
-  }, [isOpen, isVoiceMode]);
+  }, [isOpen, isVoiceMode, isMobile]);
 
   // Fetch initial chat history on mount and ensure welcome message is present
   useEffect(() => {
@@ -396,7 +426,7 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
         cleanTarget !== "projektek" &&
         cleanTarget !== "projekty"
       ) {
-        targetHash = cleanTarget.startsWith("#") ? cleanTarget : `#projects?id=${encodeURIComponent(cleanTarget)}`;
+        targetHash = cleanTarget.startsWith("#") ? cleanTarget : `#projects/${encodeURIComponent(cleanTarget)}`;
       } else {
         targetHash = "#projects";
       }
@@ -482,6 +512,19 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
     setIsUserSpeaking(false);
     setUserAudioLevel(0);
   };
+
+  // Close on Escape key
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        if (isVoiceMode) cleanupVoiceCall();
+        onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, isVoiceMode, onClose]);
 
   // Start Realtime WebRTC Voice Call
   const startVoiceCall = async () => {
@@ -1014,48 +1057,52 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
 
   if (!isOpen) return null;
 
-  return (
+  const asideContent = (
     <aside
-      style={{ width: `${sidebarWidth}px` }}
-      className={`h-screen flex flex-col bg-white border-l border-slate-200/90 shadow-2xl relative z-[1000] shrink-0 min-w-[360px] transition-[width] duration-75 select-text ${
-        isResizing ? "cursor-ew-resize select-none" : ""
-      }`}
+      style={isMobile ? undefined : { width: `${sidebarWidth}px` }}
+      className={`flex flex-col bg-white border-slate-200/90 shadow-2xl select-text transition-[width] duration-75 ${
+        isMobile
+          ? "fixed inset-0 z-[25000] w-full h-[100dvh] max-w-full overflow-hidden border-0"
+          : "h-screen border-l relative z-[1000] shrink-0 min-w-90"
+      } ${isResizing && !isMobile ? "cursor-ew-resize select-none" : ""}`}
       aria-label="AI Executive Copilot"
     >
-      {/* Left-edge Resize Drag Handle */}
-      <div
-        onPointerDown={handleResizePointerDown}
-        className="absolute top-0 left-0 -translate-x-1.5 w-3.5 h-full cursor-ew-resize hover:bg-purple-500/20 active:bg-purple-600/30 transition-colors z-50 flex items-center justify-center group"
-        title={t("Drag to resize sidebar (Min 360px)", "Potiahnutím zmeňte šírku (Min 360px)", "Húzással méretezhető (Min 360px)")}
-      >
-        <div className="w-1 h-8 rounded-full bg-slate-300 group-hover:bg-purple-600 transition-colors" />
-      </div>
+      {/* Left-edge Resize Drag Handle (Desktop only) */}
+      {!isMobile && (
+        <div
+          onPointerDown={handleResizePointerDown}
+          className="absolute top-0 left-0 -translate-x-1.5 w-3.5 h-full cursor-ew-resize hover:bg-purple-500/20 active:bg-purple-600/30 transition-colors z-50 flex items-center justify-center group"
+          title={t("Drag to resize sidebar (Min 360px)", "Potiahnutím zmeňte šírku (Min 360px)", "Húzással méretezhető (Min 360px)")}
+        >
+          <div className="w-1 h-8 rounded-full bg-slate-300 group-hover:bg-purple-600 transition-colors" />
+        </div>
+      )}
 
       {/* TOP HEADER */}
-      <div className="p-3.5 border-b border-slate-200/80 bg-gradient-to-r from-purple-50/70 via-indigo-50/40 to-white flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3 min-w-0">
+      <div className="p-3 sm:p-3.5 border-b border-slate-200/80 bg-gradient-to-r from-purple-50/70 via-indigo-50/40 to-white flex items-center justify-between shrink-0 gap-2">
+        <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
           <div className="relative shrink-0">
             <BlobatarAvatar
               name={`Executive Leader (${VERSION_CODENAME})`}
               roleColor="purple"
-              size={40}
+              size={isMobile ? 36 : 40}
               rounded="2xl"
               animate="always"
               expression={isAiSpeaking ? "happy" : isLoading ? "thinking" : "idle"}
             />
-            <span className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 ring-2 ring-white" />
+            <span className="absolute -bottom-0.5 -right-0.5 h-3 w-3 sm:h-3.5 sm:w-3.5 rounded-full bg-emerald-500 ring-2 ring-white" />
           </div>
 
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              <h3 className="font-heading font-extrabold text-xs text-slate-900 truncate">
+          <div className="min-w-0 flex-1">
+            <div className="flex items-center gap-1.5 flex-wrap sm:flex-nowrap">
+              <h3 className="font-heading font-extrabold text-ui text-slate-900 truncate">
                 Executive Copilot
               </h3>
-              <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded-full bg-purple-100 text-purple-700 border border-purple-200 uppercase tracking-wider">
+              <span className="type-overline px-1.5 py-0.2 rounded-full bg-purple-100 text-purple-700 border border-purple-200 shrink-0">
                 {VERSION_CODENAME}
               </span>
             </div>
-            <p className="text-[9.5px] text-slate-500 font-semibold truncate flex items-center gap-1 mt-0.5" title={screenContext.summary}>
+            <p className="text-micro text-slate-500 font-semibold truncate flex items-center gap-1 mt-0.5" title={screenContext.summary}>
               <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 shrink-0" />
               <span className="truncate">{screenContext.title}</span>
             </p>
@@ -1063,12 +1110,12 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
         </div>
 
         {/* Header Action Buttons */}
-        <div className="flex items-center gap-1 shrink-0">
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
           {/* Talk / Voice Mode Toggle Button */}
           <button
             type="button"
             onClick={handleToggleVoice}
-            className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[10.5px] font-black transition-all cursor-pointer shadow-xs active:scale-95 ${
+            className={`flex items-center gap-1 sm:gap-1.5 px-2.5 py-1.5 rounded-xl text-micro font-bold transition-all cursor-pointer shadow-xs active:scale-95 ${
               isVoiceMode
                 ? "bg-rose-500 hover:bg-rose-600 text-white shadow-rose-500/25"
                 : "bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white shadow-purple-500/25"
@@ -1099,10 +1146,11 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
               if (isVoiceMode) cleanupVoiceCall();
               onClose();
             }}
-            className="p-1.5 rounded-xl text-slate-400 hover:text-slate-800 hover:bg-slate-100 transition-all cursor-pointer"
+            className="p-1.5 sm:p-1.5 rounded-xl text-slate-500 hover:text-slate-900 bg-slate-100/90 hover:bg-slate-200 transition-all cursor-pointer active:scale-95 flex items-center justify-center border border-slate-200/80"
             title={t("Close Copilot", "Zavrieť copilot", "Copilot bezárása")}
+            aria-label={t("Close Copilot", "Zavrieť copilot", "Copilot bezárása")}
           >
-            <ChevronRight className="h-4 w-4" />
+            <X className="h-4 w-4 text-slate-600" />
           </button>
         </div>
       </div>
@@ -1113,11 +1161,11 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
         <div className="flex-1 flex flex-col justify-between p-6 bg-gradient-to-b from-slate-50/50 via-purple-50/20 to-white overflow-y-auto">
           {/* Top Status */}
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-extrabold uppercase tracking-wider text-purple-700 bg-purple-100/70 border border-purple-200 px-2.5 py-1 rounded-full flex items-center gap-1.5">
+            <span className="type-overline text-purple-700 bg-purple-100/70 border border-purple-200 px-2.5 py-1 rounded-full flex items-center gap-1.5">
               <span className={`h-2 w-2 rounded-full ${callState === "connected" ? "bg-emerald-500 animate-ping" : "bg-amber-400"}`} />
               {callState === "connected" ? t("Live Voice Connected", "Hlasové spojenie aktívne", "Élő hanghívás aktív") : t("Connecting...", "Pripájanie...", "Csatlakozás...")}
             </span>
-            <span className="text-[10px] text-slate-400 font-bold">
+            <span className="text-micro text-slate-400 font-bold">
               {VERSION_CODENAME} Live
             </span>
           </div>
@@ -1149,19 +1197,19 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
             {/* Speaking Status Subtitle */}
             <div className="mt-6">
               {callState === "error" ? (
-                <div className="bg-rose-50 text-rose-700 text-xs p-3 rounded-xl border border-rose-200 font-medium">
+                <div className="bg-rose-50 text-rose-700 text-ui p-3 rounded-xl border border-rose-200 font-medium">
                   {voiceErrorMessage || t("Voice connection error", "Chyba hlasového spojenia", "Hanghívási hiba")}
                 </div>
               ) : (
                 <>
-                  <h4 className="font-heading font-extrabold text-sm text-slate-800">
+                  <h4 className="font-heading font-extrabold text-body text-slate-800">
                     {isAiSpeaking
                       ? t("Executive Orchestrator speaking...", "AI líder hovorí...", "A vezetői AI beszél...")
                       : isUserSpeaking
                         ? t("Listening to you...", "Počúvam vás...", "Hallgatom Önt...")
                         : t("Ready for your question", "Pripravený na otázku", "Készen áll a kérdésre")}
                   </h4>
-                  <p className="text-[10.5px] text-slate-500 mt-1 max-w-[280px]">
+                  <p className="text-micro text-slate-500 mt-1 max-w-70">
                     {t(
                       "Ask anything or request to navigate entries (e.g., 'Show me client Silvia')",
                       "Môžete sa opýtať čokoľvek alebo požiadať o otvorenie záznamu (napr. 'Otvor klienta Silvia')",
@@ -1194,7 +1242,7 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
           </div>
 
           {/* Real-time Rolling Transcript Preview */}
-          <div className="space-y-2 bg-white/80 backdrop-blur-xs p-3.5 rounded-2xl border border-slate-200/80 shadow-xs text-xs">
+          <div className="space-y-2 bg-white/80 backdrop-blur-xs p-3.5 rounded-2xl border border-slate-200/80 shadow-xs text-ui">
             {liveTranscript.user && (
               <p className="text-slate-600 font-medium">
                 <span className="font-bold text-slate-800">{t("You:", "Vy:", "Ön:")}</span> {liveTranscript.user}
@@ -1206,7 +1254,7 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
               </p>
             )}
             {!liveTranscript.user && !liveTranscript.agent && (
-              <p className="text-slate-400 italic text-[11px] text-center">
+              <p className="text-slate-400 italic text-caption text-center">
                 {t("Speak naturally to start conversation...", "Hovorte plynule, mikrofón je aktívny...", "Beszéljen természetesen, a mikrofon aktív...")}
               </p>
             )}
@@ -1233,7 +1281,7 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
                 cleanupVoiceCall();
                 setIsVoiceMode(false);
               }}
-              className="px-5 py-2.5 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-xs shadow-md shadow-rose-600/25 flex items-center gap-2 cursor-pointer active:scale-95 transition-all"
+              className="px-5 py-2.5 rounded-2xl bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-ui shadow-md shadow-rose-600/25 flex items-center gap-2 cursor-pointer active:scale-95 transition-all"
             >
               <PhoneOff className="h-4 w-4" />
               <span>{t("End Call", "Ukončiť hovor", "Hívás befejezése")}</span>
@@ -1245,7 +1293,7 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
         <div className="flex-1 flex flex-col min-h-0 bg-slate-50/30">
           {/* Quick Screen-Aware Strategic Prompts Bar */}
           <div className="p-2.5 bg-slate-100/70 border-b border-slate-200/80 flex items-center gap-1.5 overflow-x-auto scrollbar-none min-w-0">
-            <span className="text-[9px] font-black uppercase tracking-wider text-purple-700 shrink-0 flex items-center gap-1">
+            <span className="type-overline text-purple-700 shrink-0 flex items-center gap-1">
               <Sparkles className="h-3 w-3 text-amber-500" />
               {t("Screen Prompts:", "Témy:", "Kérdések:")}
             </span>
@@ -1254,7 +1302,7 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
                 key={idx}
                 onClick={() => handleSendText(prompt)}
                 disabled={isLoading}
-                className="text-[10px] bg-white hover:bg-purple-50 text-slate-700 hover:text-purple-700 border border-slate-200/80 hover:border-purple-200 px-2.5 py-1 rounded-full whitespace-nowrap transition-all shadow-2xs cursor-pointer shrink-0 disabled:opacity-50"
+                className="text-micro bg-white hover:bg-purple-50 text-slate-700 hover:text-purple-700 border border-slate-200/80 hover:border-purple-200 px-2.5 py-1 rounded-full whitespace-nowrap transition-all shadow-2xs cursor-pointer shrink-0 disabled:opacity-50"
               >
                 {prompt}
               </button>
@@ -1293,7 +1341,7 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
 
                   {/* Message Bubble */}
                   <div
-                    className={`p-3.5 rounded-2xl text-xs leading-relaxed shadow-xs relative min-w-0 max-w-full ${
+                    className={`p-3.5 rounded-2xl text-ui leading-relaxed shadow-xs relative min-w-0 max-w-full ${
                       isAgent
                         ? "bg-white border border-slate-200/80 text-slate-800 rounded-tl-none"
                         : "bg-purple-600 text-white rounded-tr-none font-medium"
@@ -1302,14 +1350,14 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
                     {isAgent ? (
                       <div className="min-w-0 max-w-full">
                         <Markdown content={msg.text} />
-                        <span className="text-[8.5px] block mt-2 text-slate-400 font-semibold text-right">
+                        <span className="text-micro block mt-2 text-slate-400 font-semibold text-right">
                           {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                         </span>
                       </div>
                     ) : (
                       <div>
                         <p className="whitespace-pre-wrap">{msg.text}</p>
-                        <span className="text-[8px] block mt-1.5 text-right text-purple-200">
+                        <span className="text-micro block mt-1.5 text-right text-purple-200">
                           {msg.timestamp.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                         </span>
                       </div>
@@ -1332,7 +1380,7 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
                   />
                 </div>
                 <div className="p-3.5 rounded-2xl bg-white border border-slate-200 text-slate-600 rounded-tl-none shadow-xs flex items-center gap-2">
-                  <span className="text-xs font-semibold text-slate-500">
+                  <span className="text-ui font-semibold text-slate-500">
                     {t("Analyzing screen & CRM context...", "Analyzujem kontext obrazovky...", "Képernyő és adatok elemzése...")}
                   </span>
                   <span className="h-1.5 w-1.5 bg-purple-600 rounded-full animate-bounce" style={{ animationDelay: "0ms" }} />
@@ -1350,58 +1398,58 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
               e.preventDefault();
               handleSendText();
             }}
-            className="p-3.5 sm:p-4 bg-white/95 backdrop-blur-md border-t-2 border-purple-200/90 shadow-[0_-12px_32px_rgba(124,58,237,0.12)] shrink-0 z-20"
+            className="p-2.5 sm:p-4 pb-[max(0.65rem,env(safe-area-inset-bottom))] bg-white/95 backdrop-blur-md border-t border-purple-200/90 shadow-[0_-12px_32px_rgba(124,58,237,0.12)] shrink-0 z-20"
           >
-            <div className="relative flex items-center bg-slate-50/90 hover:bg-slate-50 focus-within:bg-white rounded-2xl border-2 border-purple-400/90 hover:border-purple-500 focus-within:border-purple-600 focus-within:ring-4 focus-within:ring-purple-500/20 p-2 transition-all shadow-sm">
-              <Sparkles className="h-4 w-4 text-purple-600 ml-1.5 shrink-0 animate-pulse" />
+            <div className="relative flex items-center bg-slate-50/90 hover:bg-slate-50 focus-within:bg-white rounded-2xl border-2 border-purple-400/90 hover:border-purple-500 focus-within:border-purple-600 focus-within:ring-4 focus-within:ring-purple-500/20 p-1.5 sm:p-2 transition-all shadow-sm">
+              <Sparkles className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-purple-600 ml-1 sm:ml-1.5 shrink-0 animate-pulse" />
               <input
                 ref={inputRef}
                 type="text"
                 value={inputText}
                 onChange={(e) => setInputText(e.target.value)}
                 placeholder={t(
-                  `Ask ${VERSION_CODENAME} about ${screenContext.title}...`,
-                  `Opýtajte sa na ${screenContext.title}...`,
-                  `Kérdezzen a(z) ${screenContext.title} témában...`
+                  `Ask ${VERSION_CODENAME}...`,
+                  `Opýtajte sa ${VERSION_CODENAME}...`,
+                  `Kérdezzen: ${VERSION_CODENAME}...`
                 )}
                 disabled={isLoading}
-                className="flex-1 bg-transparent px-3 py-1.5 text-xs sm:text-sm text-slate-900 font-semibold placeholder:text-slate-400 placeholder:font-normal focus:outline-none disabled:opacity-50 min-w-0"
+                className="flex-1 bg-transparent px-2 sm:px-3 py-1 sm:py-1.5 text-ui text-slate-900 font-semibold placeholder:text-slate-400 placeholder:font-normal focus:outline-none disabled:opacity-50 min-w-0"
               />
 
-              <div className="flex items-center gap-2 shrink-0 pr-1">
+              <div className="flex items-center gap-1.5 sm:gap-2 shrink-0 pr-0.5 sm:pr-1">
                 {/* Voice Call Quick Launch Button */}
                 <button
                   type="button"
                   onClick={startVoiceCall}
-                  className="h-9 px-3 rounded-xl bg-purple-100 hover:bg-purple-200/90 text-purple-800 hover:text-purple-950 font-bold border border-purple-300 flex items-center gap-1.5 text-xs transition-all shadow-2xs active:scale-95 cursor-pointer"
+                  className="h-8 sm:h-9 px-2 sm:px-3 rounded-xl bg-purple-100 hover:bg-purple-200/90 text-purple-800 hover:text-purple-950 font-bold border border-purple-300 flex items-center gap-1.5 text-ui transition-all shadow-2xs active:scale-95 cursor-pointer"
                   title={t("Start Voice Call", "Spustiť hlasový hovor", "Hanghívás indítása")}
                 >
-                  <Mic className="h-4 w-4 text-purple-700" />
-                  <span className="hidden sm:inline font-bold text-[11.5px]">{t("Talk", "Hovor", "Beszéd")}</span>
+                  <Mic className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-purple-700" />
+                  <span className="hidden sm:inline font-bold text-caption">{t("Talk", "Hovor", "Beszéd")}</span>
                 </button>
 
                 {/* Prominent Send Button */}
                 <button
                   type="submit"
                   disabled={!inputText.trim() || isLoading}
-                  className="h-9 px-4 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-700 hover:to-indigo-800 disabled:opacity-30 disabled:cursor-not-allowed text-white flex items-center justify-center gap-1.5 text-xs font-black shadow-md shadow-purple-600/35 transition-all active:scale-95 cursor-pointer"
+                  className="h-8 sm:h-9 px-3 sm:px-4 rounded-xl bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-700 hover:from-purple-700 hover:to-indigo-800 disabled:opacity-30 disabled:cursor-not-allowed text-white flex items-center justify-center gap-1 sm:gap-1.5 text-ui font-bold shadow-md shadow-purple-600/35 transition-all active:scale-95 cursor-pointer"
                   title={t("Send Message", "Odoslať správu", "Üzenet küldése")}
                 >
                   <span>{t("Send", "Odoslať", "Küldés")}</span>
-                  <Send className="h-3.5 w-3.5" />
+                  <Send className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
                 </button>
               </div>
             </div>
 
             {/* Grounding & Help Subtext */}
-            <div className="flex items-center justify-between px-1.5 pt-2 text-[10px] text-slate-400 font-medium">
-              <span className="flex items-center gap-1.5 truncate max-w-[70%]">
+            <div className="flex items-center justify-between px-1 pt-1.5 sm:pt-2 text-micro text-slate-400 font-medium">
+              <span className="flex items-center gap-1.5 truncate max-w-[80%] sm:max-w-[70%]">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
                 <span className="truncate">
                   {t("Grounded in:", "Kontext:", "Kontextus:")} <strong className="text-slate-700 font-semibold">{screenContext.title}</strong>
                 </span>
               </span>
-              <span className="text-[9.5px] text-slate-400 shrink-0">
+              <span className="hidden sm:inline text-micro text-slate-400 shrink-0">
                 ↵ {t("Enter to send", "Enter pre odoslanie", "Enter a küldéshez")}
               </span>
             </div>
@@ -1410,4 +1458,8 @@ export const CopilotSidebar: React.FC<CopilotSidebarProps> = ({
       )}
     </aside>
   );
+
+  return isMobile && typeof document !== "undefined"
+    ? createPortal(asideContent, document.body)
+    : asideContent;
 };

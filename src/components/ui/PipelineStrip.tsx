@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { typePx, useViewSize } from "../../utils/viewSize";
 
 /*
   ── PIPELINE STRIP ──────────────────────────────────────
@@ -19,6 +20,8 @@ export interface PipelineStripSegment {
   filled: boolean;
   /** Tailwind background class for the segment. */
   colorClass: string;
+  /** A hex background instead, for colours configured in settings. */
+  color?: string;
 }
 
 interface PipelineStripProps {
@@ -46,7 +49,8 @@ export function PipelineStrip({ segments, className = "" }: PipelineStripProps) 
   const stripRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [hovered, setHovered] = useState(false);
-  const [fit, setFit] = useState<{ fontSize: number; weights: number[] }>({ fontSize: 10, weights: [] });
+  const { size: viewSize, scale } = useViewSize();
+  const [fit, setFit] = useState<{ fontSize: number; weights: number[] }>(() => ({ fontSize: typePx("micro"), weights: [] }));
 
   // Re-fit only when the labels change, not on every new segments array.
   // Newline-joined: the labels themselves contain spaces ("On Hold").
@@ -81,7 +85,8 @@ export function PipelineStrip({ segments, className = "" }: PipelineStripProps) 
         scale = Math.min(scale, Math.max(segWidth, 1) / textWidths[i]);
       });
 
-      const fontSize = Math.min(13, Math.max(6, REF_SIZE * scale));
+      // Largest size is the ui role, smallest the micro role: never below the view size's floor.
+      const fontSize = Math.min(typePx("ui"), Math.max(typePx("micro"), REF_SIZE * scale));
       setFit(prev =>
         prev.fontSize === fontSize && prev.weights.length === weights.length && prev.weights.every((w, i) => w === weights[i])
           ? prev
@@ -93,15 +98,15 @@ export function PipelineStrip({ segments, className = "" }: PipelineStripProps) 
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [titlesKey]);
+  }, [titlesKey, viewSize]);
 
   return (
     <div
       ref={stripRef}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
-      className={`flex items-center gap-[1px] select-none bg-slate-200 transition-[height] duration-300 ease-out overflow-hidden shrink-0 ${className}`}
-      style={{ height: hovered ? "24px" : "4px" }}
+      className={`flex items-center gap-0.25 select-none bg-slate-200 transition-[height] duration-300 ease-out overflow-hidden shrink-0 ${className}`}
+      style={{ height: `${(hovered ? 24 : 4) * scale}px` }}
     >
       {segments.map((seg, index) => (
         <div
@@ -114,12 +119,13 @@ export function PipelineStrip({ segments, className = "" }: PipelineStripProps) 
             flexBasis: 0,
             minWidth: 0,
             clipPath: clipPathFor(index, segments.length),
+            ...(seg.color ? { backgroundColor: seg.color } : null),
           }}
           title={seg.tooltip}
         >
           {hovered && (
             <span
-              className={`font-black uppercase tracking-wider px-1 truncate ${seg.filled ? "text-white" : "text-slate-700"}`}
+              className={`font-bold uppercase tracking-wider px-1 truncate ${seg.filled ? "text-white" : "text-slate-700"}`}
               style={{
                 fontSize: `${fit.fontSize}px`,
                 // Room for the accents on uppercase Slovak/Hungarian labels.

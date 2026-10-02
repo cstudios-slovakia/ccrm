@@ -1,6 +1,6 @@
 import { createContext, useContext } from "react";
 import type { StartMenuLayout } from "./startMenuLayout";
-import type { ProjectListColumn } from "../types";
+import type { ProjectListColumn, FavoriteItem } from "../types";
 
 /**
  * Per-user interface preferences.
@@ -63,6 +63,18 @@ export interface UserPrefs {
    * default layout. Reconciled by resolveProjectColumns() in utils/projectColumns.ts.
    */
   projectsListColumns: ProjectListColumn[] | null;
+  /**
+   * Employees directory: the structure (the hand-set order, drag to rearrange),
+   * a plain table or cards. Same idea as projectsViewMode, so the choice follows
+   * the user to their next device.
+   */
+  employeesViewMode: "structure" | "table" | "cards";
+  /**
+   * Employees directory: the structure — employee ids in the order they were
+   * dragged into. Ids it has never seen (a newly added employee) sit on top; see
+   * applyManualOrder() in utils/projectSort.ts.
+   */
+  employeesOrder: string[];
   /** Leads screen: grouping / sorting. */
   leadsOrderingMode: "state" | "pm" | "created_newest" | "created_oldest" | "size" | "rating";
   /**
@@ -84,11 +96,27 @@ export interface UserPrefs {
    */
   financialTrendMode: "relative" | "cumulative";
   /**
-   * Finance trend chart: how many months the forecast runs past the current
-   * week — 3, 6 or 12. Per user for the same reason as the curve choice: it is
-   * how someone likes to read the chart, not a fact about the workspace.
+   * Finance trend chart: how far forward the forecast runs. `0` is "off" — the
+   * chart then shows history and the current period only, so the forecast is
+   * something a user opts into rather than what the screen is about.
    */
-  financialProjectionMonths: 3 | 6 | 12;
+  financialProjectionMonths: 0 | 3 | 6 | 12;
+  /**
+   * Finance trend chart: how far back the history runs, in months. The weekly
+   * view shows the same span in whole weeks (3 months = 13 weeks).
+   */
+  financialHistoryMonths: 1 | 3 | 6 | 12;
+  /**
+   * Finance movements ledger: edit a payment's status straight from its row.
+   * Off (the default) leaves the status as a plain badge and sends every change
+   * through the edit drawer. Per user, like the other view preferences.
+   */
+  financialInlineEdit: boolean;
+  /**
+   * Finance trend chart: aggregation resolution — "week" or "month".
+   * Per user preference like curve choice and projection horizon.
+   */
+  financialTrendResolution: "week" | "month";
   /**
    * Start Menu launcher: the user's own groups, what sits in each and what
    * they hid. `null` means "never customised", which is not the same as an
@@ -123,6 +151,13 @@ export interface UserPrefs {
   sidebarGroups: Array<{ id: string; title: string; items: string[] }> | null;
   /** Default startup screen / landing page route id. */
   defaultPage: string | null;
+  /** Pinned/favorited entities across projects, clients, leads, and custom entries. */
+  favorites: FavoriteItem[];
+  /**
+   * Lead / client ids the user picked last in any client dropdown, most recent
+   * first. Feeds the "Recently used" section — see utils/clientPickerGroups.ts.
+   */
+  recentClientIds: string[];
 }
 
 export const DEFAULT_USER_PREFS: UserPrefs = {
@@ -133,12 +168,17 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   projectsViewMode: "list",
   projectsSort: null,
   projectsListColumns: null,
+  employeesViewMode: "table",
+  employeesOrder: [],
   leadsCompactMode: false,
   leadsOrderingMode: "state",
   leadsVisibleStates: null,
   projectsVisibleStatuses: null,
   financialTrendMode: "relative",
-  financialProjectionMonths: 3,
+  financialProjectionMonths: 0,
+  financialHistoryMonths: 3,
+  financialInlineEdit: false,
+  financialTrendResolution: "week",
   startMenuLayout: null,
   seenUpdateId: null,
   licenseNoticeSuppressed: null,
@@ -149,6 +189,8 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   sidebarUnpinnedStyle: "overlay",
   sidebarGroups: null,
   defaultPage: null,
+  favorites: [],
+  recentClientIds: [],
 };
 
 /** Anything with a metadata_json blob — UserProfile, or a raw sync.php row. */
@@ -260,6 +302,9 @@ export const readLegacyPrefs = (): Partial<UserPrefs> => {
 
   const trendMode = read("crm_financial_trend_mode");
   if (trendMode === "relative" || trendMode === "cumulative") legacy.financialTrendMode = trendMode;
+
+  const trendRes = read("crm_financial_trend_resolution");
+  if (trendRes === "week" || trendRes === "month") legacy.financialTrendResolution = trendRes;
 
   const seenUpdateId = read("ccrm_seen_update_id");
   if (seenUpdateId) legacy.seenUpdateId = seenUpdateId;

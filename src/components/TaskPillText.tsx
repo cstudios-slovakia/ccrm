@@ -59,7 +59,7 @@ export const TaskPillText: React.FC<TaskPillTextProps> = ({
                                     onTagClick(tag);
                                 }
                             }}
-                            className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-md text-[10px] font-black uppercase tracking-wider mx-0.5 select-none transition-all ${
+                            className={`inline-flex items-center gap-0.5 px-1.5 py-0.2 rounded-md type-overline mx-0.5 select-none transition-all ${
                                 onTagClick
                                     ? "bg-indigo-50 hover:bg-indigo-100 text-indigo-700 hover:text-indigo-900 border border-indigo-200 shadow-xs cursor-pointer active:scale-95"
                                     : "bg-indigo-50 text-indigo-700 border border-indigo-200"
@@ -100,7 +100,7 @@ export const TaskPillText: React.FC<TaskPillTextProps> = ({
                     return (
                         <span
                             key={index}
-                            className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md text-[10px] font-bold mx-0.5 select-none border shadow-xs ${badgeClass}`}
+                            className={`inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md text-micro font-bold mx-0.5 select-none border shadow-xs ${badgeClass}`}
                         >
                             <IconComponent className="h-2.5 w-2.5 opacity-70 shrink-0" />
                             <span>{token}</span>

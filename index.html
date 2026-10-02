@@ -50,6 +50,15 @@
           root.setAttribute("data-theme", dark ? "dark" : palette);
           root.setAttribute("data-appearance", dark ? "dark" : "light");
           root.style.colorScheme = dark ? "dark" : "light";
+          // View size — mirrors resolveViewSize() in src/utils/viewSize.ts.
+          var VS_DEFAULT = "auto"; // keep equal to viewSize.ts (unit-tested)
+          var vs = read("ccrm_view_size");
+          var vsMode = vs === "auto" || vs === "compact" || vs === "normal" || vs === "big" ? vs : VS_DEFAULT;
+          var mq = function (q) { return !!(window.matchMedia && window.matchMedia(q).matches); };
+          var vsSize = vsMode !== "auto" ? vsMode
+            : mq("(min-width: 2200px)") ? "big" : mq("(min-width: 1800px)") ? "normal" : "compact";
+          root.setAttribute("data-view-size", vsSize);
+          root.setAttribute("data-view-size-mode", vsMode);
         } catch (e) {}
       })();
     </script>
@@ -63,22 +72,18 @@
   <body class="font-sans antialiased overflow-x-hidden">
     <div id="root"></div>
     
-    <!-- Active Service Worker Unregistration to prevent caching issues -->
+    <!-- Service Worker registration for PWA mobile & desktop push notifications -->
     <script>
-      if ("serviceWorker" in navigator) {
-        navigator.serviceWorker.getRegistrations().then((registrations) => {
-          for (let registration of registrations) {
-            registration.unregister().then((success) => {
-              if (success) {
-                console.log("Service Worker successfully unregistered");
-                if ("caches" in window) {
-                  caches.keys().then((names) => {
-                    for (let name of names) caches.delete(name);
-                  });
-                }
-              }
+      if ("serviceWorker" in navigator && !window.location.search.includes("qa=")) {
+        window.addEventListener("load", function () {
+          navigator.serviceWorker
+            .register("/sw.js", { scope: "/" })
+            .then(function (reg) {
+              console.log("[CCRM SW] Registered successfully:", reg.scope);
+            })
+            .catch(function (err) {
+              console.warn("[CCRM SW] Registration failed:", err);
             });
-          }
         });
       }
     </script>

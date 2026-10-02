@@ -87,10 +87,6 @@ export interface ProjectDeadlineStatus {
   isDueSoon: boolean;
 }
 
-/** Statuses that stop a deadline from being a deadline. */
-const isClosedProject = (status: string | undefined): boolean =>
-  status === "completed" || status === "cancelled";
-
 /**
  * The project's deadline state, or null when there is nothing to say — the type
  * is not time-boxed, no date is set, or the date is unreadable. Callers render
@@ -100,6 +96,7 @@ export const evaluateProjectDeadline = (
   project: Pick<Project, "deadline" | "status" | "finishedAt"> | undefined | null,
   projectType: Pick<ProjectType, "hasDeadline" | "deadlineWarningDays"> | undefined | null,
   today: string,
+  statuses: readonly ProjectStatusDef[] = DEFAULT_PROJECT_STATUS_DEFS,
 ): ProjectDeadlineStatus | null => {
   if (!projectType?.hasDeadline) return null;
 
@@ -136,7 +133,7 @@ export const evaluateProjectDeadline = (
   // A delivered project that ran late is history, not a fire. Colouring it red
   // forever would leave the list permanently alarming and make the projects
   // that are genuinely late impossible to pick out.
-  const closed = isClosedProject(project?.status);
+  const closed = isClosedProjectStatus(project?.status, statuses);
   const isOverdue = !closed && daysLeft < 0;
   const isDueSoon = !closed && !isOverdue && warningDays > 0 && daysLeft <= warningDays;
 
@@ -163,20 +160,23 @@ export const projectStartDate = (
 ): string => toDateOnly(project?.startDate) || toDateOnly(project?.createdAt);
 
 /**
- * The real finish date after a status change. Completing a project without a
- * finish date stamps `today`; an existing date (set by hand) is kept. Moving it
- * back to an open status clears the date, because a finish date on a project
- * still in progress would keep showing it as finished in every list.
- * Cancelled leaves the date as it was.
+ * The real finish date after a status change. Moving into a completed status
+ * without a finish date stamps `today`; an existing date (set by hand) is kept.
+ * Moving it back to an open status clears the date, because a finish date on a
+ * project still in progress would keep showing it as finished in every list.
+ * A cancelled status leaves the date as it was. Asked by group, not key, so a
+ * status added in settings behaves like the built-in it is grouped with.
  */
 export const finishedAtForStatus = (
   nextStatus: string,
   finishedAt: string | null | undefined,
   today: string,
+  statuses: readonly ProjectStatusDef[] = DEFAULT_PROJECT_STATUS_DEFS,
 ): string => {
   const current = toDateOnly(finishedAt);
-  if (nextStatus === "completed") return current || toDateOnly(today);
-  if (nextStatus === "cancelled") return current;
+  const group = projectStatusGroup(nextStatus, statuses);
+  if (group === "completed") return current || toDateOnly(today);
+  if (group === "cancelled") return current;
   return "";
 };
 
@@ -238,96 +238,215 @@ export const projectDisplayName = (
 /*
   ── PROJECT STATUS ──────────────────────────────────────
 
-  The list itself is PROJECT_STATUSES in types/index.ts. What lives here is how
-  a status is spoken and how it is painted, because five places used to carry
-  their own copy of both — the projects filter, the projects table, the project
-  card, the project drawer and the lead's "Linked projects" card — and a new
-  status reached exactly none of them.
+  The statuses are configured per installation (Settings → Project settings →
+  Project statuses), the same way the lead pipeline stages are. Each carries:
+
+  - `key`   — what a project stores in `status`. Given once and never changed,
+              so renaming a status rewrites no project, no saved filter and no
+              workflow that points at it.
+  - `label` — what it is called. Empty on the five built-ins until someone
+              renames one, so those keep speaking all three UI languages.
+  - `color` — a hex colour, painted the way the lead stages are.
+  - `group` — what it means: `new` (where a project starts), `in_progress`,
+              `completed` (closed and done — stamps the finish date) or
+              `cancelled` (closed and abandoned). Deadlines, the pipeline strip,
+              the "active projects" counts and the finish date all ask the
+              group, never the key, so an added status behaves like the
+              built-in it is grouped with.
+
+  Every helper takes the list as its last argument and falls back to the
+  built-ins, so a caller with no settings in reach still gets the stock five.
+  Components read the live list with useProjectStatuses().
+
+  The same list is mirrored by ccrm_project_status_defs() in api/auth.php,
+  which validates what automations and the API may write.
 */
 
-/** Where every project starts. Nothing promotes it out of here on its own — see PROJECT_STATUSES. */
-export const DEFAULT_PROJECT_STATUS: ProjectStatus = "new";
+export type ProjectStatusGroup = "new" | "in_progress" | "completed" | "cancelled";
 
-/**
- * en / sk / hu, in the shape every view's local `t()` takes.
- *
- * Written out in PROJECT_STATUSES order, because the key order is what the
- * dropdowns are built from below — a runtime `import { PROJECT_STATUSES }` here
- * would be a directory import that node's test runner cannot resolve. The
- * `Record<ProjectStatus, …>` keeps the two lists exhaustive against each other,
- * and projects.test.ts asserts they agree on order too.
- */
-const PROJECT_STATUS_LABELS: Record<ProjectStatus, [string, string, string]> = {
+/** The groups in pipeline order — also the order the statuses are kept in. */
+export const PROJECT_STATUS_GROUPS: readonly ProjectStatusGroup[] = ["new", "in_progress", "completed", "cancelled"];
+
+export interface ProjectStatusDef {
+  key: string;
+  /** Empty while a built-in has not been renamed — it is then translated. */
+  label?: string;
+  color: string;
+  group: ProjectStatusGroup;
+}
+
+/** en / sk / hu names of the built-in statuses, in the shape every view's `t()` takes. */
+const BUILTIN_PROJECT_STATUS_LABELS: Record<string, [string, string, string]> = {
   new: ["New", "Nový", "Új"],
   active: ["Active", "Aktívny", "Aktív"],
-  completed: ["Completed", "Dokončený", "Befejezett"],
   on_hold: ["On Hold", "Pozastavený", "Függőben"],
+  completed: ["Completed", "Dokončený", "Befejezett"],
   cancelled: ["Cancelled", "Zrušený", "Törölt"],
 };
 
-const isProjectStatus = (status: string): status is ProjectStatus =>
-  Object.prototype.hasOwnProperty.call(PROJECT_STATUS_LABELS, status);
+/** What an installation that never touched the editor has. */
+export const DEFAULT_PROJECT_STATUS_DEFS: readonly ProjectStatusDef[] = [
+  { key: "new", color: "#0ea5e9", group: "new" },
+  { key: "active", color: "#a855f7", group: "in_progress" },
+  { key: "on_hold", color: "#f59e0b", group: "in_progress" },
+  { key: "completed", color: "#10b981", group: "completed" },
+  { key: "cancelled", color: "#f43f5e", group: "cancelled" },
+];
+
+/** What a status added in settings starts with. */
+export const NEW_PROJECT_STATUS_COLOR = "#6366f1";
+/** An unknown status — written by something outside the app, or since deleted. */
+const UNKNOWN_STATUS_COLOR = "#94a3b8";
+/** A pipeline step not yet reached. */
+const PIPELINE_UNREACHED_CLASS = "bg-slate-300";
+
+const HEX_COLOR = /^#[0-9a-f]{6}$/i;
+const MAX_KEY_LENGTH = 50;
+
+const isGroup = (value: unknown): value is ProjectStatusGroup =>
+  typeof value === "string" && (PROJECT_STATUS_GROUPS as readonly string[]).includes(value);
 
 /**
- * A status as a human reads it. An unknown one — a row written before a status
- * was renamed, or by something outside the app — is shown raw rather than
- * swallowed, so it stays visible instead of quietly reading as "Active".
+ * A stored list, cleaned up: unique non-empty keys, a known group, a hex
+ * colour, and kept in group order. Anything unreadable — nothing stored yet, a
+ * malformed blob, a list emptied by hand — falls back to the built-ins, so
+ * there is always somewhere for a project to start.
+ */
+export const normalizeProjectStatusDefs = (raw: unknown): ProjectStatusDef[] => {
+  const defaults = () => DEFAULT_PROJECT_STATUS_DEFS.map((d) => ({ ...d }));
+  if (!Array.isArray(raw)) return defaults();
+  const seen = new Set<string>();
+  const out: ProjectStatusDef[] = [];
+  for (const item of raw) {
+    if (!item || typeof item !== "object") continue;
+    const rec = item as Record<string, unknown>;
+    const key = String(rec.key ?? "").trim();
+    if (!key || key.length > MAX_KEY_LENGTH || seen.has(key)) continue;
+    seen.add(key);
+    const builtin = DEFAULT_PROJECT_STATUS_DEFS.find((d) => d.key === key);
+    const color = HEX_COLOR.test(String(rec.color ?? ""))
+      ? String(rec.color).toLowerCase()
+      : builtin?.color ?? NEW_PROJECT_STATUS_COLOR;
+    const group = isGroup(rec.group) ? rec.group : builtin?.group ?? "in_progress";
+    const label = String(rec.label ?? "").trim();
+    out.push(label ? { key, label, color, group } : { key, color, group });
+  }
+  // A list with nowhere to start is no list at all.
+  if (!out.some((d) => d.group === "new" || d.group === "in_progress")) return defaults();
+  return PROJECT_STATUS_GROUPS.flatMap((g) => out.filter((d) => d.group === g));
+};
+
+/**
+ * A key for a status added under `name`: the name folded to ASCII snake case,
+ * made unique against `taken`. Only ever computed once — see `key` above.
+ */
+export const projectStatusKeyFor = (name: string, taken: readonly string[]): string => {
+  const base =
+    name
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, MAX_KEY_LENGTH - 4) || "status";
+  if (!taken.includes(base)) return base;
+  let i = 2;
+  while (taken.includes(`${base}_${i}`)) i++;
+  return `${base}_${i}`;
+};
+
+const findStatus = (
+  status: string | undefined | null,
+  statuses: readonly ProjectStatusDef[],
+): ProjectStatusDef | undefined => {
+  const key = String(status ?? "").trim();
+  return key ? statuses.find((d) => d.key === key) : undefined;
+};
+
+/**
+ * A status as a human reads it: the name given in settings, else the built-in
+ * translation. An unknown one — a status since deleted, or a row written by
+ * something outside the app — is shown raw rather than swallowed, so it stays
+ * visible instead of quietly reading as "Active".
  */
 export const projectStatusLabel = (
   status: string | undefined | null,
   t: (en: string, sk: string, hu: string) => string,
+  statuses: readonly ProjectStatusDef[] = DEFAULT_PROJECT_STATUS_DEFS,
 ): string => {
   const key = String(status ?? "").trim();
-  if (!isProjectStatus(key)) return key;
-  const [en, sk, hu] = PROJECT_STATUS_LABELS[key];
-  return t(en, sk, hu);
+  const def = findStatus(key, statuses);
+  if (def?.label) return def.label;
+  const builtin = BUILTIN_PROJECT_STATUS_LABELS[key];
+  return builtin ? t(builtin[0], builtin[1], builtin[2]) : key;
 };
 
-/** Every status, in the order they are offered. */
-export const projectStatusOrder = (): ProjectStatus[] =>
-  Object.keys(PROJECT_STATUS_LABELS) as ProjectStatus[];
+/** Every status key, in the order they are offered. */
+export const projectStatusOrder = (
+  statuses: readonly ProjectStatusDef[] = DEFAULT_PROJECT_STATUS_DEFS,
+): ProjectStatus[] => statuses.map((d) => d.key);
 
-/** The whole list as dropdown options, in PROJECT_STATUSES order. */
+/** The whole list as dropdown options, in order. */
 export const projectStatusOptions = (
   t: (en: string, sk: string, hu: string) => string,
+  statuses: readonly ProjectStatusDef[] = DEFAULT_PROJECT_STATUS_DEFS,
 ): { value: ProjectStatus; label: string }[] =>
-  projectStatusOrder().map((value) => ({ value, label: projectStatusLabel(value, t) }));
+  statuses.map((d) => ({ value: d.key, label: projectStatusLabel(d.key, t, statuses) }));
 
-/** Badge colours. A status carries meaning, so it stays on the raw palette. */
-export const projectStatusBadgeClass = (status: string | undefined | null): string => {
-  switch (String(status ?? "").trim()) {
-    case "new":
-      return "bg-sky-50 text-sky-600 border-sky-100";
-    case "active":
-      return "bg-purple-50 text-purple-600 border-purple-100";
-    case "completed":
-      return "bg-emerald-50 text-emerald-600 border-emerald-100";
-    case "on_hold":
-      return "bg-amber-50 text-amber-600 border-amber-100";
-    case "cancelled":
-      return "bg-rose-50 text-rose-600 border-rose-100";
-    default:
-      return "bg-slate-50 text-slate-500 border-slate-200";
-  }
+/** What a status means, or null for one the list does not know. */
+export const projectStatusGroup = (
+  status: string | undefined | null,
+  statuses: readonly ProjectStatusDef[] = DEFAULT_PROJECT_STATUS_DEFS,
+): ProjectStatusGroup | null => findStatus(status, statuses)?.group ?? null;
+
+/** True for a status a project ends in — completed or cancelled. */
+export const isClosedProjectStatus = (
+  status: string | undefined | null,
+  statuses: readonly ProjectStatusDef[] = DEFAULT_PROJECT_STATUS_DEFS,
+): boolean => {
+  const group = projectStatusGroup(status, statuses);
+  return group === "completed" || group === "cancelled";
+};
+
+/** The statuses a project is still being worked in, in order. */
+export const openProjectStatuses = (
+  statuses: readonly ProjectStatusDef[] = DEFAULT_PROJECT_STATUS_DEFS,
+): ProjectStatus[] => statuses.filter((d) => d.group === "new" || d.group === "in_progress").map((d) => d.key);
+
+/**
+ * Where every project starts: the first status of the "new" group, else the
+ * first open one. Nothing promotes it out of there on its own — which lead
+ * status moves a project along differs between installations, so that lives
+ * in a workflow.
+ */
+export const defaultProjectStatus = (
+  statuses: readonly ProjectStatusDef[] = DEFAULT_PROJECT_STATUS_DEFS,
+): ProjectStatus =>
+  statuses.find((d) => d.group === "new")?.key ?? openProjectStatuses(statuses)[0] ?? statuses[0]?.key ?? "new";
+
+/** The status's hex colour; grey for one the list does not know. */
+export const projectStatusColor = (
+  status: string | undefined | null,
+  statuses: readonly ProjectStatusDef[] = DEFAULT_PROJECT_STATUS_DEFS,
+): string => findStatus(status, statuses)?.color ?? UNKNOWN_STATUS_COLOR;
+
+/**
+ * Badge colours, tinted from the status colour the way the lead stage badges
+ * are. Pair with `border` and a padding/rounding of the caller's choosing.
+ */
+export const projectStatusBadgeStyle = (
+  status: string | undefined | null,
+  statuses: readonly ProjectStatusDef[] = DEFAULT_PROJECT_STATUS_DEFS,
+): { backgroundColor: string; color: string; borderColor: string } => {
+  const color = projectStatusColor(status, statuses);
+  return { backgroundColor: `${color}14`, color, borderColor: `${color}40` };
 };
 
 /** The coloured dot that carries a status in a dropdown row or trigger. */
-export const projectStatusDotClass = (status: string | undefined | null): string => {
-  switch (String(status ?? "").trim()) {
-    case "new":
-      return "bg-sky-500";
-    case "active":
-      return "bg-purple-500";
-    case "completed":
-      return "bg-emerald-500";
-    case "on_hold":
-      return "bg-amber-500";
-    case "cancelled":
-      return "bg-rose-500";
-    default:
-      return "bg-slate-400";
-  }
-};
+export const projectStatusDotStyle = (
+  status: string | undefined | null,
+  statuses: readonly ProjectStatusDef[] = DEFAULT_PROJECT_STATUS_DEFS,
+): { backgroundColor: string } => ({ backgroundColor: projectStatusColor(status, statuses) });
 
 /*
   ── PROJECT PIPELINE ────────────────────────────────────
@@ -338,20 +457,16 @@ export const projectStatusDotClass = (status: string | undefined | null): string
   colour of whichever one it actually ended in.
 */
 
-/** The statuses a project ends in — folded into the strip's last segment. */
-export const CLOSED_PROJECT_STATUSES: readonly string[] = ["completed", "cancelled"];
-
-/** A step not yet reached. */
-const PIPELINE_UNREACHED_CLASS = "bg-slate-300";
-
 export interface ProjectPipelineSegment {
   key: string;
   title: string;
   tooltip: string;
   /** Reached — the current status or one before it. */
   filled: boolean;
-  /** Background class: the status colour once reached, grey until then. */
+  /** Background class for a step not reached; "" once it is lit in `color`. */
   colorClass: string;
+  /** The status colour of a reached step. */
+  color?: string;
 }
 
 /**
@@ -362,37 +477,38 @@ export interface ProjectPipelineSegment {
 export const projectPipelineSegments = (
   status: string | undefined | null,
   t: (en: string, sk: string, hu: string) => string,
+  statuses: readonly ProjectStatusDef[] = DEFAULT_PROJECT_STATUS_DEFS,
 ): ProjectPipelineSegment[] => {
   const current = String(status ?? "").trim();
-  const order = projectStatusOrder();
-  const open = order.filter((s) => !CLOSED_PROJECT_STATUSES.includes(s));
-  const closed = order.filter((s) => CLOSED_PROJECT_STATUSES.includes(s));
-  const isClosed = closed.includes(current as ProjectStatus);
-  const currentIndex = open.indexOf(current as ProjectStatus);
+  const open = openProjectStatuses(statuses);
+  const closed = statuses.filter((d) => d.group === "completed" || d.group === "cancelled").map((d) => d.key);
+  const isClosed = closed.includes(current);
+  const currentIndex = open.indexOf(current);
   const reached = t("(Current/Past)", "(Aktuálne/Minulé)", "(Aktuális/Múlt)");
   const upcoming = t("(Upcoming)", "(Nadchádzajúce)", "(Közelgő)");
+  const label = (s: string) => projectStatusLabel(s, t, statuses);
+  const paint = (s: string, filled: boolean) =>
+    filled
+      ? { colorClass: "", color: projectStatusColor(s, statuses) }
+      : { colorClass: PIPELINE_UNREACHED_CLASS };
 
   const segments: ProjectPipelineSegment[] = open.map((s, i) => {
     const filled = isClosed || (currentIndex !== -1 && i <= currentIndex);
-    const title = projectStatusLabel(s, t);
-    return {
-      key: s,
-      title,
-      tooltip: `${title} ${filled ? reached : upcoming}`,
-      filled,
-      colorClass: filled ? projectStatusDotClass(s) : PIPELINE_UNREACHED_CLASS,
-    };
+    const title = label(s);
+    return { key: s, title, tooltip: `${title} ${filled ? reached : upcoming}`, filled, ...paint(s, filled) };
   });
 
-  const closedTitle = closed.map((s) => projectStatusLabel(s, t)).join(" / ");
-  const closedWord = t("Closed", "Uzavreté", "Lezárva");
-  segments.push({
-    key: "closed",
-    title: closedTitle,
-    tooltip: `${closedWord} (${isClosed ? projectStatusLabel(current, t) : closedTitle})`,
-    filled: isClosed,
-    colorClass: isClosed ? projectStatusDotClass(current) : PIPELINE_UNREACHED_CLASS,
-  });
+  if (closed.length > 0) {
+    const closedTitle = closed.map(label).join(" / ");
+    const closedWord = t("Closed", "Uzavreté", "Lezárva");
+    segments.push({
+      key: "closed",
+      title: closedTitle,
+      tooltip: `${closedWord} (${isClosed ? label(current) : closedTitle})`,
+      filled: isClosed,
+      ...paint(current, isClosed),
+    });
+  }
 
   return segments;
 };

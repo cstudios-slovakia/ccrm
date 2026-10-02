@@ -54,6 +54,21 @@ export function formatMoney(
   return position === "suffix" ? `${numStr} ${symbol}` : `${symbol}${numStr}`;
 }
 
+/**
+ * Formats a number according to Central European conventions:
+ * space as thousands separator (e.g. "3 100" instead of "3,100"),
+ * comma as decimal separator (e.g. "12,50" instead of "12.50").
+ */
+export function formatNumber(
+  value: number | string | null | undefined,
+  language?: Language | string,
+  options?: Intl.NumberFormatOptions
+): string {
+  const num = typeof value === "number" ? value : Number(value) || 0;
+  const locale = language === "hu" ? "hu-HU" : "sk-SK";
+  return num.toLocaleString(locale, options);
+}
+
 /* -------------------------------------------------------------------------- */
 /* Money held in a free-form attribute value                                   */
 /* -------------------------------------------------------------------------- */

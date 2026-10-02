@@ -98,12 +98,12 @@ export function useConfirmDialog(): [
                     <div className="min-w-0 pt-0.5">
                       <h2
                         id="ccrm-confirm-title"
-                        className="font-heading text-sm font-black text-slate-800 break-words"
+                        className="font-heading text-body font-bold text-slate-800 break-words"
                       >
                         {options.title}
                       </h2>
                       {options.message && (
-                        <p className="mt-1.5 text-xs text-slate-500 break-words">
+                        <p className="mt-1.5 text-ui text-slate-500 break-words">
                           {options.message}
                         </p>
                       )}
@@ -114,7 +114,7 @@ export function useConfirmDialog(): [
                       type="button"
                       data-testid="confirm-dialog-cancel"
                       onClick={() => settle(false)}
-                      className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-600 transition-all hover:bg-slate-50 hover:border-slate-300 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
+                      className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-ui font-bold text-slate-600 transition-all hover:bg-slate-50 hover:border-slate-300 active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-slate-300"
                     >
                       {options.cancelLabel}
                     </button>
@@ -123,7 +123,7 @@ export function useConfirmDialog(): [
                       type="button"
                       data-testid="confirm-dialog-confirm"
                       onClick={() => settle(true)}
-                      className={`rounded-xl px-4 py-2 text-xs font-bold text-white shadow-sm transition-all active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 ${
+                      className={`rounded-xl px-4 py-2 text-ui font-bold text-white shadow-sm transition-all active:scale-95 focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-1 ${
                         options.danger
                           ? "bg-rose-600 hover:bg-rose-700 focus-visible:ring-rose-400"
                           : "bg-accent hover:brightness-110 focus-visible:ring-accent"

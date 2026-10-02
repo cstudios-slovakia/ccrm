@@ -923,6 +923,133 @@ function mcp_get_tool_definitions(): array {
                     'role' => ['type' => 'string', 'description' => 'Filter by role']
                 ]
             ]
+        ],
+
+        // DOMAIN 11: Employees, Salaries & Vacations
+        [
+            'name' => 'list_employees',
+            'description' => 'List company employees with compensation rates, contact details, and vacation allowances.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'search' => ['type' => 'string', 'description' => 'Search by name, email, PIN, or phone'],
+                    'active_only' => ['type' => 'boolean', 'description' => 'Filter by active employees only (default true)']
+                ]
+            ]
+        ],
+        [
+            'name' => 'get_employee',
+            'description' => 'Retrieve full employee details by ID including allowances, salary configuration, and recent payroll.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'id' => ['type' => 'string', 'description' => 'Employee ID (e.g. emp-...)']
+                ],
+                'required' => ['id']
+            ]
+        ],
+        [
+            'name' => 'create_employee',
+            'description' => 'Register a new employee in the CRM roster.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'name' => ['type' => 'string', 'description' => 'Full name of employee'],
+                    'pin' => ['type' => 'string', 'description' => 'Personal ID number / Rodné číslo / Tax ID'],
+                    'email' => ['type' => 'string', 'description' => 'Email address'],
+                    'phone' => ['type' => 'string', 'description' => 'Phone number'],
+                    'address_street' => ['type' => 'string', 'description' => 'Street address'],
+                    'address_city' => ['type' => 'string', 'description' => 'City'],
+                    'address_zip' => ['type' => 'string', 'description' => 'Postal code'],
+                    'salary_type' => ['type' => 'string', 'enum' => ['monthly', 'daily', 'hourly'], 'description' => 'Salary period type'],
+                    'salary_amount' => ['type' => 'number', 'description' => 'Base salary rate in EUR'],
+                    'salary_due_day' => ['type' => 'integer', 'description' => 'Day of the month for payout (e.g. 15)'],
+                    'auto_expense' => ['type' => 'boolean', 'description' => 'Automatically create expense records in Financial Management'],
+                    'expense_category_id' => ['type' => 'string', 'description' => 'Financial category ID for auto-expense']
+                ],
+                'required' => ['name']
+            ]
+        ],
+        [
+            'name' => 'update_employee',
+            'description' => 'Update an existing employee profile, salary rate, or contact information.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'id' => ['type' => 'string', 'description' => 'Employee ID'],
+                    'name' => ['type' => 'string', 'description' => 'Full name'],
+                    'pin' => ['type' => 'string', 'description' => 'Personal ID number'],
+                    'email' => ['type' => 'string', 'description' => 'Email address'],
+                    'phone' => ['type' => 'string', 'description' => 'Phone number'],
+                    'salary_type' => ['type' => 'string', 'enum' => ['monthly', 'daily', 'hourly']],
+                    'salary_amount' => ['type' => 'number', 'description' => 'Salary rate in EUR'],
+                    'salary_due_day' => ['type' => 'integer', 'description' => 'Day of month for payout'],
+                    'auto_expense' => ['type' => 'boolean', 'description' => 'Auto-expense enabled'],
+                    'is_active' => ['type' => 'boolean', 'description' => 'Active employment status']
+                ],
+                'required' => ['id']
+            ]
+        ],
+        [
+            'name' => 'list_salaries',
+            'description' => 'Query salary and payment records for employees by period (year, month) or employee ID.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'employee_id' => ['type' => 'string', 'description' => 'Filter by employee ID'],
+                    'year' => ['type' => 'integer', 'description' => 'Filter by year (e.g. 2026)'],
+                    'period_key' => ['type' => 'string', 'description' => 'Filter by period key (e.g. 2026-09)']
+                ]
+            ]
+        ],
+        [
+            'name' => 'record_salary_payout',
+            'description' => 'Record or update salary obligation and payment for an employee for a specific period.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'employee_id' => ['type' => 'string', 'description' => 'Employee ID'],
+                    'period_key' => ['type' => 'string', 'description' => 'Period key (e.g. 2026-09)'],
+                    'year' => ['type' => 'integer', 'description' => 'Year'],
+                    'period_number' => ['type' => 'integer', 'description' => 'Month (1-12) or week (1-53)'],
+                    'total_salary' => ['type' => 'number', 'description' => 'Total salary obligation amount'],
+                    'total_paid' => ['type' => 'number', 'description' => 'Actual amount paid so far'],
+                    'payment_date' => ['type' => 'string', 'description' => 'Date payment was made (YYYY-MM-DD)'],
+                    'due_date' => ['type' => 'string', 'description' => 'Target payout due date (YYYY-MM-DD)'],
+                    'payment_method' => ['type' => 'string', 'description' => 'Payment method (bank_transfer, cash, etc.)'],
+                    'note' => ['type' => 'string', 'description' => 'Optional note']
+                ],
+                'required' => ['employee_id', 'period_key', 'total_salary']
+            ]
+        ],
+        [
+            'name' => 'list_vacations',
+            'description' => 'List vacation and absence entries with optional filtering by employee, status, or date.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'employee_id' => ['type' => 'string', 'description' => 'Filter by employee ID'],
+                    'status' => ['type' => 'string', 'enum' => ['requested', 'approved', 'rejected', 'taken']],
+                    'year' => ['type' => 'integer', 'description' => 'Filter by year']
+                ]
+            ]
+        ],
+        [
+            'name' => 'record_vacation',
+            'description' => 'Log or approve a vacation request for an employee.',
+            'inputSchema' => [
+                'type' => 'object',
+                'properties' => [
+                    'employee_id' => ['type' => 'string', 'description' => 'Employee ID'],
+                    'vacation_type_id' => ['type' => 'string', 'description' => 'Vacation type ID (annual, worked_days, sick, unpaid)'],
+                    'start_date' => ['type' => 'string', 'description' => 'Start date (YYYY-MM-DD)'],
+                    'end_date' => ['type' => 'string', 'description' => 'End date (YYYY-MM-DD)'],
+                    'days_count' => ['type' => 'number', 'description' => 'Total business days'],
+                    'status' => ['type' => 'string', 'enum' => ['requested', 'approved', 'rejected', 'taken'], 'description' => 'Status (default approved)'],
+                    'note' => ['type' => 'string', 'description' => 'Note or reason']
+                ],
+                'required' => ['employee_id', 'start_date', 'end_date']
+            ]
         ]
     ];
 }
@@ -2103,6 +2230,229 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
             return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        // --- 11. Employees, Salaries & Vacations ---
+        case 'list_employees':
+            $where = ["1=1"];
+            $params = [];
+            if (!empty($args['search'])) {
+                $where[] = "(name LIKE ? OR email LIKE ? OR pin LIKE ? OR phone LIKE ?)";
+                $s = '%' . trim($args['search']) . '%';
+                $params = array_merge($params, [$s, $s, $s, $s]);
+            }
+            if (!isset($args['active_only']) || !empty($args['active_only'])) {
+                $where[] = "is_active = 1";
+            }
+            $stmt = $pdo->prepare("SELECT id, name, pin, email, phone, address_street, address_city, address_zip, address_country, salary_type, salary_amount, salary_due_day, vacation_allowances_json, time_tracking_user_name, auto_expense, is_active FROM employees WHERE " . implode(' AND ', $where) . " ORDER BY name ASC");
+            $stmt->execute($params);
+            return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        case 'get_employee':
+            $stmt = $pdo->prepare("SELECT * FROM employees WHERE id = ? LIMIT 1");
+            $stmt->execute([$args['id']]);
+            $emp = $stmt->fetch(\PDO::FETCH_ASSOC);
+            if (!$emp) throw new \Exception("Employee not found with ID: " . $args['id']);
+            
+            // Fetch recent salaries
+            $salStmt = $pdo->prepare("SELECT * FROM employee_salaries WHERE employee_id = ? ORDER BY year DESC, period_number DESC LIMIT 12");
+            $salStmt->execute([$args['id']]);
+            $emp['salaries'] = $salStmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            // Fetch vacations
+            $vacStmt = $pdo->prepare("SELECT * FROM employee_vacations WHERE employee_id = ? ORDER BY start_date DESC LIMIT 20");
+            $vacStmt->execute([$args['id']]);
+            $emp['vacations'] = $vacStmt->fetchAll(\PDO::FETCH_ASSOC);
+
+            return $emp;
+
+        case 'create_employee':
+            $id = 'emp-' . bin2hex(random_bytes(6));
+            $name = trim($args['name']);
+            if (empty($name)) throw new \Exception("Employee name is required");
+
+            $ins = $pdo->prepare("INSERT INTO employees (
+                id, name, pin, email, phone, address_street, address_city, address_zip, address_country,
+                salary_type, salary_amount, salary_due_day, auto_expense, expense_category_id, is_active
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)");
+            $ins->execute([
+                $id,
+                $name,
+                $args['pin'] ?? null,
+                $args['email'] ?? null,
+                $args['phone'] ?? null,
+                $args['address_street'] ?? null,
+                $args['address_city'] ?? null,
+                $args['address_zip'] ?? null,
+                $args['address_country'] ?? 'Slovakia',
+                $args['salary_type'] ?? 'monthly',
+                (float)($args['salary_amount'] ?? 0),
+                isset($args['salary_due_day']) ? (int)$args['salary_due_day'] : null,
+                !empty($args['auto_expense']) ? 1 : 0,
+                $args['expense_category_id'] ?? null
+            ]);
+
+            mcp_audit($pdo, $user, 'create_employee', "Created employee {$name} ({$id})");
+            return ['id' => $id, 'name' => $name, 'message' => "Employee created successfully."];
+
+        case 'update_employee':
+            $id = $args['id'];
+            $fields = [];
+            $params = [];
+            foreach (['name', 'pin', 'email', 'phone', 'address_street', 'address_city', 'address_zip', 'salary_type'] as $f) {
+                if (isset($args[$f])) {
+                    $fields[] = "`$f` = ?";
+                    $params[] = $args[$f];
+                }
+            }
+            if (isset($args['salary_amount'])) {
+                $fields[] = "`salary_amount` = ?";
+                $params[] = (float)$args['salary_amount'];
+            }
+            if (isset($args['salary_due_day'])) {
+                $fields[] = "`salary_due_day` = ?";
+                $params[] = (int)$args['salary_due_day'];
+            }
+            if (isset($args['auto_expense'])) {
+                $fields[] = "`auto_expense` = ?";
+                $params[] = !empty($args['auto_expense']) ? 1 : 0;
+            }
+            if (isset($args['is_active'])) {
+                $fields[] = "`is_active` = ?";
+                $params[] = !empty($args['is_active']) ? 1 : 0;
+            }
+
+            if (empty($fields)) throw new \Exception("No fields provided to update.");
+            $params[] = $id;
+
+            $sql = "UPDATE employees SET " . implode(', ', $fields) . " WHERE id = ?";
+            $stmt = $pdo->prepare($sql);
+            $stmt->execute($params);
+
+            mcp_audit($pdo, $user, 'update_employee', "Updated employee {$id}");
+            return ['id' => $id, 'success' => true, 'message' => "Employee updated successfully."];
+
+        case 'list_salaries':
+            $where = ["1=1"];
+            $params = [];
+            if (!empty($args['employee_id'])) {
+                $where[] = "es.employee_id = ?";
+                $params[] = $args['employee_id'];
+            }
+            if (!empty($args['year'])) {
+                $where[] = "es.year = ?";
+                $params[] = (int)$args['year'];
+            }
+            if (!empty($args['period_key'])) {
+                $where[] = "es.period_key = ?";
+                $params[] = $args['period_key'];
+            }
+
+            $stmt = $pdo->prepare("
+                SELECT es.*, e.name as employee_name
+                FROM employee_salaries es
+                JOIN employees e ON es.employee_id = e.id
+                WHERE " . implode(' AND ', $where) . "
+                ORDER BY es.year DESC, es.period_number DESC
+            ");
+            $stmt->execute($params);
+            return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        case 'record_salary_payout':
+            $empId = $args['employee_id'];
+            $periodKey = $args['period_key'];
+            $totalSalary = (float)$args['total_salary'];
+            $totalPaid = (float)($args['total_paid'] ?? 0);
+            $id = $args['id'] ?? ('sal-' . $empId . '-' . $periodKey);
+
+            $parts = explode('-', $periodKey);
+            $year = !empty($args['year']) ? (int)$args['year'] : (int)($parts[0] ?? date('Y'));
+            $periodNum = !empty($args['period_number']) ? (int)$args['period_number'] : (int)(preg_replace('/\D/', '', $parts[1] ?? '1'));
+
+            $status = ($totalPaid >= $totalSalary && $totalSalary > 0) ? 'paid' : ($totalPaid > 0 ? 'partially_paid' : 'pending');
+
+            $ins = $pdo->prepare("INSERT INTO employee_salaries (
+                id, employee_id, period_type, period_key, year, period_number,
+                items_json, total_salary, total_paid, status, due_date, payment_date, payment_method, note
+            ) VALUES (?, ?, 'monthly', ?, ?, ?, '[]', ?, ?, ?, ?, ?, ?, ?)
+            ON DUPLICATE KEY UPDATE
+                total_salary = VALUES(total_salary),
+                total_paid = VALUES(total_paid),
+                status = VALUES(status),
+                due_date = VALUES(due_date),
+                payment_date = VALUES(payment_date),
+                payment_method = VALUES(payment_method),
+                note = VALUES(note)");
+
+            $ins->execute([
+                $id,
+                $empId,
+                $periodKey,
+                $year,
+                $periodNum,
+                $totalSalary,
+                $totalPaid,
+                $status,
+                $args['due_date'] ?? null,
+                $args['payment_date'] ?? null,
+                $args['payment_method'] ?? 'bank_transfer',
+                $args['note'] ?? null
+            ]);
+
+            mcp_audit($pdo, $user, 'record_salary_payout', "Recorded salary payout {$id} for employee {$empId} ({$periodKey})");
+            return ['id' => $id, 'status' => $status, 'total_salary' => $totalSalary, 'total_paid' => $totalPaid, 'success' => true];
+
+        case 'list_vacations':
+            $where = ["1=1"];
+            $params = [];
+            if (!empty($args['employee_id'])) {
+                $where[] = "ev.employee_id = ?";
+                $params[] = $args['employee_id'];
+            }
+            if (!empty($args['status'])) {
+                $where[] = "ev.status = ?";
+                $params[] = $args['status'];
+            }
+            if (!empty($args['year'])) {
+                $where[] = "YEAR(ev.start_date) = ?";
+                $params[] = (int)$args['year'];
+            }
+
+            $stmt = $pdo->prepare("
+                SELECT ev.*, e.name as employee_name
+                FROM employee_vacations ev
+                JOIN employees e ON ev.employee_id = e.id
+                WHERE " . implode(' AND ', $where) . "
+                ORDER BY ev.start_date DESC
+            ");
+            $stmt->execute($params);
+            return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+
+        case 'record_vacation':
+            $id = 'vac-' . bin2hex(random_bytes(6));
+            $empId = $args['employee_id'];
+            $vacTypeId = $args['vacation_type_id'] ?? 'annual';
+            $startDate = $args['start_date'];
+            $endDate = $args['end_date'];
+            $daysCount = (float)($args['days_count'] ?? 1.0);
+            $status = $args['status'] ?? 'approved';
+
+            $ins = $pdo->prepare("INSERT INTO employee_vacations (
+                id, employee_id, vacation_type_id, start_date, end_date, days_count, status, note, approved_by
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $ins->execute([
+                $id,
+                $empId,
+                $vacTypeId,
+                $startDate,
+                $endDate,
+                $daysCount,
+                $status,
+                $args['note'] ?? null,
+                $user['name'] ?? $user['email']
+            ]);
+
+            mcp_audit($pdo, $user, 'record_vacation', "Logged vacation {$id} for employee {$empId} ({$startDate} - {$endDate})");
+            return ['id' => $id, 'success' => true, 'status' => $status, 'days_count' => $daysCount];
 
         default:
             throw new \Exception("Unrecognized tool name: " . htmlspecialchars($tool));

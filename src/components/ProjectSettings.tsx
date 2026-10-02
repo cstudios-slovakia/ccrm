@@ -143,7 +143,7 @@ const AttrOptionsEditor: React.FC<{
 
   return (
     <div>
-      <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
+      <label className="block type-overline text-slate-400 mb-1">
         {t("Options", "Možnosti", "Opciók")}
       </label>
       <div className="space-y-1.5">
@@ -155,7 +155,7 @@ const AttrOptionsEditor: React.FC<{
                 value={opt}
                 onChange={e => rename(index, e.target.value)}
                 aria-label={t(`Option ${index + 1}`, `Možnosť ${index + 1}`, `${index + 1}. opció`)}
-                className="flex-1 min-w-0 px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white"
+                className="flex-1 min-w-0 px-3 py-2 rounded-xl border border-slate-200 text-ui font-semibold bg-white"
               />
               {requiredOptions && (
                 <button
@@ -164,7 +164,7 @@ const AttrOptionsEditor: React.FC<{
                   onClick={() => toggleRequired(opt)}
                   title={t("Every project has to tick this box", "Každý projekt musí toto políčko zaškrtnúť", "Minden projektnek be kell jelölnie")}
                   className={cn(
-                    "shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-xl border text-[11px] font-bold transition-all duration-150 active:scale-95 cursor-pointer",
+                    "shrink-0 flex items-center gap-1 px-2.5 py-1.5 rounded-xl border text-caption font-bold transition-all duration-150 active:scale-95 cursor-pointer",
                     required
                       ? "bg-rose-50 border-rose-200 text-rose-700 hover:bg-rose-100"
                       : "bg-white border-slate-200 text-slate-500 hover:border-slate-300 hover:text-slate-700"
@@ -197,7 +197,7 @@ const AttrOptionsEditor: React.FC<{
             }}
             placeholder={t("New option", "Nová možnosť", "Új opció")}
             className={cn(
-              "flex-1 min-w-0 px-3 py-2 rounded-xl border text-xs font-semibold bg-white",
+              "flex-1 min-w-0 px-3 py-2 rounded-xl border text-ui font-semibold bg-white",
               isDuplicate ? "border-rose-300" : "border-slate-200"
             )}
           />
@@ -205,7 +205,7 @@ const AttrOptionsEditor: React.FC<{
             type="button"
             onClick={add}
             disabled={!trimmedDraft || isDuplicate}
-            className="shrink-0 flex items-center gap-1 px-3 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 active:scale-95 cursor-pointer"
+            className="shrink-0 flex items-center gap-1 px-3 py-2 rounded-xl bg-indigo-600 text-white font-bold text-ui hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed transition-all duration-150 active:scale-95 cursor-pointer"
           >
             <Plus className="h-3.5 w-3.5" />
             {t("Add", "Pridať", "Hozzáadás")}
@@ -213,12 +213,12 @@ const AttrOptionsEditor: React.FC<{
         </div>
       </div>
       {isDuplicate && (
-        <p className="text-[10px] font-medium text-rose-600 mt-1">
+        <p className="text-micro font-medium text-rose-600 mt-1">
           {t("This option already exists.", "Táto možnosť už existuje.", "Ez az opció már létezik.")}
         </p>
       )}
       {requiredOptions && options.length > 0 && (
-        <p className="text-[10px] font-medium text-slate-400 mt-1">
+        <p className="text-micro font-medium text-slate-400 mt-1">
           {t(
             "Mark the boxes every project has to tick. The project shows how many are still unchecked.",
             "Označte políčka, ktoré musí každý projekt zaškrtnúť. Projekt zobrazí, koľko ich ešte nie je zaškrtnutých.",
@@ -819,7 +819,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     return (
       <div className="glass-panel p-6 rounded-3xl space-y-6 border border-white/60 bg-white/95 shadow-glass text-left">
         <div className="flex items-center justify-between border-b border-slate-200 pb-4">
-          <h3 className="font-heading font-bold text-lg text-slate-800">
+          <h3 className="font-heading font-bold text-title text-slate-800">
             {isCreating ? t("Create Project Type", "Vytvoriť typ projektu", "Projekt típus létrehozása") : t("Edit Project Type", "Upraviť typ projektu", "Projekt típus szerkesztése")}
           </h3>
           <button
@@ -846,14 +846,14 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                 role="tab"
                 aria-selected={active}
                 onClick={() => setEditSection(id)}
-                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-[11px] font-black uppercase tracking-wider transition-all duration-150 active:scale-95 cursor-pointer ${
+                className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl type-overline transition-all duration-150 active:scale-95 cursor-pointer ${
                   active ? "bg-white text-indigo-600 shadow-sm" : "text-slate-500 hover:text-slate-700 hover:bg-white/60"
                 }`}
               >
                 <Icon className="h-3.5 w-3.5 shrink-0" />
                 <span>{label}</span>
                 {count !== null && count > 0 && (
-                  <span className={`min-w-[1.25rem] px-1.5 py-0.5 rounded-full text-[10px] leading-none text-center transition-colors duration-150 ${
+                  <span className={`min-w-[1.25rem] px-1.5 py-0.5 rounded-full text-micro leading-none text-center transition-colors duration-150 ${
                     active ? "bg-indigo-50 text-indigo-600" : "bg-slate-200 text-slate-500"
                   }`}>
                     {count}
@@ -867,7 +867,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
         {editSection === "general" && (
           <div className="space-y-4 max-w-2xl animate-fade-in">
             <div>
-              <label className="block text-xs font-heading font-black text-slate-400 uppercase tracking-widest mb-1.5">
+              <label className="block text-ui font-heading font-bold text-slate-400 mb-1.5">
                 {t("Type Name", "Názov typu", "Típus neve")}
               </label>
               <input
@@ -875,12 +875,12 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                 value={typeName}
                 onChange={e => setTypeName(e.target.value)}
                 placeholder={t("e.g. Construction Project", "napr. Stavebný projekt", "pl. Építési projekt")}
-                className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm font-semibold text-slate-800 bg-white"
+                className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-body font-semibold text-slate-800 bg-white"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-heading font-black text-slate-400 uppercase tracking-widest mb-1.5">
+              <label className="block text-ui font-heading font-bold text-slate-400 mb-1.5">
                 {t("Description", "Popis", "Leírás")}
               </label>
               <textarea
@@ -889,21 +889,21 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                 onChange={e => setTypeDesc(e.target.value)}
                 placeholder={t("Describe the purpose of this project type...", "Popíšte účel tohto typu projektu...", "Írja le a projekt típus célját...")}
                 rows={3}
-                className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm font-semibold text-slate-800 bg-white resize-none"
+                className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-body font-semibold text-slate-800 bg-white resize-none"
               />
             </div>
 
             <div className="grid grid-cols-2 gap-4">
               {/* Icon Picker Toggle */}
               <div>
-                <label className="block text-xs font-heading font-black text-slate-400 uppercase tracking-widest mb-1.5">
+                <label className="block text-ui font-heading font-bold text-slate-400 mb-1.5">
                   {t("Icon", "Ikona", "Ikon")}
                 </label>
                 <button
                   type="button"
                   disabled={!canEdit}
                   onClick={() => setIsIconPickerOpen(true)}
-                  className="w-full flex items-center justify-between px-4 py-3 rounded-2xl border border-slate-200 text-sm font-semibold text-slate-700 bg-white hover:bg-slate-50 cursor-pointer"
+                  className="w-full flex items-center justify-between px-4 py-3 rounded-2xl border border-slate-200 text-body font-semibold text-slate-700 bg-white hover:bg-slate-50 cursor-pointer"
                 >
                   <span className="flex items-center gap-2">
                     {renderIcon(typeIcon, "h-5 w-5 text-indigo-600")}
@@ -915,7 +915,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
 
               {/* Color Picker */}
               <div>
-                <label className="block text-xs font-heading font-black text-slate-400 uppercase tracking-widest mb-1.5">
+                <label className="block text-ui font-heading font-bold text-slate-400 mb-1.5">
                   {t("Theme Color", "Farba témy", "Téma színe")}
                 </label>
                 <div className="flex items-center gap-2 py-1">
@@ -951,7 +951,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                   onChange={e => setHasGantt(e.target.checked)}
                   className="h-4.5 w-4.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
                 />
-                <span className="text-sm font-semibold text-slate-700">
+                <span className="text-body font-semibold text-slate-700">
                   {t("Enable Gantt Chart (project roadmap)", "Povoliť Ganttov diagram", "Gantt diagram engedélyezése")}
                 </span>
               </label>
@@ -970,10 +970,10 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                 className="h-4.5 w-4.5 mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
               />
               <span className="flex flex-col">
-                <span className="text-sm font-semibold text-slate-700">
+                <span className="text-body font-semibold text-slate-700">
                   {t("Allow timeline", "Povoliť časovú os", "Idővonal engedélyezése")}
                 </span>
-                <span className="text-[11px] font-medium text-slate-400">
+                <span className="text-caption font-medium text-slate-400">
                   {t(
                     "Projects of this type get a Timeline tab for logging events.",
                     "Projekty tohto typu dostanú kartu Časová os na zaznamenávanie udalostí.",
@@ -991,34 +991,34 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
               className={`min-w-0 transition-opacity duration-150 ${hasTimeline ? "" : "opacity-50 pointer-events-none select-none"}`}
             >
               <div className="space-y-3 pt-4 border-t border-slate-200">
-                <label className="block text-xs font-heading font-black text-slate-400 uppercase tracking-widest">
+                <label className="block text-ui font-heading font-bold text-slate-400">
                   {t("Timeline Event Types", "Typy udalostí časovej osi", "Idővonal eseménytípusok")}
                 </label>
 
                 {/* Input for Name, Color, and Icon picker */}
                 <div className="space-y-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200 text-left">
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3">
                     <div>
-                      <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
+                      <label className="block type-overline text-slate-400 mb-1">
                         {t("Event Type Name", "Názov typu udalosti", "Eseménytípus neve")}
                       </label>
                       <input
                         value={newTeTypeName}
                         onChange={e => setNewTeTypeName(e.target.value)}
                         placeholder={t("e.g. Measurement, Site Survey, Offer", "napr. Zameranie, Obhliadka, Ponuka", "pl. Felmérés, Helyszíni szemle, Ajánlat")}
-                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white"
+                        className="w-full px-3 py-2 rounded-xl border border-slate-200 text-ui font-semibold bg-white"
                       />
                     </div>
 
                     <div>
-                      <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
+                      <label className="block type-overline text-slate-400 mb-1">
                         {t("Icon", "Ikona", "Ikon")}
                       </label>
                       <div className="relative">
                         <button
                           type="button"
                           onClick={() => setIsTeIconPickerOpen(!isTeIconPickerOpen)}
-                          className="w-full flex items-center justify-between px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white cursor-pointer"
+                          className="w-full flex items-center justify-between px-3 py-2 rounded-xl border border-slate-200 text-ui font-semibold bg-white cursor-pointer"
                         >
                           <div className="flex items-center gap-1.5">
                             {renderIcon(newTeTypeIcon, "h-4 w-4 text-purple-600")}
@@ -1034,7 +1034,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                               value={teIconSearchQuery}
                               onChange={e => setTeIconSearchQuery(e.target.value)}
                               placeholder={t("Search icons...", "Hľadať ikonu...", "Ikon keresése...")}
-                              className="w-full px-2.5 py-1.5 rounded-xl border border-slate-200 text-xs font-semibold bg-slate-50"
+                              className="w-full px-2.5 py-1.5 rounded-xl border border-slate-200 text-ui font-semibold bg-slate-50"
                             />
                             <div className="grid grid-cols-6 gap-2">
                               {ALL_LUCIDE_ICONS.filter(icon =>
@@ -1067,7 +1067,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                   </div>
 
                   <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
+                    <label className="block type-overline text-slate-400 mb-1">
                       {t("Theme Color", "Farba témy", "Téma színe")}
                     </label>
                     <div className="flex items-center gap-2">
@@ -1090,7 +1090,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                       <button
                         type="button"
                         onClick={handleAddTeType}
-                        className="ml-auto px-4 py-2 rounded-xl bg-purple-600 text-white font-bold text-xs hover:bg-purple-700 transition-all cursor-pointer shadow-sm"
+                        className="ml-auto px-4 py-2 rounded-xl bg-purple-600 text-white font-bold text-ui hover:bg-purple-700 transition-all cursor-pointer shadow-sm"
                       >
                         {t("Add Event Type", "Pridať typ", "Hozzáadás")}
                       </button>
@@ -1101,7 +1101,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                 {/* Display Event Types as Tags */}
                 <div className="flex flex-wrap gap-1.5 max-h-32 overflow-y-auto pr-1 scrollbar-thin mt-2">
                   {timelineEventTypes.length === 0 ? (
-                    <span className="text-[10px] text-slate-400 font-semibold">{t("No custom event types configured yet.", "Žiadne vlastné typy.", "Nincsenek egyedi eseménytípusok.")}</span>
+                    <span className="text-micro text-slate-400 font-semibold">{t("No custom event types configured yet.", "Žiadne vlastné typy.", "Nincsenek egyedi eseménytípusok.")}</span>
                   ) : (
                     timelineEventTypes.map((et) => {
                       const isSelected = selectedTeTypeId === et.id;
@@ -1112,7 +1112,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                             if (et.id !== selectedTeTypeId) resetTeAttrForm();
                             setSelectedTeTypeId(et.id);
                           }}
-                          className={`flex items-center gap-1.5 px-2.5 py-1 border rounded-lg text-xs font-bold transition-all cursor-pointer select-none ${
+                          className={`flex items-center gap-1.5 px-2.5 py-1 border rounded-lg text-ui font-bold transition-all cursor-pointer select-none ${
                             isSelected
                               ? "border-purple-600 bg-purple-50 text-purple-700"
                               : "bg-slate-100 border-slate-200 text-slate-700 hover:border-slate-300"
@@ -1151,7 +1151,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                         <div className="space-y-4 animate-fade-in text-left">
                           <div className="flex items-center justify-between gap-3 pb-3 border-b border-slate-200">
                             <div className="min-w-0">
-                              <div className="font-heading font-black text-[10px] text-slate-400 uppercase tracking-widest">
+                              <div className="font-heading type-overline text-slate-400">
                                 {t("Attributes for event type", "Atribúty typu udalosti", "Eseménytípus attribútumai")}
                               </div>
                               <div className="flex items-center gap-1.5 mt-1 min-w-0">
@@ -1161,19 +1161,19 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                                 >
                                   {renderIcon(selectedTeType.icon, "h-3.5 w-3.5")}
                                 </span>
-                                <span className="font-heading font-bold text-sm text-slate-800 truncate">
+                                <span className="font-heading font-bold text-body text-slate-800 truncate">
                                   {selectedTeType.name}
                                 </span>
                               </div>
                             </div>
-                            <span className="shrink-0 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 font-bold text-[10px] uppercase tracking-wider">
+                            <span className="shrink-0 px-2.5 py-1 rounded-lg bg-slate-100 text-slate-600 type-overline">
                               {selectedTeType.attributes.length} {t("attributes", "atribútov", "attribútum")}
                             </span>
                           </div>
                           {/* Existing timeline attributes list */}
                           <div className="space-y-2 max-h-60 overflow-y-auto pr-2 scrollbar-thin">
                             {selectedTeType.attributes.length === 0 ? (
-                              <div className="p-4 border-2 border-dashed border-slate-200 rounded-2xl text-center text-slate-400 text-xs">
+                              <div className="p-4 border-2 border-dashed border-slate-200 rounded-2xl text-center text-slate-400 text-ui">
                                 {t("No custom attributes defined for this event type.", "Pre tento typ udalosti nie sú definované žiadne vlastné atribúty.", "Nincsenek egyedi attribútumok definiálva ehhez az eseménytípushoz.")}
                               </div>
                             ) : (
@@ -1181,12 +1181,12 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                                 <div
                                   key={attr.id}
                                   className={cn(
-                                    "flex items-center justify-between p-3 bg-white border rounded-2xl shadow-sm text-xs font-semibold transition-colors duration-150",
+                                    "flex items-center justify-between p-3 bg-white border rounded-2xl shadow-sm text-ui font-semibold transition-colors duration-150",
                                     editingTeAttrId === attr.id ? "border-indigo-300 ring-2 ring-indigo-100" : "border-slate-200"
                                   )}
                                 >
                                   <div className="flex flex-col">
-                                    <span className="text-slate-800 text-[13px]">{attr.name}</span>
+                                    <span className="text-slate-800 text-ui">{attr.name}</span>
                                     <span className="text-slate-400 font-medium">
                                       {attributeTypeLabel(attr.type)} 
                                       {attr.required && t(" • Required", " • Povinné", " • Kötelező")}
@@ -1239,24 +1239,24 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                               editingTeAttrId ? "bg-indigo-50/60 border-indigo-200" : "bg-slate-50 border-slate-200"
                             )}>
                               {editingTeAttrId && (
-                                <div className="text-[10px] font-heading font-black text-indigo-500 uppercase tracking-widest">
+                                <div className="type-overline font-heading text-indigo-500">
                                   {t("Edit attribute", "Upraviť atribút", "Attribútum szerkesztése")}
                                 </div>
                               )}
                               <div className="grid grid-cols-2 gap-3">
                                 <div>
-                                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
+                                  <label className="block type-overline text-slate-400 mb-1">
                                     {t("Attribute Label", "Názov atribútu", "Attribútum neve")}
                                   </label>
                                   <input
                                     value={newTeAttrName}
                                     onChange={e => setNewTeAttrName(e.target.value)}
                                     placeholder={t("e.g. Photograph, Site Report", "napr. Fotografia, Správa z obhliadky", "pl. Fénykép, Helyszíni jelentés")}
-                                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white"
+                                    className="w-full px-3 py-2 rounded-xl border border-slate-200 text-ui font-semibold bg-white"
                                   />
                                 </div>
                                 <div>
-                                  <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
+                                  <label className="block type-overline text-slate-400 mb-1">
                                     {t("Type", "Typ", "Típus")}
                                   </label>
                                   <CustomSelect
@@ -1285,7 +1285,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                                     onChange={e => setNewTeAttrRequired(e.target.checked)}
                                     className="h-4 w-4 rounded border-slate-300 text-indigo-600"
                                   />
-                                  <span className="text-xs font-semibold text-slate-600">{t("Required field", "Povinné pole", "Kötelező mező")}</span>
+                                  <span className="text-ui font-semibold text-slate-600">{t("Required field", "Povinné pole", "Kötelező mező")}</span>
                                 </label>
 
                                 <div className="flex items-center gap-1.5">
@@ -1293,7 +1293,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                                     <button
                                       type="button"
                                       onClick={resetTeAttrForm}
-                                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-600 font-bold text-xs hover:bg-slate-50 transition-all duration-150 active:scale-95 cursor-pointer"
+                                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-600 font-bold text-ui hover:bg-slate-50 transition-all duration-150 active:scale-95 cursor-pointer"
                                     >
                                       <X className="h-4 w-4" />
                                       <span>{t("Cancel", "Zrušiť", "Mégse")}</span>
@@ -1302,7 +1302,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                                   <button
                                     type="button"
                                     onClick={handleSaveTimelineAttribute}
-                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 transition-all duration-150 active:scale-95 cursor-pointer"
+                                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-bold text-ui hover:bg-indigo-700 transition-all duration-150 active:scale-95 cursor-pointer"
                                   >
                                     {editingTeAttrId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
                                     <span>
@@ -1334,13 +1334,13 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
             <div className="space-y-2">
               {/* Deadline */}
               <div className={`bg-white border rounded-2xl shadow-sm transition-colors duration-150 ${hasDeadline ? "border-indigo-200" : "border-slate-200"}`}>
-                <div className="flex items-center justify-between gap-3 p-3 text-xs font-semibold">
+                <div className="flex items-center justify-between gap-3 p-3 text-ui font-semibold">
                   <div className="flex items-center gap-2.5 min-w-0">
                     <span className={`flex items-center justify-center h-8 w-8 rounded-xl shrink-0 transition-colors duration-150 ${hasDeadline ? "bg-indigo-50 text-indigo-600" : "bg-slate-100 text-slate-400"}`}>
                       <CalendarClock className="h-4 w-4" />
                     </span>
                     <div className="flex flex-col min-w-0">
-                      <span className="text-slate-800 text-[13px]">{t("Deadline", "Termín dokončenia", "Határidő")}</span>
+                      <span className="text-slate-800 text-ui">{t("Deadline", "Termín dokončenia", "Határidő")}</span>
                       <span className="text-slate-400 font-medium truncate">
                         {t("Due date and countdown", "Dátum dokončenia a odpočet", "Esedékesség és visszaszámlálás")}
                         {hasDeadline && deadlineRequired && t(" • Required", " • Povinné", " • Kötelező")}
@@ -1365,13 +1365,13 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                         onChange={e => setDeadlineRequired(e.target.checked)}
                         className="h-4 w-4 rounded border-slate-300 text-indigo-600"
                       />
-                      <span className="text-xs font-semibold text-slate-600">{t("Required field", "Povinné pole", "Kötelező mező")}</span>
+                      <span className="text-ui font-semibold text-slate-600">{t("Required field", "Povinné pole", "Kötelező mező")}</span>
                     </label>
 
                     {/* How early the countdown starts warning. Off by default is not an
                         option here — a deadline nobody is reminded of is just a date. */}
                     <div>
-                      <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
+                      <label className="block type-overline text-slate-400 mb-1">
                         {t("Warn this many days ahead", "Upozorniť toľkoto dní vopred", "Ennyi nappal előbb figyelmeztessen")}
                       </label>
                       <div className="flex items-center gap-2.5">
@@ -1382,9 +1382,9 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                           disabled={!canEdit}
                           value={deadlineWarningDays}
                           onChange={e => setDeadlineWarningDays(normalizeDeadlineWarningDays(e.target.value))}
-                          className="w-20 shrink-0 px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold text-slate-800 bg-white transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                          className="w-20 shrink-0 px-3 py-2 rounded-xl border border-slate-200 text-ui font-semibold text-slate-800 bg-white transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                         />
-                        <span className="text-[11px] font-medium text-slate-400 leading-snug">
+                        <span className="text-caption font-medium text-slate-400 leading-snug">
                           {deadlineWarningDays > 0
                             ? t(
                                 `Projects turn amber ${deadlineWarningDays} days before they are due, and red once late.`,
@@ -1406,7 +1406,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
             </div>
 
             <div className="flex items-center gap-3 pt-2">
-              <span className="text-[10px] font-heading font-black text-slate-400 uppercase tracking-widest shrink-0">
+              <span className="type-overline font-heading text-slate-400 shrink-0">
                 {t("Custom attributes", "Vlastné atribúty", "Egyedi attribútumok")}
               </span>
               <div className="h-px flex-1 bg-slate-200" />
@@ -1415,7 +1415,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
             {/* Existing attributes list */}
             <div className="space-y-2">
               {attributes.length === 0 ? (
-                <div className="p-4 border-2 border-dashed border-slate-200 rounded-2xl text-center text-slate-400 text-xs">
+                <div className="p-4 border-2 border-dashed border-slate-200 rounded-2xl text-center text-slate-400 text-ui">
                   {t("No attributes added yet. Use the form below to add attributes.", "Zatiaľ neboli pridané žiadne atribúty.", "Még nincsenek attribútumok hozzáadva.")}
                 </div>
               ) : (
@@ -1428,7 +1428,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                     {...attrDrag.rowProps(attr.id, !isEditing)}
                     title={canEdit && !isEditing ? t("Drag to reorder", "Potiahnutím zmeníte poradie", "Húzza az átrendezéshez") : undefined}
                     className={cn(
-                      "group relative flex items-center justify-between p-3 bg-white border rounded-2xl shadow-sm text-xs font-semibold transition-[opacity,box-shadow,border-color] duration-150",
+                      "group relative flex items-center justify-between p-3 bg-white border rounded-2xl shadow-sm text-ui font-semibold transition-[opacity,box-shadow,border-color] duration-150",
                       isEditing ? "border-indigo-300 ring-2 ring-indigo-100" : "border-slate-200",
                       canEdit && !isEditing && "cursor-grab active:cursor-grabbing",
                       attrDrag.draggedId === attr.id && "opacity-40"
@@ -1445,7 +1445,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                         <GripVertical className="h-4 w-4 shrink-0 text-slate-300 group-hover:text-indigo-500 transition-colors duration-150" />
                       )}
                       <div className="flex flex-col min-w-0">
-                        <span className="text-slate-800 text-[13px]">{attr.name}</span>
+                        <span className="text-slate-800 text-ui">{attr.name}</span>
                         <span className="text-slate-400 font-medium">
                           {attributeTypeLabel(attr.type)}
                           {attr.required && t(" • Required", " • Povinné", " • Kötelező")}
@@ -1502,24 +1502,24 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                 editingAttrId ? "bg-indigo-50/60 border-indigo-200" : "bg-slate-50 border-slate-200"
               )}>
                 {editingAttrId && (
-                  <div className="text-[10px] font-heading font-black text-indigo-500 uppercase tracking-widest">
+                  <div className="type-overline font-heading text-indigo-500">
                     {t("Edit attribute", "Upraviť atribút", "Attribútum szerkesztése")}
                   </div>
                 )}
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
+                    <label className="block type-overline text-slate-400 mb-1">
                       {t("Attribute Label", "Názov atribútu", "Attribútum neve")}
                     </label>
                     <input
                       value={newAttrName}
                       onChange={e => setNewAttrName(e.target.value)}
                       placeholder={t("e.g. Dimensions", "napr. Rozmery", "pl. Méretek")}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white"
+                      className="w-full px-3 py-2 rounded-xl border border-slate-200 text-ui font-semibold bg-white"
                     />
                   </div>
                   <div>
-                    <label className="block text-[10px] font-black text-slate-400 uppercase mb-1">
+                    <label className="block type-overline text-slate-400 mb-1">
                       {t("Type", "Typ", "Típus")}
                     </label>
                     <CustomSelect
@@ -1553,7 +1553,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                         onChange={e => setNewAttrRequired(e.target.checked)}
                         className="h-4 w-4 rounded border-slate-300 text-indigo-600"
                       />
-                      <span className="text-xs font-semibold text-slate-600">{t("Required field", "Povinné pole", "Kötelező mező")}</span>
+                      <span className="text-ui font-semibold text-slate-600">{t("Required field", "Povinné pole", "Kötelező mező")}</span>
                     </label>
                   )}
 
@@ -1562,7 +1562,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                       <button
                         type="button"
                         onClick={resetAttrForm}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-600 font-bold text-xs hover:bg-slate-50 transition-all duration-150 active:scale-95 cursor-pointer"
+                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-slate-600 font-bold text-ui hover:bg-slate-50 transition-all duration-150 active:scale-95 cursor-pointer"
                       >
                         <X className="h-4 w-4" />
                         <span>{t("Cancel", "Zrušiť", "Mégse")}</span>
@@ -1571,7 +1571,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                     <button
                       type="button"
                       onClick={handleSaveAttribute}
-                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 transition-all duration-150 active:scale-95 cursor-pointer"
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-indigo-600 text-white font-bold text-ui hover:bg-indigo-700 transition-all duration-150 active:scale-95 cursor-pointer"
                     >
                       {editingAttrId ? <Save className="h-4 w-4" /> : <Plus className="h-4 w-4" />}
                       <span>
@@ -1591,10 +1591,10 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
         {editSection === "files" && (
           <div className="space-y-4 max-w-3xl animate-fade-in">
             <div className="flex flex-col">
-              <h4 className="font-heading font-bold text-sm text-slate-700">
+              <h4 className="font-heading font-bold text-body text-slate-700">
                 {t("Default files", "Predvolené súbory", "Alapértelmezett fájlok")}
               </h4>
-              <p className="text-[11px] font-medium text-slate-400 mt-0.5">
+              <p className="text-caption font-medium text-slate-400 mt-0.5">
                 {t(
                   "Every project of this type starts with these file slots, all optional. A project can add its own on its Files tab.",
                   "Každý projekt tohto typu začína s týmito súbormi, všetky sú nepovinné. Projekt si môže pridať vlastné na karte Súbory.",
@@ -1605,14 +1605,14 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
 
             <div className="space-y-2">
               {fileFields.length === 0 ? (
-                <div className="p-4 border-2 border-dashed border-slate-200 rounded-2xl text-center text-slate-400 text-xs">
+                <div className="p-4 border-2 border-dashed border-slate-200 rounded-2xl text-center text-slate-400 text-ui">
                   {t("No default files yet — add one below.", "Zatiaľ žiadne predvolené súbory — pridajte ich nižšie.", "Még nincsenek alapértelmezett fájlok — adjon hozzá lent.")}
                 </div>
               ) : (
                 fileFields.map(field => (
-                  <div key={field.id} className="flex items-center gap-2 px-3 py-2.5 bg-white border border-slate-200 rounded-2xl shadow-sm text-xs font-semibold animate-fade-in">
+                  <div key={field.id} className="flex items-center gap-2 px-3 py-2.5 bg-white border border-slate-200 rounded-2xl shadow-sm text-ui font-semibold animate-fade-in">
                     <FileText className="h-4 w-4 shrink-0 text-slate-400" />
-                    <span className="flex-1 min-w-0 truncate text-slate-800 text-[13px]">{field.name}</span>
+                    <span className="flex-1 min-w-0 truncate text-slate-800 text-ui">{field.name}</span>
                     <button
                       type="button"
                       disabled={!canEdit}
@@ -1639,13 +1639,13 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                     }
                   }}
                   placeholder={t("e.g. Contract, GDPR consent", "napr. Zmluva, Súhlas GDPR", "pl. Szerződés, GDPR hozzájárulás")}
-                  className="flex-1 min-w-[8rem] px-3 py-2 rounded-xl border border-slate-200 text-xs font-semibold bg-white transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  className="flex-1 min-w-[8rem] px-3 py-2 rounded-xl border border-slate-200 text-ui font-semibold bg-white transition-colors duration-150 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                 />
                 <button
                   type="button"
                   onClick={handleAddFileField}
                   disabled={!newFileFieldName.trim()}
-                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600 text-white font-bold text-xs hover:bg-indigo-700 transition-all duration-150 active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
+                  className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-600 text-white font-bold text-ui hover:bg-indigo-700 transition-all duration-150 active:scale-95 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed shrink-0"
                 >
                   <Plus className="h-4 w-4" />
                   <span>{t("Add file", "Pridať súbor", "Fájl hozzáadása")}</span>
@@ -1662,7 +1662,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
               <button
                 type="button"
                 onClick={handleDeleteEditingType}
-                className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl border border-rose-200 text-xs font-black uppercase text-rose-600 hover:bg-rose-50 cursor-pointer"
+                className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl border border-rose-200 text-ui font-bold text-rose-600 hover:bg-rose-50 cursor-pointer"
               >
                 <Trash2 className="h-4 w-4" />
                 <span>{t("Delete Project Type", "Vymazať typ projektu", "Projekt típus törlése")}</span>
@@ -1673,14 +1673,14 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
             <div className="flex items-center gap-3">
               <button
                 onClick={handleCloseEditor}
-                className="px-4 py-2.5 rounded-2xl border border-slate-200 text-xs font-black uppercase text-slate-500 hover:bg-slate-50 cursor-pointer"
+                className="px-4 py-2.5 rounded-2xl border border-slate-200 text-ui font-bold text-slate-500 hover:bg-slate-50 cursor-pointer"
               >
                 {/* An existing type saves itself, so there is nothing to cancel. */}
                 {isCreating ? t("Cancel", "Zrušiť", "Mégse") : t("Close", "Zavrieť", "Bezárás")}
               </button>
               <button
                 onClick={handleSaveType}
-                className="flex items-center gap-1.5 px-5 py-2.5 rounded-2xl bg-emerald-600 text-white font-black text-xs uppercase tracking-wider hover:bg-emerald-700 shadow-md cursor-pointer"
+                className="flex items-center gap-1.5 px-5 py-2.5 rounded-2xl bg-emerald-600 text-white font-bold text-ui hover:bg-emerald-700 shadow-md cursor-pointer"
               >
                 <Save className="h-4 w-4" />
                 <span>{t("Save Project Type", "Uložiť typ projektu", "Projekt típus mentése")}</span>
@@ -1694,7 +1694,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
           <div className="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-[2000] flex items-center justify-center p-4">
             <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-xl animate-in scale-in duration-200">
               <div className="flex items-center justify-between border-b border-slate-200 pb-3 mb-4">
-                <span className="font-heading font-bold text-sm text-slate-800">
+                <span className="font-heading font-bold text-body text-slate-800">
                   {t("Select Icon", "Vybrať ikonu", "Ikon kiválasztása")}
                 </span>
                 <button
@@ -1710,7 +1710,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                 value={iconSearchQuery}
                 onChange={e => setIconSearchQuery(e.target.value)}
                 placeholder={t("Search icons...", "Hľadať ikony...", "Ikon keresése...")}
-                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-xs font-semibold mb-4 bg-slate-50"
+                className="w-full px-3 py-2.5 rounded-xl border border-slate-200 text-ui font-semibold mb-4 bg-slate-50"
               />
 
               <div className="grid grid-cols-6 gap-2 max-h-60 overflow-y-auto pr-1 scrollbar-thin">
@@ -1744,10 +1744,10 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
     <div className="space-y-6">
       <div className="flex items-center justify-between text-left">
         <div className="flex flex-col">
-          <h3 className="font-heading font-black text-slate-800 text-[15px] uppercase tracking-widest">
+          <h3 className="font-heading font-bold text-slate-800 text-title-sm">
             {t("Project Types", "Typy projektov", "Projekt típusok")}
           </h3>
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mt-0.5">
+          <p className="type-overline text-slate-400 mt-0.5">
             {t("Configure dynamic templates and attributes schemas", "Konfigurácia šablón a atribútov pre projekty", "Sablonok és attribútum sémák beállítása")}
           </p>
         </div>
@@ -1755,7 +1755,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
         {canEdit && (
           <button
             onClick={handleStartCreate}
-            className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl bg-indigo-600 text-white font-black text-xs uppercase tracking-wider hover:bg-indigo-700 shadow-md shadow-indigo-600/10 cursor-pointer"
+            className="flex items-center gap-1.5 px-4 py-2.5 rounded-2xl bg-indigo-600 text-white font-bold text-ui hover:bg-indigo-700 shadow-md shadow-indigo-600/10 cursor-pointer"
           >
             <Plus className="h-4.5 w-4.5" />
             <span>{t("New Project Type", "Nový typ", "Új típus")}</span>
@@ -1766,10 +1766,10 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
       {/* ── DISPLAY ─────────────────────────────────────────────────────── */}
       <div className="glass-panel p-4 rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-wrap items-center justify-between gap-3 text-left">
         <div className="flex flex-col">
-          <span className="font-heading font-black text-slate-800 text-xs uppercase tracking-widest">
+          <span className="font-heading font-bold text-slate-800 text-ui">
             {t("Default project view", "Predvolené zobrazenie projektov", "Alapértelmezett projekt nézet")}
           </span>
-          <span className="text-[11px] font-semibold text-slate-400 mt-0.5">
+          <span className="text-caption font-semibold text-slate-400 mt-0.5">
             {t(
               "Which view the projects screen opens on. The switcher in the list changes it too.",
               "Zobrazenie, ktorým sa otvorí zoznam projektov. Prepínač v zozname ho tiež mení.",
@@ -1789,7 +1789,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
               type="button"
               onClick={() => setProjectsViewMode(mode)}
               aria-pressed={projectsViewMode === mode}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all cursor-pointer ${
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg type-overline transition-all cursor-pointer ${
                 projectsViewMode === mode
                   ? "bg-white text-indigo-600 shadow-sm"
                   : "text-slate-400 hover:text-slate-600"
@@ -1804,10 +1804,10 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
 
       {projectTypes.length === 0 ? (
         <div className="glass-panel p-8 rounded-3xl border border-white/60 bg-white/95 text-center text-slate-400 shadow-glass">
-          <p className="text-sm font-semibold">{t("No project types configured.", "Nie sú nakonfigurované žiadne typy projektov.", "Nincsenek projekt típusok beállítva.")}</p>
+          <p className="text-body font-semibold">{t("No project types configured.", "Nie sú nakonfigurované žiadne typy projektov.", "Nincsenek projekt típusok beállítva.")}</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-left">
+        <div className="grid grid-cols-1 ws-md:grid-cols-2 gap-4 text-left">
           {projectTypes.map(type => (
             <div
               key={type.id}
@@ -1825,30 +1825,30 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                   <h4 className="font-heading font-bold text-slate-800 group-hover:text-indigo-600 transition-colors">
                     {type.name}
                   </h4>
-                  <p className="text-xs font-semibold text-slate-500 line-clamp-2 mt-1">
+                  <p className="text-ui font-semibold text-slate-500 line-clamp-2 mt-1">
                     {type.description || t("No description.", "Bez popisu.", "Nincs leírás.")}
                   </p>
                   <div className="flex items-center gap-2 mt-2.5">
-                    <span className="px-2 py-0.5 rounded-full bg-slate-100 text-[10px] font-bold text-slate-500 border border-slate-200">
+                    <span className="px-2 py-0.5 rounded-full bg-slate-100 text-micro font-bold text-slate-500 border border-slate-200">
                       {type.attributes?.length || 0} {t("attributes", "atribútov", "attribútum")}
                     </span>
                     {type.hasTimeline && (
-                      <span className="px-2 py-0.5 rounded-full bg-purple-50 text-[10px] font-bold text-purple-600 border border-purple-100">
+                      <span className="px-2 py-0.5 rounded-full bg-purple-50 text-micro font-bold text-purple-600 border border-purple-100">
                         {t("Timeline", "Časová os", "Idővonal")}
                       </span>
                     )}
                     {type.hasGantt && (
-                      <span className="px-2 py-0.5 rounded-full bg-blue-50 text-[10px] font-bold text-blue-600 border border-blue-100">
+                      <span className="px-2 py-0.5 rounded-full bg-blue-50 text-micro font-bold text-blue-600 border border-blue-100">
                         {t("Gantt", "Gantt", "Gantt")}
                       </span>
                     )}
                     {type.hasDeadline && (
-                      <span className="px-2 py-0.5 rounded-full bg-amber-50 text-[10px] font-bold text-amber-600 border border-amber-100">
+                      <span className="px-2 py-0.5 rounded-full bg-amber-50 text-micro font-bold text-amber-600 border border-amber-100">
                         {t("Deadline", "Termín", "Határidő")}
                       </span>
                     )}
                     {(type.fileFields?.length || 0) > 0 && (
-                      <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-[10px] font-bold text-emerald-600 border border-emerald-100">
+                      <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-micro font-bold text-emerald-600 border border-emerald-100">
                         {t("Files", "Súbory", "Fájlok")}
                       </span>
                     )}
@@ -1910,11 +1910,11 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
         return (
           <div className="glass-panel p-6 rounded-3xl border border-white/60 bg-white/95 shadow-glass text-left space-y-5">
             <div className="space-y-1">
-              <h3 className="font-heading font-black text-slate-800 text-[15px] uppercase tracking-widest flex items-center gap-2">
+              <h3 className="font-heading font-bold text-slate-800 text-title-sm flex items-center gap-2">
                 <Workflow className="h-4.5 w-4.5 text-indigo-500" />
                 {t("Automatic project creation", "Automatické vytváranie projektov", "Automatikus projektlétrehozás")}
               </h3>
-              <p className="text-[11px] font-semibold text-slate-500 leading-relaxed max-w-3xl">
+              <p className="text-caption font-semibold text-slate-500 leading-relaxed max-w-3xl">
                 {t(
                   "Every new lead is paired with a project — leads from the web form, from automations, from imports, and leads added by hand. Each interest category can name its own project type, so a lead ticking two of them gets one project of each. A lead whose interests match no rule falls back to the type below.",
                   "Každý nový lead sa spáruje s projektom — leady z webového formulára, z automatizácií, z importov aj leady pridané ručne. Každá kategória záujmu môže mať vlastný typ projektu, takže lead s dvoma kategóriami dostane projekt z každej. Lead, ktorého záujmy nezodpovedajú žiadnemu pravidlu, dostane záložný typ nižšie.",
@@ -1924,7 +1924,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
             </div>
 
             {projectTypes.length === 0 ? (
-              <p className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
+              <p className="text-caption font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
                 {t(
                   "Create a project type first — there is nothing to create projects from yet.",
                   "Najprv vytvorte typ projektu — zatiaľ nie je z čoho projekty vytvárať.",
@@ -1948,10 +1948,10 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                     }`} />
                   </button>
                   <div className="min-w-0">
-                    <span className="block text-[10px] font-black uppercase tracking-wider text-slate-700">
+                    <span className="block type-overline text-slate-700">
                       {t("Create a project for every new lead", "Vytvoriť projekt pre každý nový lead", "Projekt létrehozása minden új leadhez")}
                     </span>
-                    <span className="block text-[10px] font-semibold text-slate-400 mt-0.5 leading-snug">
+                    <span className="block text-micro font-semibold text-slate-400 mt-0.5 leading-snug">
                       {t(
                         "Off by default. Existing leads are left alone — this only applies to leads that arrive from now on.",
                         "Predvolene vypnuté. Existujúcich leadov sa to netýka — platí len pre leady, ktoré prídu odteraz.",
@@ -1968,11 +1968,11 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                         carries the entry across a rename and drops it on a
                         delete, exactly as it does for the colour map. */}
                     <div>
-                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
+                      <label className="block type-overline text-slate-400 mb-1.5">
                         {t("Project type per interest category", "Typ projektu podľa kategórie záujmu", "Projekt típus érdeklődési kategóriánként")}
                       </label>
                       {leadCategories.length === 0 ? (
-                        <p className="text-[11px] font-bold text-slate-500 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3">
+                        <p className="text-caption font-bold text-slate-500 bg-slate-50 border border-slate-200 rounded-2xl px-4 py-3">
                           {t(
                             "No interest categories are configured — add them in Settings to give each its own project type.",
                             "Nie sú nastavené žiadne kategórie záujmu — pridajte ich v Nastaveniach, aby mohla každá dostať vlastný typ projektu.",
@@ -1983,7 +1983,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                         <div className="rounded-2xl border border-slate-200 bg-white divide-y divide-slate-100">
                           {leadCategories.map((cat) => (
                             <div key={cat} className="flex items-center gap-3 px-4 py-2.5">
-                              <span className="text-[11px] font-black text-slate-700 truncate flex-1 min-w-0" title={cat}>
+                              <span className="text-caption font-bold text-slate-700 truncate flex-1 min-w-0" title={cat}>
                                 {cat}
                               </span>
                               <div className="w-full max-w-[16rem] shrink-0">
@@ -2007,7 +2007,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
 
                     {/* Everything the rules above did not catch */}
                     <div>
-                      <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5">
+                      <label className="block type-overline text-slate-400 mb-1.5">
                         {t("Type for leads no rule matched", "Typ pre leady bez zhody", "Típus a szabályt nem találó leadekhez")}
                       </label>
                       <CustomSelect
@@ -2020,7 +2020,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                           ...projectTypes.map(pt => ({ value: pt.id, label: pt.name })),
                         ]}
                       />
-                      <p className="text-[10px] font-semibold text-slate-400 mt-1.5 leading-snug">
+                      <p className="text-micro font-semibold text-slate-400 mt-1.5 leading-snug">
                         {t(
                           "Used for a lead that carries no interest category, or none that names a type above.",
                           "Použije sa pre lead bez kategórie záujmu, alebo keď žiadna z jeho kategórií nemá vyššie určený typ.",
@@ -2044,10 +2044,10 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                         }`} />
                       </button>
                       <div className="min-w-0">
-                        <span className="block text-[10px] font-black uppercase tracking-wider text-slate-700">
+                        <span className="block type-overline text-slate-700">
                           {t("Hand the project to the lead's manager", "Prideliť projekt manažérovi leadu", "A projekt a lead menedzseréhez kerül")}
                         </span>
-                        <span className="block text-[10px] font-semibold text-slate-400 mt-0.5 leading-snug">
+                        <span className="block text-micro font-semibold text-slate-400 mt-0.5 leading-snug">
                           {t(
                             "The lead's project manager becomes the project's manager too. Leave it off to create projects nobody is on yet.",
                             "Projektový manažér leadu sa stane aj manažérom projektu. Vypnite, ak majú projekty vznikať bez priradenej osoby.",
@@ -2061,8 +2061,8 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                         was chosen leaves this looking configured while the server
                         creates nothing. */}
                     {active ? (
-                      <div className="text-[11px] font-bold text-slate-500 bg-white border border-slate-200 rounded-2xl px-4 py-3 space-y-1">
-                        <span className="block text-slate-400 uppercase tracking-wider font-black">
+                      <div className="text-caption font-bold text-slate-500 bg-white border border-slate-200 rounded-2xl px-4 py-3 space-y-1">
+                        <span className="block text-slate-400 uppercase tracking-wider font-bold">
                           {t("Result", "Výsledok", "Eredmény")}:
                         </span>
                         {mappedRules.map(({ category, type }) => (
@@ -2098,7 +2098,7 @@ export const ProjectSettings: React.FC<ProjectSettingsProps> = ({
                         </span>
                       </div>
                     ) : (
-                      <p className="text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
+                      <p className="text-caption font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-2xl px-4 py-3">
                         {projectAutoCreate.projectTypeId || Object.keys(projectAutoCreate.categoryTypes).length > 0
                           ? t(
                               "The chosen project types no longer exist — pick others, or no projects will be created.",

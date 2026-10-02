@@ -88,10 +88,10 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
               <Coins className="w-5 h-5" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-slate-900">
+              <h3 className="text-title font-bold text-slate-900">
                 {t('Preflight Cost & Resource Estimate', 'Predbežný odhad nákladov a zdrojov', 'Előzetes költség- és erőforrás-becslés')}
               </h3>
-              <p className="text-xs text-slate-500 font-medium">
+              <p className="text-ui text-slate-500 font-medium">
                 {t('Rehearsal:', 'Simulácia:', 'Szimuláció:')} {title || t('Untitled', 'Bez názvu', 'Névtelen')}
               </p>
             </div>
@@ -108,26 +108,26 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
         <div className="p-6 space-y-5">
 
           {/* Interactive Mode Toggle in Modal */}
-          <div className="p-3.5 rounded-2xl bg-gradient-to-r from-purple-50/80 via-slate-50 to-emerald-50/80 border border-slate-200/90 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="p-3.5 rounded-2xl bg-gradient-to-r from-purple-50/80 via-slate-50 to-emerald-50/80 border border-slate-200/90 flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3">
             <div>
-              <span className="text-xs font-black uppercase tracking-wider text-slate-800 flex items-center gap-1.5">
+              <span className="text-ui font-bold text-slate-800 flex items-center gap-1.5">
                 <Coins className="w-3.5 h-3.5 text-purple-600" />
                 {t('Select Execution Mode:', 'Zvoľte režim vykonania:', 'Válasszon szimulációs módot:')}
               </span>
-              <span className="text-[11px] text-slate-500 font-medium block mt-0.5">
+              <span className="text-caption text-slate-500 font-medium block mt-0.5">
                 {isDemo 
                   ? t('⚡ Fast demo test (synthetic run, $0 cost)', '⚡ Rýchly demo test (syntetický beh, 0 € náklad)', '⚡ Gyors demo teszt (szintetikus futás, 0 € költség)') 
                   : t('🚀 Live production simulation (real OpenAI LLM calls)', '🚀 Ostrá živá simulácia (reálne LLM volania OpenAI)', '🚀 Éles szimuláció (valódi OpenAI API hívások)')}
               </span>
             </div>
 
-            <div className="flex items-center gap-1 p-1 bg-white rounded-xl border border-slate-200 shadow-xs shrink-0 self-start sm:self-auto">
+            <div className="flex items-center gap-1 p-1 bg-white rounded-xl border border-slate-200 shadow-xs shrink-0 self-start ws-sm:self-auto">
               <button
                 type="button"
                 onClick={() => handleModeSwitch('demo')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-ui font-bold transition flex items-center gap-1.5 cursor-pointer ${
                   isDemo
-                    ? 'bg-emerald-600 text-white shadow-xs font-black'
+                    ? 'bg-emerald-600 text-white shadow-xs font-bold'
                     : 'text-slate-600 hover:text-slate-900 bg-transparent'
                 }`}
               >
@@ -138,9 +138,9 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
               <button
                 type="button"
                 onClick={() => handleModeSwitch('live')}
-                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                className={`px-3 py-1.5 rounded-lg text-ui font-bold transition flex items-center gap-1.5 cursor-pointer ${
                   !isDemo
-                    ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-xs font-black'
+                    ? 'bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-xs font-bold'
                     : 'text-slate-600 hover:text-slate-900 bg-transparent'
                 }`}
               >
@@ -153,24 +153,24 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
           {/* Stats Grid */}
           <div className="grid grid-cols-2 gap-3">
             <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/70">
-              <span className="text-xs text-slate-500 font-medium block">
+              <span className="text-ui text-slate-500 font-medium block">
                 {t('Swarm Scale', 'Veľkosť roju', 'Raj mérete')}
               </span>
-              <span className="text-lg font-bold text-slate-800">
+              <span className="text-title font-bold text-slate-800">
                 {swarmScale} {t('Agents', 'Agentov', 'Ágens')}
               </span>
-              <span className="text-[11px] text-slate-400 block mt-0.5">
+              <span className="text-caption text-slate-400 block mt-0.5">
                 {totalRounds} {t('simulated rounds', 'simulovaných kôl', 'szimulált kör')}
               </span>
             </div>
             <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200/70">
-              <span className="text-xs text-slate-500 font-medium block">
+              <span className="text-ui text-slate-500 font-medium block">
                 {t('Estimated Calls', 'Odhadované volania', 'Becsült hívások')}
               </span>
-              <span className="text-lg font-bold text-indigo-600">
+              <span className="text-title font-bold text-indigo-600">
                 ~{totalCalls} {t('API calls', 'API volaní', 'API hívás')}
               </span>
-              <span className="text-[11px] text-slate-400 block mt-0.5">
+              <span className="text-caption text-slate-400 block mt-0.5">
                 ~{totalTokens.toLocaleString()} {t('tokens', 'tokenov', 'token')}
               </span>
             </div>
@@ -178,7 +178,7 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
 
           {/* Attached Context Documents Pill if any */}
           {contextDocuments.length > 0 && (
-            <div className="flex items-center justify-between px-4 py-2.5 rounded-2xl bg-purple-50/70 border border-purple-200 text-xs">
+            <div className="flex items-center justify-between px-4 py-2.5 rounded-2xl bg-purple-50/70 border border-purple-200 text-ui">
               <span className="flex items-center gap-2 text-purple-900 font-semibold">
                 <FileText className="w-4 h-4 text-purple-600" />
                 <span>
@@ -191,23 +191,23 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
 
           {/* Pricing Comparison Cards */}
           <div className={`p-4 rounded-2xl border ${isDemo ? 'bg-emerald-50/70 border-emerald-200' : 'bg-purple-50/50 border-purple-100'}`}>
-            <span className={`text-xs font-semibold uppercase tracking-wider block mb-2 ${isDemo ? 'text-emerald-900' : 'text-purple-900'}`}>
+            <span className={`text-ui font-semibold block mb-2 ${isDemo ? 'text-emerald-900' : 'text-purple-900'}`}>
               {isDemo 
                 ? t('Active Demo Mode (Zero token consumption)', 'Aktívny demo režim (Žiadna spotreba tokenov)', 'Aktív demo mód (Nulla token fogyasztás)')
                 : t('Estimated API Quota Costs (OpenAI)', 'Odhadované náklady na kvótu (OpenAI)', 'Becsült OpenAI API költség')}
             </span>
-            <div className="space-y-2 text-xs">
+            <div className="space-y-2 text-ui">
               <div className={`flex justify-between items-center py-1 border-b border-slate-200/50 ${_modelName === 'gpt-5.6-luna' ? 'font-bold text-purple-700' : ''}`}>
                 <span className="font-medium text-slate-700 flex items-center gap-1.5">
                   <span>{t('GPT-5.6 Luna (Cost-optimized)', 'GPT-5.6 Luna (Cenovo optimalizovaný)', 'GPT-5.6 Luna (Költségoptimalizált)')}</span>
-                  {_modelName === 'gpt-5.6-luna' && <span className="px-1.5 py-0.2 text-[9px] bg-purple-100 text-purple-700 rounded-md font-extrabold">{t('ACTIVE', 'ZVOLENÉ', 'KIVÁLASZTVA')}</span>}
+                  {_modelName === 'gpt-5.6-luna' && <span className="px-1.5 py-0.2 text-micro bg-purple-100 text-purple-700 rounded-md font-extrabold">{t('ACTIVE', 'ZVOLENÉ', 'KIVÁLASZTVA')}</span>}
                 </span>
                 <span className="font-bold text-emerald-600">{isDemo ? (isSk ? '0.000 € (Demo)' : '$0.00 (Demo)') : `€${costGpt56Luna.toFixed(3)}`}</span>
               </div>
               <div className={`flex justify-between items-center py-1 ${_modelName === 'gpt-5.6-terra' ? 'font-bold text-purple-700' : ''}`}>
                 <span className="font-medium text-slate-700 flex items-center gap-1.5">
                   <span>{t('GPT-5.6 Terra (Deep reasoning)', 'GPT-5.6 Terra (Hĺbkové uvažovanie)', 'GPT-5.6 Terra (Mély következtetés)')}</span>
-                  {_modelName === 'gpt-5.6-terra' && <span className="px-1.5 py-0.2 text-[9px] bg-purple-100 text-purple-700 rounded-md font-extrabold">{t('ACTIVE', 'ZVOLENÉ', 'KIVÁLASZTVA')}</span>}
+                  {_modelName === 'gpt-5.6-terra' && <span className="px-1.5 py-0.2 text-micro bg-purple-100 text-purple-700 rounded-md font-extrabold">{t('ACTIVE', 'ZVOLENÉ', 'KIVÁLASZTVA')}</span>}
                 </span>
                 <span className="font-bold text-indigo-600">{isDemo ? (isSk ? '0.000 € (Demo)' : '$0.00 (Demo)') : `€${costGpt56Terra.toFixed(3)}`}</span>
               </div>
@@ -216,7 +216,7 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
 
           {/* Safety Notice */}
           {isDemo ? (
-            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-xs">
+            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-emerald-900 text-ui">
               <Zap className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
               <p>
                 <strong>{t('Interactive Demo Mode:', 'Interaktívny demo režim:', 'Interaktív demo mód:')}</strong>{' '}
@@ -228,7 +228,7 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
               </p>
             </div>
           ) : (
-            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50 border border-amber-200/80 text-amber-900 text-xs">
+            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50 border border-amber-200/80 text-amber-900 text-ui">
               <ShieldAlert className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
               <p>
                 <strong>{t('Live Real-Time Simulation:', 'Živá simulácia v reálnom čase:', 'Valós idejű éles szimuláció:')}</strong>{' '}
@@ -249,7 +249,7 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
               onChange={e => setAcknowledged(e.target.checked)}
               className="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 border-slate-300"
             />
-            <span className="text-xs font-semibold text-slate-700">
+            <span className="text-ui font-semibold text-slate-700">
               {isDemo 
                 ? t(
                     'I understand that this simulation runs in demo mode with synthetic responses.',
@@ -270,7 +270,7 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2.5 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-200/70 transition cursor-pointer"
+            className="px-4 py-2.5 rounded-xl text-ui font-medium text-slate-600 hover:bg-slate-200/70 transition cursor-pointer"
           >
             {t('Cancel & Edit', 'Zrušiť / Upraviť nastavenia', 'Mégse / Beállítások módosítása')}
           </button>
@@ -281,7 +281,7 @@ export const PreflightEstimatorModal: React.FC<PreflightEstimatorModalProps> = (
               onClose();
               onConfirm(currentMode);
             }}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold text-white shadow-md transition ${
+            className={`flex items-center gap-2 px-5 py-2.5 rounded-xl text-ui font-bold text-white shadow-md transition ${
               acknowledged 
                 ? (isDemo 
                     ? 'bg-gradient-to-r from-emerald-600 to-teal-600 hover:opacity-95 cursor-pointer active:scale-95' 

@@ -88,7 +88,7 @@ export const ProjectListViewMenu: React.FC<ProjectListViewMenuProps> = ({
     { dir: "asc" as const, Icon: ArrowDownNarrowWide, label: t("Ascending", "Vzostupne", "Növekvő") },
     { dir: "desc" as const, Icon: ArrowDownWideNarrow, label: t("Descending", "Zostupne", "Csökkenő") },
   ];
-  const rowLabel = "text-xs font-semibold text-slate-600";
+  const rowLabel = "text-ui font-semibold text-slate-600";
 
   return (
     <div className="relative shrink-0" ref={rootRef}>
@@ -98,7 +98,7 @@ export const ProjectListViewMenu: React.FC<ProjectListViewMenuProps> = ({
         aria-expanded={open}
         aria-haspopup="dialog"
         className={cn(
-          "h-10 flex items-center gap-1.5 px-3 rounded-xl border text-xs font-bold transition-all duration-150 active:scale-95 cursor-pointer",
+          "h-10 flex items-center gap-1.5 px-3 rounded-xl border text-ui font-bold transition-all duration-150 active:scale-95 cursor-pointer",
           open
             ? "bg-slate-200 border-slate-300 text-slate-800"
             : "bg-slate-100 border-slate-200 text-slate-600 hover:bg-slate-200 hover:text-slate-800"
@@ -119,7 +119,7 @@ export const ProjectListViewMenu: React.FC<ProjectListViewMenuProps> = ({
           <div className="grid grid-cols-[6.5rem_1fr] items-center gap-3 px-4 py-3.5 border-b border-slate-200">
             <span className={rowLabel}>{t("Sort by", "Zoradiť podľa", "Rendezés")}</span>
             {sortNote ? (
-              <p className="text-[11px] font-semibold text-slate-400 leading-snug">{sortNote}</p>
+              <p className="text-caption font-semibold text-slate-400 leading-snug">{sortNote}</p>
             ) : (
               <div className="flex items-center gap-1.5 min-w-0">
                 <div className="flex-1 min-w-0">
@@ -207,7 +207,7 @@ export const ProjectListViewMenu: React.FC<ProjectListViewMenuProps> = ({
                           onChange={() => toggleColumn(col.key)}
                           className="h-4 w-4 shrink-0 rounded border-slate-300 accent-indigo-600 cursor-pointer disabled:cursor-default"
                         />
-                        <span className={cn("text-[13px] font-medium truncate", col.visible ? "text-slate-800" : "text-slate-500")}>
+                        <span className={cn("text-ui font-medium truncate", col.visible ? "text-slate-800" : "text-slate-500")}>
                           {label}
                         </span>
                       </label>
@@ -215,7 +215,7 @@ export const ProjectListViewMenu: React.FC<ProjectListViewMenuProps> = ({
                   );
                 })}
               </div>
-              <p className="mt-2.5 text-[11px] font-medium leading-snug text-slate-400">{columnsScope}</p>
+              <p className="mt-2.5 text-caption font-medium leading-snug text-slate-400">{columnsScope}</p>
             </div>
           </div>
 
@@ -223,14 +223,14 @@ export const ProjectListViewMenu: React.FC<ProjectListViewMenuProps> = ({
             <button
               type="button"
               onClick={onReset}
-              className="text-xs font-semibold text-slate-600 hover:text-indigo-600 transition-colors duration-150 cursor-pointer"
+              className="text-ui font-semibold text-slate-600 hover:text-indigo-600 transition-colors duration-150 cursor-pointer"
             >
               {t("Use default settings", "Použiť predvolené nastavenia", "Alapértelmezett beállítások")}
             </button>
             <button
               type="button"
               onClick={() => setOpen(false)}
-              className="h-9 px-4 rounded-xl bg-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-300 active:scale-95 transition-all duration-150 cursor-pointer"
+              className="h-9 px-4 rounded-xl bg-slate-200 text-ui font-bold text-slate-700 hover:bg-slate-300 active:scale-95 transition-all duration-150 cursor-pointer"
             >
               {t("Close", "Zavrieť", "Bezárás")}
             </button>

@@ -27,6 +27,10 @@ test("spans follow the breakpoint the board is rendered at", () => {
   assert.equal(breakpointForWidth(1440), "lg");
   assert.equal(breakpointForWidth(900), "md");
   assert.equal(breakpointForWidth(500), "base");
+  // The thresholds are in em of the workspace font: a bigger view size gets fewer columns.
+  assert.equal(breakpointForWidth(1008, 14), "lg");
+  assert.equal(breakpointForWidth(1008, 16), "md");
+  assert.equal(breakpointForWidth(895, 16), "base");
 });
 
 test("cards flow left to right and wrap when the row runs out", () => {

@@ -199,17 +199,17 @@ export const FloatingCopilotOrb: React.FC<FloatingCopilotOrbProps> = ({
               : "right-0"
           }`}
         >
-          <div className="bg-slate-900/95 text-white backdrop-blur-md px-3.5 py-2 rounded-2xl shadow-xl border border-slate-700/60 text-xs flex items-center gap-2">
+          <div className="bg-slate-900/95 text-white backdrop-blur-md px-3.5 py-2 rounded-2xl shadow-xl border border-slate-700/60 text-ui flex items-center gap-2">
             <Bot className="h-4 w-4 text-purple-400 shrink-0" />
             <div>
-              <p className="font-bold text-[11px] leading-tight">
+              <p className="font-bold text-caption leading-tight">
                 {t("Executive Copilot", "Výkonný AI Copilot", "Vezetői AI Copilot")}
                 {screenTitle && <span className="ml-1 text-slate-300 font-normal">({screenTitle})</span>}
-                <span className="ml-1.5 text-[9px] px-1.5 py-0.2 rounded-full bg-purple-500/30 text-purple-300 font-extrabold uppercase">
+                <span className="ml-1.5 type-overline px-1.5 py-0.2 rounded-full bg-purple-500/30 text-purple-300">
                   {VERSION_CODENAME}
                 </span>
               </p>
-              <p className="text-[9.5px] text-slate-400 mt-0.5">
+              <p className="text-micro text-slate-400 mt-0.5">
                 {t("Click to chat • Drag to reposition", "Kliknutím otvoríte • Presuňte potiahnutím", "Kattintson a chathez • Húzással mozgatható")}
               </p>
             </div>

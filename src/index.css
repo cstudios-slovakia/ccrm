@@ -10,7 +10,7 @@
    This app ships light palettes selected by `data-theme` (see below), so the
    variant is re-pointed at that same mechanism: `dark:` utilities are inert
    until a real dark theme is added, instead of half-applying from the OS. */
-@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+@custom-variant dark (&:is([data-theme="dark"], [data-theme="dark"] *, [data-appearance="dark"], [data-appearance="dark"] *, .dark, .dark *));
 
 @theme {
   --color-border: rgb(var(--border));
@@ -965,4 +965,132 @@ dialog[open]::backdrop {
 
 .animate-aurora-pulse-3 {
   animation: aurora-pulse-3 20s ease-in-out infinite;
+}
+
+
+/* ===========================================================================
+   VIEW SIZE — see docs/VIEW-SIZE.md
+   Compact values are the defaults. Values are literal in every block on
+   purpose: a variable that references another resolves where it is declared,
+   so a `.view-size-fixed` subtree would still inherit the root's value.
+   =========================================================================== */
+
+@theme {
+  --text-micro: 0.625rem;     --text-micro--line-height: 1.25;
+  --text-caption: 0.6875rem;  --text-caption--line-height: 1.35;
+  --text-ui: 0.75rem;         --text-ui--line-height: 1.4;
+  --text-body: 0.875rem;      --text-body--line-height: 1.55;
+  --text-title-sm: 0.9375rem; --text-title-sm--line-height: 1.35;
+  --text-title: 1.125rem;     --text-title--line-height: 1.3;
+  --text-heading: 1.5rem;     --text-heading--line-height: 1.2;
+  --text-display: 1.875rem;   --text-display--line-height: 1.1;
+  --text-metric: 1.75rem;     --text-metric--line-height: 1.1;
+  --container-measure: 72ch;
+}
+
+:root {
+  --vs-scale: 1;
+  --gutter: 1.5rem;
+  --workspace-max: 200rem; /* ultrawide safety cap only */
+  --drawer-sm: 24rem; --drawer-md: 30rem; --drawer-lg: 42rem; --drawer-xl: 80rem;
+}
+
+[data-view-size="normal"] {
+  --vs-scale: 1.125;
+  --spacing: 0.28125rem;
+  --gutter: 2rem;
+  --text-micro: 0.75rem;   --text-caption: 0.8125rem; --text-ui: 0.875rem;
+  --text-body: 1rem;       --text-title-sm: 1.0625rem; --text-title: 1.25rem;
+  --text-heading: 1.75rem; --text-display: 2.125rem;  --text-metric: 2rem;
+  --container-3xs: 18rem;    --container-2xs: 20.25rem; --container-xs: 22.5rem;
+  --container-sm: 27rem;     --container-md: 31.5rem;   --container-lg: 36rem;
+  --container-xl: 40.5rem;   --container-2xl: 47.25rem; --container-3xl: 54rem;
+  --container-4xl: 63rem;    --container-5xl: 72rem;    --container-6xl: 81rem;
+  --container-7xl: 90rem;
+  --drawer-sm: 27rem; --drawer-md: 33.75rem; --drawer-lg: 47.25rem; --drawer-xl: 90rem;
+}
+
+[data-view-size="big"] {
+  --vs-scale: 1.25;
+  --spacing: 0.3125rem;
+  --gutter: 2.5rem;
+  --text-micro: 0.8125rem; --text-caption: 0.875rem;  --text-ui: 1rem;
+  --text-body: 1.0625rem;  --text-title-sm: 1.1875rem; --text-title: 1.4375rem;
+  --text-heading: 2rem;    --text-display: 2.5rem;    --text-metric: 2.375rem;
+  --container-3xs: 20rem;    --container-2xs: 22.5rem;  --container-xs: 25rem;
+  --container-sm: 30rem;     --container-md: 35rem;     --container-lg: 40rem;
+  --container-xl: 45rem;     --container-2xl: 52.5rem;  --container-3xl: 60rem;
+  --container-4xl: 70rem;    --container-5xl: 80rem;    --container-6xl: 90rem;
+  --container-7xl: 100rem;
+  --drawer-sm: 30rem; --drawer-md: 37.5rem; --drawer-lg: 52.5rem; --drawer-xl: 100rem;
+}
+
+/* Phones keep a 16px gutter whatever size is chosen. After the size blocks,
+   so it wins over them by source order at equal specificity. */
+@media (max-width: 639.98px) {
+  :root, [data-view-size] { --gutter: 1rem; }
+}
+
+/* The aside and paper documents: always the Compact (= stock) values. */
+.view-size-fixed {
+  --vs-scale: 1;
+  --spacing: 0.25rem;
+  --text-micro: 0.625rem;  --text-caption: 0.6875rem; --text-ui: 0.75rem;
+  --text-body: 0.875rem;   --text-title-sm: 0.9375rem; --text-title: 1.125rem;
+  --text-heading: 1.5rem;  --text-display: 1.875rem;  --text-metric: 1.75rem;
+  --container-3xs: 16rem;  --container-2xs: 18rem;    --container-xs: 20rem;
+  --container-sm: 24rem;   --container-md: 28rem;     --container-lg: 32rem;
+  --container-xl: 36rem;   --container-2xl: 42rem;    --container-3xl: 48rem;
+  --container-4xl: 56rem;  --container-5xl: 64rem;    --container-6xl: 72rem;
+  --container-7xl: 80rem;
+  --drawer-sm: 24rem; --drawer-md: 30rem; --drawer-lg: 42rem; --drawer-xl: 80rem;
+}
+
+.workspace {
+  container: workspace / inline-size;
+  font-size: var(--text-ui);
+  line-height: var(--text-ui--line-height);
+  padding: var(--gutter);
+  max-width: var(--workspace-max);
+  margin-inline: auto;
+  width: 100%;
+}
+
+/* Workspace breakpoints: container queries in em, so they follow both the
+   window width and the view size. Only match inside <main class="workspace">. */
+@custom-variant ws-sm  { @container workspace (width >= 40em)  { @slot; } }
+@custom-variant ws-md  { @container workspace (width >= 56em)  { @slot; } }
+@custom-variant ws-lg  { @container workspace (width >= 72em)  { @slot; } }
+@custom-variant ws-xl  { @container workspace (width >= 96em)  { @slot; } }
+@custom-variant ws-2xl { @container workspace (width >= 120em) { @slot; } }
+
+@custom-variant compact (&:where([data-view-size="compact"], [data-view-size="compact"] *));
+@custom-variant normal (&:where([data-view-size="normal"], [data-view-size="normal"] *));
+@custom-variant big (&:where([data-view-size="big"], [data-view-size="big"] *));
+
+@utility grid-auto-* {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, --spacing(--value(integer))), 1fr));
+}
+
+/* Type recipes (no colour — colours stay raw palette classes). */
+@utility type-overline     { font-size: var(--text-micro);    line-height: var(--text-micro--line-height);    font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+@utility type-label        { font-size: var(--text-caption);  line-height: var(--text-caption--line-height);  font-weight: 600; }
+@utility type-meta         { font-size: var(--text-caption);  line-height: var(--text-caption--line-height);  font-weight: 500; }
+@utility type-body         { font-size: var(--text-body);     line-height: var(--text-body--line-height);     font-weight: 400; }
+@utility type-card-title   { font-size: var(--text-title-sm); line-height: var(--text-title-sm--line-height); font-weight: 700; letter-spacing: -0.005em; }
+@utility type-panel-title  { font-size: var(--text-title);    line-height: var(--text-title--line-height);    font-weight: 700; letter-spacing: -0.01em; }
+@utility type-page-title   { font-family: var(--font-heading); font-size: var(--text-heading); line-height: var(--text-heading--line-height); font-weight: 800; letter-spacing: -0.02em; }
+@utility type-entity-title { font-family: var(--font-heading); font-size: var(--text-display); line-height: var(--text-display--line-height); font-weight: 900; letter-spacing: -0.025em; }
+@utility type-metric       { font-size: var(--text-metric);   line-height: var(--text-metric--line-height);   font-weight: 800; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
+
+/* Table styles (docs/VIEW-SIZE.md §6.2 "DataTable") */
+@utility table-header   { font-size: var(--text-micro); line-height: var(--text-micro--line-height); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; white-space: nowrap; }
+@utility table-cell     { font-size: var(--text-ui); line-height: var(--text-ui--line-height); padding: --spacing(3) --spacing(4); }
+@utility table-cell-num { text-align: right; font-variant-numeric: tabular-nums; }
+
+/* Horizontal scroller without the scrollbar (tab rows). */
+@utility no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar { display: none; }
 }

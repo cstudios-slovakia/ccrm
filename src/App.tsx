@@ -3,12 +3,20 @@ import { Sidebar } from "./components/Sidebar";
 import { Header } from "./components/Header";
 import { LoginView } from "./components/LoginView";
 import { TaskDashboardView } from "./components/TaskDashboardView";
-import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, FinancialRecord, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings } from "./types";
+import type { Lead, UserProfile, RolePermission, Task, UnifiedEntryRegistry, UnifiedEntryRow, CustomDashboard, ProjectType, Project, Warehouse, Supplier, WarehouseItem, WarehouseStock, WarehouseBatch, WarehouseMovement, FinancialCategory, ClientCategory, FinancialRecord, InvoiceOffer, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, Employee, EmployeeSalary, EmployeeVacation, EmployeeSettings } from "./types";
 import { DEFAULT_LEAD_ASSIGNMENT, normalizeLeadAssignment } from "./utils/leadAssignment";
 import { DEFAULT_PROJECT_AUTO_CREATE, normalizeProjectAutoCreate } from "./utils/projectAutoCreate";
+import { normalizeProjectStatusDefs, type ProjectStatusDef } from "./utils/projects";
+import { ProjectStatusesProvider } from "./hooks/useProjectStatuses";
 import { normalizeLeadStateSla, type LeadStateSla } from "./utils/leadSla";
 import { isSystemMailConfigured } from "./utils/taskReminders";
-import { requestBrowserNotificationPermission, sendBrowserNotification } from "./utils/browserNotifications";
+import {
+  requestBrowserNotificationPermission,
+  sendTaskPushNotification,
+  getBrowserNotificationPermission,
+  registerWebPushSubscription,
+} from "./utils/browserNotifications";
+import { isDoneTaskState } from "./utils/projectTasks";
 import { listIdsSignature, normalizeListIds, type ListIds } from "./utils/listIds";
 import { VERSION } from "./utils/version";
 import { reconcileInvoiceMovements } from "./utils/invoiceFinanceBridge";
@@ -32,10 +40,11 @@ import { FloatingCopilotOrb, type CopilotCorner } from "./components/executive/F
 import { CopilotSidebar } from "./components/executive/CopilotSidebar";
 import { AuroraBackground } from "./components/ui/AuroraBackground";
 import { useCurrentScreenContext } from "./hooks/useCurrentScreenContext";
-import { RefreshCw, AlertOctagon, Trash2, Copy, Brain, Mail } from "lucide-react";
+import { RefreshCw, AlertOctagon, Trash2, Copy, Brain, Mail, Bell, X } from "lucide-react";
 import { FeralGradientBackground } from "./components/FeralGradientBackground";
 import { OrganicNodeDatabaseLoader } from "./components/OrganicNodeDatabaseLoader";
 import { getStoredTheme, getStoredThemeMode, isThemeMode, startThemeWatcher, type Appearance, type ThemeMode } from "./utils/theme";
+import { startViewSizeWatcher } from "./utils/viewSize";
 import { hasPersistentStorage } from "./utils/safeStorage";
 import { LicenseBanner } from "./components/LicenseBanner";
 import { fetchLicenseState } from "./utils/licenseApi";
@@ -125,6 +134,7 @@ const SocialMediaView = safeLazy(() => import("./components/SocialMediaView").th
 const WarehouseView = safeLazy(() => import("./components/WarehouseView").then(m => ({ default: m.WarehouseView })));
 const FinancialManagementView = safeLazy(() => import("./components/FinancialManagementView").then(m => ({ default: m.FinancialManagementView })));
 const InvoicingView = safeLazy(() => import("./components/InvoicingView").then(m => ({ default: m.InvoicingView })));
+const EmployeesView = safeLazy(() => import("./components/employees/EmployeesView").then(m => ({ default: m.EmployeesView })));
 
 // Stable, order-fixed fingerprint of the settings block. Used to tell a genuine
 // user edit apart from merely re-receiving the server's own settings, so the
@@ -172,6 +182,9 @@ const computeSettingsSig = (s: any): string => {
     normalizeProjectAutoCreate(s.projectAutoCreate),
     s.taskStates ?? [],
     s.taskStateColors && Object.keys(s.taskStateColors).length ? s.taskStateColors : null,
+    // Normalized on both sides: an install that never opened the editor has
+    // nothing stored, and that must compare equal to the built-ins it is shown.
+    normalizeProjectStatusDefs(s.projectStatuses),
     s.integrationsConfig ?? null,
     s.companyBillingSettings ?? null,
     s.invoicingIntegrations ?? null,
@@ -190,6 +203,7 @@ const computePushSig = (p: {
   warehouseStock?: unknown; warehouseBatches?: unknown; warehouseMovements?: unknown;
   financialCategories?: unknown; financialRecords?: unknown;
   invoicesOffers?: unknown; aiCustomTemplates?: unknown; clientCategories?: unknown;
+  employees?: unknown; employeeSalaries?: unknown; employeeVacations?: unknown; employeeSettings?: unknown;
   settings?: any;
 }): string => JSON.stringify([
   p.leads, p.tasks, p.users, p.roles, p.meetingNotes, p.unifiedEntries,
@@ -197,6 +211,7 @@ const computePushSig = (p: {
   p.warehouses, p.suppliers, p.warehouseItems, p.warehouseStock, p.warehouseBatches, p.warehouseMovements,
   p.financialCategories, p.financialRecords,
   p.invoicesOffers, p.aiCustomTemplates, p.clientCategories,
+  p.employees, p.employeeSalaries, p.employeeVacations, p.employeeSettings,
   computeSettingsSig(p.settings),
 ]);
 
@@ -318,6 +333,10 @@ function App() {
   const financialTrendRef = useRef<FinancialTrendSettings>(EMPTY_FINANCIAL_TREND);
   const companyBillingSettingsRef = useRef<CompanyBillingSettings | null>(null);
   const invoicingIntegrationsRef = useRef<ExternalInvoicingConfig | null>(null);
+  const employeesRef = useRef<Employee[]>([]);
+  const employeeSalariesRef = useRef<EmployeeSalary[]>([]);
+  const employeeVacationsRef = useRef<EmployeeVacation[]>([]);
+  const employeeSettingsRef = useRef<EmployeeSettings | null>(null);
   // DB clock from the last GET/POST. Sent back as baseSyncedAt so the server can
   // avoid deleting records a concurrent user added after our snapshot.
   const baseSyncedAtRef = useRef<string | null>(null);
@@ -396,16 +415,23 @@ function App() {
       client: "clients",
       lead: "leads",
       project: "projects",
+      employee: "employees",
+      salaries: "employees",
+      salary: "employees",
+      vacation: "employees",
+      vacations: "employees",
+      mzdy: "employees",
+      berek: "employees",
     };
 
     const resolvedBase = aliasMap[hashLower] || hashLower;
 
-    if (resolvedBase.startsWith("client-") || resolvedBase.startsWith("lead-") || resolvedBase.startsWith("user-") || resolvedBase.startsWith("ue_") || resolvedBase.startsWith("dash_") || resolvedBase.startsWith("settings") || resolvedBase.startsWith("warehouse") || resolvedBase.startsWith("financial") || resolvedBase.startsWith("invoices") || resolvedBase.startsWith("sai") || resolvedBase.startsWith("automation")) {
+    if (resolvedBase.startsWith("client-") || resolvedBase.startsWith("lead-") || resolvedBase.startsWith("user-") || resolvedBase.startsWith("project-") || resolvedBase.startsWith("employee-") || resolvedBase.startsWith("ue_") || resolvedBase.startsWith("dash_") || resolvedBase.startsWith("settings") || resolvedBase.startsWith("warehouse") || resolvedBase.startsWith("financial") || resolvedBase.startsWith("invoices") || resolvedBase.startsWith("sai") || resolvedBase.startsWith("automation") || resolvedBase.startsWith("employees")) {
       // An alias maps to its canonical tab; anything else keeps its original case.
       const route = (aliasMap[hashLower] || baseRaw) + subPath;
       return queryRaw ? `${route}?${queryRaw}` : route;
     }
-    const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "tasks", "files", "personal-settings", "email", "rag_ai", "sai", "automation", "meetings", "projects", "updates", "warehouse", "financial", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
+    const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "tasks", "files", "personal-settings", "email", "rag_ai", "sai", "automation", "meetings", "projects", "updates", "warehouse", "financial", "employees", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
     if (!validTabs.includes(resolvedBase)) return "dashboard";
     const route = resolvedBase + subPath;
     return queryRaw ? `${route}?${queryRaw}` : route;
@@ -548,6 +574,11 @@ function App() {
     [themeMode, userTheme]
   );
 
+  // View size (docs/VIEW-SIZE.md): index.html painted the first frame; this keeps
+  // the attribute true when the window crosses an Auto threshold or another tab
+  // changes the setting.
+  useEffect(() => startViewSizeWatcher(), []);
+
   // Same three-language shorthand every view uses for one-off copy that has no
   // entry in translations.ts.
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
@@ -591,6 +622,10 @@ function App() {
   const [financialTrend, setFinancialTrend] = useState<FinancialTrendSettings>(EMPTY_FINANCIAL_TREND);
   const [companyBillingSettings, setCompanyBillingSettings] = useState<CompanyBillingSettings | null>(null);
   const [invoicingIntegrations, setInvoicingIntegrations] = useState<ExternalInvoicingConfig | null>(null);
+  const [employees, setEmployees] = useState<Employee[]>([]);
+  const [employeeSalaries, setEmployeeSalaries] = useState<EmployeeSalary[]>([]);
+  const [employeeVacations, setEmployeeVacations] = useState<EmployeeVacation[]>([]);
+  const [employeeSettings, setEmployeeSettings] = useState<EmployeeSettings | null>(null);
 
   // Initial states set to empty / defaults without localStorage or mockData loaders
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -615,6 +650,10 @@ function App() {
     "Blocked": "#ef4444",
     "Done": "#10b981"
   });
+
+  // The project statuses, configured in Settings → Project settings. Handed to
+  // every view through ProjectStatusesProvider.
+  const [projectStatuses, setProjectStatuses] = useState<ProjectStatusDef[]>(() => normalizeProjectStatusDefs(null));
 
   const [leadSources, setLeadSources] = useState<string[]>([
     "showroom", "facebook", "instagram", "website"
@@ -757,12 +796,17 @@ function App() {
     }
   }, [currentUser]);
 
-  // Request browser notification permission once user is logged in
+  // Register Web Push subscription if permission was already granted
   useEffect(() => {
-    if (currentUser) {
-      requestBrowserNotificationPermission();
+    if (currentUser && typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+      registerWebPushSubscription(currentUser).catch(() => {});
     }
   }, [currentUser?.email]);
+
+  const [showNotifBanner, setShowNotifBanner] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    return !sessionStorage.getItem("ccrm_notif_banner_dismissed");
+  });
 
   // Licence for this installation. Fetched once per session and re-checked on a
   // slow timer — it changes about once a year, and api/license.php throttles the
@@ -985,6 +1029,9 @@ ${log.payload || ''}
         case "warehouse":
           viewName = t("Warehouse & Inventory", "Sklad a zásoby", "Raktár és készlet");
           break;
+        case "employees":
+          viewName = t("Employees & Payroll", "Zamestnanci a mzdy", "Alkalmazottak és bérek");
+          break;
         case "invoices":
           viewName = t("Invoices & Price Offers", "Cenové ponuky a faktúry", "Árajánlatok és számlák");
           break;
@@ -1067,6 +1114,10 @@ ${log.payload || ''}
   financialTrendRef.current = financialTrend;
   companyBillingSettingsRef.current = companyBillingSettings;
   invoicingIntegrationsRef.current = invoicingIntegrations;
+  employeesRef.current = employees;
+  employeeSalariesRef.current = employeeSalaries;
+  employeeVacationsRef.current = employeeVacations;
+  employeeSettingsRef.current = employeeSettings;
 
   // --- REAL-TIME SERVER SYNCHRONIZER ENGINE ---
   const pushStateToServer = (
@@ -1132,6 +1183,10 @@ ${log.payload || ''}
     const liveInvoicesOffers = nextInvoicesOffers ?? invoicesOffersRef.current;
     const liveAiCustomTemplates = nextAiCustomTemplates ?? aiCustomTemplatesRef.current;
     const liveClientCategories = nextClientCategories ?? clientCategoriesRef.current;
+    const liveEmployees = employeesRef.current;
+    const liveEmployeeSalaries = employeeSalariesRef.current;
+    const liveEmployeeVacations = employeeVacationsRef.current;
+    const liveEmployeeSettings = employeeSettingsRef.current;
 
     const payload: any = {
       baseSyncedAt: baseSyncedAtRef.current,
@@ -1156,6 +1211,10 @@ ${log.payload || ''}
       invoicesOffers: liveInvoicesOffers,
       aiCustomTemplates: liveAiCustomTemplates,
       clientCategories: liveClientCategories,
+      employees: liveEmployees,
+      employeeSalaries: liveEmployeeSalaries,
+      employeeVacations: liveEmployeeVacations,
+      employeeSettings: liveEmployeeSettings,
       // Always sent whole: it is one small blob, and the server's contract is
       // "omitted means unchanged", so narrowing it would be indistinguishable
       // from a client that predates the key.
@@ -1182,6 +1241,7 @@ ${log.payload || ''}
         projectAutoCreate,
         taskStates,
         taskStateColors,
+        projectStatuses,
         integrationsConfig: nextIntegrationsConfig ?? integrationsConfigRef.current,
         companyBillingSettings: companyBillingSettingsRef.current,
         invoicingIntegrations: invoicingIntegrationsRef.current
@@ -1223,6 +1283,9 @@ ${log.payload || ''}
       narrow("invoicesOffers", liveInvoicesOffers);
       narrow("aiCustomTemplates", liveAiCustomTemplates);
       narrow("clientCategories", liveClientCategories);
+      narrow("employees", liveEmployees);
+      narrow("employeeSalaries", liveEmployeeSalaries);
+      narrow("employeeVacations", liveEmployeeVacations);
 
       // The registry list stays whole on purpose: sync.php walks unifiedEntries to
       // reach each entry's dynamic table, so an entry omitted here would silently
@@ -1303,6 +1366,8 @@ ${log.payload || ''}
               financial_categories: "financialCategories", client_categories: "clientCategories",
               financial_records: "financialRecords", invoices_offers: "invoicesOffers",
               ai_custom_templates: "aiCustomTemplates",
+              employees: "employees", employee_salaries: "employeeSalaries",
+              employee_vacations: "employeeVacations",
             };
             for (const [table, ids] of Object.entries(out.deleteBlocked as Record<string, unknown>)) {
               if (Array.isArray(ids) && ids.length && tableToKey[table]) {
@@ -1682,6 +1747,42 @@ ${log.payload || ''}
       const next = typeof newTemplates === "function" ? newTemplates(prev) : newTemplates;
       aiCustomTemplatesRef.current = next;
       pushStateToServer(undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, undefined, next);
+      return next;
+    });
+  };
+
+  const updateEmployeesAndSync = (newEmployees: Employee[] | ((prev: Employee[]) => Employee[])) => {
+    setEmployees(prev => {
+      const next = typeof newEmployees === "function" ? newEmployees(prev) : newEmployees;
+      employeesRef.current = next;
+      pushStateToServer();
+      return next;
+    });
+  };
+
+  const updateEmployeeSalariesAndSync = (newSalaries: EmployeeSalary[] | ((prev: EmployeeSalary[]) => EmployeeSalary[])) => {
+    setEmployeeSalaries(prev => {
+      const next = typeof newSalaries === "function" ? newSalaries(prev) : newSalaries;
+      employeeSalariesRef.current = next;
+      pushStateToServer();
+      return next;
+    });
+  };
+
+  const updateEmployeeVacationsAndSync = (newVacations: EmployeeVacation[] | ((prev: EmployeeVacation[]) => EmployeeVacation[])) => {
+    setEmployeeVacations(prev => {
+      const next = typeof newVacations === "function" ? newVacations(prev) : newVacations;
+      employeeVacationsRef.current = next;
+      pushStateToServer();
+      return next;
+    });
+  };
+
+  const updateEmployeeSettingsAndSync = (newSettings: EmployeeSettings | ((prev: EmployeeSettings) => EmployeeSettings)) => {
+    setEmployeeSettings(prev => {
+      const next = typeof newSettings === "function" ? newSettings(prev as any) : newSettings;
+      employeeSettingsRef.current = next;
+      pushStateToServer();
       return next;
     });
   };
@@ -2068,6 +2169,7 @@ ${log.payload || ''}
       systemName, systemLanguage, systemCurrency,
       leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups,
       leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors,
+      projectStatuses,
     });
     // Before we have ever seen the server's settings, just record the current
     // signature — there is nothing to push yet, and pushing here would echo the
@@ -2095,7 +2197,7 @@ ${log.payload || ''}
       // newest values.
       pushStateToServer();
     }, 700);
-  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, isInitialSyncResolved]);
+  }, [leadStates, leadSources, leadCategories, divisions, divisionColors, leadSourceIds, leadCategoryIds, systemName, systemLanguage, systemCurrency, leadStateColors, leadSourceColors, leadCategoryColors, leadStageGroups, leadStateParents, leadStateFollowUp, leadStateSla, leadAssignment, projectAutoCreate, taskStates, taskStateColors, projectStatuses, isInitialSyncResolved]);
 
   // Layout Hash change listener
   useEffect(() => {
@@ -2197,48 +2299,59 @@ ${log.payload || ''}
       if (data.tasks && Array.isArray(data.tasks)) {
         const incomingTasks = data.tasks as Task[];
         const prevTasks = lastKnownTasksRef.current;
-        const myName = currentUser?.name;
 
-        if (prevTasks !== null && myName) {
+        if (prevTasks !== null && currentUser) {
+          const myName = (currentUser.name || "").trim().toLowerCase();
+          const myEmail = (currentUser.email || "").trim().toLowerCase();
+
+          const isUserMe = (userStr?: string | null): boolean => {
+            if (!userStr) return false;
+            const u = userStr.trim().toLowerCase();
+            return u === myName || u === myEmail || (myName !== "" && u.length > 2 && (myName.includes(u) || u.includes(myName)));
+          };
+
+          const checkAssignedToMe = (t: Task): boolean => {
+            if (isUserMe(t.owner)) return true;
+            if (Array.isArray(t.assignedUsers) && t.assignedUsers.some((u) => isUserMe(u))) return true;
+            return false;
+          };
+
           const prevMap = new Map<string, Task>(prevTasks.map((t) => [t.id, t]));
+          const currentStates = Array.isArray(data.settings?.taskStates) ? data.settings.taskStates : taskStates;
 
           incomingTasks.forEach((task) => {
             const old = prevMap.get(task.id);
 
             // 1. Newly created or reassigned task assigned to current user (and not created by me)
-            const isAssignedToMe =
-              task.owner === myName ||
-              (Array.isArray(task.assignedUsers) && task.assignedUsers.includes(myName));
-            const wasAssignedToMe =
-              old &&
-              (old.owner === myName ||
-                (Array.isArray(old.assignedUsers) && old.assignedUsers.includes(myName)));
+            const isAssignedToMe = checkAssignedToMe(task);
+            const wasAssignedToMe = old ? checkAssignedToMe(old) : false;
+            const createdByMe = isUserMe(task.createdBy);
 
-            if (isAssignedToMe && (!old || !wasAssignedToMe)) {
-              if (task.createdBy !== myName) {
-                sendBrowserNotification(
-                  t("New Task Assigned", "Priradená nová úloha", "Új feladat kijelölve"),
-                  {
-                    body: `${task.title} (${task.createdBy || t("System", "Systém", "Rendszer")})`,
-                    onClickUrl: "tasks",
-                  }
-                );
-              }
+            if (isAssignedToMe && (!old || !wasAssignedToMe) && !createdByMe) {
+              sendTaskPushNotification({
+                title: t("New Task Assigned", "Priradená nová úloha", "Új feladat kijelölve"),
+                body: `${task.title} (${task.createdBy || t("System", "Systém", "Rendszer")})`,
+                onClickUrl: "tasks",
+                type: "assigned",
+              });
             }
 
-            // 2. Task created by me has been marked as completed/done
-            const isDone = String(task.status || "").toLowerCase() === "done";
-            const wasDone = old ? String(old.status || "").toLowerCase() === "done" : false;
+            // 2. Task created by me or previously assigned to me has been marked as completed/done by someone else
+            const isDone = isDoneTaskState(task.status, currentStates) || task.archived === true;
+            const wasDone = old ? (isDoneTaskState(old.status, currentStates) || old.archived === true) : false;
 
-            if (old && !wasDone && isDone && task.createdBy === myName) {
+            if (old && !wasDone && isDone) {
               const completer = task.completedBy || task.owner || task.assignedUsers?.[0] || t("Team member", "Člen tímu", "Csapattag");
-              sendBrowserNotification(
-                t("Task Completed", "Úloha dokončená", "Feladat befejezve"),
-                {
+              const completedByMe = isUserMe(task.completedBy);
+
+              if (!completedByMe && (createdByMe || wasAssignedToMe || isAssignedToMe)) {
+                sendTaskPushNotification({
+                  title: t("Task Completed", "Úloha dokončená", "Feladat befejezve"),
                   body: `${task.title} · ${t("Completed by", "Dokončil", "Befejezte")}: ${completer}`,
                   onClickUrl: "tasks",
-                }
-              );
+                  type: "done",
+                });
+              }
             }
           });
         }
@@ -2325,6 +2438,21 @@ ${log.payload || ''}
       if (data.clientCategories && Array.isArray(data.clientCategories)) {
         setClientCategories(sameOr(data.clientCategories));
       }
+      if (data.employees && Array.isArray(data.employees)) {
+        setEmployees(sameOr(data.employees));
+      }
+      if (data.employeeSalaries && Array.isArray(data.employeeSalaries)) {
+        setEmployeeSalaries(sameOr(data.employeeSalaries));
+      }
+      if (data.employeeVacations && Array.isArray(data.employeeVacations)) {
+        setEmployeeVacations(sameOr(data.employeeVacations));
+      }
+      if (data.employeeSettings !== undefined) {
+        // sameOr keeps the old reference when nothing changed. A fresh object on
+        // every sync poll re-ran the employee form's init effect and blanked a
+        // half-typed "new employee" form at random.
+        setEmployeeSettings(sameOr(data.employeeSettings));
+      }
       // Absent key = a sync.php that predates the trend anchors. Keep whatever
       // is in memory rather than blanking the chart back to the default curve.
       if (data.financialTrend !== undefined) {
@@ -2376,6 +2504,10 @@ ${log.payload || ''}
         });
         setTaskStates((prev) => s.taskStates && JSON.stringify(s.taskStates) !== JSON.stringify(prev) ? s.taskStates : prev);
         setTaskStateColors((prev) => s.taskStateColors && JSON.stringify(s.taskStateColors) !== JSON.stringify(prev) ? s.taskStateColors : prev);
+        setProjectStatuses((prev) => {
+          const next = normalizeProjectStatusDefs(s.projectStatuses);
+          return JSON.stringify(next) !== JSON.stringify(prev) ? next : prev;
+        });
         if (s.integrationsConfig) syncIntegrationsConfig(s.integrationsConfig);
         serverSettingsAppliedRef.current = true;
         // Remember what the server just gave us. The settings-sync effect compares
@@ -2412,6 +2544,9 @@ ${log.payload || ''}
         invoicesOffers: baselineOf(data.invoicesOffers ?? invoicesOffersRef.current),
         aiCustomTemplates: baselineOf(data.aiCustomTemplates ?? aiCustomTemplatesRef.current),
         clientCategories: baselineOf(data.clientCategories ?? clientCategoriesRef.current),
+        employees: baselineOf(data.employees ?? employeesRef.current),
+        employeeSalaries: baselineOf(data.employeeSalaries ?? employeeSalariesRef.current),
+        employeeVacations: baselineOf(data.employeeVacations ?? employeeVacationsRef.current),
       };
       const ueData = data.unifiedEntriesData ?? unifiedEntriesDataRef.current ?? {};
       const nextUeBaselines: Record<string, RecordBaseline> = {};
@@ -2443,6 +2578,10 @@ ${log.payload || ''}
         invoicesOffers: data.invoicesOffers ?? invoicesOffersRef.current,
         aiCustomTemplates: data.aiCustomTemplates ?? aiCustomTemplatesRef.current,
         clientCategories: data.clientCategories ?? clientCategoriesRef.current,
+        employees: data.employees ?? employeesRef.current,
+        employeeSalaries: data.employeeSalaries ?? employeeSalariesRef.current,
+        employeeVacations: data.employeeVacations ?? employeeVacationsRef.current,
+        employeeSettings: data.employeeSettings ?? employeeSettingsRef.current,
         settings: data.settings ?? {},
       });
     };
@@ -2696,6 +2835,10 @@ ${log.payload || ''}
           dbInfo={dbInfo || undefined}
           projectTypes={projectTypes}
           setProjectTypes={updateProjectTypesAndSync}
+          projectStatuses={projectStatuses}
+          setProjectStatuses={setProjectStatuses}
+          projects={projects}
+          setProjects={updateProjectsAndSync}
           companyBillingSettings={companyBillingSettings}
           setCompanyBillingSettings={updateCompanyBillingSettingsAndSync}
           invoicingIntegrations={invoicingIntegrations}
@@ -2764,8 +2907,32 @@ ${log.payload || ''}
       }
     }
 
-    if (activeRoute.startsWith("client-")) {
-      const clientName = decodeURIComponent(activeRoute.replace("client-", ""));
+    if (activeRoute.startsWith("employee-")) {
+      return (
+        <EmployeesView
+          access={access.module("employees")}
+          systemLanguage={userLanguage}
+          systemCurrency={currencyCode}
+          currentUser={activeUser}
+          employees={employees}
+          setEmployees={updateEmployeesAndSync}
+          salaries={employeeSalaries}
+          setSalaries={updateEmployeeSalariesAndSync}
+          vacations={employeeVacations}
+          setVacations={updateEmployeeVacationsAndSync}
+          employeeSettings={employeeSettings}
+          setEmployeeSettings={updateEmployeeSettingsAndSync}
+          financialCategories={financialCategories}
+        />
+      );
+    }
+
+    if (activeRoute.startsWith("client-") || (activeRoute.startsWith("clients/") && activeRoute.length > "clients/".length)) {
+      const clientName = decodeURIComponent(
+        activeRoute.startsWith("client-")
+          ? activeRoute.slice("client-".length)
+          : activeRoute.slice("clients/".length)
+      );
       return (
         <ClientsView 
           leads={leads}
@@ -2799,8 +2966,19 @@ ${log.payload || ''}
       );
     }
 
-    if (activeRoute.startsWith("lead-")) {
-      const leadId = activeRoute.replace("lead-", "");
+    if (activeRoute.startsWith("lead-") || (activeRoute.startsWith("leads/") && activeRoute.length > "leads/".length)) {
+      const rawLeadId = decodeURIComponent(
+        activeRoute.startsWith("leads/")
+          ? activeRoute.slice("leads/".length)
+          : activeRoute.slice("lead-".length)
+      );
+      const matchedLead =
+        leads.find(l => l.id === rawLeadId) ||
+        leads.find(l => l.id === `lead-${rawLeadId}`) ||
+        leads.find(l => rawLeadId.startsWith("lead-") && l.id === rawLeadId.replace(/^lead-/, "")) ||
+        leads.find(l => (l.name || "").trim().toLowerCase() === rawLeadId.toLowerCase()) ||
+        null;
+      const leadId = matchedLead ? matchedLead.id : rawLeadId;
       return (
         <LeadsDatagrid 
           systemName={systemName}
@@ -2815,6 +2993,8 @@ ${log.payload || ''}
           access={access.module("leads")}
           projectManagerColors={projectManagerColors}
           leadCategories={leadCategories}
+          divisions={divisions}
+          divisionColors={divisionColors}
           leadSourceColors={leadSourceColors}
           leadCategoryColors={leadCategoryColors}
           systemLanguage={userLanguage}
@@ -2833,6 +3013,7 @@ ${log.payload || ''}
           leadStateSla={leadStateSla}
           leadAssignment={leadAssignment}
           currencyCode={currencyCode}
+          taskAccess={taskAccess}
         />
       );
     }
@@ -2899,6 +3080,13 @@ ${log.payload || ''}
           setTasks={updateTasksAndSync}
           projectTypes={projectTypes}
           setProjectTypes={updateProjectTypesAndSync}
+          projectStatuses={projectStatuses}
+          setProjectStatuses={setProjectStatuses}
+          projects={projects}
+          setProjects={updateProjectsAndSync}
+          financialCategories={financialCategories}
+          setFinancialCategories={updateFinancialCategoriesAndSync}
+          setFinancialRecords={updateFinancialRecordsAndSync}
           companyBillingSettings={companyBillingSettings}
           setCompanyBillingSettings={updateCompanyBillingSettingsAndSync}
           invoicingIntegrations={invoicingIntegrations}
@@ -2919,9 +3107,12 @@ ${log.payload || ''}
     }
 
     const rawBaseTab = activeRoute.split("/")[0];
-    const baseTab = rawBaseTab === "social_media" && !SOCIAL_MEDIA_ENABLED ? "dashboard" : rawBaseTab;
+    const baseTab = rawBaseTab.startsWith("project-") ? "projects" : (rawBaseTab === "social_media" && !SOCIAL_MEDIA_ENABLED ? "dashboard" : rawBaseTab);
     switch (baseTab) {
-      case "leads":
+      case "leads": {
+        const subLeadId = (activeRoute.startsWith("leads/") && activeRoute.length > "leads/".length)
+          ? decodeURIComponent(activeRoute.slice("leads/".length))
+          : undefined;
         return (
           <LeadsDatagrid 
             systemName={systemName}
@@ -2956,11 +3147,19 @@ ${log.payload || ''}
             leadAssignment={leadAssignment}
             currencyCode={currencyCode}
             taskAccess={taskAccess}
+            initialSelectedLeadId={subLeadId}
           />
         );
-      case "projects":
+      }
+      case "projects": {
+        const subProjectId = (activeRoute.startsWith("projects/") && activeRoute.length > "projects/".length)
+          ? decodeURIComponent(activeRoute.slice("projects/".length))
+          : (activeRoute.startsWith("project-") && activeRoute.length > "project-".length)
+          ? decodeURIComponent(activeRoute.slice("project-".length))
+          : undefined;
         return (
           <ProjectsView
+            initialSelectedProjectId={subProjectId}
             projects={projects}
             setProjects={updateProjectsAndSync}
             projectTypes={projectTypes}
@@ -2991,7 +3190,11 @@ ${log.payload || ''}
             mailConfigured={isSystemMailConfigured(integrationsConfig)}
           />
         );
-      case "clients":
+      }
+      case "clients": {
+        const subClient = (activeRoute.startsWith("clients/") && activeRoute.length > "clients/".length)
+          ? decodeURIComponent(activeRoute.slice("clients/".length))
+          : undefined;
         return (
           <ClientsView
             leads={leads}
@@ -3002,6 +3205,7 @@ ${log.payload || ''}
             projectManagers={projectManagers}
             projectManagerColors={projectManagerColors}
             leadSources={leadSources}
+            initialSelectedClient={subClient}
             systemLanguage={userLanguage}
             tasks={tasks}
             setTasks={updateTasksAndSync}
@@ -3022,6 +3226,7 @@ ${log.payload || ''}
             taskStateColors={taskStateColors}
           />
         );
+      }
       case "financial":
         return (
           <FinancialManagementView
@@ -3038,8 +3243,8 @@ ${log.payload || ''}
             userLanguage={userLanguage}
             currencyCode={currencyCode}
             onOpenProject={(projId) => {
-              window.location.hash = `projects?id=${projId}`;
-              setActiveTab("projects");
+              window.location.hash = `projects/${projId}`;
+              setActiveTab(`projects/${projId}`);
             }}
             onOpenClient={(clientId) => {
               const cl = leads.find(l => l.id === clientId);
@@ -3090,7 +3295,7 @@ ${log.payload || ''}
             currentUser={activeUser}
             users={users}
             setUsers={updateUsersAndSync}
-            systemLanguage={systemLanguage}
+            systemLanguage={userLanguage}
             userLanguage={userLanguage}
             setUserLanguage={changeUserLanguage}
             userTheme={userTheme}
@@ -3302,6 +3507,24 @@ ${log.payload || ''}
             }}
           />
         );
+      case "employees":
+        return (
+          <EmployeesView
+            access={access.module("employees")}
+            systemLanguage={userLanguage}
+            systemCurrency={currencyCode}
+            currentUser={activeUser}
+            employees={employees}
+            setEmployees={updateEmployeesAndSync}
+            salaries={employeeSalaries}
+            setSalaries={updateEmployeeSalariesAndSync}
+            vacations={employeeVacations}
+            setVacations={updateEmployeeVacationsAndSync}
+            employeeSettings={employeeSettings}
+            setEmployeeSettings={updateEmployeeSettingsAndSync}
+            financialCategories={financialCategories}
+          />
+        );
       default:
         return (
           <TaskDashboardView 
@@ -3368,13 +3591,13 @@ ${log.payload || ''}
             <OrganicNodeDatabaseLoader size={155} />
           </div>
           
-          <h2 className="text-xl font-heading font-black tracking-widest text-slate-900 dark:text-white uppercase drop-shadow-sm">
+          <h2 className="text-title font-heading font-bold text-slate-900 dark:text-white drop-shadow-sm">
             {systemName || "CCRM"}
           </h2>
           
           <div className="flex items-center gap-2 mt-3.5 px-4 py-1.5 rounded-full bg-white/50 dark:bg-slate-900/50 border border-white/60 dark:border-white/10 backdrop-blur-md shadow-sm">
             <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse shadow-sm shadow-emerald-500/50"></span>
-            <p className="text-[10px] font-black text-slate-800 dark:text-slate-200 uppercase tracking-widest">
+            <p className="type-overline text-slate-800 dark:text-slate-200">
               {t("Syncing database connection...", "Pripájam sa k databáze...", "Kapcsolódás az adatbázishoz...")}
             </p>
           </div>
@@ -3437,6 +3660,7 @@ ${log.payload || ''}
 
   return (
     <UserPrefsContext.Provider value={userPrefsApi}>
+    <ProjectStatusesProvider value={projectStatuses}>
     {/* One "new lead / client" form for every picker in the app — see QuickAddClient. */}
     <QuickAddClientProvider
       setLeads={updateLeadsAndSync}
@@ -3538,8 +3762,59 @@ ${log.payload || ''}
             canRunWorkflows={access.canEdit("automation")}
           />
           
-          <main className="flex-1 p-4 md:p-6 overflow-y-auto [scrollbar-gutter:stable] max-w-[1600px] mx-auto w-full relative flex flex-col justify-between">
+          <main className="workspace flex-1 overflow-y-auto [scrollbar-gutter:stable] relative flex flex-col justify-between">
             <div className="shrink-0 w-full">
+              {showNotifBanner && currentUser && getBrowserNotificationPermission() === "default" && (
+                <div className="mb-4 bg-gradient-to-r from-blue-600 to-indigo-600 text-white px-4 py-3 rounded-2xl flex items-center justify-between shadow-md animate-in fade-in slide-in-from-top-2 duration-200">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-white/20 rounded-xl shrink-0">
+                      <Bell className="h-5 w-5 text-white animate-pulse" />
+                    </div>
+                    <div>
+                      <p className="text-ui font-bold">
+                        {t("Enable Desktop Notifications", "Zapnúť upozornenia na ploche", "Asztali értesítések engedélyezése")}
+                      </p>
+                      <p className="text-caption text-blue-100 font-medium">
+                        {t(
+                          "Get instant alerts when tasks are assigned to you or marked as completed.",
+                          "Dostávajte okamžité hlásenia pri priradení novej úlohy alebo jej dokončení.",
+                          "Értesüljön azonnal az új feladatok kijelöléséről és a feladatok befejezéséről."
+                        )}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        const granted = await requestBrowserNotificationPermission(currentUser);
+                        setShowNotifBanner(false);
+                        if (granted) {
+                          sendTaskPushNotification({
+                            title: t("Notifications Active", "Upozornenia aktívne", "Értesítések bekapcsolva"),
+                            body: t("You will now receive task alerts.", "Budete dostávať hlásenia o úlohách.", "Mostantól kapni fog értesítéseket a feladatokról."),
+                            type: "info",
+                          });
+                        }
+                      }}
+                      className="px-3.5 py-1.5 bg-white text-blue-700 hover:bg-blue-50 text-ui font-bold rounded-xl shadow-sm transition active:scale-95"
+                    >
+                      {t("Enable", "Povoliť", "Engedélyezés")}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowNotifBanner(false);
+                        sessionStorage.setItem("ccrm_notif_banner_dismissed", "1");
+                      }}
+                      className="p-1.5 hover:bg-white/10 rounded-xl text-white/80 hover:text-white transition"
+                      title={t("Dismiss", "Zavrieť", "Bezárás")}
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                </div>
+              )}
               {/* Advance warning that the licence is lapsing. Above the workspace
                   rather than over it: nothing here justifies interrupting work,
                   and it stays out of the per-view ErrorBoundary so a crash in one
@@ -3579,7 +3854,7 @@ ${log.payload || ''}
                 </Suspense>
               </ErrorBoundary>
             </div>
-            <footer className="mt-12 pt-4 border-t border-slate-200/50 flex justify-end items-center text-[10px] text-slate-400 select-none font-semibold uppercase tracking-wider">
+            <footer className="mt-12 pt-4 border-t border-slate-200/50 flex justify-end items-center type-overline text-slate-400 select-none">
               <span>v{VERSION}</span>
             </footer>
           </main>
@@ -3627,14 +3902,14 @@ ${log.payload || ''}
         {isSyncIndicatorVisible && (
           <div className="pointer-events-auto flex items-center gap-2 px-3.5 py-2 rounded-full bg-slate-900/90 text-white shadow-lg backdrop-blur-sm animate-in fade-in slide-in-from-bottom duration-200 select-none">
             <span className="h-3.5 w-3.5 rounded-full border-2 border-white/30 border-t-white animate-spin" aria-hidden="true" />
-            <span className="text-[11px] font-black uppercase tracking-wider">
+            <span className="type-overline">
               {userLanguage === "sk" ? "Ukladá sa…" : userLanguage === "hu" ? "Mentés…" : "Saving…"}
             </span>
           </div>
         )}
         {toast && (
           <div className="pointer-events-auto animate-in slide-in-from-bottom duration-300">
-            <div className={`bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-4 text-xs font-black uppercase tracking-wider border ${
+            <div className={`bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-4 text-ui font-bold border ${
               toast.variant === "error" ? "border-rose-500/70" : toast.variant === "warning" ? "border-amber-500/70" : "border-slate-800"
             }`}>
               <span>{toast.message}</span>
@@ -3644,14 +3919,14 @@ ${log.payload || ''}
                     toast.action?.onClick();
                     setToast(null);
                   }}
-                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold cursor-pointer transition-all active:scale-95 text-[10px]"
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold cursor-pointer transition-all active:scale-95 text-micro"
                 >
                   {toast.action.label}
                 </button>
               )}
               <button
                 onClick={() => setToast(null)}
-                className="text-slate-400 hover:text-white font-black ml-2 cursor-pointer"
+                className="text-slate-400 hover:text-white font-bold ml-2 cursor-pointer"
               >
                 ✕
               </button>
@@ -3670,8 +3945,8 @@ ${log.payload || ''}
             {/* Header */}
             <div className="flex items-center justify-between border-b border-slate-100 pb-3 shrink-0">
               <div className="min-w-0 pr-4">
-                <span className="text-[10px] font-black uppercase text-amber-700 tracking-wider">{t("File Preview", "Náhľad súboru", "Fájl előnézet")}</span>
-                <h3 className="text-sm font-heading font-black uppercase tracking-tight truncate">{previewFile.name}</h3>
+                <span className="type-overline text-amber-700">{t("File Preview", "Náhľad súboru", "Fájl előnézet")}</span>
+                <h3 className="text-body font-heading font-bold truncate">{previewFile.name}</h3>
               </div>
               <div className="flex items-center gap-2">
                 {/* The browser's own viewer reports why a document failed to open,
@@ -3680,14 +3955,14 @@ ${log.payload || ''}
                   href={previewFile.url}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 text-[10px] font-black uppercase flex items-center gap-1 transition-all"
+                  className="px-3 py-1.5 rounded-xl bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 type-overline flex items-center gap-1 transition-all"
                 >
                   {t("Open in a new tab", "Otvoriť na novej karte", "Megnyitás új lapon")}
                 </a>
                 <a
                   href={previewFile.url}
                   download={previewFile.name}
-                  className="px-3 py-1.5 rounded-xl bg-amber-700 hover:bg-amber-600 border border-amber-800 text-white text-[10px] font-black uppercase flex items-center gap-1 transition-all"
+                  className="px-3 py-1.5 rounded-xl bg-amber-700 hover:bg-amber-600 border border-amber-800 text-white type-overline flex items-center gap-1 transition-all"
                 >
                   {t("Download", "Stiahnuť", "Letöltés")}
                 </a>
@@ -3716,11 +3991,11 @@ ${log.payload || ''}
 
       {/* Right Error Sidebar */}
       {errorSidebarEnabled && (
-        <div className="w-[300px] bg-white border-l border-slate-200 flex flex-col h-full shrink-0 animate-in slide-in-from-right duration-300 text-left">
+        <div className="w-75 bg-white border-l border-slate-200 flex flex-col h-full shrink-0 animate-in slide-in-from-right duration-300 text-left">
           <div className="p-4.5 border-b border-slate-100 flex items-center justify-between bg-slate-50">
             <div className="flex items-center gap-1.5 text-red-600">
               <AlertOctagon className="h-4.5 w-4.5 text-red-500 animate-pulse" />
-              <span className="font-heading font-extrabold text-slate-900 uppercase tracking-wider text-[10.5px]">
+              <span className="font-heading text-slate-900 type-overline">
                 {t("Background Errors", "Chyby na pozadí", "Háttérhibák")}
               </span>
             </div>
@@ -3750,7 +4025,7 @@ ${log.payload || ''}
                 <RefreshCw className="h-5 w-5 animate-spin text-slate-400" />
               </div>
             ) : errorLogs.length === 0 ? (
-              <div className="text-center py-12 text-slate-400 font-bold text-[10.5px]">
+              <div className="text-center py-12 text-slate-400 font-bold text-micro">
                 {t("No background errors", "Žiadne chyby na pozadí", "Nincsenek háttérhibák")}
               </div>
             ) : (
@@ -3758,17 +4033,17 @@ ${log.payload || ''}
                 <div
                   key={log.id}
                   onClick={() => setSelectedLog(log)}
-                  className="p-3 bg-white hover:bg-red-50/10 rounded-2xl border border-slate-200 hover:border-red-200/60 transition-all cursor-pointer shadow-sm flex flex-col gap-1.5 text-[10.5px]"
+                  className="p-3 bg-white hover:bg-red-50/10 rounded-2xl border border-slate-200 hover:border-red-200/60 transition-all cursor-pointer shadow-sm flex flex-col gap-1.5 text-micro"
                 >
                   <div className="flex items-center justify-between">
-                    <span className="font-mono text-[8.5px] text-slate-400">{log.created_at}</span>
-                    <span className={`px-1.5 py-0.5 rounded-md font-black text-[7.5px] uppercase ${
+                    <span className="font-mono text-micro text-slate-400">{log.created_at}</span>
+                    <span className={`px-1.5 py-0.5 rounded-md type-overline ${
                       log.request_method === 'POST' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-700'
                     }`}>
                       {log.request_method}
                     </span>
                   </div>
-                  <div className="font-mono text-[8.5px] text-slate-500 truncate">
+                  <div className="font-mono text-micro text-slate-500 truncate">
                     {log.request_uri}
                   </div>
                   <div className="font-bold text-red-600 line-clamp-2 leading-relaxed">
@@ -3788,7 +4063,7 @@ ${log.payload || ''}
             <div className="p-6 border-b border-slate-100 flex items-center justify-between bg-slate-50">
               <div className="flex items-center gap-2 text-red-600">
                 <AlertOctagon className="h-5 w-5 shrink-0" />
-                <h3 className="font-heading font-extrabold text-slate-900 uppercase tracking-wider text-xs">
+                <h3 className="font-heading font-extrabold text-slate-900 text-ui">
                   {t("Exception / Error Details", "Detail výnimky / chyby", "Kivétel / hiba részletei")}
                 </h3>
               </div>
@@ -3796,7 +4071,7 @@ ${log.payload || ''}
                 <button
                   type="button"
                   onClick={() => handleCopyLogDetails(selectedLog)}
-                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-[10px] font-black uppercase tracking-wider flex items-center gap-1.5 cursor-pointer transition-all active:scale-95 font-bold"
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl type-overline flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
                 >
                   <Copy className="h-3.5 w-3.5" />
                   {t("Copy", "Kopírovať", "Másolás")}
@@ -3804,39 +4079,39 @@ ${log.payload || ''}
                 <button
                   type="button"
                   onClick={() => setSelectedLog(null)}
-                  className="text-slate-400 hover:text-slate-800 p-1.5 hover:bg-slate-100 rounded-xl transition-all cursor-pointer font-bold text-sm"
+                  className="text-slate-400 hover:text-slate-800 p-1.5 hover:bg-slate-100 rounded-xl transition-all cursor-pointer font-bold text-body"
                 >
                   ✕
                 </button>
               </div>
             </div>
-            <div className="p-6 overflow-y-auto space-y-4 font-medium text-slate-700 text-xs">
+            <div className="p-6 overflow-y-auto space-y-4 font-medium text-slate-700 text-ui">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 border-b border-slate-100 pb-4">
                 <div>
-                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Date & Time", "Dátum a čas", "Dátum és idő")}</span>
-                  <span className="font-mono text-[10.5px] text-slate-700 font-bold">{selectedLog.created_at}</span>
+                  <span className="type-overline text-slate-400 block">{t("Date & Time", "Dátum a čas", "Dátum és idő")}</span>
+                  <span className="font-mono text-micro text-slate-700 font-bold">{selectedLog.created_at}</span>
                 </div>
                 <div>
-                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Method & URI", "Metóda a URI", "Metódus és URI")}</span>
-                  <span className="font-mono text-[10.5px] text-slate-700 font-bold">{selectedLog.request_method} {selectedLog.request_uri}</span>
+                  <span className="type-overline text-slate-400 block">{t("Method & URI", "Metóda a URI", "Metódus és URI")}</span>
+                  <span className="font-mono text-micro text-slate-700 font-bold">{selectedLog.request_method} {selectedLog.request_uri}</span>
                 </div>
                 <div>
-                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("File & Line", "Súbor a riadok", "Fájl és sor")}</span>
-                  <span className="font-mono text-[10.5px] text-slate-700 font-bold">{selectedLog.file ? `${selectedLog.file.split('/').pop()}:${selectedLog.line}` : 'N/A'}</span>
+                  <span className="type-overline text-slate-400 block">{t("File & Line", "Súbor a riadok", "Fájl és sor")}</span>
+                  <span className="font-mono text-micro text-slate-700 font-bold">{selectedLog.file ? `${selectedLog.file.split('/').pop()}:${selectedLog.line}` : 'N/A'}</span>
                 </div>
               </div>
 
               <div className="space-y-1">
-                <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Error Message", "Chybová správa", "Hibaüzenet")}</span>
-                <div className="p-3 bg-red-50 text-red-800 rounded-xl font-mono text-[11px] font-bold border border-red-100 whitespace-pre-wrap leading-relaxed">
+                <span className="type-overline text-slate-400 block">{t("Error Message", "Chybová správa", "Hibaüzenet")}</span>
+                <div className="p-3 bg-red-50 text-red-800 rounded-xl font-mono text-caption font-bold border border-red-100 whitespace-pre-wrap leading-relaxed">
                   {selectedLog.message}
                 </div>
               </div>
 
               {selectedLog.file && (
                 <div className="space-y-1">
-                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Full File Path", "Úplná cesta k súboru", "Teljes fájlútvonal")}</span>
-                  <div className="p-2.5 bg-slate-50 text-slate-600 rounded-xl font-mono text-[10.5px] border border-slate-100">
+                  <span className="type-overline text-slate-400 block">{t("Full File Path", "Úplná cesta k súboru", "Teljes fájlútvonal")}</span>
+                  <div className="p-2.5 bg-slate-50 text-slate-600 rounded-xl font-mono text-micro border border-slate-100">
                     {selectedLog.file} (Line {selectedLog.line})
                   </div>
                 </div>
@@ -3844,8 +4119,8 @@ ${log.payload || ''}
 
               {selectedLog.trace && (
                 <div className="space-y-1">
-                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Stack Trace", "Výpis zásobníka", "Hívási verem")}</span>
-                  <pre className="p-4 bg-slate-900 text-slate-100 rounded-2xl font-mono text-[10px] overflow-x-auto whitespace-pre leading-relaxed border border-slate-800 max-h-64">
+                  <span className="type-overline text-slate-400 block">{t("Stack Trace", "Výpis zásobníka", "Hívási verem")}</span>
+                  <pre className="p-4 bg-slate-900 text-slate-100 rounded-2xl font-mono text-micro overflow-x-auto whitespace-pre leading-relaxed border border-slate-800 max-h-64">
                     {selectedLog.trace}
                   </pre>
                 </div>
@@ -3853,8 +4128,8 @@ ${log.payload || ''}
 
               {selectedLog.payload && (
                 <div className="space-y-1">
-                  <span className="text-[9px] uppercase tracking-wider text-slate-400 font-bold block">{t("Request Payload", "Telo požiadavky", "Kérés tartalma")}</span>
-                  <pre className="p-4 bg-slate-900 text-slate-100 rounded-2xl font-mono text-[10px] overflow-x-auto whitespace-pre leading-relaxed border border-slate-800 max-h-48">
+                  <span className="type-overline text-slate-400 block">{t("Request Payload", "Telo požiadavky", "Kérés tartalma")}</span>
+                  <pre className="p-4 bg-slate-900 text-slate-100 rounded-2xl font-mono text-micro overflow-x-auto whitespace-pre leading-relaxed border border-slate-800 max-h-48">
                     {selectedLog.payload}
                   </pre>
                 </div>
@@ -3865,6 +4140,7 @@ ${log.payload || ''}
       )}
     </div>
     </QuickAddClientProvider>
+    </ProjectStatusesProvider>
     </UserPrefsContext.Provider>
   );
 }

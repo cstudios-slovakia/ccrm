@@ -637,11 +637,11 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
             <Strikethrough className="h-3.5 w-3.5" />
           </button>
           
-          <div className="h-4 w-[1px] bg-slate-200 mx-1" />
+          <div className="h-4 w-px bg-slate-200 mx-1" />
 
           {/* Inline Code */}
           <button 
-            onClick={() => applyCustomSpan("bg-slate-100 text-pink-600 px-1 py-0.5 rounded font-mono text-xs")}
+            onClick={() => applyCustomSpan("bg-slate-100 text-pink-600 px-1 py-0.5 rounded font-mono text-ui")}
             className="p-1.5 hover:bg-slate-100 rounded-lg text-slate-500 hover:text-slate-900 transition-colors cursor-pointer animate-none"
             title={t("Code tag", "Značka kódu", "Kód címke")}
           >
@@ -683,12 +683,12 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                 <button onClick={() => applyInlineStyle("hiliteColor", "#bfdbfe")} className="h-4 w-4 rounded-full bg-blue-200 border border-blue-300 hover:scale-110 transition-transform cursor-pointer" />
                 <button onClick={() => applyInlineStyle("hiliteColor", "#fbcfe8")} className="h-4 w-4 rounded-full bg-pink-200 border border-pink-300 hover:scale-110 transition-transform cursor-pointer" />
                 <button onClick={() => applyInlineStyle("hiliteColor", "#ddd6fe")} className="h-4 w-4 rounded-full bg-purple-200 border border-purple-300 hover:scale-110 transition-transform cursor-pointer" />
-                <button onClick={() => applyInlineStyle("hiliteColor", "transparent")} className="h-4 w-4 rounded-full bg-white border border-slate-300 hover:scale-110 transition-transform cursor-pointer flex items-center justify-center text-[10px] text-slate-400 font-bold font-sans">✕</button>
+                <button onClick={() => applyInlineStyle("hiliteColor", "transparent")} className="h-4 w-4 rounded-full bg-white border border-slate-300 hover:scale-110 transition-transform cursor-pointer flex items-center justify-center text-micro text-slate-400 font-bold font-sans">✕</button>
               </div>
             </div>
           </div>
 
-          <div className="h-4 w-[1px] bg-slate-200 mx-1" />
+          <div className="h-4 w-px bg-slate-200 mx-1" />
 
           {/* Link Insertion */}
           <button 
@@ -763,7 +763,7 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
 
                 {/* 3. Numbered list block */}
                 {block.type === "number" && (
-                  <div className="pt-1 select-none text-xs font-black text-slate-400 w-5 shrink-0 text-right pr-1 font-heading">
+                  <div className="pt-1 select-none text-ui font-bold text-slate-400 w-5 shrink-0 text-right pr-1 font-heading">
                     {getSequentialNumber(block.id)}.
                   </div>
                 )}
@@ -818,22 +818,22 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                     }
                     className={cn(
                       "outline-none text-slate-800 transition-all w-full leading-relaxed select-text py-1 empty:before:content-[attr(data-placeholder)] empty:before:text-slate-300 empty:before:pointer-events-none",
-                      block.type === "paragraph" && "text-sm",
-                      block.type === "h1" && "text-2xl font-heading font-extrabold text-slate-900 pt-3 pb-1 tracking-tight",
-                      block.type === "h2" && "text-xl font-heading font-extrabold text-slate-900 pt-2 pb-1 tracking-tight",
-                      block.type === "h3" && "text-lg font-heading font-extrabold text-slate-900 pt-1.5 pb-0.5 tracking-tight",
-                      block.type === "h4" && "text-base font-heading font-bold text-slate-800 pt-1 pb-0.5",
-                      block.type === "todo" && cn("text-sm", block.checked && "line-through text-slate-400 font-medium"),
-                      block.type === "bullet" && "text-sm",
-                      block.type === "number" && "text-sm",
-                      block.type === "toggle" && "text-sm font-semibold text-slate-800",
+                      block.type === "paragraph" && "text-body",
+                      block.type === "h1" && "type-page-title text-slate-900 pt-3 pb-1",
+                      block.type === "h2" && "text-title font-heading font-extrabold text-slate-900 pt-2 pb-1 tracking-tight",
+                      block.type === "h3" && "text-title font-heading font-extrabold text-slate-900 pt-1.5 pb-0.5 tracking-tight",
+                      block.type === "h4" && "text-title-sm font-heading font-bold text-slate-800 pt-1 pb-0.5",
+                      block.type === "todo" && cn("text-body", block.checked && "line-through text-slate-400 font-medium"),
+                      block.type === "bullet" && "text-body",
+                      block.type === "number" && "text-body",
+                      block.type === "toggle" && "text-body font-semibold text-slate-800",
                       block.type === "banner" && bannerInfo && cn(
-                        "text-xs font-semibold p-3.5 pr-10 rounded-2xl border w-full relative",
+                        "text-ui font-semibold p-3.5 pr-10 rounded-2xl border w-full relative",
                         bannerInfo.classes
                       ),
-                      block.type === "code" && "font-mono text-xs bg-slate-900 text-slate-200 p-4 rounded-2xl whitespace-pre overflow-x-auto border border-slate-800 w-full",
-                      block.type === "quote" && "italic pl-3 text-sm text-slate-600 border-l-0 py-2 bg-slate-50/50 rounded-r-xl",
-                      block.type === "pullquote" && "text-center py-6 px-4 text-base font-heading font-bold text-slate-700 italic border-y border-slate-100 max-w-lg mx-auto"
+                      block.type === "code" && "font-mono text-ui bg-slate-900 text-slate-200 p-4 rounded-2xl whitespace-pre overflow-x-auto border border-slate-800 w-full",
+                      block.type === "quote" && "italic pl-3 text-body text-slate-600 border-l-0 py-2 bg-slate-50/50 rounded-r-xl",
+                      block.type === "pullquote" && "text-center py-6 px-4 text-title-sm font-heading font-bold text-slate-700 italic border-y border-slate-100 max-w-lg mx-auto"
                     )}
                     style={{ 
                       textAlign: block.align || "left",
@@ -854,8 +854,8 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                         </button>
                         {/* 14 colors dropdown panel */}
                         <div className="absolute right-0 top-full mt-1.5 pb-2 hidden group-hover/palette:block z-40">
-                          <div className="bg-white border border-slate-200 p-2.5 rounded-xl shadow-xl space-y-2.5 w-[210px] select-none text-left">
-                            <div className="text-[9px] font-black text-slate-400 uppercase tracking-wider">
+                          <div className="bg-white border border-slate-200 p-2.5 rounded-xl shadow-xl space-y-2.5 w-52.5 select-none text-left">
+                            <div className="type-overline text-slate-400">
                               {t("Light variants", "Svetlé varianty", "Világos változatok")}
                             </div>
                             <div className="grid grid-cols-7 gap-1.5">
@@ -877,7 +877,7 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                               })}
                             </div>
                             
-                            <div className="text-[9px] font-black text-slate-400 uppercase tracking-wider pt-1 border-t border-slate-100">
+                            <div className="type-overline text-slate-400 pt-1 border-t border-slate-100">
                               {t("Saturated variants", "Sýte varianty", "Telített változatok")}
                             </div>
                             <div className="grid grid-cols-7 gap-1.5">
@@ -906,7 +906,7 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
 
                   {/* Toggle Content details render */}
                   {block.type === "toggle" && block.toggled && (
-                    <div className="pl-6 border-l border-slate-100/80 mt-2 text-xs text-slate-500 font-medium animate-in fade-in slide-in-from-top-1 duration-200">
+                    <div className="pl-6 border-l border-slate-100/80 mt-2 text-ui text-slate-500 font-medium animate-in fade-in slide-in-from-top-1 duration-200">
                       <EditableBlock
                         innerRef={() => {}}
                         content={block.toggleContent || ""}
@@ -922,7 +922,7 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                         onBlur={(e) => {
                           setBlocks(prev => prev.map(b => b.id === block.id ? { ...b, toggleContent: e.currentTarget.innerHTML } : b));
                         }}
-                        className="outline-none min-h-[20px] text-slate-600 font-normal py-0.5 leading-relaxed empty:before:content-[attr(data-placeholder)] empty:before:text-slate-300"
+                        className="outline-none min-h-5 text-slate-600 font-normal py-0.5 leading-relaxed empty:before:content-[attr(data-placeholder)] empty:before:text-slate-300"
                         placeholder={getTranslation(systemLanguage, "editor.toggle_placeholder")}
                       />
                     </div>
@@ -931,17 +931,17 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                   {/* INDIVIDUAL ROW DROPDOWN POPOVER TYPE SELECTION */}
                   {isMenuOpen && (
                     <div 
-                      className="absolute left-0 top-full z-[9999] w-[460px] bg-white border border-slate-200 shadow-2xl rounded-2xl p-1 flex flex-col select-none animate-in fade-in slide-in-from-top-2 duration-150 mt-1"
+                      className="absolute left-0 top-full z-[9999] w-115 bg-white border border-slate-200 shadow-2xl rounded-2xl p-1 flex flex-col select-none animate-in fade-in slide-in-from-top-2 duration-150 mt-1"
                       onMouseDown={(e) => e.preventDefault()}
                     >
                       <div className="grid grid-cols-2 gap-4 divide-x divide-slate-100 p-2.5">
                         {/* Basic elements column */}
                         <div className="space-y-0.5 pr-2">
-                          <div className="px-2.5 py-1 text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 border-b border-slate-100/50 pb-1">
+                          <div className="px-2.5 py-1 type-overline text-slate-400 mb-1 border-b border-slate-100/50 pb-1">
                             {t("Basic Elements", "Základné prvky", "Alapelemek")}
                           </div>
                           {basicFiltered.length === 0 ? (
-                            <div className="text-[10px] text-slate-400 italic px-2.5 py-1.5">{t("No matches", "Žiadne zhody", "Nincs találat")}</div>
+                            <div className="text-micro text-slate-400 italic px-2.5 py-1.5">{t("No matches", "Žiadne zhody", "Nincs találat")}</div>
                           ) : (
                             basicFiltered.map(opt => {
                               const globalIdx = filteredOptions.findIndex(o => o.id === opt.id);
@@ -952,7 +952,7 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                                   key={opt.id}
                                   onClick={() => convertBlockType(block.id, opt.type, opt.extra)}
                                   className={cn(
-                                    "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold cursor-pointer transition-colors",
+                                    "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-left text-ui font-semibold cursor-pointer transition-colors",
                                     isSelected ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-50"
                                   )}
                                 >
@@ -966,11 +966,11 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                         
                         {/* Advanced elements column */}
                         <div className="space-y-0.5 pl-3">
-                          <div className="px-2.5 py-1 text-[9px] font-black text-slate-400 uppercase tracking-widest mb-1 border-b border-slate-100/50 pb-1">
+                          <div className="px-2.5 py-1 type-overline text-slate-400 mb-1 border-b border-slate-100/50 pb-1">
                             {t("Advanced Elements", "Pokročilé prvky", "Speciális elemek")}
                           </div>
                           {advancedFiltered.length === 0 ? (
-                            <div className="text-[10px] text-slate-400 italic px-2.5 py-1.5">{t("No matches", "Žiadne zhody", "Nincs találat")}</div>
+                            <div className="text-micro text-slate-400 italic px-2.5 py-1.5">{t("No matches", "Žiadne zhody", "Nincs találat")}</div>
                           ) : (
                             advancedFiltered.map(opt => {
                               const globalIdx = filteredOptions.findIndex(o => o.id === opt.id);
@@ -981,7 +981,7 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
                                   key={opt.id}
                                   onClick={() => convertBlockType(block.id, opt.type, opt.extra)}
                                   className={cn(
-                                    "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-left text-xs font-semibold cursor-pointer transition-colors",
+                                    "w-full flex items-center gap-2 px-2.5 py-1.5 rounded-xl text-left text-ui font-semibold cursor-pointer transition-colors",
                                     isSelected ? "bg-slate-900 text-white" : "text-slate-700 hover:bg-slate-50"
                                   )}
                                 >
@@ -1009,7 +1009,7 @@ export const BlockEditor: React.FC<BlockEditorProps> = ({
           plain textarea would. */}
       {fillHeight && (
         <div
-          className="flex-1 min-h-[28px] cursor-text"
+          className="flex-1 min-h-7 cursor-text"
           onMouseDown={focusTrailingBlock}
         />
       )}

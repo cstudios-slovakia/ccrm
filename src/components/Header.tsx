@@ -20,6 +20,9 @@ import {
     ChevronDown,
     ChevronUp,
     ChevronRight,
+    Bell,
+    Volume2,
+    Heart,
 } from "lucide-react";
 import * as Icons from "lucide-react";
 import type { UserProfile } from "../types";
@@ -27,7 +30,17 @@ import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
 import type { UpdateEntry } from "./UpdateNotesModal";
 import { useUserPref } from "../utils/userPrefs";
+import { useFavorites } from "../utils/favorites";
+import { FavoritesDrawer } from "./FavoritesDrawer";
 import { SidebarSettings } from "./SidebarSettings";
+import { ViewSizeSettings } from "./ViewSizeSettings";
+import {
+    requestBrowserNotificationPermission,
+    getBrowserNotificationPermission,
+    sendTaskPushNotification,
+    sendTestPushNotification,
+    type NotificationPermissionState,
+} from "../utils/browserNotifications";
 
 interface HeaderProps {
     activeTab: string;
@@ -72,12 +85,55 @@ export const Header: React.FC<HeaderProps> = ({
     const [isProfileOpen, setIsProfileOpen] = React.useState(false);
     const [isClosing, setIsClosing] = React.useState(false);
     const [isMeetingsOpen, setIsMeetingsOpen] = React.useState(false);
+    const [isFavoritesOpen, setIsFavoritesOpen] = React.useState(false);
+    const { favoritesCount } = useFavorites();
     const [isMobileSearchOpen, setIsMobileSearchOpen] = React.useState(false);
     const [isMobileSliderOpen, setIsMobileSliderOpen] = React.useState(false);
     const [isMobileSliderClosing, setIsMobileSliderClosing] = React.useState(false);
     const dropdownRef = React.useRef<HTMLDivElement>(null);
     const meetingsDropdownRef = React.useRef<HTMLDivElement>(null);
     const mobileSliderRef = React.useRef<HTMLDivElement>(null);
+
+    const [notifPermission, setNotifPermission] = React.useState<NotificationPermissionState>(() => getBrowserNotificationPermission());
+
+    React.useEffect(() => {
+        const updatePermission = () => {
+            setNotifPermission(getBrowserNotificationPermission());
+        };
+        updatePermission();
+        window.addEventListener("focus", updatePermission);
+        return () => window.removeEventListener("focus", updatePermission);
+    }, []);
+
+    const handleEnableNotifications = async () => {
+        const granted = await requestBrowserNotificationPermission(currentUser);
+        setNotifPermission(getBrowserNotificationPermission());
+        if (granted) {
+            sendTaskPushNotification({
+                title: t("Notifications Active", "Upozornenia aktívne", "Értesítések bekapcsolva"),
+                body: t("You will now receive alerts for task updates.", "Budete dostávať hlásenia o úlohách.", "Mostantól értesítéseket kap a feladatokról."),
+                type: "info",
+            });
+        } else if (Notification.permission === "denied") {
+            const showToast = (window as any).showToast;
+            if (typeof showToast === "function") {
+                showToast(t(
+                    "Notifications are blocked in browser settings. Please allow notifications in site settings (lock icon in address bar).",
+                    "Upozornenia sú zablokované v prehliadači. Povoľte ich v nastaveniach stránky (ikona zámku v paneli adries).",
+                    "Az értesítések le vannak tiltva a böngészőben. Engedélyezze őket az oldal beállításaiban (lakat ikon a címsorban)."
+                ), "warning");
+            }
+        }
+    };
+
+    const handleTestNotification = () => {
+        sendTaskPushNotification({
+            title: t("Test Notification", "Testovacie upozornenie", "Teszt értesítés"),
+            body: t("Desktop & sound alerts are working perfectly!", "Upozornenia na ploche a zvuky fungujú správne!", "Az asztali és hangértesítések hibátlanul működnek!"),
+            type: "info",
+        });
+        sendTestPushNotification(currentUser).catch(() => {});
+    };
 
     const handleCloseMobileSlider = React.useCallback(() => {
         if (!isMobileSliderOpen || isMobileSliderClosing) return;
@@ -572,7 +628,7 @@ export const Header: React.FC<HeaderProps> = ({
                                       ? "Keresés..."
                                       : "Search..."
                             }
-                            className="w-full pl-9 pr-8 py-2 text-xs font-semibold rounded-xl bg-white/90 border border-slate-200 focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-slate-800"
+                            className="w-full pl-9 pr-8 py-2 text-ui font-semibold rounded-xl bg-white/90 border border-slate-200 focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-slate-800"
                         />
                         {searchQuery && (
                             <button
@@ -592,16 +648,16 @@ export const Header: React.FC<HeaderProps> = ({
                             setIsMobileSearchOpen(false);
                             setShowSearchDropdown(false);
                         }}
-                        className="h-9 px-3 rounded-xl border bg-white/80 border-slate-200 text-xs font-semibold text-slate-600 hover:bg-slate-50 flex items-center justify-center shrink-0 shadow-sm"
+                        className="h-9 px-3 rounded-xl border bg-white/80 border-slate-200 text-ui font-semibold text-slate-600 hover:bg-slate-50 flex items-center justify-center shrink-0 shadow-sm"
                     >
                         {t("Cancel", "Zrušiť", "Mégse")}
                     </button>
 
                     {/* Dropdown Suggestions */}
                     {showSearchDropdown && (
-                        <div className="absolute left-2 right-2 top-full mt-1 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl max-h-[380px] overflow-y-auto z-[999] p-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
+                        <div className="absolute left-2 right-2 top-full mt-1 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl max-h-95 overflow-y-auto z-[999] p-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
                             {searchResults.length === 0 ? (
-                                <div className="py-6 text-center text-xs text-slate-400 font-semibold">
+                                <div className="py-6 text-center text-ui text-slate-400 font-semibold">
                                     {systemLanguage === "sk"
                                         ? 'Žiadne výsledky pre "' + searchQuery + '"'
                                         : systemLanguage === "hu"
@@ -631,22 +687,22 @@ export const Header: React.FC<HeaderProps> = ({
                                                 </div>
                                                 <div className="flex-1 min-w-0 text-left">
                                                     <div className="flex items-center justify-between gap-2">
-                                                        <span className="font-bold text-xs truncate text-slate-800">
+                                                        <span className="font-bold text-ui truncate text-slate-800">
                                                             {item.title}
                                                         </span>
                                                         <span
-                                                            className={`text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md border shrink-0 ${getSearchTypeBadgeColor(item.type)}`}
+                                                            className={`type-overline px-1.5 py-0.5 rounded-md border shrink-0 ${getSearchTypeBadgeColor(item.type)}`}
                                                         >
                                                             {getSearchTypeLabel(item.type)}
                                                         </span>
                                                     </div>
                                                     {item.subtitle && (
-                                                        <div className="text-[10px] text-slate-400 font-bold mt-0.5 truncate">
+                                                        <div className="text-micro text-slate-400 font-bold mt-0.5 truncate">
                                                             {item.subtitle}
                                                         </div>
                                                     )}
                                                     {item.excerpt && (
-                                                        <div className="text-[10px] text-slate-500 font-semibold mt-1 leading-relaxed border-l-2 border-slate-200 pl-2 italic truncate">
+                                                        <div className="text-micro text-slate-500 font-semibold mt-1 leading-relaxed border-l-2 border-slate-200 pl-2 italic truncate">
                                                             {item.excerpt}
                                                         </div>
                                                     )}
@@ -663,16 +719,17 @@ export const Header: React.FC<HeaderProps> = ({
                 <>
                     {/* Brand Title */}
                     <div className="flex flex-col shrink-0">
-                        <h1 className="text-sm xs:text-base sm:text-xl font-heading font-extrabold text-slate-900 tracking-tight leading-none uppercase">
+                        <h1 className="text-body xs:text-title-sm font-heading font-extrabold text-slate-900 leading-none">
                             {systemName}
                         </h1>
                     </div>
 
-                    {/* Universal Search bar in the center (Desktop & Tablet) */}
-                    <div
-                        ref={searchContainerRef}
-                        className="relative hidden sm:block sm:w-48 md:w-72 lg:w-96 mx-2 sm:mx-4"
-                    >
+                    {/* Universal Search bar & Favorites in the center (Desktop & Tablet) */}
+                    <div className="hidden sm:flex items-center gap-1.5 sm:gap-2 mx-2 sm:mx-4">
+                        <div
+                            ref={searchContainerRef}
+                            className="relative sm:w-48 md:w-72 lg:w-96"
+                        >
                         <div className="relative">
                             <div className="absolute inset-y-0 left-0 pl-2.5 sm:pl-3 flex items-center pointer-events-none">
                                 {isSearching ? (
@@ -699,7 +756,7 @@ export const Header: React.FC<HeaderProps> = ({
                                           ? "Keresés... (Cmd + K)"
                                           : "Search... (Cmd + K)"
                                 }
-                                className="w-full pl-7 sm:pl-9 pr-6 sm:pr-10 py-1.5 sm:py-2 text-[11px] sm:text-xs font-semibold rounded-xl bg-white/70 border border-slate-200 focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-slate-800"
+                                className="w-full h-9 sm:h-10 pl-7 sm:pl-9 pr-6 sm:pr-10 py-1.5 sm:py-2 text-caption font-semibold rounded-xl bg-white/70 border border-slate-200 focus:outline-none focus:bg-white focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all text-slate-800"
                             />
                             {searchQuery && (
                                 <button
@@ -717,9 +774,9 @@ export const Header: React.FC<HeaderProps> = ({
 
                         {/* Dropdown Suggestions */}
                         {showSearchDropdown && (
-                            <div className="absolute left-0 right-0 top-full mt-1 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl max-h-[380px] overflow-y-auto z-[999] p-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
+                            <div className="absolute left-0 right-0 top-full mt-1 bg-white/95 backdrop-blur-md rounded-2xl border border-slate-200 shadow-2xl max-h-95 overflow-y-auto z-[999] p-1.5 animate-in fade-in slide-in-from-top-2 duration-200">
                                 {searchResults.length === 0 ? (
-                                    <div className="py-6 text-center text-xs text-slate-400 font-semibold">
+                                    <div className="py-6 text-center text-ui text-slate-400 font-semibold">
                                         {systemLanguage === "sk"
                                             ? 'Žiadne výsledky pre "' + searchQuery + '"'
                                             : systemLanguage === "hu"
@@ -746,22 +803,22 @@ export const Header: React.FC<HeaderProps> = ({
                                                     </div>
                                                     <div className="flex-1 min-w-0 text-left">
                                                         <div className="flex items-center justify-between gap-2">
-                                                            <span className="font-bold text-xs truncate text-slate-800">
+                                                            <span className="font-bold text-ui truncate text-slate-800">
                                                                 {item.title}
                                                             </span>
                                                             <span
-                                                                className={`text-[8px] font-black uppercase tracking-wider px-1.5 py-0.5 rounded-md border shrink-0 ${getSearchTypeBadgeColor(item.type)}`}
+                                                                className={`type-overline px-1.5 py-0.5 rounded-md border shrink-0 ${getSearchTypeBadgeColor(item.type)}`}
                                                             >
                                                                 {getSearchTypeLabel(item.type)}
                                                             </span>
                                                         </div>
                                                         {item.subtitle && (
-                                                            <div className="text-[10px] text-slate-400 font-bold mt-0.5 truncate">
+                                                            <div className="text-micro text-slate-400 font-bold mt-0.5 truncate">
                                                                 {item.subtitle}
                                                             </div>
                                                         )}
                                                         {item.excerpt && (
-                                                            <div className="text-[10px] text-slate-500 font-semibold mt-1 leading-relaxed border-l-2 border-slate-200 pl-2 italic truncate">
+                                                            <div className="text-micro text-slate-500 font-semibold mt-1 leading-relaxed border-l-2 border-slate-200 pl-2 italic truncate">
                                                                 {item.excerpt}
                                                             </div>
                                                         )}
@@ -773,6 +830,36 @@ export const Header: React.FC<HeaderProps> = ({
                                 )}
                             </div>
                         )}
+                    </div>
+
+                        {/* Desktop Favorites Button - right next to searchbar */}
+                        <div className="relative shrink-0">
+                            <button
+                                type="button"
+                                onClick={() => setIsFavoritesOpen(!isFavoritesOpen)}
+                                aria-expanded={isFavoritesOpen}
+                                aria-label={t("Favorites", "Obľúbené položky", "Kedvencek")}
+                                className={`h-9 sm:h-10 w-9 sm:w-10 rounded-xl border flex items-center justify-center transition-all shadow-sm cursor-pointer relative ${
+                                    isFavoritesOpen
+                                        ? "bg-[#0b1329] border-[#0b1329] text-rose-500 shadow-inner"
+                                        : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-rose-300 hover:bg-rose-50/50"
+                                }`}
+                                title={t("Favorites", "Obľúbené položky", "Kedvencek")}
+                            >
+                                <Heart
+                                    className={`h-4.5 w-4.5 sm:h-5 sm:w-5 transition-colors ${
+                                        favoritesCount > 0
+                                            ? "text-rose-500 fill-rose-500"
+                                            : "hover:text-rose-500"
+                                    }`}
+                                />
+                                {favoritesCount > 0 && (
+                                    <span className="absolute -top-1 -right-1 flex h-4 min-w-4 px-1 items-center justify-center rounded-full bg-rose-500 text-micro font-bold text-white shadow-xs">
+                                        {favoritesCount}
+                                    </span>
+                                )}
+                            </button>
+                        </div>
                     </div>
 
                     {/* Utilities */}
@@ -793,13 +880,43 @@ export const Header: React.FC<HeaderProps> = ({
                         {isDemoMode && (
                             <a
                                 href="#settings"
-                                className="px-1.5 xs:px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 border border-amber-600 text-white text-[8px] xs:text-[9px] sm:text-[10px] font-black uppercase tracking-wider shadow-md shadow-amber-500/25 transition-all flex items-center gap-1 hover:scale-[1.02] shrink-0"
+                                className="px-1.5 xs:px-2.5 sm:px-3 py-1 sm:py-1.5 rounded-xl bg-amber-500 hover:bg-amber-600 border border-amber-600 text-white type-overline xs:text-micro shadow-md shadow-amber-500/25 transition-all flex items-center gap-1 hover:scale-[1.02] shrink-0"
                             >
                                 <span className="h-1.5 w-1.5 sm:h-2 sm:w-2 rounded-full bg-white animate-pulse" />
                                 <span className="hidden sm:inline">{t("DEMO MODE", "DEMO REŽIM", "DEMÓ MÓD")}</span>
                                 <span className="inline sm:hidden">DEMO</span>
                             </a>
                         )}
+
+                        {/* Mobile Favorites Button (Always visible outside the menu drawer) */}
+                        <button
+                            type="button"
+                            onClick={() => {
+                                if (isMobileSliderOpen) handleCloseMobileSlider();
+                                setIsFavoritesOpen(!isFavoritesOpen);
+                            }}
+                            aria-expanded={isFavoritesOpen}
+                            aria-label={t("Favorites", "Obľúbené položky", "Kedvencek")}
+                            className={`h-8.5 w-8.5 xs:h-9 xs:w-9 sm:hidden rounded-xl border flex items-center justify-center transition-all shadow-sm cursor-pointer relative shrink-0 ${
+                                isFavoritesOpen
+                                    ? "bg-[#0b1329] border-[#0b1329] text-rose-500 shadow-inner"
+                                    : "bg-white/80 border-slate-200 text-[#0b1329] hover:border-rose-300 hover:bg-rose-50/50"
+                            }`}
+                            title={t("Favorites", "Obľúbené položky", "Kedvencek")}
+                        >
+                            <Heart
+                                className={`h-4 w-4 transition-colors ${
+                                    favoritesCount > 0
+                                        ? "text-rose-500 fill-rose-500"
+                                        : "text-slate-600 hover:text-rose-500"
+                                }`}
+                            />
+                            {favoritesCount > 0 && (
+                                <span className="absolute -top-1 -right-1 flex h-3.5 min-w-3.5 px-0.5 items-center justify-center rounded-full bg-rose-500 text-micro font-bold text-white shadow-xs">
+                                    {favoritesCount}
+                                </span>
+                            )}
+                        </button>
 
                         {/* Mobile Down Caret Trigger Button */}
                         <button
@@ -885,7 +1002,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 )}
                             {isMeetingsOpen && (
                                 <div role="menu" className="absolute right-0 mt-2.5 w-60 bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-2xl rounded-2xl p-2.5 z-50 flex flex-col gap-1 select-none animate-in fade-in slide-in-from-top-2 duration-200">
-                                    <div className="px-3 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 mb-1">
+                                    <div className="px-3 py-1.5 type-overline text-slate-400 border-b border-slate-100 mb-1">
                                         {systemLanguage === "sk"
                                             ? "Rýchle akcie zasadačky"
                                             : systemLanguage === "hu"
@@ -901,7 +1018,7 @@ export const Header: React.FC<HeaderProps> = ({
                                                 onNavigateMeetings("record");
                                             }
                                         }}
-                                        className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50/80 transition-all cursor-pointer group"
+                                        className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-ui font-semibold text-rose-600 hover:text-rose-700 hover:bg-rose-50/80 transition-all cursor-pointer group"
                                     >
                                         <Mic className="h-4 w-4 text-rose-500 group-hover:scale-110 transition-transform" />
                                         <div className="flex flex-col">
@@ -912,7 +1029,7 @@ export const Header: React.FC<HeaderProps> = ({
                                                       ? "Megbeszélés rögzítése"
                                                       : "Record Meeting"}
                                             </span>
-                                            <span className="text-[9px] text-rose-400 font-normal">
+                                            <span className="text-micro text-rose-400 font-normal">
                                                 {systemLanguage === "sk"
                                                     ? "Rýchly hlasový záznam"
                                                     : systemLanguage === "hu"
@@ -930,7 +1047,7 @@ export const Header: React.FC<HeaderProps> = ({
                                                 onNavigateMeetings("new");
                                             }
                                         }}
-                                        className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-[#0b1329] hover:bg-slate-100/60 transition-all cursor-pointer group"
+                                        className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-ui font-semibold text-[#0b1329] hover:bg-slate-100/60 transition-all cursor-pointer group"
                                     >
                                         <Plus className="h-4 w-4 text-[#0b1329]" />
                                         <span>
@@ -951,7 +1068,7 @@ export const Header: React.FC<HeaderProps> = ({
                                                 onNavigateMeetings("list");
                                             }
                                         }}
-                                        className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-xs font-semibold text-slate-700 hover:text-[#0b1329] hover:bg-slate-100/60 transition-all cursor-pointer group"
+                                        className="w-full flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-left text-ui font-semibold text-slate-700 hover:text-[#0b1329] hover:bg-slate-100/60 transition-all cursor-pointer group"
                                     >
                                         <List className="h-4 w-4 text-slate-400 group-hover:text-[#0b1329]" />
                                         <span>
@@ -966,6 +1083,7 @@ export const Header: React.FC<HeaderProps> = ({
                             )}
                         </div>
                         )}
+
 
                         {/* Desktop Automation Toolbox Button */}
                         {canRunWorkflows && (
@@ -999,7 +1117,7 @@ export const Header: React.FC<HeaderProps> = ({
                                 )}
                             {isToolboxOpen && (
                                 <div role="menu" className="absolute right-0 mt-2.5 w-64 bg-white/95 backdrop-blur-md border border-slate-200/80 shadow-2xl rounded-2xl p-3.5 z-50 flex flex-col gap-2 select-none animate-in fade-in slide-in-from-top-2 duration-200">
-                                    <div className="px-1.5 pb-2 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 mb-1 flex items-center justify-between">
+                                    <div className="px-1.5 pb-2 type-overline text-slate-400 border-b border-slate-100 mb-1 flex items-center justify-between">
                                         <span>
                                             {t(
                                                 "Manual Triggers",
@@ -1011,7 +1129,7 @@ export const Header: React.FC<HeaderProps> = ({
                                     </div>
 
                                     {manualWorkflows.length === 0 ? (
-                                        <div className="py-6 text-center text-xs text-slate-400 font-medium">
+                                        <div className="py-6 text-center text-ui text-slate-400 font-medium">
                                             {t(
                                                 "No active manual workflows.",
                                                 "Žiadne aktívne manuálne spúšťače.",
@@ -1038,18 +1156,18 @@ export const Header: React.FC<HeaderProps> = ({
 
                                                 if (btnStyle === "skeleton") {
                                                     buttonClass =
-                                                        "w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border-2 text-xs font-bold transition-all hover:scale-[1.01] active:scale-[0.99]";
+                                                        "w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border-2 text-ui font-bold transition-all hover:scale-[1.01] active:scale-[0.99]";
                                                     inlineStyle = {
                                                         borderColor: btnColor,
                                                         color: btnColor,
                                                     };
                                                 } else if (btnStyle === "icon_only") {
                                                     buttonClass =
-                                                        "w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-slate-100 text-xs font-bold transition-all hover:bg-slate-50 hover:scale-[1.01] active:scale-[0.99]";
+                                                        "w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl border border-slate-100 text-ui font-bold transition-all hover:bg-slate-50 hover:scale-[1.01] active:scale-[0.99]";
                                                     inlineStyle = { color: btnColor };
                                                 } else {
                                                     buttonClass =
-                                                        "w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-white text-xs font-bold transition-all hover:opacity-90 hover:scale-[1.01] active:scale-[0.99]";
+                                                        "w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-white text-ui font-bold transition-all hover:opacity-90 hover:scale-[1.01] active:scale-[0.99]";
                                                     inlineStyle = {
                                                         backgroundColor: btnColor,
                                                     };
@@ -1115,6 +1233,33 @@ export const Header: React.FC<HeaderProps> = ({
                             </div>
                         )}
 
+                        {/* Desktop Notifications Enable Button (shown only when notifications are not enabled) */}
+                        {notifPermission !== "granted" && notifPermission !== "unsupported" && (
+                            <div className="relative hidden sm:block">
+                                <button
+                                    type="button"
+                                    onClick={handleEnableNotifications}
+                                    className="h-10 px-3.5 rounded-xl border flex items-center gap-2 transition-all shadow-sm cursor-pointer bg-amber-50 hover:bg-amber-100 border-amber-300 text-amber-900 group active:scale-95"
+                                    title={t(
+                                        "Enable notifications for task updates",
+                                        "Zapnúť upozornenia pre úlohy",
+                                        "Értesítések bekapcsolása a feladatokhoz"
+                                    )}
+                                >
+                                    <div className="relative">
+                                        <Bell className="h-4 w-4 text-amber-600 animate-bounce" />
+                                        <span className="absolute -top-1 -right-1 flex h-2 w-2">
+                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                                            <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+                                        </span>
+                                    </div>
+                                    <span className="text-ui font-bold tracking-tight text-amber-800 hidden md:inline">
+                                        {t("Enable Notifications", "Zapnúť upozornenia", "Értesítések bekapcsolása")}
+                                    </span>
+                                </button>
+                            </div>
+                        )}
+
                         {/* Desktop User Account Trigger Button */}
                         <div className="hidden sm:block">
                             <button
@@ -1165,7 +1310,7 @@ export const Header: React.FC<HeaderProps> = ({
                                             handleCloseMobileSlider();
                                             onAddTask?.();
                                         }}
-                                        className="flex-1 flex items-center justify-center gap-2 py-3 px-3.5 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 text-white text-xs font-bold shadow-md shadow-orange-500/20 active:scale-98 transition-all cursor-pointer"
+                                        className="flex-1 flex items-center justify-center gap-2 py-3 px-3.5 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 text-white text-ui font-bold shadow-md shadow-orange-500/20 active:scale-98 transition-all cursor-pointer"
                                     >
                                         <CheckSquare className="h-4 w-4" />
                                         <span>{t("New Task", "Nová úloha", "Új feladat")}</span>
@@ -1179,7 +1324,7 @@ export const Header: React.FC<HeaderProps> = ({
                                             handleCloseMobileSlider();
                                             handleOpenUpdates();
                                         }}
-                                        className="flex items-center justify-center gap-1.5 py-3 px-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-xs font-bold active:scale-98 transition-all cursor-pointer relative shrink-0"
+                                        className="flex items-center justify-center gap-1.5 py-3 px-3 rounded-2xl bg-amber-50 border border-amber-200 text-amber-900 text-ui font-bold active:scale-98 transition-all cursor-pointer relative shrink-0"
                                     >
                                         <Sparkles className="h-4 w-4 text-amber-500" />
                                         <span>{t("Updates", "Novinky", "Újdonságok")}</span>
@@ -1193,9 +1338,26 @@ export const Header: React.FC<HeaderProps> = ({
                                     type="button"
                                     onClick={() => {
                                         handleCloseMobileSlider();
+                                        setIsFavoritesOpen(true);
+                                    }}
+                                    className="flex items-center justify-center gap-1.5 py-3 px-3 rounded-2xl bg-rose-50 border border-rose-200 text-rose-900 text-ui font-bold active:scale-98 transition-all cursor-pointer relative shrink-0"
+                                >
+                                    <Heart className={`h-4 w-4 ${favoritesCount > 0 ? "fill-rose-500 text-rose-500" : "text-rose-500"}`} />
+                                    <span>{t("Favorites", "Obľúbené", "Kedvencek")}</span>
+                                    {favoritesCount > 0 && (
+                                        <span className="px-1.5 py-0.5 rounded-full bg-rose-500 text-micro font-bold text-white">
+                                            {favoritesCount}
+                                        </span>
+                                    )}
+                                </button>
+
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        handleCloseMobileSlider();
                                         setIsProfileOpen(true);
                                     }}
-                                    className="flex items-center justify-center gap-1.5 py-3 px-3 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-900 text-xs font-bold active:scale-98 transition-all cursor-pointer shrink-0"
+                                    className="flex items-center justify-center gap-1.5 py-3 px-3 rounded-2xl bg-indigo-50 border border-indigo-200 text-indigo-900 text-ui font-bold active:scale-98 transition-all cursor-pointer shrink-0"
                                 >
                                     <User className="h-4 w-4 text-indigo-600" />
                                     <span>{currentUser?.name?.split(" ")[0] || t("Profile", "Profil", "Profil")}</span>
@@ -1210,7 +1372,7 @@ export const Header: React.FC<HeaderProps> = ({
                                             <div className="p-1.5 rounded-lg bg-indigo-100 text-indigo-700">
                                                 <PencilLine className="h-3.5 w-3.5" />
                                             </div>
-                                            <span className="text-xs font-bold text-slate-800">
+                                            <span className="text-ui font-bold text-slate-800">
                                                 {t("Meeting Room", "Zasadačka a stretnutia", "Tárgyaló és megbeszélések")}
                                             </span>
                                         </div>
@@ -1224,7 +1386,7 @@ export const Header: React.FC<HeaderProps> = ({
                                                     handleCloseMobileSlider();
                                                     if (onNavigateMeetings) onNavigateMeetings("new");
                                                 }}
-                                                className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-white border border-slate-200 text-slate-800 text-xs font-bold shadow-2xs hover:bg-slate-50 active:scale-98 transition-all cursor-pointer"
+                                                className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-white border border-slate-200 text-slate-800 text-ui font-bold shadow-2xs hover:bg-slate-50 active:scale-98 transition-all cursor-pointer"
                                             >
                                                 <Plus className="h-3.5 w-3.5 text-indigo-600" />
                                                 <span>{t("New Meeting", "Nové stretnutie", "Új megbeszélés")}</span>
@@ -1237,7 +1399,7 @@ export const Header: React.FC<HeaderProps> = ({
                                                 handleCloseMobileSlider();
                                                 if (onNavigateMeetings) onNavigateMeetings("list");
                                             }}
-                                            className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-white border border-slate-200 text-slate-800 text-xs font-bold shadow-2xs hover:bg-slate-50 active:scale-98 transition-all cursor-pointer ${
+                                            className={`flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-white border border-slate-200 text-slate-800 text-ui font-bold shadow-2xs hover:bg-slate-50 active:scale-98 transition-all cursor-pointer ${
                                                 !canCreateMeeting ? "col-span-2" : ""
                                             }`}
                                         >
@@ -1253,13 +1415,13 @@ export const Header: React.FC<HeaderProps> = ({
                                             handleCloseMobileSlider();
                                             if (onNavigateMeetings) onNavigateMeetings("record");
                                         }}
-                                        className="flex items-center justify-between py-2.5 px-3 rounded-xl bg-rose-50 border border-rose-200/80 text-rose-700 text-xs font-bold hover:bg-rose-100/80 active:scale-98 transition-all cursor-pointer"
+                                        className="flex items-center justify-between py-2.5 px-3 rounded-xl bg-rose-50 border border-rose-200/80 text-rose-700 text-ui font-bold hover:bg-rose-100/80 active:scale-98 transition-all cursor-pointer"
                                     >
                                         <div className="flex items-center gap-2">
                                             <Mic className="h-4 w-4 text-rose-600 fill-rose-600/20" />
                                             <span>{t("Record Meeting", "Nahrať stretnutie", "Megbeszélés rögzítése")}</span>
                                         </div>
-                                        <span className="text-[9px] font-black text-rose-600 uppercase tracking-wider bg-rose-200/60 px-2 py-0.5 rounded-md">
+                                        <span className="type-overline text-rose-600 bg-rose-200/60 px-2 py-0.5 rounded-md">
                                             {t("Record", "Nahrať", "Rögzítés")}
                                         </span>
                                     </button>
@@ -1274,11 +1436,11 @@ export const Header: React.FC<HeaderProps> = ({
                                             <div className="p-1.5 rounded-lg bg-purple-100 text-purple-700">
                                                 <Workflow className="h-3.5 w-3.5" />
                                             </div>
-                                            <span className="text-xs font-bold text-purple-950">
+                                            <span className="text-ui font-bold text-purple-950">
                                                 {t("Manual Triggers", "Manuálne spúšťače", "Kézi indítók")}
                                             </span>
                                         </div>
-                                        <span className="text-[9px] font-black uppercase tracking-wider text-purple-600 bg-purple-100/80 px-2 py-0.5 rounded-full border border-purple-200">
+                                        <span className="type-overline text-purple-600 bg-purple-100/80 px-2 py-0.5 rounded-full border border-purple-200">
                                             {manualWorkflows.length} {t("Active", "Aktívne", "Aktív")}
                                         </span>
                                     </div>
@@ -1296,18 +1458,18 @@ export const Header: React.FC<HeaderProps> = ({
 
                                             if (btnStyle === "skeleton") {
                                                 buttonClass =
-                                                    "w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl border-2 text-xs font-bold transition-all active:scale-98";
+                                                    "w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl border-2 text-ui font-bold transition-all active:scale-98";
                                                 inlineStyle = {
                                                     borderColor: btnColor,
                                                     color: btnColor,
                                                 };
                                             } else if (btnStyle === "icon_only") {
                                                 buttonClass =
-                                                    "w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-bold transition-all active:scale-98";
+                                                    "w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl border border-slate-200 bg-white text-ui font-bold transition-all active:scale-98";
                                                 inlineStyle = { color: btnColor };
                                             } else {
                                                 buttonClass =
-                                                    "w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl text-white text-xs font-bold transition-all active:scale-98 shadow-xs";
+                                                    "w-full flex items-center justify-between gap-2 px-3.5 py-2.5 rounded-xl text-white text-ui font-bold transition-all active:scale-98 shadow-xs";
                                                 inlineStyle = {
                                                     backgroundColor: btnColor,
                                                 };
@@ -1360,7 +1522,7 @@ export const Header: React.FC<HeaderProps> = ({
                             ),
                             createPortal(
                                 <div
-                                    className={`fixed top-20 right-0 bottom-0 w-full max-w-[340px] sm:max-w-md md:w-[420px] bg-white/95 backdrop-blur-lg border-l border-slate-200/80 shadow-2xl flex flex-col justify-between overflow-y-auto p-0 z-50 ${isClosing ? "animate-slide-out-right" : "animate-slide-in-right"}`}
+                                    className={`fixed top-20 right-0 bottom-0 w-full max-w-85 sm:max-w-md md:w-105 bg-white/95 backdrop-blur-lg border-l border-slate-200/80 shadow-2xl flex flex-col justify-between overflow-y-auto p-0 z-50 ${isClosing ? "animate-slide-out-right" : "animate-slide-in-right"}`}
                                     onClick={(e) => e.stopPropagation()}
                                     key="drawer-panel"
                                 >
@@ -1370,7 +1532,7 @@ export const Header: React.FC<HeaderProps> = ({
                                         <div className="p-5 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
                                             <div className="flex items-center gap-3">
                                                 <div
-                                                    className="h-10 w-10 rounded-full flex items-center justify-center font-heading font-extrabold text-sm shadow-lg border"
+                                                    className="h-10 w-10 rounded-full flex items-center justify-center font-heading font-extrabold text-body shadow-lg border"
                                                     style={{
                                                         backgroundColor: `${currentUser?.color || "#6366f1"}15`,
                                                         color:
@@ -1386,12 +1548,12 @@ export const Header: React.FC<HeaderProps> = ({
                                                         : "US"}
                                                 </div>
                                                 <div className="flex flex-col">
-                                                    <span className="text-sm font-black text-slate-800">
+                                                    <span className="text-body font-bold text-slate-800">
                                                         {currentUser
                                                             ? currentUser.name
                                                             : "—"}
                                                     </span>
-                                                    <span className="text-[10px] font-bold text-indigo-600 uppercase tracking-wider">
+                                                    <span className="type-overline text-indigo-600">
                                                         {currentUser
                                                             ? currentUser.role
                                                             : "Global Systems Admin"}
@@ -1427,7 +1589,7 @@ export const Header: React.FC<HeaderProps> = ({
 
                                         {/* Language Selector Section */}
                                         <div className="p-5 space-y-3 border-b border-slate-100">
-                                            <div className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">
+                                            <div className="type-overline text-slate-400 px-1">
                                                 {getTranslation(
                                                     systemLanguage,
                                                     "header.drawer_title",
@@ -1439,13 +1601,13 @@ export const Header: React.FC<HeaderProps> = ({
                                                     onClick={() =>
                                                         setSystemLanguage("en")
                                                     }
-                                                    className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                                                    className={`flex-1 py-3 rounded-xl text-ui font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                                                         systemLanguage === "en"
-                                                            ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 font-black"
+                                                            ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 font-bold"
                                                             : "text-slate-500 hover:text-slate-800 hover:bg-white/60"
                                                     }`}
                                                 >
-                                                    <span className="text-base">
+                                                    <span className="text-title-sm">
                                                         🇬🇧
                                                     </span>{" "}
                                                     EN
@@ -1455,13 +1617,13 @@ export const Header: React.FC<HeaderProps> = ({
                                                     onClick={() =>
                                                         setSystemLanguage("sk")
                                                     }
-                                                    className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                                                    className={`flex-1 py-3 rounded-xl text-ui font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                                                         systemLanguage === "sk"
-                                                            ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 font-black"
+                                                            ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 font-bold"
                                                             : "text-slate-500 hover:text-slate-800 hover:bg-white/60"
                                                     }`}
                                                 >
-                                                    <span className="text-base">
+                                                    <span className="text-title-sm">
                                                         🇸🇰
                                                     </span>{" "}
                                                     SK
@@ -1471,17 +1633,67 @@ export const Header: React.FC<HeaderProps> = ({
                                                     onClick={() =>
                                                         setSystemLanguage("hu")
                                                     }
-                                                    className={`flex-1 py-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                                                    className={`flex-1 py-3 rounded-xl text-ui font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
                                                         systemLanguage === "hu"
-                                                            ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 font-black"
+                                                            ? "bg-indigo-600 text-white shadow-lg shadow-indigo-600/20 font-bold"
                                                             : "text-slate-500 hover:text-slate-800 hover:bg-white/60"
                                                     }`}
                                                 >
-                                                    <span className="text-base">
+                                                    <span className="text-title-sm">
                                                         🇭🇺
                                                     </span>{" "}
                                                     HU
                                                 </button>
+                                            </div>
+                                        </div>
+
+                                        {/* Notifications Section in User Profile Drawer */}
+                                        <div className="p-5 space-y-3 border-b border-slate-100">
+                                            <div className="flex items-center justify-between">
+                                                <div className="type-overline text-slate-400 px-1">
+                                                    {t("Desktop Notifications", "Upozornenia na ploche", "Asztali értesítések")}
+                                                </div>
+                                                <span className={`px-2 py-0.5 rounded-lg type-overline ${
+                                                    notifPermission === "granted"
+                                                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                                                        : notifPermission === "denied"
+                                                        ? "bg-rose-50 text-rose-700 border border-rose-200"
+                                                        : "bg-amber-50 text-amber-700 border border-amber-200"
+                                                }`}>
+                                                    {notifPermission === "granted"
+                                                        ? t("Active", "Aktívne", "Aktív")
+                                                        : notifPermission === "denied"
+                                                        ? t("Blocked", "Zablokované", "Letiltva")
+                                                        : t("Disabled", "Vypnuté", "Kikapcsolva")}
+                                                </span>
+                                            </div>
+                                            <div className="bg-slate-50 border border-slate-200/80 rounded-2xl p-3.5 space-y-3">
+                                                <p className="text-ui text-slate-600 leading-relaxed font-medium">
+                                                    {t(
+                                                        "Receive instant sound and desktop alerts when tasks are assigned to you or marked as completed.",
+                                                        "Dostávajte okamžité zvukové a obrazové hlásenia pri priradení alebo dokončení úloh.",
+                                                        "Azonnali hang- és asztali értesítést kap, ha feladatot rendelnek Önhöz vagy befejeznek."
+                                                    )}
+                                                </p>
+                                                {notifPermission !== "granted" ? (
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleEnableNotifications}
+                                                        className="w-full py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-ui font-bold shadow-md shadow-indigo-600/20 active:scale-98 transition flex items-center justify-center gap-2 cursor-pointer"
+                                                    >
+                                                        <Bell className="h-4 w-4" />
+                                                        <span>{t("Enable Notifications", "Zapnúť upozornenia", "Értesítések bekapcsolása")}</span>
+                                                    </button>
+                                                ) : (
+                                                    <button
+                                                        type="button"
+                                                        onClick={handleTestNotification}
+                                                        className="w-full py-2.5 px-4 rounded-xl bg-white border border-slate-200 hover:bg-slate-100 text-slate-800 text-ui font-bold shadow-2xs active:scale-98 transition flex items-center justify-center gap-2 cursor-pointer"
+                                                    >
+                                                        <Volume2 className="h-4 w-4 text-indigo-600" />
+                                                        <span>{t("Test Notification", "Otestovať upozornenie", "Értesítés tesztelése")}</span>
+                                                    </button>
+                                                )}
                                             </div>
                                         </div>
 
@@ -1493,7 +1705,7 @@ export const Header: React.FC<HeaderProps> = ({
                                                     onOpenPersonalSettings();
                                                     handleClose();
                                                 }}
-                                                className="w-full py-3.5 px-4 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 hover:text-indigo-800 transition-all text-xs font-black uppercase tracking-wider flex items-center justify-center gap-2 cursor-pointer shadow-sm"
+                                                className="w-full py-3.5 px-4 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 text-indigo-700 hover:text-indigo-800 transition-all text-ui font-bold flex items-center justify-center gap-2 cursor-pointer shadow-sm"
                                             >
                                                 <svg
                                                     className="h-4 w-4"
@@ -1521,6 +1733,11 @@ export const Header: React.FC<HeaderProps> = ({
                                             </button>
                                         </div>
 
+                                        {/* View size — text, spacing and layout everywhere except the sidebar */}
+                                        <div className="p-5 pb-0">
+                                            <ViewSizeSettings systemLanguage={systemLanguage} />
+                                        </div>
+
                                         {/* Navigation / Sidebar Settings */}
                                         <div className="p-5">
                                             <SidebarSettings systemLanguage={systemLanguage} compact />
@@ -1528,7 +1745,7 @@ export const Header: React.FC<HeaderProps> = ({
                                     </div>
 
                                     {/* Lower Footer with Logout Option */}
-                                    <div className="p-5 bg-slate-50 border-t border-slate-100 flex justify-between items-center text-[10px] text-slate-400 font-bold select-none uppercase tracking-wider">
+                                    <div className="p-5 bg-slate-50 border-t border-slate-100 flex justify-between items-center type-overline text-slate-400 select-none">
                                         <span>{systemName} CRM</span>
                                         {onLogout ? (
                                             <button
@@ -1536,7 +1753,7 @@ export const Header: React.FC<HeaderProps> = ({
                                                     onLogout();
                                                     handleClose();
                                                 }}
-                                                className="text-rose-600 hover:text-rose-700 transition-colors uppercase font-black tracking-wider cursor-pointer"
+                                                className="text-rose-600 hover:text-rose-700 transition-colors uppercase font-bold tracking-wider cursor-pointer"
                                             >
                                                 {getTranslation(
                                                     systemLanguage,
@@ -1556,6 +1773,13 @@ export const Header: React.FC<HeaderProps> = ({
                                 document.body,
                             ),
                         ])}
+
+            {/* Top Roll-Down Favorites Drawer */}
+            <FavoritesDrawer
+                isOpen={isFavoritesOpen}
+                onClose={() => setIsFavoritesOpen(false)}
+                systemLanguage={systemLanguage}
+            />
         </header>
     );
 };

@@ -30,7 +30,7 @@ if (php_sapi_name() !== 'cli') {
     }
     $perms = ccrm_user_permissions($pdo, $sessionUser);
     $uploadOk = false;
-    foreach (['files', 'leads', 'clients', 'projects', 'meetings', 'invoices', 'warehouse', 'unified_entries', 'tasks', 'email'] as $mod) {
+    foreach (['files', 'leads', 'clients', 'projects', 'meetings', 'invoices', 'warehouse', 'unified_entries', 'tasks', 'email', 'employees'] as $mod) {
         if (ccrm_perm_can_edit($perms, $mod)) {
             $uploadOk = true;
             break;

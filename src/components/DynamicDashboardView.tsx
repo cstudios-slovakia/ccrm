@@ -45,10 +45,11 @@ import {
 } from "../utils/currency";
 import { isClosedLeadState } from "../utils/leadSla";
 import {
-  CLOSED_PROJECT_STATUSES,
-  projectStatusOrder,
+  isClosedProjectStatus,
+  projectStatusColor,
   projectStatusLabel
 } from "../utils/projects";
+import { excludedStatusKeys, type EquationStatusOption } from "../utils/statusEquation";
 import {
   GroupedStatusValueEquationStats,
   type StatusStatGroup,
@@ -57,6 +58,7 @@ import {
 } from "./GroupedStatusValueEquationStats";
 import { localeCodeFor } from "../utils/localTime";
 import { chartTheme, useAppearance } from "../utils/theme";
+import { chartFonts, useViewSize } from "../utils/viewSize";
 import { useDragAutoScroll } from "../hooks/useDragAutoScroll";
 import { useGridFlip } from "../hooks/useGridFlip";
 import {
@@ -98,6 +100,7 @@ import {
 } from "./dashboard/presetWidgets";
 import { AddWidgetDrawer } from "./dashboard/AddWidgetDrawer";
 import { WidgetSettingsDrawer } from "./dashboard/WidgetSettingsDrawer";
+import { useProjectStatuses } from "../hooks/useProjectStatuses";
 
 interface DynamicDashboardViewProps {
   dashboard: CustomDashboard;
@@ -149,7 +152,7 @@ const WIDGET_ICONS: Record<string, React.ComponentType<{ className?: string }>> 
   tabs: Layers
 };
 
-const WIDGET_TYPES = ["metric", "chart", "table", "timeline", "accordion", "tabs"];
+const WIDGET_TYPES = ["metric", "chart", "table", "timeline", "accordion", "tabs", "summary"];
 
 /**
  * The types the settings drawer offers for an AI-generated widget. `tabs` is
@@ -206,6 +209,29 @@ interface BoardRect {
   height: number;
 }
 
+/**
+ * The card a pointer outside every card should count as hovering. Above the
+ * first row that is the first card in the list (dropping there puts the dragged
+ * card at the very top); anywhere else it is the closest one.
+ */
+function nearestCard<T extends BoardRect>(cards: T[], x: number, y: number): T | undefined {
+  if (!cards.length) return undefined;
+  if (y < Math.min(...cards.map(card => card.top))) return cards[0];
+
+  let best = cards[0];
+  let bestDistance = Infinity;
+  for (const card of cards) {
+    const dx = Math.max(card.left - x, 0, x - (card.left + card.width));
+    const dy = Math.max(card.top - y, 0, y - (card.top + card.height));
+    const distance = dx * dx + dy * dy;
+    if (distance < bestDistance) {
+      best = card;
+      bestDistance = distance;
+    }
+  }
+  return best;
+}
+
 /** An empty run of cells the dragged card fits in, measured on screen. */
 interface DropZone extends BoardRect {
   insertIndex: number;
@@ -244,9 +270,9 @@ interface DragSession {
 
 /** The twelve-column span each width takes, at the desktop breakpoint. */
 const SPAN_CLASS: Record<WidgetSize, string> = {
-  sm: "col-span-12 md:col-span-6 lg:col-span-3",
-  md: "col-span-12 md:col-span-6 lg:col-span-4",
-  lg: "col-span-12 lg:col-span-8",
+  sm: "col-span-12 ws-md:col-span-6 ws-lg:col-span-3",
+  md: "col-span-12 ws-md:col-span-6 ws-lg:col-span-4",
+  lg: "col-span-12 ws-lg:col-span-8",
   full: "col-span-12"
 };
 
@@ -398,6 +424,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
   leadStageGroups = {},
   leadStateParents = {},
 }) => {
+  const projectStatuses = useProjectStatuses();
   const isHome = variant === "home";
   const t: Translate = (en, sk, hu) => (systemLanguage === "sk" ? sk : systemLanguage === "hu" ? hu : en);
   const canEdit = access.edit;
@@ -414,237 +441,6 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     else window.location.hash = route;
   };
 
-  // Leads group items calculation
-  const leadGroupItems = useMemo<StatusStatItem[]>(() => {
-    if (!leads || leads.length === 0) return [];
-    const stages =
-      pipelineStages && pipelineStages.length > 0
-        ? pipelineStages
-        : Array.from(new Set(leads.map((l) => l.status || "new")));
-    const stageGroups = leadStageGroups || {};
-    const stateParents = leadStateParents || {};
-
-    const activeStates = stages.filter(
-      (s) =>
-        !stateParents[s.toLowerCase()] &&
-        !isClosedLeadState(s, stageGroups, stateParents)
-    );
-
-    return activeStates.map((state) => {
-      const stateLower = state.toLowerCase();
-      const leadsInState = leads.filter((l) => {
-        const sKey = (l.status || "").toLowerCase();
-        const parent = stateParents[sKey];
-        const target = parent ? parent.toLowerCase() : sKey;
-        return target === stateLower;
-      });
-
-      const val = leadsInState.reduce(
-        (sum, l) => sum + (Number(l.value) || 0),
-        0
-      );
-      const col =
-        leadStateColors?.[stateLower] || leadStateColors?.[state] || "#3b82f6";
-
-      const rows: StatusStatDetailRow[] = leadsInState.map((l) => {
-        const lVal = Number(l.value) || 0;
-        return {
-          id: l.id,
-          name: l.name || `Lead #${l.id}`,
-          clientName: l.contactPerson || l.name,
-          manager: l.owner,
-          division: l.division,
-          date: l.createdAt ? new Date(l.createdAt).toLocaleDateString() : undefined,
-          totalBudget: lVal,
-          invoiced: 0,
-          invoicable: lVal,
-          type: "lead",
-          url: `#leads?lead=${encodeURIComponent(l.id)}`,
-        };
-      });
-
-      return {
-        key: stateLower,
-        name: state.toUpperCase(),
-        value: val,
-        count: leadsInState.length,
-        color: col,
-        rows,
-      };
-    });
-  }, [leads, pipelineStages, leadStageGroups, leadStateParents, leadStateColors]);
-
-  // Projects group items calculation
-  const projectGroupItems = useMemo<StatusStatItem[]>(() => {
-    if (!projects || projects.length === 0) {
-      return [];
-    }
-
-    const activeStatuses: ProjectStatus[] = (
-      projectStatusOrder() as ProjectStatus[]
-    ).filter((s) => !CLOSED_PROJECT_STATUSES.includes(s));
-
-    const statusColors: Record<string, string> = {
-      new: "#0284c7",
-      active: "#9333ea",
-      on_hold: "#d97706",
-    };
-
-    let totalProjectBudgetValue = 0;
-    let totalInvoicedValue = 0;
-
-    return activeStatuses.map((status) => {
-      const projectsInStatus = projects.filter((p) => p.status === status);
-      let statusInvoicableVal = 0;
-      let statusTotalBudgetValue = 0;
-      let statusTotalInvoicedValue = 0;
-      const statusRows: StatusStatDetailRow[] = [];
-
-      projectsInStatus.forEach((p) => {
-        const pType = (projectTypes || []).find((t) => t.id === p.projectTypeId);
-        const moneyAttrs =
-          pType?.attributes?.filter((a) => a.type === "money") || [];
-        let pVal = 0;
-        let hasMoneyVal = false;
-        for (const attr of moneyAttrs) {
-          const raw = p.data?.[attr.id];
-          if (
-            raw !== undefined &&
-            raw !== null &&
-            !isMoneyValueEmpty(raw, defaultCurrency)
-          ) {
-            const parsed = parseMoneyValue(raw, defaultCurrency);
-            if (parsed.amount) {
-              pVal += parsed.amount;
-              hasMoneyVal = true;
-            }
-          }
-        }
-        if (!hasMoneyVal && p.leadId && leads) {
-          const pairedLead = leads.find((l) => l.id === p.leadId);
-          if (pairedLead?.value) {
-            pVal = Number(pairedLead.value) || 0;
-            hasMoneyVal = true;
-          }
-        }
-        if (!hasMoneyVal && p.budget) {
-          pVal = Number(p.budget) || 0;
-        }
-
-        // Calculate invoiced on this project
-        let pInvoiced = 0;
-        if (financialRecords && financialRecords.length > 0) {
-          const pFinRecords = financialRecords.filter(
-            (r) => r.projectId === p.id && r.type === "income"
-          );
-          pInvoiced = pFinRecords.reduce(
-            (sum, r) =>
-              sum + (Number(r.amountReal) || Number(r.amountPlanned) || 0),
-            0
-          );
-        } else if (invoicesOffers && invoicesOffers.length > 0) {
-          const pInvoices = invoicesOffers.filter(
-            (io) =>
-              p.leadId &&
-              io.leadId === p.leadId &&
-              io.type === "invoice" &&
-              io.status !== "cancelled"
-          );
-          pInvoiced = pInvoices.reduce(
-            (sum, io) => sum + (Number(io.totalPrice) || 0),
-            0
-          );
-        }
-
-        const pInvoicable = Math.max(0, pVal - pInvoiced);
-
-        statusInvoicableVal += pInvoicable;
-        statusTotalBudgetValue += pVal;
-        statusTotalInvoicedValue += pInvoiced;
-
-        totalProjectBudgetValue += pVal;
-        totalInvoicedValue += pInvoiced;
-
-        const leadName =
-          p.leadId && leads ? leads.find((l) => l.id === p.leadId)?.name : undefined;
-
-        statusRows.push({
-          id: p.id,
-          name: p.name || `Project #${p.id}`,
-          clientName: leadName || p.name || `Project #${p.id}`,
-          manager: p.managers?.[0],
-          division: p.division,
-          date: p.createdAt ? new Date(p.createdAt).toLocaleDateString() : undefined,
-          totalBudget: pVal,
-          invoiced: pInvoiced,
-          invoicable: pInvoicable,
-          type: "project",
-          url: `#projects?edit=${encodeURIComponent(p.id)}`,
-        });
-      });
-
-      return {
-        key: status,
-        name: projectStatusLabel(status, t).toUpperCase(),
-        value: statusInvoicableVal,
-        count: projectsInStatus.length,
-        color: statusColors[status] || "#9333ea",
-        totalBudget: statusTotalBudgetValue,
-        invoiced: statusTotalInvoicedValue,
-        rows: statusRows,
-      };
-    });
-  }, [
-    projects,
-    projectTypes,
-    leads,
-    financialRecords,
-    invoicesOffers,
-    defaultCurrency,
-    t,
-  ]);
-
-  const dashboardEquationGroups: StatusStatGroup[] = useMemo(() => {
-    const list: StatusStatGroup[] = [];
-
-    if (leadGroupItems.length > 0) {
-      list.push({
-        id: "leads",
-        name: t("Sales & Pipeline", "Obchody a Pipeline", "Értékesítés és Pipeline"),
-        subtitle: t(
-          "Active phase values in sales funnel",
-          "Hodnoty aktívnych fáz obchodného lievika",
-          "Aktív értékesítési fázisok"
-        ),
-        icon: Layers,
-        colorTheme: "blue",
-        items: leadGroupItems,
-        unitLabel: t("leads", "leadov", "lead"),
-      });
-    }
-
-    if (projectGroupItems.length > 0) {
-      list.push({
-        id: "projects",
-        name: t("Projects & Deliverables", "Projekty a Realizácie", "Projektek és Kivitelezés"),
-        subtitle: t(
-          "Active project budgets & scopes",
-          "Rozpočty a rozsah aktívnych projektov",
-          "Aktív projektek költségvetése"
-        ),
-        icon: Briefcase,
-        colorTheme: "purple",
-        items: projectGroupItems,
-        unitLabel: t("projects", "projektov", "projekt"),
-      });
-    }
-
-    return list;
-  }, [
-    leadGroupItems,
-    projectGroupItems,
-    t,
-  ]);
   // AI-generated widget titles/column labels come back either as a plain
   // string (legacy panels, or a model that ignored the schema) or as an
   // { en, sk, hu } object — pick the current app language, falling back
@@ -786,6 +582,275 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
       return applySettingsToQuery(w, { ...settingsOfWidget(w), ...override }, currentUserName);
     });
   }, [tempLayout, viewOverrides, currentUserName]);
+
+  // The "Invoicable value by status" widget is drawn from the data this view
+  // already holds, so nothing below is worth computing until one is on the board.
+  const hasEquationWidget = widgets.some((w: any) => rendererOfWidget(w) === "statusEquation");
+
+  // Leads group items calculation. Every phase gets an item, closed ones too:
+  // which of them count is the widget's own setting, not a fixed rule here.
+  const leadGroupItems = useMemo<StatusStatItem[]>(() => {
+    if (!hasEquationWidget) return [];
+    const stages =
+      pipelineStages && pipelineStages.length > 0
+        ? pipelineStages
+        : Array.from(new Set(leads.map((l) => l.status || "new")));
+    const stageGroups = leadStageGroups || {};
+    const stateParents = leadStateParents || {};
+
+    // A sub-state rolls up into its parent phase, so only parents are items.
+    const topLevelStates = stages.filter((s) => !stateParents[s.toLowerCase()]);
+
+    return topLevelStates.map((state) => {
+      const stateLower = state.toLowerCase();
+      const leadsInState = leads.filter((l) => {
+        const sKey = (l.status || "").toLowerCase();
+        const parent = stateParents[sKey];
+        const target = parent ? parent.toLowerCase() : sKey;
+        return target === stateLower;
+      });
+
+      const val = leadsInState.reduce(
+        (sum, l) => sum + (Number(l.value) || 0),
+        0
+      );
+      const col =
+        leadStateColors?.[stateLower] || leadStateColors?.[state] || "#3b82f6";
+
+      const rows: StatusStatDetailRow[] = leadsInState.map((l) => {
+        const lVal = Number(l.value) || 0;
+        return {
+          id: l.id,
+          name: l.name || `Lead #${l.id}`,
+          clientName: l.contactPerson || l.name,
+          manager: l.owner,
+          division: l.division,
+          date: l.createdAt ? new Date(l.createdAt).toLocaleDateString() : undefined,
+          totalBudget: lVal,
+          invoiced: 0,
+          invoicable: lVal,
+          type: "lead",
+          url: `#leads?lead=${encodeURIComponent(l.id)}`,
+        };
+      });
+
+      return {
+        key: stateLower,
+        name: state.toUpperCase(),
+        value: val,
+        count: leadsInState.length,
+        color: col,
+        closed: isClosedLeadState(state, stageGroups, stateParents),
+        rows,
+      };
+    });
+  }, [hasEquationWidget, leads, pipelineStages, leadStageGroups, leadStateParents, leadStateColors]);
+
+  // Projects group items calculation
+  const projectGroupItems = useMemo<StatusStatItem[]>(() => {
+    if (!hasEquationWidget) return [];
+
+    const allStatuses: ProjectStatus[] = projectStatuses.map((def) => def.key);
+
+    let totalProjectBudgetValue = 0;
+    let totalInvoicedValue = 0;
+
+    return allStatuses.map((status) => {
+      const projectsInStatus = projects.filter((p) => p.status === status);
+      let statusInvoicableVal = 0;
+      let statusTotalBudgetValue = 0;
+      let statusTotalInvoicedValue = 0;
+      const statusRows: StatusStatDetailRow[] = [];
+
+      projectsInStatus.forEach((p) => {
+        const pType = (projectTypes || []).find((t) => t.id === p.projectTypeId);
+        const moneyAttrs =
+          pType?.attributes?.filter((a) => a.type === "money") || [];
+        let pVal = 0;
+        let hasMoneyVal = false;
+        if (p.value !== undefined && p.value !== null && Number.isFinite(Number(p.value)) && Number(p.value) > 0) {
+          pVal = Number(p.value);
+          hasMoneyVal = true;
+        }
+        if (!hasMoneyVal) {
+          for (const attr of moneyAttrs) {
+            const raw = p.data?.[attr.id];
+            if (
+              raw !== undefined &&
+              raw !== null &&
+              !isMoneyValueEmpty(raw, defaultCurrency)
+            ) {
+              const parsed = parseMoneyValue(raw, defaultCurrency);
+              if (parsed.amount) {
+                pVal += parsed.amount;
+                hasMoneyVal = true;
+              }
+            }
+          }
+        }
+        if (!hasMoneyVal && p.leadId && leads) {
+          const pairedLead = leads.find((l) => l.id === p.leadId);
+          if (pairedLead?.value) {
+            pVal = Number(pairedLead.value) || 0;
+            hasMoneyVal = true;
+          }
+        }
+        if (!hasMoneyVal && p.budget) {
+          pVal = Number(p.budget) || 0;
+        }
+
+        // Calculate invoiced on this project
+        let pInvoiced = 0;
+        if (financialRecords && financialRecords.length > 0) {
+          const pFinRecords = financialRecords.filter(
+            (r) => r.projectId === p.id && r.type === "income"
+          );
+          pInvoiced = pFinRecords.reduce(
+            (sum, r) =>
+              sum + (Number(r.amountReal) || Number(r.amountPlanned) || 0),
+            0
+          );
+        } else if (invoicesOffers && invoicesOffers.length > 0) {
+          const pInvoices = invoicesOffers.filter(
+            (io) =>
+              p.leadId &&
+              io.leadId === p.leadId &&
+              io.type === "invoice" &&
+              io.status !== "cancelled"
+          );
+          pInvoiced = pInvoices.reduce(
+            (sum, io) => sum + (Number(io.totalPrice) || 0),
+            0
+          );
+        }
+
+        const pInvoicable = Math.max(0, pVal - pInvoiced);
+
+        statusInvoicableVal += pInvoicable;
+        statusTotalBudgetValue += pVal;
+        statusTotalInvoicedValue += pInvoiced;
+
+        totalProjectBudgetValue += pVal;
+        totalInvoicedValue += pInvoiced;
+
+        const leadName =
+          p.leadId && leads ? leads.find((l) => l.id === p.leadId)?.name : undefined;
+
+        statusRows.push({
+          id: p.id,
+          name: p.name || `Project #${p.id}`,
+          clientName: leadName || p.name || `Project #${p.id}`,
+          manager: p.managers?.[0],
+          division: p.division,
+          date: p.createdAt ? new Date(p.createdAt).toLocaleDateString() : undefined,
+          totalBudget: pVal,
+          invoiced: pInvoiced,
+          invoicable: pInvoicable,
+          type: "project",
+          url: `#projects/${encodeURIComponent(p.id)}`,
+        });
+      });
+
+      return {
+        key: status,
+        name: projectStatusLabel(status, t, projectStatuses).toUpperCase(),
+        value: statusInvoicableVal,
+        count: projectsInStatus.length,
+        color: projectStatusColor(status, projectStatuses),
+        closed: isClosedProjectStatus(status, projectStatuses),
+        totalBudget: statusTotalBudgetValue,
+        invoiced: statusTotalInvoicedValue,
+        rows: statusRows,
+      };
+    });
+  }, [
+    hasEquationWidget,
+    projects,
+    projectTypes,
+    leads,
+    financialRecords,
+    invoicesOffers,
+    defaultCurrency,
+    projectStatuses,
+    t,
+  ]);
+
+  const dashboardEquationGroups: StatusStatGroup[] = useMemo(() => {
+    const list: StatusStatGroup[] = [];
+
+    if (leadGroupItems.length > 0) {
+      list.push({
+        id: "leads",
+        name: t("Sales & Pipeline", "Obchody a Pipeline", "Értékesítés és Pipeline"),
+        subtitle: t(
+          "Active phase values in sales funnel",
+          "Hodnoty aktívnych fáz obchodného lievika",
+          "Aktív értékesítési fázisok"
+        ),
+        icon: Layers,
+        colorTheme: "blue",
+        items: leadGroupItems,
+        unitLabel: t("leads", "leadov", "lead"),
+      });
+    }
+
+    if (projectGroupItems.length > 0) {
+      list.push({
+        id: "projects",
+        name: t("Projects & Deliverables", "Projekty a Realizácie", "Projektek és Kivitelezés"),
+        subtitle: t(
+          "Active project budgets & scopes",
+          "Rozpočty a rozsah aktívnych projektov",
+          "Aktív projektek költségvetése"
+        ),
+        icon: Briefcase,
+        colorTheme: "purple",
+        items: projectGroupItems,
+        unitLabel: t("projects", "projektov", "projekt"),
+      });
+    }
+
+    return list;
+  }, [
+    leadGroupItems,
+    projectGroupItems,
+    t,
+  ]);
+
+  /**
+   * What one statusEquation widget sums: every group, minus the phases and
+   * statuses its own settings leave out. A group left with nothing is dropped.
+   */
+  const equationGroupsFor = (widget: any): StatusStatGroup[] => {
+    const settings = settingsOfWidget(widget);
+    return dashboardEquationGroups
+      .map((group) => {
+        const picked = group.id === "leads" ? settings.excludedLeadStatuses : settings.excludedProjectStatuses;
+        const out = excludedStatusKeys(group.items, picked);
+        return { ...group, items: group.items.filter((item) => !out.has(item.key)) };
+      })
+      .filter((group) => group.items.length > 0);
+  };
+
+  /** Every phase and status, closed ones included — what the widget's settings offer to exclude. */
+  const equationOptionGroups = dashboardEquationGroups.map((group) => ({
+    id: group.id,
+    label:
+      group.id === "leads"
+        ? t("Lead phases", "Fázy leadov", "Lead fázisok")
+        : t("Project statuses", "Stavy projektov", "Projektállapotok"),
+    settingKey: (group.id === "leads" ? "excludedLeadStatuses" : "excludedProjectStatuses") as
+      | "excludedLeadStatuses"
+      | "excludedProjectStatuses",
+    options: group.items.map(
+      (item): EquationStatusOption => ({
+        key: item.key,
+        label: item.name,
+        color: item.color || "#64748b",
+        closed: !!item.closed
+      })
+    )
+  }));
 
   // Load data for all widgets in the layout. A `tabs` widget holds one query per
   // tab rather than a single query of its own, so results are keyed by a data key
@@ -1102,7 +1167,13 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
         `translate3d(${session.x - session.originX}px, ${session.y - session.originY}px, 0)`;
     }
 
-    const breakpoint = breakpointForWidth(window.innerWidth);
+    // Same measurement the `ws-*` container queries use: the workspace's content box, in its own em.
+    const workspace = grid.closest<HTMLElement>(".workspace");
+    const wsStyle = workspace ? getComputedStyle(workspace) : null;
+    const wsWidth = workspace
+      ? workspace.clientWidth - parseFloat(wsStyle!.paddingLeft) - parseFloat(wsStyle!.paddingRight)
+      : window.innerWidth;
+    const breakpoint = breakpointForWidth(wsWidth, parseFloat(wsStyle?.fontSize ?? "16") || 16);
     const rest = widgets.filter((w: any) => w.id !== draggedWidgetId);
     const restItems = rest.map(gridItemOf);
     const plan = planGrid(restItems, breakpoint);
@@ -1193,21 +1264,17 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     const covers = (zone: BoardRect, x: number, y: number) =>
       x >= zone.left && x <= zone.left + zone.width && y >= zone.top && y <= zone.top + zone.height;
 
-    const onMove = (event: PointerEvent) => {
-      const session = dragRef.current;
-      if (!session) return;
+    const scroller = grid?.closest<HTMLElement>(".workspace") || null;
+    const pointer = { x: 0, y: 0, known: false };
+    let frame = 0;
 
-      session.x = event.clientX - session.grabX;
-      session.y = event.clientY - session.grabY;
-      if (node) {
-        node.style.transform =
-          `translate3d(${session.x - session.originX}px, ${session.y - session.originY}px, 0)`;
-      }
-      if (!grid) return;
+    const hover = () => {
+      const session = dragRef.current;
+      if (!session || !grid || !pointer.known) return;
 
       const bounds = grid.getBoundingClientRect();
-      const x = event.clientX - bounds.left;
-      const y = event.clientY - bounds.top;
+      const x = pointer.x - bounds.left;
+      const y = pointer.y - bounds.top;
 
       const zone = session.zones.findIndex(candidate => covers(candidate, x, y));
       if (zone !== -1) {
@@ -1218,12 +1285,43 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
         return;
       }
 
-      const card = session.cards.find(candidate => covers(candidate, x, y));
+      // Not over a card or an empty cell: the pointer is in a gutter, in the
+      // margin around the board, or above its first row. None of those should
+      // be a dead spot — least of all the strip above the top row, which is the
+      // only way to get a tall card to the very top — so the nearest card
+      // takes it, and anything above the first row means "before everything".
+      const card =
+        session.cards.find(candidate => covers(candidate, x, y)) ||
+        nearestCard(session.cards, x, y);
       session.dropIndex = null;
       session.dropCardId = card ? card.id : null;
       setActiveZone(null);
       setDragOverWidgetId(card ? card.id : null);
     };
+
+    const onMove = (event: PointerEvent) => {
+      const session = dragRef.current;
+      if (!session) return;
+
+      pointer.x = event.clientX;
+      pointer.y = event.clientY;
+      pointer.known = true;
+      session.x = event.clientX - session.grabX;
+      session.y = event.clientY - session.grabY;
+      if (node) {
+        node.style.transform =
+          `translate3d(${session.x - session.originX}px, ${session.y - session.originY}px, 0)`;
+      }
+      hover();
+    };
+
+    // `useDragAutoScroll` scrolls the board while a card is held near an edge.
+    // The pointer has not moved, but the board under it has, so what it is
+    // hovering has to be worked out again.
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(() => { frame = 0; hover(); });
+    };
+    scroller?.addEventListener("scroll", onScroll, { passive: true });
 
     const settle = (commit: boolean) => {
       const session = dragRef.current;
@@ -1276,6 +1374,8 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     document.body.style.userSelect = "none";
 
     return () => {
+      cancelAnimationFrame(frame);
+      scroller?.removeEventListener("scroll", onScroll);
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onCancel);
@@ -1446,7 +1546,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     const err = widgetErrors[dataKey];
     if (err) {
       return (
-        <div className="flex items-start gap-2 p-3 rounded-2xl bg-rose-50 border border-rose-100 text-rose-700 text-xs font-semibold leading-relaxed">
+        <div className="flex items-start gap-2 p-3 rounded-2xl bg-rose-50 border border-rose-100 text-rose-700 text-ui font-semibold leading-relaxed">
           <AlertCircle className="h-4 w-4 shrink-0 mt-0.5" />
           <span>{err}</span>
         </div>
@@ -1480,7 +1580,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
         if (depth > 0) {
           // Tabs nested inside tabs have no sane layout and no fetched data.
           return (
-            <div className="text-center py-6 text-xs text-slate-400 font-semibold uppercase tracking-wider">
+            <div className="text-center py-6 text-ui text-slate-400 font-semibold">
               {t("Nested tabs are not supported", "Vnorené záložky nie sú podporované", "Az egymásba ágyazott fülek nem támogatottak")}
             </div>
           );
@@ -1504,6 +1604,22 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     const section = sectionOfWidget(w);
     const title = displayTitleOf(w);
     const renderer = widgetErrors[w.id] ? null : rendererOfWidget(w);
+
+    // Not in PRESET_RENDERERS: it is fed by the leads, projects and invoices
+    // this view already holds rather than by a query, and a component made
+    // inside this function would remount (and close its drawer) on every render.
+    if (renderer === "statusEquation") {
+      return (
+        <GroupedStatusValueEquationStats
+          groups={equationGroupsFor(w)}
+          currency={currencyCode}
+          language={(systemLanguage as Language) || "sk"}
+          storageKey={`ccrm_dashboard_equation_${w.id}`}
+          embedded={{ title, icon: section.icon, accent: section.accent }}
+        />
+      );
+    }
+
     const Designed = renderer ? PRESET_RENDERERS[renderer] : undefined;
 
     if (Designed) {
@@ -1542,13 +1658,13 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     .filter((id): id is string => !!id);
 
   const headerButton =
-    "flex items-center gap-2 h-10 px-4 rounded-xl text-xs font-bold uppercase tracking-[0.06em] whitespace-nowrap transition-all cursor-pointer shrink-0";
+    "flex items-center gap-2 h-10 px-4 rounded-xl text-ui font-bold whitespace-nowrap transition-all cursor-pointer shrink-0";
 
   return (
     <div ref={rootRef} className="w-full space-y-6 animate-in fade-in slide-in-from-top-4 duration-300">
       {/* HEADER — same shape as every other module: title block on the left,
           actions on the right, hairline rule underneath. */}
-      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4 border-b border-slate-100 pb-6 pt-1">
+      <div className="flex flex-col ws-sm:flex-row ws-sm:items-end ws-sm:justify-between gap-4 border-b border-slate-100 pb-6 pt-1">
         <div className="flex flex-col gap-1.5">
           <div className="flex items-center gap-2.5">
             {isHome ? (
@@ -1556,11 +1672,11 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
             ) : (
               <Sparkles className="h-6 w-6" style={{ color: dashboard.color }} />
             )}
-            <h1 className="m-0 text-[26px] font-heading font-bold text-slate-900 tracking-[-0.02em]">
+            <h1 className="m-0 text-heading font-heading font-bold text-slate-900 tracking-[-0.02em]">
               {isHome ? t("Dashboard", "Nástenka", "Irányítópult") : dashboard.name}
             </h1>
           </div>
-          <p className="m-0 text-xs text-slate-500 uppercase font-bold tracking-[0.06em]">
+          <p className="m-0 text-ui text-slate-500 font-bold">
             {isHome
               ? t("Your workspace at a glance", "Váš prehľad na jednom mieste", "A munkaterülete egy pillantásra")
               : t("Custom Dynamic AI Dashboard", "Vlastný dynamický AI panel", "Egyéni dinamikus AI irányítópult")}
@@ -1569,7 +1685,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
 
         <div className="flex items-center gap-2.5 shrink-0 flex-wrap">
           {!canEdit && (
-            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 text-[10px] font-black uppercase tracking-wider">
+            <span className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-amber-50 border border-amber-200 text-amber-800 type-overline">
               <Lock className="h-3.5 w-3.5" />
               {t("Read-only access", "Iba na čítanie", "Csak olvasható")}
             </span>
@@ -1651,19 +1767,9 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
         </div>
       </div>
 
-      {/* Combined Grouped Status Equation Statistics (Leads + Projects + Remaining Invoicable) */}
-      {dashboardEquationGroups.length > 0 && (
-        <GroupedStatusValueEquationStats
-          groups={dashboardEquationGroups}
-          currency={currencyCode}
-          language={(systemLanguage as Language) || "sk"}
-          storageKey="ccrm_dashboard_equation_stats"
-        />
-      )}
-
       <div>
         {errorMsg && (
-          <div className="mb-6 p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-start gap-3 text-rose-800 text-sm animate-in fade-in duration-200">
+          <div className="mb-6 p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-start gap-3 text-rose-800 text-body animate-in fade-in duration-200">
             <AlertCircle className="h-5 w-5 shrink-0 mt-0.5" />
             <div className="text-left">
               <span className="font-bold">{t("Error", "Chyba", "Hiba")}: </span>
@@ -1674,7 +1780,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
 
         {isEditMode && widgets.length > 0 && (
           <div className="mb-6 flex items-center justify-between gap-4 min-h-11 px-4 py-2 rounded-2xl bg-indigo-50 border border-indigo-100">
-            <span className="flex items-center gap-2.5 text-[13px] font-semibold text-indigo-900">
+            <span className="flex items-center gap-2.5 text-ui font-semibold text-indigo-900">
               <Info className="h-4 w-4 text-indigo-600 shrink-0" strokeWidth={2.25} />
               {t(
                 "Edit mode: drag a card by its handle, resize it from the corner, click it to open its settings.",
@@ -1682,7 +1788,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 "Szerkesztés: fogantyúval húzza, sarokból méretezze, kattintson a beállításokhoz."
               )}
             </span>
-            <span className="hidden lg:block text-xs font-bold text-indigo-700 shrink-0">
+            <span className="hidden ws-lg:block text-ui font-bold text-indigo-700 shrink-0">
               {t("12-column grid", "Mriežka 12 stĺpcov", "12 oszlopos rács")}
             </span>
           </div>
@@ -1694,12 +1800,12 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
             <div className="w-16 h-16 rounded-[24px] bg-indigo-50 flex items-center justify-center mb-6 shadow-inner">
               <Sparkles className="h-8 w-8 text-indigo-600 animate-pulse" />
             </div>
-            <h2 className="text-2xl font-black text-slate-800 uppercase tracking-wide">
+            <h2 className="type-metric text-slate-800">
               {canEdit
                 ? t("Generate your Dashboard", "Vytvorte si svoj panel", "Irányítópult létrehozása")
                 : t("No widgets yet", "Zatiaľ žiadne moduly", "Még nincsenek modulok")}
             </h2>
-            <p className="text-sm text-slate-500 mt-2 max-w-md">
+            <p className="text-body text-slate-500 mt-2 max-w-md">
               {canEdit
                 ? t(
                     "Type what you want to analyze. The AI agent will fetch live database records, build custom metrics and charts.",
@@ -1721,7 +1827,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
               <button
                 type="button"
                 onClick={() => setIsAddOpen(true)}
-                className="px-5 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all text-xs font-black uppercase tracking-wider flex items-center gap-2 cursor-pointer active:scale-95"
+                className="px-5 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all text-ui font-bold flex items-center gap-2 cursor-pointer active:scale-95"
               >
                 <LayoutGrid className="h-4 w-4 text-indigo-600" />
                 <span>{t("Pick from the widget library", "Vybrať z knižnice modulov", "Válasszon a modulkönyvtárból")}</span>
@@ -1730,7 +1836,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 <button
                   type="button"
                   onClick={() => mutateWidgets(() => buildDefaultHomeWidgets())}
-                  className="px-5 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all text-xs font-black uppercase tracking-wider flex items-center gap-2 cursor-pointer active:scale-95"
+                  className="px-5 py-3 rounded-2xl border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 hover:border-slate-300 transition-all text-ui font-bold flex items-center gap-2 cursor-pointer active:scale-95"
                 >
                   <RotateCcw className="h-4 w-4 text-indigo-600" />
                   <span>{t("Use the default layout", "Použiť predvolené rozloženie", "Alapértelmezett elrendezés")}</span>
@@ -1740,7 +1846,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
 
             <form onSubmit={handleRunPrompt} className="w-full mt-8 bg-white border border-slate-200/80 rounded-[28px] shadow-xl p-5 space-y-4 text-left">
               <div>
-                <label className="block text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1.5">
+                <label className="block type-overline text-slate-400 mb-1.5">
                   {t("What would you like to build?", "Čo si prajete vytvoriť?", "Mit szeretne felépíteni?")}
                 </label>
                 <textarea
@@ -1752,7 +1858,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                     "napr., Zobrazte celkový počet leadov, koláčový graf zdrojov a tabuľku 5 najnovších úloh...",
                     "pl., Mutassa a lead-ek számát, egy kördiagramot a forrásokról, és a legújabb 5 feladatot..."
                   )}
-                  className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-sm bg-slate-50 transition-all font-semibold resize-none"
+                  className="w-full px-4 py-3 rounded-2xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-body bg-slate-50 transition-all font-semibold resize-none"
                   onKeyDown={(e) => {
                     if (e.key === "Enter" && !e.shiftKey) {
                       e.preventDefault();
@@ -1763,12 +1869,12 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
               </div>
 
               <div className="flex items-center justify-between gap-5 pt-2">
-                <div className="flex flex-col gap-1.5 items-start w-[190px] shrink-0">
+                <div className="flex flex-col gap-1.5 items-start w-47.5 shrink-0">
                   <div className="flex items-center justify-between w-full gap-3">
-                    <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest shrink-0">
+                    <span className="type-overline text-slate-400 shrink-0">
                       {t("Model Power", "Výkon modelu", "Modell Teljesítmény")}
                     </span>
-                    <span className="text-[9px] font-black text-purple-600 uppercase tracking-wider whitespace-nowrap">
+                    <span className="type-overline text-purple-600 whitespace-nowrap">
                       {modelLevelLabel}
                     </span>
                   </div>
@@ -1780,7 +1886,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                     onChange={(e) => handleModelSliderChange(Number(e.target.value))}
                     className="w-full accent-purple-600 h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer"
                   />
-                  <span className="text-[9px] font-medium text-slate-400 tracking-tight normal-case">
+                  <span className="text-micro font-medium text-slate-400 tracking-tight normal-case">
                     {selectedModel}
                   </span>
                 </div>
@@ -1788,7 +1894,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 <button
                   type="submit"
                   disabled={isGenerating || !promptText.trim()}
-                  className="flex items-center gap-1.5 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white disabled:text-slate-400 rounded-2xl text-xs font-black uppercase tracking-wider transition-all shadow-md shadow-indigo-600/10 cursor-pointer shrink-0"
+                  className="flex items-center gap-1.5 px-6 py-3 bg-indigo-600 hover:bg-indigo-700 disabled:bg-slate-200 text-white disabled:text-slate-400 rounded-2xl text-ui font-bold transition-all shadow-md shadow-indigo-600/10 cursor-pointer shrink-0"
                 >
                   {isGenerating ? (
                     <>
@@ -1814,7 +1920,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
             {isEditMode && (
               <div
                 aria-hidden="true"
-                className="absolute -top-3 -bottom-3 left-0 right-0 hidden lg:grid grid-cols-12 gap-x-6 pointer-events-none"
+                className="absolute -top-3 -bottom-3 left-0 right-0 hidden ws-lg:grid grid-cols-12 gap-x-6 pointer-events-none"
               >
                 {Array.from({ length: 12 }).map((_, index) => (
                   <div key={index} className="rounded-xl bg-indigo-600/[0.035]" />
@@ -1857,7 +1963,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                       "relative min-w-0 flex flex-col",
                       !isEditMode && "animate-in fade-in duration-300",
                       SPAN_CLASS[size],
-                      tall && "lg:row-span-2"
+                      tall && "ws-lg:row-span-2"
                     )}
                     style={
                       isDragging && session
@@ -1881,7 +1987,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                         if (isEditMode) setSettingsWidgetId(w.id);
                       }}
                       className={cn(
-                        "relative flex flex-col flex-1 min-h-[150px] rounded-3xl",
+                        "relative flex flex-col flex-1 min-h-37.5 rounded-3xl",
                         isEditMode && "outline-2 outline-dashed outline-offset-4 cursor-pointer",
                         isEditMode && dragOverWidgetId === w.id && draggedWidgetId !== w.id
                           ? "outline-indigo-500"
@@ -1925,7 +2031,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                             e.stopPropagation();
                             updateWidget(w.id, { size: nextSize(size) });
                           }}
-                          className="absolute -right-3 -bottom-3 w-[26px] h-[26px] rounded-lg bg-white border-[1.5px] border-slate-300 shadow-sm flex items-center justify-center z-20 cursor-pointer hover:border-indigo-400"
+                          className="absolute -right-3 -bottom-3 w-6.5 h-6.5 rounded-lg bg-white border-[1.5px] border-slate-300 shadow-sm flex items-center justify-center z-20 cursor-pointer hover:border-indigo-400"
                         >
                           <ArrowDownRight className="h-3.5 w-3.5 text-slate-500" strokeWidth={2.5} />
                         </button>
@@ -1939,10 +2045,10 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                 <button
                   type="button"
                   onClick={() => setIsAddOpen(true)}
-                  className="col-span-12 md:col-span-6 lg:col-span-3 min-h-[150px] rounded-3xl border-2 border-dashed border-slate-200 text-slate-400 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50/40 transition-all flex flex-col items-center justify-center gap-2 cursor-pointer active:scale-[0.98]"
+                  className="col-span-12 ws-md:col-span-6 ws-lg:col-span-3 min-h-37.5 rounded-3xl border-2 border-dashed border-slate-200 text-slate-400 hover:border-indigo-300 hover:text-indigo-600 hover:bg-indigo-50/40 transition-all flex flex-col items-center justify-center gap-2 cursor-pointer active:scale-[0.98]"
                 >
                   <Plus className="h-6 w-6" />
-                  <span className="text-[10px] font-black uppercase tracking-wider">
+                  <span className="type-overline">
                     {t("Add widget", "Pridať modul", "Modul hozzáadása")}
                   </span>
                 </button>
@@ -1959,9 +2065,9 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
           <div className="sticky bottom-6 z-40 mt-6 pointer-events-none animate-in slide-in-from-bottom-6 duration-300">
             <form
               onSubmit={handleRunPrompt}
-              className="pointer-events-auto max-w-3xl mx-auto bg-white/95 backdrop-blur-md border border-slate-200 rounded-[22px] shadow-2xl pl-[18px] pr-2.5 py-2.5 flex items-center gap-3"
+              className="pointer-events-auto max-w-3xl mx-auto bg-white/95 backdrop-blur-md border border-slate-200 rounded-[22px] shadow-2xl pl-4.5 pr-2.5 py-2.5 flex items-center gap-3"
             >
-              <Sparkles className="h-[18px] w-[18px] text-purple-600 shrink-0" />
+              <Sparkles className="h-4.5 w-4.5 text-purple-600 shrink-0" />
               <input
                 type="text"
                 value={promptText}
@@ -1972,14 +2078,14 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
                   "Upravte rozloženie s AI (napr. zmeňte graf X na Y, pridajte metriku Z)…",
                   "Módosítsa az elrendezést AI-val (pl. az X diagramot Y-ra)…"
                 )}
-                className="flex-1 min-w-0 h-10 border-0 outline-none bg-transparent text-[13px] font-semibold text-slate-700"
+                className="flex-1 min-w-0 h-10 border-0 outline-none bg-transparent text-ui font-semibold text-slate-700"
               />
-              <div className="hidden sm:flex flex-col gap-1 items-start w-[130px] shrink-0">
+              <div className="hidden ws-sm:flex flex-col gap-1 items-start w-32.5 shrink-0">
                 <div className="flex items-center justify-between w-full gap-2">
-                  <span className="text-[8px] font-black text-slate-400 uppercase tracking-widest shrink-0">
+                  <span className="type-overline text-slate-400 shrink-0">
                     {t("Model", "Model", "Modell")}
                   </span>
-                  <span className="text-[8px] font-black text-purple-600 uppercase tracking-wider whitespace-nowrap">
+                  <span className="type-overline text-purple-600 whitespace-nowrap">
                     {modelLevelLabel}
                   </span>
                 </div>
@@ -2034,6 +2140,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
           columnCatalogue={presetOfWidget(settingsWidget)?.columnCatalogue ?? []}
           statusOptions={statusOptionsFor(settingsWidget)}
           statusColors={settingsWidget.query?.action === "recent_tasks" ? taskStateColors : leadStateColors}
+          excludableGroups={rendererOfWidget(settingsWidget) === "statusEquation" ? equationOptionGroups : []}
           canDelete={canDelete}
           t={t}
           typeOptions={EDITABLE_WIDGET_TYPES.map((type) => ({ value: type, label: widgetTypeLabel(type, t) }))}
@@ -2067,6 +2174,7 @@ const widgetTypeLabel = (type: string, t: Translate) => {
     case "timeline": return t("Timeline", "Časová os", "Idővonal");
     case "accordion": return t("Accordion", "Rozbaľovací zoznam", "Harmonika");
     case "tabs": return t("Tabs", "Záložky", "Fülek");
+    case "summary": return t("Summary", "Prehľad", "Összesítő");
     default: return type;
   }
 };
@@ -2090,7 +2198,7 @@ const WidgetEditToolbar: React.FC<{
   return (
     <div
       onClick={(e) => e.stopPropagation()}
-      className="absolute -top-[18px] right-[18px] z-20 flex items-center gap-0.5 h-[34px] px-[3px] rounded-[11px] bg-white border border-slate-200 shadow-lg"
+      className="absolute -top-4.5 right-4.5 z-20 flex items-center gap-0.5 h-8.5 px-0.75 rounded-[11px] bg-white border border-slate-200 shadow-lg"
     >
       <span
         onPointerDown={onGrab}
@@ -2102,21 +2210,21 @@ const WidgetEditToolbar: React.FC<{
         )}
         className={cn(button, "cursor-grab active:cursor-grabbing")}
       >
-        <Grip className="h-[15px] w-[15px]" strokeWidth={2.25} />
+        <Grip className="h-3.75 w-3.75" strokeWidth={2.25} />
       </span>
       <span className="w-px h-4 bg-slate-200" />
       <span
-        className="px-1.5 text-[11px] font-extrabold tracking-[0.06em] text-slate-600"
+        className="px-1.5 text-caption font-extrabold tracking-[0.06em] text-slate-600"
         title={t("Widget width", "Šírka modulu", "Modul szélessége")}
       >
         {WIDGET_SIZE_LABELS[size]}
       </span>
       <span className="w-px h-4 bg-slate-200" />
       <button type="button" onClick={stop(onSettings)} aria-label={t("Settings", "Nastavenia", "Beállítások")} className={button}>
-        <SlidersHorizontal className="h-[15px] w-[15px]" strokeWidth={2.25} />
+        <SlidersHorizontal className="h-3.75 w-3.75" strokeWidth={2.25} />
       </button>
       <button type="button" onClick={stop(onDuplicate)} aria-label={t("Duplicate", "Duplikovať", "Másolás")} className={button}>
-        <Copy className="h-[15px] w-[15px]" strokeWidth={2.25} />
+        <Copy className="h-3.75 w-3.75" strokeWidth={2.25} />
       </button>
       {canDelete && (
         <button
@@ -2125,7 +2233,7 @@ const WidgetEditToolbar: React.FC<{
           aria-label={t("Remove widget", "Odstrániť modul", "Modul eltávolítása")}
           className={cn(button, "hover:bg-rose-50 hover:text-rose-600")}
         >
-          <Trash2 className="h-[15px] w-[15px]" strokeWidth={2.25} />
+          <Trash2 className="h-3.75 w-3.75" strokeWidth={2.25} />
         </button>
       )}
     </div>
@@ -2194,7 +2302,7 @@ const DashboardMetric: React.FC<{
 
   return (
     <div
-      className="text-[34px] font-bold text-slate-900 tracking-[-0.02em] leading-[1.05]"
+      className="text-display font-bold text-slate-900 tracking-[-0.02em] leading-[1.05]"
       style={{ fontVariantNumeric: "tabular-nums" }}
     >
       {value}
@@ -2235,7 +2343,7 @@ const GaugeWidget: React.FC<DashboardChartProps> = ({ widget, data }) => {
           style={{ width: `${pct}%`, backgroundColor: barColor }}
         />
       </div>
-      <span className="text-xs font-black text-center" style={{ color: barColor }}>
+      <span className="text-ui font-bold text-center" style={{ color: barColor }}>
         {pct}%
       </span>
     </div>
@@ -2246,6 +2354,7 @@ const DashboardChart: React.FC<DashboardChartProps> = ({ widget, data, localized
   // See FinancialReportView in ClientsView.tsx: canvas colours are literals and
   // have to be rebuilt when the appearance changes.
   const appearance = useAppearance();
+  const { size: viewSize } = useViewSize();
   const chart = chartTheme(appearance);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const chartInstanceRef = useRef<any>(null);
@@ -2325,17 +2434,19 @@ const DashboardChart: React.FC<DashboardChartProps> = ({ widget, data, localized
     const ctx = canvasRef.current.getContext("2d");
     if (!ctx) return;
 
+    const fonts = chartFonts();
+
     const cartesianScales = {
       x: {
         // Scatter needs a numeric x axis; every other type keeps Chart.js's own
         // default for its controller (category for bar/line).
         ...(isScatter ? { type: "linear" } : {}),
         grid: { display: isScatter || isHorizontal, color: chart.grid },
-        ticks: { color: chart.tick, font: { size: 9, weight: "bold" } }
+        ticks: { color: chart.tick, font: { size: fonts.tick, weight: "bold" } }
       },
       y: {
         grid: { display: isHorizontal ? false : true, color: chart.grid },
-        ticks: { color: chart.tick, font: { size: 9, weight: "bold" } }
+        ticks: { color: chart.tick, font: { size: fonts.tick, weight: "bold" } }
       }
     };
 
@@ -2343,8 +2454,8 @@ const DashboardChart: React.FC<DashboardChartProps> = ({ widget, data, localized
       r: {
         grid: { color: chart.grid },
         angleLines: { color: chart.grid },
-        pointLabels: { font: { size: 9, weight: "bold" }, color: chart.tick },
-        ticks: { font: { size: 8 }, backdropColor: "transparent" }
+        pointLabels: { font: { size: fonts.tick, weight: "bold" }, color: chart.tick },
+        ticks: { font: { size: fonts.tick }, backdropColor: "transparent" }
       }
     };
 
@@ -2380,7 +2491,7 @@ const DashboardChart: React.FC<DashboardChartProps> = ({ widget, data, localized
               labels: {
                 boxWidth: 10,
                 color: chart.label,
-                font: { size: 9, weight: "bold" }
+                font: { size: fonts.label, weight: "bold" }
               }
             }
           },
@@ -2400,7 +2511,7 @@ const DashboardChart: React.FC<DashboardChartProps> = ({ widget, data, localized
         chartInstanceRef.current.destroy();
       }
     };
-  }, [widget, data, appearance, localizedTitle, kind]);
+  }, [widget, data, appearance, viewSize, localizedTitle, kind]);
 
   if (kind === "gauge") {
     return <GaugeWidget widget={widget} data={data} />;
@@ -2408,14 +2519,14 @@ const DashboardChart: React.FC<DashboardChartProps> = ({ widget, data, localized
 
   if (renderError) {
     return (
-      <div className="h-[220px] w-full flex items-center justify-center text-center px-4">
-        <span className="text-xs font-semibold text-rose-600">{renderError}</span>
+      <div className="h-55 w-full flex items-center justify-center text-center px-4">
+        <span className="text-ui font-semibold text-rose-600">{renderError}</span>
       </div>
     );
   }
 
   return (
-    <div className="h-[220px] w-full relative">
+    <div className="h-55 w-full relative">
       <canvas ref={canvasRef} />
     </div>
   );
@@ -2449,13 +2560,13 @@ const DashboardTable: React.FC<DashboardTableProps> = ({ widget, data, t, format
   return (
     <div className="w-full overflow-x-auto">
       {dataList.length === 0 ? (
-        <div className="text-center py-6 text-xs text-slate-400 font-semibold uppercase tracking-wider">
+        <div className="text-center py-6 text-ui text-slate-400 font-semibold">
           {t("No records found", "Žiadne záznamy", "Nincs találat")}
         </div>
       ) : (
-        <table className="w-full text-left text-xs border-collapse">
+        <table className="w-full text-left text-ui border-collapse">
           <thead>
-            <tr className="border-b border-slate-100 text-[10px] text-slate-400 font-bold uppercase tracking-widest">
+            <tr className="border-b border-slate-100 type-overline text-slate-400">
               {columns.map((c: any, index: number) => (
                 <th key={index} className="py-2.5 px-3">
                   {localize(c.label)}
@@ -2486,7 +2597,7 @@ const DashboardTable: React.FC<DashboardTableProps> = ({ widget, data, t, format
 --------------------------------------------------------------------------- */
 
 const EmptyRows: React.FC<{ t: Translate }> = ({ t }) => (
-  <div className="text-center py-6 text-xs text-slate-400 font-semibold uppercase tracking-wider">
+  <div className="text-center py-6 text-ui text-slate-400 font-semibold">
     {t("No records found", "Žiadne záznamy", "Nincs találat")}
   </div>
 );
@@ -2525,26 +2636,26 @@ const DashboardTimeline: React.FC<{
 
   return (
     <ol className="w-full relative pl-5 py-1 space-y-4">
-      <span className="absolute left-[4px] top-2 bottom-2 w-px bg-slate-200" aria-hidden="true" />
+      <span className="absolute left-1 top-2 bottom-2 w-px bg-slate-200" aria-hidden="true" />
       {dataList.map((row: any, i: number) => (
         <li key={i} className="relative">
           <span
-            className="absolute -left-[19px] top-1 w-2.5 h-2.5 rounded-full ring-4 ring-white"
+            className="absolute -left-4.75 top-1 w-2.5 h-2.5 rounded-full ring-4 ring-white"
             style={{ backgroundColor: i === 0 ? accent : "#cbd5e1" }}
             aria-hidden="true"
           />
           <div className="flex items-baseline justify-between gap-3">
-            <span className="text-xs font-bold text-slate-800">
+            <span className="text-ui font-bold text-slate-800">
               {titleKey ? String(row[titleKey] ?? "-") : "-"}
             </span>
             {dateKey && (
-              <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider shrink-0">
+              <span className="type-overline text-slate-400 shrink-0">
                 {formatTimestamp(row[dateKey], systemLanguage)}
               </span>
             )}
           </div>
           {bodyKey && row[bodyKey] ? (
-            <p className="text-[11px] text-slate-500 leading-relaxed mt-0.5 line-clamp-3">
+            <p className="text-caption text-slate-500 leading-relaxed mt-0.5 line-clamp-3">
               {String(row[bodyKey])}
             </p>
           ) : null}
@@ -2587,12 +2698,12 @@ const DashboardAccordion: React.FC<{
               onClick={() => setOpenIndex(isOpen ? null : i)}
               className="w-full flex items-center justify-between gap-3 py-2.5 text-left cursor-pointer group"
             >
-              <span className="text-xs font-bold text-slate-700 group-hover:text-slate-900 transition-colors">
+              <span className="text-ui font-bold text-slate-700 group-hover:text-slate-900 transition-colors">
                 {titleKey ? String(row[titleKey] ?? "-") : "-"}
               </span>
               <div className="flex items-center gap-2 shrink-0">
                 {subtitleKey && row[subtitleKey] ? (
-                  <span className="text-[10px] font-bold text-slate-400">{formatTimestamp(row[subtitleKey], systemLanguage)}</span>
+                  <span className="text-micro font-bold text-slate-400">{formatTimestamp(row[subtitleKey], systemLanguage)}</span>
                 ) : null}
                 <ChevronDown
                   className={cn(
@@ -2603,7 +2714,7 @@ const DashboardAccordion: React.FC<{
               </div>
             </button>
             {isOpen && (
-              <p className="pb-3 text-[11px] text-slate-500 leading-relaxed whitespace-pre-line animate-in fade-in slide-in-from-top-1 duration-200">
+              <p className="pb-3 text-caption text-slate-500 leading-relaxed whitespace-pre-line animate-in fade-in slide-in-from-top-1 duration-200">
                 {content ? String(content) : t("No details.", "Žiadne detaily.", "Nincsenek részletek.")}
               </p>
             )}
@@ -2640,7 +2751,7 @@ const DashboardTabs: React.FC<{
             type="button"
             onClick={() => setActive(i)}
             className={cn(
-              "px-3 py-1.5 rounded-xl border text-[10px] font-black uppercase tracking-wider transition-all cursor-pointer",
+              "px-3 py-1.5 rounded-xl border type-overline transition-all cursor-pointer",
               i === current
                 ? "text-white border-transparent shadow-sm"
                 : "bg-white text-slate-500 border-slate-200 hover:bg-slate-50 hover:text-slate-700"
@@ -2652,7 +2763,7 @@ const DashboardTabs: React.FC<{
         ))}
       </div>
 
-      <div className="relative min-h-[80px] flex flex-col justify-center">
+      <div className="relative min-h-20 flex flex-col justify-center">
         {isTabLoading(current) ? (
           <div className="flex items-center justify-center py-6">
             <RefreshCw className="h-4 w-4 text-indigo-600 animate-spin" />

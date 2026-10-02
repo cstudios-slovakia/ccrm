@@ -151,6 +151,7 @@ until it is added here.
 | Edit drawer | One edit control per module (pencil / "Upraviť"). Dropdowns inside, no submit. | `crawler.spec.ts` |
 | Page filters | Filter / status dropdowns on the landing view, capped (they mutate the view). | `crawler.spec.ts` |
 | Pinned journeys | Chrome Recorder JSON in `tests/recordings/`. | `recorder.spec.ts` |
+| View size | Every module at the four reference screens (390 Compact, 1440 Compact, 1920 Normal, 2560 Big) with the size forced through `localStorage.ccrm_view_size`. Reports `TEXT_BELOW_FLOOR`, `HORIZONTAL_OVERFLOW`, `UNUSED_WIDTH`, `CONTROL_TRUNCATED` and `ASIDE_CHANGED`. Report-only unless `VIEW_SIZE_BLOCKING=1`; see `docs/VIEW-SIZE.md` §9.2. | `viewSize.spec.ts` |
 | Dark mode | Every module, plus the client drawer and the new-lead modal, opened with the appearance forced to dark. Every run of text is measured against the surface actually behind it; anything under 3:1 is a defect. | `darkmode.spec.ts` |
 
 `#dashboard` and `#tasks` are the same view. Only `#dashboard` is crawled;

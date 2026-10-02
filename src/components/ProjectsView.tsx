@@ -10,24 +10,29 @@ import { ProjectSettings } from "./ProjectSettings";
 import { ProjectListViewMenu } from "./ProjectListViewMenu";
 import { CustomSelect } from "./ui/CustomSelect";
 import { StarRating } from "./ui/StarRating";
+import { FavoriteHeartButton } from "./ui/FavoriteHeartButton";
 import { getTranslation, type Language } from "../utils/translations";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import type { ModuleAccess } from "../utils/permissions";
 import { readableOn } from "../utils/accentColor";
 import { parseAppHash } from "../utils/hash";
 import {
-  DEFAULT_PROJECT_STATUS,
-  CLOSED_PROJECT_STATUSES,
+  defaultProjectStatus,
   evaluateProjectDeadline,
+  isClosedProjectStatus,
+  openProjectStatuses,
   projectDisplayName,
   projectDelayReason,
   projectMissedDeadline,
   projectNeedsDelayReason,
-  projectStatusBadgeClass,
+  projectStatusBadgeStyle,
+  projectStatusColor,
+  projectStatusDotStyle,
   projectStatusLabel,
   projectStatusOptions,
   projectStatusOrder,
 } from "../utils/projects";
+import { useProjectStatuses } from "../hooks/useProjectStatuses";
 import { StatusValueEquationStats, type StatusStatItem, type StatusStatDetailRow } from "./StatusValueEquationStats";
 import type { ProjectDeadlineStatus } from "../utils/projects";
 import { todayLocal, formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
@@ -50,6 +55,7 @@ import {
 } from "../utils/projectColumns";
 import type { BuiltinProjectColumnKey, ResolvedProjectColumn } from "../utils/projectColumns";
 import { formatMoney, isMoneyValueEmpty, parseMoneyValue } from "../utils/currency";
+import { PageHeader } from "./layout";
 
 /*
   The summary strip's chips. Each tone is written out in full because Tailwind
@@ -90,18 +96,6 @@ const STAT_CHIP_TONES = {
 } as const;
 
 /*
-  One tone per project status, matching the badge colours in utils/projects.ts —
-  a chip and the badge on the row it counts wear the same colour.
-*/
-const STATUS_CHIP_TONES: Record<ProjectStatus, typeof STAT_CHIP_TONES[keyof typeof STAT_CHIP_TONES]> = {
-  new: STAT_CHIP_TONES.sky,
-  active: STAT_CHIP_TONES.purple,
-  completed: STAT_CHIP_TONES.emerald,
-  on_hold: STAT_CHIP_TONES.amber,
-  cancelled: STAT_CHIP_TONES.rose,
-};
-
-/*
   The status dropdown in the filter bar. The chips above it do the same job and
   carry the counts as well, so it is hidden rather than deleted — everything it
   needs is still wired up, and one constant brings it back.
@@ -112,6 +106,7 @@ const SHOW_STATUS_DROPDOWN = false;
 const UNASSIGNED_MANAGER = "__unassigned__";
 
 interface ProjectsViewProps {
+  initialSelectedProjectId?: string;
   projects: Project[];
   setProjects: React.Dispatch<React.SetStateAction<Project[]>>;
   projectTypes: ProjectType[];
@@ -164,6 +159,7 @@ interface ProjectsViewProps {
 }
 
 export const ProjectsView: React.FC<ProjectsViewProps> = ({
+  initialSelectedProjectId,
   projects,
   setProjects,
   projectTypes,
@@ -194,6 +190,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   divisionColors = {},
 }) => {
   const t = (en: string, sk: string, hu: string) => userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
+  const projectStatuses = useProjectStatuses();
 
   // Read once here; every handler below checks the flag before it writes.
   const canEdit = access.edit;
@@ -205,11 +202,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   /* Multi-status selection preference, same as the leads list (leadsVisibleStates).
      null = never chosen by user, defaults to only open / active statuses (leaves out closed). */
   const [visibleStatuses, setVisibleStatuses] = useUserPref("projectsVisibleStatuses");
-  const allProjectStatuses = useMemo(() => projectStatusOrder(), []);
-  const defaultOpenStatuses = useMemo(
-    () => (allProjectStatuses as ProjectStatus[]).filter(s => !CLOSED_PROJECT_STATUSES.includes(s)),
-    [allProjectStatuses]
-  );
+  const allProjectStatuses = useMemo(() => projectStatusOrder(projectStatuses), [projectStatuses]);
+  const defaultOpenStatuses = useMemo(() => openProjectStatuses(projectStatuses), [projectStatuses]);
 
   const resolvedVisibleStatuses = useMemo<ProjectStatus[]>(() => {
     if (visibleStatuses === null) {
@@ -294,11 +288,11 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     projects.forEach(p => {
       if (p.archived && selectedArchiveFilter === "active") return;
       if (!p.archived && selectedArchiveFilter === "archived") return;
-      const dl = evaluateProjectDeadline(p, projectTypes.find(pt => pt.id === p.projectTypeId), today);
+      const dl = evaluateProjectDeadline(p, projectTypes.find(pt => pt.id === p.projectTypeId), today, projectStatuses);
       if (dl?.isOverdue) ids.add(p.id);
     });
     return ids;
-  }, [projects, projectTypes, today, selectedArchiveFilter]);
+  }, [projects, projectTypes, projectStatuses, today, selectedArchiveFilter]);
 
   /* Projects past their deadline with nobody having written down why — the red
      flag. Counted here so the flag filter and the badges on the rows are the
@@ -308,11 +302,11 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     projects.forEach(p => {
       if (p.archived && selectedArchiveFilter === "active") return;
       if (!p.archived && selectedArchiveFilter === "archived") return;
-      const dl = evaluateProjectDeadline(p, projectTypes.find(pt => pt.id === p.projectTypeId), today);
+      const dl = evaluateProjectDeadline(p, projectTypes.find(pt => pt.id === p.projectTypeId), today, projectStatuses);
       if (projectNeedsDelayReason(p, dl)) ids.add(p.id);
     });
     return ids;
-  }, [projects, projectTypes, today, selectedArchiveFilter]);
+  }, [projects, projectTypes, projectStatuses, today, selectedArchiveFilter]);
 
   // Counts behind the summary strip. One chip per real project status, so the
   // strip and the (now hidden) status dropdown can never offer different lists.
@@ -359,7 +353,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         p.id.toLowerCase().includes(needle) ||
         (pType?.name || "").toLowerCase().includes(needle);
       
-      const statusKey = (p.status || DEFAULT_PROJECT_STATUS) as ProjectStatus;
+      const statusKey = (p.status || defaultProjectStatus(projectStatuses)) as ProjectStatus;
       const matchesStatus = resolvedVisibleStatuses.includes(statusKey);
       const matchesType = selectedTypeFilter === "all" || p.projectTypeId === selectedTypeFilter;
       const matchesDivision =
@@ -402,31 +396,53 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
 
 
-  /* Deep link: `#projects?edit=<projectId>` opens that project directly.
-     "Convert to Project" on a lead has always navigated here with that query,
-     and the lead's "Linked projects" card does too — but nothing read it, so
-     both landed on the plain list and read as the action having done nothing.
-     The parameter is consumed once it has been honoured, otherwise saving the
-     project (which re-renders this list) would immediately re-open it. */
+  const handleOpenProject = (p: Project, pType?: ProjectType) => {
+    const type = pType || projectTypes.find(pt => pt.id === p.projectTypeId);
+    if (!type) return;
+    setEditingProjectType(type);
+    setEditingProject(p);
+    window.location.hash = `projects/${p.id}`;
+  };
+
+  /* Deep link: `#projects/<id>`, `#project-<id>`, or `#projects?id=<id>` opens that project directly. */
   useEffect(() => {
     const openFromHash = () => {
+      const rawHash = (window.location.hash || "").replace(/^#/, "");
       const { route, params } = parseAppHash(window.location.hash);
-      if (route !== "projects") return;
-      const id = params.get("edit") || params.get("id") || params.get("project");
-      if (!id) return;
 
-      const normalizedTarget = id.toLowerCase().trim();
+      let targetId: string | null = null;
+      if (initialSelectedProjectId) {
+        targetId = initialSelectedProjectId;
+      } else if (route.startsWith("projects/") && route.length > "projects/".length) {
+        targetId = decodeURIComponent(route.slice("projects/".length));
+      } else if (route.startsWith("project-") && route.length > "project-".length) {
+        targetId = decodeURIComponent(route.slice("project-".length));
+      } else if (rawHash.startsWith("project-") && rawHash.length > "project-".length) {
+        targetId = decodeURIComponent(rawHash.slice("project-".length));
+      } else {
+        targetId = params.get("edit") || params.get("id") || params.get("project");
+      }
+
+      if (!targetId) {
+        // When user navigates back to #projects (no subpath or query), close the open project
+        if ((route === "projects" || rawHash === "projects") && !params.get("edit") && !params.get("id") && !params.get("project")) {
+          setEditingProject(cur => (cur && !projects.some(p => p.id === cur.id) ? cur : null));
+        }
+        return;
+      }
+
+      if (targetId === "new") return;
+
+      const normalizedTarget = targetId.toLowerCase().trim();
       const project = projects.find(p => 
-        p.id === id || 
+        p.id === targetId || 
+        p.id.toLowerCase() === normalizedTarget ||
         (p.name && p.name.toLowerCase() === normalizedTarget) ||
         (p.name && p.name.toLowerCase().includes(normalizedTarget))
       );
       const type = project ? projectTypes.find(pt => pt.id === project.projectTypeId) : undefined;
-      // A project that has not arrived yet (or whose type was deleted) leaves
-      // the parameter in place, so the next render can still honour it.
       if (!project || !type) return;
 
-      window.history.replaceState(null, "", "#projects");
       setEditingProjectType(type);
       setEditingProject(project);
     };
@@ -434,7 +450,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     openFromHash();
     window.addEventListener("hashchange", openFromHash);
     return () => window.removeEventListener("hashchange", openFromHash);
-  }, [projects, projectTypes]);
+  }, [projects, projectTypes, initialSelectedProjectId]);
 
   /* The create dropdown had no way of closing other than the button that opened
      it: clicking anywhere else left it hanging over the list. */
@@ -474,7 +490,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       projectTypeId: type.id,
       leadId: null,
       clientId: null,
-      status: DEFAULT_PROJECT_STATUS,
+      status: defaultProjectStatus(projectStatuses),
       managers: [],
       data: {},
       timeline: [],
@@ -508,6 +524,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     if (close) {
       setEditingProject(null);
       setEditingProjectType(null);
+      window.location.hash = "projects";
       (window as any).showToast(t("Project saved successfully!", "Projekt bol úspešne uložený!", "Projekt sikeresen mentve!"));
     } else {
       // Staying open: hand the card what was just saved, or the next save
@@ -515,6 +532,9 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       // while that project is still the open one — the view writes out its
       // last edit as it closes, and that must not open it again.
       setEditingProject(cur => (cur && cur.id === updatedProject.id ? updatedProject : cur));
+      if (window.location.hash !== `#projects/${updatedProject.id}`) {
+        window.location.hash = `projects/${updatedProject.id}`;
+      }
     }
   };
 
@@ -574,18 +594,24 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     let pVal = 0;
     let pCurrency = defaultCurrency;
     let hasMoneyVal = false;
-    for (const attr of moneyAttrs) {
-      const raw = p.data?.[attr.id];
-      if (
-        raw !== undefined &&
-        raw !== null &&
-        !isMoneyValueEmpty(raw, defaultCurrency)
-      ) {
-        const parsed = parseMoneyValue(raw, defaultCurrency);
-        if (parsed.amount) {
-          pVal += parsed.amount;
-          if (parsed.currency) pCurrency = parsed.currency;
-          hasMoneyVal = true;
+    if (p.value !== undefined && p.value !== null && Number.isFinite(Number(p.value)) && Number(p.value) > 0) {
+      pVal = Number(p.value);
+      hasMoneyVal = true;
+    }
+    if (!hasMoneyVal) {
+      for (const attr of moneyAttrs) {
+        const raw = p.data?.[attr.id];
+        if (
+          raw !== undefined &&
+          raw !== null &&
+          !isMoneyValueEmpty(raw, defaultCurrency)
+        ) {
+          const parsed = parseMoneyValue(raw, defaultCurrency);
+          if (parsed.amount) {
+            pVal += parsed.amount;
+            if (parsed.currency) pCurrency = parsed.currency;
+            hasMoneyVal = true;
+          }
         }
       }
     }
@@ -626,15 +652,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
   /* Active project status items calculation for the expandable equation statistics */
   const activeProjectStatusItems = useMemo<StatusStatItem[]>(() => {
-    const activeStatuses = (projectStatusOrder() as ProjectStatus[]).filter(
-      (s) => !CLOSED_PROJECT_STATUSES.includes(s)
-    );
-
-    const statusColors: Record<string, string> = {
-      new: "#0284c7",
-      active: "#9333ea",
-      on_hold: "#d97706",
-    };
+    const activeStatuses = openProjectStatuses(projectStatuses);
 
     return activeStatuses.map((status) => {
       // Collect projects in this status matching other non-status filters
@@ -703,16 +721,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           invoiced: fin.invoiced,
           invoicable: fin.invoicable,
           type: "project",
-          url: `#projects?edit=${encodeURIComponent(p.id)}`,
+          url: `#projects/${encodeURIComponent(p.id)}`,
         });
       });
 
       return {
         key: status,
-        name: projectStatusLabel(status, t),
+        name: projectStatusLabel(status, t, projectStatuses),
         value: statusInvoicableVal,
         count: projectsInStatus.length,
-        color: statusColors[status] || "#6366f1",
+        color: projectStatusColor(status, projectStatuses),
         totalBudget: statusTotalBudgetValue,
         invoiced: statusTotalInvoicedValue,
         rows: statusRows,
@@ -721,6 +739,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   }, [
     projects,
     projectTypes,
+    projectStatuses,
     leads,
     financialRecords,
     searchQuery,
@@ -811,8 +830,9 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
      "Custom order" is the one dragged into place (see handleProjectMove).
      The whole list, not just the filtered one, because a drag made while the
      list is filtered still has to leave the hidden projects somewhere. */
+  const sortValueActive = effectiveSort.key === "value";
   const orderedProjects = useMemo(() => {
-    const statusOrder = projectStatusOrder() as string[];
+    const statusOrder = projectStatusOrder(projectStatuses);
     const contactName = (id: string) => leads.find(l => l.id === id)?.name || null;
     const moneyAmount = (raw: unknown) => parseMoneyValue(raw, defaultCurrency).amount;
 
@@ -834,14 +854,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         managers: (p.managers || []).join(", "),
         // Unrated travels as null, not 0 — see ProjectSortValues.rating.
         rating: ratingValue(p.rating) || null,
-        deadline: evaluateProjectDeadline(p, pType, today)?.deadline ?? null,
+        deadline: evaluateProjectDeadline(p, pType, today, projectStatuses)?.deadline ?? null,
         progress: pType?.hasGantt && p.gantt && p.gantt.length > 0 ? calculateProgress(p) : null,
+        value: sortValueActive ? (getProjectFinancials(p, pType, leads.find(l => l.id === p.leadId)).totalBudget || null) : null,
+        division: p.division || "",
         statusRank: rank === -1 ? statusOrder.length : rank,
         attributes,
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projects, manualOrder, effectiveSort.key, effectiveSort.direction, projectTypes, leads, today, sortableAttributes, defaultCurrency]);
+  }, [projects, manualOrder, effectiveSort.key, effectiveSort.direction, projectTypes, projectStatuses, leads, today, sortableAttributes, defaultCurrency, sortValueActive, getProjectFinancials]);
 
   /* Every project in the structure: the hand-set order, whatever the sort says.
      Projects it has never seen (created since the last drag) sit on top. */
@@ -909,7 +931,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     setProjects(prev =>
       prev.map(p => {
         if (!selectedProjectIds.has(p.id)) return p;
-        const isClosing = CLOSED_PROJECT_STATUSES.includes(newStatus);
+        const isClosing = isClosedProjectStatus(newStatus, projectStatuses);
         return {
           ...p,
           status: newStatus,
@@ -979,13 +1001,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         ? `${selectedCount} kiválasztva`
         : `${selectedCount} selected`;
 
-    const statusList: { key: ProjectStatus; label: string; tone: string }[] = [
-      { key: "new", label: projectStatusLabel("new", t), tone: "bg-sky-500" },
-      { key: "active", label: projectStatusLabel("active", t), tone: "bg-purple-500" },
-      { key: "on_hold", label: projectStatusLabel("on_hold", t), tone: "bg-amber-500" },
-      { key: "completed", label: projectStatusLabel("completed", t), tone: "bg-emerald-500" },
-      { key: "cancelled", label: projectStatusLabel("cancelled", t), tone: "bg-rose-500" },
-    ];
+    const statusList = projectStatusOptions(t, projectStatuses).map((o) => ({ key: o.value, label: o.label }));
 
     return createPortal(
       <div
@@ -994,13 +1010,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       >
         {/* Left: Count and selection management */}
         <div className="flex items-center gap-2">
-          <span className="bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-xs font-black px-2.5 py-1 rounded-xl">
+          <span className="bg-indigo-600/30 text-indigo-300 border border-indigo-500/40 text-ui font-bold px-2.5 py-1 rounded-xl">
             {countLabel}
           </span>
           <button
             type="button"
             onClick={handleSelectAllVisible}
-            className="text-[11px] font-bold text-slate-300 hover:text-white px-2 py-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
+            className="text-caption font-bold text-slate-300 hover:text-white px-2 py-1 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
           >
             {areAllVisibleSelected
               ? t("Deselect visible", "Zrušiť výber zobrazených", "Láthatók kijelölésének törlése")
@@ -1029,22 +1045,22 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             <button
               type="button"
               onClick={() => setActiveBulkMenu(activeBulkMenu === "status" ? null : "status")}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-xs font-black transition-colors border border-slate-700/50 cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-ui font-bold transition-colors border border-slate-700/50 cursor-pointer"
             >
               <CheckSquare className="h-3.5 w-3.5 text-indigo-400" />
               <span>{t("Status", "Stav", "Státusz")}</span>
               <ChevronDown className="h-3 w-3 text-slate-400" />
             </button>
             {activeBulkMenu === "status" && (
-              <div className="absolute bottom-full mb-2 left-0 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl p-1.5 min-w-[160px] space-y-0.5 animate-in fade-in zoom-in-95 duration-100 z-50">
+              <div className="absolute bottom-full mb-2 left-0 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl p-1.5 min-w-40 space-y-0.5 animate-in fade-in zoom-in-95 duration-100 z-50">
                 {statusList.map((st) => (
                   <button
                     key={st.key}
                     type="button"
                     onClick={() => handleBulkStatusChange(st.key)}
-                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:bg-indigo-600 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-ui font-bold text-slate-200 hover:bg-indigo-600 hover:text-white transition-colors flex items-center gap-2 cursor-pointer"
                   >
-                    <span className={`h-2 w-2 rounded-full shrink-0 ${st.tone}`} />
+                    <span className="h-2 w-2 rounded-full shrink-0" style={projectStatusDotStyle(st.key, projectStatuses)} />
                     <span>{st.label}</span>
                   </button>
                 ))}
@@ -1057,18 +1073,18 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             <button
               type="button"
               onClick={() => setActiveBulkMenu(activeBulkMenu === "manager" ? null : "manager")}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-xs font-black transition-colors border border-slate-700/50 cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-slate-700/80 text-ui font-bold transition-colors border border-slate-700/50 cursor-pointer"
             >
               <Users className="h-3.5 w-3.5 text-sky-400" />
               <span>{t("Project Manager", "Manažér projektu", "Projektmenedzser")}</span>
               <ChevronDown className="h-3 w-3 text-slate-400" />
             </button>
             {activeBulkMenu === "manager" && (
-              <div className="absolute bottom-full mb-2 left-0 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl p-1.5 min-w-[180px] max-h-56 overflow-y-auto space-y-0.5 animate-in fade-in zoom-in-95 duration-100 z-50">
+              <div className="absolute bottom-full mb-2 left-0 bg-slate-900 border border-slate-700/80 rounded-xl shadow-2xl p-1.5 min-w-45 max-h-56 overflow-y-auto space-y-0.5 animate-in fade-in zoom-in-95 duration-100 z-50">
                 <button
                   type="button"
                   onClick={() => handleBulkManagerChange("unassigned")}
-                  className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-bold text-rose-300 hover:bg-rose-900/40 hover:text-rose-100 transition-colors flex items-center gap-2 cursor-pointer border-b border-slate-800 pb-1 mb-1"
+                  className="w-full text-left px-2.5 py-1.5 rounded-lg text-ui font-bold text-rose-300 hover:bg-rose-900/40 hover:text-rose-100 transition-colors flex items-center gap-2 cursor-pointer border-b border-slate-800 pb-1 mb-1"
                 >
                   <User className="h-3.5 w-3.5 text-rose-400 shrink-0" />
                   <span>{t("Unassigned", "Bez manažéra", "Nincs hozzárendelve")}</span>
@@ -1078,11 +1094,11 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     key={name}
                     type="button"
                     onClick={() => handleBulkManagerChange(name)}
-                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-xs font-bold text-slate-200 hover:bg-indigo-600 hover:text-white transition-colors flex items-center justify-between gap-2 cursor-pointer"
+                    className="w-full text-left px-2.5 py-1.5 rounded-lg text-ui font-bold text-slate-200 hover:bg-indigo-600 hover:text-white transition-colors flex items-center justify-between gap-2 cursor-pointer"
                   >
                     <span className="truncate">{name}</span>
                     {currentUser?.name === name && (
-                      <span className="text-[9px] bg-slate-800 px-1 py-0.5 rounded text-indigo-300">
+                      <span className="text-micro bg-slate-800 px-1 py-0.5 rounded text-indigo-300">
                         {t("You", "Vy", "Ön")}
                       </span>
                     )}
@@ -1098,7 +1114,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               type="button"
               onClick={() => handleBulkArchive(true)}
               title={t("Archive selected projects", "Archivovať vybrané projekty", "Kiválasztott projektek archiválása")}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-amber-900/40 text-amber-300 hover:text-amber-100 text-xs font-black transition-colors border border-slate-700/50 hover:border-amber-700/50 cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-amber-900/40 text-amber-300 hover:text-amber-100 text-ui font-bold transition-colors border border-slate-700/50 hover:border-amber-700/50 cursor-pointer"
             >
               <Archive className="h-3.5 w-3.5 text-amber-400" />
               <span>{t("Archive", "Archivovať", "Archiválás")}</span>
@@ -1109,7 +1125,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               type="button"
               onClick={() => handleBulkArchive(false)}
               title={t("Restore selected projects", "Obnoviť vybrané projekty", "Kiválasztott projektek visszaállítása")}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-emerald-900/40 text-emerald-300 hover:text-emerald-100 text-xs font-black transition-colors border border-slate-700/50 hover:border-emerald-700/50 cursor-pointer"
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-emerald-900/40 text-emerald-300 hover:text-emerald-100 text-ui font-bold transition-colors border border-slate-700/50 hover:border-emerald-700/50 cursor-pointer"
             >
               <ArchiveRestore className="h-3.5 w-3.5 text-emerald-400" />
               <span>{t("Restore", "Obnoviť", "Visszaállítás")}</span>
@@ -1163,6 +1179,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     { value: "deadline", label: t("Deadline", "Termín", "Határidő") },
     { value: "progress", label: t("Progress", "Postup", "Haladás") },
     { value: "status", label: t("Status", "Stav", "Állapot") },
+    { value: "value", label: t("Value", "Hodnota", "Érték") },
+    { value: "division", label: t("Division", "Divízia", "Divízió") },
     ...sortableAttributes.map(({ key, attribute }) => ({ value: key as ProjectSortKey, label: attribute.name })),
   ];
 
@@ -1217,7 +1235,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
   const renderDeadlineBadge = (dl: ProjectDeadlineStatus) => (
     <span
-      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-[10px] font-bold whitespace-nowrap ${deadlineToneClass(dl)}`}
+      className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border text-micro font-bold whitespace-nowrap ${deadlineToneClass(dl)}`}
       title={deadlineTitle(dl)}
     >
       <CalendarClock className="h-3.5 w-3.5 shrink-0" />
@@ -1235,7 +1253,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
     return reason ? (
       <span
-        className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-slate-200 bg-slate-50 text-[10px] font-bold text-slate-500 whitespace-nowrap max-w-[12rem]"
+        className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-slate-200 bg-slate-50 text-micro font-bold text-slate-500 whitespace-nowrap max-w-[12rem]"
         title={t(`Reason for the delay: ${reason}`, `Dôvod meškania: ${reason}`, `A késés oka: ${reason}`)}
       >
         <Flag className="h-3 w-3 shrink-0" />
@@ -1243,7 +1261,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
       </span>
     ) : (
       <span
-        className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-rose-300 bg-rose-600 text-[10px] font-black uppercase tracking-wider text-white whitespace-nowrap animate-pulse"
+        className="inline-flex items-center gap-1 px-2 py-1 rounded-full border border-rose-300 bg-rose-600 type-overline text-white whitespace-nowrap animate-pulse"
         title={t(
           "Past the deadline and no reason given — open the project and explain the delay.",
           "Po termíne a bez zdôvodnenia — otvorte projekt a vysvetlite meškanie.",
@@ -1267,7 +1285,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     return label ? t(label[0], label[1], label[2]) : col.key;
   };
 
-  const emptyCell = <span className="text-slate-300 text-xs">—</span>;
+  const emptyCell = <span className="text-slate-300 text-ui">—</span>;
 
   /**
    * A custom attribute in one table cell: the value in the shape its type
@@ -1281,23 +1299,23 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         if (isMoneyValueEmpty(rawVal, defaultCurrency)) return emptyCell;
         const m = parseMoneyValue(rawVal, defaultCurrency);
         return (
-          <span className="text-xs font-bold text-slate-700 tabular-nums whitespace-nowrap">
+          <span className="text-ui font-bold text-slate-700 tabular-nums whitespace-nowrap">
             {formatMoney(m.amount || 0, m.currency, userLanguage)}
           </span>
         );
       }
       case "date":
         return rawVal
-          ? <span className="text-xs font-semibold text-slate-600 whitespace-nowrap">{formatDateLocalized(String(rawVal), userLanguage)}</span>
+          ? <span className="text-ui font-semibold text-slate-600 whitespace-nowrap">{formatDateLocalized(String(rawVal), userLanguage)}</span>
           : emptyCell;
       case "datetime":
         return rawVal
-          ? <span className="text-xs font-semibold text-slate-600 whitespace-nowrap">{formatTimestampLocalized(String(rawVal).replace("T", " "), userLanguage)}</span>
+          ? <span className="text-ui font-semibold text-slate-600 whitespace-nowrap">{formatTimestampLocalized(String(rawVal).replace("T", " "), userLanguage)}</span>
           : emptyCell;
       case "number":
         return rawVal === "" || rawVal === null || rawVal === undefined
           ? emptyCell
-          : <span className="text-xs font-semibold text-slate-600 tabular-nums">{String(rawVal)}</span>;
+          : <span className="text-ui font-semibold text-slate-600 tabular-nums">{String(rawVal)}</span>;
       case "checkbox": {
         if (isBooleanCheckbox(attr)) {
           // A yes/no box is answered either way, so both answers are drawn.
@@ -1310,12 +1328,12 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         return (
           <div className="flex flex-wrap items-center gap-1 max-w-[14rem]" title={picked.join(", ")}>
             {picked.slice(0, 2).map(opt => (
-              <span key={opt} className="px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-[10px] font-bold text-slate-600 truncate max-w-[7rem]">
+              <span key={opt} className="px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-micro font-bold text-slate-600 truncate max-w-[7rem]">
                 {opt}
               </span>
             ))}
             {picked.length > 2 && (
-              <span className="text-[10px] font-bold text-slate-400 tabular-nums">+{picked.length - 2}</span>
+              <span className="text-micro font-bold text-slate-400 tabular-nums">+{picked.length - 2}</span>
             )}
           </div>
         );
@@ -1325,7 +1343,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         if (files.length === 0) return emptyCell;
         return (
           <span
-            className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-500 whitespace-nowrap"
+            className="inline-flex items-center gap-1.5 text-ui font-semibold text-slate-500 whitespace-nowrap"
             title={files.map((f: any) => f?.name).filter(Boolean).join(", ")}
           >
             <Paperclip className="h-3.5 w-3.5 shrink-0 text-slate-400" />
@@ -1337,7 +1355,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         const contact = typeof rawVal === "string" ? leads.find(l => l.id === rawVal) : undefined;
         if (!contact) return emptyCell;
         return (
-          <span className="block truncate max-w-[12rem] text-xs font-semibold text-slate-600" title={contact.name}>
+          <span className="block truncate max-w-[12rem] text-ui font-semibold text-slate-600" title={contact.name}>
             {contact.name}
           </span>
         );
@@ -1346,7 +1364,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         if (rawVal === "" || rawVal === null || rawVal === undefined) return emptyCell;
         const text = String(rawVal);
         return (
-          <span className="block truncate max-w-[14rem] text-xs font-semibold text-slate-600" title={text}>
+          <span className="block truncate max-w-[14rem] text-ui font-semibold text-slate-600" title={text}>
             {text}
           </span>
         );
@@ -1372,28 +1390,39 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     switch (col.key) {
       case "name":
         return (
-          <div className="flex items-center gap-2.5 min-w-0">
+          <div className="flex items-center gap-2 min-w-0">
+            <FavoriteHeartButton
+              entityId={p.id}
+              type="project"
+              title={title}
+              subtitle={pType.name}
+              color={pType.color}
+              icon={pType.icon}
+              url={`#projects/${p.id}`}
+              size="xs"
+              systemLanguage={userLanguage as any}
+            />
             <span className="h-2 w-2 rounded-full shrink-0" style={{ backgroundColor: pType.color }} />
-            <span className="font-heading font-bold text-[13px] text-slate-800 group-hover:text-indigo-600 transition-colors truncate">
+            <span className="font-heading font-bold text-ui text-slate-800 group-hover:text-indigo-600 transition-colors truncate">
               {title}
             </span>
           </div>
         );
       case "type":
         return (
-          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-600 whitespace-nowrap">
+          <span className="inline-flex items-center gap-1.5 text-ui font-semibold text-slate-600 whitespace-nowrap">
             {renderIcon(pType.icon, "h-3.5 w-3.5 shrink-0")}
             {pType.name}
           </span>
         );
       case "client":
         return lead?.name
-          ? <span className="text-xs font-semibold text-slate-600">{lead.name}</span>
+          ? <span className="text-ui font-semibold text-slate-600">{lead.name}</span>
           : emptyCell;
       case "managers":
         return p.managers && p.managers.length > 0
           ? (
-            <span className="block truncate max-w-[14rem] text-xs font-semibold text-slate-500" title={p.managers.join(", ")}>
+            <span className="block truncate max-w-[14rem] text-ui font-semibold text-slate-500" title={p.managers.join(", ")}>
               {p.managers.join(", ")}
             </span>
           )
@@ -1421,15 +1450,37 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             <div className="h-1.5 flex-1 rounded-full bg-slate-100 overflow-hidden border border-slate-200/50">
               <div className="h-full rounded-full" style={{ width: `${progress}%`, backgroundColor: pType.color }} />
             </div>
-            <span className="text-[10px] font-bold text-slate-500 tabular-nums">{progress}%</span>
+            <span className="text-micro font-bold text-slate-500 tabular-nums">{progress}%</span>
           </div>
         ) : emptyCell;
       case "status":
         return (
-          <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border whitespace-nowrap ${projectStatusBadgeClass(p.status)}`}>
-            {projectStatusLabel(p.status, t)}
+          <span className="px-2 py-0.5 rounded-full text-micro font-bold border whitespace-nowrap" style={projectStatusBadgeStyle(p.status, projectStatuses)}>
+            {projectStatusLabel(p.status, t, projectStatuses)}
           </span>
         );
+      case "value": {
+        const fin = getProjectFinancials(p, pType, lead);
+        return fin.hasValue
+          ? (
+            <span className="text-ui font-bold text-slate-700 tabular-nums whitespace-nowrap">
+              {formatMoney(fin.totalBudget, fin.currency, userLanguage)}
+            </span>
+          )
+          : emptyCell;
+      }
+      case "division": {
+        if (!p.division) return emptyCell;
+        const color = divisionColors[p.division] || "#3b82f6";
+        return (
+          <span
+            className="px-2 py-0.5 rounded-full text-micro font-bold border whitespace-nowrap"
+            style={{ backgroundColor: `${color}15`, color, borderColor: `${color}30` }}
+          >
+            {p.division}
+          </span>
+        );
+      }
       default:
         return emptyCell;
     }
@@ -1442,7 +1493,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     <div className="relative select-none" ref={createDropdownRef}>
       <button
         onClick={() => setIsCreateDropdownOpen(!isCreateDropdownOpen)}
-        className="flex items-center gap-1.5 px-5 py-2.5 rounded-2xl bg-purple-600 text-white font-black text-xs uppercase tracking-wider hover:bg-purple-700 shadow-md shadow-purple-600/20 cursor-pointer"
+        className="flex items-center gap-1.5 px-5 py-2.5 rounded-2xl bg-purple-600 text-white font-bold text-ui hover:bg-purple-700 shadow-md shadow-purple-600/20 cursor-pointer"
       >
         <Plus className="h-4.5 w-4.5" />
         <span>{t("New Project", "Nový projekt", "Új projekt")}</span>
@@ -1451,11 +1502,11 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
       {isCreateDropdownOpen && (
         <div className="absolute right-0 mt-2 w-56 rounded-2xl bg-white border border-slate-200 shadow-xl py-2 z-[950] animate-in slide-in-from-top-2 duration-250">
-          <span className="block px-4 py-1.5 text-[9px] font-black text-slate-400 uppercase tracking-widest border-b border-slate-100 pb-2 mb-1.5 text-left">
+          <span className="block px-4 py-1.5 type-overline text-slate-400 border-b border-slate-100 pb-2 mb-1.5 text-left">
             {t("Select Project Type", "Vyberte typ projektu", "Válasszon projekt típust")}
           </span>
           {projectTypes.length === 0 ? (
-            <span className="block px-4 py-2 text-xs text-slate-400 italic text-left">
+            <span className="block px-4 py-2 text-ui text-slate-400 italic text-left">
               {t("No types configured yet.", "Zatiaľ nie sú nastavené typy.", "Még nincsenek típusok.")}
             </span>
           ) : (
@@ -1463,7 +1514,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               <button
                 key={type.id}
                 onClick={() => handleStartCreateProject(type)}
-                className="w-full text-left px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-purple-50 hover:text-purple-600 transition-colors flex items-center gap-2 cursor-pointer"
+                className="w-full text-left px-4 py-2 text-ui font-semibold text-slate-700 hover:bg-purple-50 hover:text-purple-600 transition-colors flex items-center gap-2 cursor-pointer"
               >
                 <span className="h-2 w-2 rounded-full" style={{ backgroundColor: type.color }} />
                 <span>{type.name}</span>
@@ -1475,7 +1526,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               another type without hunting through the settings tab. */}
           <button
             onClick={handleStartCreateProjectType}
-            className="w-full text-left px-4 py-2 mt-1.5 border-t border-slate-100 pt-2.5 text-xs font-bold text-purple-600 hover:bg-purple-50 transition-colors flex items-center gap-2 cursor-pointer"
+            className="w-full text-left px-4 py-2 mt-1.5 border-t border-slate-100 pt-2.5 text-ui font-bold text-purple-600 hover:bg-purple-50 transition-colors flex items-center gap-2 cursor-pointer"
           >
             <Plus className="h-3.5 w-3.5 shrink-0" />
             <span>{t("New project type", "Nový typ projektu", "Új projekt típus")}</span>
@@ -1536,16 +1587,15 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     <div className="space-y-6 text-left">
 
       {/* Top Header Section */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-100 pb-4 select-none">
-        <div className="flex flex-col">
-          <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-            <Briefcase className="h-6 w-6 text-purple-600" />
-            {t("Project Management", "Manažment projektov", "Projektmenedzsment")}
+      <PageHeader
+        icon={<Briefcase className="h-6 w-6 text-purple-600" />}
+        title={<>
+          {t("Project Management", "Manažment projektov", "Projektmenedzsment")}
             {/* Read-only: the role can look at projects but not touch them. Said
                 once, up here, rather than by every control that is missing. */}
             {!canEdit && (
               <span
-                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-amber-200 bg-amber-50 text-[10px] font-black uppercase tracking-wider text-amber-700 whitespace-nowrap"
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-amber-200 bg-amber-50 type-overline text-amber-700 whitespace-nowrap"
                 title={t(
                   "Your role can view projects but not create or change them.",
                   "Vaša rola môže projekty prezerať, ale nie vytvárať ani meniť.",
@@ -1556,44 +1606,42 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 <span>{t("Read-only access", "Iba na čítanie", "Csak olvasható")}</span>
               </span>
             )}
-          </h2>
-          <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
-            {t("Track deliverables, roadmaps, and client workflows", "Sledovanie dodávok, plánov a klientskych procesov", "Szállítások, útemtervek és ügyfélfolyamatok nyomon követése")}
-          </p>
-        </div>
-
-        {/* Actions. Settings used to be the second half of a two-tab switcher,
-            which read as two equal views of this screen — it is not one, it is
-            configuration you visit rarely. It is now a single quiet button in,
-            and a single way back out; the space the "Projects List" tab wasted
-            (a tab that switched to the view you were already on) belongs to the
-            action people actually come here for. */}
-        <div className="flex items-center gap-2 self-start md:self-auto">
-          {activeSubTab === "settings" ? (
-            <button
-              onClick={() => setActiveSubTab("list")}
-              className="flex items-center gap-1.5 pl-3 pr-4 py-2.5 rounded-2xl border border-slate-200 bg-white text-slate-600 font-heading font-bold text-xs uppercase tracking-wider hover:bg-slate-50 hover:text-slate-900 transition-all cursor-pointer"
-            >
-              <ChevronLeft className="h-4 w-4 shrink-0" />
-              <span>{t("Back to projects", "Späť na projekty", "Vissza a projektekhez")}</span>
-            </button>
-          ) : (
-            <>
-              {canEdit && createProjectControl}
-              {settingsAccess.view && (
-                <button
-                  onClick={() => setActiveSubTab("settings")}
-                  title={t("Project settings", "Nastavenia projektov", "Projekt beállítások")}
-                  className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-slate-400 font-heading font-bold text-xs uppercase tracking-wider hover:bg-slate-100 hover:text-slate-700 transition-all cursor-pointer"
-                >
-                  <Settings className="h-4 w-4 shrink-0" />
-                  <span className="hidden sm:inline">{t("Settings", "Nastavenia", "Beállítások")}</span>
-                </button>
-              )}
-            </>
-          )}
-        </div>
-      </div>
+        </>}
+        subtitle={t("Track deliverables, roadmaps, and client workflows", "Sledovanie dodávok, plánov a klientskych procesov", "Szállítások, útemtervek és ügyfélfolyamatok nyomon követése")}
+        actions={<>
+          {/* Actions. Settings used to be the second half of a two-tab switcher,
+              which read as two equal views of this screen — it is not one, it is
+              configuration you visit rarely. It is now a single quiet button in,
+              and a single way back out; the space the "Projects List" tab wasted
+              (a tab that switched to the view you were already on) belongs to the
+              action people actually come here for. */}
+          <div className="flex items-center gap-2 self-start ws-md:self-auto">
+            {activeSubTab === "settings" ? (
+              <button
+                onClick={() => setActiveSubTab("list")}
+                className="flex items-center gap-1.5 pl-3 pr-4 py-2.5 rounded-2xl border border-slate-200 bg-white text-slate-600 font-heading font-bold text-ui hover:bg-slate-50 hover:text-slate-900 transition-all cursor-pointer"
+              >
+                <ChevronLeft className="h-4 w-4 shrink-0" />
+                <span>{t("Back to projects", "Späť na projekty", "Vissza a projektekhez")}</span>
+              </button>
+            ) : (
+              <>
+                {canEdit && createProjectControl}
+                {settingsAccess.view && (
+                  <button
+                    onClick={() => setActiveSubTab("settings")}
+                    title={t("Project settings", "Nastavenia projektov", "Projekt beállítások")}
+                    className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-2xl text-slate-400 font-heading font-bold text-ui hover:bg-slate-100 hover:text-slate-700 transition-all cursor-pointer"
+                  >
+                    <Settings className="h-4 w-4 shrink-0" />
+                    <span className="hidden ws-sm:inline">{t("Settings", "Nastavenia", "Beállítások")}</span>
+                  </button>
+                )}
+              </>
+            )}
+          </div>
+        </>}
+      />
 
       {activeSubTab === "settings" ? (
         <div className="mt-4">
@@ -1645,7 +1693,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               hand-picked chips next to a dropdown carrying the real list, so
               two controls filtered the same thing and disagreed about what the
               statuses were. The chips are now the whole list, straight from
-              PROJECT_STATUSES, and the dropdown below is hidden.
+              the statuses configured in settings, and the dropdown below is hidden.
 
               "Overdue" is deliberately not among them: it is not a status — a
               project can be late in any of them — so it sits apart, as the red
@@ -1654,12 +1702,12 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               hand-picked chips next to a dropdown carrying the real list, so
               two controls filtered the same thing and disagreed about what the
               statuses were. The chips are now the whole list, straight from
-              PROJECT_STATUSES, and the dropdown below is hidden.
+              the statuses configured in settings, and the dropdown below is hidden.
 
               "Overdue" is deliberately not among them: it is not a status — a
               project can be late in any of them — so it sits apart, as the red
               flag it is. */}
-          <div className="w-full flex items-center gap-2 overflow-x-auto scrollbar-none flex-nowrap sm:flex-wrap select-none pb-1 sm:pb-0">
+          <div className="w-full flex items-center gap-2 overflow-x-auto scrollbar-none flex-nowrap ws-sm:flex-wrap select-none pb-1 ws-sm:pb-0">
             {/* All toggle button */}
             {(() => {
               const isAllVisible =
@@ -1698,13 +1746,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                   }`}
                 >
                   <span
-                    className={`font-heading font-bold text-base leading-none tabular-nums ${
+                    className={`font-heading font-bold text-title-sm leading-none tabular-nums ${
                       isAllVisible ? "text-white" : "text-slate-800"
                     }`}
                   >
                     {totalProjects}
                   </span>
-                  <span className="text-[10px] font-black uppercase tracking-widest leading-none">
+                  <span className="type-overline leading-none">
                     {t("All", "Všetky", "Összes")}
                   </span>
                 </button>
@@ -1714,9 +1762,9 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             {/* Individual status chips — toggleable like the leads view */}
             {allProjectStatuses.map((value) => {
               const active = resolvedVisibleStatuses.includes(value);
-              const tone = STATUS_CHIP_TONES[value];
+              const color = projectStatusColor(value, projectStatuses);
               const count = statusCounts[value] || 0;
-              const label = projectStatusLabel(value, t);
+              const label = projectStatusLabel(value, t, projectStatuses);
 
               return (
                 <button
@@ -1741,20 +1789,21 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                   }
                   className={`flex items-center gap-2 px-3.5 py-2 rounded-2xl border shadow-sm transition-all cursor-pointer active:scale-[0.98] shrink-0 ${
                     active
-                      ? tone.active
+                      ? ""
                       : "bg-slate-100/60 border-slate-200 text-slate-400 opacity-60 hover:opacity-100 hover:border-slate-300 hover:text-slate-600 hover:bg-white/95"
                   }`}
+                  style={active ? { backgroundColor: color, borderColor: color, color: readableOn(color) } : undefined}
                 >
                   <span
-                    className={`font-heading font-bold text-base leading-none tabular-nums ${
-                      active ? "text-white" : "text-slate-400"
+                    className={`font-heading font-bold text-title-sm leading-none tabular-nums ${
+                      active ? "" : "text-slate-400"
                     }`}
                   >
                     {count}
                   </span>
                   <span
-                    className={`text-[10px] font-black uppercase tracking-widest leading-none ${
-                      active ? "text-white" : "text-slate-400"
+                    className={`type-overline leading-none ${
+                      active ? "" : "text-slate-400"
                     }`}
                   >
                     {label}
@@ -1765,7 +1814,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
             {/* The red flag, on its own side of a divider: late projects, and
                 how many of them still owe an explanation. */}
-            <span className="h-6 w-px bg-slate-200 mx-0.5 hidden sm:block shrink-0" />
+            <span className="h-6 w-px bg-slate-200 mx-0.5 hidden ws-sm:block shrink-0" />
             <button
               type="button"
               aria-pressed={overdueOnly}
@@ -1780,15 +1829,15 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               }`}
             >
               <Flag className={`h-3.5 w-3.5 shrink-0 ${overdueOnly ? "text-white" : "text-rose-500"}`} />
-              <span className={`font-heading font-bold text-base leading-none tabular-nums ${overdueOnly ? "text-white" : STAT_CHIP_TONES.rose.count}`}>
+              <span className={`font-heading font-bold text-title-sm leading-none tabular-nums ${overdueOnly ? "text-white" : STAT_CHIP_TONES.rose.count}`}>
                 {overdueCount}
               </span>
-              <span className="text-[10px] font-black uppercase tracking-widest leading-none">
+              <span className="type-overline leading-none">
                 {t("Overdue", "Po termíne", "Késésben")}
               </span>
               {unexplainedIds.size > 0 && (
                 <span
-                  className={`px-1.5 py-0.5 rounded-full text-[9px] font-black tabular-nums ${
+                  className={`px-1.5 py-0.5 rounded-full text-micro font-bold tabular-nums ${
                     overdueOnly ? "bg-white/20 text-white" : "bg-rose-100 text-rose-700"
                   }`}
                   title={t(
@@ -1804,9 +1853,9 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           </div>
 
           {/* One filter bar, one row. On mobile, search and switcher are on top, and dropdown filters are side scrollable. */}
-          <div className="glass-panel relative z-20 flex flex-col sm:flex-row sm:flex-wrap sm:items-center gap-2 sm:gap-2.5 p-2 sm:p-2.5 rounded-3xl border border-white/60 bg-white/95 shadow-glass">
+          <div className="glass-panel relative z-20 flex flex-col ws-sm:flex-row ws-sm:flex-wrap ws-sm:items-center gap-2 ws-sm:gap-2.5 p-2 ws-sm:p-2.5 rounded-3xl border border-white/60 bg-white/95 shadow-glass">
             {/* Search + Action Menus Row on Mobile / Inline on Desktop */}
-            <div className="flex items-center gap-2 w-full sm:w-auto sm:flex-1 sm:max-w-xs">
+            <div className="flex items-center gap-2 w-full ws-sm:w-auto ws-sm:flex-1 ws-sm:max-w-xs">
               {/* Search */}
               <div className="relative flex-1 min-w-0">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
@@ -1814,12 +1863,12 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}
                   placeholder={t("Search projects...", "Vyhľadať projekty...", "Projekt keresése...")}
-                  className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-xs font-semibold text-slate-800 bg-white"
+                  className="w-full h-10 pl-9 pr-3 rounded-xl border border-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 text-ui font-semibold text-slate-800 bg-white"
                 />
               </div>
 
               {/* Mobile Only: project list view menu & view switcher inline with search */}
-              <div className="flex sm:hidden items-center gap-1.5 shrink-0">
+              <div className="flex ws-sm:hidden items-center gap-1.5 shrink-0">
                 <ProjectListViewMenu
                   t={t}
                   sort={effectiveSort}
@@ -1870,10 +1919,10 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             </div>
 
             {/* Filter Dropdowns — side scrollable on mobile (< sm), inline flex on desktop (sm:) */}
-            <div className="w-full sm:w-auto flex items-center gap-2 overflow-x-auto scrollbar-none flex-nowrap sm:flex-wrap pb-0.5 sm:pb-0">
+            <div className="w-full ws-sm:w-auto flex items-center gap-2 overflow-x-auto scrollbar-none flex-nowrap ws-sm:flex-wrap pb-0.5 ws-sm:pb-0">
               {/* Status — hidden by default */}
               {SHOW_STATUS_DROPDOWN && (
-                <div className="w-[130px] shrink-0">
+                <div className="w-32.5 shrink-0">
                   <CustomSelect
                     className="h-10"
                     value={resolvedVisibleStatuses.length === 1 ? resolvedVisibleStatuses[0] : "all"}
@@ -1886,14 +1935,14 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     }}
                     options={[
                       { value: "all", label: t("All Statuses", "Všetky stavy", "Minden állapot") },
-                      ...projectStatusOptions(t),
+                      ...projectStatusOptions(t, projectStatuses),
                     ]}
                   />
                 </div>
               )}
 
               {/* Type */}
-              <div className="w-[130px] shrink-0">
+              <div className="w-32.5 shrink-0">
                 <CustomSelect
                   className="h-10"
                   value={selectedTypeFilter}
@@ -1906,7 +1955,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               </div>
 
               {/* Division */}
-              <div className="w-[140px] shrink-0">
+              <div className="w-35 shrink-0">
                 <CustomSelect
                   className="h-10"
                   icon={<Icons.Building2 className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
@@ -1921,7 +1970,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               </div>
 
               {/* Manager */}
-              <div className="w-[145px] shrink-0">
+              <div className="w-36.25 shrink-0">
                 <CustomSelect
                   className="h-10"
                   icon={<Users className="h-3.5 w-3.5 shrink-0 text-slate-400" />}
@@ -1936,7 +1985,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               </div>
 
               {/* Star priority */}
-              <div className="w-[135px] shrink-0">
+              <div className="w-33.75 shrink-0">
                 <CustomSelect
                   className="h-10"
                   icon={<Star className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
@@ -1947,7 +1996,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
               </div>
 
               {/* Archive Filter */}
-              <div className="w-[140px] shrink-0">
+              <div className="w-35 shrink-0">
                 <CustomSelect
                   className="h-10"
                   icon={<Archive className="h-3.5 w-3.5 shrink-0 text-amber-500" />}
@@ -1963,7 +2012,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             </div>
 
             {/* Order and columns — Desktop only (sm:flex) */}
-            <div className="hidden sm:flex sm:ml-auto shrink-0 items-center gap-2">
+            <div className="hidden ws-sm:flex ws-sm:ml-auto shrink-0 items-center gap-2">
               <ProjectListViewMenu
                 t={t}
                 sort={effectiveSort}
@@ -2023,7 +2072,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             <div className="glass-panel p-12 rounded-3xl border border-white/60 bg-white/95 text-center text-slate-400 shadow-glass mt-6">
               {projectTypes.length === 0 ? (
                 <>
-                  <p className="text-sm font-semibold">
+                  <p className="text-body font-semibold">
                     {t(
                       "No project types yet — a project needs a type to be created from.",
                       "Zatiaľ žiadne typy projektov — projekt sa dá vytvoriť len z typu.",
@@ -2034,7 +2083,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     <button
                       type="button"
                       onClick={handleStartCreateProjectType}
-                      className="inline-flex items-center gap-1.5 mt-4 px-5 py-2.5 rounded-2xl bg-purple-600 text-white font-black text-xs uppercase tracking-wider hover:bg-purple-700 shadow-md shadow-purple-600/20 cursor-pointer"
+                      className="inline-flex items-center gap-1.5 mt-4 px-5 py-2.5 rounded-2xl bg-purple-600 text-white font-bold text-ui hover:bg-purple-700 shadow-md shadow-purple-600/20 cursor-pointer"
                     >
                       <Plus className="h-4.5 w-4.5" />
                       <span>{t("New project type", "Nový typ projektu", "Új projekt típus")}</span>
@@ -2042,18 +2091,18 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                   )}
                 </>
               ) : (
-                <p className="text-sm font-semibold">{t("No projects found matching filters.", "Nenašli sa žiadne projekty.", "Nem találhatóak projektek.")}</p>
+                <p className="text-body font-semibold">{t("No projects found matching filters.", "Nenašli sa žiadne projekty.", "Nem találhatóak projektek.")}</p>
               )}
             </div>
           ) : viewMode === "list" || isStructure ? (
             <div ref={resultsRef} className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass mt-6 overflow-hidden">
               <div className="overflow-x-auto scrollbar-thin">
-                <table className="w-full text-left border-collapse min-w-0 lg:min-w-[840px]">
+                <table className="w-full text-left border-collapse min-w-0 ws-lg:min-w-210">
                   {/* The head is drawn from the layout the project type set —
                       built-in columns and its own attributes alike — so what a
                       column is, and whether it is here at all, is decided in one
                       place. See utils/projectColumns.ts. */}
-                  <thead className="hidden lg:table-header-group">
+                  <thead className="hidden ws-lg:table-header-group">
                     <tr className="border-b border-slate-200 bg-slate-50/70">
                       <th className="px-3 py-3 w-10 text-center">
                         <button
@@ -2081,7 +2130,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           return (
                             <th
                               key={col.key}
-                              className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap"
+                              className="px-4 py-3 type-overline text-slate-400 whitespace-nowrap"
                             >
                               {columnLabel(col)}
                             </th>
@@ -2091,12 +2140,12 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           <th
                             key={col.key}
                             aria-sort={active ? (effectiveSort.direction === "asc" ? "ascending" : "descending") : "none"}
-                            className="px-4 py-3 text-[9px] font-black text-slate-400 uppercase tracking-widest whitespace-nowrap"
+                            className="px-4 py-3 type-overline text-slate-400 whitespace-nowrap"
                           >
                             <button
                               type="button"
                               onClick={() => setSort(nextProjectSort(effectiveSort, key))}
-                              className={`group/sort inline-flex items-center gap-1 uppercase tracking-widest font-black cursor-pointer transition-colors duration-150 ${
+                              className={`group/sort inline-flex items-center gap-1 uppercase tracking-widest font-bold cursor-pointer transition-colors duration-150 ${
                                 active ? "text-indigo-600" : "hover:text-slate-700"
                               }`}
                             >
@@ -2121,7 +2170,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                       const lead = leads.find(l => l.id === p.leadId);
                       const title = projectDisplayName(p, leads, t("Untitled project", "Projekt bez názvu", "Névtelen projekt"));
                       const progress = calculateProgress(p);
-                      const dl = evaluateProjectDeadline(p, pType, today);
+                      const dl = evaluateProjectDeadline(p, pType, today, projectStatuses);
                       const drop = projectDrag.dropAt(p.id);
                       const financials = getProjectFinancials(p, pType, lead);
                       const isSelected = selectedProjectIds.has(p.id);
@@ -2131,11 +2180,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           key={p.id}
                           data-project-row={p.id}
                           {...projectDrag.rowProps(p.id)}
-                          onClick={() => {
-                            setEditingProjectType(pType);
-                            setEditingProject(p);
-                          }}
-                          className={`border-b border-slate-200/70 lg:border-slate-100 last:border-0 hover:bg-indigo-50/40 transition-[background-color,opacity] duration-150 cursor-pointer group block lg:table-row ${
+                          onClick={() => handleOpenProject(p, pType)}
+                          className={`border-b border-slate-200/70 ws-lg:border-slate-100 last:border-0 hover:bg-indigo-50/40 transition-[background-color,opacity] duration-150 cursor-pointer group block ws-lg:table-row ${
                             isSelected ? "bg-indigo-50/70" : ""
                           } ${
                             projectDrag.draggedId === p.id ? "opacity-40" : ""
@@ -2149,7 +2195,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           {/* --- DESKTOP TABLE CELLS (lg:table-cell) --- */}
                           {/* ============================================================ */}
                           <td
-                            className="hidden lg:table-cell px-3 py-3 w-10 text-center"
+                            className="hidden ws-lg:table-cell px-3 py-3 w-10 text-center"
                             onClick={(e) => {
                               e.stopPropagation();
                               handleToggleSelectProject(p.id);
@@ -2169,7 +2215,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           </td>
 
                           {activeColumns.map((col, colIndex) => (
-                            <td key={col.key} className={`hidden lg:table-cell px-4 py-3 ${colIndex === 0 ? "relative" : ""}`}>
+                            <td key={col.key} className={`hidden ws-lg:table-cell px-4 py-3 ${colIndex === 0 ? "relative" : ""}`}>
                               {colIndex === 0 && isStructure ? (
                                 /* The structure's move handle sits in front of the
                                    first cell and is always shown, as in a CMS
@@ -2196,7 +2242,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                               )}
                             </td>
                           ))}
-                          <td className="hidden lg:table-cell px-4 py-3">
+                          <td className="hidden ws-lg:table-cell px-4 py-3">
                             <div className="flex items-center gap-1 justify-end">
                               {canEdit && (
                                 <button
@@ -2225,10 +2271,10 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           {/* --- MOBILE DEDICATED LIST VIEW (< lg) --- */}
                           {/* ============================================================ */}
                           <td
-                            className="block lg:hidden p-0 border-none bg-transparent w-full"
+                            className="block ws-lg:hidden p-0 border-none bg-transparent w-full"
                           >
                             <div
-                              className="py-3 px-3.5 sm:px-4 border-b border-slate-200/70 hover:bg-slate-500/5 transition-colors cursor-pointer space-y-1.5"
+                              className="py-3 px-3.5 ws-sm:px-4 border-b border-slate-200/70 hover:bg-slate-500/5 transition-colors cursor-pointer space-y-1.5"
                               style={{
                                 borderLeft: `3px solid ${pType.color || "#6366f1"}`,
                               }}
@@ -2251,8 +2297,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                                       <Square className="h-4 w-4 text-slate-400" />
                                     )}
                                   </button>
-                                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border shrink-0 ${projectStatusBadgeClass(p.status)}`}>
-                                    {projectStatusLabel(p.status, t)}
+                                  <span className="px-2 py-0.5 rounded-full text-micro font-bold border shrink-0" style={projectStatusBadgeStyle(p.status, projectStatuses)}>
+                                    {projectStatusLabel(p.status, t, projectStatuses)}
                                   </span>
                                   {dl && (
                                     <div className="shrink-0 flex items-center gap-1">
@@ -2269,10 +2315,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                                 >
                                   <button
                                     type="button"
-                                    onClick={() => {
-                                      setEditingProjectType(pType);
-                                      setEditingProject(p);
-                                    }}
+                                    onClick={() => handleOpenProject(p, pType)}
                                     className="h-6 w-6 rounded-md text-slate-400 hover:text-indigo-600 hover:bg-slate-200/60 flex items-center justify-center transition-colors cursor-pointer"
                                     title={t("Edit project", "Upraviť projekt", "Projekt szerkesztése")}
                                   >
@@ -2303,7 +2346,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
                               {/* FULL-WIDTH NAME ROW: Name (Its Own Line) + Rating */}
                               <div className="flex items-center gap-2 min-w-0 py-0.5">
-                                <span className="font-bold text-slate-900 text-sm sm:text-base leading-snug break-words">
+                                <span className="font-bold text-slate-900 text-body leading-snug break-words">
                                   {title}
                                 </span>
                                 {ratingValue(p.rating) > 0 && (
@@ -2311,7 +2354,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                                     className="shrink-0 inline-flex items-center gap-0.5"
                                     onClick={(e) => e.stopPropagation()}
                                   >
-                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200/70 shadow-2xs">
+                                    <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-micro font-bold text-amber-600 bg-amber-50 border border-amber-200/70 shadow-2xs">
                                       <Star className="h-2.5 w-2.5 fill-amber-400 text-amber-500" />
                                       <span>{ratingValue(p.rating)}</span>
                                     </span>
@@ -2320,11 +2363,11 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                               </div>
 
                               {/* METADATA ROW: Value / Remaining Invoicable, Type, Client, Manager, Division */}
-                              <div className="flex flex-wrap items-center gap-1.5 pt-0.5 text-xs">
+                              <div className="flex flex-wrap items-center gap-1.5 pt-0.5 text-ui">
                                 {/* Value / Remaining Invoicable Badge */}
                                 {financials.hasValue && (
                                   <span
-                                    className="font-heading font-black text-xs text-blue-700 bg-blue-50/90 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800/60 px-2 py-0.5 rounded-md border border-blue-200/70 whitespace-nowrap shadow-2xs shrink-0"
+                                    className="font-heading font-bold text-ui text-blue-700 bg-blue-50/90 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800/60 px-2 py-0.5 rounded-md border border-blue-200/70 whitespace-nowrap shadow-2xs shrink-0"
                                     title={financials.invoiced > 0
                                       ? t(
                                           `Remaining to invoice: ${formatMoney(financials.invoicable, financials.currency, userLanguage)} (Total: ${formatMoney(financials.totalBudget, financials.currency, userLanguage)}, Invoiced: ${formatMoney(financials.invoiced, financials.currency, userLanguage)})`,
@@ -2340,7 +2383,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                                   >
                                     {formatMoney(financials.invoicable > 0 ? financials.invoicable : financials.totalBudget, financials.currency, userLanguage)}
                                     {financials.invoiced > 0 && financials.invoicable > 0 && (
-                                      <span className="text-[9px] font-bold text-blue-500/80 ml-1">
+                                      <span className="text-micro font-bold text-blue-500/80 ml-1">
                                         {t("rem.", "zost.", "fennm.")}
                                       </span>
                                     )}
@@ -2349,7 +2392,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
                                 {/* Project Type Badge */}
                                 <span
-                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold shadow-2xs shrink-0"
+                                  className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-bold shadow-2xs shrink-0"
                                   style={{ backgroundColor: pType.color, color: readableOn(pType.color) }}
                                 >
                                   {renderIcon(pType.icon, "h-3 w-3")}
@@ -2358,25 +2401,25 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
                                 {/* Client Name */}
                                 {lead && lead.name !== title && (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200/80 shrink-0">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-micro font-bold bg-slate-100 text-slate-700 border border-slate-200/80 shrink-0">
                                     <Briefcase className="h-3 w-3 text-slate-400 shrink-0" />
-                                    <span className="truncate max-w-[140px]">{lead.name}</span>
+                                    <span className="truncate max-w-35">{lead.name}</span>
                                   </span>
                                 )}
                                 {!lead && (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium text-slate-400 bg-slate-50 border border-slate-200/50 shrink-0">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-micro font-medium text-slate-400 bg-slate-50 border border-slate-200/50 shrink-0">
                                     {t("Unassigned", "Nepriradený", "Nincs")}
                                   </span>
                                 )}
 
                                 {/* Managers */}
                                 {p.managers && p.managers.length > 0 ? (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-slate-200 text-[10px] font-bold text-slate-700 bg-slate-50 shrink-0">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-slate-200 text-micro font-bold text-slate-700 bg-slate-50 shrink-0">
                                     <Users className="h-3 w-3 text-slate-400 shrink-0" />
-                                    <span className="truncate max-w-[140px]">{p.managers.join(", ")}</span>
+                                    <span className="truncate max-w-35">{p.managers.join(", ")}</span>
                                   </span>
                                 ) : (
-                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-rose-200 text-[10px] font-semibold text-rose-600 bg-rose-50 shrink-0">
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full border border-rose-200 text-micro font-semibold text-rose-600 bg-rose-50 shrink-0">
                                     <User className="h-3 w-3 shrink-0" />
                                     <span>{t("No manager", "Bez manažéra", "Nincs menedzser")}</span>
                                   </span>
@@ -2385,7 +2428,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                                 {/* Division */}
                                 {p.division && (
                                   <span
-                                    className="px-2 py-0.5 rounded-full border text-[9px] font-black uppercase tracking-wider inline-flex items-center gap-1 shadow-2xs shrink-0"
+                                    className="px-2 py-0.5 rounded-full border type-overline inline-flex items-center gap-1 shadow-2xs shrink-0"
                                     style={{
                                       backgroundColor: `${divisionColors[p.division] || "#3b82f6"}15`,
                                       color: divisionColors[p.division] || "#3b82f6",
@@ -2401,7 +2444,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                               {/* Roadmap Progress Bar */}
                               {pType.hasGantt && p.gantt && p.gantt.length > 0 && (
                                 <div className="pt-1 select-none space-y-1">
-                                  <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase">
+                                  <div className="flex items-center justify-between type-overline text-slate-400">
                                     <span>{t("Progress", "Postup", "Haladás")}</span>
                                     <span className="text-slate-700 font-bold">{progress}%</span>
                                   </div>
@@ -2429,7 +2472,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           ) : (
             <div
               ref={(el) => { gridRef.current = el; resultsRef.current = el; }}
-              className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mt-6"
+              className="grid grid-cols-1 ws-md:grid-cols-2 ws-lg:grid-cols-3 gap-6 mt-6"
             >
               {sortedProjects.map(p => {
                 const pType = projectTypes.find(t => t.id === p.projectTypeId);
@@ -2438,7 +2481,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                 const lead = leads.find(l => l.id === p.leadId);
                 const title = projectDisplayName(p, leads, t("Untitled project", "Projekt bez názvu", "Névtelen projekt"));
                 const progress = calculateProgress(p);
-                const dl = evaluateProjectDeadline(p, pType, today);
+                const dl = evaluateProjectDeadline(p, pType, today, projectStatuses);
                 const drop = projectDrag.dropAt(p.id);
                 const financials = getProjectFinancials(p, pType, lead);
                 const isSelected = selectedProjectIds.has(p.id);
@@ -2449,10 +2492,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     data-flip={p.id}
                     data-project-card={p.id}
                     {...projectDrag.rowProps(p.id)}
-                    onClick={() => {
-                      setEditingProjectType(pType);
-                      setEditingProject(p);
-                    }}
+                    onClick={() => handleOpenProject(p, pType)}
                     className={`glass-panel p-5 rounded-3xl border transition-all duration-300 cursor-pointer flex flex-col text-left group relative ${
                       isSelected
                         ? "border-indigo-400/80 bg-indigo-50/40 ring-2 ring-indigo-500/30 shadow-md"
@@ -2480,7 +2520,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           )}
                         </button>
                         <div
-                          className="flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold shadow-sm"
+                          className="flex items-center gap-2 px-3 py-1 rounded-full text-ui font-bold shadow-sm"
                           style={{ backgroundColor: pType.color, color: readableOn(pType.color) }}
                         >
                           {renderIcon(pType.icon, "h-3.5 w-3.5")}
@@ -2488,7 +2528,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                         </div>
                         {financials.hasValue && (
                           <span
-                            className="font-heading font-black text-xs text-blue-700 bg-blue-50/90 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800/60 px-2 py-0.5 rounded-md border border-blue-200/70 whitespace-nowrap shadow-2xs shrink-0"
+                            className="font-heading font-bold text-ui text-blue-700 bg-blue-50/90 dark:bg-blue-950/60 dark:text-blue-300 dark:border-blue-800/60 px-2 py-0.5 rounded-md border border-blue-200/70 whitespace-nowrap shadow-2xs shrink-0"
                             title={financials.invoiced > 0
                               ? t(
                                   `Remaining to invoice: ${formatMoney(financials.invoicable, financials.currency, userLanguage)} (Total: ${formatMoney(financials.totalBudget, financials.currency, userLanguage)}, Invoiced: ${formatMoney(financials.invoiced, financials.currency, userLanguage)})`,
@@ -2504,7 +2544,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           >
                             {formatMoney(financials.invoicable > 0 ? financials.invoicable : financials.totalBudget, financials.currency, userLanguage)}
                             {financials.invoiced > 0 && financials.invoicable > 0 && (
-                              <span className="text-[9px] font-bold text-blue-500/80 ml-1">
+                              <span className="text-micro font-bold text-blue-500/80 ml-1">
                                 {t("rem.", "zost.", "fennm.")}
                               </span>
                             )}
@@ -2512,27 +2552,40 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                         )}
                       </div>
 
-                      {/* Status badge */}
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${projectStatusBadgeClass(p.status)}`}>
-                        {projectStatusLabel(p.status, t)}
-                      </span>
+                      {/* Status badge & Favorite */}
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <FavoriteHeartButton
+                          entityId={p.id}
+                          type="project"
+                          title={title}
+                          subtitle={pType.name}
+                          color={pType.color}
+                          icon={pType.icon}
+                          url={`#projects/${p.id}`}
+                          size="sm"
+                          systemLanguage={userLanguage as any}
+                        />
+                        <span className="px-2 py-0.5 rounded-full text-micro font-bold border" style={projectStatusBadgeStyle(p.status, projectStatuses)}>
+                          {projectStatusLabel(p.status, t, projectStatuses)}
+                        </span>
+                      </div>
                     </div>
 
                     {/* The project's own name, or the client it is paired with. */}
-                    <h4 className="font-heading font-bold text-slate-800 group-hover:text-indigo-600 transition-colors text-base">
+                    <h4 className="font-heading font-bold text-slate-800 group-hover:text-indigo-600 transition-colors text-title-sm">
                       {title}
                     </h4>
 
                     {/* The paired client, once the project carries a name of its
                         own and the heading is no longer showing it. */}
                     {lead && lead.name !== title && (
-                      <div className="flex items-center gap-1 text-[11px] text-slate-400 font-bold mt-1">
+                      <div className="flex items-center gap-1 text-caption text-slate-400 font-bold mt-1">
                         <Briefcase className="h-3.5 w-3.5 text-slate-400 shrink-0" />
                         <span className="truncate">{lead.name}</span>
                       </div>
                     )}
                     {!lead && (
-                      <span className="block text-[11px] text-slate-400 font-bold mt-1">
+                      <span className="block text-caption text-slate-400 font-bold mt-1">
                         {t("Unassigned client", "Nepriradený klient", "Nincs hozzárendelve")}
                       </span>
                     )}
@@ -2548,7 +2601,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
                     {/* Assigned Managers */}
                     {p.managers && p.managers.length > 0 && (
-                      <div className="flex items-center gap-1 text-[11px] text-slate-400 font-bold mt-2">
+                      <div className="flex items-center gap-1 text-caption text-slate-400 font-bold mt-2">
                         <Users className="h-3.5 w-3.5 text-slate-400 shrink-0" />
                         <span className="truncate">{p.managers.join(", ")}</span>
                       </div>
@@ -2556,9 +2609,9 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
 
                     {/* Division */}
                     {p.division && (
-                      <div className="flex items-center gap-1 text-[11px] font-bold mt-2">
+                      <div className="flex items-center gap-1 text-caption font-bold mt-2">
                         <span
-                          className="px-2 py-0.5 rounded-full border text-[10px] font-black uppercase tracking-wider flex items-center gap-1 shadow-sm"
+                          className="px-2 py-0.5 rounded-full border type-overline flex items-center gap-1 shadow-sm"
                           style={{
                             backgroundColor: `${divisionColors[p.division] || "#3b82f6"}15`,
                             color: divisionColors[p.division] || "#3b82f6",
@@ -2571,7 +2624,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                       </div>
                     )}
 
-                    <div className="flex-1 min-h-[20px]" />
+                    <div className="flex-1 min-h-5" />
 
                     {/* Deadline countdown */}
                     {dl && (
@@ -2584,7 +2637,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                     {/* Roadmap Progress Bar */}
                     {pType.hasGantt && p.gantt && p.gantt.length > 0 && (
                       <div className="mt-4.5 space-y-1.5 shrink-0 select-none">
-                        <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase">
+                        <div className="flex items-center justify-between type-overline text-slate-400">
                           <span>{t("Roadmap Progress", "Postup projektu", "Projekt haladása")}</span>
                           <span className="text-slate-700">{progress}%</span>
                         </div>

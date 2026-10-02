@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
   Calculator,
   ChevronDown,
@@ -18,7 +19,9 @@ import {
 } from "lucide-react";
 import { formatMoney } from "../utils/currency";
 import { readableOn } from "../utils/accentColor";
+import { cn } from "../utils/cn";
 import type { Language } from "../utils/translations";
+import { WidgetCard } from "./dashboard/widgetKit";
 
 export interface StatusStatDetailRow {
   id: string;
@@ -40,6 +43,8 @@ export interface StatusStatItem {
   value: number; // Always the invoicable value!
   count: number;
   color?: string;
+  /** Closed in the lead / project status settings (won, lost, completed, cancelled…). */
+  closed?: boolean;
   totalBudget?: number;
   invoiced?: number;
   rows?: StatusStatDetailRow[];
@@ -72,6 +77,17 @@ export interface GroupedStatusValueEquationStatsProps {
   subtitle?: string;
   storageKey?: string;
   defaultExpanded?: boolean;
+  /**
+   * Draw inside a dashboard widget card (the shared title row, radius and
+   * hairline) instead of as a panel of its own, and lay the groups out by the
+   * card's width rather than the window's — a widget can be a quarter of the
+   * board wide.
+   */
+  embedded?: {
+    title: string;
+    icon: React.ComponentType<{ className?: string }>;
+    accent: string;
+  };
 }
 
 interface DrawerData {
@@ -94,6 +110,7 @@ export const GroupedStatusValueEquationStats: React.FC<GroupedStatusValueEquatio
   subtitle,
   storageKey = "ccrm_dashboard_equation_stats",
   defaultExpanded = true,
+  embedded,
 }) => {
   const resolvedCurrency = currency || "EUR";
 
@@ -345,7 +362,8 @@ export const GroupedStatusValueEquationStats: React.FC<GroupedStatusValueEquatio
   }, [drawerData, drawerSearch]);
 
   const hasAnyItems = totalPossibleItemsCount > 0;
-  if (!hasAnyItems) return null;
+  // A panel with nothing in it is left out; a widget the user placed says so.
+  if (!hasAnyItems && !embedded) return null;
 
   const hasDisabledAnywhere = disabledKeys.size > 0;
 
@@ -360,8 +378,423 @@ export const GroupedStatusValueEquationStats: React.FC<GroupedStatusValueEquatio
     "Interaktív számlázható értékösszesítő részletes tételes áttekintéssel"
   );
 
+  const collapsedChips = (
+    <div className="flex items-center gap-2 flex-wrap">
+      {calculatedGroups.map((g) => {
+        const theme = groupThemes[g.colorTheme || "blue"] || groupThemes.blue;
+        return (
+          <div
+            key={g.id}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl ${theme.headerBg} border ${theme.containerBorder} shadow-2xs`}
+          >
+            <span className="type-overline text-slate-600">
+              {g.name}:
+            </span>
+            <span className="text-ui font-bold text-slate-900 tabular-nums">
+              {formatMoney(g.subtotalValue, resolvedCurrency, language, {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 2,
+              })}
+            </span>
+          </div>
+        );
+      })}
+
+      {/* Remaining Invoicable teaser badge */}
+      {calculatedGroups.map((g) =>
+        g.extraHighlight ? (
+          <div
+            key={`teaser-${g.id}`}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 shadow-2xs"
+          >
+            <Receipt className="h-3 w-3 text-amber-600" />
+            <span className="type-overline">
+              {t("Remaining:", "Zostáva:", "Hátralévő:")}
+            </span>
+            <span className="text-ui font-bold text-amber-950 tabular-nums">
+              {formatMoney(g.extraHighlight.value, resolvedCurrency, language, {
+                minimumFractionDigits: 0,
+                maximumFractionDigits: 2,
+              })}
+            </span>
+          </div>
+        ) : null
+      )}
+
+      {/* Grand Total pill */}
+      <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-sm shadow-emerald-600/20">
+        <span className="type-overline text-emerald-100">
+          {t("Total Invoicable:", "Spolu na fakturáciu:", "Összes számlázható:")}
+        </span>
+        <span className="text-ui font-bold text-white tabular-nums">
+          {formatMoney(grandTotalValue, resolvedCurrency, language, {
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 2,
+          })}
+        </span>
+      </div>
+    </div>
+  );
+
+  const toggleButton = (
+    <button
+      type="button"
+      className="h-8 px-2.5 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all type-overline flex items-center gap-1 shadow-2xs cursor-pointer"
+      onClick={(e) => {
+        e.stopPropagation();
+        setIsExpanded((prev) => !prev);
+      }}
+    >
+      <span>{isExpanded ? t("Collapse", "Zbaliť", "Összecsukás") : t("Expand", "Rozbaliť", "Kibontás")}</span>
+      <ChevronDown
+        className={`h-3.5 w-3.5 transition-transform duration-300 ${
+          isExpanded ? "rotate-180" : ""
+        }`}
+      />
+    </button>
+  );
+
+  const expandedBody = (
+    <div
+      className={embedded ? "space-y-4 animate-fade-in" : "p-5 space-y-5 animate-fade-in bg-slate-50/40"}
+    >
+        {/* Quick Toolbar: Select All / Deselect All / Reset */}
+        <div className="flex items-center justify-between gap-3 flex-wrap text-ui">
+          <div className="flex items-center gap-2">
+            <span className="type-overline text-slate-500">
+              {t(
+                "Interactive status toggles:",
+                "Interaktívne prepínače stavov:",
+                "Interaktív állapotkapcsolók:"
+              )}
+            </span>
+            <span className="text-micro font-semibold text-slate-400">
+              ({t("click Eye icon or badge to include/exclude; click (i) to inspect calculated items", "kliknutím na Oko/odznak zahrniete/vylúčite; kliknutím na (i) zobrazíte položky", "Kattintson a Szemre/jelvényre a ki/bekapcsoláshoz; kattintson az (i)-re a tételekhez")})
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2">
+            {hasDisabledAnywhere && (
+              <button
+                type="button"
+                onClick={enableAll}
+                className="px-2.5 py-1 rounded-lg type-overline text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 border border-indigo-200 transition-colors flex items-center gap-1 cursor-pointer"
+                title={t("Include all statuses", "Zahrnúť všetky stavy", "Összes állapot bekapcsolása")}
+              >
+                <RotateCcw className="h-3 w-3" />
+                <span>{t("Select all", "Vybrať všetko", "Összes kijelölése")}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={disableAll}
+              className="px-2.5 py-1 rounded-lg type-overline text-slate-500 hover:text-slate-800 hover:bg-slate-100 border border-slate-200 transition-colors flex items-center gap-1 cursor-pointer"
+              title={t("Exclude all statuses", "Vylúčiť všetky stavy", "Összes kizárása")}
+            >
+              <XCircle className="h-3 w-3" />
+              <span>{t("Clear all", "Zrušiť všetko", "Minden törlése")}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Group Containers Grid */}
+        <div
+        className={cn(
+          "grid grid-cols-1 gap-4",
+          embedded ? "@3xl/eq:grid-cols-2" : "ws-xl:grid-cols-2"
+        )}
+      >
+          {calculatedGroups.map((group) => {
+            const theme = groupThemes[group.colorTheme || "blue"] || groupThemes.blue;
+            const GroupIcon = group.icon || (group.id === "leads" ? Layers : Briefcase);
+
+            return (
+              <div
+                key={group.id}
+                className={`rounded-2xl border ${theme.containerBorder} ${theme.containerBg} p-4.5 flex flex-col justify-between gap-4 transition-all`}
+              >
+                {/* Group Header */}
+                <div className="flex items-center justify-between gap-3 border-b border-slate-200/60 pb-3">
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className={`h-8 w-8 rounded-xl ${theme.iconBg} flex items-center justify-center shadow-xs shrink-0`}
+                    >
+                      <GroupIcon className="h-4 w-4" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-ui font-heading font-bold text-slate-900">
+                          {group.name}
+                        </h3>
+                        <span className="px-1.5 py-0.5 rounded-md text-micro font-bold bg-white/90 border border-slate-200/80 text-slate-600">
+                          {group.items.length} {group.unitLabel || t("statuses", "stavov", "állapot")}
+                        </span>
+                      </div>
+                      {group.subtitle && (
+                        <p className="text-micro font-semibold text-slate-500">
+                          {group.subtitle}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Group Subtotal Badge */}
+                  <div className="flex flex-col items-end">
+                    <span className="type-overline text-slate-400">
+                      {t("Group Invoicable", "Medzisúčet na fakturáciu", "Részösszeg számlázható")}
+                    </span>
+                    <div className="flex items-center gap-1.5 mt-0.5">
+                      <span className="text-body font-heading font-bold text-slate-900 tabular-nums">
+                        {formatMoney(group.subtotalValue, resolvedCurrency, language, {
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 2,
+                        })}
+                      </span>
+                      <span className="text-micro font-extrabold px-1.5 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600 shadow-2xs">
+                        {group.subtotalCount} {t("items", "pol.", "db")}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Status Pills with Equation Operators */}
+                <div className="flex flex-wrap items-center gap-2">
+                  {group.items.map((item, itemIdx) => {
+                    const isDisabled = disabledKeys.has(`${group.id}:${item.key}`);
+                    const isEnabled = !isDisabled;
+                    const pillBgColor = item.color || "#3b82f6";
+                    const pillTextColor = readableOn(pillBgColor);
+
+                    return (
+                      <React.Fragment key={item.key}>
+                        {itemIdx > 0 && (
+                          <span
+                            className={`text-ui font-bold transition-opacity ${
+                              isEnabled ? "text-slate-400" : "text-slate-300 opacity-40"
+                            }`}
+                          >
+                            +
+                          </span>
+                        )}
+
+                        <div
+                          onClick={() => toggleStatus(group.id, item.key)}
+                          className={`group relative flex items-center gap-2 px-3 py-1.5 rounded-xl border font-bold text-ui shadow-2xs transition-all duration-200 cursor-pointer active:scale-98 ${
+                            isEnabled
+                              ? "shadow-sm hover:brightness-105"
+                              : "bg-slate-100 text-slate-400 border-slate-200 opacity-40 hover:opacity-60 line-through"
+                          }`}
+                          style={
+                            isEnabled
+                              ? {
+                                  backgroundColor: pillBgColor,
+                                  borderColor: pillBgColor,
+                                  color: pillTextColor,
+                                }
+                              : undefined
+                          }
+                          title={`${item.name}: ${formatMoney(
+                            item.value,
+                            resolvedCurrency,
+                            language
+                          )} (${item.count}) — ${
+                            isEnabled
+                              ? t("Click to exclude / hide", "Kliknutím skryjete / vylúčite", "Kattintson az elrejtéshez")
+                              : t("Click to include / show", "Kliknutím zobrazíte / zahrniete", "Kattintson a megjelenítéshez")
+                          }`}
+                        >
+                          {/* 1. Show/Hide Eye Icon */}
+                          <span
+                            className="flex items-center justify-center p-0.5 rounded-md hover:bg-black/15 transition-colors"
+                            title={
+                              isEnabled
+                                ? t("Click to hide / exclude", "Kliknutím skryjete / vylúčite", "Kattintson az elrejtéshez")
+                                : t("Click to show / include", "Kliknutím zobrazíte / zahrniete", "Kattintson a megjelenítéshez")
+                            }
+                          >
+                            {isEnabled ? (
+                              <Eye className="h-3.5 w-3.5 stroke-[2.5]" />
+                            ) : (
+                              <EyeOff className="h-3.5 w-3.5 stroke-[2.5]" />
+                            )}
+                          </span>
+
+                          {/* Status Name */}
+                          <span className="font-heading type-overline">
+                            {item.name}
+                          </span>
+
+                          {/* Invoicable Amount */}
+                          <span
+                            className="font-extrabold tabular-nums text-caption"
+                            style={isEnabled ? { color: pillTextColor } : undefined}
+                          >
+                            {formatMoney(item.value, resolvedCurrency, language, {
+                              minimumFractionDigits: 0,
+                              maximumFractionDigits: 2,
+                            })}
+                          </span>
+
+                          {/* Count badge */}
+                          <span
+                            className={`text-micro font-bold px-1.5 py-0.5 rounded-md ${
+                              isEnabled
+                                ? "bg-black/20 text-white"
+                                : "bg-slate-200 text-slate-500"
+                            }`}
+                          >
+                            {item.count}
+                          </span>
+
+                          {/* 2. Info Icon Button (Opens Right Slideout) */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setDrawerSearch("");
+                              setDrawerData({
+                                groupName: group.name,
+                                groupColor: group.colorTheme || "blue",
+                                itemName: item.name,
+                                itemColor: pillBgColor,
+                                itemValue: item.value,
+                                itemCount: item.count,
+                                totalBudget: item.totalBudget,
+                                invoiced: item.invoiced,
+                                rows: item.rows || [],
+                              });
+                            }}
+                            className="ml-0.5 flex items-center justify-center h-5 w-5 rounded-full hover:bg-black/25 active:scale-90 transition-all cursor-pointer"
+                            title={t(
+                              "Inspect calculated leads / projects",
+                              "Zobraziť zoznam kalkulovaných obchodov/projektov",
+                              "Kalkulált tételek részletes megtekintése"
+                            )}
+                          >
+                            <Info className="h-3.5 w-3.5 stroke-[2.5]" />
+                          </button>
+                        </div>
+                      </React.Fragment>
+                    );
+                  })}
+                </div>
+
+                {/* Optional Extra Highlight Card (Always show Remaining Invoicable on Projects) */}
+                {group.extraHighlight && (
+                  <div className="mt-1 pt-3 border-t border-slate-200/60 flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3 bg-white/80 rounded-xl p-3 border border-amber-200/80 shadow-2xs">
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="h-8 w-8 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-xs shrink-0">
+                        <Receipt className="h-4 w-4 stroke-[2.5]" />
+                      </div>
+                      <div className="min-w-0">
+                        <span className="type-overline text-amber-900 flex items-center gap-1.5">
+                          {group.extraHighlight.label}
+                          <span className="px-1.5 py-0.2 rounded-full type-overline bg-amber-100 text-amber-800">
+                            {t("Active Scope", "Aktívny rozsah", "Aktív hatókör")}
+                          </span>
+                        </span>
+                        {group.extraHighlight.subtext && (
+                          <p className="text-micro font-semibold text-slate-500 truncate mt-0.5">
+                            {group.extraHighlight.subtext}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="flex items-baseline gap-1.5 shrink-0 self-end ws-sm:self-auto">
+                      <span className="text-title-sm font-heading font-bold text-amber-950 tabular-nums">
+                        {formatMoney(group.extraHighlight.value, resolvedCurrency, language, {
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 2,
+                        })}
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* 3. Grand Equation Total Bar */}
+        <div
+        className={cn(
+          "glass-panel p-4 rounded-2xl border border-slate-200 bg-white shadow-sm flex items-center justify-between gap-4",
+          embedded ? "flex-col @3xl/eq:flex-row" : "flex-col ws-lg:flex-row"
+        )}
+      >
+          {/* Equation formula visualization */}
+          <div className="flex items-center gap-2 ws-sm:gap-3 flex-wrap justify-center ws-lg:justify-start">
+            <span className="text-ui font-bold text-slate-400">
+              {t("Total Invoicable Equation:", "Súčet rovnice na fakturáciu:", "Összesítő számlázási egyenlet:")}
+            </span>
+
+            {calculatedGroups.map((g, idx) => (
+              <React.Fragment key={`eq-${g.id}`}>
+                {idx > 0 && <Plus className="h-4 w-4 text-slate-400 stroke-[3]" />}
+                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200">
+                  <span className="type-overline text-slate-600">
+                    {g.name}:
+                  </span>
+                  <span className="text-ui font-bold text-slate-900 tabular-nums">
+                    {formatMoney(g.subtotalValue, resolvedCurrency, language, {
+                      minimumFractionDigits: 0,
+                      maximumFractionDigits: 2,
+                    })}
+                  </span>
+                </div>
+              </React.Fragment>
+            ))}
+
+            <Equal className="h-4 w-4 text-slate-400 stroke-[3]" />
+          </div>
+
+          {/* Grand Total Highlight Badge */}
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-lg shadow-emerald-600/25">
+              <div className="flex flex-col">
+                <span className="type-overline text-emerald-200 leading-none">
+                  {t("Total Invoicable Active Value", "Celková aktívna hodnota na fakturovanie", "Teljes aktív számlázható összeg")}
+                </span>
+                <span className="text-title font-heading font-bold text-white tabular-nums mt-0.5">
+                  {formatMoney(grandTotalValue, resolvedCurrency, language, {
+                    minimumFractionDigits: 0,
+                    maximumFractionDigits: 2,
+                  })}
+                </span>
+              </div>
+              <span className="text-micro font-extrabold px-2 py-1 rounded-xl bg-white/20 text-white shadow-inner">
+                {grandTotalCount} {t("active items", "aktívnych položiek", "aktív tétel")}
+              </span>
+            </div>
+          </div>
+        </div>
+    </div>
+  );
+
   return (
     <>
+      {embedded ? (
+        <WidgetCard
+          icon={embedded.icon}
+          accent={embedded.accent}
+          title={embedded.title}
+          actions={toggleButton}
+          className="@container/eq"
+        >
+          {hasAnyItems ? (
+            isExpanded ? expandedBody : collapsedChips
+          ) : (
+            <div className="flex-1 flex items-center justify-center py-6 text-ui text-slate-400 font-semibold text-center">
+              {t(
+                "No statuses to sum — check which ones this widget counts in its settings.",
+                "Žiadne stavy na sčítanie — v nastaveniach modulu skontrolujte, ktoré sa započítavajú.",
+                "Nincs összegezhető állapot — a modul beállításaiban ellenőrizze, melyek számítanak."
+              )}
+            </div>
+          )}
+        </WidgetCard>
+      ) : (
       <div className="glass-panel rounded-[26px] border border-slate-200/90 bg-white/90 shadow-glass transition-all duration-300 overflow-hidden select-none">
         {/* 1. Header Bar / Quick Expand-Collapse Toggle */}
         <div
@@ -374,442 +807,66 @@ export const GroupedStatusValueEquationStats: React.FC<GroupedStatusValueEquatio
             </div>
             <div className="flex flex-col min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs font-heading font-black text-slate-900 uppercase tracking-tight">
+                <span className="text-ui font-heading font-bold text-slate-900">
                   {title || defaultTitle}
                 </span>
-                <span className="px-2 py-0.5 rounded-full text-[9px] font-black bg-slate-100 border border-slate-200 text-slate-700 uppercase tracking-wider shadow-2xs">
+                <span className="px-2 py-0.5 rounded-full type-overline bg-slate-100 border border-slate-200 text-slate-700 shadow-2xs">
                   {groups.length} {t("groups", "skupiny", "csoport")} · {totalPossibleItemsCount}{" "}
                   {t("statuses", "stavov", "állapot")}
                 </span>
               </div>
-              <span className="text-[10px] font-semibold text-slate-400 mt-0.5 truncate max-w-xl hidden sm:block">
+              <span className="text-micro font-semibold text-slate-400 mt-0.5 truncate max-w-xl hidden ws-sm:block">
                 {subtitle || defaultSubtitle}
               </span>
             </div>
           </div>
 
           <div className="flex items-center gap-3 shrink-0 flex-wrap">
-            {/* Quick collapsed preview chips */}
-            {!isExpanded && (
-              <div className="flex items-center gap-2 flex-wrap">
-                {calculatedGroups.map((g) => {
-                  const theme = groupThemes[g.colorTheme || "blue"] || groupThemes.blue;
-                  return (
-                    <div
-                      key={g.id}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl ${theme.headerBg} border ${theme.containerBorder} shadow-2xs`}
-                    >
-                      <span className="text-[9px] font-black uppercase text-slate-600">
-                        {g.name}:
-                      </span>
-                      <span className="text-xs font-black text-slate-900 tabular-nums">
-                        {formatMoney(g.subtotalValue, resolvedCurrency, language, {
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 2,
-                        })}
-                      </span>
-                    </div>
-                  );
-                })}
-
-                {/* Remaining Invoicable teaser badge */}
-                {calculatedGroups.map((g) =>
-                  g.extraHighlight ? (
-                    <div
-                      key={`teaser-${g.id}`}
-                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-amber-50 border border-amber-200 text-amber-900 shadow-2xs"
-                    >
-                      <Receipt className="h-3 w-3 text-amber-600" />
-                      <span className="text-[9px] font-black uppercase">
-                        {t("Remaining:", "Zostáva:", "Hátralévő:")}
-                      </span>
-                      <span className="text-xs font-black text-amber-950 tabular-nums">
-                        {formatMoney(g.extraHighlight.value, resolvedCurrency, language, {
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 2,
-                        })}
-                      </span>
-                    </div>
-                  ) : null
-                )}
-
-                {/* Grand Total pill */}
-                <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-sm shadow-emerald-600/20">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-emerald-100">
-                    {t("Total Invoicable:", "Spolu na fakturáciu:", "Összes számlázható:")}
-                  </span>
-                  <span className="text-xs font-black text-white tabular-nums">
-                    {formatMoney(grandTotalValue, resolvedCurrency, language, {
-                      minimumFractionDigits: 0,
-                      maximumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
-              </div>
-            )}
-
-            {/* Quick toggle button */}
-            <button
-              type="button"
-              className="h-8 px-2.5 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all text-[10px] font-extrabold uppercase tracking-wider flex items-center gap-1 shadow-2xs cursor-pointer"
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsExpanded((prev) => !prev);
-              }}
-            >
-              <span>{isExpanded ? t("Collapse", "Zbaliť", "Összecsukás") : t("Expand", "Rozbaliť", "Kibontás")}</span>
-              <ChevronDown
-                className={`h-3.5 w-3.5 transition-transform duration-300 ${
-                  isExpanded ? "rotate-180" : ""
-                }`}
-              />
-            </button>
+            {!isExpanded && collapsedChips}
+            {toggleButton}
           </div>
         </div>
-
-        {/* 2. Expanded Content: Grouped Containers + Equation Total */}
-        {isExpanded && (
-          <div className="p-5 space-y-5 animate-fade-in bg-slate-50/40">
-            {/* Quick Toolbar: Select All / Deselect All / Reset */}
-            <div className="flex items-center justify-between gap-3 flex-wrap text-xs">
-              <div className="flex items-center gap-2">
-                <span className="text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                  {t(
-                    "Interactive status toggles:",
-                    "Interaktívne prepínače stavov:",
-                    "Interaktív állapotkapcsolók:"
-                  )}
-                </span>
-                <span className="text-[10px] font-semibold text-slate-400">
-                  ({t("click Eye icon or badge to include/exclude; click (i) to inspect calculated items", "kliknutím na Oko/odznak zahrniete/vylúčite; kliknutím na (i) zobrazíte položky", "Kattintson a Szemre/jelvényre a ki/bekapcsoláshoz; kattintson az (i)-re a tételekhez")})
-                </span>
-              </div>
-
-              <div className="flex items-center gap-2">
-                {hasDisabledAnywhere && (
-                  <button
-                    type="button"
-                    onClick={enableAll}
-                    className="px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wider text-indigo-600 hover:text-indigo-800 hover:bg-indigo-50 border border-indigo-200 transition-colors flex items-center gap-1 cursor-pointer"
-                    title={t("Include all statuses", "Zahrnúť všetky stavy", "Összes állapot bekapcsolása")}
-                  >
-                    <RotateCcw className="h-3 w-3" />
-                    <span>{t("Select all", "Vybrať všetko", "Összes kijelölése")}</span>
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={disableAll}
-                  className="px-2.5 py-1 rounded-lg text-[10px] font-extrabold uppercase tracking-wider text-slate-500 hover:text-slate-800 hover:bg-slate-100 border border-slate-200 transition-colors flex items-center gap-1 cursor-pointer"
-                  title={t("Exclude all statuses", "Vylúčiť všetky stavy", "Összes kizárása")}
-                >
-                  <XCircle className="h-3 w-3" />
-                  <span>{t("Clear all", "Zrušiť všetko", "Minden törlése")}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Group Containers Grid */}
-            <div className="grid grid-cols-1 xl:grid-cols-2 gap-4">
-              {calculatedGroups.map((group) => {
-                const theme = groupThemes[group.colorTheme || "blue"] || groupThemes.blue;
-                const GroupIcon = group.icon || (group.id === "leads" ? Layers : Briefcase);
-
-                return (
-                  <div
-                    key={group.id}
-                    className={`rounded-2xl border ${theme.containerBorder} ${theme.containerBg} p-4.5 flex flex-col justify-between gap-4 transition-all`}
-                  >
-                    {/* Group Header */}
-                    <div className="flex items-center justify-between gap-3 border-b border-slate-200/60 pb-3">
-                      <div className="flex items-center gap-2.5">
-                        <div
-                          className={`h-8 w-8 rounded-xl ${theme.iconBg} flex items-center justify-center shadow-xs shrink-0`}
-                        >
-                          <GroupIcon className="h-4 w-4" />
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <h3 className="text-xs font-heading font-black text-slate-900 uppercase tracking-tight">
-                              {group.name}
-                            </h3>
-                            <span className="px-1.5 py-0.5 rounded-md text-[9px] font-black bg-white/90 border border-slate-200/80 text-slate-600">
-                              {group.items.length} {group.unitLabel || t("statuses", "stavov", "állapot")}
-                            </span>
-                          </div>
-                          {group.subtitle && (
-                            <p className="text-[10px] font-semibold text-slate-500">
-                              {group.subtitle}
-                            </p>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Group Subtotal Badge */}
-                      <div className="flex flex-col items-end">
-                        <span className="text-[9px] font-black uppercase text-slate-400 tracking-wider">
-                          {t("Group Invoicable", "Medzisúčet na fakturáciu", "Részösszeg számlázható")}
-                        </span>
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className="text-sm font-heading font-black text-slate-900 tabular-nums">
-                            {formatMoney(group.subtotalValue, resolvedCurrency, language, {
-                              minimumFractionDigits: 0,
-                              maximumFractionDigits: 2,
-                            })}
-                          </span>
-                          <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded-md bg-white border border-slate-200 text-slate-600 shadow-2xs">
-                            {group.subtotalCount} {t("items", "pol.", "db")}
-                          </span>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Status Pills with Equation Operators */}
-                    <div className="flex flex-wrap items-center gap-2">
-                      {group.items.map((item, itemIdx) => {
-                        const isDisabled = disabledKeys.has(`${group.id}:${item.key}`);
-                        const isEnabled = !isDisabled;
-                        const pillBgColor = item.color || "#3b82f6";
-                        const pillTextColor = readableOn(pillBgColor);
-
-                        return (
-                          <React.Fragment key={item.key}>
-                            {itemIdx > 0 && (
-                              <span
-                                className={`text-xs font-black transition-opacity ${
-                                  isEnabled ? "text-slate-400" : "text-slate-300 opacity-40"
-                                }`}
-                              >
-                                +
-                              </span>
-                            )}
-
-                            <div
-                              onClick={() => toggleStatus(group.id, item.key)}
-                              className={`group relative flex items-center gap-2 px-3 py-1.5 rounded-xl border font-bold text-xs shadow-2xs transition-all duration-200 cursor-pointer active:scale-98 ${
-                                isEnabled
-                                  ? "shadow-sm hover:brightness-105"
-                                  : "bg-slate-100 text-slate-400 border-slate-200 opacity-40 hover:opacity-60 line-through"
-                              }`}
-                              style={
-                                isEnabled
-                                  ? {
-                                      backgroundColor: pillBgColor,
-                                      borderColor: pillBgColor,
-                                      color: pillTextColor,
-                                    }
-                                  : undefined
-                              }
-                              title={`${item.name}: ${formatMoney(
-                                item.value,
-                                resolvedCurrency,
-                                language
-                              )} (${item.count}) — ${
-                                isEnabled
-                                  ? t("Click to exclude / hide", "Kliknutím skryjete / vylúčite", "Kattintson az elrejtéshez")
-                                  : t("Click to include / show", "Kliknutím zobrazíte / zahrniete", "Kattintson a megjelenítéshez")
-                              }`}
-                            >
-                              {/* 1. Show/Hide Eye Icon */}
-                              <span
-                                className="flex items-center justify-center p-0.5 rounded-md hover:bg-black/15 transition-colors"
-                                title={
-                                  isEnabled
-                                    ? t("Click to hide / exclude", "Kliknutím skryjete / vylúčite", "Kattintson az elrejtéshez")
-                                    : t("Click to show / include", "Kliknutím zobrazíte / zahrniete", "Kattintson a megjelenítéshez")
-                                }
-                              >
-                                {isEnabled ? (
-                                  <Eye className="h-3.5 w-3.5 stroke-[2.5]" />
-                                ) : (
-                                  <EyeOff className="h-3.5 w-3.5 stroke-[2.5]" />
-                                )}
-                              </span>
-
-                              {/* Status Name */}
-                              <span className="font-heading font-black tracking-tight text-[11px] uppercase">
-                                {item.name}
-                              </span>
-
-                              {/* Invoicable Amount */}
-                              <span
-                                className="font-extrabold tabular-nums text-[11px]"
-                                style={isEnabled ? { color: pillTextColor } : undefined}
-                              >
-                                {formatMoney(item.value, resolvedCurrency, language, {
-                                  minimumFractionDigits: 0,
-                                  maximumFractionDigits: 2,
-                                })}
-                              </span>
-
-                              {/* Count badge */}
-                              <span
-                                className={`text-[9px] font-black px-1.5 py-0.5 rounded-md ${
-                                  isEnabled
-                                    ? "bg-black/20 text-white"
-                                    : "bg-slate-200 text-slate-500"
-                                }`}
-                              >
-                                {item.count}
-                              </span>
-
-                              {/* 2. Info Icon Button (Opens Right Slideout) */}
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setDrawerSearch("");
-                                  setDrawerData({
-                                    groupName: group.name,
-                                    groupColor: group.colorTheme || "blue",
-                                    itemName: item.name,
-                                    itemColor: pillBgColor,
-                                    itemValue: item.value,
-                                    itemCount: item.count,
-                                    totalBudget: item.totalBudget,
-                                    invoiced: item.invoiced,
-                                    rows: item.rows || [],
-                                  });
-                                }}
-                                className="ml-0.5 flex items-center justify-center h-5 w-5 rounded-full hover:bg-black/25 active:scale-90 transition-all cursor-pointer"
-                                title={t(
-                                  "Inspect calculated leads / projects",
-                                  "Zobraziť zoznam kalkulovaných obchodov/projektov",
-                                  "Kalkulált tételek részletes megtekintése"
-                                )}
-                              >
-                                <Info className="h-3.5 w-3.5 stroke-[2.5]" />
-                              </button>
-                            </div>
-                          </React.Fragment>
-                        );
-                      })}
-                    </div>
-
-                    {/* Optional Extra Highlight Card (Always show Remaining Invoicable on Projects) */}
-                    {group.extraHighlight && (
-                      <div className="mt-1 pt-3 border-t border-slate-200/60 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white/80 rounded-xl p-3 border border-amber-200/80 shadow-2xs">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="h-8 w-8 rounded-xl bg-amber-500 text-white flex items-center justify-center shadow-xs shrink-0">
-                            <Receipt className="h-4 w-4 stroke-[2.5]" />
-                          </div>
-                          <div className="min-w-0">
-                            <span className="text-[10px] font-black uppercase text-amber-900 tracking-wider flex items-center gap-1.5">
-                              {group.extraHighlight.label}
-                              <span className="px-1.5 py-0.2 rounded-full text-[8px] font-extrabold bg-amber-100 text-amber-800 uppercase">
-                                {t("Active Scope", "Aktívny rozsah", "Aktív hatókör")}
-                              </span>
-                            </span>
-                            {group.extraHighlight.subtext && (
-                              <p className="text-[9.5px] font-semibold text-slate-500 truncate mt-0.5">
-                                {group.extraHighlight.subtext}
-                              </p>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="flex items-baseline gap-1.5 shrink-0 self-end sm:self-auto">
-                          <span className="text-base font-heading font-black text-amber-950 tabular-nums">
-                            {formatMoney(group.extraHighlight.value, resolvedCurrency, language, {
-                              minimumFractionDigits: 0,
-                              maximumFractionDigits: 2,
-                            })}
-                          </span>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-
-            {/* 3. Grand Equation Total Bar */}
-            <div className="glass-panel p-4 rounded-2xl border border-slate-200 bg-white shadow-sm flex flex-col lg:flex-row items-center justify-between gap-4">
-              {/* Equation formula visualization */}
-              <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-center lg:justify-start">
-                <span className="text-xs font-black uppercase text-slate-400 tracking-wider">
-                  {t("Total Invoicable Equation:", "Súčet rovnice na fakturáciu:", "Összesítő számlázási egyenlet:")}
-                </span>
-
-                {calculatedGroups.map((g, idx) => (
-                  <React.Fragment key={`eq-${g.id}`}>
-                    {idx > 0 && <Plus className="h-4 w-4 text-slate-400 stroke-[3]" />}
-                    <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 border border-slate-200">
-                      <span className="text-[10px] font-black uppercase text-slate-600">
-                        {g.name}:
-                      </span>
-                      <span className="text-xs font-black text-slate-900 tabular-nums">
-                        {formatMoney(g.subtotalValue, resolvedCurrency, language, {
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 2,
-                        })}
-                      </span>
-                    </div>
-                  </React.Fragment>
-                ))}
-
-                <Equal className="h-4 w-4 text-slate-400 stroke-[3]" />
-              </div>
-
-              {/* Grand Total Highlight Badge */}
-              <div className="flex items-center gap-3 shrink-0">
-                <div className="flex items-center gap-3 px-4 py-2.5 rounded-2xl bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-lg shadow-emerald-600/25">
-                  <div className="flex flex-col">
-                    <span className="text-[9px] font-black uppercase tracking-wider text-emerald-200 leading-none">
-                      {t("Total Invoicable Active Value", "Celková aktívna hodnota na fakturovanie", "Teljes aktív számlázható összeg")}
-                    </span>
-                    <span className="text-lg font-heading font-black text-white tabular-nums mt-0.5">
-                      {formatMoney(grandTotalValue, resolvedCurrency, language, {
-                        minimumFractionDigits: 0,
-                        maximumFractionDigits: 2,
-                      })}
-                    </span>
-                  </div>
-                  <span className="text-[10px] font-extrabold px-2 py-1 rounded-xl bg-white/20 text-white shadow-inner">
-                    {grandTotalCount} {t("active items", "aktívnych položiek", "aktív tétel")}
-                  </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+        {isExpanded && expandedBody}
       </div>
+      )}
 
-      {/* 4. Right Slideout Drawer for Inspected Items */}
-      {drawerData && (
+      {/* 4. Right Slideout Drawer for Inspected Items. Portalled: inside a
+          dashboard card a transformed ancestor (the card's fade-in, a drag)
+          would become the containing block of this fixed overlay. */}
+      {drawerData && createPortal(
         <div
           className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-[9999] flex justify-end animate-fade-in"
           onClick={() => setDrawerData(null)}
         >
           <div
-            className="w-full max-w-lg sm:max-w-xl bg-white h-full shadow-2xl flex flex-col z-[10000] animate-in slide-in-from-right duration-300 overflow-hidden"
+            className="w-full max-w-lg ws-sm:max-w-xl bg-white h-full shadow-2xl flex flex-col z-[10000] animate-in slide-in-from-right duration-300 overflow-hidden"
             onClick={(e) => e.stopPropagation()}
           >
             {/* Drawer Header */}
             <div className="p-5 border-b border-slate-100 bg-slate-50/80 flex items-start justify-between gap-4 shrink-0">
               <div className="flex items-center gap-3 min-w-0">
                 <div
-                  className="h-10 w-10 rounded-2xl flex items-center justify-center text-white shadow-md shrink-0 font-heading font-black text-sm"
+                  className="h-10 w-10 rounded-2xl flex items-center justify-center text-white shadow-md shrink-0 font-heading font-bold text-body"
                   style={{ backgroundColor: drawerData.itemColor }}
                 >
                   {drawerData.itemCount}
                 </div>
                 <div className="min-w-0">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-black uppercase text-slate-400 tracking-wider">
+                    <span className="type-overline text-slate-400">
                       {drawerData.groupName}
                     </span>
                     <span
-                      className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase text-white shadow-2xs"
+                      className="px-2 py-0.5 rounded-full type-overline text-white shadow-2xs"
                       style={{ backgroundColor: drawerData.itemColor }}
                     >
                       {drawerData.itemName}
                     </span>
                   </div>
-                  <h3 className="text-base font-heading font-black text-slate-900 truncate mt-0.5">
+                  <h3 className="text-title-sm font-heading font-bold text-slate-900 truncate mt-0.5">
                     {t("Calculated Items Breakdown", "Prehľad kalkulovaných položiek", "Kalkulált tételek részletei")}
                   </h3>
-                  <p className="text-xs font-semibold text-slate-500 mt-0.5">
+                  <p className="text-ui font-semibold text-slate-500 mt-0.5">
                     {t("Invoicable in this status:", "Hodnota na fakturovanie v tomto stave:", "Számlázható összeg:")}{" "}
                     <span className="font-bold text-emerald-700 font-heading">
                       {formatMoney(drawerData.itemValue, resolvedCurrency, language, {
@@ -832,10 +889,10 @@ export const GroupedStatusValueEquationStats: React.FC<GroupedStatusValueEquatio
 
             {/* Budget Breakdown Strip if available */}
             {drawerData.totalBudget !== undefined && drawerData.totalBudget > 0 && (
-              <div className="px-5 py-3 bg-amber-50/70 border-b border-amber-200/60 flex items-center justify-between gap-3 text-xs shrink-0">
+              <div className="px-5 py-3 bg-amber-50/70 border-b border-amber-200/60 flex items-center justify-between gap-3 text-ui shrink-0">
                 <div className="flex items-center gap-4 flex-wrap">
                   <div>
-                    <span className="text-[9px] font-black uppercase text-slate-400 block">
+                    <span className="type-overline text-slate-400 block">
                       {t("Total Budget", "Celkový rozpočet", "Teljes büdzsé")}
                     </span>
                     <span className="font-bold text-slate-900 tabular-nums">
@@ -847,7 +904,7 @@ export const GroupedStatusValueEquationStats: React.FC<GroupedStatusValueEquatio
                   </div>
                   {drawerData.invoiced !== undefined && (
                     <div>
-                      <span className="text-[9px] font-black uppercase text-slate-400 block">
+                      <span className="type-overline text-slate-400 block">
                         {t("Invoiced so far", "Vyfakturované", "Számlázva")}
                       </span>
                       <span className="font-bold text-indigo-700 tabular-nums">
@@ -859,10 +916,10 @@ export const GroupedStatusValueEquationStats: React.FC<GroupedStatusValueEquatio
                     </div>
                   )}
                   <div>
-                    <span className="text-[9px] font-black uppercase text-amber-700 block">
+                    <span className="type-overline text-amber-700 block">
                       {t("Remaining Invoicable", "Zostáva vyfakturovať", "Hátralévő számlázható")}
                     </span>
-                    <span className="font-heading font-black text-amber-950 tabular-nums">
+                    <span className="font-heading font-bold text-amber-950 tabular-nums">
                       {formatMoney(drawerData.itemValue, resolvedCurrency, language, {
                         minimumFractionDigits: 0,
                         maximumFractionDigits: 0,
@@ -886,7 +943,7 @@ export const GroupedStatusValueEquationStats: React.FC<GroupedStatusValueEquatio
                     "Filtrovať podľa názvu, klienta, manažéra, divízie...",
                     "Szűrés név, ügyfél, felelős, divízió szerint..."
                   )}
-                  className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-semibold focus:outline-hidden focus:bg-white focus:border-indigo-500 transition-colors"
+                  className="w-full pl-9 pr-8 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui font-semibold focus:outline-hidden focus:bg-white focus:border-indigo-500 transition-colors"
                 />
                 {drawerSearch && (
                   <button
@@ -904,7 +961,7 @@ export const GroupedStatusValueEquationStats: React.FC<GroupedStatusValueEquatio
             <div className="flex-1 overflow-y-auto p-4 space-y-2.5">
               {filteredDrawerRows.length === 0 ? (
                 <div className="text-center py-16 text-slate-400">
-                  <p className="text-xs font-semibold">
+                  <p className="text-ui font-semibold">
                     {drawerSearch
                       ? t(
                           "No items matching search query.",
@@ -928,7 +985,7 @@ export const GroupedStatusValueEquationStats: React.FC<GroupedStatusValueEquatio
                       <div className="min-w-0">
                         <div className="flex items-center gap-1.5 flex-wrap mb-1">
                           <span
-                            className={`px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider ${
+                            className={`px-2 py-0.5 rounded-full type-overline ${
                               row.type === "project"
                                 ? "bg-purple-100 text-purple-800"
                                 : "bg-blue-100 text-blue-800"
@@ -939,12 +996,12 @@ export const GroupedStatusValueEquationStats: React.FC<GroupedStatusValueEquatio
                               : t("Lead", "Lead", "Lead")}
                           </span>
                           {row.division && (
-                            <span className="px-2 py-0.5 rounded-full text-[9px] font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-100">
+                            <span className="px-2 py-0.5 rounded-full text-micro font-extrabold bg-indigo-50 text-indigo-700 border border-indigo-100">
                               {row.division}
                             </span>
                           )}
                           {row.date && (
-                            <span className="text-[10px] font-semibold text-slate-400">
+                            <span className="text-micro font-semibold text-slate-400">
                               {row.date}
                             </span>
                           )}
@@ -953,13 +1010,13 @@ export const GroupedStatusValueEquationStats: React.FC<GroupedStatusValueEquatio
                         <a
                           href={row.url || "#"}
                           onClick={() => setDrawerData(null)}
-                          className="text-sm font-heading font-black text-slate-900 hover:text-indigo-600 transition-colors line-clamp-1 block"
+                          className="text-body font-heading font-bold text-slate-900 hover:text-indigo-600 transition-colors line-clamp-1 block"
                         >
                           {row.name}
                         </a>
 
                         {row.clientName && (
-                          <p className="text-xs font-semibold text-slate-500 truncate mt-0.5">
+                          <p className="text-ui font-semibold text-slate-500 truncate mt-0.5">
                             {row.clientName}
                           </p>
                         )}
@@ -967,10 +1024,10 @@ export const GroupedStatusValueEquationStats: React.FC<GroupedStatusValueEquatio
 
                       {/* Invoicable Value Badge */}
                       <div className="text-right shrink-0">
-                        <span className="text-[9px] font-black uppercase text-slate-400 block">
+                        <span className="type-overline text-slate-400 block">
                           {t("Invoicable", "Na fakturovanie", "Számlázható")}
                         </span>
-                        <span className="text-sm font-heading font-black text-emerald-600 tabular-nums">
+                        <span className="text-body font-heading font-bold text-emerald-600 tabular-nums">
                           {formatMoney(row.invoicable, resolvedCurrency, language, {
                             minimumFractionDigits: 0,
                             maximumFractionDigits: 2,
@@ -981,7 +1038,7 @@ export const GroupedStatusValueEquationStats: React.FC<GroupedStatusValueEquatio
 
                     {/* Financial Details for Projects with Invoiced vs Budget */}
                     {row.type === "project" && row.totalBudget !== undefined && row.totalBudget > 0 && (
-                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2 text-[10px] text-slate-500">
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2 text-micro text-slate-500">
                         <span>
                           {t("Budget:", "Rozpočet:", "Büdzsé:")}{" "}
                           <b className="text-slate-700 font-bold">
@@ -1001,7 +1058,7 @@ export const GroupedStatusValueEquationStats: React.FC<GroupedStatusValueEquatio
                           </b>
                         </span>
                         {row.manager && (
-                          <span className="text-slate-400 truncate max-w-[120px]">
+                          <span className="text-slate-400 truncate max-w-30">
                             PM: {row.manager}
                           </span>
                         )}
@@ -1012,7 +1069,7 @@ export const GroupedStatusValueEquationStats: React.FC<GroupedStatusValueEquatio
                       <a
                         href={row.url || "#"}
                         onClick={() => setDrawerData(null)}
-                        className="text-[10px] font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition-colors"
+                        className="text-micro font-bold text-indigo-600 hover:text-indigo-800 flex items-center gap-1 transition-colors"
                       >
                         <span>{t("Open in CRM", "Otvoriť v CRM", "Megnyitás a CRM-ben")}</span>
                         <ExternalLink className="h-3 w-3" />
@@ -1024,20 +1081,21 @@ export const GroupedStatusValueEquationStats: React.FC<GroupedStatusValueEquatio
             </div>
 
             {/* Drawer Footer */}
-            <div className="p-4 border-t border-slate-100 bg-slate-50/80 flex items-center justify-between text-xs text-slate-500 shrink-0">
-              <span className="font-semibold text-[11px]">
+            <div className="p-4 border-t border-slate-100 bg-slate-50/80 flex items-center justify-between text-ui text-slate-500 shrink-0">
+              <span className="font-semibold text-caption">
                 {filteredDrawerRows.length} {t("items calculated", "kalkulovaných položiek", "tétel számolva")}
               </span>
               <button
                 type="button"
                 onClick={() => setDrawerData(null)}
-                className="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-xs uppercase tracking-wider hover:bg-slate-800 transition-colors cursor-pointer"
+                className="px-4 py-2 rounded-xl bg-slate-900 text-white font-bold text-ui hover:bg-slate-800 transition-colors cursor-pointer"
               >
                 {t("Close", "Zavrieť", "Bezárás")}
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

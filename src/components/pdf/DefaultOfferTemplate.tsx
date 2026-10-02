@@ -86,7 +86,7 @@ export const DefaultOfferTemplate: React.FC<DefaultOfferTemplateProps> = ({
   const hasParameters = Boolean(offer.durationText || offer.startDateText || offer.warrantyText);
 
   return (
-    <div className="print-document force-light bg-white text-slate-900 font-sans p-8 md:p-12 max-w-[920px] mx-auto shadow-2xl rounded-2xl border border-slate-200 print:shadow-none print:border-none print:max-w-none print:rounded-none text-[13px] leading-relaxed select-text">
+    <div className="view-size-fixed print-document force-light bg-white text-slate-900 font-sans p-8 md:p-12 max-w-[920px] mx-auto shadow-2xl rounded-2xl border border-slate-200 print:shadow-none print:border-none print:max-w-none print:rounded-none text-[13px] leading-relaxed select-text">
       {/* 1. Brand & contact */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center pb-6 border-b border-slate-100 gap-4">
         <div className="flex items-center gap-3.5 min-w-0">

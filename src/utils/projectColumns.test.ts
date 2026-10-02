@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   BUILTIN_PROJECT_COLUMNS,
+  DEFAULT_HIDDEN_PROJECT_COLUMNS,
   LOCKED_PROJECT_COLUMN,
   asAttributeList,
   attributeColumnKey,
@@ -53,7 +54,10 @@ test("a built-in key is not mistaken for an attribute column", () => {
 test("a type that was never arranged shows the built-in columns, attributes off", () => {
   const cols = resolveProjectColumns([attr("a1", "textfield")], undefined);
   assert.deepEqual(keys(cols), [...BUILTIN_PROJECT_COLUMNS, "attr:a1"]);
-  assert.deepEqual(keys(cols.filter(c => c.visible)), [...BUILTIN_PROJECT_COLUMNS]);
+  assert.deepEqual(
+    keys(cols.filter(c => c.visible)),
+    BUILTIN_PROJECT_COLUMNS.filter(k => !DEFAULT_HIDDEN_PROJECT_COLUMNS.includes(k)),
+  );
 });
 
 test("an empty layout reads the same as none at all", () => {

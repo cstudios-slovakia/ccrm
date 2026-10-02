@@ -66,24 +66,24 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold text-slate-900">{title}</h2>
+              <h2 className="text-title-sm font-bold text-slate-900">{title}</h2>
               {isPreparing ? (
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-100 text-purple-800 border border-purple-300 flex items-center gap-1.5 animate-pulse">
+                <span className="px-2.5 py-0.5 rounded-full type-overline bg-purple-100 text-purple-800 border border-purple-300 flex items-center gap-1.5 animate-pulse">
                   <span className="w-2 h-2 rounded-full bg-purple-600 animate-ping" />
                   {t('Ingesting Swarm & Knowledge Graph...', 'Ingescia a syntéza roju...', 'Raj betöltése és szintézise...')}
                 </span>
               ) : isRunning ? (
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1.5">
+                <span className="px-2.5 py-0.5 rounded-full type-overline bg-emerald-50 text-emerald-700 border border-emerald-200 flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                   {t('Simulation Active', 'Simulácia prebieha', 'Szimuláció folyamatban')}
                 </span>
               ) : (
-                <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
+                <span className="px-2.5 py-0.5 rounded-full type-overline bg-slate-100 text-slate-600 border border-slate-200">
                   {currentRound >= totalRounds ? t('Completed', 'Dokončená', 'Befejezve') : t('Paused / Ready', 'Pozastavená / Pripravená', 'Szünetel / Kész')}
                 </span>
               )}
             </div>
-            <p className="text-xs text-slate-500">
+            <p className="text-ui text-slate-500">
               {isPreparing 
                 ? t('Synthesizing dynamic ontology and initializing autonomous agents...', 'Prebieha syntéza dynamickej ontológie a inicializácia autonómnych agentov...', 'Dinamikus ontológia szintézise és autonóm ágensek inicializálása...')
                 : t('Autonomous multi-agent market simulation in progress', 'Prebieha autonómna simulácia trhu s viacerými agentmi', 'Autonóm többágenses piaci szimuláció folyamatban')}
@@ -92,13 +92,13 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
         </div>
 
         {/* Metrics Ticker */}
-        <div className="flex items-center gap-6 text-xs">
+        <div className="flex items-center gap-6 text-ui">
           
           {/* Simulated Time / Circadian Clock */}
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-slate-50 border border-slate-200/70">
             {isNight ? <Moon className="w-4 h-4 text-indigo-500" /> : <Sun className="w-4 h-4 text-amber-500" />}
             <div>
-              <span className="text-[10px] text-slate-400 block font-semibold uppercase">
+              <span className="type-overline text-slate-400 block">
                 {t('Simulated Time', 'Simulovaný čas', 'Szimulált idő')}
               </span>
               <span className="font-bold text-slate-800">{String(simulatedHour).padStart(2, '0')}:00 CET</span>
@@ -109,10 +109,10 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-slate-50 border border-slate-200/70">
             <Users className="w-4 h-4 text-slate-500" />
             <div>
-              <span className="text-[10px] text-slate-400 block font-semibold uppercase">
+              <span className="type-overline text-slate-400 block">
                 {t('Stance Distribution', 'Rozdelenie postojov', 'Álláspontok megoszlása')}
               </span>
-              <div className="flex items-center gap-2 font-bold text-[11px]">
+              <div className="flex items-center gap-2 font-bold text-caption">
                 <span className="text-emerald-600">+{latestMetrics?.supportiveCount || 0}</span>
                 <span className="text-slate-400">/</span>
                 <span className="text-rose-600">-{latestMetrics?.opposingCount || 0}</span>
@@ -124,7 +124,7 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-slate-50 border border-slate-200/70">
             <TrendingUp className="w-4 h-4 text-purple-600" />
             <div>
-              <span className="text-[10px] text-slate-400 block font-semibold uppercase">
+              <span className="type-overline text-slate-400 block">
                 {t('Viral Index', 'Virálna odozva', 'Virális index')}
               </span>
               <span className="font-bold text-purple-700">{latestMetrics?.viralIndex ?? 0}%</span>
@@ -136,12 +136,12 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
             <div className="flex items-center gap-2 px-3 py-1.5 rounded-2xl bg-purple-50/80 border border-purple-200/80 shadow-xs">
               <Target className="w-4 h-4 text-purple-600 shrink-0" />
               <div className="min-w-0">
-                <span className="text-[10px] text-purple-600 block font-bold uppercase tracking-wider">
+                <span className="type-overline text-purple-600 block">
                   {t('Leading Answer', 'Vedúca odpoveď', 'Vezető válasz')}
                 </span>
-                <div className="flex items-center gap-1.5 font-bold text-[11px] text-purple-900 truncate max-w-[170px]">
+                <div className="flex items-center gap-1.5 font-bold text-caption text-purple-900 truncate max-w-42.5">
                   <span className="truncate" title={latestMetrics.leadingAnswer}>{latestMetrics.leadingAnswer}</span>
-                  <span className="px-1.5 py-0.2 rounded-full text-[9px] bg-purple-200/70 text-purple-800 font-extrabold shrink-0">
+                  <span className="px-1.5 py-0.2 rounded-full text-micro bg-purple-200/70 text-purple-800 font-extrabold shrink-0">
                     {latestMetrics.consensusPercentage ?? 0}%
                   </span>
                 </div>
@@ -151,14 +151,14 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
 
           {/* Action Buttons */}
           {isPreparing ? (
-            <div className="px-4 py-2 rounded-2xl bg-purple-50 text-purple-700 border border-purple-200 font-bold text-xs flex items-center gap-2 shadow-xs">
+            <div className="px-4 py-2 rounded-2xl bg-purple-50 text-purple-700 border border-purple-200 font-bold text-ui flex items-center gap-2 shadow-xs">
               <span className="w-3.5 h-3.5 border-2 border-purple-600 border-t-transparent rounded-full animate-spin" />
               <span>{t('Synthesizing...', 'Spracováva sa...', 'Szintetizálás...')}</span>
             </div>
           ) : isRunning ? (
             <button
               onClick={onStop}
-              className="px-4 py-2 rounded-2xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+              className="px-4 py-2 rounded-2xl bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 font-bold text-ui flex items-center gap-1.5 transition cursor-pointer"
             >
               <Pause className="w-3.5 h-3.5" />
               <span>{t('Pause', 'Pozastaviť', 'Szüneteltetés')}</span>
@@ -168,7 +168,7 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
               {onEditDraft && (
                 <button
                   onClick={onEditDraft}
-                  className="px-3 py-1.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+                  className="px-3 py-1.5 rounded-2xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-200 font-bold text-ui flex items-center gap-1.5 transition cursor-pointer"
                 >
                   <Edit3 className="w-3.5 h-3.5 text-purple-600" />
                   <span>{t('Edit Config', 'Upraviť konfiguráciu', 'Konfiguráció szerkesztése')}</span>
@@ -177,7 +177,7 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
               {onRestart && (
                 <button
                   onClick={onRestart}
-                  className="px-3.5 py-1.5 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 hover:from-purple-700 hover:to-emerald-600 text-white font-bold text-xs flex items-center gap-1.5 transition cursor-pointer shadow-md"
+                  className="px-3.5 py-1.5 rounded-2xl bg-gradient-to-r from-purple-600 via-indigo-600 to-emerald-500 hover:from-purple-700 hover:to-emerald-600 text-white font-bold text-ui flex items-center gap-1.5 transition cursor-pointer shadow-md"
                 >
                   <Play className="w-3.5 h-3.5 fill-white" />
                   <span>{t('Launch / Re-run', 'Spustiť / Znovu spustiť', 'Indítás / Újrafuttatás')}</span>
@@ -207,8 +207,8 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
         const remainingPct = Math.round((remainingVotes / total) * 100);
 
         return (
-          <div className="px-4 py-2 bg-white rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between gap-3 shrink-0 overflow-hidden min-h-[44px] max-h-[50px] animate-in fade-in duration-200">
-            <div className="flex items-center gap-2 text-xs text-slate-500 font-semibold shrink-0">
+          <div className="px-4 py-2 bg-white rounded-2xl border border-slate-200/80 shadow-xs flex items-center justify-between gap-3 shrink-0 overflow-hidden min-h-11 max-h-12.5 animate-in fade-in duration-200">
+            <div className="flex items-center gap-2 text-ui text-slate-500 font-semibold shrink-0">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
               <span>{t('Live Answer Consensus:', 'Priebežný konsenzus odpovedí:', 'Élő válaszkonszenzus:')}</span>
             </div>
@@ -220,14 +220,14 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
                   <div 
                     key={ans}
                     title={`${ans}: ${pct}% (${count})`}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-bold transition border shrink-0 ${
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-ui font-bold transition border shrink-0 ${
                       isLeader 
                         ? 'bg-purple-100/90 text-purple-900 border-purple-300 ring-1 ring-purple-300 shadow-xs' 
                         : 'bg-slate-50 text-slate-700 border-slate-200'
                     }`}
                   >
-                    <span className="truncate max-w-[170px]">{ans}</span>
-                    <span className={`text-[10px] px-1.5 py-0.2 rounded-full shrink-0 ${isLeader ? 'bg-purple-600 text-white font-extrabold' : 'bg-slate-200 text-slate-700'}`}>
+                    <span className="truncate max-w-42.5">{ans}</span>
+                    <span className={`text-micro px-1.5 py-0.2 rounded-full shrink-0 ${isLeader ? 'bg-purple-600 text-white font-extrabold' : 'bg-slate-200 text-slate-700'}`}>
                       {pct}% ({count})
                     </span>
                   </div>
@@ -236,10 +236,10 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
               {remainingEntries.length > 0 && (
                 <div 
                   title={remainingEntries.map(([a, c]) => `${a}: ${Math.round((c / total) * 100)}% (${c})`).join('\n')}
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-medium bg-slate-50 text-slate-500 border border-slate-200 shrink-0 cursor-default"
+                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-ui font-medium bg-slate-50 text-slate-500 border border-slate-200 shrink-0 cursor-default"
                 >
                   <span>{t(`+${remainingEntries.length} others`, `+${remainingEntries.length} ďalších`, `+${remainingEntries.length} további`)}</span>
-                  <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-600 font-bold shrink-0">
+                  <span className="text-micro px-1.5 py-0.2 rounded-full bg-slate-200 text-slate-600 font-bold shrink-0">
                     {remainingPct}%
                   </span>
                 </div>
@@ -250,10 +250,10 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
       })()}
 
       {/* Main Dual Grid: Ontology Graph (Left 60%) + Feed Stream (Right 40%) */}
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-3.5 flex-1 min-h-0 overflow-hidden">
+      <div className="grid grid-cols-1 ws-lg:grid-cols-12 gap-3.5 flex-1 min-h-0 overflow-hidden">
         
         {/* Left: Swarm Ontology Graph Canvas */}
-        <div className="lg:col-span-7 xl:col-span-8 flex flex-col h-full min-h-0">
+        <div className="ws-lg:col-span-7 ws-xl:col-span-8 flex flex-col h-full min-h-0">
           <SwarmGraphCanvas 
             graph={graph} 
             agents={agents}
@@ -266,7 +266,7 @@ export const LiveWarRoom: React.FC<LiveWarRoomProps> = ({
         </div>
 
         {/* Right: Social Stream */}
-        <div className="lg:col-span-5 xl:col-span-4 flex flex-col h-full min-h-0">
+        <div className="ws-lg:col-span-5 ws-xl:col-span-4 flex flex-col h-full min-h-0">
           <SocialFeedStream 
             posts={posts} 
             className="w-full h-full flex-1 min-h-0"

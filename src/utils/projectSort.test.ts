@@ -21,6 +21,16 @@ const rows: Row[] = [
   { id: "p4", name: "", rating: 1, deadline: "2026-12-31", progress: 0, statusRank: 2 },
 ];
 
+test("value sorts numerically and an empty value goes last in both directions", () => {
+  const priced: Row[] = [
+    { id: "a", value: 900 },
+    { id: "b", value: null },
+    { id: "c", value: 1200 },
+  ];
+  assert.deepEqual(order(sortProjects(priced, { key: "value", direction: "asc" }, values)), ["a", "c", "b"]);
+  assert.deepEqual(order(sortProjects(priced, { key: "value", direction: "desc" }, values)), ["c", "a", "b"]);
+});
+
 const values = (r: Row): ProjectSortValues => ({
   name: r.name ?? "",
   client: "",
@@ -29,6 +39,8 @@ const values = (r: Row): ProjectSortValues => ({
   rating: r.rating ?? null,
   deadline: r.deadline ?? null,
   progress: r.progress ?? null,
+  value: r.value ?? null,
+  division: r.division ?? "",
   statusRank: r.statusRank ?? 0,
 });
 

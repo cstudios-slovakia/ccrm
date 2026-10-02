@@ -26,6 +26,7 @@ import { nextDocumentNumber as nextDocumentNumberShared } from "../utils/documen
 import { cn } from "../utils/cn";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import type { ModuleAccess } from "../utils/permissions";
+import { PageHeader, StatGrid, StatTile } from "./layout";
 
 interface InvoicingViewProps {
   invoicesOffers: InvoiceOffer[];
@@ -967,53 +968,48 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
     );
 
   const inputClass =
-    "w-full p-2.5 bg-white border border-slate-200 rounded-xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-400 transition-all";
-  const labelClass = "text-[10px] font-bold text-slate-600 uppercase tracking-wider block mb-1";
+    "w-full p-2.5 bg-white border border-slate-200 rounded-xl text-ui text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-400 transition-all";
+  const labelClass = "type-overline text-slate-600 block mb-1";
 
   // ---------------------------------------------------------------------------
   return (
     <div className="space-y-6 pb-16 font-sans animate-fade-in">
       {/* 1. SECTION HEADER & COMMAND BAR */}
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-slate-100 pb-4 select-none">
-        <div className="flex flex-col">
-          <h2 className="text-2xl font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
-            <FileText className="h-6 w-6 text-indigo-600" />
-            {t("Price Offers & Invoicing", "Cenové ponuky a fakturácia", "Árajánlatok és számlázás")}
-          </h2>
-          <p className="text-xs text-slate-500 uppercase font-semibold tracking-wider mt-1">
-            {t(
+      <PageHeader
+        icon={<FileText className="h-6 w-6 text-indigo-600" />}
+        title={t("Price Offers & Invoicing", "Cenové ponuky a fakturácia", "Árajánlatok és számlázás")}
+        subtitle={t(
               "Issue price offers and invoices linked to leads, warehouse stock and your accounting service.",
               "Vystavujte cenové ponuky a faktúry prepojené s leadmi, skladom a vaším účtovníctvom.",
               "Állítson ki árajánlatokat és számlákat az ügyfelekhez, raktárhoz és könyveléshez kapcsolva."
             )}
-          </p>
-        </div>
-
-        <div className="flex flex-wrap items-center gap-2.5">
-          {onOpenSettings && (
-            <button
-              onClick={onOpenSettings}
-              className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 hover:border-indigo-300 text-slate-700 text-xs font-semibold rounded-2xl shadow-sm transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
-            >
-              <Sparkles className="h-4 w-4 text-indigo-500" />
-              <span>{t("Billing settings", "Fakturačné nastavenia", "Számlázási beállítások")}</span>
-            </button>
-          )}
-          {canEdit && (
-            <button
-              onClick={handleOpenCreateModal}
-              className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-2xl shadow-md shadow-indigo-600/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
-            >
-              <Plus className="h-4 w-4" />
-              <span>{t("New document", "Nový doklad", "Új bizonylat")}</span>
-            </button>
-          )}
-        </div>
-      </div>
+        actions={<>
+          <div className="flex flex-wrap items-center gap-2.5">
+            {onOpenSettings && (
+              <button
+                onClick={onOpenSettings}
+                className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 hover:border-indigo-300 text-slate-700 text-ui font-semibold rounded-2xl shadow-sm transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <Sparkles className="h-4 w-4 text-indigo-500" />
+                <span>{t("Billing settings", "Fakturačné nastavenia", "Számlázási beállítások")}</span>
+              </button>
+            )}
+            {canEdit && (
+              <button
+                onClick={handleOpenCreateModal}
+                className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-ui font-semibold rounded-2xl shadow-md shadow-indigo-600/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <Plus className="h-4 w-4" />
+                <span>{t("New document", "Nový doklad", "Új bizonylat")}</span>
+              </button>
+            )}
+          </div>
+        </>}
+      />
 
       {/* READ-ONLY NOTICE — the role can browse and print, but not issue or change documents */}
       {!canEdit && (
-        <div className="flex items-center gap-2.5 p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-xs text-amber-900">
+        <div className="flex items-center gap-2.5 p-3.5 bg-amber-50 border border-amber-200 rounded-2xl text-ui text-amber-900">
           <Lock className="h-4 w-4 shrink-0 text-amber-600" />
           <span className="font-semibold">{t("Read-only access", "Iba na čítanie", "Csak olvasható")}</span>
           <span className="text-amber-800/80">
@@ -1028,8 +1024,8 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
 
       {/* 2. SETUP NOTICE — a document issued before Settings are filled in carries no company identity */}
       {!billingConfigured && (
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
-          <div className="flex items-start gap-2.5 text-xs text-amber-900">
+        <div className="flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3 p-4 bg-amber-50 border border-amber-200 rounded-2xl">
+          <div className="flex items-start gap-2.5 text-ui text-amber-900">
             <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-amber-600" />
             <span className="font-semibold">
               {t(
@@ -1042,7 +1038,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
           {onOpenSettings && (
             <button
               onClick={onOpenSettings}
-              className="shrink-0 px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-[0.98]"
+              className="shrink-0 px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-ui font-bold transition-all cursor-pointer active:scale-[0.98]"
             >
               {t("Open settings", "Otvoriť nastavenia", "Beállítások megnyitása")}
             </button>
@@ -1051,7 +1047,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
       )}
 
       {/* 3. KPI OVERVIEW */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <StatGrid count={4}>
         {[
           {
             icon: <Layers className="h-6 w-6" />,
@@ -1082,34 +1078,24 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
             value: String(metrics.totalCount)
           }
         ].map(card => (
-          <div
-            key={card.label}
-            className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-sm flex items-center gap-4 transition-all hover:shadow-md"
-          >
-            <div className={cn("p-3 rounded-2xl shrink-0", card.tone)}>{card.icon}</div>
-            <div className="min-w-0">
-              <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">{card.label}</div>
-              <div className="text-xl font-black text-slate-900 mt-0.5 truncate">{card.value}</div>
-              {card.hint && <div className="text-[10px] text-slate-400 font-medium">{card.hint}</div>}
-            </div>
-          </div>
+          <StatTile key={card.label} icon={card.icon} tone={card.tone} label={card.label} value={card.value} delta={card.hint} />
         ))}
-      </div>
+      </StatGrid>
 
       {/* 4. SEARCH & FILTERS */}
-      <div className="bg-white p-3 sm:p-4 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col xl:flex-row gap-2.5 sm:gap-3 xl:items-center xl:justify-between">
-        <div className="relative w-full xl:w-80">
+      <div className="bg-white p-3 ws-sm:p-4 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col ws-xl:flex-row gap-2.5 ws-sm:gap-3 ws-xl:items-center ws-xl:justify-between">
+        <div className="relative w-full ws-xl:w-80">
           <Search className="h-4 w-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
           <input
             type="text"
             placeholder={t("Search document, client or number…", "Hľadať doklad, klienta alebo číslo…", "Bizonylat, ügyfél vagy szám keresése…")}
             value={searchQuery}
             onChange={e => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-xs text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-400 transition-all"
+            className="w-full pl-10 pr-4 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-ui text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-400 transition-all"
           />
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 w-full xl:w-auto">
+        <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-2 w-full ws-xl:w-auto">
           <CustomSelect
             size="sm"
             value={typeFilter}
@@ -1150,9 +1136,9 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
       {/* 5. DOCUMENTS TABLE */}
       <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full text-left text-xs border-collapse min-w-[780px]">
+          <table className="w-full text-left text-ui border-collapse min-w-195">
             <thead>
-              <tr className="bg-slate-50 text-slate-500 font-black uppercase tracking-wider text-[10px] border-b border-slate-200">
+              <tr className="bg-slate-50 text-slate-500 type-overline border-b border-slate-200">
                 <th className="p-4">{t("Document no.", "Číslo dokladu", "Bizonylatszám")}</th>
                 <th className="p-4">{t("Type & template", "Typ a šablóna", "Típus és sablon")}</th>
                 <th className="p-4">{t("Client / lead", "Klient / Lead", "Ügyfél / Lead")}</th>
@@ -1169,7 +1155,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                     <td className="p-4 align-top font-mono font-bold text-slate-900 whitespace-nowrap">
                       {offer.documentNumber}
                       {offer.externalId && (
-                        <span className="block text-[10px] text-slate-400 font-sans font-medium">
+                        <span className="block text-micro text-slate-400 font-sans font-medium">
                           {offer.externalProvider === "idoklad" ? "iDoklad" : "SuperFaktúra"} #{offer.externalId}
                         </span>
                       )}
@@ -1177,12 +1163,12 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                     <td className="p-4 align-top">
                       <div className="font-bold text-slate-800">{offer.title}</div>
                       <div className="flex items-center gap-1.5 mt-1">
-                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider bg-slate-100 text-slate-600 border border-slate-200">
+                        <span className="px-2 py-0.5 rounded-full type-overline bg-slate-100 text-slate-600 border border-slate-200">
                           {typeLabel(offer.type)}
                         </span>
                         <span
                           className={cn(
-                            "px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider border",
+                            "px-2 py-0.5 rounded-full type-overline border",
                             offer.mode === "custom"
                               ? "bg-purple-50 text-purple-700 border-purple-200"
                               : offer.mode === "external"
@@ -1196,7 +1182,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                     </td>
                     <td className="p-4 align-top">
                       <div className="font-bold text-slate-900">{offer.clientName}</div>
-                      {offer.location && <div className="text-[11px] text-slate-400">{offer.location}</div>}
+                      {offer.location && <div className="text-caption text-slate-400">{offer.location}</div>}
                     </td>
                     <td className="p-4 align-top text-slate-600 whitespace-nowrap">{formatDateLocalized(offer.issuedAt, lang)}</td>
                     <td className="p-4 align-top text-right font-bold text-slate-900 whitespace-nowrap">
@@ -1212,14 +1198,14 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                           options={statusOptions}
                           unstyled
                           className={cn(
-                            "gap-1.5 px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border cursor-pointer transition-all hover:brightness-95",
+                            "gap-1.5 px-2.5 py-1 rounded-full type-overline border cursor-pointer transition-all hover:brightness-95",
                             statusBadgeClass(offer.status)
                           )}
                         />
                       ) : (
                         <span
                           className={cn(
-                            "inline-flex items-center px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider border",
+                            "inline-flex items-center px-2.5 py-1 rounded-full type-overline border",
                             statusBadgeClass(offer.status)
                           )}
                         >
@@ -1265,12 +1251,12 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                       <div className="h-12 w-12 mx-auto rounded-2xl bg-slate-100 text-slate-400 flex items-center justify-center">
                         <FileText className="h-6 w-6" />
                       </div>
-                      <div className="font-bold text-slate-700 text-sm">
+                      <div className="font-bold text-slate-700 text-body">
                         {invoicesOffers.length === 0
                           ? t("No documents yet", "Zatiaľ žiadne doklady", "Még nincs bizonylat")
                           : t("Nothing matches these filters", "Filtrom nezodpovedá žiadny doklad", "Nincs találat a szűrőkre")}
                       </div>
-                      <p className="text-xs text-slate-500 leading-relaxed">
+                      <p className="text-ui text-slate-500 leading-relaxed">
                         {invoicesOffers.length === 0
                           ? canEdit
                             ? t(
@@ -1299,19 +1285,19 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/60 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
             {/* Wizard header */}
-            <div className="p-5 sm:p-6 border-b border-slate-100 flex justify-between items-start gap-4 bg-slate-50/70">
+            <div className="p-5 ws-sm:p-6 border-b border-slate-100 flex justify-between items-start gap-4 bg-slate-50/70">
               <div className="min-w-0">
-                <h3 className="text-lg font-heading font-extrabold text-slate-900 tracking-tight">
+                <h3 className="text-title font-heading font-extrabold text-slate-900 tracking-tight">
                   {editingId
                     ? t("Edit document", "Úprava dokladu", "Bizonylat szerkesztése")
                     : t("New price offer / invoice", "Nová cenová ponuka / faktúra", "Új árajánlat / számla")}
                 </h3>
                 <div className="flex flex-wrap items-center gap-2 mt-1">
-                  <span className="text-xs font-bold text-indigo-600">
+                  <span className="text-ui font-bold text-indigo-600">
                     {t(`Step ${modalStep} of 5`, `Krok ${modalStep} z 5`, `${modalStep}. lépés / 5`)}
                   </span>
                   <span className="text-slate-300">·</span>
-                  <span className="text-xs text-slate-500 font-medium">
+                  <span className="text-ui text-slate-500 font-medium">
                     {modalStep === 1 && t("Document type & format", "Typ a formát dokladu", "Bizonylat típusa és formátuma")}
                     {modalStep === 2 && t("Client & lead pairing", "Prepojenie s klientom", "Ügyfél összekapcsolása")}
                     {modalStep === 3 && t("Line items & warehouse stock", "Položky a skladové zásoby", "Tételek és raktárkészlet")}
@@ -1345,7 +1331,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
             </div>
 
             {/* Wizard body */}
-            <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-6">
+            <div className="p-5 ws-sm:p-6 overflow-y-auto flex-1 space-y-6">
               {/* STEP 1 — type & format */}
               {modalStep === 1 && (
                 <div className="space-y-6 animate-fade-in">
@@ -1353,7 +1339,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                     <label className={labelClass}>
                       1. {t("Document type", "Typ dokladu", "Bizonylat típusa")}
                     </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-3">
                       {([
                         {
                           type: "price_offer" as const,
@@ -1379,8 +1365,8 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                               : "border-slate-200 hover:border-slate-300 bg-white"
                           )}
                         >
-                          <div className="font-bold text-sm text-slate-900">{typeLabel(opt.type)}</div>
-                          <div className="text-xs text-slate-500 mt-1 leading-snug">{opt.desc}</div>
+                          <div className="font-bold text-body text-slate-900">{typeLabel(opt.type)}</div>
+                          <div className="text-ui text-slate-500 mt-1 leading-snug">{opt.desc}</div>
                         </button>
                       ))}
                     </div>
@@ -1390,7 +1376,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                     <label className={labelClass}>
                       2. {t("Generation mode & template", "Spôsob a šablóna generovania", "Generálási mód és sablon")}
                     </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-3">
                       {([
                         {
                           mode: "default" as const,
@@ -1437,11 +1423,11 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                               : !opt.disabled && "border-slate-200 hover:border-slate-300 bg-white"
                           )}
                         >
-                          <div className="flex items-center gap-2 font-bold text-sm text-slate-900">
+                          <div className="flex items-center gap-2 font-bold text-body text-slate-900">
                             {opt.icon}
                             {opt.label}
                           </div>
-                          <div className="text-xs text-slate-500 mt-1 leading-snug">{opt.desc}</div>
+                          <div className="text-ui text-slate-500 mt-1 leading-snug">{opt.desc}</div>
                         </button>
                       ))}
                     </div>
@@ -1475,7 +1461,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                         }))}
                       />
                       {(invoicingIntegrations?.superfaktura?.sandbox || invoicingIntegrations?.idoklad?.sandbox) && (
-                        <p className="text-[11px] text-amber-700 font-semibold mt-1.5">
+                        <p className="text-caption text-amber-700 font-semibold mt-1.5">
                           {t(
                             "Sandbox mode is on for at least one service — documents are created in the test environment.",
                             "Aspoň pre jednu službu je zapnutý sandbox — doklady vzniknú v testovacom prostredí.",
@@ -1507,7 +1493,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                       onChange={e => setDraftIssuedAt(e.target.value || todayLocal())}
                       className={inputClass}
                     />
-                    <p className="text-[11px] text-slate-500 mt-1">
+                    <p className="text-caption text-slate-500 mt-1">
                       {t(
                         "Due date and valid-until are calculated from this date and can be edited before the document is issued.",
                         "Splatnosť a platnosť ponuky sa počítajú z tohto dátumu a je možné ich pred vystavením upraviť.",
@@ -1529,7 +1515,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                       <button
                         type="button"
                         onClick={openNewClientModal}
-                        className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 rounded-lg px-2.5 py-1 cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]"
+                        className="flex items-center gap-1.5 text-caption font-bold text-indigo-600 hover:text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-100 rounded-lg px-2.5 py-1 cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98]"
                       >
                         <UserPlus className="h-3.5 w-3.5" />
                         {t("New client", "Nový klient", "Új ügyfél")}
@@ -1545,7 +1531,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                         onCreated={applyLeadToDraft}
                       />
                     ) : (
-                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-xs text-slate-500">
+                      <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-500">
                         {t(
                           "No leads or clients exist yet — register the first one above.",
                           "Zatiaľ neexistujú žiadne leady ani klienti — zaregistrujte prvého vyššie.",
@@ -1556,14 +1542,14 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                   </div>
 
                   {selectedLead && (
-                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3 text-xs animate-fade-in">
+                    <div className="p-4 bg-slate-50 rounded-2xl border border-slate-200 space-y-3 text-ui animate-fade-in">
                       <div className="font-bold text-slate-900 flex items-center justify-between gap-2">
                         <span>{t("Client billing details", "Fakturačné údaje klienta", "Ügyfél számlázási adatai")}</span>
-                        <span className="text-[10px] text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full font-bold uppercase tracking-wider">
+                        <span className="type-overline text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-full">
                           {t("Linked to CRM", "Prepojené s CRM", "CRM-hez kapcsolva")}
                         </span>
                       </div>
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-slate-600">
+                      <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-2 text-slate-600">
                         {[
                           [t("Name", "Názov / Meno", "Név"), selectedLead.name],
                           [t("Email", "Email", "E-mail"), selectedLead.email],
@@ -1620,7 +1606,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                               systemLanguage={systemLanguage}
                             />
                           </div>
-                          <p className="text-[10px] text-slate-400 font-medium">
+                          <p className="text-micro text-slate-400 font-medium">
                             {t(
                               "Picking a match updates this client in the CRM, not just this document.",
                               "Vybraná zhoda sa uloží ku klientovi v CRM, nielen do tohto dokladu.",
@@ -1632,7 +1618,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                     </div>
                   )}
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                  <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3 pt-1">
                     <div>
                       <label className={labelClass}>
                         {t("Subject / job name", "Predmet ponuky / názov zákazky", "Tárgy / munka neve")}
@@ -1684,12 +1670,12 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
               {/* STEP 3 — items */}
               {modalStep === 3 && (
                 <div className="space-y-4 animate-fade-in">
-                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2">
+                  <div className="flex flex-col ws-sm:flex-row justify-between items-start ws-sm:items-center gap-2">
                     <div>
-                      <h4 className="font-bold text-slate-900 text-sm">
+                      <h4 className="font-bold text-slate-900 text-body">
                         {t("Scope of delivery & work", "Rozsah dodávky a prác", "Szállítás és munka terjedelme")}
                       </h4>
-                      <p className="text-xs text-slate-500">
+                      <p className="text-ui text-slate-500">
                         {t(
                           "Add stock products or your own custom line items.",
                           "Pridajte tovar zo skladu alebo doplňte vlastné položky.",
@@ -1699,7 +1685,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                     </div>
                     <button
                       onClick={handleAddCustomItem}
-                      className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-[0.98]"
+                      className="flex items-center gap-1.5 px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-ui font-bold transition-all cursor-pointer active:scale-[0.98]"
                     >
                       <Plus className="h-3.5 w-3.5" />
                       {t("Custom item", "Vlastná položka", "Saját tétel")}
@@ -1709,8 +1695,8 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                   {/* Warehouse picker */}
                   {warehouseItems.length > 0 && (
                     <div className="p-3.5 bg-slate-50 rounded-2xl border border-slate-200 space-y-2.5">
-                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 justify-between">
-                        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                      <div className="flex flex-col ws-sm:flex-row ws-sm:items-center gap-2 justify-between">
+                        <div className="type-overline text-slate-500 flex items-center gap-1.5">
                           <Package className="h-3.5 w-3.5 text-indigo-600" />
                           {t(
                             `Warehouse (${warehouseItems.length} products)`,
@@ -1718,14 +1704,14 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                             `Raktár (${warehouseItems.length} termék)`
                           )}
                         </div>
-                        <div className="relative w-full sm:w-64">
+                        <div className="relative w-full ws-sm:w-64">
                           <Search className="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
                           <input
                             type="text"
                             value={warehouseQuery}
                             onChange={e => setWarehouseQuery(e.target.value)}
                             placeholder={t("Search product or SKU…", "Hľadať tovar alebo SKU…", "Termék vagy SKU keresése…")}
-                            className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/40 transition-all"
+                            className="w-full pl-8 pr-3 py-1.5 bg-white border border-slate-200 rounded-lg text-ui focus:outline-none focus:ring-2 focus:ring-indigo-500/40 transition-all"
                           />
                         </div>
                       </div>
@@ -1736,7 +1722,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                               key={wh.id}
                               type="button"
                               onClick={() => handleAddWarehouseProduct(wh)}
-                              className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-xs font-medium text-slate-700 hover:border-indigo-400 hover:text-indigo-600 transition-all text-left cursor-pointer active:scale-[0.98]"
+                              className="px-2.5 py-1.5 bg-white border border-slate-200 rounded-lg text-ui font-medium text-slate-700 hover:border-indigo-400 hover:text-indigo-600 transition-all text-left cursor-pointer active:scale-[0.98]"
                             >
                               + {wh.name}{" "}
                               <span className="text-slate-400">
@@ -1745,7 +1731,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                             </button>
                           ))
                         ) : (
-                          <span className="text-xs text-slate-400 italic py-1">
+                          <span className="text-ui text-slate-400 italic py-1">
                             {t("No product matches.", "Žiadny tovar nezodpovedá hľadaniu.", "Nincs találat.")}
                           </span>
                         )}
@@ -1757,7 +1743,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                   <div className="space-y-2.5">
                     {items.length === 0 && (
                       <div className="p-6 text-center border border-dashed border-slate-200 rounded-2xl">
-                        <p className="text-xs text-slate-500">
+                        <p className="text-ui text-slate-500">
                           {t(
                             "No line items yet — pick one from the warehouse or add a custom item.",
                             "Zatiaľ žiadne položky — vyberte tovar zo skladu alebo pridajte vlastnú položku.",
@@ -1777,7 +1763,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                             value={item.name}
                             onChange={e => handleUpdateItem(item.id, { name: e.target.value })}
                             placeholder={t("Item name", "Názov položky", "Tétel neve")}
-                            className="font-bold text-xs text-slate-900 bg-transparent flex-1 border-b border-transparent hover:border-slate-200 focus:border-indigo-500 focus:outline-none transition-colors py-1"
+                            className="font-bold text-ui text-slate-900 bg-transparent flex-1 border-b border-transparent hover:border-slate-200 focus:border-indigo-500 focus:outline-none transition-colors py-1"
                           />
                           <button
                             onClick={() => handleRemoveItem(item.id)}
@@ -1793,12 +1779,12 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                           value={item.description || ""}
                           onChange={e => handleUpdateItem(item.id, { description: e.target.value })}
                           placeholder={t("Detailed specification", "Podrobná špecifikácia", "Részletes leírás")}
-                          className="w-full text-xs text-slate-500 bg-transparent border-b border-slate-100 focus:border-indigo-400 focus:outline-none transition-colors py-1"
+                          className="w-full text-ui text-slate-500 bg-transparent border-b border-slate-100 focus:border-indigo-400 focus:outline-none transition-colors py-1"
                         />
 
-                        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 pt-1">
+                        <div className="grid grid-cols-2 ws-sm:grid-cols-5 gap-2 pt-1">
                           <div>
-                            <label className="text-[10px] text-slate-400 font-bold uppercase">
+                            <label className="type-overline text-slate-400">
                               {t("Qty", "Množstvo", "Menny.")}
                             </label>
                             <div className="flex items-center gap-1">
@@ -1808,19 +1794,19 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                                 step="any"
                                 value={item.quantity}
                                 onChange={e => handleUpdateItem(item.id, { quantity: parseFloat(e.target.value) || 0 })}
-                                className="w-full min-w-0 p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                                className="w-full min-w-0 p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-ui font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
                               />
                               <input
                                 type="text"
                                 value={item.unit}
                                 onChange={e => handleUpdateItem(item.id, { unit: e.target.value })}
-                                className="w-12 shrink-0 p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs text-center focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                                className="w-12 shrink-0 p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-ui text-center focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
                               />
                             </div>
                           </div>
 
                           <div>
-                            <label className="text-[10px] text-slate-400 font-bold uppercase">
+                            <label className="type-overline text-slate-400">
                               {t("Unit price", "Jedn. cena", "Egységár")} ({currencySymbol})
                             </label>
                             <input
@@ -1828,12 +1814,12 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                               step="any"
                               value={item.unitPrice}
                               onChange={e => handleUpdateItem(item.id, { unitPrice: parseFloat(e.target.value) || 0 })}
-                              className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                              className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-ui font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
                             />
                           </div>
 
                           <div>
-                            <label className="text-[10px] text-slate-400 font-bold uppercase">
+                            <label className="type-overline text-slate-400">
                               {t("Discount", "Zľava", "Kedvezmény")} %
                             </label>
                             <input
@@ -1847,12 +1833,12 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                                   discountPct: Math.min(100, Math.max(0, parseFloat(e.target.value) || 0))
                                 })
                               }
-                              className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                              className="w-full p-1.5 bg-slate-50 border border-slate-200 rounded-lg text-ui font-semibold focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
                             />
                           </div>
 
                           <div>
-                            <label className="text-[10px] text-slate-400 font-bold uppercase">
+                            <label className="type-overline text-slate-400">
                               {t("VAT", "DPH", "ÁFA")} %
                             </label>
                             <CustomSelect
@@ -1871,10 +1857,10 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                           </div>
 
                           <div className="text-right self-end">
-                            <label className="text-[10px] text-slate-400 font-bold uppercase block">
+                            <label className="type-overline text-slate-400 block">
                               {t("Line total", "Spolu", "Összesen")}
                             </label>
-                            <span className="font-bold text-xs text-slate-900 mt-1 block whitespace-nowrap">
+                            <span className="font-bold text-ui text-slate-900 mt-1 block whitespace-nowrap">
                               {money(item.totalPrice)}
                             </span>
                           </div>
@@ -1884,15 +1870,15 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                   </div>
 
                   {/* Totals & optional price range */}
-                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                  <div className="p-4 bg-slate-50 border border-slate-200 rounded-2xl flex flex-col ws-lg:flex-row justify-between items-start ws-lg:items-center gap-4">
                     <div>
-                      <div className="text-[10px] text-slate-500 font-bold uppercase tracking-wider">
+                      <div className="type-overline text-slate-500">
                         {t("Total incl. VAT", "Celková cena s DPH", "Végösszeg ÁFÁ-val")}
                       </div>
-                      <div className="text-2xl font-black text-slate-900 mt-0.5">
+                      <div className="type-metric text-slate-900 mt-0.5">
                         {money(calculatedTotals.grandTotal)}
                       </div>
-                      <div className="text-[11px] text-slate-500 font-medium">
+                      <div className="text-caption text-slate-500 font-medium">
                         {t("Net", "Základ", "Nettó")}: {money(calculatedTotals.subtotal)} ·{" "}
                         {t("VAT", "DPH", "ÁFA")}: {money(calculatedTotals.vatAmount)}
                       </div>
@@ -1907,7 +1893,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                           value={priceRangeMin}
                           onChange={e => setPriceRangeMin(e.target.value)}
                           placeholder={t("optional", "voliteľné", "opcionális")}
-                          className="w-28 p-2 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                          className="w-28 p-2 bg-white border border-slate-200 rounded-xl text-ui focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
                         />
                       </div>
                       <div>
@@ -1918,12 +1904,12 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                           value={priceRangeMax}
                           onChange={e => setPriceRangeMax(e.target.value)}
                           placeholder={t("optional", "voliteľné", "opcionális")}
-                          className="w-28 p-2 bg-white border border-slate-200 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                          className="w-28 p-2 bg-white border border-slate-200 rounded-xl text-ui focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
                         />
                       </div>
                     </div>
                   </div>
-                  <p className="text-[11px] text-slate-400 -mt-1">
+                  <p className="text-caption text-slate-400 -mt-1">
                     {t(
                       "A filled price range replaces the exact total on the printed document — useful for preliminary offers.",
                       "Vyplnené cenové rozpätie nahradí na doklade presnú sumu — vhodné pre predbežné ponuky.",
@@ -1936,7 +1922,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
               {/* STEP 4 — parameters */}
               {modalStep === 4 && (
                 <div className="space-y-5 animate-fade-in">
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-3">
                     <div>
                       <label className={labelClass}>{t("Duration", "Dĺžka realizácie", "Kivitelezés hossza")}</label>
                       <input
@@ -1981,7 +1967,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                     />
                   </div>
 
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3">
                     <div>
                       <label className={labelClass}>{t("Reassurance note", "Text o garancii kvality", "Minőségi garancia szövege")}</label>
                       <textarea
@@ -2017,7 +2003,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                     <label className={labelClass}>
                       {t("Four key benefits (USP cards)", "4 kľúčové výhody (USP karty)", "Négy fő előny (USP kártyák)")}
                     </label>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3">
                       {uspCards.map((usp, idx) => (
                         <div key={idx} className="p-3 bg-slate-50 rounded-xl border border-slate-200 space-y-1.5 transition-all hover:border-slate-300">
                           <input
@@ -2027,7 +2013,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                             onChange={e =>
                               setUspCards(prev => prev.map((c, i) => (i === idx ? { ...c, title: e.target.value } : c)))
                             }
-                            className="font-bold text-xs w-full bg-transparent border-b border-slate-200 focus:border-indigo-500 focus:outline-none transition-colors py-0.5"
+                            className="font-bold text-ui w-full bg-transparent border-b border-slate-200 focus:border-indigo-500 focus:outline-none transition-colors py-0.5"
                           />
                           <input
                             type="text"
@@ -2036,13 +2022,13 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                             onChange={e =>
                               setUspCards(prev => prev.map((c, i) => (i === idx ? { ...c, subtitle: e.target.value } : c)))
                             }
-                            className="text-[11px] text-slate-500 w-full bg-transparent focus:outline-none py-0.5"
+                            className="text-caption text-slate-500 w-full bg-transparent focus:outline-none py-0.5"
                           />
                         </div>
                       ))}
                     </div>
                     {!companyBillingSettings?.defaultUspCards?.length && onOpenSettings && (
-                      <p className="text-[11px] text-slate-400 mt-1.5">
+                      <p className="text-caption text-slate-400 mt-1.5">
                         {t(
                           "Set these once in Settings → Invoicing and every new document starts pre-filled.",
                           "Nastavte ich raz v Nastaveniach → Fakturácia a každý nový doklad ich bude mať predvyplnené.",
@@ -2058,7 +2044,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
               {modalStep === 5 && (
                 <div className="space-y-4 animate-fade-in">
                   {externalError && (
-                    <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-xs flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+                    <div className="p-4 bg-rose-50 border border-rose-200 text-rose-800 rounded-2xl text-ui flex flex-col ws-sm:flex-row ws-sm:items-center gap-3 justify-between">
                       <div className="flex items-start gap-2">
                         <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-rose-600" />
                         <span className="font-semibold">{externalError}</span>
@@ -2066,7 +2052,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                       {onOpenSettings && (
                         <button
                           onClick={onOpenSettings}
-                          className="shrink-0 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-xs cursor-pointer transition-all active:scale-[0.98]"
+                          className="shrink-0 px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg font-bold text-ui cursor-pointer transition-all active:scale-[0.98]"
                         >
                           {t("Open settings", "Otvoriť nastavenia", "Beállítások")}
                         </button>
@@ -2075,7 +2061,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                   )}
 
                   {!selectedLead && (
-                    <div className="p-4 bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl text-xs font-semibold flex items-center gap-2">
+                    <div className="p-4 bg-amber-50 border border-amber-200 text-amber-900 rounded-2xl text-ui font-semibold flex items-center gap-2">
                       <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />
                       {t(
                         "This is a sample preview — select a client in step 2 before issuing.",
@@ -2093,11 +2079,11 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
             </div>
 
             {/* Wizard footer */}
-            <div className="p-5 sm:p-6 border-t border-slate-100 flex justify-between items-center gap-3 bg-slate-50/70">
+            <div className="p-5 ws-sm:p-6 border-t border-slate-100 flex justify-between items-center gap-3 bg-slate-50/70">
               {modalStep > 1 ? (
                 <button
                   onClick={() => setModalStep(prev => Math.max(1, prev - 1) as WizardStep)}
-                  className="px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-xs font-bold transition-all cursor-pointer active:scale-[0.98]"
+                  className="px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-xl text-ui font-bold transition-all cursor-pointer active:scale-[0.98]"
                 >
                   {t("Back", "Späť", "Vissza")}
                 </button>
@@ -2114,7 +2100,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                     }
                     setModalStep(prev => Math.min(5, prev + 1) as WizardStep);
                   }}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                  className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-ui font-bold shadow-md shadow-indigo-600/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
                 >
                   {t("Continue", "Pokračovať", "Tovább")}
                   <ChevronRight className="h-4 w-4" />
@@ -2123,7 +2109,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                 <div className="flex items-center gap-2">
                   <button
                     onClick={handlePrint}
-                    className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-xs font-bold cursor-pointer transition-all active:scale-[0.98]"
+                    className="flex items-center gap-1.5 px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-800 rounded-xl text-ui font-bold cursor-pointer transition-all active:scale-[0.98]"
                   >
                     <Printer className="h-4 w-4" />
                     {t("Print / PDF", "Tlač / PDF", "Nyomtatás / PDF")}
@@ -2131,7 +2117,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                   <button
                     disabled={isExternalLoading}
                     onClick={handleSaveOffer}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold shadow-md shadow-emerald-600/20 cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                    className="flex items-center gap-2 px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-ui font-bold shadow-md shadow-emerald-600/20 cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
                   >
                     {isExternalLoading ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                     {editingId
@@ -2158,11 +2144,11 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
           >
             <div className="p-5 border-b border-slate-100 flex justify-between items-start gap-4 bg-slate-50/70">
               <div className="min-w-0">
-                <h3 className="text-base font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
+                <h3 className="text-title-sm font-heading font-extrabold text-slate-900 tracking-tight flex items-center gap-2">
                   <UserPlus className="h-4.5 w-4.5 text-indigo-600" />
                   {t("Register a new client", "Registrovať nového klienta", "Új ügyfél regisztrálása")}
                 </h3>
-                <p className="text-[11px] text-slate-500 font-medium mt-1">
+                <p className="text-caption text-slate-500 font-medium mt-1">
                   {t(
                     "Saved to the client register, not to the lead pipeline, and linked to this document straight away.",
                     "Uloží sa do registra klientov, nie medzi leady, a hneď sa prepojí s týmto dokladom.",
@@ -2198,7 +2184,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                         if (opt.id === "person") newClientLookup.close();
                       }}
                       className={cn(
-                        "px-3 py-2 rounded-xl border-2 text-xs font-bold transition-all cursor-pointer hover:scale-[1.01] active:scale-[0.98]",
+                        "px-3 py-2 rounded-xl border-2 text-ui font-bold transition-all cursor-pointer hover:scale-[1.01] active:scale-[0.98]",
                         newClient.clientType === opt.id
                           ? "border-indigo-500 bg-indigo-50/60 text-indigo-700 shadow-sm"
                           : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
@@ -2210,7 +2196,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-3">
                 <div>
                   <label className={labelClass}>{t("Country", "Krajina", "Ország")}</label>
                   <CustomSelect
@@ -2219,7 +2205,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                     options={EUROPEAN_COUNTRIES.map(c => ({ value: c, label: c }))}
                   />
                 </div>
-                <div className="sm:col-span-2 relative">
+                <div className="ws-sm:col-span-2 relative">
                   <label className={labelClass}>
                     {t("Name / company *", "Meno / názov firmy *", "Név / cégnév *")}
                   </label>
@@ -2246,7 +2232,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
 
               {/* Register-backed identifiers — a private person has none. */}
               {newClient.clientType !== "person" && (
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 animate-fade-in">
+                <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-3 animate-fade-in">
                   {([
                     { field: "companyId" as const, label: "IČO", placeholder: "12345678" },
                     { field: "taxId" as const, label: "DIČ", placeholder: "2020123456" },
@@ -2279,7 +2265,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
               )}
 
               {registryCountryOf(newClientCountry) && newClient.clientType !== "person" && (
-                <p className="text-[10px] text-slate-400 font-medium -mt-1">
+                <p className="text-micro text-slate-400 font-medium -mt-1">
                   {t(
                     "Start typing a name or IČO — the business register fills in the address and identifiers.",
                     "Začnite písať názov alebo IČO — obchodný register doplní adresu aj identifikátory.",
@@ -2300,7 +2286,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                 </div>
               )}
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3">
                 <div>
                   <label className={labelClass}>{t("Email", "Email", "E-mail")}</label>
                   <input
@@ -2323,8 +2309,8 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-                <div className="sm:col-span-2">
+              <div className="grid grid-cols-1 ws-sm:grid-cols-4 gap-3">
+                <div className="ws-sm:col-span-2">
                   <label className={labelClass}>{t("Street", "Ulica a číslo", "Utca, házszám")}</label>
                   <input
                     type="text"
@@ -2361,14 +2347,14 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
               <button
                 type="button"
                 onClick={closeNewClientModal}
-                className="px-4 py-2.5 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200/70 cursor-pointer transition-all active:scale-[0.98]"
+                className="px-4 py-2.5 rounded-xl text-ui font-bold text-slate-600 hover:bg-slate-200/70 cursor-pointer transition-all active:scale-[0.98]"
               >
                 {t("Cancel", "Zrušiť", "Mégse")}
               </button>
               <button
                 type="submit"
                 disabled={!newClient.name.trim() || newClientLookup.isResolving}
-                className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-indigo-600/20 cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
+                className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-ui font-bold shadow-md shadow-indigo-600/20 cursor-pointer transition-all hover:scale-[1.02] active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100"
               >
                 {newClientLookup.isResolving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
                 {t("Create & link client", "Vytvoriť a prepojiť klienta", "Ügyfél létrehozása és összekapcsolása")}
@@ -2383,7 +2369,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-fade-in">
           <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
             <div className="p-4 border-b border-slate-100 flex justify-between items-center gap-3 bg-slate-50/70">
-              <div className="flex items-center gap-2 font-bold text-sm text-slate-900 min-w-0">
+              <div className="flex items-center gap-2 font-bold text-body text-slate-900 min-w-0">
                 <FileText className="h-4 w-4 text-indigo-600 shrink-0" />
                 <span className="truncate">
                   {previewOffer.documentNumber} — {previewOffer.title}
@@ -2395,7 +2381,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                     href={previewOffer.externalPdfUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-xs font-bold hover:bg-blue-100 cursor-pointer transition-all"
+                    className="flex items-center gap-1 px-3 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-ui font-bold hover:bg-blue-100 cursor-pointer transition-all"
                   >
                     <ExternalLink className="h-3.5 w-3.5" />
                     {t("Official PDF", "Oficiálne PDF", "Hivatalos PDF")}
@@ -2403,7 +2389,7 @@ export const InvoicingView: React.FC<InvoicingViewProps> = ({
                 )}
                 <button
                   onClick={handlePrint}
-                  className="flex items-center gap-1 px-3 py-1.5 bg-slate-200 hover:bg-slate-300 rounded-lg text-xs font-bold text-slate-800 cursor-pointer transition-all active:scale-[0.98]"
+                  className="flex items-center gap-1 px-3 py-1.5 bg-slate-200 hover:bg-slate-300 rounded-lg text-ui font-bold text-slate-800 cursor-pointer transition-all active:scale-[0.98]"
                 >
                   <Printer className="h-3.5 w-3.5" />
                   {t("Print / PDF", "Tlač / PDF", "Nyomtatás")}

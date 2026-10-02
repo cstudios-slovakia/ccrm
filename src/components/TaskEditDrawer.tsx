@@ -17,6 +17,7 @@ import { CustomSelect, type DropdownOption } from "./ui/CustomSelect";
 import { ClientSelect } from "./ui/ClientSelect";
 import { TaskEmailReminderField } from "./TaskEmailReminderField";
 import { projectDisplayName } from "../utils/projects";
+import { isClientRecord, recordHref } from "../utils/clientRecord";
 import { isDoneTaskState, localStampStr } from "../utils/projectTasks";
 import { taskPriorityLabel, taskStateLabel, type Translate } from "../utils/taskLabels";
 import { TaskTagMentionInput } from "./TaskTagMentionInput";
@@ -233,8 +234,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
 
         // Clients and Leads
         leads.forEach((l) => {
-            const isClient = (l.id || "").startsWith("client-") || (Number(l.adjustment) || 0) > 0;
-            if (isClient) {
+            if (isClientRecord(l)) {
                 list.push({
                     id: l.id,
                     name: l.name,
@@ -302,20 +302,25 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
             <div
                 className={`relative w-full max-w-md bg-white shadow-2xl h-full flex flex-col p-6 overflow-y-auto ${isClosing ? "animate-slide-out-right" : "animate-slide-in-right"}`}
             >
-                <div className="flex items-center justify-between pb-4 border-b border-slate-100">
-                    <h2 className="text-sm font-black text-slate-800 uppercase tracking-wider flex items-center gap-2">
-                        <CheckSquare className="h-5 w-5 text-indigo-600" />
-                        {canEdit
-                            ? t("Edit Task", "Upraviť úlohu", "Feladat szerkesztése")
-                            : t("View Task", "Zobraziť úlohu", "Feladat megtekintése")}
-                    </h2>
-                    <button
-                        type="button"
-                        onClick={requestClose}
-                        className="p-1 hover:bg-slate-100 active:scale-95 rounded-lg text-slate-400 transition-all cursor-pointer"
-                    >
-                        <X className="h-5 w-5" />
-                    </button>
+                <div className="pb-4 border-b border-slate-100 space-y-2">
+                    <div className="flex items-center justify-between">
+                        <span className="type-overline text-indigo-700 bg-indigo-50 border border-indigo-200/80 px-2.5 py-0.5 rounded-full flex items-center gap-1.5">
+                            <CheckSquare className="h-3.5 w-3.5 text-indigo-600" />
+                            {canEdit
+                                ? t("Edit Task", "Upraviť úlohu", "Feladat szerkesztése")
+                                : t("View Task", "Zobraziť úlohu", "Feladat megtekintése")}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={requestClose}
+                            className="p-1 hover:bg-slate-100 active:scale-95 rounded-lg text-slate-400 hover:text-slate-600 transition-all cursor-pointer"
+                        >
+                            <X className="h-5 w-5" />
+                        </button>
+                    </div>
+                    <h1 className="type-page-title text-slate-900 leading-snug break-words">
+                        {draft.title || t("Untitled Task", "Úloha bez názvu", "Névtelen feladat")}
+                    </h1>
                 </div>
 
                 <form
@@ -325,13 +330,13 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                         onSave({ ...draft, tags: combinedTags });
                         requestClose();
                     }}
-                    className="flex-1 py-5 space-y-5 text-xs font-bold"
+                    className="flex-1 py-5 space-y-5 text-ui font-bold"
                 >
                     <fieldset disabled={!canEdit} className="space-y-5 min-w-0">
                         <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase flex items-center justify-between">
+                            <label className="type-overline text-slate-500 flex items-center justify-between">
                                 <span>{t("Task Title", "Názov", "Cím")}</span>
-                                <span className="text-[9px] font-normal text-indigo-500">
+                                <span className="text-micro font-normal text-indigo-500">
                                     {t("Use # for tags, @ to assign", "Použite # pre tagy, @ pre priradenie", "Használjon #-et címkékhez, @-ot hozzárendeléshez")}
                                 </span>
                             </label>
@@ -348,14 +353,14 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                 }}
                                 mentionEntities={mentionEntities}
                                 onAssignEntity={handleAssignEntity}
-                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none disabled:bg-slate-50 text-xs font-bold"
+                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none disabled:bg-slate-50 text-ui font-bold"
                             />
                         </div>
 
                         <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase flex items-center justify-between">
+                            <label className="type-overline text-slate-500 flex items-center justify-between">
                                 <span>{t("Description", "Popis", "Leírás")}</span>
-                                <span className="text-[9px] font-normal text-indigo-500">
+                                <span className="text-micro font-normal text-indigo-500">
                                     {t("Use # for tags, @ to assign", "Použite # pre tagy, @ pre priradenie", "Használjon #-et címkékhez, @-ot hozzárendeléshez")}
                                 </span>
                             </label>
@@ -372,13 +377,13 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                 }}
                                 mentionEntities={mentionEntities}
                                 onAssignEntity={handleAssignEntity}
-                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none resize-none disabled:bg-slate-50 text-xs font-bold"
+                                className="w-full px-3 py-2 rounded-xl border-2 border-slate-200 focus:border-indigo-600 focus:outline-none resize-none disabled:bg-slate-50 text-ui font-bold"
                             />
                         </div>
 
                         {combinedTags.length > 0 && (
                             <div className="space-y-1 pt-0.5">
-                                <label className="text-[9px] font-black text-slate-400 uppercase tracking-wider block">
+                                <label className="type-overline text-slate-400 block">
                                     {t("Active Tags", "Aktívne tagy", "Aktív címkék")}
                                 </label>
                                 <div className="flex flex-wrap gap-1.5">
@@ -391,7 +396,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                                     onTagClick(tag);
                                                 }
                                             }}
-                                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-[10px] font-black uppercase bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs ${
+                                            className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-lg type-overline bg-indigo-50 text-indigo-700 border border-indigo-200 shadow-2xs ${
                                                 onTagClick ? "cursor-pointer hover:bg-indigo-100" : ""
                                             }`}
                                             title={onTagClick ? `Filter archive by #${tag}` : undefined}
@@ -425,7 +430,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                         )}
 
                         <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase">
+                            <label className="type-overline text-slate-500">
                                 {t("Start Date", "Dátum začiatku", "Kezdő dátum")}
                             </label>
                             <input
@@ -438,7 +443,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
 
                         <div className="grid grid-cols-2 gap-3">
                             <div className="space-y-1">
-                                <label className="text-[9px] font-black text-slate-500 uppercase">
+                                <label className="type-overline text-slate-500">
                                     {t("Deadline Date", "Termín", "Határidő")}
                                 </label>
                                 <input
@@ -450,7 +455,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                 />
                             </div>
                             <div className="space-y-1">
-                                <label className="text-[9px] font-black text-slate-500 uppercase">
+                                <label className="type-overline text-slate-500">
                                     {t("Deadline Time", "Čas termínu", "Határidő időpontja")}
                                 </label>
                                 <DeadlineTimePicker
@@ -463,7 +468,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                         </div>
 
                         <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase">
+                            <label className="type-overline text-slate-500">
                                 {t("Task Status", "Stav úlohy", "Feladat állapota")}
                             </label>
                             <CustomSelect
@@ -482,7 +487,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                         </div>
 
                         <div className="space-y-1.5">
-                            <label className="text-[9px] font-black text-slate-500 uppercase tracking-wider">
+                            <label className="type-overline text-slate-500">
                                 {t("Priority", "Priorita", "Prioritás")}
                             </label>
                             <div className="grid grid-cols-3 gap-2 bg-slate-50 p-1.5 rounded-xl border-2 border-slate-200">
@@ -491,7 +496,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                         key={prio}
                                         type="button"
                                         onClick={() => update({ priority: prio })}
-                                        className={`py-2 rounded-lg font-black text-[9px] uppercase transition-all disabled:cursor-not-allowed ${
+                                        className={`py-2 rounded-lg type-overline transition-all disabled:cursor-not-allowed ${
                                             draft.priority === prio
                                                 ? prio === "high"
                                                     ? "bg-rose-600 text-white"
@@ -508,7 +513,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                         </div>
 
                         <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase">
+                            <label className="type-overline text-slate-500">
                                 {t(
                                     "Assign Project Manager",
                                     "Priradiť projektového manažéra",
@@ -533,7 +538,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                         </div>
 
                         <div className="space-y-1">
-                            <label className="text-[9px] font-black text-slate-500 uppercase flex items-center gap-1">
+                            <label className="type-overline text-slate-500 flex items-center gap-1">
                                 <FolderKanban className="h-3 w-3" />
                                 {t("Project", "Projekt", "Projekt")}
                             </label>
@@ -548,19 +553,21 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
 
                         <div className="space-y-1">
                             <div className="flex items-center justify-between gap-2">
-                                <label className="text-[9px] font-black text-slate-500 uppercase">
-                                    {t("Link to Lead/Client", "Prepojiť so záujemcom", "Összekapcsolás ügyféllel")}
+                                <label className="type-overline text-slate-500">
+                                    {t("Link to Lead / Client", "Prepojiť s leadom / klientom", "Összekapcsolás leaddel / ügyféllel")}
                                 </label>
                                 {/* Straight to the linked lead, instead of hunting for
                                     it in the pipeline. Leaving the page drops unsaved
                                     edits, so it only shows once the link is saved. */}
                                 {linkedLead && draft.relatedLeadId === task.relatedLeadId && (
                                     <a
-                                        href={`#lead-${encodeURIComponent(linkedLead.id)}`}
+                                        href={recordHref(linkedLead)}
                                         data-testid="task-drawer-lead-link"
-                                        className="group/lead text-[9px] font-black uppercase text-indigo-600 hover:text-indigo-800 flex items-center gap-0.5 rounded focus-visible:outline-2 focus-visible:outline-offset-2 transition-colors"
+                                        className="group/lead type-overline text-indigo-600 hover:text-indigo-800 flex items-center gap-0.5 rounded focus-visible:outline-2 focus-visible:outline-offset-2 transition-colors"
                                     >
-                                        {t("Open lead", "Otvoriť lead", "Lead megnyitása")}
+                                        {isClientRecord(linkedLead)
+                                            ? t("Open client", "Otvoriť klienta", "Ügyfél megnyitása")
+                                            : t("Open lead", "Otvoriť lead", "Lead megnyitása")}
                                         <ArrowUpRight className="h-3 w-3 transition-transform group-hover/lead:translate-x-px group-hover/lead:-translate-y-px" />
                                     </a>
                                 )}
@@ -578,6 +585,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                     }));
                                 }}
                                 showCity={false}
+                                showKind
                                 addKind="lead"
                                 noneLabel={t("-- None --", "-- Žiadny --", "-- Nincs --")}
                             />
@@ -585,7 +593,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
 
                         {draft.relatedLeadId && (
                             <div className="p-3 rounded-xl bg-violet-50/50 border border-violet-100 flex items-center justify-between">
-                                <span className="text-[10px] font-black text-violet-700 uppercase flex items-center gap-1">
+                                <span className="type-overline text-violet-700 flex items-center gap-1">
                                     <Lock className="h-3 w-3" />{" "}
                                     {t("Block Pipeline Stage", "Zablokovať fázu pipeline", "Folyamat szakasz zárolása")}
                                 </span>
@@ -612,7 +620,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
 
                     <button
                         type="submit"
-                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 text-white rounded-xl font-black text-xs uppercase shadow-lg shadow-indigo-600/20 transition-all disabled:cursor-not-allowed disabled:opacity-50"
+                        className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] focus-visible:outline-2 focus-visible:outline-offset-2 text-white rounded-xl font-bold text-ui shadow-lg shadow-indigo-600/20 transition-all disabled:cursor-not-allowed disabled:opacity-50"
                         disabled={!canEdit}
                     >
                         {t("Save Changes", "Uložiť zmeny", "Módosítások mentése")}
@@ -631,7 +639,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                 onToggleArchive(draft);
                                 requestClose();
                             }}
-                            className="w-full py-2.5 border-2 border-slate-200 hover:bg-slate-50 active:scale-[0.98] text-slate-600 rounded-xl font-black text-[10px] uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-all"
+                            className="w-full py-2.5 border-2 border-slate-200 hover:bg-slate-50 active:scale-[0.98] text-slate-600 rounded-xl type-overline flex items-center justify-center gap-1.5 cursor-pointer transition-all"
                         >
                             {draft.archived ? (
                                 <>
@@ -657,7 +665,7 @@ export const TaskEditDrawer: React.FC<TaskEditDrawerProps> = ({
                                 setIsDeleting(false);
                                 if (deleted) requestClose();
                             }}
-                            className="w-full py-2.5 border-2 border-rose-100 hover:bg-rose-50 active:scale-[0.98] text-rose-600 rounded-xl font-black text-[10px] uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer transition-all disabled:cursor-wait disabled:opacity-60"
+                            className="w-full py-2.5 border-2 border-rose-100 hover:bg-rose-50 active:scale-[0.98] text-rose-600 rounded-xl type-overline flex items-center justify-center gap-1.5 cursor-pointer transition-all disabled:cursor-wait disabled:opacity-60"
                         >
                             <Trash2 className="h-3.5 w-3.5" />
                             {t("Delete Task", "Odstrániť úlohu", "Feladat törlése")}

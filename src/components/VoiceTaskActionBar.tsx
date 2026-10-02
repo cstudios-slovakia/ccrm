@@ -534,7 +534,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
     const renderDebugPlayer = () => {
         if (!lastAudioUrl || isVoiceRecording || isVoiceTranscribing) return null;
         return (
-            <div className="w-full flex flex-wrap items-center justify-between gap-2.5 px-3.5 py-2.5 bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 dark:from-amber-950/60 dark:via-orange-950/60 dark:to-amber-950/60 text-amber-950 dark:text-amber-100 rounded-2xl text-xs font-semibold shadow-md border-2 border-amber-300 dark:border-amber-700/80 animate-in fade-in slide-in-from-top-1 duration-200">
+            <div className="w-full flex flex-wrap items-center justify-between gap-2.5 px-3.5 py-2.5 bg-gradient-to-r from-amber-50 via-orange-50 to-amber-50 dark:from-amber-950/60 dark:via-orange-950/60 dark:to-amber-950/60 text-amber-950 dark:text-amber-100 rounded-2xl text-ui font-semibold shadow-md border-2 border-amber-300 dark:border-amber-700/80 animate-in fade-in slide-in-from-top-1 duration-200">
                 <div className="flex items-center gap-2 min-w-0">
                     <button
                         type="button"
@@ -551,17 +551,17 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                     <div className="flex flex-col min-w-0">
                         <div className="flex items-center gap-1.5">
                             <Volume2 className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
-                            <span className="text-xs font-black text-amber-900 dark:text-amber-200 truncate">
+                            <span className="text-ui font-bold text-amber-900 dark:text-amber-200 truncate">
                                 {t("Recorded Audio Check", "Kontrola nahraného zvuku", "Hangellenőrző")}
                             </span>
                         </div>
-                        <span className="text-[10px] font-mono text-amber-700 dark:text-amber-400">
+                        <span className="text-micro font-mono text-amber-700 dark:text-amber-400">
                             {(lastAudioBlobSize / 1024).toFixed(1)} KB • {isPlayingDebug ? `${formatVoiceDuration(debugCurrentTime)} / ` : ""}{formatVoiceDuration(lastAudioDuration)} ({lastAudioMimeType.split(";")[0]})
                         </span>
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2 flex-1 justify-end min-w-[200px]">
+                <div className="flex items-center gap-2 flex-1 justify-end min-w-50">
                     <audio
                         ref={debugAudioRef}
                         controls
@@ -577,7 +577,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                         onTimeUpdate={() => setDebugCurrentTime(debugAudioRef.current?.currentTime || 0)}
                         onDurationChange={handleDebugAudioDurationChange}
                         onLoadedMetadata={handleDebugAudioDurationChange}
-                        className="h-8 max-w-[200px] sm:max-w-[230px] rounded-lg accent-amber-600"
+                        className="h-8 max-w-50 ws-sm:max-w-57.5 rounded-lg accent-amber-600"
                     />
                     <button
                         type="button"
@@ -603,7 +603,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
             <div className={`w-full flex flex-col gap-1.5 ${containerClassName}`}>
                 <div className="w-full flex items-center gap-2">
                     {isVoiceTranscribing ? (
-                        <div className="w-full py-2.5 px-3 bg-gradient-to-r from-orange-50 via-amber-50 to-orange-50 rounded-2xl border-2 border-orange-200/90 shadow-md flex items-center justify-center gap-2 text-orange-700 text-xs font-black uppercase tracking-wider animate-pulse transition-all duration-300 ease-in-out shrink-0">
+                        <div className="w-full py-2.5 px-3 bg-gradient-to-r from-orange-50 via-amber-50 to-orange-50 rounded-2xl border-2 border-orange-200/90 shadow-md flex items-center justify-center gap-2 text-orange-700 text-ui font-bold animate-pulse transition-all duration-300 ease-in-out shrink-0">
                             <Loader2 className="h-4 w-4 animate-spin text-[#ff5d00] shrink-0" />
                             <span className="truncate">
                                 {t(
@@ -636,16 +636,16 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                                     <span className="absolute h-3 w-3 rounded-full bg-white opacity-75 animate-ping" />
                                     <span className="relative h-2.5 w-2.5 rounded-full bg-white shadow-xs" />
                                 </div>
-                                <span className="font-mono font-black text-xs tracking-wider bg-black/25 px-2 py-0.5 rounded-md shadow-inner shrink-0">
+                                <span className="font-mono font-bold text-ui tracking-wider bg-black/25 px-2 py-0.5 rounded-md shadow-inner shrink-0">
                                     {formatVoiceDuration(voiceRecordDuration)}
                                 </span>
                             </div>
                             <div className="flex-1 flex items-center justify-center overflow-hidden px-1">
-                                <div className="flex items-center gap-[2px] h-5 overflow-hidden">
+                                <div className="flex items-center gap-0.5 h-5 overflow-hidden">
                                     {audioVolumeBars.map((height, i) => (
                                         <span
                                             key={i}
-                                            className="w-[2.5px] bg-white/95 rounded-full transition-all duration-75 shrink-0 shadow-xs"
+                                            className="w-0.625 bg-white/95 rounded-full transition-all duration-75 shrink-0 shadow-xs"
                                             style={{
                                                 height: `${Math.max(4, (height / 100) * 20)}px`,
                                                 opacity: Math.max(0.4, height / 100),
@@ -655,7 +655,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                                 </div>
                             </div>
                             <div className="flex items-center gap-1.5 shrink-0">
-                                <div className="flex items-center gap-1 px-2 py-1 bg-emerald-500 group-hover:bg-emerald-600 text-white rounded-xl font-black text-[10px] uppercase tracking-wider shadow-sm transition-all border border-emerald-400/80 shrink-0">
+                                <div className="flex items-center gap-1 px-2 py-1 bg-emerald-500 group-hover:bg-emerald-600 text-white rounded-xl type-overline shadow-sm transition-all border border-emerald-400/80 shrink-0">
                                     <Check className="h-3 w-3 stroke-[3]" />
                                     <span>{t("Send", "Odoslať", "Küldés")}</span>
                                 </div>
@@ -678,7 +678,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                             onClick={handleStartVoiceRecording}
                             className={
                                 voiceButtonClassName ||
-                                "w-full py-2.5 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 active:from-rose-700 active:to-rose-800 text-white rounded-2xl font-black text-xs uppercase tracking-wider shadow-lg shadow-rose-500/25 transition-all duration-300 ease-in-out active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer border-2 border-rose-400 disabled:cursor-not-allowed disabled:opacity-50 shrink-0"
+                                "w-full py-2.5 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 active:from-rose-700 active:to-rose-800 text-white rounded-2xl font-bold text-ui shadow-lg shadow-rose-500/25 transition-all duration-300 ease-in-out active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer border-2 border-rose-400 disabled:cursor-not-allowed disabled:opacity-50 shrink-0"
                             }
                             disabled={!canCreate}
                             title={t(
@@ -688,7 +688,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                             )}
                         >
                             <Mic className="h-4 w-4 shrink-0 stroke-[2.5]" />
-                            <span className="text-[11px] truncate">
+                            <span className="text-caption truncate">
                                 {t("Record Voice Task", "Nahrať hlasovú úlohu", "Hangfeladat felvétele")}
                             </span>
                         </button>
@@ -728,7 +728,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                             ? `${manualButtonClassName} ${
                                   isVoiceRecording || isVoiceTranscribing ? "!w-[20%]" : "!w-[80%]"
                               }`
-                            : `py-2.5 bg-[#ff5d00] hover:bg-[#e05200] text-white rounded-2xl font-black text-xs uppercase tracking-widest shadow-lg shadow-orange-500/25 transition-all duration-300 ease-in-out active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 flex items-center justify-center gap-1.5 cursor-pointer border-2 border-[#ff701e] disabled:cursor-not-allowed disabled:opacity-50 shrink-0 ${
+                            : `py-2.5 bg-[#ff5d00] hover:bg-[#e05200] text-white rounded-2xl font-bold text-ui shadow-lg shadow-orange-500/25 transition-all duration-300 ease-in-out active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-offset-2 flex items-center justify-center gap-1.5 cursor-pointer border-2 border-[#ff701e] disabled:cursor-not-allowed disabled:opacity-50 shrink-0 ${
                                   isVoiceRecording || isVoiceTranscribing ? "w-[20%]" : "w-[80%]"
                               }`
                     }
@@ -749,7 +749,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
 
                 {/* Right Button: Record Voice Task (20% default, expands to 80% during recording) */}
                 {isVoiceTranscribing ? (
-                    <div className="w-[80%] py-2.5 px-3 bg-gradient-to-r from-orange-50 via-amber-50 to-orange-50 rounded-2xl border-2 border-orange-200/90 shadow-md flex items-center justify-center gap-2 text-orange-700 text-xs font-black uppercase tracking-wider animate-pulse transition-all duration-300 ease-in-out shrink-0">
+                    <div className="w-[80%] py-2.5 px-3 bg-gradient-to-r from-orange-50 via-amber-50 to-orange-50 rounded-2xl border-2 border-orange-200/90 shadow-md flex items-center justify-center gap-2 text-orange-700 text-ui font-bold animate-pulse transition-all duration-300 ease-in-out shrink-0">
                         <Loader2 className="h-4 w-4 animate-spin text-[#ff5d00] shrink-0" />
                         <span className="truncate">
                             {t(
@@ -784,18 +784,18 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                                 <span className="absolute h-3 w-3 rounded-full bg-white opacity-75 animate-ping" />
                                 <span className="relative h-2.5 w-2.5 rounded-full bg-white shadow-xs" />
                             </div>
-                            <span className="font-mono font-black text-xs tracking-wider bg-black/25 px-2 py-0.5 rounded-md shadow-inner shrink-0">
+                            <span className="font-mono font-bold text-ui tracking-wider bg-black/25 px-2 py-0.5 rounded-md shadow-inner shrink-0">
                                 {formatVoiceDuration(voiceRecordDuration)}
                             </span>
                         </div>
 
                         {/* Center: Live Sound Waves flowing from RIGHT to LEFT */}
                         <div className="flex-1 flex items-center justify-center overflow-hidden px-1">
-                            <div className="flex items-center gap-[2px] h-5 overflow-hidden">
+                            <div className="flex items-center gap-0.5 h-5 overflow-hidden">
                                 {audioVolumeBars.map((height, i) => (
                                     <span
                                         key={i}
-                                        className="w-[2.5px] bg-white/95 rounded-full transition-all duration-75 shrink-0 shadow-xs"
+                                        className="w-0.625 bg-white/95 rounded-full transition-all duration-75 shrink-0 shadow-xs"
                                         style={{
                                             height: `${Math.max(4, (height / 100) * 20)}px`,
                                             opacity: Math.max(0.4, height / 100),
@@ -807,7 +807,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
 
                         {/* Right: Send badge indicator + Cancel X Button */}
                         <div className="flex items-center gap-1.5 shrink-0">
-                            <div className="hidden xs:flex items-center gap-1 px-2 py-1 bg-emerald-500 group-hover:bg-emerald-600 text-white rounded-xl font-black text-[10px] uppercase tracking-wider shadow-sm transition-all border border-emerald-400/80 shrink-0">
+                            <div className="hidden xs:flex items-center gap-1 px-2 py-1 bg-emerald-500 group-hover:bg-emerald-600 text-white rounded-xl type-overline shadow-sm transition-all border border-emerald-400/80 shrink-0">
                                 <Check className="h-3 w-3 stroke-[3]" />
                                 <span>{t("Send", "Odoslať", "Küldés")}</span>
                             </div>
@@ -831,7 +831,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                         onClick={handleStartVoiceRecording}
                         className={
                             voiceButtonClassName ||
-                            "w-[20%] py-2.5 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 active:from-rose-700 active:to-rose-800 text-white rounded-2xl font-black text-xs uppercase tracking-wider shadow-lg shadow-rose-500/25 transition-all duration-300 ease-in-out active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer border-2 border-rose-400 disabled:cursor-not-allowed disabled:opacity-50 shrink-0"
+                            "w-[20%] py-2.5 bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-600 hover:to-rose-700 active:from-rose-700 active:to-rose-800 text-white rounded-2xl font-bold text-ui shadow-lg shadow-rose-500/25 transition-all duration-300 ease-in-out active:scale-[0.98] flex items-center justify-center gap-1.5 cursor-pointer border-2 border-rose-400 disabled:cursor-not-allowed disabled:opacity-50 shrink-0"
                         }
                         disabled={!canCreate}
                         title={t(
@@ -841,7 +841,7 @@ export const VoiceTaskActionBar: React.FC<VoiceTaskActionBarProps> = ({
                         )}
                     >
                         <Mic className="h-4 w-4 shrink-0 stroke-[2.5]" />
-                        <span className="hidden xl:inline text-[11px] truncate">
+                        <span className="hidden ws-xl:inline text-caption truncate">
                             {t("Record", "Hlasom", "Hanggal")}
                         </span>
                     </button>

@@ -3,8 +3,12 @@ import test from "node:test";
 import type { Task } from "../types";
 import {
   buildProjectTasks,
+  computeTaskDateRange,
+  getTaskCreationDate,
   isDoneTaskState,
+  isTaskInDateRange,
   parseTaskLines,
+  splitFilteredTasks,
   splitProjectTasks,
   toggleTaskDone,
 } from "./projectTasks.ts";
@@ -123,3 +127,131 @@ test("toggleTaskDone: custom states finish on the last one", () => {
   const states = ["Open", "Working", "Closed"];
   assert.equal(toggleTaskDone(task({ status: "Open" }), states, "Alex").status, "Closed");
 });
+
+test("computeTaskDateRange: computes presets accurately", () => {
+  // Tuesday Sep 29, 2026
+  const ref = new Date(2026, 8, 29, 12, 0);
+
+  // All
+  assert.deepEqual(computeTaskDateRange("all", ref), { start: null, end: null });
+
+  // Last week: Monday Sep 21 to Sunday Sep 27
+  assert.deepEqual(computeTaskDateRange("last_week", ref), { start: "2026-09-21", end: "2026-09-27" });
+
+  // Last month: Aug 1 to Aug 31
+  assert.deepEqual(computeTaskDateRange("last_month", ref), { start: "2026-08-01", end: "2026-08-31" });
+
+  // Last quarter: Q2 (April 1 to June 30) since September is Q3
+  assert.deepEqual(computeTaskDateRange("last_quarter", ref), { start: "2026-04-01", end: "2026-06-30" });
+
+  // Last year to date: Jan 1 2025 to Sep 29 2026
+  assert.deepEqual(computeTaskDateRange("last_year_to_date", ref), { start: "2025-01-01", end: "2026-09-29" });
+});
+
+test("isTaskInDateRange: filters tasks by deadline, completedAt or startDate", () => {
+  const ref = new Date(2026, 8, 29, 12, 0);
+
+  const t1 = task({ id: "1", deadline: "2026-09-23" }); // last week
+  const t2 = task({ id: "2", deadline: "2026-09-29" }); // today
+  const t3 = task({ id: "3", deadline: "2026-08-15" }); // last month
+  const t4 = task({ id: "4", deadline: "2026-05-10" }); // last quarter
+  const t5 = task({ id: "5", deadline: "2025-06-15" }); // last year
+
+  // all
+  assert.ok(isTaskInDateRange(t1, "all", undefined, undefined, ref));
+  assert.ok(isTaskInDateRange(t2, "all", undefined, undefined, ref));
+
+  // last_week
+  assert.ok(isTaskInDateRange(t1, "last_week", undefined, undefined, ref));
+  assert.ok(!isTaskInDateRange(t2, "last_week", undefined, undefined, ref));
+  assert.ok(!isTaskInDateRange(t3, "last_week", undefined, undefined, ref));
+
+  // last_month
+  assert.ok(isTaskInDateRange(t3, "last_month", undefined, undefined, ref));
+  assert.ok(!isTaskInDateRange(t1, "last_month", undefined, undefined, ref));
+
+  // last_quarter
+  assert.ok(isTaskInDateRange(t4, "last_quarter", undefined, undefined, ref));
+  assert.ok(!isTaskInDateRange(t1, "last_quarter", undefined, undefined, ref));
+
+  // last_year_to_date
+  assert.ok(isTaskInDateRange(t5, "last_year_to_date", undefined, undefined, ref));
+  assert.ok(isTaskInDateRange(t3, "last_year_to_date", undefined, undefined, ref));
+  assert.ok(isTaskInDateRange(t2, "last_year_to_date", undefined, undefined, ref));
+
+  // custom interval
+  assert.ok(isTaskInDateRange(t1, "custom", "2026-09-20", "2026-09-25", ref));
+  assert.ok(!isTaskInDateRange(t2, "custom", "2026-09-20", "2026-09-25", ref));
+
+  // completedAt match
+  const tCompleted = task({ id: "comp", deadline: "2026-07-01", completedAt: "2026-09-23 15:30" });
+  assert.ok(isTaskInDateRange(tCompleted, "last_week", undefined, undefined, ref));
+});
+
+test("splitFilteredTasks: splits tasks into open and finished buckets with filter", () => {
+  const ref = new Date(2026, 8, 29, 12, 0);
+  const tasks = [
+    task({ id: "t1", deadline: "2026-09-23", status: "New" }),
+    task({ id: "t2", deadline: "2026-09-24", status: "Done", completedAt: "2026-09-24 10:00" }),
+    task({ id: "t3", deadline: "2026-09-29", status: "New" }),
+  ];
+
+  const resLastWeek = splitFilteredTasks(tasks, STATES, "last_week", undefined, undefined, ref);
+  assert.deepEqual(resLastWeek.open.map((t) => t.id), ["t1"]);
+  assert.deepEqual(resLastWeek.finished.map((t) => t.id), ["t2"]);
+  assert.equal(resLastWeek.totalCount, 2);
+
+  const resAll = splitFilteredTasks(tasks, STATES, "all", undefined, undefined, ref);
+  assert.deepEqual(resAll.open.map((t) => t.id), ["t1", "t3"]);
+  assert.deepEqual(resAll.finished.map((t) => t.id), ["t2"]);
+  assert.equal(resAll.totalCount, 3);
+});
+
+test("getTaskCreationDate: extracts from createdAt, id timestamp, or fallback", () => {
+  // Explicit createdAt timestamp
+  assert.equal(getTaskCreationDate(task({ createdAt: "2026-09-18 10:15:00" })), "2026-09-18");
+
+  // Inferred from task-${timestamp} id (1774000000000 = 2026-03-20 UTC)
+  const epoch2026 = new Date(2026, 4, 10, 10, 0, 0).getTime();
+  const dateStr = getTaskCreationDate(task({ id: `task-${epoch2026}-0`, createdAt: undefined }));
+  assert.equal(dateStr, "2026-05-10");
+
+  // Fallback to startDate or deadline
+  assert.equal(getTaskCreationDate(task({ id: "custom-id", createdAt: undefined, startDate: "2026-08-01" })), "2026-08-01");
+  assert.equal(getTaskCreationDate(task({ id: "custom-id", createdAt: undefined, startDate: undefined, deadline: "2026-09-30" })), "2026-09-30");
+});
+
+test("isTaskInDateRange: filters by creation date when dateBasis is 'created'", () => {
+  const ref = new Date(2026, 8, 29, 12, 0); // Tuesday Sep 29, 2026. Last week: 2026-09-21 to 2026-09-27
+
+  // Task created last week, but deadline in October
+  const tCreatedLastWeek = task({ id: "t1", createdAt: "2026-09-24 09:00", deadline: "2026-10-15" });
+  // Task created in August, but deadline last week
+  const tCreatedAugust = task({ id: "t2", createdAt: "2026-08-10 09:00", deadline: "2026-09-24" });
+
+  // When filtering with dateBasis 'due' (default):
+  assert.ok(!isTaskInDateRange(tCreatedLastWeek, "last_week", undefined, undefined, ref, "due"));
+  assert.ok(isTaskInDateRange(tCreatedAugust, "last_week", undefined, undefined, ref, "due"));
+
+  // When filtering with dateBasis 'created':
+  assert.ok(isTaskInDateRange(tCreatedLastWeek, "last_week", undefined, undefined, ref, "created"));
+  assert.ok(!isTaskInDateRange(tCreatedAugust, "last_week", undefined, undefined, ref, "created"));
+});
+
+test("splitFilteredTasks: sorts tasks newest created first when dateBasis is 'created'", () => {
+  const ref = new Date(2026, 8, 29, 12, 0);
+  const tasks = [
+    task({ id: "t-old", createdAt: "2026-09-01 10:00", deadline: "2026-09-10", status: "New" }),
+    task({ id: "t-mid", createdAt: "2026-09-15 10:00", deadline: "2026-09-20", status: "New" }),
+    task({ id: "t-new", createdAt: "2026-09-25 10:00", deadline: "2026-09-05", status: "New" }),
+  ];
+
+  // Default ("due"): sorted by deadline ascending: t-new (Sep 05), t-old (Sep 10), t-mid (Sep 20)
+  const byDue = splitFilteredTasks(tasks, STATES, "all", undefined, undefined, ref, "due");
+  assert.deepEqual(byDue.open.map((t) => t.id), ["t-new", "t-old", "t-mid"]);
+
+  // dateBasis "created": sorted by creation date descending: t-new (Sep 25), t-mid (Sep 15), t-old (Sep 01)
+  const byCreated = splitFilteredTasks(tasks, STATES, "all", undefined, undefined, ref, "created");
+  assert.deepEqual(byCreated.open.map((t) => t.id), ["t-new", "t-mid", "t-old"]);
+});
+

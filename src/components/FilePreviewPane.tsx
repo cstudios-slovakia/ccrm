@@ -104,7 +104,7 @@ export default function FilePreviewPane({ url, name, t }: FilePreviewPaneProps) 
             return (
                 <div className="flex flex-col items-center gap-2 text-slate-400">
                     <Loader2 className="animate-spin text-amber-700" size={22} />
-                    <span className="text-[9px] font-bold uppercase tracking-wider">
+                    <span className="type-overline">
                         {t("Opening document...", "Otvára sa dokument...", "Dokumentum megnyitása...")}
                     </span>
                 </div>
@@ -123,7 +123,7 @@ export default function FilePreviewPane({ url, name, t }: FilePreviewPaneProps) 
                 ) : (
                     <AlertTriangle className="mx-auto text-amber-600" size={30} />
                 )}
-                <p className="mt-3 text-xs font-black uppercase tracking-wider text-slate-700">
+                <p className="mt-3 text-ui font-bold text-slate-700">
                     {missing
                         ? t(
                               "This document is no longer on the server.",
@@ -136,7 +136,7 @@ export default function FilePreviewPane({ url, name, t }: FilePreviewPaneProps) 
                               "Ez a fájl sérült, és nem jeleníthető meg.",
                           )}
                 </p>
-                <p className="mt-2 text-[10px] text-slate-500 font-semibold leading-relaxed">
+                <p className="mt-2 text-micro text-slate-500 font-semibold leading-relaxed">
                     {missing
                         ? t(
                               "The timeline entry still refers to it, but the file itself was not found. Ask the person who filed it to attach it again.",
@@ -149,13 +149,13 @@ export default function FilePreviewPane({ url, name, t }: FilePreviewPaneProps) 
                               "A tárolt fájl nem olvasható PDF — valószínűleg feltöltés közben csonkult vagy sérült. Általában segít újra csatolni.",
                           )}
                 </p>
-                <p className="mt-3 text-[9px] font-mono text-slate-400 break-all">{url}</p>
+                <p className="mt-3 text-micro font-mono text-slate-400 break-all">{url}</p>
                 {!missing && (
                     <a
                         href={url}
                         target="_blank"
                         rel="noopener noreferrer"
-                        className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 text-[10px] font-black uppercase transition-colors"
+                        className="mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 bg-white hover:bg-slate-100 text-slate-700 type-overline transition-colors"
                     >
                         <ExternalLink size={12} />
                         {t("Open in a new tab", "Otvoriť na novej karte", "Megnyitás új lapon")}
@@ -167,15 +167,15 @@ export default function FilePreviewPane({ url, name, t }: FilePreviewPaneProps) 
 
     return (
         <div className="text-center p-8 text-slate-500">
-            <p className="text-3xl mb-2">📄</p>
-            <p className="text-xs font-bold uppercase tracking-wider">
+            <p className="text-display mb-2">📄</p>
+            <p className="text-ui font-bold">
                 {t(
                     "Preview not supported for this file format.",
                     "Náhľad nie je podporovaný pre tento formát súboru.",
                     "Ehhez a fájlformátumhoz nem érhető el előnézet.",
                 )}
             </p>
-            <p className="text-[10px] text-slate-400 mt-1">
+            <p className="text-micro text-slate-400 mt-1">
                 {t(
                     "Please use the Download button above to view it offline.",
                     "Použite tlačidlo Stiahnuť vyššie a otvorte súbor offline.",

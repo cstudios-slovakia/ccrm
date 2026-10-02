@@ -3,6 +3,7 @@ import type { ReactNode, MouseEvent as ReactMouseEvent } from "react";
 import { ChevronDown, ChevronUp } from "lucide-react";
 import { getTranslation } from "../utils/translations";
 import type { Language } from "../utils/translations";
+import { useViewSize } from "../utils/viewSize";
 
 /**
  * Collapsed height, in pixels, shared by every entry of every timeline.
@@ -47,11 +48,13 @@ export const TimelineCollapsible = ({
   isExpanded,
   onToggle,
   language,
-  collapsedHeight = TIMELINE_COLLAPSED_HEIGHT,
+  collapsedHeight: collapsedBase = TIMELINE_COLLAPSED_HEIGHT,
   fadeClassName = "from-white via-white/70",
   className = "",
   children,
 }: TimelineCollapsibleProps) => {
+  const { scale } = useViewSize();
+  const collapsedHeight = collapsedBase * scale;
   const contentRef = useRef<HTMLDivElement>(null);
   const [contentHeight, setContentHeight] = useState(0);
 
@@ -109,7 +112,7 @@ export const TimelineCollapsible = ({
             onToggle();
           }}
           title={getTranslation(language, "timeline.expand_hint")}
-          className="mt-1.5 mx-auto w-fit flex items-center gap-1 text-[9px] font-black uppercase tracking-wider text-indigo-600 hover:text-indigo-800 active:scale-95 transition-all duration-200 cursor-pointer"
+          className="mt-1.5 mx-auto w-fit flex items-center gap-1 type-overline text-indigo-600 hover:text-indigo-800 active:scale-95 transition-all duration-200 cursor-pointer"
         >
           {isExpanded ? (
             <>

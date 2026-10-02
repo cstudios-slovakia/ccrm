@@ -2,8 +2,8 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { gotoView, startSession } from './helpers/appDriver';
 
 /**
- * Finance → movements: the payment status of a movement is editable straight
- * from its ledger row. Switching into `paid` or `partially_paid` writes money,
+ * Finance → movements: with inline editing switched on, the payment status of a
+ * movement is editable straight from its ledger row. Switching into `paid` or `partially_paid` writes money,
  * so the picker has to stop and ask for the amount that was really settled
  * instead of committing a guess.
  *
@@ -21,7 +21,17 @@ const ROW = 'Novák Stavby';
 const THOUSANDS = (head: number, tail: number | string) =>
   new RegExp(String(head) + '[,.\\s\\u00a0]?' + String(tail));
 
+/**
+ * Inline editing is off by default (Settings → Finance), so a journey that
+ * edits a status from the row switches it on first, the way a user would.
+ */
+async function enableInlineEdit(page: Page) {
+  await gotoView(page, '#settings/finance');
+  await page.getByText(/^(Inline editing|Úpravy priamo v riadku)$/).click();
+}
+
 async function openMovements(page: Page) {
+  await enableInlineEdit(page);
   await gotoView(page, '#financial/movements');
   await expect(
     page.getByRole('columnheader', { name: /Payment Status|Stav úhrady/ })

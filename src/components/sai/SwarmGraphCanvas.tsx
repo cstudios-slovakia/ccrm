@@ -1,4 +1,5 @@
 import React, { useRef, useState } from 'react';
+import { typePx, useViewSize } from '../../utils/viewSize';
 import type { SwarmKnowledgeGraph, SwarmEntityNode, SwarmAgentProfile } from '../../utils/swarm/types';
 import { ZoomIn, ZoomOut, RotateCcw, X, Sparkles, Loader2, Network, Users } from 'lucide-react';
 
@@ -135,7 +136,7 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
   graph,
   agents = [],
   activeEntityId,
-  className = "w-full h-full min-h-[380px]",
+  className = "w-full h-full min-h-95",
   systemLanguage = 'sk',
   isPreparing = false,
   prepStepMessage
@@ -184,8 +185,10 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
     ? graph.edges.filter(e => e.source === selectedNode.id || e.target === selectedNode.id) 
     : [];
 
-  const POPOVER_WIDTH = 264;
-  const POPOVER_HEIGHT = 126;
+  // Geometry that wraps text scales with the view size (docs/VIEW-SIZE.md §3.5).
+  const { scale: vsScale } = useViewSize();
+  const POPOVER_WIDTH = 264 * vsScale;
+  const POPOVER_HEIGHT = 126 * vsScale;
 
   const isAbove = selectedPos ? selectedPos.y >= 130 : true;
   const popoverX = selectedPos ? Math.max(12, Math.min(600 - POPOVER_WIDTH - 12, selectedPos.x - POPOVER_WIDTH / 2)) : 0;
@@ -201,7 +204,7 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
       {/* Top Left Status Badge */}
       <div className="absolute top-3.5 left-3.5 z-10 flex items-center gap-2">
         {isSynthesizing ? (
-          <div className="px-3 py-1.5 rounded-full bg-purple-900/90 backdrop-blur-md border border-purple-400/50 text-[11px] font-bold text-white flex items-center gap-2 shadow-md animate-in fade-in">
+          <div className="px-3 py-1.5 rounded-full bg-purple-900/90 backdrop-blur-md border border-purple-400/50 text-caption font-bold text-white flex items-center gap-2 shadow-md animate-in fade-in">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-400"></span>
@@ -212,7 +215,7 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
             </span>
           </div>
         ) : (
-          <div className="px-3 py-1.5 rounded-full bg-white/95 backdrop-blur-md border border-slate-200/90 text-[11px] font-bold text-slate-700 flex items-center gap-2 shadow-xs">
+          <div className="px-3 py-1.5 rounded-full bg-white/95 backdrop-blur-md border border-slate-200/90 text-caption font-bold text-slate-700 flex items-center gap-2 shadow-xs">
             <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
             <span>{t('Knowledge Graph', 'Graf znalostí', 'Tudásgráf')} ({graph.nodes.length} {t('nodes', 'uzlov', 'csomópont')}, {graph.edges.length} {t('relations', 'väzieb', 'kapcsolat')})</span>
           </div>
@@ -251,8 +254,8 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
       </div>
 
       {/* Bottom Category Legend */}
-      <div className="absolute bottom-3 left-3 z-10 hidden sm:flex items-center gap-2.5 px-3 py-1.5 rounded-2xl bg-white/90 backdrop-blur-md border border-slate-200/80 shadow-xs text-[10px] font-medium text-slate-600">
-        <span className="font-bold text-slate-400 uppercase text-[9px] mr-0.5">{t('Entities:', 'Subjekty:', 'Entitások:')}</span>
+      <div className="absolute bottom-3 left-3 z-10 hidden ws-sm:flex items-center gap-2.5 px-3 py-1.5 rounded-2xl bg-white/90 backdrop-blur-md border border-slate-200/80 shadow-xs text-micro font-medium text-slate-600">
+        <span className="text-slate-400 type-overline mr-0.5">{t('Entities:', 'Subjekty:', 'Entitások:')}</span>
         <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-blue-600"></span>{t('Client', 'Klient', 'Ügyfél')}</span>
         <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-rose-600"></span>{t('Competitor', 'Konkurent', 'Versenytárs')}</span>
         <span className="inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-600"></span>{t('Regulator', 'Regulátor', 'Szabályozó')}</span>
@@ -262,7 +265,7 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
 
       {/* Ingestion & Synthesis Active Overlay when nodes are empty or preparing */}
       {isSynthesizing && (
-        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center p-4 sm:p-6 bg-slate-900/20 backdrop-blur-[3px] animate-in fade-in duration-300">
+        <div className="absolute inset-0 z-20 flex flex-col items-center justify-center p-4 ws-sm:p-6 bg-slate-900/20 backdrop-blur-[3px] animate-in fade-in duration-300">
           <div className="max-w-lg w-full p-6 rounded-3xl bg-white/95 border border-purple-200/90 shadow-2xl text-center space-y-4 backdrop-blur-md">
             <div className="relative w-14 h-14 mx-auto">
               <div className="absolute inset-0 rounded-full bg-purple-500/20 animate-ping" />
@@ -272,14 +275,14 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
             </div>
 
             <div className="space-y-1.5">
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-purple-100 text-purple-800 border border-purple-200 inline-flex items-center gap-1.5">
+              <span className="px-2.5 py-0.5 rounded-full type-overline bg-purple-100 text-purple-800 border border-purple-200 inline-flex items-center gap-1.5">
                 <Sparkles className="w-3 h-3 text-purple-600" />
                 {t('AI Swarm Knowledge Synthesis', 'AI syntéza znalostného grafu', 'MI tudásgráf szintézis')}
               </span>
-              <h3 className="text-sm font-bold text-slate-900">
+              <h3 className="text-body font-bold text-slate-900">
                 {t('Constructing Dynamic Market Knowledge Graph...', 'Vytváranie dynamického grafu trhu...', 'Dinamikus piaci tudásgráf felépítése...')}
               </h3>
-              <p className="text-xs text-slate-500 leading-relaxed max-w-md mx-auto font-normal">
+              <p className="text-ui text-slate-500 leading-relaxed max-w-md mx-auto font-normal">
                 {prepStepMessage || t(
                   'Extracting stakeholder entities, competitor stances, and relationship edges from CRM context and scenario...',
                   'Extrakcia entít stakeholderov, postojov konkurencie a väzieb z CRM kontextu a zadania...',
@@ -291,12 +294,12 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
             {/* Live Synthesized Personas Tag Cloud */}
             {agents && agents.length > 0 && (
               <div className="space-y-2 pt-3 border-t border-slate-100 text-left">
-                <div className="flex items-center justify-between text-[11px] font-bold text-slate-700 px-1">
+                <div className="flex items-center justify-between text-caption font-bold text-slate-700 px-1">
                   <span className="flex items-center gap-1.5 text-purple-900">
                     <Users className="w-3.5 h-3.5 text-purple-600" />
                     {t('Synthesized Autonomous Personas:', 'Vytvorené autonómne persóny:', 'Létrehozott autonóm perszónák:')}
                   </span>
-                  <span className="text-[10px] text-purple-700 font-extrabold px-2 py-0.5 rounded-full bg-purple-50 border border-purple-200">
+                  <span className="text-micro text-purple-700 font-extrabold px-2 py-0.5 rounded-full bg-purple-50 border border-purple-200">
                     {agents.length} {t('created', 'vytvorených', 'kész')}
                   </span>
                 </div>
@@ -304,18 +307,18 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
                   {agents.map((ag) => (
                     <span 
                       key={ag.id} 
-                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-50 hover:bg-purple-50/60 border border-slate-200/90 text-[10.5px] font-bold text-slate-800 animate-in fade-in zoom-in-95 duration-200 shadow-2xs"
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-50 hover:bg-purple-50/60 border border-slate-200/90 text-micro font-bold text-slate-800 animate-in fade-in zoom-in-95 duration-200 shadow-2xs"
                     >
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                       <span>{ag.displayName}</span>
-                      <span className="text-slate-400 font-normal text-[9.5px]">({ag.profession})</span>
+                      <span className="text-slate-400 font-normal text-micro">({ag.profession})</span>
                     </span>
                   ))}
                 </div>
               </div>
             )}
 
-            <div className="flex items-center justify-center gap-2 text-[11px] font-semibold text-purple-700 bg-purple-50/80 py-2 px-4 rounded-xl border border-purple-100">
+            <div className="flex items-center justify-center gap-2 text-caption font-semibold text-purple-700 bg-purple-50/80 py-2 px-4 rounded-xl border border-purple-100">
               <Loader2 className="w-4 h-4 animate-spin text-purple-600" />
               <span>
                 {agents.length > 0
@@ -475,7 +478,7 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
                       x={0} 
                       y={3.5} 
                       fill={isEdgeConnected && selectedPos ? selectedPos.scheme.primary : "#475569"} 
-                      fontSize="7.5" 
+                      style={{ fontSize: "var(--text-micro)" }} 
                       fontWeight="700"
                       textAnchor="middle"
                       letterSpacing="0.05em"
@@ -500,7 +503,7 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
               const isNeighbor = selectedNode && connectedEdges.some(e => e.source === node.id || e.target === node.id);
 
               const displayName = node.name.length > 20 ? node.name.slice(0, 18) + '…' : node.name;
-              const pillWidth = Math.max(68, displayName.length * 5.6 + 22);
+              const pillWidth = Math.max(68 * vsScale, displayName.length * typePx('micro') * 0.62 + 22);
               const pillY = isSelected ? 23 : 21;
 
               return (
@@ -599,7 +602,7 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
                       x={-pillWidth / 2 + 15} 
                       y={pillY + 12.5} 
                       fill={isSelected ? '#0f172a' : '#334155'} 
-                      fontSize={isSelected ? "9.5" : "9"} 
+                      style={{ fontSize: "var(--text-micro)" }} 
                       fontWeight={isSelected ? "700" : "600"}
                       fontFamily="system-ui, -apple-system, sans-serif"
                     >
@@ -645,11 +648,11 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
                         className="w-2.5 h-2.5 rounded-full shrink-0 shadow-xs"
                         style={{ backgroundColor: selectedPos.scheme.primary }}
                       />
-                      <span className="text-xs font-bold text-slate-900 truncate max-w-[140px]" title={selectedNode.name}>
+                      <span className="text-ui font-bold text-slate-900 truncate max-w-35" title={selectedNode.name}>
                         {selectedNode.name}
                       </span>
                       <span 
-                        className="px-1.5 py-0.5 rounded-md text-[9px] font-extrabold uppercase tracking-wider border shrink-0"
+                        className="px-1.5 py-0.5 rounded-md type-overline border shrink-0"
                         style={{ 
                           backgroundColor: selectedPos.scheme.badgeBg, 
                           color: selectedPos.scheme.badgeText,
@@ -675,16 +678,16 @@ export const SwarmGraphCanvas: React.FC<SwarmGraphCanvasProps> = ({
 
                   {/* Popover Explanation */}
                   <div className="flex-1 py-1.5 overflow-hidden">
-                    <p className="text-[10.5px] text-slate-600 leading-snug line-clamp-3 font-normal">
+                    <p className="text-micro text-slate-600 leading-snug line-clamp-3 font-normal">
                       {selectedNode.summary || t('Simulated entity participating in market interactions and discussions.', 'Simulovaný subjekt zúčastňujúci sa trhových interakcií a diskusie.', 'A piaci interakciókban és vitákban részt vevő szimulált entitás.')}
                     </p>
                   </div>
 
                   {/* Popover Footer Relations */}
                   {connectedEdges.length > 0 && (
-                    <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[9.5px]">
-                      <span className="font-semibold text-slate-400 uppercase text-[9px]">{t('Relation:', 'Väzba:', 'Kapcsolat:')}</span>
-                      <span className="font-mono text-indigo-600 font-bold truncate max-w-[160px] bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
+                    <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-micro">
+                      <span className="text-slate-400 type-overline">{t('Relation:', 'Väzba:', 'Kapcsolat:')}</span>
+                      <span className="font-mono text-indigo-600 font-bold truncate max-w-40 bg-indigo-50 px-1.5 py-0.5 rounded border border-indigo-100">
                         {connectedEdges[0].relation} → {
                           connectedEdges[0].source === selectedNode.id 
                             ? (graph.nodes.find(n => n.id === connectedEdges[0].target)?.name || t('Entity', 'Subjekt', 'Entitás'))

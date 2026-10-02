@@ -207,8 +207,8 @@ export const QuickAddClientProvider: React.FC<ProviderProps> = ({
   };
 
   const inputClass =
-    "w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-xs font-semibold text-slate-800 outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20";
-  const labelClass = "block text-[10px] font-black text-slate-400 uppercase tracking-wider mb-1";
+    "w-full px-3 py-2.5 rounded-xl border border-slate-200 bg-white text-ui font-semibold text-slate-800 outline-none transition-colors focus:border-accent focus:ring-2 focus:ring-accent/20";
+  const labelClass = "block type-overline text-slate-400 mb-1";
 
   const types: { id: Lead["clientType"]; label: string; icon: React.ReactNode }[] = [
     { id: "person", label: copy.person, icon: <User className="h-3.5 w-3.5" /> },
@@ -249,8 +249,8 @@ export const QuickAddClientProvider: React.FC<ProviderProps> = ({
                         <UserPlus className="h-4.5 w-4.5" />
                       </span>
                       <div className="min-w-0">
-                        <h3 className="text-sm font-heading font-black text-slate-900 truncate">{copy.title}</h3>
-                        <p className="text-[11px] font-semibold text-slate-400 leading-snug">{copy.subtitle}</p>
+                        <h3 className="text-body font-heading font-bold text-slate-900 truncate">{copy.title}</h3>
+                        <p className="text-caption font-semibold text-slate-400 leading-snug">{copy.subtitle}</p>
                       </div>
                     </div>
                     <button
@@ -269,7 +269,7 @@ export const QuickAddClientProvider: React.FC<ProviderProps> = ({
                           key={k}
                           type="button"
                           onClick={() => setKind(k)}
-                          className={`rounded-lg px-3 py-1.5 text-[11px] font-black uppercase tracking-wider transition-all cursor-pointer ${
+                          className={`rounded-lg px-3 py-1.5 type-overline transition-all cursor-pointer ${
                             kind === k ? "bg-white text-accent shadow-sm" : "text-slate-500 hover:text-slate-700"
                           }`}
                         >
@@ -291,7 +291,7 @@ export const QuickAddClientProvider: React.FC<ProviderProps> = ({
                         placeholder={copy.namePlaceholder}
                         className={inputClass}
                       />
-                      {error && <p className="mt-1 text-[10px] font-bold text-rose-600">{error}</p>}
+                      {error && <p className="mt-1 text-micro font-bold text-rose-600">{error}</p>}
                     </div>
 
                     <div>
@@ -302,7 +302,7 @@ export const QuickAddClientProvider: React.FC<ProviderProps> = ({
                             key={tp.id}
                             type="button"
                             onClick={() => setForm(f => ({ ...f, clientType: tp.id }))}
-                            className={`flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-[11px] font-bold transition-all cursor-pointer ${
+                            className={`flex items-center gap-1.5 rounded-xl border px-3 py-1.5 text-caption font-bold transition-all cursor-pointer ${
                               form.clientType === tp.id
                                 ? "border-accent bg-accent/10 text-accent"
                                 : "border-slate-200 text-slate-500 hover:border-slate-300 hover:bg-slate-50"
@@ -349,13 +349,13 @@ export const QuickAddClientProvider: React.FC<ProviderProps> = ({
                     <button
                       type="button"
                       onClick={close}
-                      className="rounded-xl px-3.5 py-2 text-[11px] font-black uppercase tracking-wider text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
+                      className="rounded-xl px-3.5 py-2 type-overline text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
                     >
                       {copy.cancel}
                     </button>
                     <button
                       type="submit"
-                      className="flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2 text-[11px] font-black uppercase tracking-wider text-white shadow-sm transition-all hover:brightness-110 active:scale-95 cursor-pointer"
+                      className="flex items-center gap-1.5 rounded-xl bg-accent px-4 py-2 type-overline text-white shadow-sm transition-all hover:brightness-110 active:scale-95 cursor-pointer"
                     >
                       <UserPlus className="h-3.5 w-3.5" />
                       {copy.save}

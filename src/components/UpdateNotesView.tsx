@@ -1,3 +1,4 @@
+import { PageHeader } from "./layout";
 import React, { useState, useEffect } from "react";
 import { Sparkles, Calendar, Loader2 } from "lucide-react";
 import type { Language } from "../utils/translations";
@@ -142,7 +143,7 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
         return (
             <div className="flex-1 flex flex-col items-center justify-center p-12">
                 <Loader2 className="h-8 w-8 text-indigo-600 animate-spin" />
-                <p className="text-xs font-semibold text-slate-400 mt-4">
+                <p className="text-ui font-semibold text-slate-400 mt-4">
                     {t(
                         "Loading update notes...",
                         "Načítavanie noviniek...",
@@ -157,14 +158,14 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
         return (
             <div className="flex-1 flex flex-col items-center justify-center p-12 bg-white rounded-3xl border border-slate-200/80 shadow-xs">
                 <Sparkles className="h-10 w-10 text-slate-300" />
-                <h3 className="font-heading font-extrabold text-base text-slate-700 mt-4">
+                <h3 className="font-heading font-extrabold text-title-sm text-slate-700 mt-4">
                     {t(
                         "No updates found",
                         "Žiadne novinky neboli nájdené",
                         "Nem találhatók frissítések",
                     )}
                 </h3>
-                <p className="text-xs text-slate-400 mt-2">
+                <p className="text-ui text-slate-400 mt-2">
                     {error ||
                         t(
                             "Check back later for new releases.",
@@ -177,45 +178,29 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
     }
 
     return (
-        <div className="flex-1 flex flex-col gap-6 w-full max-w-6xl mx-auto">
-            {/* Top Banner */}
-            <div className="bg-gradient-to-r from-indigo-500 to-violet-600 rounded-3xl p-6 md:p-8 text-white shadow-lg relative overflow-hidden select-none">
-                <div className="absolute right-0 bottom-0 opacity-15 transform translate-x-6 translate-y-6">
-                    <Sparkles className="h-48 w-48" />
-                </div>
-                <div className="relative z-10">
-                    <div className="flex items-center gap-2">
-                        <span className="px-2.5 py-0.5 rounded-full bg-white/20 text-white font-black text-[9px] tracking-wider uppercase backdrop-blur-md">
-                            {t(
-                                "CCRM Changelog",
-                                "Zoznam zmien CCRM",
-                                "CCRM változásnapló",
-                            )}
-                        </span>
-                    </div>
-                    <h1 className="font-heading font-extrabold text-2xl md:text-3xl mt-3 leading-tight">
-                        {t(
-                            "Product Updates & Releases",
-                            "Novinky a verzie systému",
-                            "Termékfrissítések és kiadások",
-                        )}
-                    </h1>
-                    <p className="text-white/80 text-xs md:text-sm mt-2 max-w-xl font-medium">
-                        {t(
-                            "Stay up to date with the latest features, enhancements, and bug fixes added to the platform.",
-                            "Majte prehľad o najnovších funkciách, vylepšeniach a opravách chýb pridaných do platformy.",
-                            "Maradjon naprakész a platformhoz hozzáadott legújabb funkciókkal, fejlesztésekkel és hibajavításokkal.",
-                        )}
-                    </p>
-                </div>
-            </div>
+        <div className="flex-1 flex flex-col gap-6 w-full">
+            {/* Module header (docs/VIEW-SIZE.md §6.2) */}
+            <PageHeader
+              icon={<Sparkles className="text-indigo-500" />}
+              title={t("Product Updates & Releases", "Novinky a verzie systému", "Termékfrissítések és kiadások")}
+              subtitle={t(
+                "Stay up to date with the latest features, enhancements, and bug fixes added to the platform.",
+                "Majte prehľad o najnovších funkciách, vylepšeniach a opravách chýb pridaných do platformy.",
+                "Maradjon naprakész a platformhoz hozzáadott legújabb funkciókkal, fejlesztésekkel és hibajavításokkal.",
+              )}
+              badge={
+                <span className="mt-2 inline-flex w-fit px-2.5 py-0.5 rounded-full bg-indigo-50 border border-indigo-100 text-indigo-700 type-overline">
+                  {t("CCRM Changelog", "Zoznam zmien CCRM", "CCRM változásnapló")}
+                </span>
+              }
+            />
 
             {/* Main Content Pane */}
-            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-md flex flex-col md:flex-row overflow-hidden min-h-[500px]">
+            <div className="bg-white rounded-3xl border border-slate-200/80 shadow-md flex flex-col ws-md:flex-row overflow-hidden min-h-125">
                 {/* Versions Sidebar List */}
-                <div className="w-full md:w-64 border-b md:border-b-0 md:border-r border-slate-100 flex flex-col shrink-0 bg-slate-50/50">
+                <div className="w-full ws-md:w-64 border-b ws-md:border-b-0 ws-md:border-r border-slate-100 flex flex-col shrink-0 bg-slate-50/50">
                     <div className="p-4 border-b border-slate-100 select-none">
-                        <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                        <span className="type-overline text-slate-400">
                             {t(
                                 "Release History",
                                 "História verzií",
@@ -223,7 +208,7 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
                             )}
                         </span>
                     </div>
-                    <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1 max-h-[300px] md:max-h-[500px]">
+                    <div className="flex-1 overflow-y-auto p-2 flex flex-col gap-1 max-h-75 ws-md:max-h-125">
                         {updates.map((update, idx) => {
                             const isActive = idx === activeIndex;
                             return (
@@ -237,7 +222,7 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
                                     }`}
                                 >
                                     <span
-                                        className={`px-2 py-0.5 rounded-md font-black text-[9px] uppercase tracking-wider shrink-0 mt-0.5 ${
+                                        className={`px-2 py-0.5 rounded-md type-overline shrink-0 mt-0.5 ${
                                             isActive
                                                 ? "bg-indigo-600 text-white"
                                                 : "bg-slate-200 text-slate-600"
@@ -246,10 +231,10 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
                                         v{update.version}
                                     </span>
                                     <div className="min-w-0">
-                                        <div className="font-bold text-xs truncate">
+                                        <div className="font-bold text-ui truncate">
                                             {update.title}
                                         </div>
-                                        <div className="text-[9px] text-slate-400 font-semibold mt-0.5">
+                                        <div className="text-micro text-slate-400 font-semibold mt-0.5">
                                             {new Date(
                                                 update.postDate,
                                             ).toLocaleDateString(
@@ -275,20 +260,20 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
                 {/* Release Detail */}
                 <div
                     ref={contentRef}
-                    className="flex-1 p-6 md:p-8 flex flex-col overflow-y-auto"
+                    className="flex-1 p-6 ws-md:p-8 flex flex-col overflow-y-auto"
                 >
                     {activeUpdate && (
                         <>
                             <div className="border-b border-slate-100 pb-4 mb-6">
                                 <div className="flex items-center gap-2.5">
-                                    <span className="px-3 py-1 rounded-full bg-indigo-600 text-white font-black text-[10px] tracking-wider uppercase">
+                                    <span className="px-3 py-1 rounded-full bg-indigo-600 text-white type-overline">
                                         v{activeUpdate.version}
                                     </span>
-                                    <h2 className="font-heading font-extrabold text-xl text-slate-800">
+                                    <h2 className="font-heading font-extrabold text-title text-slate-800">
                                         {activeUpdate.title}
                                     </h2>
                                 </div>
-                                <div className="flex items-center gap-1 text-[11px] font-semibold text-slate-400 mt-2 select-none">
+                                <div className="flex items-center gap-1 text-caption font-semibold text-slate-400 mt-2 select-none">
                                     <Calendar className="h-3.5 w-3.5" />
                                     <span>
                                         {new Date(
@@ -321,7 +306,7 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
                                             return (
                                                 <div
                                                     key={idx}
-                                                    className="prose prose-slate max-w-none text-sm text-slate-600 leading-relaxed font-sans ck-content"
+                                                    className="prose prose-slate max-w-none text-body text-slate-600 leading-relaxed font-sans ck-content"
                                                     dangerouslySetInnerHTML={{
                                                         __html: block.text.html,
                                                     }}
@@ -356,7 +341,7 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
                                                         "Megnyitás teljes méretben",
                                                     )}
                                                     className="border border-slate-200/80 shadow-md"
-                                                    imageClassName="h-auto max-h-[480px]"
+                                                    imageClassName="h-auto max-h-120"
                                                 />
                                             );
                                         }
@@ -378,10 +363,10 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
                                             return (
                                                 <div
                                                     key={idx}
-                                                    className={`flex flex-col md:flex-row gap-6 items-center ${isRight ? "md:flex-row-reverse" : ""}`}
+                                                    className={`flex flex-col ws-md:flex-row gap-6 items-center ${isRight ? "md:flex-row-reverse" : ""}`}
                                                 >
                                                     {img && (
-                                                        <div className="w-full md:w-1/2 rounded-2xl overflow-hidden border border-slate-200/80 shadow-sm shrink-0">
+                                                        <div className="w-full ws-md:w-1/2 rounded-2xl overflow-hidden border border-slate-200/80 shadow-sm shrink-0">
                                                             <ZoomableUpdateImage
                                                                 src={img.url}
                                                                 alt={
@@ -401,14 +386,14 @@ export const UpdateNotesView: React.FC<UpdateNotesViewProps> = ({
                                                                     "Otvoriť v plnej veľkosti",
                                                                     "Megnyitás teljes méretben",
                                                                 )}
-                                                                imageClassName="h-auto max-h-[320px]"
+                                                                imageClassName="h-auto max-h-80"
                                                             />
                                                         </div>
                                                     )}
                                                     <div className="flex-1">
                                                         {block.text?.html && (
                                                             <div
-                                                                className="prose prose-slate max-w-none text-sm text-slate-600 leading-relaxed font-sans ck-content"
+                                                                className="prose prose-slate max-w-none text-body text-slate-600 leading-relaxed font-sans ck-content"
                                                                 dangerouslySetInnerHTML={{
                                                                     __html: block
                                                                         .text

@@ -19,6 +19,7 @@
 
 import {
   BarChart3,
+  Calculator,
   CalendarClock,
   ChartColumnIncreasing,
   ChartNoAxesColumn,
@@ -205,10 +206,11 @@ export type WidgetRenderer =
   | "tasksTable"
   | "stageDonut"
   | "sourceBars"
-  | "taskStatus";
+  | "taskStatus"
+  | "statusEquation";
 
 /** Label shown next to a library entry — what kind of card it is. */
-export type WidgetKind = "metric" | "chart" | "table" | "timeline";
+export type WidgetKind = "metric" | "chart" | "table" | "timeline" | "summary";
 
 export interface WidgetSettings {
   /** Lead tables: "recent" | "value". Task tables: "created" | "deadline". */
@@ -220,6 +222,14 @@ export interface WidgetSettings {
   statuses?: string[];
   /** Visible column keys, in the order they are drawn. */
   columns?: string[];
+  /**
+   * Status-value equation: the lead phases / project statuses left out of the
+   * invoicable sums. Absent means "the closed ones" — decided live from the
+   * lead and project status settings, so a status added there as closed is left
+   * out without anyone editing the widget. Once picked it is an explicit list.
+   */
+  excludedLeadStatuses?: string[];
+  excludedProjectStatuses?: string[];
 }
 
 export interface WidgetPreset {
@@ -239,6 +249,36 @@ export interface WidgetPreset {
 const sqlQuery = (sql: string) => ({ action: "sql", params: { sql, bind: [] } });
 
 const PRESETS: WidgetPreset[] = [
+  {
+    id: "status_value_equation",
+    section: "leads",
+    kind: "summary",
+    icon: Calculator,
+    title: text(
+      "Invoicable value by status",
+      "Hodnota na fakturovanie podľa stavu",
+      "Számlázható érték állapot szerint"
+    ),
+    description: text(
+      "Leads and projects summed per status, with the statuses you leave out.",
+      "Leady a projekty sčítané podľa stavu, so stavmi, ktoré vylúčite.",
+      "Leadek és projektek állapotonként összegezve, a kizárt állapotok nélkül."
+    ),
+    // No query: it is drawn from the leads, projects and invoices the app has
+    // already loaded, which is also what lets it count statuses a SQL
+    // statement could not know the meaning of.
+    build: () => ({
+      type: "summary",
+      renderer: "statusEquation",
+      title: text(
+        "Invoicable value by status",
+        "Hodnota na fakturovanie podľa stavu",
+        "Számlázható érték állapot szerint"
+      ),
+      size: "full",
+      settings: {}
+    })
+  },
   {
     id: "total_leads",
     section: "leads",
@@ -679,6 +719,7 @@ export const visibleColumnsOf = (widget: any): string[] => {
  * cards next to it stack instead of pushing the next row down.
  */
 const DEFAULT_PRESET_IDS = [
+  "status_value_equation",
   "total_leads",
   "leads_this_month",
   "pipeline_value",

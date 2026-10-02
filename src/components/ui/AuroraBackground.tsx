@@ -71,6 +71,26 @@ const TAB_COLOR_MAP: Record<string, ThemeColors> = {
     secondary: "rgba(15, 118, 110, 0.20)", // Teal
     accent: "rgba(22, 163, 74, 0.18)", // Green
   },
+  employees: {
+    primary: "rgba(194, 155, 98, 0.28)", // Sand / Warm Bronze (#c29b62)
+    secondary: "rgba(245, 158, 11, 0.22)", // Warm Amber / Honey
+    accent: "rgba(16, 185, 129, 0.18)", // Emerald
+  },
+  employee: {
+    primary: "rgba(194, 155, 98, 0.28)", // Sand / Warm Bronze (#c29b62)
+    secondary: "rgba(245, 158, 11, 0.22)", // Warm Amber / Honey
+    accent: "rgba(16, 185, 129, 0.18)", // Emerald
+  },
+  salaries: {
+    primary: "rgba(194, 155, 98, 0.28)",
+    secondary: "rgba(245, 158, 11, 0.22)",
+    accent: "rgba(16, 185, 129, 0.18)",
+  },
+  vacations: {
+    primary: "rgba(194, 155, 98, 0.28)",
+    secondary: "rgba(245, 158, 11, 0.22)",
+    accent: "rgba(16, 185, 129, 0.18)",
+  },
   meetings: {
     primary: "rgba(79, 70, 229, 0.26)", // Indigo
     secondary: "rgba(2, 132, 199, 0.20)", // Sky
@@ -136,8 +156,8 @@ export const AuroraBackground: React.FC<AuroraBackgroundProps> = ({
   transitionDurationMs = 230,
 }) => {
   const targetColors = useMemo<ThemeColors>(() => {
-    const rawTab = (activeTab || "dashboard").toLowerCase();
-    const baseTab = rawTab.split(/[/?]/)[0];
+    const rawTab = (activeTab || "dashboard").replace(/^#/, "").toLowerCase();
+    const baseTab = rawTab.split(/[/?#]/)[0];
 
     // Check direct tab map
     if (TAB_COLOR_MAP[baseTab]) {
@@ -230,7 +250,7 @@ export const AuroraBackground: React.FC<AuroraBackgroundProps> = ({
     >
       {/* Aurora Ambient Blob 1 (Top Left / Upper Canvas) */}
       <div
-        className="absolute -top-[12%] -left-[10%] w-[580px] h-[580px] md:w-[800px] md:h-[800px] rounded-full blur-[110px] md:blur-[140px] opacity-90 will-change-transform animate-aurora-pulse-1"
+        className="absolute -top-[12%] -left-[10%] w-145 h-145 md:w-200 md:h-200 rounded-full blur-[110px] md:blur-[140px] opacity-90 will-change-transform animate-aurora-pulse-1"
         style={{
           background: `radial-gradient(circle at center, ${colors.primary} 0%, ${colors.secondary} 45%, transparent 75%)`,
         }}
@@ -238,7 +258,7 @@ export const AuroraBackground: React.FC<AuroraBackgroundProps> = ({
 
       {/* Aurora Ambient Blob 2 (Top Right / Middle Right Canvas) */}
       <div
-        className="absolute top-[8%] -right-[12%] w-[500px] h-[500px] md:w-[720px] md:h-[720px] rounded-full blur-[110px] md:blur-[140px] opacity-80 will-change-transform animate-aurora-pulse-2"
+        className="absolute top-[8%] -right-[12%] w-125 h-125 md:w-180 md:h-180 rounded-full blur-[110px] md:blur-[140px] opacity-80 will-change-transform animate-aurora-pulse-2"
         style={{
           background: `radial-gradient(circle at center, ${colors.secondary} 0%, ${colors.accent} 50%, transparent 75%)`,
         }}
@@ -246,7 +266,7 @@ export const AuroraBackground: React.FC<AuroraBackgroundProps> = ({
 
       {/* Aurora Ambient Blob 3 (Bottom Center / Left subtle glow) */}
       <div
-        className="absolute -bottom-[15%] left-[20%] w-[450px] h-[450px] md:w-[650px] md:h-[650px] rounded-full blur-[120px] md:blur-[150px] opacity-70 will-change-transform animate-aurora-pulse-3"
+        className="absolute -bottom-[15%] left-[20%] w-112.5 h-112.5 md:w-162.5 md:h-162.5 rounded-full blur-[120px] md:blur-[150px] opacity-70 will-change-transform animate-aurora-pulse-3"
         style={{
           background: `radial-gradient(circle at center, ${colors.accent} 0%, ${colors.primary} 45%, transparent 75%)`,
         }}

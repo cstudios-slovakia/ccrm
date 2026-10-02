@@ -371,7 +371,7 @@ if ($action === 'create_project') {
     $clientId = $leadId;
 
     $projId = 'proj_' . time() . '_' . substr(md5(uniqid()), 0, 6);
-    $status = in_array($payload['status'] ?? '', ['new', 'active', 'completed', 'on_hold', 'cancelled']) ? $payload['status'] : 'active';
+    $status = in_array($payload['status'] ?? '', ccrm_project_statuses($pdo), true) ? $payload['status'] : ccrm_default_project_status($pdo);
     $rating = (isset($payload['rating']) && is_numeric($payload['rating'])) ? max(1, min(5, (int)$payload['rating'])) : null;
     $budget = (isset($payload['budget']) && is_numeric($payload['budget']) && (float)$payload['budget'] > 0) ? (float)$payload['budget'] : null;
     $deadline = !empty($payload['deadline']) && preg_match('/^\d{4}-\d{2}-\d{2}/', $payload['deadline']) ? substr($payload['deadline'], 0, 10) : null;
@@ -423,10 +423,10 @@ if ($action === 'update_project') {
         $params[] = trim($payload['name']);
         $proj['name'] = trim($payload['name']);
     }
-    if (isset($payload['status']) && in_array($payload['status'], ['new', 'active', 'completed', 'on_hold', 'cancelled'])) {
+    if (isset($payload['status']) && in_array($payload['status'], ccrm_project_statuses($pdo), true)) {
         $updates[] = "`status` = ?";
         $params[] = $payload['status'];
-        if ($payload['status'] === 'completed') {
+        if (ccrm_project_status_group($payload['status'], $pdo) === 'completed') {
             $updates[] = "`finished_at` = COALESCE(`finished_at`, CURRENT_DATE)";
         }
     }
@@ -860,8 +860,8 @@ $realtimeTools = [
                 ],
                 'status' => [
                     'type' => 'string',
-                    'enum' => ['new', 'active', 'completed', 'on_hold', 'cancelled'],
-                    'description' => 'Initial status of the project. Default is active.'
+                    'enum' => ccrm_project_statuses($pdo),
+                    'description' => 'Initial status of the project. Default is the first "new" status.'
                 ],
                 'rating' => [
                     'type' => 'number',
@@ -893,7 +893,7 @@ $realtimeTools = [
                 ],
                 'status' => [
                     'type' => 'string',
-                    'enum' => ['new', 'active', 'completed', 'on_hold', 'cancelled'],
+                    'enum' => ccrm_project_statuses($pdo),
                     'description' => 'Updated status of the project.'
                 ],
                 'budget' => [
