@@ -4,6 +4,7 @@ import type { FinancialCategory, FinancialRecord } from "../types";
 import {
   UNCATEGORIZED_ROW_ID,
   aggregateOverviewTable,
+  aggregateSimplifiedOverviewTable,
   isRecurringChargeSettled,
   overviewRowIdFor,
   splitRecordAmounts,
@@ -348,3 +349,54 @@ test("isRecurringChargeSettled: a period's total is unchanged whichever side of 
   assert.equal(projected, 15, "Friday's has not come due yet, even though it is the same 'current' week");
   assert.equal(real + projected, 35, "the week's total does not change, only the split between real and projected");
 });
+
+test("aggregateSimplifiedOverviewTable evaluates arithmetic and rolls up child categories", () => {
+  const rootExp = cat("exp_root", "expense", 1);
+  const childExp = cat("exp_child", "expense", 2, "exp_root");
+  const rootInc = cat("inc_root", "income", 1);
+  const testCats = [rootExp, childExp, rootInc];
+
+  const cols: OverviewColumn[] = [
+    { id: "2026-01", startIso: "2026-01-01", endIso: "2026-01-31", isFuture: false },
+    { id: "2026-02", startIso: "2026-02-01", endIso: "2026-02-28", isFuture: false }
+  ];
+
+  const table: Record<string, string> = {
+    // Child expense has equation 100 + 50 in Jan, 200 in Feb
+    "exp_child:2026-01": "100 + 50",
+    "exp_child:2026-02": "200",
+    // Root expense has direct 50 in Jan
+    "exp_root:2026-01": "50",
+    // Root income has 500 in Jan, 600 in Feb
+    "inc_root:2026-01": "500",
+    "inc_root:2026-02": "600"
+  };
+
+  const agg = aggregateSimplifiedOverviewTable(table, testCats, cols);
+
+  // Child expense
+  assert.equal(agg.cells["exp_child"]["2026-01"].total, 150);
+  assert.equal(agg.cells["exp_child"]["2026-02"].total, 200);
+  assert.equal(agg.rowTotals["exp_child"].total, 350);
+
+  // Root expense rolls up child: 150 + 50 = 200 in Jan, 200 in Feb
+  assert.equal(agg.cells["exp_root"]["2026-01"].total, 200);
+  assert.equal(agg.cells["exp_root"]["2026-02"].total, 200);
+  assert.equal(agg.rowTotals["exp_root"].total, 400);
+
+  // Total expenses by col
+  assert.equal(agg.totalExpensesByCol["2026-01"].total, 200);
+  assert.equal(agg.totalExpensesByCol["2026-02"].total, 200);
+  assert.equal(agg.totalExpenseSummary.total, 400);
+
+  // Total incomes by col
+  assert.equal(agg.totalIncomesByCol["2026-01"].total, 500);
+  assert.equal(agg.totalIncomesByCol["2026-02"].total, 600);
+  assert.equal(agg.totalIncomeSummary.total, 1100);
+
+  // Net Cash Flow: Jan = 500 - 200 = 300, Feb = 600 - 200 = 400, Summary = 700
+  assert.equal(agg.netCashFlowByCol["2026-01"].total, 300);
+  assert.equal(agg.netCashFlowByCol["2026-02"].total, 400);
+  assert.equal(agg.netSummary.total, 700);
+});
+

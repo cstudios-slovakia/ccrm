@@ -1,6 +1,6 @@
 import React from "react";
-import { Coins, Table2 } from "lucide-react";
-import type { FinancialCategory, FinancialRecord } from "../types";
+import { Coins, Table2, Link2, FileSpreadsheet } from "lucide-react";
+import type { FinancialCategory, FinancialRecord, FinancialOperatingMode } from "../types";
 import { CustomSelect } from "./ui/CustomSelect";
 import { FinancialCategoriesManager } from "./FinancialCategoriesManager";
 import { CURRENCY_OPTIONS, currencyForRegion } from "../utils/currency";
@@ -21,6 +21,9 @@ interface FinanceSettingsProps {
   /** Finance module rights — what the category tree is allowed to do. */
   canEdit: boolean;
   canDelete: boolean;
+  /** Financial operating mode: connected (live movements) vs simplified (detached spreadsheet) */
+  financialMode?: FinancialOperatingMode;
+  setFinancialMode?: (mode: FinancialOperatingMode) => void;
 }
 
 const PANEL = "glass-panel p-6 rounded-3xl space-y-5 border border-white/60 bg-white/95 shadow-glass";
@@ -42,7 +45,9 @@ export const FinanceSettings: React.FC<FinanceSettingsProps> = ({
   setFinancialCategories,
   setFinancialRecords,
   canEdit,
-  canDelete
+  canDelete,
+  financialMode = "connected",
+  setFinancialMode
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
@@ -51,6 +56,96 @@ export const FinanceSettings: React.FC<FinanceSettingsProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Financial Operating Mode */}
+      <div className={PANEL}>
+        <h3 className={PANEL_TITLE}>
+          <FileSpreadsheet className="h-4.5 w-4.5 text-indigo-500" />
+          {t("Financial Operating Mode", "Režim fungovania financií", "Pénzügyi működési mód")}
+        </h3>
+
+        <p className="text-micro font-medium text-slate-500 leading-relaxed -mt-2">
+          {t(
+            "Choose how the overview table and cash flow graphs operate. You can switch between live ledger synchronization and detached spreadsheet mode at any time without losing data.",
+            "Zvoľte, ako funguje prehľadová tabuľka a grafy cash flow. Medzi prepojeným režimom a odpojenou tabuľkou môžete kedykoľvek prepínať bez straty údajov.",
+            "Válassza ki, hogyan működjön az áttekintő táblázat és a cash flow grafikon. Bármikor válthat a valós mozgások és a leválasztott táblázat között adatvesztés nélkül."
+          )}
+        </p>
+
+        <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3 pt-1">
+          {/* Connected Mode Card */}
+          <button
+            type="button"
+            disabled={!canEdit}
+            onClick={() => setFinancialMode?.("connected")}
+            className={`text-left p-4 rounded-2xl border transition-all duration-150 ease-out flex flex-col justify-between gap-3 ${
+              financialMode === "connected"
+                ? "bg-indigo-50/70 border-indigo-300 ring-2 ring-indigo-500/15"
+                : "bg-white border-slate-200 hover:border-slate-300 hover:-translate-y-px"
+            } ${canEdit ? "cursor-pointer" : "opacity-60 cursor-not-allowed"}`}
+          >
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-2 text-ui font-bold text-slate-900">
+                  <Link2 className={`h-4 w-4 ${financialMode === "connected" ? "text-indigo-600" : "text-slate-400"}`} />
+                  {t("Connected mode (Default)", "Prepojený režim (Predvolený)", "Kapcsolt mód (Alapértelmezett)")}
+                </span>
+                {financialMode === "connected" && (
+                  <span className="px-2 py-0.5 rounded-full text-micro font-bold bg-indigo-100 text-indigo-700">
+                    {t("Active", "Aktívny", "Aktív")}
+                  </span>
+                )}
+              </div>
+              <p className="text-caption text-slate-600 leading-snug">
+                {t(
+                  "The overview table and cash flow graphs are dynamically calculated from real movements, invoices, and recurring expense rules.",
+                  "Prehľadová tabuľka a grafy cash flow sa dynamicky počítajú zo skutočných platieb, faktúr a pravidiel opakovaných výdavkov.",
+                  "Az áttekintő táblázat és a grafikonok dinamikusan a valós mozgásokból, számlákból és ismétlődő tételekből számolódnak."
+                )}
+              </p>
+            </div>
+            <span className="text-micro text-slate-400">
+              {t("Automatic ledger calculation", "Automatický výpočet z pohybov", "Automatikus számítás a mozgásokból")}
+            </span>
+          </button>
+
+          {/* Simplified Mode Card */}
+          <button
+            type="button"
+            disabled={!canEdit}
+            onClick={() => setFinancialMode?.("simplified")}
+            className={`text-left p-4 rounded-2xl border transition-all duration-150 ease-out flex flex-col justify-between gap-3 ${
+              financialMode === "simplified"
+                ? "bg-emerald-50/70 border-emerald-300 ring-2 ring-emerald-500/15"
+                : "bg-white border-slate-200 hover:border-slate-300 hover:-translate-y-px"
+            } ${canEdit ? "cursor-pointer" : "opacity-60 cursor-not-allowed"}`}
+          >
+            <div className="space-y-1.5">
+              <div className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-2 text-ui font-bold text-slate-900">
+                  <FileSpreadsheet className={`h-4 w-4 ${financialMode === "simplified" ? "text-emerald-600" : "text-slate-400"}`} />
+                  {t("Simplified mode", "Zjednodušený režim", "Egyszerűsített mód")}
+                </span>
+                {financialMode === "simplified" && (
+                  <span className="px-2 py-0.5 rounded-full text-micro font-bold bg-emerald-100 text-emerald-700">
+                    {t("Active", "Aktívny", "Aktív")}
+                  </span>
+                )}
+              </div>
+              <p className="text-caption text-slate-600 leading-snug">
+                {t(
+                  "The overview table behaves like a standalone Excel spreadsheet. Click any cell to directly type numbers or arithmetic equations (e.g. 1200 + 450). Graphs reflect these table totals.",
+                  "Prehľadová tabuľka funguje ako samostatný Excel. Kliknutím na bunku priamo vpíšete hodnotu alebo matematický vzorec (napr. 1200 + 450). Grafy automaticky čerpajú z týchto hodnôt.",
+                  "Az áttekintő táblázat önálló Excel-táblázatként működik. Bármelyik cellára kattintva közvetlenül beírhat számokat vagy képleteket (pl. 1200 + 450). A grafikonok ebből épülnek fel."
+                )}
+              </p>
+            </div>
+            <span className="text-micro text-slate-400">
+              {t("Direct manual cells & equations", "Priame zadávanie hodnôt a vzorcov", "Közvetlen értékek és képletek")}
+            </span>
+          </button>
+        </div>
+      </div>
+
       {/* Movements table */}
       <div className={PANEL}>
         <h3 className={PANEL_TITLE}>
