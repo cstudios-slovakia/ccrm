@@ -45,10 +45,11 @@ import {
 } from "../utils/currency";
 import { isClosedLeadState } from "../utils/leadSla";
 import {
-  openProjectStatuses,
+  isClosedProjectStatus,
   projectStatusColor,
   projectStatusLabel
 } from "../utils/projects";
+import { excludedStatusKeys, type EquationStatusOption } from "../utils/statusEquation";
 import {
   GroupedStatusValueEquationStats,
   type StatusStatGroup,
@@ -151,7 +152,7 @@ const WIDGET_ICONS: Record<string, React.ComponentType<{ className?: string }>> 
   tabs: Layers
 };
 
-const WIDGET_TYPES = ["metric", "chart", "table", "timeline", "accordion", "tabs"];
+const WIDGET_TYPES = ["metric", "chart", "table", "timeline", "accordion", "tabs", "summary"];
 
 /**
  * The types the settings drawer offers for an AI-generated widget. `tabs` is
@@ -206,6 +207,29 @@ interface BoardRect {
   top: number;
   width: number;
   height: number;
+}
+
+/**
+ * The card a pointer outside every card should count as hovering. Above the
+ * first row that is the first card in the list (dropping there puts the dragged
+ * card at the very top); anywhere else it is the closest one.
+ */
+function nearestCard<T extends BoardRect>(cards: T[], x: number, y: number): T | undefined {
+  if (!cards.length) return undefined;
+  if (y < Math.min(...cards.map(card => card.top))) return cards[0];
+
+  let best = cards[0];
+  let bestDistance = Infinity;
+  for (const card of cards) {
+    const dx = Math.max(card.left - x, 0, x - (card.left + card.width));
+    const dy = Math.max(card.top - y, 0, y - (card.top + card.height));
+    const distance = dx * dx + dy * dy;
+    if (distance < bestDistance) {
+      best = card;
+      bestDistance = distance;
+    }
+  }
+  return best;
 }
 
 /** An empty run of cells the dragged card fits in, measured on screen. */
@@ -417,236 +441,6 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     else window.location.hash = route;
   };
 
-  // Leads group items calculation
-  const leadGroupItems = useMemo<StatusStatItem[]>(() => {
-    if (!leads || leads.length === 0) return [];
-    const stages =
-      pipelineStages && pipelineStages.length > 0
-        ? pipelineStages
-        : Array.from(new Set(leads.map((l) => l.status || "new")));
-    const stageGroups = leadStageGroups || {};
-    const stateParents = leadStateParents || {};
-
-    const activeStates = stages.filter(
-      (s) =>
-        !stateParents[s.toLowerCase()] &&
-        !isClosedLeadState(s, stageGroups, stateParents)
-    );
-
-    return activeStates.map((state) => {
-      const stateLower = state.toLowerCase();
-      const leadsInState = leads.filter((l) => {
-        const sKey = (l.status || "").toLowerCase();
-        const parent = stateParents[sKey];
-        const target = parent ? parent.toLowerCase() : sKey;
-        return target === stateLower;
-      });
-
-      const val = leadsInState.reduce(
-        (sum, l) => sum + (Number(l.value) || 0),
-        0
-      );
-      const col =
-        leadStateColors?.[stateLower] || leadStateColors?.[state] || "#3b82f6";
-
-      const rows: StatusStatDetailRow[] = leadsInState.map((l) => {
-        const lVal = Number(l.value) || 0;
-        return {
-          id: l.id,
-          name: l.name || `Lead #${l.id}`,
-          clientName: l.contactPerson || l.name,
-          manager: l.owner,
-          division: l.division,
-          date: l.createdAt ? new Date(l.createdAt).toLocaleDateString() : undefined,
-          totalBudget: lVal,
-          invoiced: 0,
-          invoicable: lVal,
-          type: "lead",
-          url: `#leads?lead=${encodeURIComponent(l.id)}`,
-        };
-      });
-
-      return {
-        key: stateLower,
-        name: state.toUpperCase(),
-        value: val,
-        count: leadsInState.length,
-        color: col,
-        rows,
-      };
-    });
-  }, [leads, pipelineStages, leadStageGroups, leadStateParents, leadStateColors]);
-
-  // Projects group items calculation
-  const projectGroupItems = useMemo<StatusStatItem[]>(() => {
-    if (!projects || projects.length === 0) {
-      return [];
-    }
-
-    const activeStatuses: ProjectStatus[] = openProjectStatuses(projectStatuses);
-
-    let totalProjectBudgetValue = 0;
-    let totalInvoicedValue = 0;
-
-    return activeStatuses.map((status) => {
-      const projectsInStatus = projects.filter((p) => p.status === status);
-      let statusInvoicableVal = 0;
-      let statusTotalBudgetValue = 0;
-      let statusTotalInvoicedValue = 0;
-      const statusRows: StatusStatDetailRow[] = [];
-
-      projectsInStatus.forEach((p) => {
-        const pType = (projectTypes || []).find((t) => t.id === p.projectTypeId);
-        const moneyAttrs =
-          pType?.attributes?.filter((a) => a.type === "money") || [];
-        let pVal = 0;
-        let hasMoneyVal = false;
-        if (p.value !== undefined && p.value !== null && Number.isFinite(Number(p.value)) && Number(p.value) > 0) {
-          pVal = Number(p.value);
-          hasMoneyVal = true;
-        }
-        if (!hasMoneyVal) {
-          for (const attr of moneyAttrs) {
-            const raw = p.data?.[attr.id];
-            if (
-              raw !== undefined &&
-              raw !== null &&
-              !isMoneyValueEmpty(raw, defaultCurrency)
-            ) {
-              const parsed = parseMoneyValue(raw, defaultCurrency);
-              if (parsed.amount) {
-                pVal += parsed.amount;
-                hasMoneyVal = true;
-              }
-            }
-          }
-        }
-        if (!hasMoneyVal && p.leadId && leads) {
-          const pairedLead = leads.find((l) => l.id === p.leadId);
-          if (pairedLead?.value) {
-            pVal = Number(pairedLead.value) || 0;
-            hasMoneyVal = true;
-          }
-        }
-        if (!hasMoneyVal && p.budget) {
-          pVal = Number(p.budget) || 0;
-        }
-
-        // Calculate invoiced on this project
-        let pInvoiced = 0;
-        if (financialRecords && financialRecords.length > 0) {
-          const pFinRecords = financialRecords.filter(
-            (r) => r.projectId === p.id && r.type === "income"
-          );
-          pInvoiced = pFinRecords.reduce(
-            (sum, r) =>
-              sum + (Number(r.amountReal) || Number(r.amountPlanned) || 0),
-            0
-          );
-        } else if (invoicesOffers && invoicesOffers.length > 0) {
-          const pInvoices = invoicesOffers.filter(
-            (io) =>
-              p.leadId &&
-              io.leadId === p.leadId &&
-              io.type === "invoice" &&
-              io.status !== "cancelled"
-          );
-          pInvoiced = pInvoices.reduce(
-            (sum, io) => sum + (Number(io.totalPrice) || 0),
-            0
-          );
-        }
-
-        const pInvoicable = Math.max(0, pVal - pInvoiced);
-
-        statusInvoicableVal += pInvoicable;
-        statusTotalBudgetValue += pVal;
-        statusTotalInvoicedValue += pInvoiced;
-
-        totalProjectBudgetValue += pVal;
-        totalInvoicedValue += pInvoiced;
-
-        const leadName =
-          p.leadId && leads ? leads.find((l) => l.id === p.leadId)?.name : undefined;
-
-        statusRows.push({
-          id: p.id,
-          name: p.name || `Project #${p.id}`,
-          clientName: leadName || p.name || `Project #${p.id}`,
-          manager: p.managers?.[0],
-          division: p.division,
-          date: p.createdAt ? new Date(p.createdAt).toLocaleDateString() : undefined,
-          totalBudget: pVal,
-          invoiced: pInvoiced,
-          invoicable: pInvoicable,
-          type: "project",
-          url: `#projects/${encodeURIComponent(p.id)}`,
-        });
-      });
-
-      return {
-        key: status,
-        name: projectStatusLabel(status, t, projectStatuses).toUpperCase(),
-        value: statusInvoicableVal,
-        count: projectsInStatus.length,
-        color: projectStatusColor(status, projectStatuses),
-        totalBudget: statusTotalBudgetValue,
-        invoiced: statusTotalInvoicedValue,
-        rows: statusRows,
-      };
-    });
-  }, [
-    projects,
-    projectTypes,
-    leads,
-    financialRecords,
-    invoicesOffers,
-    defaultCurrency,
-    projectStatuses,
-    t,
-  ]);
-
-  const dashboardEquationGroups: StatusStatGroup[] = useMemo(() => {
-    const list: StatusStatGroup[] = [];
-
-    if (leadGroupItems.length > 0) {
-      list.push({
-        id: "leads",
-        name: t("Sales & Pipeline", "Obchody a Pipeline", "Értékesítés és Pipeline"),
-        subtitle: t(
-          "Active phase values in sales funnel",
-          "Hodnoty aktívnych fáz obchodného lievika",
-          "Aktív értékesítési fázisok"
-        ),
-        icon: Layers,
-        colorTheme: "blue",
-        items: leadGroupItems,
-        unitLabel: t("leads", "leadov", "lead"),
-      });
-    }
-
-    if (projectGroupItems.length > 0) {
-      list.push({
-        id: "projects",
-        name: t("Projects & Deliverables", "Projekty a Realizácie", "Projektek és Kivitelezés"),
-        subtitle: t(
-          "Active project budgets & scopes",
-          "Rozpočty a rozsah aktívnych projektov",
-          "Aktív projektek költségvetése"
-        ),
-        icon: Briefcase,
-        colorTheme: "purple",
-        items: projectGroupItems,
-        unitLabel: t("projects", "projektov", "projekt"),
-      });
-    }
-
-    return list;
-  }, [
-    leadGroupItems,
-    projectGroupItems,
-    t,
-  ]);
   // AI-generated widget titles/column labels come back either as a plain
   // string (legacy panels, or a model that ignored the schema) or as an
   // { en, sk, hu } object — pick the current app language, falling back
@@ -788,6 +582,275 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
       return applySettingsToQuery(w, { ...settingsOfWidget(w), ...override }, currentUserName);
     });
   }, [tempLayout, viewOverrides, currentUserName]);
+
+  // The "Invoicable value by status" widget is drawn from the data this view
+  // already holds, so nothing below is worth computing until one is on the board.
+  const hasEquationWidget = widgets.some((w: any) => rendererOfWidget(w) === "statusEquation");
+
+  // Leads group items calculation. Every phase gets an item, closed ones too:
+  // which of them count is the widget's own setting, not a fixed rule here.
+  const leadGroupItems = useMemo<StatusStatItem[]>(() => {
+    if (!hasEquationWidget) return [];
+    const stages =
+      pipelineStages && pipelineStages.length > 0
+        ? pipelineStages
+        : Array.from(new Set(leads.map((l) => l.status || "new")));
+    const stageGroups = leadStageGroups || {};
+    const stateParents = leadStateParents || {};
+
+    // A sub-state rolls up into its parent phase, so only parents are items.
+    const topLevelStates = stages.filter((s) => !stateParents[s.toLowerCase()]);
+
+    return topLevelStates.map((state) => {
+      const stateLower = state.toLowerCase();
+      const leadsInState = leads.filter((l) => {
+        const sKey = (l.status || "").toLowerCase();
+        const parent = stateParents[sKey];
+        const target = parent ? parent.toLowerCase() : sKey;
+        return target === stateLower;
+      });
+
+      const val = leadsInState.reduce(
+        (sum, l) => sum + (Number(l.value) || 0),
+        0
+      );
+      const col =
+        leadStateColors?.[stateLower] || leadStateColors?.[state] || "#3b82f6";
+
+      const rows: StatusStatDetailRow[] = leadsInState.map((l) => {
+        const lVal = Number(l.value) || 0;
+        return {
+          id: l.id,
+          name: l.name || `Lead #${l.id}`,
+          clientName: l.contactPerson || l.name,
+          manager: l.owner,
+          division: l.division,
+          date: l.createdAt ? new Date(l.createdAt).toLocaleDateString() : undefined,
+          totalBudget: lVal,
+          invoiced: 0,
+          invoicable: lVal,
+          type: "lead",
+          url: `#leads?lead=${encodeURIComponent(l.id)}`,
+        };
+      });
+
+      return {
+        key: stateLower,
+        name: state.toUpperCase(),
+        value: val,
+        count: leadsInState.length,
+        color: col,
+        closed: isClosedLeadState(state, stageGroups, stateParents),
+        rows,
+      };
+    });
+  }, [hasEquationWidget, leads, pipelineStages, leadStageGroups, leadStateParents, leadStateColors]);
+
+  // Projects group items calculation
+  const projectGroupItems = useMemo<StatusStatItem[]>(() => {
+    if (!hasEquationWidget) return [];
+
+    const allStatuses: ProjectStatus[] = projectStatuses.map((def) => def.key);
+
+    let totalProjectBudgetValue = 0;
+    let totalInvoicedValue = 0;
+
+    return allStatuses.map((status) => {
+      const projectsInStatus = projects.filter((p) => p.status === status);
+      let statusInvoicableVal = 0;
+      let statusTotalBudgetValue = 0;
+      let statusTotalInvoicedValue = 0;
+      const statusRows: StatusStatDetailRow[] = [];
+
+      projectsInStatus.forEach((p) => {
+        const pType = (projectTypes || []).find((t) => t.id === p.projectTypeId);
+        const moneyAttrs =
+          pType?.attributes?.filter((a) => a.type === "money") || [];
+        let pVal = 0;
+        let hasMoneyVal = false;
+        if (p.value !== undefined && p.value !== null && Number.isFinite(Number(p.value)) && Number(p.value) > 0) {
+          pVal = Number(p.value);
+          hasMoneyVal = true;
+        }
+        if (!hasMoneyVal) {
+          for (const attr of moneyAttrs) {
+            const raw = p.data?.[attr.id];
+            if (
+              raw !== undefined &&
+              raw !== null &&
+              !isMoneyValueEmpty(raw, defaultCurrency)
+            ) {
+              const parsed = parseMoneyValue(raw, defaultCurrency);
+              if (parsed.amount) {
+                pVal += parsed.amount;
+                hasMoneyVal = true;
+              }
+            }
+          }
+        }
+        if (!hasMoneyVal && p.leadId && leads) {
+          const pairedLead = leads.find((l) => l.id === p.leadId);
+          if (pairedLead?.value) {
+            pVal = Number(pairedLead.value) || 0;
+            hasMoneyVal = true;
+          }
+        }
+        if (!hasMoneyVal && p.budget) {
+          pVal = Number(p.budget) || 0;
+        }
+
+        // Calculate invoiced on this project
+        let pInvoiced = 0;
+        if (financialRecords && financialRecords.length > 0) {
+          const pFinRecords = financialRecords.filter(
+            (r) => r.projectId === p.id && r.type === "income"
+          );
+          pInvoiced = pFinRecords.reduce(
+            (sum, r) =>
+              sum + (Number(r.amountReal) || Number(r.amountPlanned) || 0),
+            0
+          );
+        } else if (invoicesOffers && invoicesOffers.length > 0) {
+          const pInvoices = invoicesOffers.filter(
+            (io) =>
+              p.leadId &&
+              io.leadId === p.leadId &&
+              io.type === "invoice" &&
+              io.status !== "cancelled"
+          );
+          pInvoiced = pInvoices.reduce(
+            (sum, io) => sum + (Number(io.totalPrice) || 0),
+            0
+          );
+        }
+
+        const pInvoicable = Math.max(0, pVal - pInvoiced);
+
+        statusInvoicableVal += pInvoicable;
+        statusTotalBudgetValue += pVal;
+        statusTotalInvoicedValue += pInvoiced;
+
+        totalProjectBudgetValue += pVal;
+        totalInvoicedValue += pInvoiced;
+
+        const leadName =
+          p.leadId && leads ? leads.find((l) => l.id === p.leadId)?.name : undefined;
+
+        statusRows.push({
+          id: p.id,
+          name: p.name || `Project #${p.id}`,
+          clientName: leadName || p.name || `Project #${p.id}`,
+          manager: p.managers?.[0],
+          division: p.division,
+          date: p.createdAt ? new Date(p.createdAt).toLocaleDateString() : undefined,
+          totalBudget: pVal,
+          invoiced: pInvoiced,
+          invoicable: pInvoicable,
+          type: "project",
+          url: `#projects/${encodeURIComponent(p.id)}`,
+        });
+      });
+
+      return {
+        key: status,
+        name: projectStatusLabel(status, t, projectStatuses).toUpperCase(),
+        value: statusInvoicableVal,
+        count: projectsInStatus.length,
+        color: projectStatusColor(status, projectStatuses),
+        closed: isClosedProjectStatus(status, projectStatuses),
+        totalBudget: statusTotalBudgetValue,
+        invoiced: statusTotalInvoicedValue,
+        rows: statusRows,
+      };
+    });
+  }, [
+    hasEquationWidget,
+    projects,
+    projectTypes,
+    leads,
+    financialRecords,
+    invoicesOffers,
+    defaultCurrency,
+    projectStatuses,
+    t,
+  ]);
+
+  const dashboardEquationGroups: StatusStatGroup[] = useMemo(() => {
+    const list: StatusStatGroup[] = [];
+
+    if (leadGroupItems.length > 0) {
+      list.push({
+        id: "leads",
+        name: t("Sales & Pipeline", "Obchody a Pipeline", "Értékesítés és Pipeline"),
+        subtitle: t(
+          "Active phase values in sales funnel",
+          "Hodnoty aktívnych fáz obchodného lievika",
+          "Aktív értékesítési fázisok"
+        ),
+        icon: Layers,
+        colorTheme: "blue",
+        items: leadGroupItems,
+        unitLabel: t("leads", "leadov", "lead"),
+      });
+    }
+
+    if (projectGroupItems.length > 0) {
+      list.push({
+        id: "projects",
+        name: t("Projects & Deliverables", "Projekty a Realizácie", "Projektek és Kivitelezés"),
+        subtitle: t(
+          "Active project budgets & scopes",
+          "Rozpočty a rozsah aktívnych projektov",
+          "Aktív projektek költségvetése"
+        ),
+        icon: Briefcase,
+        colorTheme: "purple",
+        items: projectGroupItems,
+        unitLabel: t("projects", "projektov", "projekt"),
+      });
+    }
+
+    return list;
+  }, [
+    leadGroupItems,
+    projectGroupItems,
+    t,
+  ]);
+
+  /**
+   * What one statusEquation widget sums: every group, minus the phases and
+   * statuses its own settings leave out. A group left with nothing is dropped.
+   */
+  const equationGroupsFor = (widget: any): StatusStatGroup[] => {
+    const settings = settingsOfWidget(widget);
+    return dashboardEquationGroups
+      .map((group) => {
+        const picked = group.id === "leads" ? settings.excludedLeadStatuses : settings.excludedProjectStatuses;
+        const out = excludedStatusKeys(group.items, picked);
+        return { ...group, items: group.items.filter((item) => !out.has(item.key)) };
+      })
+      .filter((group) => group.items.length > 0);
+  };
+
+  /** Every phase and status, closed ones included — what the widget's settings offer to exclude. */
+  const equationOptionGroups = dashboardEquationGroups.map((group) => ({
+    id: group.id,
+    label:
+      group.id === "leads"
+        ? t("Lead phases", "Fázy leadov", "Lead fázisok")
+        : t("Project statuses", "Stavy projektov", "Projektállapotok"),
+    settingKey: (group.id === "leads" ? "excludedLeadStatuses" : "excludedProjectStatuses") as
+      | "excludedLeadStatuses"
+      | "excludedProjectStatuses",
+    options: group.items.map(
+      (item): EquationStatusOption => ({
+        key: item.key,
+        label: item.name,
+        color: item.color || "#64748b",
+        closed: !!item.closed
+      })
+    )
+  }));
 
   // Load data for all widgets in the layout. A `tabs` widget holds one query per
   // tab rather than a single query of its own, so results are keyed by a data key
@@ -1201,21 +1264,17 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     const covers = (zone: BoardRect, x: number, y: number) =>
       x >= zone.left && x <= zone.left + zone.width && y >= zone.top && y <= zone.top + zone.height;
 
-    const onMove = (event: PointerEvent) => {
-      const session = dragRef.current;
-      if (!session) return;
+    const scroller = grid?.closest<HTMLElement>(".workspace") || null;
+    const pointer = { x: 0, y: 0, known: false };
+    let frame = 0;
 
-      session.x = event.clientX - session.grabX;
-      session.y = event.clientY - session.grabY;
-      if (node) {
-        node.style.transform =
-          `translate3d(${session.x - session.originX}px, ${session.y - session.originY}px, 0)`;
-      }
-      if (!grid) return;
+    const hover = () => {
+      const session = dragRef.current;
+      if (!session || !grid || !pointer.known) return;
 
       const bounds = grid.getBoundingClientRect();
-      const x = event.clientX - bounds.left;
-      const y = event.clientY - bounds.top;
+      const x = pointer.x - bounds.left;
+      const y = pointer.y - bounds.top;
 
       const zone = session.zones.findIndex(candidate => covers(candidate, x, y));
       if (zone !== -1) {
@@ -1226,12 +1285,43 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
         return;
       }
 
-      const card = session.cards.find(candidate => covers(candidate, x, y));
+      // Not over a card or an empty cell: the pointer is in a gutter, in the
+      // margin around the board, or above its first row. None of those should
+      // be a dead spot — least of all the strip above the top row, which is the
+      // only way to get a tall card to the very top — so the nearest card
+      // takes it, and anything above the first row means "before everything".
+      const card =
+        session.cards.find(candidate => covers(candidate, x, y)) ||
+        nearestCard(session.cards, x, y);
       session.dropIndex = null;
       session.dropCardId = card ? card.id : null;
       setActiveZone(null);
       setDragOverWidgetId(card ? card.id : null);
     };
+
+    const onMove = (event: PointerEvent) => {
+      const session = dragRef.current;
+      if (!session) return;
+
+      pointer.x = event.clientX;
+      pointer.y = event.clientY;
+      pointer.known = true;
+      session.x = event.clientX - session.grabX;
+      session.y = event.clientY - session.grabY;
+      if (node) {
+        node.style.transform =
+          `translate3d(${session.x - session.originX}px, ${session.y - session.originY}px, 0)`;
+      }
+      hover();
+    };
+
+    // `useDragAutoScroll` scrolls the board while a card is held near an edge.
+    // The pointer has not moved, but the board under it has, so what it is
+    // hovering has to be worked out again.
+    const onScroll = () => {
+      if (!frame) frame = requestAnimationFrame(() => { frame = 0; hover(); });
+    };
+    scroller?.addEventListener("scroll", onScroll, { passive: true });
 
     const settle = (commit: boolean) => {
       const session = dragRef.current;
@@ -1284,6 +1374,8 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     document.body.style.userSelect = "none";
 
     return () => {
+      cancelAnimationFrame(frame);
+      scroller?.removeEventListener("scroll", onScroll);
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerup", onUp);
       window.removeEventListener("pointercancel", onCancel);
@@ -1512,6 +1604,22 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     const section = sectionOfWidget(w);
     const title = displayTitleOf(w);
     const renderer = widgetErrors[w.id] ? null : rendererOfWidget(w);
+
+    // Not in PRESET_RENDERERS: it is fed by the leads, projects and invoices
+    // this view already holds rather than by a query, and a component made
+    // inside this function would remount (and close its drawer) on every render.
+    if (renderer === "statusEquation") {
+      return (
+        <GroupedStatusValueEquationStats
+          groups={equationGroupsFor(w)}
+          currency={currencyCode}
+          language={(systemLanguage as Language) || "sk"}
+          storageKey={`ccrm_dashboard_equation_${w.id}`}
+          embedded={{ title, icon: section.icon, accent: section.accent }}
+        />
+      );
+    }
+
     const Designed = renderer ? PRESET_RENDERERS[renderer] : undefined;
 
     if (Designed) {
@@ -1658,16 +1766,6 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
           )}
         </div>
       </div>
-
-      {/* Combined Grouped Status Equation Statistics (Leads + Projects + Remaining Invoicable) */}
-      {dashboardEquationGroups.length > 0 && (
-        <GroupedStatusValueEquationStats
-          groups={dashboardEquationGroups}
-          currency={currencyCode}
-          language={(systemLanguage as Language) || "sk"}
-          storageKey="ccrm_dashboard_equation_stats"
-        />
-      )}
 
       <div>
         {errorMsg && (
@@ -2042,6 +2140,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
           columnCatalogue={presetOfWidget(settingsWidget)?.columnCatalogue ?? []}
           statusOptions={statusOptionsFor(settingsWidget)}
           statusColors={settingsWidget.query?.action === "recent_tasks" ? taskStateColors : leadStateColors}
+          excludableGroups={rendererOfWidget(settingsWidget) === "statusEquation" ? equationOptionGroups : []}
           canDelete={canDelete}
           t={t}
           typeOptions={EDITABLE_WIDGET_TYPES.map((type) => ({ value: type, label: widgetTypeLabel(type, t) }))}
@@ -2075,6 +2174,7 @@ const widgetTypeLabel = (type: string, t: Translate) => {
     case "timeline": return t("Timeline", "Časová os", "Idővonal");
     case "accordion": return t("Accordion", "Rozbaľovací zoznam", "Harmonika");
     case "tabs": return t("Tabs", "Záložky", "Fülek");
+    case "summary": return t("Summary", "Prehľad", "Összesítő");
     default: return type;
   }
 };

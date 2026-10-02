@@ -16,7 +16,9 @@ export type BuiltinProjectColumnKey =
   | "rating"
   | "deadline"
   | "progress"
-  | "status";
+  | "status"
+  | "value"
+  | "division";
 
 /**
  * The built-in columns, in the order a type that has never been arranged shows
@@ -31,7 +33,15 @@ export const BUILTIN_PROJECT_COLUMNS: readonly BuiltinProjectColumnKey[] = [
   "deadline",
   "progress",
   "status",
+  "value",
+  "division",
 ];
+
+/**
+ * Built-ins that are offered but start switched off, like an attribute: they
+ * widen the table, so they appear only when someone asks for them.
+ */
+export const DEFAULT_HIDDEN_PROJECT_COLUMNS: readonly BuiltinProjectColumnKey[] = ["value", "division"];
 
 /**
  * The project's own name is what identifies the row and opens it, so it is the
@@ -54,6 +64,8 @@ export const BUILTIN_COLUMN_LABELS: Record<BuiltinProjectColumnKey, [string, str
   deadline: ["Deadline", "Termín", "Határidő"],
   progress: ["Progress", "Postup", "Haladás"],
   status: ["Status", "Stav", "Állapot"],
+  value: ["Value", "Hodnota", "Érték"],
+  division: ["Division", "Divízia", "Divízió"],
 };
 
 const ATTRIBUTE_COLUMN_PREFIX = "attr:";
@@ -93,7 +105,8 @@ export interface ResolvedProjectColumn {
  * - A key that is neither a built-in nor one of `attributes` is dropped. That
  *   is a deleted attribute, and its column goes with it.
  * - A built-in missing from the layout is appended **visible**. It is new since
- *   the layout was saved, and a column nobody has ruled on should be shown.
+ *   the layout was saved, and a column nobody has ruled on should be shown —
+ *   except those in {@link DEFAULT_HIDDEN_PROJECT_COLUMNS}, which stay off.
  * - An attribute missing from the layout is appended **hidden**. Adding a field
  *   to a type must not silently widen everyone's table — an attribute becomes a
  *   column only when someone asks for it.
@@ -135,7 +148,7 @@ export function resolveProjectColumns(
   for (const key of BUILTIN_PROJECT_COLUMNS) {
     if (seen.has(key)) continue;
     seen.add(key);
-    out.push({ key, visible: true });
+    out.push({ key, visible: !DEFAULT_HIDDEN_PROJECT_COLUMNS.includes(key) });
   }
 
   for (const attribute of attrs) {

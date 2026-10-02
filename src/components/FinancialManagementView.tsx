@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect, useRef } from "react";
+import React, { useState, useMemo, useEffect, useLayoutEffect, useRef } from "react";
 import {
   Coins, TrendingUp, TrendingDown,
   Plus, Search, Calendar, CheckCircle2,
@@ -9,7 +9,7 @@ import {
   ChevronDown, ChevronUp, ChevronRight,
   CalendarClock, Hourglass, Telescope,
   Landmark, Check, Pencil,
-  CalendarDays, Target, Maximize2, Minimize2,
+  CalendarDays, Target, Maximize2, Minimize2, History,
   ArrowUpRight, ArrowDownRight, ArrowUpDown,
   SlidersHorizontal,
   Copy, Sparkles, UserPlus, ChevronLeft, Settings
@@ -99,11 +99,23 @@ const PROJECTION_HORIZONS: { months: ProjectionMonths; futureWeeks: number }[] =
   { months: 12, futureWeeks: 52 }
 ];
 
-const TREND_PAST_WEEKS = 4;
-const TREND_PAST_MONTHS = 3;
+// Trend graph history spans: how far back the chart reaches. The weekly view
+// shows the same span in whole weeks, mirroring the forecast horizons above.
+type HistoryMonths = 1 | 3 | 6 | 12;
+
+const HISTORY_SPANS: { months: HistoryMonths; pastWeeks: number }[] = [
+  { months: 1, pastWeeks: 4 },
+  { months: 3, pastWeeks: 13 },
+  { months: 6, pastWeeks: 26 },
+  { months: 12, pastWeeks: 52 }
+];
 
 const futureWeeksFor = (months: ProjectionMonths) =>
   PROJECTION_HORIZONS.find((h) => h.months === months)?.futureWeeks ?? 13;
+
+// A stored value outside the offered spans falls back to the default 3 months.
+const historySpanFor = (months: number) =>
+  HISTORY_SPANS.find((h) => h.months === months) ?? HISTORY_SPANS[1];
 
 // Slovak numerals agree with their noun: 2-4 take the nominative plural
 // ("3 mesiace"), 5 and up the genitive ("6 mesiacov").
@@ -140,6 +152,61 @@ const MOVEMENT_STATUS_DOT: Record<FinancialStatus, string> = {
  * already plots its forecast in it — and the dashed left rail plus the tinted,
  * lighter amount carry that through to the row.
  */
+/**
+ * SVG pill that sizes itself to its label. The label's font follows the
+ * per-device View size token, so a hardcoded rect width clips the text.
+ * Anchored at (0,0): `align` picks whether that is the pill's left edge or centre.
+ */
+const SvgTextPill: React.FC<{
+  label: string;
+  align: "start" | "middle";
+  fill: string;
+  fillOpacity?: number;
+  stroke?: string;
+  textFill: string;
+  height?: number;
+}> = ({ label, align, fill, fillOpacity = 1, stroke, textFill, height = 20 }) => {
+  const textRef = useRef<SVGTextElement>(null);
+  const [textWidth, setTextWidth] = useState(0);
+  useLayoutEffect(() => {
+    const w = textRef.current?.getBBox().width;
+    if (w && Math.abs(w - textWidth) > 0.5) setTextWidth(w);
+  }, [label, textWidth]);
+  const padX = 10;
+  const w = textWidth + padX * 2;
+  const left = align === "middle" ? -w / 2 : 0;
+  return (
+    <g>
+      {textWidth > 0 && (
+        <rect
+          x={left}
+          y={-height / 2}
+          width={w}
+          height={height}
+          rx={height / 2}
+          fill={fill}
+          fillOpacity={fillOpacity}
+          stroke={stroke}
+          strokeWidth={stroke ? 1 : 0}
+        />
+      )}
+      <text
+        ref={textRef}
+        x={left + w / 2}
+        y="0"
+        dy="0.35em"
+        textAnchor="middle"
+        fill={textFill}
+        style={{ fontSize: "var(--text-micro)" }}
+        fontWeight="900"
+        letterSpacing="0.04em"
+      >
+        {label}
+      </text>
+    </g>
+  );
+};
+
 const FORECAST_ROW_CLASS =
   "bg-violet-50/70 hover:bg-violet-100/70 border-l-[3px] border-dashed border-l-violet-400 transition-colors group";
 
@@ -2113,6 +2180,12 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
   // DB-backed for the same reason as trendMode above.
   const [projectionMonths, setProjectionMonths] = useUserPref("financialProjectionMonths");
 
+  // How far back the trend graph reaches: 1, 3, 6 or 12 months.
+  const [historyMonthsPref, setHistoryMonths] = useUserPref("financialHistoryMonths");
+  const historySpan = historySpanFor(historyMonthsPref);
+  const TREND_PAST_MONTHS = historySpan.months;
+  const TREND_PAST_WEEKS = historySpan.pastWeeks;
+
   // Whether a payment's status can be changed straight from its ledger row. The
   // switch lives in Settings → Finance; without edit rights it is moot, since
   // there is nothing to change.
@@ -2481,7 +2554,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     }
 
     return buckets;
-  }, [financialRecords, weeklyBankBalances, defaultBankBalance, projectionFutureWeeks]);
+  }, [financialRecords, weeklyBankBalances, defaultBankBalance, projectionFutureWeeks, TREND_PAST_WEEKS]);
 
   // Monthly dataset: TREND_PAST_MONTHS past months + current month + projectionMonths future months
   const monthlyTrendData = useMemo(() => {
@@ -2733,7 +2806,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     }
 
     return buckets;
-  }, [financialRecords, weeklyBankBalances, defaultBankBalance, projectionMonths, userLanguage, weeklyTrendData]);
+  }, [financialRecords, weeklyBankBalances, defaultBankBalance, projectionMonths, TREND_PAST_MONTHS, userLanguage, weeklyTrendData]);
 
   // Active dataset for the trend visualization (either weekly or monthly resolution)
   const trendData = activeResolution === "month" ? monthlyTrendData : weeklyTrendData;
@@ -4682,6 +4755,37 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   </button>
                 </div>
 
+                {/* History Pill: how far back the chart reaches */}
+                <div className="bg-slate-100  p-1 rounded-2xl flex items-center gap-1 border border-slate-200/80 ">
+                  <span className="pl-2 pr-1 type-overline text-slate-400  flex items-center gap-1">
+                    <History className="h-3.5 w-3.5" />
+                    {t("History", "História", "Előzmények")}
+                  </span>
+                  {HISTORY_SPANS.map((h) => (
+                    <button
+                      key={h.months}
+                      type="button"
+                      onClick={() => {
+                        setHoveredWeekIdx(null);
+                        setHistoryMonths(h.months);
+                      }}
+                      title={t(
+                        `Show ${h.months === 1 ? "1 month" : `${h.months} months`} back (${h.pastWeeks} past weeks)`,
+                        `Zobraziť ${h.months === 1 ? "1 mesiac" : skMonths(h.months)} dozadu (${h.pastWeeks} minulých týždňov)`,
+                        `${h.months} hónap visszamenőleg (${h.pastWeeks} múltbeli hét)`
+                      )}
+                      aria-pressed={historySpan.months === h.months}
+                      className={`px-3 py-1.5 rounded-xl text-ui font-bold transition-all cursor-pointer ${
+                        historySpan.months === h.months
+                          ? "bg-white  text-indigo-600  shadow-sm border border-slate-200/80 "
+                          : "text-slate-600  hover:text-slate-900 "
+                      }`}
+                    >
+                      {t(`${h.months}M`, `${h.months}M`, `${h.months}H`)}
+                    </button>
+                  ))}
+                </div>
+
                 {/* Forecast Horizon Pill: whether the projection runs, and how far forward */}
                 <div className="bg-slate-100  p-1 rounded-2xl flex items-center gap-1 border border-slate-200/80 ">
                   <span className="pl-2 pr-1 type-overline text-slate-400  flex items-center gap-1">
@@ -4716,56 +4820,6 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   ))}
                 </div>
               </div>
-            </div>
-
-            {/* 2. Chart Legend Strip */}
-            <div className="flex flex-wrap items-center justify-between gap-3 text-caption font-bold">
-              <div className="flex flex-wrap items-center gap-3">
-                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50  text-emerald-700  rounded-lg border border-emerald-200 ">
-                  <span className="h-3 w-3 rounded-sm bg-emerald-500" />
-                  <span>{t("Income (Bar)", "Príjmy (Stĺpec)", "Bevétel (Oszlop)")}</span>
-                </div>
-                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-rose-50  text-rose-700  rounded-lg border border-rose-200 ">
-                  <span className="h-3 w-3 rounded-sm bg-rose-500" />
-                  <span>{t("Expense (Bar)", "Výdavky (Stĺpec)", "Kiadás (Oszlop)")}</span>
-                </div>
-                {trendMode === "cumulative" ? (
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50  text-emerald-700  rounded-lg border border-emerald-200  shadow-sm">
-                    <span className="h-3 w-3 rounded-full bg-emerald-500 ring-2 ring-emerald-300 " />
-                    <span>{t("🏦 Total Available Bank Funds (Plotline)", "🏦 Zostatok na účte / Disponibilné financie (Krivka)", "🏦 Bankszámla egyenleg (Vonal)")}</span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-purple-50  text-purple-700  rounded-lg border border-purple-200  shadow-sm">
-                    <span className="h-3 w-3 rounded-full bg-purple-600 ring-2 ring-purple-300 " />
-                    <span>
-                      {activeResolution === "month"
-                        ? t("Monthly Net Difference / Flow (Plotline)", "Mesačný čistý zisk / Tok (Krivka)", "Havi nettó különbözet (Vonal)")
-                        : t("Weekly Net Difference / Flow (Plotline)", "Týždenný čistý zisk / Tok (Krivka)", "Heti nettó különbözet (Vonal)")}
-                    </span>
-                  </div>
-                )}
-                <div className="flex items-center gap-1.5 px-2.5 py-1 bg-amber-50  text-amber-700  rounded-lg border border-amber-200 ">
-                  <Target className="h-3.5 w-3.5 text-amber-500" />
-                  <span>
-                    {activeResolution === "month"
-                      ? t("🎯 Reconciled Monthly Anchor", "🎯 Manuálne overený mesačný stav", "🎯 Manuálisan rögzített hónap")
-                      : t("🎯 Reconciled Weekly Anchor", "🎯 Manuálne overený stav", "🎯 Manuálisan rögzített hét")}
-                  </span>
-                </div>
-                {projectionMonths > 0 && (
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 bg-slate-100  text-slate-600  rounded-lg border border-slate-200 ">
-                    <span className="h-2.5 w-2.5 rounded-full bg-indigo-400 animate-ping" />
-                    <span>{t(`Future ${projectionMonths}-Mo Window`, `${projectionMonths}-Mesačné okno`, `${projectionMonths} Hónapos ablak`)}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Quick interactive hint */}
-              <span className="text-micro text-slate-400 italic">
-                {activeResolution === "month"
-                  ? t("💡 Click on any month column or node to calibrate its bank balance independently", "💡 Kliknutím na stĺpec alebo bod ľubovoľného mesiaca nastavíte jeho zostatok na účte", "💡 Kattintson bármelyik hónap oszlopára vagy pontjára a havi egyenleg beállításához")
-                  : t("💡 Click on any week column or node to calibrate its bank balance independently", "💡 Kliknutím na stĺpec alebo bod ľubovoľného týždňa nastavíte jeho zostatok na účte", "💡 Kattintson bármelyik hét oszlopára alebo pontjára a heti egyenleg beállításához")}
-              </span>
             </div>
 
             {/* 3. Interactive SVG Hybrid Visualization */}
@@ -4835,7 +4889,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               const hasForecast = firstFutureIdx >= 0;
               const futureStartX = firstFutureIdx >= 0
                 ? startX + firstFutureIdx * stepX
-                : (currentPeriodIdx >= 0 ? startX + (currentPeriodIdx + 1) * stepX : startX + 4 * stepX);
+                : (currentPeriodIdx >= 0 ? startX + (currentPeriodIdx + 1) * stepX : startX + TREND_PAST_WEEKS * stepX);
 
               // Hovered bucket details
               const activeHoveredBucket = hoveredWeekIdx !== null ? trendData[hoveredWeekIdx] : null;
@@ -4925,30 +4979,18 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                       {/* Label for Future Window */}
                       {hasForecast && svgWidth - futureStartX >= 140 && (
                         <g transform={`translate(${futureStartX + 12}, ${topY - 8})`}>
-                          <rect
-                            x="0"
-                            y="-14"
-                            width={svgWidth - futureStartX >= 220 ? "190" : "130"}
-                            height="20"
-                            rx="10"
-                            fill="#6366f1"
-                            fillOpacity="0.15"
-                            stroke="#6366f1"
-                            strokeWidth="1"
-                          />
-                          <text
-                            x={svgWidth - futureStartX >= 220 ? "95" : "65"}
-                            y="0.5"
-                            textAnchor="middle"
-                            fill="#6366f1"
-                            style={{ fontSize: "var(--text-micro)" }}
-                            fontWeight="900"
-                            letterSpacing="0.04em"
-                          >
-                            {svgWidth - futureStartX >= 220
-                              ? t(`🔮 ${projectionMonths}-MONTH FUTURE FORECAST`, `🔮 ${projectionMonths}-MESAČNÁ PROGNÓZA`, `🔮 ${projectionMonths} HÓNAPOS ELŐREJELZÉS`)
-                              : t(`🔮 +${projectionMonths}M`, `🔮 +${projectionMonths}M`, `🔮 +${projectionMonths}H`)}
-                          </text>
+                          <g transform="translate(0, -4)">
+                            <SvgTextPill
+                              align="start"
+                              fill="#6366f1"
+                              fillOpacity={0.15}
+                              stroke="#6366f1"
+                              textFill="#6366f1"
+                              label={svgWidth - futureStartX >= 220
+                                ? t(`🔮 ${projectionMonths}-MONTH FUTURE FORECAST`, `🔮 ${projectionMonths}-MESAČNÁ PROGNÓZA`, `🔮 ${projectionMonths} HÓNAPOS ELŐREJELZÉS`)
+                                : t(`🔮 +${projectionMonths}M`, `🔮 +${projectionMonths}M`, `🔮 +${projectionMonths}H`)}
+                            />
+                          </g>
                         </g>
                       )}
 
@@ -5095,24 +5137,13 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                             {/* Current period highlight badge pill */}
                             {b.isCurrent && (
                               <g transform={`translate(${cx}, ${bottomY + 41})`}>
-                                <rect
-                                  x={activeResolution === "month" ? "-25" : "-19"}
-                                  y="-7"
-                                  width={activeResolution === "month" ? "50" : "38"}
-                                  height="14"
-                                  rx="7"
+                                <SvgTextPill
+                                  align="middle"
                                   fill="#6366f1"
+                                  textFill="#ffffff"
+                                  height={16}
+                                  label={activeResolution === "month" ? t("THIS MO", "TENTO M.", "EZ A HÓ") : t("TODAY", "DNES", "MA")}
                                 />
-                                <text
-                                  y="3.5"
-                                  textAnchor="middle"
-                                  fill="#ffffff"
-                                  style={{ fontSize: "var(--text-micro)" }}
-                                  fontWeight="900"
-                                  letterSpacing="0.04em"
-                                >
-                                  {activeResolution === "month" ? t("THIS MO", "TENTO M.", "EZ A HÓ") : t("TODAY", "DNES", "MA")}
-                                </text>
                               </g>
                             )}
                           </g>
@@ -5207,6 +5238,50 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                       )}
                     </svg>
                   </div>
+
+                {/* 4. Chart Legend Strip — under the chart */}
+                <div className="flex flex-wrap items-center justify-between gap-2 mt-3 text-micro font-bold">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50  text-emerald-700  rounded-lg border border-emerald-200 ">
+                      <span className="h-2.5 w-2.5 rounded-sm bg-emerald-500" />
+                      <span>{t("Income (Bar)", "Príjmy (Stĺpec)", "Bevétel (Oszlop)")}</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 px-2 py-0.5 bg-rose-50  text-rose-700  rounded-lg border border-rose-200 ">
+                      <span className="h-2.5 w-2.5 rounded-sm bg-rose-500" />
+                      <span>{t("Expense (Bar)", "Výdavky (Stĺpec)", "Kiadás (Oszlop)")}</span>
+                    </div>
+                    {trendMode === "cumulative" ? (
+                      <div className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50  text-emerald-700  rounded-lg border border-emerald-200  shadow-sm">
+                        <span className="h-2.5 w-2.5 rounded-full bg-emerald-500 ring-2 ring-emerald-300 " />
+                        <span>{t("🏦 Total Available Bank Funds (Plotline)", "🏦 Zostatok na účte / Disponibilné financie (Krivka)", "🏦 Bankszámla egyenleg (Vonal)")}</span>
+                      </div>
+                    ) : (
+                      <div className="flex items-center gap-1.5 px-2 py-0.5 bg-purple-50  text-purple-700  rounded-lg border border-purple-200  shadow-sm">
+                        <span className="h-2.5 w-2.5 rounded-full bg-purple-600 ring-2 ring-purple-300 " />
+                        <span>
+                          {activeResolution === "month"
+                            ? t("Monthly Net Difference / Flow (Plotline)", "Mesačný čistý zisk / Tok (Krivka)", "Havi nettó különbözet (Vonal)")
+                            : t("Weekly Net Difference / Flow (Plotline)", "Týždenný čistý zisk / Tok (Krivka)", "Heti nettó különbözet (Vonal)")}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-1.5 px-2 py-0.5 bg-amber-50  text-amber-700  rounded-lg border border-amber-200 ">
+                      <Target className="h-3 w-3 text-amber-500" />
+                      <span>
+                        {activeResolution === "month"
+                          ? t("🎯 Reconciled Monthly Anchor", "🎯 Manuálne overený mesačný stav", "🎯 Manuálisan rögzített hónap")
+                          : t("🎯 Reconciled Weekly Anchor", "🎯 Manuálne overený stav", "🎯 Manuálisan rögzített hét")}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Quick interactive hint */}
+                  <span className="text-micro text-slate-400 italic">
+                    {activeResolution === "month"
+                      ? t("💡 Click on any month column or node to calibrate its bank balance independently", "💡 Kliknutím na stĺpec alebo bod ľubovoľného mesiaca nastavíte jeho zostatok na účte", "💡 Kattintson bármelyik hónap oszlopára vagy pontjára a havi egyenleg beállításához")
+                      : t("💡 Click on any week column or node to calibrate its bank balance independently", "💡 Kliknutím na stĺpec alebo bod ľubovoľného týždňa nastavíte jeho zostatok na účte", "💡 Kattintson bármelyik hét oszlopára alebo pontjára a heti egyenleg beállításához")}
+                  </span>
+                </div>
 
                   {/* Dynamic Hover Tooltip Card with Period-Specific Calibrator Action */}
                   {activeHoveredBucket && (

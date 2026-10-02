@@ -1069,6 +1069,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const filteredArchivedTasks = useMemo(() => {
         return tasks.filter((task) => {
             if (!isDoneState(task.status)) return false;
+            if (!matchesClientFilter(task)) return false;
 
             // The archive is a team-wide history: every user sees the completed
             // tasks of the whole team, not just their own. Use the "Completed By"
@@ -1142,6 +1143,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         archiveDateEnd,
         archiveTagFilter,
         unknownCompletedBy,
+        clientFilter,
     ]);
 
     const archivedTasksGroupedByDate = useMemo(() => {
@@ -1166,6 +1168,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const filteredManuallyArchivedTasks = useMemo(() => {
         return tasks.filter((task) => {
             if (!task.archived) return false;
+            if (!matchesClientFilter(task)) return false;
 
             // Search Query
             if (archiveSearchQuery.trim()) {
@@ -1211,6 +1214,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         archiveDateStart,
         archiveDateEnd,
         archiveTagFilter,
+        clientFilter,
     ]);
 
     // Completed tasks land on the archive calendar by their due date, which is
@@ -4643,6 +4647,10 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                     {/* FILTER ROW */}
                     <div className="grid grid-cols-1 ws-sm:grid-cols-5 gap-4 pb-4 border-b border-slate-100 mb-4 shrink-0 text-micro font-bold">
+                        {/* Client / Lead */}
+                        <div className="ws-sm:col-span-5 empty:hidden">
+                            {renderClientFilter("max-w-md")}
+                        </div>
                         {/* Search */}
                         <div className="space-y-1">
                             <label className="type-overline text-slate-400">

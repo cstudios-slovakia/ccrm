@@ -26,6 +26,7 @@ import {
   type WidgetSettings,
   type WidgetSize
 } from "../../utils/dashboardWidgets";
+import { excludedStatusKeys, toggleExcludedStatus, type EquationStatusOption } from "../../utils/statusEquation";
 import { SegmentedToggle, colorForStatus, type Translate } from "./widgetKit";
 
 const Field: React.FC<{ label: string; aside?: React.ReactNode; children: React.ReactNode }> = ({
@@ -75,6 +76,17 @@ export const WidgetSettingsDrawer: React.FC<{
   /** Phases or task states this widget can be narrowed to; empty hides the picker. */
   statusOptions: string[];
   statusColors: Record<string, string> | null;
+  /**
+   * The status-value equation: every phase and status it can sum, closed ones
+   * included, each group stored under its own settings key. Empty for any other
+   * widget.
+   */
+  excludableGroups: {
+    id: string;
+    label: string;
+    settingKey: "excludedLeadStatuses" | "excludedProjectStatuses";
+    options: EquationStatusOption[];
+  }[];
   canDelete: boolean;
   t: Translate;
   /** An AI-generated widget has no fixed shape, so it can be re-pointed. */
@@ -99,6 +111,7 @@ export const WidgetSettingsDrawer: React.FC<{
   columnCatalogue,
   statusOptions,
   statusColors,
+  excludableGroups,
   canDelete,
   t,
   typeOptions,
@@ -393,6 +406,79 @@ export const WidgetSettingsDrawer: React.FC<{
               </div>
             </Field>
           )}
+
+          {excludableGroups.length > 0 && (
+            <p className="shrink-0 m-0 -mb-2 text-caption font-semibold text-slate-500 leading-relaxed">
+              {t(
+                "Statuses switched off are left out of every sum in this widget. Closed ones start switched off.",
+                "Vypnuté stavy sa do súčtov v tomto module nezapočítavajú. Uzavreté stavy sú predvolene vypnuté.",
+                "A kikapcsolt állapotok nem számítanak bele a modul összegeibe. A lezártak alapból ki vannak kapcsolva."
+              )}
+            </p>
+          )}
+
+          {excludableGroups.map((group) => {
+            const picked = settings[group.settingKey];
+            const excluded = excludedStatusKeys(group.options, picked);
+            const counted = group.options.filter((option) => !excluded.has(option.key)).length;
+            return (
+              <Field
+                key={group.id}
+                label={`${t("Count", "Započítať", "Beszámít")}: ${group.label}`}
+                aside={`${counted} ${t("of", "zo", "/")} ${group.options.length}`}
+              >
+                <div className="flex flex-wrap gap-1.5">
+                  {group.options.map((option) => {
+                    const on = !excluded.has(option.key);
+                    return (
+                      <button
+                        key={option.key}
+                        type="button"
+                        aria-pressed={on}
+                        title={
+                          option.closed
+                            ? t("Closed status", "Uzavretý stav", "Lezárt állapot")
+                            : undefined
+                        }
+                        onClick={() =>
+                          onSettings({ [group.settingKey]: toggleExcludedStatus(group.options, picked, option.key) })
+                        }
+                        className={cn(
+                          "flex items-center gap-1.5 h-7.5 px-2.5 rounded-lg text-ui font-bold transition-colors cursor-pointer",
+                          on ? "border" : "bg-white border border-dashed border-slate-300 text-slate-500 hover:text-slate-700"
+                        )}
+                        style={
+                          on
+                            ? {
+                                backgroundColor: `${option.color}1a`,
+                                borderColor: `${option.color}55`,
+                                color: liftAccent(option.color)
+                              }
+                            : undefined
+                        }
+                      >
+                        {on ? (
+                          <Check className="h-3 w-3 shrink-0" strokeWidth={3} />
+                        ) : (
+                          <span className="w-1.75 h-1.75 rounded-full shrink-0" style={{ backgroundColor: option.color }} />
+                        )}
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+                {picked !== undefined && (
+                  <button
+                    type="button"
+                    onClick={() => onSettings({ [group.settingKey]: undefined })}
+                    className="self-start text-caption font-bold text-indigo-600 hover:text-indigo-800 cursor-pointer"
+                  >
+                    {t("Back to default (closed left out)", "Späť na predvolené (bez uzavretých)", "Vissza az alapra (lezártak nélkül)")}
+                  </button>
+                )}
+              </Field>
+            );
+          })}
 
           {isTable && (
             <Field

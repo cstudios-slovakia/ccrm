@@ -12,6 +12,18 @@ export interface DropdownOption {
   disabled?: boolean;
   /** Text the search box matches against — needed when `label` is not a plain string. */
   searchText?: string;
+  /** Section this option belongs to — an id from the `groups` prop. Left out, it sits above every section. */
+  group?: string;
+  /** Hidden while the same value is on screen in this other section, so a record paged into one is not repeated in the next. */
+  hideIfShownIn?: string;
+}
+
+/** A labelled section of the list, optionally showing only a page at a time. */
+export interface DropdownGroup {
+  id: string;
+  label: string;
+  /** Rows shown at first, and added by each press of the "show more" button. Left out, the whole section shows. */
+  pageSize?: number;
 }
 
 type RawOption = DropdownOption | string;
@@ -32,6 +44,10 @@ interface CustomSelectProps {
   /** Search box at the top of the panel. Defaults to on once the list is long enough to be worth filtering. */
   searchable?: boolean;
   searchPlaceholder?: string;
+  /** Sections the options are split into, in display order. */
+  groups?: DropdownGroup[];
+  /** Label of a section's "show more" button; gets the number of rows it will add. */
+  moreLabel?: (count: number) => string;
   /** Action button beside the search box — "add a new one" for the thing being picked. Only shown with the search box. */
   onAddNew?: () => void;
   /** Tooltip/aria label of the add-new button. */
@@ -77,9 +93,9 @@ const PANEL_Z = 100001;
 
 /** The select is a leaf reused across trees that do not pass the language down. */
 const SEARCH_COPY = {
-  en: { search: "Search...", noMatches: "No matches", noOptions: "No options", addNew: "Add new" },
-  sk: { search: "Hľadať...", noMatches: "Žiadne výsledky", noOptions: "Žiadne možnosti", addNew: "Pridať nový" },
-  hu: { search: "Keresés...", noMatches: "Nincs találat", noOptions: "Nincs lehetőség", addNew: "Új hozzáadása" },
+  en: { search: "Search...", noMatches: "No matches", noOptions: "No options", addNew: "Add new", more: "Show {n} more" },
+  sk: { search: "Hľadať...", noMatches: "Žiadne výsledky", noOptions: "Žiadne možnosti", addNew: "Pridať nový", more: "Zobraziť ďalších {n}" },
+  hu: { search: "Keresés...", noMatches: "Nincs találat", noOptions: "Nincs lehetőség", addNew: "Új hozzáadása", more: "Még {n} megjelenítése" },
 } as const;
 
 /**
@@ -155,6 +171,8 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   unstyled = false,
   searchable,
   searchPlaceholder,
+  groups,
+  moreLabel,
   onAddNew,
   addNewLabel,
   addNewIcon,
@@ -164,6 +182,8 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   const [highlighted, setHighlighted] = useState(0);
   const [coords, setCoords] = useState<Coords | null>(null);
   const [query, setQuery] = useState("");
+  // Extra pages revealed per section; reset when the panel opens or the search changes.
+  const [extraPages, setExtraPages] = useState<Record<string, number>>({});
   const triggerRef = useRef<HTMLButtonElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -173,7 +193,27 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   const showSearch = searchable ?? allOpts.length >= SEARCH_THRESHOLD;
   const copy = SEARCH_COPY[getStoredLanguage()];
   const needle = showSearch ? foldText(query.trim()) : "";
-  const opts = needle ? allOpts.filter((o) => foldText(optionSearchText(o)).includes(needle)) : allOpts;
+  const matching = needle ? allOpts.filter((o) => foldText(optionSearchText(o)).includes(needle)) : allOpts;
+
+  // With sections, the visible rows are the ungrouped ones, then each section's
+  // current page. `opts` stays the flat list of what is on screen, because the
+  // keyboard walks it by index.
+  const ungrouped = groups ? matching.filter((o) => !groups.some((g) => g.id === o.group)) : [];
+  const sections = groups
+    ? (() => {
+        const shownIn = new Map<string, Set<string>>();
+        return groups.map((g) => {
+          const items = matching.filter(
+            (o) => o.group === g.id && !(o.hideIfShownIn && shownIn.get(o.hideIfShownIn)?.has(o.value)),
+          );
+          const limit = g.pageSize ? g.pageSize * (1 + (extraPages[g.id] ?? 0)) : items.length;
+          const visible = items.slice(0, limit);
+          shownIn.set(g.id, new Set(visible.map((o) => o.value)));
+          return { group: g, visible, hidden: items.length - visible.length };
+        });
+      })()
+    : null;
+  const opts = sections ? [...ungrouped, ...sections.flatMap((s) => s.visible)] : matching;
 
   const updatePosition = () => {
     const el = triggerRef.current;
@@ -255,6 +295,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   useEffect(() => {
     if (isOpen) {
       setQuery("");
+      setExtraPages({});
       const idx = allOpts.findIndex((o) => o.value === value);
       setHighlighted(idx >= 0 ? idx : 0);
     }
@@ -405,6 +446,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                     value={query}
                     onChange={(next) => {
                       setQuery(next);
+                      setExtraPages({});
                       setHighlighted(0);
                     }}
                     onKeyDown={handleSearchKeyDown}
@@ -432,33 +474,66 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                       {needle ? copy.noMatches : copy.noOptions}
                     </div>
                   )}
-                  {opts.map((opt, i) => (
-                    <button
-                      key={opt.value}
-                      type="button"
-                      role="option"
-                      aria-selected={opt.value === value}
-                      disabled={opt.disabled}
-                      onMouseEnter={() => setHighlighted(i)}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        pick(opt);
-                      }}
-                      className={`w-full flex items-center gap-2 px-3.5 py-2.5 text-left text-body font-medium transition-colors cursor-pointer ${
-                        opt.disabled
-                          ? "opacity-40 cursor-not-allowed"
-                          : opt.value === value
-                          ? "bg-accent/10 text-accent"
-                          : i === highlighted
-                          ? "bg-slate-50 text-slate-800"
-                          : "text-slate-700"
-                      }`}
-                    >
-                      {opt.icon}
-                      <span className="flex-1 truncate">{opt.label}</span>
-                      {opt.value === value && <Check className="h-3.5 w-3.5 shrink-0 text-accent" />}
-                    </button>
-                  ))}
+                  {(() => {
+                    const renderOption = (opt: DropdownOption, i: number, keyPrefix = "") => (
+                      <button
+                        key={keyPrefix + opt.value}
+                        type="button"
+                        role="option"
+                        aria-selected={opt.value === value}
+                        disabled={opt.disabled}
+                        onMouseEnter={() => setHighlighted(i)}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          pick(opt);
+                        }}
+                        className={`w-full flex items-center gap-2 px-3.5 py-2.5 text-left text-body font-medium transition-colors cursor-pointer ${
+                          opt.disabled
+                            ? "opacity-40 cursor-not-allowed"
+                            : opt.value === value
+                            ? "bg-accent/10 text-accent"
+                            : i === highlighted
+                            ? "bg-slate-50 text-slate-800"
+                            : "text-slate-700"
+                        }`}
+                      >
+                        {opt.icon}
+                        <span className="flex-1 truncate">{opt.label}</span>
+                        {opt.value === value && <Check className="h-3.5 w-3.5 shrink-0 text-accent" />}
+                      </button>
+                    );
+                    if (!sections) return opts.map((opt, i) => renderOption(opt, i));
+                    let index = 0;
+                    return (
+                      <>
+                        {ungrouped.map((opt) => renderOption(opt, index++))}
+                        {sections.map(({ group, visible, hidden }) =>
+                          visible.length === 0 ? null : (
+                            <div key={group.id} role="presentation">
+                              <div className="px-3.5 pb-1 pt-2.5 type-overline text-slate-400">{group.label}</div>
+                              {visible.map((opt) => renderOption(opt, index++, `${group.id}:`))}
+                              {hidden > 0 && group.pageSize && (
+                                <button
+                                  type="button"
+                                  data-testid={`select-more-${group.id}`}
+                                  onMouseDown={(e) => e.preventDefault()}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setExtraPages((prev) => ({ ...prev, [group.id]: (prev[group.id] ?? 0) + 1 }));
+                                  }}
+                                  className="w-full px-3.5 py-2 text-left text-ui font-semibold text-accent transition-colors hover:bg-accent/10 cursor-pointer"
+                                >
+                                  {(moreLabel ?? ((n: number) => copy.more.replace("{n}", String(n))))(
+                                    Math.min(group.pageSize, hidden),
+                                  )}
+                                </button>
+                              )}
+                            </div>
+                          ),
+                        )}
+                      </>
+                    );
+                  })()}
                 </div>
               </motion.div>
           ) : null,

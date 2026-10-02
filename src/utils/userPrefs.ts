@@ -63,6 +63,18 @@ export interface UserPrefs {
    * default layout. Reconciled by resolveProjectColumns() in utils/projectColumns.ts.
    */
   projectsListColumns: ProjectListColumn[] | null;
+  /**
+   * Employees directory: the structure (the hand-set order, drag to rearrange),
+   * a plain table or cards. Same idea as projectsViewMode, so the choice follows
+   * the user to their next device.
+   */
+  employeesViewMode: "structure" | "table" | "cards";
+  /**
+   * Employees directory: the structure — employee ids in the order they were
+   * dragged into. Ids it has never seen (a newly added employee) sit on top; see
+   * applyManualOrder() in utils/projectSort.ts.
+   */
+  employeesOrder: string[];
   /** Leads screen: grouping / sorting. */
   leadsOrderingMode: "state" | "pm" | "created_newest" | "created_oldest" | "size" | "rating";
   /**
@@ -89,6 +101,11 @@ export interface UserPrefs {
    * something a user opts into rather than what the screen is about.
    */
   financialProjectionMonths: 0 | 3 | 6 | 12;
+  /**
+   * Finance trend chart: how far back the history runs, in months. The weekly
+   * view shows the same span in whole weeks (3 months = 13 weeks).
+   */
+  financialHistoryMonths: 1 | 3 | 6 | 12;
   /**
    * Finance movements ledger: edit a payment's status straight from its row.
    * Off (the default) leaves the status as a plain badge and sends every change
@@ -136,6 +153,11 @@ export interface UserPrefs {
   defaultPage: string | null;
   /** Pinned/favorited entities across projects, clients, leads, and custom entries. */
   favorites: FavoriteItem[];
+  /**
+   * Lead / client ids the user picked last in any client dropdown, most recent
+   * first. Feeds the "Recently used" section — see utils/clientPickerGroups.ts.
+   */
+  recentClientIds: string[];
 }
 
 export const DEFAULT_USER_PREFS: UserPrefs = {
@@ -146,12 +168,15 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   projectsViewMode: "list",
   projectsSort: null,
   projectsListColumns: null,
+  employeesViewMode: "table",
+  employeesOrder: [],
   leadsCompactMode: false,
   leadsOrderingMode: "state",
   leadsVisibleStates: null,
   projectsVisibleStatuses: null,
   financialTrendMode: "relative",
   financialProjectionMonths: 0,
+  financialHistoryMonths: 3,
   financialInlineEdit: false,
   financialTrendResolution: "week",
   startMenuLayout: null,
@@ -165,6 +190,7 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   sidebarGroups: null,
   defaultPage: null,
   favorites: [],
+  recentClientIds: [],
 };
 
 /** Anything with a metadata_json blob — UserProfile, or a raw sync.php row. */

@@ -2448,7 +2448,10 @@ ${log.payload || ''}
         setEmployeeVacations(sameOr(data.employeeVacations));
       }
       if (data.employeeSettings !== undefined) {
-        setEmployeeSettings(data.employeeSettings);
+        // sameOr keeps the old reference when nothing changed. A fresh object on
+        // every sync poll re-ran the employee form's init effect and blanked a
+        // half-typed "new employee" form at random.
+        setEmployeeSettings(sameOr(data.employeeSettings));
       }
       // Absent key = a sync.php that predates the trend anchors. Keep whatever
       // is in memory rather than blanking the chart back to the default curve.

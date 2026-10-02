@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { PageHeader } from "../layout";
 import {
   ArrowLeft,
@@ -90,8 +90,15 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
     return en;
   };
 
-  // Populate form on edit or open
+  // Populate the form once per employee (or once for "new"). Re-running on every
+  // `employee`/`settings` identity change — e.g. a background sync — would wipe
+  // whatever the user has typed so far.
+  const initializedForRef = useRef<string | null>(null);
   useEffect(() => {
+    const initKey = employee?.id ?? "__new__";
+    if (initializedForRef.current === initKey) return;
+    initializedForRef.current = initKey;
+
     if (employee) {
       setName(employee.name || "");
       setPin(employee.pin || "");

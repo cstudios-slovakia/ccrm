@@ -830,6 +830,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
      "Custom order" is the one dragged into place (see handleProjectMove).
      The whole list, not just the filtered one, because a drag made while the
      list is filtered still has to leave the hidden projects somewhere. */
+  const sortValueActive = effectiveSort.key === "value";
   const orderedProjects = useMemo(() => {
     const statusOrder = projectStatusOrder(projectStatuses);
     const contactName = (id: string) => leads.find(l => l.id === id)?.name || null;
@@ -855,12 +856,14 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         rating: ratingValue(p.rating) || null,
         deadline: evaluateProjectDeadline(p, pType, today, projectStatuses)?.deadline ?? null,
         progress: pType?.hasGantt && p.gantt && p.gantt.length > 0 ? calculateProgress(p) : null,
+        value: sortValueActive ? (getProjectFinancials(p, pType, leads.find(l => l.id === p.leadId)).totalBudget || null) : null,
+        division: p.division || "",
         statusRank: rank === -1 ? statusOrder.length : rank,
         attributes,
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projects, manualOrder, effectiveSort.key, effectiveSort.direction, projectTypes, projectStatuses, leads, today, sortableAttributes, defaultCurrency]);
+  }, [projects, manualOrder, effectiveSort.key, effectiveSort.direction, projectTypes, projectStatuses, leads, today, sortableAttributes, defaultCurrency, sortValueActive, getProjectFinancials]);
 
   /* Every project in the structure: the hand-set order, whatever the sort says.
      Projects it has never seen (created since the last drag) sit on top. */
@@ -1176,6 +1179,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     { value: "deadline", label: t("Deadline", "Termín", "Határidő") },
     { value: "progress", label: t("Progress", "Postup", "Haladás") },
     { value: "status", label: t("Status", "Stav", "Állapot") },
+    { value: "value", label: t("Value", "Hodnota", "Érték") },
+    { value: "division", label: t("Division", "Divízia", "Divízió") },
     ...sortableAttributes.map(({ key, attribute }) => ({ value: key as ProjectSortKey, label: attribute.name })),
   ];
 
@@ -1454,6 +1459,28 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             {projectStatusLabel(p.status, t, projectStatuses)}
           </span>
         );
+      case "value": {
+        const fin = getProjectFinancials(p, pType, lead);
+        return fin.hasValue
+          ? (
+            <span className="text-ui font-bold text-slate-700 tabular-nums whitespace-nowrap">
+              {formatMoney(fin.totalBudget, fin.currency, userLanguage)}
+            </span>
+          )
+          : emptyCell;
+      }
+      case "division": {
+        if (!p.division) return emptyCell;
+        const color = divisionColors[p.division] || "#3b82f6";
+        return (
+          <span
+            className="px-2 py-0.5 rounded-full text-micro font-bold border whitespace-nowrap"
+            style={{ backgroundColor: `${color}15`, color, borderColor: `${color}30` }}
+          >
+            {p.division}
+          </span>
+        );
+      }
       default:
         return emptyCell;
     }

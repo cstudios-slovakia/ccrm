@@ -20,6 +20,7 @@ import {
   isMoneyValueEmpty,
   parseMoneyValue,
 } from "../utils/currency";
+import { projectBilling, resolveProjectValue } from "../utils/projectBilling";
 import { mergeFinancialRecord, derivePaidDate, FINANCIAL_STATUS_OPTIONS } from "../utils/financialRecordMerge";
 import { splitRecordAmounts } from "../utils/financialOverviewTable";
 import { categoryBreadcrumbs } from "../utils/financialCategoryTree";
@@ -676,51 +677,26 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
   const pairedLead = useMemo(() => leads.find((l) => l.id === associatedLeadId), [leads, associatedLeadId]);
   const firstMoneyAttr = useMemo(() => (projectType?.attributes || []).find((a) => a.type === "money"), [projectType]);
 
-  const projectTotalValue = useMemo(() => {
-    if (project?.value !== undefined && project?.value !== null && Number.isFinite(Number(project.value)) && Number(project.value) > 0) {
-      return Number(project.value);
-    }
-    if (firstMoneyAttr && dynamicData[firstMoneyAttr.id] !== undefined && dynamicData[firstMoneyAttr.id] !== null) {
-      const parsed = parseMoneyValue(dynamicData[firstMoneyAttr.id], defaultCurrency);
-      if (parsed.amount) return parsed.amount;
-    }
-    if (dynamicData._projectValue !== undefined && dynamicData._projectValue !== null && Number.isFinite(Number(dynamicData._projectValue)) && Number(dynamicData._projectValue) > 0) {
-      return Number(dynamicData._projectValue);
-    }
-    if (pairedLead?.value) {
-      return Number(pairedLead.value);
-    }
-    return 0;
-  }, [project?.value, firstMoneyAttr, dynamicData, defaultCurrency, pairedLead]);
+  const projectTotalValue = useMemo(
+    () => resolveProjectValue({ value: project?.value, data: dynamicData, leadId: project?.leadId }, projectType ?? undefined, pairedLead, defaultCurrency).value,
+    [project?.value, project?.leadId, dynamicData, projectType, pairedLead, defaultCurrency],
+  );
 
-  const invoicableAnalysis = useMemo(() => {
-    const total = projectTotalValue;
-    let totalInvoicedOrPlanned = 0;
-    projectInvoices.forEach((r) => {
-      totalInvoicedOrPlanned += (Number(r.amountReal) || Number(r.amountPlanned) || 0);
-    });
-    const remaining = Math.max(0, total - totalInvoicedOrPlanned);
-    const invoicedPct = total > 0 ? (totalInvoicedOrPlanned / total) * 100 : 0;
-    return {
-      total,
-      invoiced: totalInvoicedOrPlanned,
-      remaining,
-      invoicedPct: Math.min(100, invoicedPct),
-      isOverInvoiced: totalInvoicedOrPlanned > total && total > 0,
-    };
-  }, [projectTotalValue, projectInvoices]);
+  /* Value, money received, invoiced-but-unpaid and not-yet-invoiced, split by
+     Finance's own rules (cancelled rows excluded, partly paid rows split). */
+  const billing = useMemo(
+    () => projectBilling(projectTotalValue, financialRecords, project?.id ?? ""),
+    [projectTotalValue, financialRecords, project?.id],
+  );
 
   /* The project/contract value editor on the finance tab: null while closed, the typed amount while open. */
   const [contractValueDraft, setContractValueDraft] = useState<string | null>(null);
   useEffect(() => setContractValueDraft(null), [project?.id]);
 
-  const handleSaveContractValue = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!canEdit || contractValueDraft === null) return;
-    const raw = contractValueDraft.replace(/\s/g, "").replace(",", ".");
-    const value = raw === "" ? 0 : Number(raw);
-    if (!Number.isFinite(value) || value < 0) return;
-    const rounded = Math.round(value * 100) / 100;
+  /* Writes the project value everywhere it lives: the paired lead, the project's
+     data (and its first money attribute) and the project row itself. */
+  const saveProjectValue = (amount: number) => {
+    const rounded = Math.round(amount * 100) / 100;
 
     // 1. Update paired lead if linked
     if (associatedLeadId && setLeads) {
@@ -737,7 +713,89 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     setDynamicData(nextDynamic);
     // Lives on the project, written directly to the database
     handleSave({ value: rounded > 0 ? rounded : null, data: nextDynamic });
+  };
+
+  const handleSaveContractValue = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!canEdit || contractValueDraft === null) return;
+    const raw = contractValueDraft.replace(/\s/g, "").replace(",", ".");
+    const value = raw === "" ? 0 : Number(raw);
+    if (!Number.isFinite(value) || value < 0) return;
+    saveProjectValue(value);
     setContractValueDraft(null);
+  };
+
+  /* "Edit remaining": how much is still to be paid to us. null while closed. A
+     payment is always a NEW paid income row (existing invoices are never
+     touched, so nothing is booked twice); a price change moves the project
+     value to received + the typed amount. */
+  type RemainingEditor = { mode: "payment" | "price"; amount: string; date: string };
+  const [remainingEditor, setRemainingEditor] = useState<RemainingEditor | null>(null);
+  useEffect(() => setRemainingEditor(null), [project?.id]);
+
+  const canRecordPayment = canEditFinance && !!setFinancialRecords;
+  const canEditRemaining = canRecordPayment || canEdit;
+
+  const openRemainingEditor = (mode?: "payment" | "price", amount?: number) => {
+    const m = mode ?? (canRecordPayment ? "payment" : "price");
+    setContractValueDraft(null);
+    setRemainingEditor({ mode: m, amount: String(amount ?? billing.stillToBePaid), date: todayLocal() });
+  };
+
+  /* What Save would do, or why it cannot. */
+  const remainingPlan = useMemo(() => {
+    if (!remainingEditor) return null;
+    const raw = remainingEditor.amount.replace(/\s/g, "").replace(",", ".");
+    const R = raw === "" ? NaN : Number(raw);
+    if (!Number.isFinite(R) || R < 0) return { ok: false as const, kind: "invalid" as const };
+    const rr = Math.round(R * 100) / 100;
+    if (rr < billing.invoicedOpen) return { ok: false as const, kind: "belowOpen" as const, R: rr };
+    if (remainingEditor.mode === "price") {
+      return { ok: true as const, kind: "price" as const, R: rr, newValue: Math.round((billing.received + rr) * 100) / 100 };
+    }
+    const payment = Math.round((billing.stillToBePaid - rr) * 100) / 100;
+    if (payment <= 0) return { ok: false as const, kind: "notLower" as const, R: rr };
+    if (payment > billing.notInvoiced) return { ok: false as const, kind: "tooMuch" as const, R: rr };
+    return { ok: true as const, kind: "payment" as const, R: rr, payment };
+  }, [remainingEditor, billing]);
+
+  const handleSaveRemaining = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!remainingEditor || !remainingPlan?.ok || !project) return;
+    if (remainingPlan.kind === "price") {
+      if (!canEdit) return;
+      saveProjectValue(remainingPlan.newValue);
+      setRemainingEditor(null);
+      return;
+    }
+    if (!canRecordPayment) return;
+    const date = remainingEditor.date && remainingEditor.date <= todayLocal() ? remainingEditor.date : todayLocal();
+    const payload = mergeFinancialRecord(null, {
+      id: `fr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      type: "income",
+      subtype: "regular",
+      title: t("Payment received", "Prijatá platba", "Beérkezett befizetés"),
+      description: null,
+      categoryId: null,
+      categoryPath: null,
+      amountPlanned: remainingPlan.payment,
+      amountReal: remainingPlan.payment,
+      currency: currencyCode || "EUR",
+      status: "paid",
+      issueDate: date,
+      dueDate: null,
+      paidDate: date,
+      invoiceNumber: null,
+      paymentMethod: "bank_transfer",
+      isRecurring: false,
+      projectId: project.id,
+      clientId: associatedClientId || associatedLeadId || null,
+      taxRate: 20,
+      createdBy: (window as any).ccrmCurrentUser?.email || "Admin",
+      createdAt: new Date().toISOString(),
+    });
+    setFinancialRecords!((prev) => [payload, ...prev]);
+    setRemainingEditor(null);
   };
 
   const handleOpenProjectFinModal = (type: FinancialType, record?: FinancialRecord) => {
@@ -833,49 +891,30 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
     setIsFinModalOpen(false);
   };
 
-  /* "Paid in full": settles what is left of the project value in one go, for
-     a project that is not billed invoice by invoice. It is an ordinary income
-     row tied to the project — so the finance module, the client and every
-     overview count it like any other — for the remaining amount only, so a
-     project already partly invoiced lands on exactly 100% rather than over. */
-  const canMarkValuePaid = canEditFinance && !!setFinancialRecords && invoicableAnalysis.remaining > 0;
-
-  const handleMarkValuePaid = () => {
-    if (!canMarkValuePaid || !project) return;
-    const amount = Math.round(invoicableAnalysis.remaining * 100) / 100;
-    if (!confirm(t(
-      `Record a one-time payment of ${money(amount)} and mark the project value as fully paid?`,
-      `Zaznamenať jednorazovú úhradu ${money(amount)} a označiť hodnotu projektu ako plne uhradenú?`,
-      `Rögzít egy ${money(amount)} összegű egyszeri befizetést, és teljesen kifizetettnek jelöli a projekt értékét?`,
-    ))) return;
-
-    const today = todayLocal();
-    const payload = mergeFinancialRecord(null, {
-      id: `fr-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
-      type: "income",
-      subtype: "regular",
-      title: t("Project value — paid in full", "Hodnota projektu — uhradená v plnej výške", "Projekt értéke — teljes kifizetés"),
-      description: null,
-      categoryId: null,
-      categoryPath: null,
-      amountPlanned: amount,
-      amountReal: amount,
-      currency: currencyCode || "EUR",
-      status: "paid",
-      issueDate: today,
-      dueDate: null,
-      paidDate: today,
-      invoiceNumber: null,
-      paymentMethod: "bank_transfer",
-      isRecurring: false,
-      projectId: project.id,
-      clientId: associatedClientId || associatedLeadId || null,
-      taxRate: 20,
-      createdBy: (window as any).ccrmCurrentUser?.email || "Admin",
-      createdAt: new Date().toISOString(),
-    });
-    setFinancialRecords!((prev) => [payload, ...prev]);
+  /* Status labels and badge colours - copied from FinancialManagementView.tsx
+     (movementStatusLabel / movementStatusBadgeClass) so a row reads the same here
+     as in Finance. */
+  const statusLabel = (status: FinancialStatus) => {
+    switch (status) {
+      case "planned": return t("Planned", "Plánované", "Tervezett");
+      case "pending": return t("Pending", "Čaká na úhradu", "Fizetésre vár");
+      case "paid": return t("Paid", "Uhradené", "Fizetve");
+      case "partially_paid": return t("Partially Paid", "Čiastočne uhradené", "Részben fizetve");
+      case "overdue": return t("Overdue", "Po splatnosti", "Lejárt");
+      case "cancelled": return t("Cancelled", "Zrušené", "Törölve");
+      default: return status;
+    }
   };
+  const statusBadgeClass = (status: FinancialStatus) =>
+    status === "paid"
+      ? "bg-emerald-50 text-emerald-700 border-emerald-200"
+      : status === "partially_paid"
+        ? "bg-sky-50 text-sky-700 border-sky-200"
+        : status === "pending"
+          ? "bg-amber-50 text-amber-700 border-amber-200"
+          : status === "overdue"
+            ? "bg-rose-50 text-rose-700 border-rose-200"
+            : "bg-slate-100 text-slate-600 border-slate-200";
 
   const handleDeleteProjectFinancial = (id: string) => {
     if (!canDeleteFinance) return;
@@ -3530,19 +3569,19 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       <span className="text-ui font-bold text-slate-900">
                         {t("Project Value & Invoicable", "Hodnota projektu a fakturácia", "Projekt értéke és számlázható")}
                       </span>
-                      {invoicableAnalysis.total > 0 && contractValueDraft === null && (
-                        <span className="text-body font-bold text-slate-900">{money(invoicableAnalysis.total)}</span>
+                      {billing.value > 0 && contractValueDraft === null && (
+                        <span className="text-body font-bold text-slate-900">{money(billing.value)}</span>
                       )}
                     </div>
 
                     {canEdit && (contractValueDraft === null ? (
                       <button
                         type="button"
-                        onClick={() => setContractValueDraft(invoicableAnalysis.total > 0 ? String(invoicableAnalysis.total) : "")}
+                        onClick={() => { setRemainingEditor(null); setContractValueDraft(billing.value > 0 ? String(billing.value) : ""); }}
                         className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-ui font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
                       >
-                        {invoicableAnalysis.total > 0 ? <Edit3 className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
-                        {invoicableAnalysis.total > 0
+                        {billing.value > 0 ? <Edit3 className="h-3.5 w-3.5" /> : <Plus className="h-3.5 w-3.5" />}
+                        {billing.value > 0
                           ? t("Edit Value", "Upraviť hodnotu", "Érték módosítása")
                           : t("Set Value", "Nastaviť hodnotu", "Érték megadása")}
                       </button>
@@ -3580,7 +3619,7 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                     ))}
                   </div>
 
-                  {invoicableAnalysis.total <= 0 ? (
+                  {billing.value <= 0 ? (
                     <p className="text-caption text-slate-500">
                       {t(
                         "No project value set yet. Set one to track the total billable amount and remaining balance to invoice.",
@@ -3589,38 +3628,180 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                       )}
                     </p>
                   ) : (
-                    <div className="space-y-1.5">
-                      <div className="relative w-full h-2 bg-slate-200/70 rounded-full overflow-hidden">
+                    <div className="space-y-2">
+                      <div className="relative flex w-full h-2 bg-slate-200/70 rounded-full overflow-hidden">
                         <div
-                          className={`absolute inset-y-0 left-0 rounded-full transition-all duration-500 ${
-                            invoicableAnalysis.isOverInvoiced ? "bg-amber-500" : "bg-blue-500"
-                          }`}
-                          style={{ width: `${invoicableAnalysis.invoicedPct}%` }}
+                          className={`h-full transition-all duration-500 ${billing.overInvoiced > 0 ? "bg-amber-500" : "bg-emerald-500"}`}
+                          style={{ width: `${Math.min(100, (billing.received / billing.value) * 100)}%` }}
+                        />
+                        <div
+                          className={`h-full transition-all duration-500 ${billing.overInvoiced > 0 ? "bg-amber-400" : "bg-blue-500"}`}
+                          style={{ width: `${Math.max(0, Math.min(100 - Math.min(100, (billing.received / billing.value) * 100), (billing.invoicedOpen / billing.value) * 100))}%` }}
                         />
                       </div>
-                      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 text-caption text-slate-500">
-                        <span>
-                          {t("Invoiced / Planned:", "Fakturované / Plán:", "Számlázva / Terv:")}{" "}
-                          <strong className="text-slate-700">{money(invoicableAnalysis.invoiced)}</strong> ({invoicableAnalysis.invoicedPct.toFixed(0)}%)
-                        </span>
-                        <span className={`font-bold ${invoicableAnalysis.isOverInvoiced ? "text-amber-600" : "text-blue-600"}`}>
-                          {invoicableAnalysis.remaining > 0
-                            ? `${t("Remaining:", "Zostáva:", "Számlázható:")} ${money(invoicableAnalysis.remaining)}`
-                            : invoicableAnalysis.isOverInvoiced
-                              ? `${t("Invoiced exceeds value by", "Vyfakturované presahuje o", "Túlszámlázva:")} ${money(invoicableAnalysis.invoiced - invoicableAnalysis.total)}`
-                              : `${t("Fully invoiced", "Plne vyfakturované", "Teljesen kiszámlázva")}`}
-                        </span>
+                      <div className="text-caption text-slate-500">
+                        {t("Received", "Prijaté", "Beérkezett")} <strong className="text-emerald-700">{money(billing.received)}</strong>
+                        {" · "}
+                        {t("Invoiced, unpaid", "Vyfakturované, neuhradené", "Számlázva, fizetetlen")} <strong className="text-blue-700">{money(billing.invoicedOpen)}</strong>
+                        {" · "}
+                        {t("Not invoiced yet", "Zatiaľ nevyfakturované", "Még nem számlázott")} <strong className="text-slate-700">{money(billing.notInvoiced)}</strong>
                       </div>
-                      {canMarkValuePaid && contractValueDraft === null && (
+                      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1">
+                        <span className={`text-ui font-bold ${billing.overInvoiced > 0 ? "text-amber-600" : billing.stillToBePaid > 0 ? "text-blue-700" : "text-emerald-700"}`}>
+                          {billing.stillToBePaid > 0
+                            ? `${t("Still to be paid to us:", "Ešte nám zostáva uhradiť:", "Még fizetendő nekünk:")} ${money(billing.stillToBePaid)}`
+                            : billing.overInvoiced > 0
+                              ? `${t("Invoiced exceeds value by", "Vyfakturované presahuje o", "Túlszámlázva:")} ${money(billing.overInvoiced)}`
+                              : t("Fully paid", "Plne uhradené", "Teljesen kifizetve")}
+                        </span>
+                        {canEditRemaining && remainingEditor === null && (
+                          <button
+                            type="button"
+                            onClick={() => openRemainingEditor()}
+                            className="px-3 py-1.5 bg-white hover:bg-slate-100 border border-slate-200 text-slate-700 rounded-xl text-ui font-bold flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
+                          >
+                            <Edit3 className="h-3.5 w-3.5" />
+                            {t("Edit remaining", "Upraviť zostávajúce", "Hátralék módosítása")}
+                          </button>
+                        )}
+                      </div>
+                      {billing.overInvoiced > 0 && billing.stillToBePaid > 0 && (
+                        <p className="text-caption font-bold text-amber-600">
+                          {`${t("Invoiced exceeds value by", "Vyfakturované presahuje o", "Túlszámlázva:")} ${money(billing.overInvoiced)}`}
+                        </p>
+                      )}
+
+                      {remainingEditor !== null && (
+                        <form
+                          onSubmit={handleSaveRemaining}
+                          onKeyDown={(e) => { if (e.key === "Escape") setRemainingEditor(null); }}
+                          className="p-3 rounded-xl bg-white border border-slate-200 space-y-2"
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="inline-flex rounded-xl border border-slate-200 overflow-hidden text-caption font-bold">
+                              <button
+                                type="button"
+                                disabled={!canRecordPayment}
+                                onClick={() => setRemainingEditor({ ...remainingEditor, mode: "payment" })}
+                                className={`px-3 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer ${remainingEditor.mode === "payment" ? "bg-blue-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+                              >
+                                {t("Payment received", "Prijatá platba", "Beérkezett befizetés")}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={!canEdit}
+                                onClick={() => setRemainingEditor({ ...remainingEditor, mode: "price" })}
+                                className={`px-3 py-1.5 disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer ${remainingEditor.mode === "price" ? "bg-blue-600 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+                              >
+                                {t("Price changed", "Zmena ceny", "Ár változott")}
+                              </button>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setRemainingEditor(null)}
+                              className="p-1.5 text-slate-400 hover:text-slate-600 rounded-lg cursor-pointer transition-colors"
+                              aria-label={t("Cancel", "Zrušiť", "Mégse")}
+                            >
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                          <div className="flex flex-wrap items-end gap-3">
+                            <label className="space-y-1">
+                              <span className="block text-caption font-semibold text-slate-500">{t("Still to be paid to us", "Ešte nám zostáva uhradiť", "Még fizetendő nekünk")}</span>
+                              <span className="flex items-center gap-1.5">
+                                <input
+                                  autoFocus
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={remainingEditor.amount}
+                                  onChange={(e) => setRemainingEditor({ ...remainingEditor, amount: e.target.value })}
+                                  placeholder="0.00"
+                                  aria-label={t("Still to be paid to us", "Ešte nám zostáva uhradiť", "Még fizetendő nekünk")}
+                                  className="w-32 px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-ui font-bold focus:outline-none focus:border-blue-500 transition-colors"
+                                />
+                                <span className="text-caption font-bold text-slate-500">{currencyCode || defaultCurrency}</span>
+                              </span>
+                            </label>
+                            {remainingEditor.mode === "payment" && (
+                              <label className="space-y-1">
+                                <span className="block text-caption font-semibold text-slate-500">{t("Payment date", "Dátum platby", "Befizetés dátuma")}</span>
+                                <input
+                                  type="date"
+                                  value={remainingEditor.date}
+                                  max={todayLocal()}
+                                  onChange={(e) => setRemainingEditor({ ...remainingEditor, date: e.target.value })}
+                                  aria-label={t("Payment date", "Dátum platby", "Befizetés dátuma")}
+                                  className="px-3 py-1.5 rounded-xl border border-slate-200 bg-white text-ui font-bold focus:outline-none focus:border-blue-500 transition-colors"
+                                />
+                              </label>
+                            )}
+                          </div>
+                          <p
+                            data-testid="remaining-explanation"
+                            className={`text-caption ${remainingPlan && !remainingPlan.ok ? "text-rose-600" : "text-slate-500"}`}
+                          >
+                            {!remainingPlan || remainingPlan.kind === "invalid"
+                              ? t("Enter an amount of 0 or more.", "Zadajte sumu 0 alebo viac.", "Adjon meg 0 vagy nagyobb összeget.")
+                              : remainingPlan.kind === "belowOpen"
+                                ? t(
+                                    `${money(billing.invoicedOpen)} is already invoiced and unpaid. Mark those invoices paid, or cancel them, in the invoice table below.`,
+                                    `${money(billing.invoicedOpen)} je už vyfakturované a neuhradené. Označte tieto faktúry ako uhradené alebo ich zrušte v tabuľke faktúr nižšie.`,
+                                    `${money(billing.invoicedOpen)} már ki van számlázva és nincs kifizetve. Jelölje a számlákat kifizetettnek, vagy törölje őket az alábbi számlatáblában.`,
+                                  )
+                                : remainingPlan.kind === "notLower"
+                                  ? t(
+                                      "A payment can only lower the amount. To raise it, choose Price changed.",
+                                      "Platba môže sumu iba znížiť. Na zvýšenie zvoľte Zmena ceny.",
+                                      "A befizetés csak csökkentheti az összeget. Növeléshez válassza az Ár változott lehetőséget.",
+                                    )
+                                  : remainingPlan.kind === "tooMuch"
+                                    ? t(
+                                        "A separate payment can only cover the part that is not invoiced yet.",
+                                        "Samostatná platba môže pokryť iba zatiaľ nevyfakturovanú časť.",
+                                        "Külön befizetés csak a még nem számlázott részt fedezheti.",
+                                      )
+                                    : remainingPlan.kind === "payment"
+                                      ? t(
+                                          `A paid income of ${money(remainingPlan.payment)} will be added to Finance.`,
+                                          `Do financií sa pridá uhradený príjem ${money(remainingPlan.payment)}.`,
+                                          `${money(remainingPlan.payment)} összegű, kifizetett bevétel kerül a pénzügyekbe.`,
+                                        )
+                                      : t(
+                                          `The project value changes from ${money(billing.value)} to ${money(remainingPlan.newValue)}. Finance is not affected.`,
+                                          `Hodnota projektu sa zmení z ${money(billing.value)} na ${money(remainingPlan.newValue)}. Financie to neovplyvní.`,
+                                          `A projekt értéke ${money(billing.value)}-ról ${money(remainingPlan.newValue)}-ra változik. A pénzügyeket ez nem érinti.`,
+                                        )}
+                          </p>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="submit"
+                              disabled={!remainingPlan?.ok || (remainingEditor.mode === "payment" ? !canRecordPayment : !canEdit)}
+                              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed text-white rounded-xl text-ui font-bold flex items-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
+                            >
+                              <Check className="h-3.5 w-3.5" />
+                              {t("Save", "Uložiť", "Mentés")}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setRemainingEditor(null)}
+                              className="px-3 py-1.5 text-slate-600 hover:bg-slate-100 rounded-xl text-ui font-bold cursor-pointer transition-colors"
+                            >
+                              {t("Cancel", "Zrušiť", "Mégse")}
+                            </button>
+                          </div>
+                        </form>
+                      )}
+
+                      {canRecordPayment && billing.notInvoiced > 0 && remainingEditor === null && contractValueDraft === null && (
                         <button
                           type="button"
-                          onClick={handleMarkValuePaid}
-                          className="mt-1.5 w-full px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-ui font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
+                          onClick={() => openRemainingEditor("payment", billing.invoicedOpen)}
+                          className="mt-1 w-full px-3 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-ui font-bold flex items-center justify-center gap-1.5 cursor-pointer shadow-sm transition-all active:scale-95"
                         >
                           <CircleCheck className="h-3.5 w-3.5" />
-                          {invoicableAnalysis.invoiced > 0
-                            ? `${t("Mark remaining as paid", "Označiť zvyšok ako uhradený", "Hátralévő kifizetettnek jelölése")} (${money(invoicableAnalysis.remaining)})`
-                            : `${t("Mark whole value as paid", "Označiť celú hodnotu ako uhradenú", "Teljes érték kifizetettnek jelölése")} (${money(invoicableAnalysis.remaining)})`}
+                          {billing.received + billing.invoicedOpen === 0
+                            ? `${t("Mark whole value as paid", "Označiť celú hodnotu ako uhradenú", "Teljes érték kifizetettnek jelölése")} (${money(billing.notInvoiced)})`
+                            : `${t("Mark the uninvoiced rest as paid", "Označiť nevyfakturovaný zvyšok ako uhradený", "A nem számlázott maradék kifizetettnek jelölése")} (${money(billing.notInvoiced)})`}
                         </button>
                       )}
                     </div>
@@ -3831,13 +4012,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                               <div className="font-bold text-slate-900">{inv.title}</div>
                               {inv.invoiceNumber && <span className="text-micro font-mono text-slate-500">#{inv.invoiceNumber}</span>}
                             </td>
-                            <td className="py-2.5 px-3 text-right text-slate-500 font-normal">{money(inv.amountPlanned)}</td>
-                            <td className="py-2.5 px-3 text-right font-bold text-emerald-600">{money(inv.amountReal)}</td>
+                            <td className={`py-2.5 px-3 text-right font-normal ${inv.status === "cancelled" ? "line-through text-slate-400" : "text-slate-500"}`}>{money(inv.amountPlanned)}</td>
+                            <td className={`py-2.5 px-3 text-right font-bold ${inv.status === "cancelled" ? "line-through text-slate-400" : "text-emerald-600"}`}>{money(inv.amountReal)}</td>
                             <td className="py-2.5 px-3 text-center">
-                              <span className={`inline-flex px-2 py-0.5 rounded-full text-micro font-bold ${
-                                inv.status === "paid" ? "bg-emerald-100 text-emerald-800" : inv.status === "overdue" ? "bg-rose-100 text-rose-800" : "bg-amber-100 text-amber-800"
-                              }`}>
-                                {inv.status === "paid" ? t("Paid", "Uhradené", "Fizetve") : inv.status === "overdue" ? t("Overdue", "Po splatnosti", "Lejárt") : t("Pending", "Čaká na úhradu", "Függő")}
+                              <span className={`inline-flex px-2 py-0.5 rounded-full border text-micro font-bold ${statusBadgeClass(inv.status)}`}>
+                                {statusLabel(inv.status)}
                               </span>
                             </td>
                             <td className="py-2.5 px-3 text-right">
@@ -3919,13 +4098,11 @@ export const ProjectDetailsView: React.FC<ProjectDetailsViewProps> = ({
                               <div className="font-bold text-slate-900">{exp.title}</div>
                               {exp.categoryPath && <span className="text-micro text-slate-400">{exp.categoryPath}</span>}
                             </td>
-                            <td className="py-2.5 px-3 text-right text-slate-500 font-normal">{money(exp.amountPlanned)}</td>
-                            <td className="py-2.5 px-3 text-right font-bold text-rose-600">{money(exp.amountReal)}</td>
+                            <td className={`py-2.5 px-3 text-right font-normal ${exp.status === "cancelled" ? "line-through text-slate-400" : "text-slate-500"}`}>{money(exp.amountPlanned)}</td>
+                            <td className={`py-2.5 px-3 text-right font-bold ${exp.status === "cancelled" ? "line-through text-slate-400" : "text-rose-600"}`}>{money(exp.amountReal)}</td>
                             <td className="py-2.5 px-3 text-center">
-                              <span className={`inline-flex px-2 py-0.5 rounded-full text-micro font-bold ${
-                                exp.status === "paid" ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-700"
-                              }`}>
-                                {exp.status === "paid" ? t("Paid", "Zaplatené", "Kifizetve") : t("Planned", "Plánované", "Tervezett")}
+                              <span className={`inline-flex px-2 py-0.5 rounded-full border text-micro font-bold ${statusBadgeClass(exp.status)}`}>
+                                {statusLabel(exp.status)}
                               </span>
                             </td>
                             <td className="py-2.5 px-3 text-right">

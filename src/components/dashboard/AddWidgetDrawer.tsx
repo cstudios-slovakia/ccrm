@@ -30,6 +30,8 @@ const kindLabel = (kind: WidgetKind, t: Translate): string => {
       return t("Table", "Tabuľka", "Táblázat");
     case "timeline":
       return t("Timeline", "Časová os", "Idővonal");
+    case "summary":
+      return t("Summary", "Prehľad", "Összesítő");
     default:
       return kind;
   }

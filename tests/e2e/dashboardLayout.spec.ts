@@ -227,7 +227,7 @@ test.describe('Dashboard layout editing', () => {
     // nothing had to be pushed aside to make room for it.
     expect(sameRow(moved.top, settled.top)).toBe(true);
     expect(moved.left).toBeGreaterThan(settled.left);
-    expect(after.length).toBe(9);
+    expect(after.length).toBe(10);
   });
 
   test('a card too wide for a gap is never offered it', async ({ page }) => {
@@ -243,6 +243,24 @@ test.describe('Dashboard layout editing', () => {
 
     expect(zones.length).toBeGreaterThan(0);
     for (const zone of zones) expect(sameRow(zone.top, taskTable.top)).toBe(false);
+  });
+
+  test('a wide card can be put at the very top, even from the margin above the board', async ({ page }) => {
+    await liftCard(page, LEAD_TABLE);
+    await scrollBoard(page, -100000);
+
+    // Just above the first row: not over any card and not over a free cell.
+    const { origin } = await dropZones(page);
+    const first = cardById(await boardCards(page), 'default_total_leads');
+    await page.mouse.move(origin.x + first.left + first.width / 2, origin.y - 12);
+    await page.mouse.up();
+    await expect(page.locator('[data-drop-zone]')).toHaveCount(0);
+
+    const after = await boardCards(page);
+    const moved = cardById(after, LEAD_TABLE);
+    expect(moved.top).toBeLessThan(4);
+    expect(moved.left).toBeLessThan(4);
+    expect(Math.min(...after.map((card) => card.top))).toBe(moved.top);
   });
 
   test('cards glide rather than jump when the board rearranges', async ({ page }) => {

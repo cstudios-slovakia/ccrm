@@ -1,5 +1,5 @@
 import { StatGrid } from "../layout";
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useRef } from "react";
 import {
   Search,
   Plus,
@@ -9,6 +9,8 @@ import {
   Calendar,
   Grid,
   List,
+  ListTree,
+  Move,
   Edit3,
   Trash2,
   ChevronRight,
@@ -26,6 +28,11 @@ import type {
 } from "../../types";
 import { EmployeeTieIcon } from "../icons/EmployeeTieIcon";
 import { formatNumber } from "../../utils/currency";
+import { useUserPref } from "../../utils/userPrefs";
+import { applyManualOrder, newestFirst } from "../../utils/projectSort";
+import { moveRelative, type DropPosition } from "../../utils/reorder";
+import { useDragReorder } from "../../hooks/useDragReorder";
+import { useDragAutoScroll } from "../../hooks/useDragAutoScroll";
 
 interface EmployeeListViewProps {
   employees: Employee[];
@@ -60,7 +67,12 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
 }) => {
   const [searchQuery, setSearchQuery] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "inactive">("all");
-  const [viewMode, setViewMode] = useState<"table" | "cards">("table");
+  /* The structure, a plain table or cards. DB-backed like the projects list's, so
+     the choice follows the user to their next device. The structure is a table
+     that always shows the hand-set order and is rearranged by dragging. */
+  const [viewMode, setViewMode] = useUserPref("employeesViewMode");
+  const [employeesOrder, setEmployeesOrder] = useUserPref("employeesOrder");
+  const isStructure = viewMode === "structure";
 
   const t = (en: string, sk: string, hu: string) => {
     if (systemLanguage === "hu") return hu;
@@ -116,6 +128,36 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
       return true;
     });
   }, [employees, statusFilter, searchQuery]);
+
+  /* Every employee in the structure: the hand-set order. Anyone it has never
+     seen (added since the last drag) sits on top, like a new project does. */
+  const structureEmployees = useMemo(
+    () => applyManualOrder(newestFirst(employees), employeesOrder),
+    [employees, employeesOrder]
+  );
+
+  /* What the table and cards show: the filtered list, in the structure's order
+     when that view is on. */
+  const shownEmployees = useMemo(() => {
+    if (!isStructure) return filteredEmployees;
+    const visible = new Set(filteredEmployees.map((e) => e.id));
+    return structureEmployees.filter((e) => visible.has(e.id));
+  }, [isStructure, filteredEmployees, structureEmployees]);
+
+  /* Drag a row onto another to put it there. The whole structure is moved, not
+     just the filtered rows, so a drop made while the list is filtered leaves the
+     hidden employees where they were. */
+  const handleEmployeeMove = (dragId: string, targetId: string, position: DropPosition) => {
+    setEmployeesOrder(moveRelative(structureEmployees.map((e) => e.id), (id) => id, dragId, targetId, position));
+  };
+  const employeeDrag = useDragReorder({
+    enabled: isStructure,
+    onMove: handleEmployeeMove
+  });
+
+  // A long list scrolls under the pointer while a row is dragged near an edge.
+  const resultsRef = useRef<HTMLDivElement | null>(null);
+  useDragAutoScroll(employeeDrag.draggedId !== null, resultsRef);
 
   return (
     <div className="space-y-6">
@@ -249,26 +291,25 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
 
         {/* View Mode Switcher */}
         <div className="flex items-center gap-1 bg-slate-100/80 p-1 rounded-xl text-slate-500 border border-slate-200/40">
-          <button
-            type="button"
-            onClick={() => setViewMode("table")}
-            className={`p-1.5 rounded-lg transition cursor-pointer ${
-              viewMode === "table" ? "bg-white text-slate-900 shadow-xs font-bold" : "hover:text-slate-800"
-            }`}
-            title={t("Table View", "Tabuľka", "Táblázat")}
-          >
-            <List className="w-4 h-4" />
-          </button>
-          <button
-            type="button"
-            onClick={() => setViewMode("cards")}
-            className={`p-1.5 rounded-lg transition cursor-pointer ${
-              viewMode === "cards" ? "bg-white text-slate-900 shadow-xs font-bold" : "hover:text-slate-800"
-            }`}
-            title={t("Card View", "Karty", "Kártyák")}
-          >
-            <Grid className="w-4 h-4" />
-          </button>
+          {([
+            { mode: "structure" as const, Icon: ListTree, label: t("Structure View", "Zobrazenie štruktúry", "Struktúra nézet") },
+            { mode: "table" as const, Icon: List, label: t("Table View", "Tabuľka", "Táblázat") },
+            { mode: "cards" as const, Icon: Grid, label: t("Card View", "Karty", "Kártyák") }
+          ]).map(({ mode, Icon, label }) => (
+            <button
+              key={mode}
+              type="button"
+              onClick={() => setViewMode(mode)}
+              className={`p-1.5 rounded-lg transition cursor-pointer ${
+                viewMode === mode ? "bg-white text-slate-900 shadow-xs font-bold" : "hover:text-slate-800"
+              }`}
+              title={label}
+              aria-label={label}
+              aria-pressed={viewMode === mode}
+            >
+              <Icon className="w-4 h-4" />
+            </button>
+          ))}
         </div>
       </div>
 
@@ -313,9 +354,18 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
             </button>
           </div>
         </div>
-      ) : viewMode === "table" ? (
-        /* TABLE VIEW */
-        <div className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass overflow-hidden">
+      ) : viewMode === "table" || isStructure ? (
+        /* TABLE VIEW — the structure is the same table, in its hand-set order, with rows to drag */
+        <div ref={resultsRef} className="glass-panel rounded-3xl border border-white/60 bg-white/95 shadow-glass overflow-hidden">
+          {isStructure && (
+            <p className="px-4 py-2.5 text-caption text-slate-500 border-b border-slate-200/60 bg-[#c29b62]/5">
+              {t(
+                "The structure keeps its own order. Drag rows to rearrange it.",
+                "Štruktúra má vlastné poradie. Zmeníte ho potiahnutím riadkov.",
+                "A struktúra a saját sorrendjében van. Sorok húzásával rendezheti át."
+              )}
+            </p>
+          )}
           <div className="overflow-x-auto">
             <table className="w-full text-left text-ui border-collapse">
               <thead>
@@ -330,29 +380,47 @@ export const EmployeeListView: React.FC<EmployeeListViewProps> = ({
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredEmployees.map((emp) => {
+                {shownEmployees.map((emp) => {
                   const initials = emp.name
                     .split(" ")
                     .map((n) => n[0])
                     .slice(0, 2)
                     .join("")
                     .toUpperCase();
+                  const drop = employeeDrag.dropAt(emp.id);
 
                   return (
                     <tr
                       key={emp.id}
+                      data-employee-row={emp.id}
+                      {...employeeDrag.rowProps(emp.id)}
                       onClick={() => onSelectEmployee(emp.id)}
-                      className="hover:bg-slate-500/5 cursor-pointer transition group"
+                      className={`hover:bg-slate-500/5 cursor-pointer transition group ${
+                        employeeDrag.draggedId === emp.id ? "opacity-40" : ""
+                      } ${
+                        // A table row cannot hold a positioned marker, so the drop line is an inset edge on its cells.
+                        drop === "before" ? "[&>td]:shadow-[inset_0_2px_0_0_#c29b62]"
+                          : drop === "after" ? "[&>td]:shadow-[inset_0_-2px_0_0_#c29b62]" : ""
+                      }`}
                     >
                       {/* Employee Name & Role / PIN */}
                       <td className="py-3.5 px-4">
                         <div className="flex items-center gap-3">
+                          {/* The structure's move handle: always shown, the whole row drags. */}
+                          {isStructure && (
+                            <Move
+                              aria-hidden
+                              data-structure-handle
+                              className="w-3.5 h-3.5 shrink-0 text-slate-300 group-hover:text-[#c29b62] transition-colors cursor-grab active:cursor-grabbing"
+                            />
+                          )}
                           <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#c29b62]/20 to-[#9e7638]/20 border border-[#c29b62]/30 text-[#9e7638] flex items-center justify-center font-heading font-bold text-ui shrink-0 shadow-xs">
                             {initials}
                           </div>
                           <div className="min-w-0">
                             <a
                               href={`#employees/${encodeURIComponent(emp.id)}`}
+                              draggable={false}
                               onClick={(e) => {
                                 e.preventDefault();
                                 onSelectEmployee(emp.id);
