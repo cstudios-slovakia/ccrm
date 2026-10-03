@@ -249,12 +249,15 @@ if ($action === 'fetch_workspace_users') {
         $users = [];
         if ($res['ok'] && is_array($res['data'])) {
             foreach ($res['data'] as $u) {
+                $rawName = trim((string)($u['fullname'] ?? ($u['name'] ?? '')));
+                $email = trim((string)($u['email'] ?? ''));
+                $displayName = $rawName !== '' ? $rawName : ($email !== '' ? $email : 'User ' . ($u['id'] ?? ''));
                 $users[] = [
                     'id' => (string)($u['id'] ?? ''),
-                    'name' => $u['fullname'] ?? ($u['name'] ?? 'User ' . $u['id']),
-                    'email' => $u['email'] ?? '',
+                    'name' => $displayName,
+                    'email' => $email,
                     'avatar_url' => $u['avatar_url'] ?? '',
-                    'active' => true
+                    'active' => ($u['is_active'] ?? !($u['inactive'] ?? false))
                 ];
             }
         } else {
@@ -262,12 +265,15 @@ if ($action === 'fetch_workspace_users') {
             $wuRes = toggl_curl("https://api.track.toggl.com/api/v9/workspaces/{$workspaceId}/workspace_users", $apiToken);
             if ($wuRes['ok'] && is_array($wuRes['data'])) {
                 foreach ($wuRes['data'] as $wu) {
+                    $rawName = trim((string)($wu['name'] ?? ($wu['fullname'] ?? '')));
+                    $email = trim((string)($wu['email'] ?? ''));
+                    $displayName = $rawName !== '' ? $rawName : ($email !== '' ? $email : 'User ' . ($wu['id'] ?? ''));
                     $users[] = [
                         'id' => (string)($wu['user_id'] ?? $wu['id'] ?? ''),
-                        'name' => $wu['name'] ?? ($wu['email'] ?? 'User ' . $wu['id']),
-                        'email' => $wu['email'] ?? '',
+                        'name' => $displayName,
+                        'email' => $email,
                         'avatar_url' => $wu['avatar_url'] ?? '',
-                        'active' => ($wu['active'] ?? true)
+                        'active' => ($wu['active'] ?? !($wu['inactive'] ?? false))
                     ];
                 }
             } else {
@@ -275,16 +281,29 @@ if ($action === 'fetch_workspace_users') {
                 $meRes = toggl_curl('https://api.track.toggl.com/api/v9/me', $apiToken);
                 if ($meRes['ok']) {
                     $u = $meRes['data'];
+                    $rawName = trim((string)($u['fullname'] ?? ''));
+                    $email = trim((string)($u['email'] ?? ''));
+                    $displayName = $rawName !== '' ? $rawName : ($email !== '' ? $email : 'Current User');
                     $users[] = [
                         'id' => (string)($u['id'] ?? ''),
-                        'name' => $u['fullname'] ?? ($u['email'] ?? 'Current User'),
-                        'email' => $u['email'] ?? '',
+                        'name' => $displayName,
+                        'email' => $email,
                         'avatar_url' => $u['avatar_url'] ?? '',
                         'active' => true
                     ];
                 }
             }
         }
+
+        // Sort users: active users first, then alphabetically by name
+        usort($users, function($a, $b) {
+            $aActive = !empty($a['active']);
+            $bActive = !empty($b['active']);
+            if ($aActive !== $bActive) {
+                return $aActive ? -1 : 1;
+            }
+            return strcasecmp($a['name'], $b['name']);
+        });
 
         echo json_encode([
             'success' => true,

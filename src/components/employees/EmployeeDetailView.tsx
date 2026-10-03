@@ -418,24 +418,48 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
     resetEditFields();
   }, [employee, vacationTypes]);
 
-  // Fetch Toggl workspace users if credentials exist and card is in edit mode
-  const [togglUsers, setTogglUsers] = useState<Array<{ id: number; name: string; email: string }>>([]);
+  // Fetch Toggl workspace users whenever card is in edit mode
+  const [togglUsers, setTogglUsers] = useState<Array<{ id: number | string; name: string; email: string; active?: boolean }>>([]);
+  const [loadingTogglUsers, setLoadingTogglUsers] = useState<boolean>(false);
+  const [togglUsersError, setTogglUsersError] = useState<string | null>(null);
+  const [manualTogglInput, setManualTogglInput] = useState<boolean>(false);
+
   useEffect(() => {
-    if (!isEditingCard || !hasTogglKey) return;
+    if (!isEditingCard) return;
     let isMounted = true;
+    setLoadingTogglUsers(true);
+    setTogglUsersError(null);
+
     fetch(`/api/time_tracking.php?action=fetch_workspace_users`, { credentials: "include" })
-      .then((res) => res.json())
+      .then((res) => res.json().catch(() => ({})))
       .then((data) => {
         if (!isMounted) return;
-        if (data.success && Array.isArray(data.data)) {
-          setTogglUsers(data.data);
+        const usersList = Array.isArray(data.data) ? data.data : (Array.isArray(data.users) ? data.users : []);
+        if (data.success && usersList.length > 0) {
+          const sorted = [...usersList].sort((a, b) => {
+            const aActive = a.active !== false;
+            const bActive = b.active !== false;
+            if (aActive !== bActive) return aActive ? -1 : 1;
+            const nameA = (a.name || a.email || "").toLowerCase();
+            const nameB = (b.name || b.email || "").toLowerCase();
+            return nameA.localeCompare(nameB);
+          });
+          setTogglUsers(sorted);
+        } else if (!data.success && (data.error || data.message)) {
+          setTogglUsersError(data.error || data.message);
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        if (isMounted) setTogglUsersError(err.message || "Failed to load Toggl users");
+      })
+      .finally(() => {
+        if (isMounted) setLoadingTogglUsers(false);
+      });
+
     return () => {
       isMounted = false;
     };
-  }, [isEditingCard, hasTogglKey]);
+  }, [isEditingCard]);
 
   const handleStartEdit = () => {
     setIsEditingCard(true);
@@ -933,10 +957,31 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                       </div>
 
                       <div>
-                        <label className="type-overline text-slate-500 block mb-0.5">
-                          {t("Toggl User Link", "Prepojenie Toggl", "Toggl kapcsolat")}
-                        </label>
-                        {togglUsers.length > 0 ? (
+                        <div className="flex items-center justify-between mb-0.5">
+                          <label className="type-overline text-slate-500 block">
+                            {t("Toggl User Link", "Prepojenie Toggl", "Toggl kapcsolat")}
+                          </label>
+                          {togglUsers.length > 0 && (
+                            <button
+                              type="button"
+                              onClick={() => setManualTogglInput((prev) => !prev)}
+                              className="text-micro text-slate-400 hover:text-slate-600 underline cursor-pointer"
+                            >
+                              {manualTogglInput
+                                ? t("Select from list", "Vybrať zo zoznamu", "Kiválasztás listából")
+                                : t("Manual ID", "Zadať ručne", "Kézi megadás")}
+                            </button>
+                          )}
+                        </div>
+
+                        {loadingTogglUsers && togglUsers.length === 0 ? (
+                          <div className="flex items-center gap-2 px-2.5 py-1.5 text-caption text-slate-400 bg-slate-50 border border-slate-200 rounded-xl">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-[#c29b62]" />
+                            <span className="truncate">
+                              {t("Loading Toggl users...", "Načítavam používateľov z Toggl...", "Toggl felhasználók betöltése...")}
+                            </span>
+                          </div>
+                        ) : !manualTogglInput && togglUsers.length > 0 ? (
                           <select
                             value={editTimeTrackingUserId}
                             onChange={(e) => {
@@ -951,24 +996,36 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                             }}
                             className="w-full px-2.5 py-1.5 text-ui bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none truncate"
                           >
-                            <option value="">{t("Not mapped", "Neprepojené", "Nincs összerendelve")}</option>
+                            <option value="">{t("-- Not mapped / Unlinked --", "-- Bez prepojenia na Toggl --", "-- Nincs összerendelve --")}</option>
+                            {editTimeTrackingUserId && !togglUsers.some((u) => String(u.id) === String(editTimeTrackingUserId)) && (
+                              <option value={editTimeTrackingUserId}>
+                                {editTimeTrackingUserName ? `${editTimeTrackingUserName} (ID: ${editTimeTrackingUserId})` : `User #${editTimeTrackingUserId}`}
+                              </option>
+                            )}
                             {togglUsers.map((u) => (
                               <option key={u.id} value={String(u.id)}>
-                                {u.name || u.email}
+                                {u.name ? `${u.name} (${u.email || u.id})` : (u.email || `User #${u.id}`)}
                               </option>
                             ))}
                           </select>
                         ) : (
-                          <input
-                            type="text"
-                            value={editTimeTrackingUserName || editTimeTrackingUserId}
-                            onChange={(e) => {
-                              setEditTimeTrackingUserName(e.target.value);
-                              setEditTimeTrackingUserId(e.target.value);
-                            }}
-                            className="w-full px-2.5 py-1.5 text-ui bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none"
-                            placeholder={t("User ID or name", "ID alebo meno", "ID vagy név")}
-                          />
+                          <div className="space-y-1">
+                            <input
+                              type="text"
+                              value={editTimeTrackingUserName || editTimeTrackingUserId}
+                              onChange={(e) => {
+                                setEditTimeTrackingUserName(e.target.value);
+                                setEditTimeTrackingUserId(e.target.value);
+                              }}
+                              className="w-full px-2.5 py-1.5 text-ui bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none font-mono"
+                              placeholder={t("User ID or name", "ID alebo meno", "ID vagy név")}
+                            />
+                            {togglUsersError && (
+                              <p className="text-micro text-amber-600 truncate" title={togglUsersError}>
+                                {togglUsersError}
+                              </p>
+                            )}
+                          </div>
                         )}
                       </div>
                     </div>
