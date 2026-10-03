@@ -656,7 +656,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     let totalInvoicedValue = 0;
 
     return allStatuses.map((status) => {
-      const projectsInStatus = projects.filter((p) => p.status === status);
+      const projectsInStatus = projects.filter((p) => !p.archived && p.status === status);
       let statusInvoicableVal = 0;
       let statusTotalBudgetValue = 0;
       let statusTotalInvoicedValue = 0;

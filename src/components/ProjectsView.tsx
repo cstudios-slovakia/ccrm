@@ -685,6 +685,13 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           p.rating,
           selectedRatingFilter
         );
+        const isArchived = Boolean(p.archived);
+        const matchesArchive =
+          selectedArchiveFilter === "all"
+            ? true
+            : selectedArchiveFilter === "archived"
+            ? isArchived
+            : !isArchived;
 
         return (
           matchesSearch &&
@@ -692,7 +699,8 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           matchesDivision &&
           matchesManager &&
           matchesOverdue &&
-          matchesRating
+          matchesRating &&
+          matchesArchive
         );
       });
 
@@ -747,6 +755,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     selectedDivisionFilter,
     selectedManagerFilter,
     selectedRatingFilter,
+    selectedArchiveFilter,
     overdueOnly,
     overdueIds,
     defaultCurrency,
