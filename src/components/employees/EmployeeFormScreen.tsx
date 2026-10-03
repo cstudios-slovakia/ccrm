@@ -178,10 +178,8 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
     );
   }, [settings.togglApiKey, settings.timeTracking?.togglApiToken]);
 
-  // Fetch Toggl workspace users if credentials exist
+  // Fetch Toggl workspace users on mount or when hasTogglKey changes
   useEffect(() => {
-    if (!hasTogglKey) return;
-
     let isMounted = true;
     setLoadingTogglUsers(true);
     setTogglFetchError(null);
@@ -192,13 +190,21 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
         if (!isMounted) return;
         const usersList = Array.isArray(data.data) ? data.data : (Array.isArray(data.users) ? data.users : []);
         if (data.success && usersList.length > 0) {
-          setTogglUsers(usersList);
-        } else {
+          const sorted = [...usersList].sort((a, b) => {
+            const aActive = a.active !== false;
+            const bActive = b.active !== false;
+            if (aActive !== bActive) return aActive ? -1 : 1;
+            const nameA = (a.name || a.email || "").toLowerCase();
+            const nameB = (b.name || b.email || "").toLowerCase();
+            return nameA.localeCompare(nameB);
+          });
+          setTogglUsers(sorted);
+        } else if (hasTogglKey) {
           setTogglFetchError(data.error || data.message || null);
         }
       })
       .catch((err) => {
-        if (isMounted) setTogglFetchError(err.message);
+        if (isMounted && hasTogglKey) setTogglFetchError(err.message);
       })
       .finally(() => {
         if (isMounted) setLoadingTogglUsers(false);
