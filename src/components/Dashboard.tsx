@@ -284,6 +284,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       const stateLower = state.toLowerCase();
       const leadsInState = leads.filter((l) => {
         if (l.archived) return false;
+        if (l.id === "unassigned-docs" || (l.id || "").startsWith("client-")) return false;
         const sKey = (l.status || "").toLowerCase();
         const parent = leadStateParents[sKey];
         const target = parent ? parent.toLowerCase() : sKey;
