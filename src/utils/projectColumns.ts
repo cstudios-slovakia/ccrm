@@ -18,6 +18,7 @@ export type BuiltinProjectColumnKey =
   | "progress"
   | "status"
   | "value"
+  | "invoicable"
   | "division";
 
 /**
@@ -34,6 +35,7 @@ export const BUILTIN_PROJECT_COLUMNS: readonly BuiltinProjectColumnKey[] = [
   "progress",
   "status",
   "value",
+  "invoicable",
   "division",
 ];
 
@@ -41,7 +43,7 @@ export const BUILTIN_PROJECT_COLUMNS: readonly BuiltinProjectColumnKey[] = [
  * Built-ins that are offered but start switched off, like an attribute: they
  * widen the table, so they appear only when someone asks for them.
  */
-export const DEFAULT_HIDDEN_PROJECT_COLUMNS: readonly BuiltinProjectColumnKey[] = ["value", "division"];
+export const DEFAULT_HIDDEN_PROJECT_COLUMNS: readonly BuiltinProjectColumnKey[] = ["value", "invoicable", "division"];
 
 /**
  * The project's own name is what identifies the row and opens it, so it is the
@@ -65,6 +67,7 @@ export const BUILTIN_COLUMN_LABELS: Record<BuiltinProjectColumnKey, [string, str
   progress: ["Progress", "Postup", "Haladás"],
   status: ["Status", "Stav", "Állapot"],
   value: ["Value", "Hodnota", "Érték"],
+  invoicable: ["Invoicable", "Fakturovateľné", "Számlázható"],
   division: ["Division", "Divízia", "Divízió"],
 };
 
