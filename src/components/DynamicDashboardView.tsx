@@ -604,6 +604,8 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     return topLevelStates.map((state) => {
       const stateLower = state.toLowerCase();
       const leadsInState = leads.filter((l) => {
+        if (l.archived) return false;
+        if (l.id === "unassigned-docs" || (l.id || "").startsWith("client-")) return false;
         const sKey = (l.status || "").toLowerCase();
         const parent = stateParents[sKey];
         const target = parent ? parent.toLowerCase() : sKey;
