@@ -840,6 +840,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
      The whole list, not just the filtered one, because a drag made while the
      list is filtered still has to leave the hidden projects somewhere. */
   const sortValueActive = effectiveSort.key === "value";
+  const sortInvoicableActive = effectiveSort.key === "invoicable";
   const orderedProjects = useMemo(() => {
     const statusOrder = projectStatusOrder(projectStatuses);
     const contactName = (id: string) => leads.find(l => l.id === id)?.name || null;
@@ -866,13 +867,14 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
         deadline: evaluateProjectDeadline(p, pType, today, projectStatuses)?.deadline ?? null,
         progress: pType?.hasGantt && p.gantt && p.gantt.length > 0 ? calculateProgress(p) : null,
         value: sortValueActive ? (getProjectFinancials(p, pType, leads.find(l => l.id === p.leadId)).totalBudget || null) : null,
+        invoicable: sortInvoicableActive ? (getProjectFinancials(p, pType, leads.find(l => l.id === p.leadId)).invoicable || null) : null,
         division: p.division || "",
         statusRank: rank === -1 ? statusOrder.length : rank,
         attributes,
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projects, manualOrder, effectiveSort.key, effectiveSort.direction, projectTypes, projectStatuses, leads, today, sortableAttributes, defaultCurrency, sortValueActive, getProjectFinancials]);
+  }, [projects, manualOrder, effectiveSort.key, effectiveSort.direction, projectTypes, projectStatuses, leads, today, sortableAttributes, defaultCurrency, sortValueActive, sortInvoicableActive, getProjectFinancials]);
 
   /* Every project in the structure: the hand-set order, whatever the sort says.
      Projects it has never seen (created since the last drag) sit on top. */
@@ -1189,6 +1191,7 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
     { value: "progress", label: t("Progress", "Postup", "Haladás") },
     { value: "status", label: t("Status", "Stav", "Állapot") },
     { value: "value", label: t("Value", "Hodnota", "Érték") },
+    { value: "invoicable", label: t("Invoicable", "Fakturovateľné", "Számlázható") },
     { value: "division", label: t("Division", "Divízia", "Divízió") },
     ...sortableAttributes.map(({ key, attribute }) => ({ value: key as ProjectSortKey, label: attribute.name })),
   ];
@@ -1474,6 +1477,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
           ? (
             <span className="text-ui font-bold text-slate-700 tabular-nums whitespace-nowrap">
               {formatMoney(fin.totalBudget, fin.currency, userLanguage)}
+            </span>
+          )
+          : emptyCell;
+      }
+      case "invoicable": {
+        const fin = getProjectFinancials(p, pType, lead);
+        return fin.hasValue
+          ? (
+            <span className={`text-ui font-bold tabular-nums whitespace-nowrap ${fin.invoicable > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400"}`}>
+              {formatMoney(fin.invoicable, fin.currency, userLanguage)}
             </span>
           )
           : emptyCell;
