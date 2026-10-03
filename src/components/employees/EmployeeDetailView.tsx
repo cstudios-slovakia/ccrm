@@ -36,6 +36,7 @@ import { EntityHeader } from "../layout";
 import { formatNumber } from "../../utils/currency";
 import { SalaryCellDrawer } from "./SalaryCellDrawer";
 import { EmployeeTimesheetSummary, type TimesheetHoursData } from "./EmployeeTimesheetSummary";
+import { CustomSelect, type DropdownOption } from "../ui/CustomSelect";
 
 interface EmployeeDetailViewProps {
   employee: Employee;
@@ -423,6 +424,77 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
   const [loadingTogglUsers, setLoadingTogglUsers] = useState<boolean>(false);
   const [togglUsersError, setTogglUsersError] = useState<string | null>(null);
   const [manualTogglInput, setManualTogglInput] = useState<boolean>(false);
+  const [showInactiveTogglUsers, setShowInactiveTogglUsers] = useState<boolean>(false);
+
+  const inactiveTogglUsersCount = useMemo(
+    () => togglUsers.filter((u) => u.active === false).length,
+    [togglUsers]
+  );
+
+  const togglSelectOptions = useMemo<DropdownOption[]>(() => {
+    const list: DropdownOption[] = [
+      {
+        value: "",
+        label: (
+          <span className="text-slate-400 font-normal">
+            {t("-- Not mapped / Unlinked --", "-- Bez prepojenia na Toggl --", "-- Nincs összerendelve --")}
+          </span>
+        ),
+        searchText: t("Not mapped unlinked none", "Bez prepojenia ziadne", "Nincs osszerendelve"),
+      },
+    ];
+
+    const currentIdStr = editTimeTrackingUserId ? String(editTimeTrackingUserId) : "";
+    if (currentIdStr && !togglUsers.some((u) => String(u.id) === currentIdStr)) {
+      list.push({
+        value: currentIdStr,
+        label: (
+          <span className="flex items-center gap-2 min-w-0">
+            <span className="font-semibold text-slate-800 truncate">
+              {editTimeTrackingUserName || `User #${currentIdStr}`}
+            </span>
+            <span className="shrink-0 text-micro px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-normal">
+              {t("Current ID", "Aktuálne ID", "Jelenlegi ID")}
+            </span>
+          </span>
+        ),
+        searchText: `${editTimeTrackingUserName || ""} ${currentIdStr}`,
+      });
+    }
+
+    const filtered = togglUsers.filter((u) => {
+      if (showInactiveTogglUsers) return true;
+      return u.active !== false || String(u.id) === currentIdStr;
+    });
+
+    for (const u of filtered) {
+      const isInactive = u.active === false;
+      const displayName = u.name || u.email || `User #${u.id}`;
+      list.push({
+        value: String(u.id),
+        label: (
+          <span className="flex items-center justify-between gap-2 min-w-0 w-full">
+            <span className="flex items-center gap-1.5 min-w-0 truncate">
+              <span className="font-semibold text-slate-800 truncate">{displayName}</span>
+              {u.name && u.email && (
+                <span className="text-caption text-slate-400 font-normal truncate">
+                  ({u.email})
+                </span>
+              )}
+            </span>
+            {isInactive && (
+              <span className="shrink-0 text-micro px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-normal">
+                {t("Inactive", "Neaktívny", "Inaktív")}
+              </span>
+            )}
+          </span>
+        ),
+        searchText: `${displayName} ${u.email || ""} ${u.id} ${isInactive ? "inactive neaktivny inaktiv" : "active aktivny aktiv"}`,
+      });
+    }
+
+    return list;
+  }, [togglUsers, editTimeTrackingUserId, editTimeTrackingUserName, showInactiveTogglUsers, t]);
 
   useEffect(() => {
     if (!isEditingCard) return;
@@ -961,17 +1033,38 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                           <label className="type-overline text-slate-500 block">
                             {t("Toggl User Link", "Prepojenie Toggl", "Toggl kapcsolat")}
                           </label>
-                          {togglUsers.length > 0 && (
-                            <button
-                              type="button"
-                              onClick={() => setManualTogglInput((prev) => !prev)}
-                              className="text-micro text-slate-400 hover:text-slate-600 underline cursor-pointer"
-                            >
-                              {manualTogglInput
-                                ? t("Select from list", "Vybrať zo zoznamu", "Kiválasztás listából")
-                                : t("Manual ID", "Zadať ručne", "Kézi megadás")}
-                            </button>
-                          )}
+                          <div className="flex items-center gap-2.5">
+                            {togglUsers.length > 0 && inactiveTogglUsersCount > 0 && !manualTogglInput && (
+                              <button
+                                type="button"
+                                onClick={() => setShowInactiveTogglUsers((prev) => !prev)}
+                                className={`text-micro cursor-pointer transition-colors ${
+                                  showInactiveTogglUsers
+                                    ? "text-[#c29b62] font-semibold underline"
+                                    : "text-slate-400 hover:text-slate-600 underline"
+                                }`}
+                              >
+                                {showInactiveTogglUsers
+                                  ? t("Active only", "Len aktívni", "Csak aktívak")
+                                  : t(
+                                      `Show inactive (${inactiveTogglUsersCount})`,
+                                      `Zobraziť neaktívnych (${inactiveTogglUsersCount})`,
+                                      `Inaktívak (${inactiveTogglUsersCount})`
+                                    )}
+                              </button>
+                            )}
+                            {togglUsers.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setManualTogglInput((prev) => !prev)}
+                                className="text-micro text-slate-400 hover:text-slate-600 underline cursor-pointer"
+                              >
+                                {manualTogglInput
+                                  ? t("Select from list", "Vybrať zo zoznamu", "Kiválasztás listából")
+                                  : t("Manual ID", "Zadať ručne", "Kézi megadás")}
+                              </button>
+                            )}
+                          </div>
                         </div>
 
                         {loadingTogglUsers && togglUsers.length === 0 ? (
@@ -982,10 +1075,9 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                             </span>
                           </div>
                         ) : !manualTogglInput && togglUsers.length > 0 ? (
-                          <select
+                          <CustomSelect
                             value={editTimeTrackingUserId}
-                            onChange={(e) => {
-                              const val = e.target.value;
+                            onChange={(val) => {
                               setEditTimeTrackingUserId(val);
                               const found = togglUsers.find((u) => String(u.id) === val);
                               if (found) {
@@ -994,20 +1086,13 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                                 setEditTimeTrackingUserName("");
                               }
                             }}
-                            className="w-full px-2.5 py-1.5 text-ui bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none truncate"
-                          >
-                            <option value="">{t("-- Not mapped / Unlinked --", "-- Bez prepojenia na Toggl --", "-- Nincs összerendelve --")}</option>
-                            {editTimeTrackingUserId && !togglUsers.some((u) => String(u.id) === String(editTimeTrackingUserId)) && (
-                              <option value={editTimeTrackingUserId}>
-                                {editTimeTrackingUserName ? `${editTimeTrackingUserName} (ID: ${editTimeTrackingUserId})` : `User #${editTimeTrackingUserId}`}
-                              </option>
-                            )}
-                            {togglUsers.map((u) => (
-                              <option key={u.id} value={String(u.id)}>
-                                {u.name ? `${u.name} (${u.email || u.id})` : (u.email || `User #${u.id}`)}
-                              </option>
-                            ))}
-                          </select>
+                            options={togglSelectOptions}
+                            searchable
+                            size="sm"
+                            className="bg-slate-50 border-slate-200"
+                            searchPlaceholder={t("Search user...", "Hľadať používateľa...", "Felhasználó keresése...")}
+                            placeholder={t("-- Not mapped / Unlinked --", "-- Bez prepojenia na Toggl --", "-- Nincs összerendelve --")}
+                          />
                         ) : (
                           <div className="space-y-1">
                             <input
@@ -1027,6 +1112,7 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                             )}
                           </div>
                         )}
+
                       </div>
                     </div>
 

@@ -252,12 +252,13 @@ if ($action === 'fetch_workspace_users') {
                 $rawName = trim((string)($u['fullname'] ?? ($u['name'] ?? '')));
                 $email = trim((string)($u['email'] ?? ''));
                 $displayName = $rawName !== '' ? $rawName : ($email !== '' ? $email : 'User ' . ($u['id'] ?? ''));
+                $isActive = !empty($u['is_active']) && empty($u['inactive']);
                 $users[] = [
                     'id' => (string)($u['id'] ?? ''),
                     'name' => $displayName,
                     'email' => $email,
                     'avatar_url' => $u['avatar_url'] ?? '',
-                    'active' => ($u['is_active'] ?? !($u['inactive'] ?? false))
+                    'active' => $isActive
                 ];
             }
         } else {
@@ -268,12 +269,13 @@ if ($action === 'fetch_workspace_users') {
                     $rawName = trim((string)($wu['name'] ?? ($wu['fullname'] ?? '')));
                     $email = trim((string)($wu['email'] ?? ''));
                     $displayName = $rawName !== '' ? $rawName : ($email !== '' ? $email : 'User ' . ($wu['id'] ?? ''));
+                    $isActive = !empty($wu['active']) && empty($wu['inactive']);
                     $users[] = [
                         'id' => (string)($wu['user_id'] ?? $wu['id'] ?? ''),
                         'name' => $displayName,
                         'email' => $email,
                         'avatar_url' => $wu['avatar_url'] ?? '',
-                        'active' => ($wu['active'] ?? !($wu['inactive'] ?? false))
+                        'active' => $isActive
                     ];
                 }
             } else {
@@ -293,6 +295,11 @@ if ($action === 'fetch_workspace_users') {
                     ];
                 }
             }
+        }
+
+        $onlyActive = !empty($data['only_active']) || !empty($data['active_only']);
+        if ($onlyActive) {
+            $users = array_values(array_filter($users, fn($u) => !empty($u['active'])));
         }
 
         // Sort users: active users first, then alphabetically by name

@@ -22,6 +22,7 @@ import {
   ChevronRight
 } from "lucide-react";
 import type { Employee, EmployeeFile, EmployeeSettings, FinancialCategory } from "../../types";
+import { CustomSelect, type DropdownOption } from "../ui/CustomSelect";
 
 interface EmployeeFormScreenProps {
   employee?: Employee | null;
@@ -72,9 +73,15 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
   const [isActive, setIsActive] = useState<boolean>(true);
 
   // Toggl workspace users list
-  const [togglUsers, setTogglUsers] = useState<Array<{ id: number; name: string; email: string }>>([]);
+  const [togglUsers, setTogglUsers] = useState<Array<{ id: number | string; name: string; email: string; active?: boolean }>>([]);
   const [loadingTogglUsers, setLoadingTogglUsers] = useState<boolean>(false);
   const [togglFetchError, setTogglFetchError] = useState<string | null>(null);
+  const [showInactiveTogglUsers, setShowInactiveTogglUsers] = useState<boolean>(false);
+
+  const inactiveTogglUsersCount = useMemo(
+    () => togglUsers.filter((u) => u.active === false).length,
+    [togglUsers]
+  );
 
   // File uploading state
   const [isUploading, setIsUploading] = useState<boolean>(false);
@@ -89,6 +96,71 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
     if (systemLanguage === "sk") return sk;
     return en;
   };
+
+  const togglSelectOptions = useMemo<DropdownOption[]>(() => {
+    const list: DropdownOption[] = [
+      {
+        value: "",
+        label: (
+          <span className="text-slate-400 font-normal">
+            {t("-- Not mapped / Unlinked --", "-- Bez prepojenia na Toggl --", "-- Nincs összerendelve --")}
+          </span>
+        ),
+        searchText: t("Not mapped unlinked none", "Bez prepojenia ziadne", "Nincs osszerendelve"),
+      },
+    ];
+
+    const currentIdStr = timeTrackingUserId ? String(timeTrackingUserId) : "";
+    if (currentIdStr && !togglUsers.some((u) => String(u.id) === currentIdStr)) {
+      list.push({
+        value: currentIdStr,
+        label: (
+          <span className="flex items-center gap-2 min-w-0">
+            <span className="font-semibold text-slate-800 truncate">
+              {timeTrackingUserName || `User #${currentIdStr}`}
+            </span>
+            <span className="shrink-0 text-micro px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-normal">
+              {t("Current ID", "Aktuálne ID", "Jelenlegi ID")}
+            </span>
+          </span>
+        ),
+        searchText: `${timeTrackingUserName || ""} ${currentIdStr}`,
+      });
+    }
+
+    const filtered = togglUsers.filter((u) => {
+      if (showInactiveTogglUsers) return true;
+      return u.active !== false || String(u.id) === currentIdStr;
+    });
+
+    for (const u of filtered) {
+      const isInactive = u.active === false;
+      const displayName = u.name || u.email || `User #${u.id}`;
+      list.push({
+        value: String(u.id),
+        label: (
+          <span className="flex items-center justify-between gap-2 min-w-0 w-full">
+            <span className="flex items-center gap-1.5 min-w-0 truncate">
+              <span className="font-semibold text-slate-800 truncate">{displayName}</span>
+              {u.name && u.email && (
+                <span className="text-caption text-slate-400 font-normal truncate">
+                  ({u.email})
+                </span>
+              )}
+            </span>
+            {isInactive && (
+              <span className="shrink-0 text-micro px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-normal">
+                {t("Inactive", "Neaktívny", "Inaktív")}
+              </span>
+            )}
+          </span>
+        ),
+        searchText: `${displayName} ${u.email || ""} ${u.id} ${isInactive ? "inactive neaktivny inaktiv" : "active aktivny aktiv"}`,
+      });
+    }
+
+    return list;
+  }, [togglUsers, timeTrackingUserId, timeTrackingUserName, showInactiveTogglUsers, systemLanguage]);
 
   // Populate the form once per employee (or once for "new"). Re-running on every
   // `employee`/`settings` identity change — e.g. a background sync — would wipe
@@ -816,26 +888,44 @@ export const EmployeeFormScreen: React.FC<EmployeeFormScreenProps> = ({
                 </div>
               ) : togglUsers.length > 0 ? (
                 <div>
-                  <label className="block text-ui font-bold text-slate-600 mb-1.5">
-                    {t("Select Toggl Workspace User", "Vyberte používateľa z Toggl", "Válasszon Toggl felhasználót")}
-                  </label>
-                  <select
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="block text-ui font-bold text-slate-600">
+                      {t("Select Toggl Workspace User", "Vyberte používateľa z Toggl", "Válasszon Toggl felhasználót")}
+                    </label>
+                    {inactiveTogglUsersCount > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setShowInactiveTogglUsers((prev) => !prev)}
+                        className={`text-micro cursor-pointer transition-colors ${
+                          showInactiveTogglUsers
+                            ? "text-[#c29b62] font-semibold underline"
+                            : "text-slate-400 hover:text-slate-600 underline"
+                        }`}
+                      >
+                        {showInactiveTogglUsers
+                          ? t("Active only", "Len aktívni", "Csak aktívak")
+                          : t(
+                              `Show inactive (${inactiveTogglUsersCount})`,
+                              `Zobraziť neaktívnych (${inactiveTogglUsersCount})`,
+                              `Inaktívak (${inactiveTogglUsersCount})`
+                            )}
+                      </button>
+                    )}
+                  </div>
+                  <CustomSelect
                     value={timeTrackingUserId}
-                    onChange={(e) => {
-                      const selectedId = e.target.value;
-                      setTimeTrackingUserId(selectedId);
-                      const found = togglUsers.find((u) => String(u.id) === selectedId);
+                    onChange={(val) => {
+                      setTimeTrackingUserId(val);
+                      const found = togglUsers.find((u) => String(u.id) === val);
                       setTimeTrackingUserName(found ? found.name || found.email : "");
                     }}
-                    className="w-full px-4 py-2.5 text-body bg-white border border-slate-200 rounded-2xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-[#c29b62] shadow-sm font-medium"
-                  >
-                    <option value="">{t("-- Not mapped / Unlinked --", "-- Bez prepojenia na Toggl --", "-- Nincs összerendelve --")}</option>
-                    {togglUsers.map((u) => (
-                      <option key={u.id} value={String(u.id)}>
-                        {u.name || u.email} ({u.email})
-                      </option>
-                    ))}
-                  </select>
+                    options={togglSelectOptions}
+                    searchable
+                    size="md"
+                    className="bg-white border-slate-200"
+                    searchPlaceholder={t("Search user...", "Hľadať používateľa...", "Felhasználó keresése...")}
+                    placeholder={t("-- Not mapped / Unlinked --", "-- Bez prepojenia na Toggl --", "-- Nincs összerendelve --")}
+                  />
                 </div>
               ) : (
                 <div className="space-y-2">
