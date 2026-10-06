@@ -4494,6 +4494,23 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
             }));
     }, [processedLeads, leadStates, leadStateParents]);
 
+    // Count of truly active leads (excluding archived and closed states like lost/accepted/rejected)
+    const activePipelineCount = useMemo(() => {
+        return pipelineLeads.filter((l) => {
+            const isArchived = Boolean(l.archived);
+            const matchesArchive =
+                selectedArchiveFilter === "all"
+                    ? true
+                    : selectedArchiveFilter === "archived"
+                    ? isArchived
+                    : !isArchived;
+            return (
+                matchesArchive &&
+                !isClosedLeadState(l.status, leadStageGroups, leadStateParents)
+            );
+        }).length;
+    }, [pipelineLeads, selectedArchiveFilter, leadStageGroups, leadStateParents]);
+
     // Active lead status items calculation for the expandable equation statistics
     const activeLeadStatusItems = useMemo<StatusStatItem[]>(() => {
         const ordered = orderLeadStates(
@@ -9049,7 +9066,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                       : "Leads Status"}
                             </span>
                             <span className="px-2.5 py-0.5 rounded-full type-overline bg-blue-50 text-blue-600 border border-blue-100">
-                                {pipelineLeads.length}{" "}
+                                {activePipelineCount}{" "}
                                 {systemLanguage === "sk"
                                     ? "aktívnych"
                                     : systemLanguage === "hu"

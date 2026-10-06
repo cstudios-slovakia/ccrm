@@ -74,6 +74,7 @@ import {
   recurringOwnRowCharge,
   splitRecordAmounts
 } from "../utils/financialOverviewTable";
+import { evaluateEquation } from "../utils/equationEvaluator";
 import {
   claimedRecordIds,
   futureTotals,
@@ -2279,6 +2280,10 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     cumulativeBalance: number;
     isManuallyCalibrated: boolean;
   }) => {
+    if (financialMode === "simplified") {
+      setActiveTab("table");
+      return;
+    }
     // Anchors are shared data now, so the server enforces the financial edit
     // permission on them. Opening the dialog for someone who cannot save would
     // show a change that silently never reaches anyone else.
@@ -2704,35 +2709,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     }
 
     if (financialMode === "simplified") {
-      const monthCols = buckets.map((b) => ({
-        id: `${b.year}-${pad(b.weekNum)}`,
-        startIso: b.startIso,
-        endIso: b.endIso,
-        isFuture: b.isFuture
-      }));
-      const simAgg = aggregateSimplifiedOverviewTable(financialSimplifiedTable, financialCategories, monthCols);
-      buckets.forEach((b) => {
-        const colId = `${b.year}-${pad(b.weekNum)}`;
-        const exp = simAgg.totalExpensesByCol[colId]?.total || 0;
-        const inc = simAgg.totalIncomesByCol[colId]?.total || 0;
-        b.expenseReal = exp;
-        b.incomeReal = inc;
-        b.totalExpense = exp;
-        b.totalIncome = inc;
-        b.netDifference = inc - exp;
-
-        financialCategories.forEach((cat) => {
-          const cell = simAgg.cells[cat.id]?.[colId];
-          if (cell && cell.total !== 0) {
-            b.items.push({
-              title: cat.name,
-              amount: cell.total,
-              type: cat.type,
-              isRecurring: false
-            });
-          }
-        });
-      });
+      return [];
     } else {
       // 1. Distribute Single (Non-recurring) Records
       financialRecords.forEach((rec) => {
@@ -2887,8 +2864,106 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
     return buckets;
   }, [financialRecords, financialCategories, financialMode, financialSimplifiedTable, weeklyBankBalances, defaultBankBalance, projectionMonths, TREND_PAST_MONTHS, userLanguage, weeklyTrendData]);
 
-  // Active dataset for the trend visualization (either weekly or monthly resolution)
-  const trendData = activeResolution === "month" ? monthlyTrendData : weeklyTrendData;
+  // In Simplified Mode: dedicated 12-month pure dataset for the selected tableYear without forecast
+  const simplifiedYearTrendData = useMemo(() => {
+    if (financialMode !== "simplified") return [];
+    const now = new Date();
+    const monthNames = [
+      t("Jan", "Jan", "Jan"),
+      t("Feb", "Feb", "Feb"),
+      t("Mar", "Mar", "Már"),
+      t("Apr", "Apr", "Ápr"),
+      t("May", "Máj", "Máj"),
+      t("Jun", "Jún", "Jún"),
+      t("Jul", "Júl", "Júl"),
+      t("Aug", "Aug", "Aug"),
+      t("Sep", "Sep", "Sze"),
+      t("Oct", "Okt", "Okt"),
+      t("Nov", "Nov", "Nov"),
+      t("Dec", "Dec", "Dec")
+    ];
+
+    const pad = (n: number) => String(n).padStart(2, "0");
+    const toYMD = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+
+    const monthCols = Array.from({ length: 12 }, (_, m) => {
+      const startDate = new Date(tableYear, m, 1, 0, 0, 0, 0);
+      const endDate = new Date(tableYear, m + 1, 0, 23, 59, 59, 999);
+      return {
+        id: `${tableYear}-${pad(m + 1)}`,
+        startIso: toYMD(startDate),
+        endIso: toYMD(endDate),
+        isFuture: false
+      };
+    });
+
+    const simAgg = aggregateSimplifiedOverviewTable(financialSimplifiedTable, financialCategories, monthCols);
+
+    let runningCumulative = 0;
+    return monthCols.map((col, m) => {
+      const endDate = new Date(tableYear, m + 1, 0, 23, 59, 59, 999);
+      const colId = col.id;
+      const totalIncome = simAgg.totalIncomesByCol[colId]?.total || 0;
+      const totalExpense = simAgg.totalExpensesByCol[colId]?.total || 0;
+      const netDifference = totalIncome - totalExpense;
+      runningCumulative += netDifference;
+
+      const isCurrent = now.getFullYear() === tableYear && now.getMonth() === m;
+      const isPast = now.getFullYear() > tableYear || (now.getFullYear() === tableYear && now.getMonth() > m);
+
+      const items: {
+        title: string;
+        amount: number;
+        type: "income" | "expense";
+        isRecurring: boolean;
+      }[] = [];
+
+      financialCategories.forEach((cat) => {
+        const rawExpr = financialSimplifiedTable[`${cat.id}:${colId}`];
+        if (rawExpr !== undefined && rawExpr !== null && String(rawExpr).trim() !== "") {
+          const val = evaluateEquation(String(rawExpr));
+          if (val !== null && val !== 0) {
+            items.push({
+              title: cat.name,
+              amount: val,
+              type: cat.type,
+              isRecurring: false
+            });
+          }
+        }
+      });
+
+      return {
+        index: m,
+        weekNum: m + 1,
+        year: tableYear,
+        weekLabel: monthNames[m],
+        dateRangeLabel: `${pad(1)}.${pad(m + 1)} - ${pad(endDate.getDate())}.${pad(m + 1)}`,
+        startIso: col.startIso,
+        endIso: col.endIso,
+        isPast,
+        isCurrent,
+        isFuture: false,
+        incomeReal: totalIncome,
+        incomePlanned: 0,
+        incomeProjected: 0,
+        totalIncome,
+        expenseReal: totalExpense,
+        expensePlanned: 0,
+        expenseProjected: 0,
+        totalExpense,
+        netDifference,
+        cumulativeBalance: runningCumulative,
+        isManuallyCalibrated: false,
+        items
+      };
+    });
+  }, [financialMode, tableYear, financialSimplifiedTable, financialCategories, userLanguage]);
+
+  // Active dataset for the trend visualization (either simplified year dataset, or weekly/monthly resolution)
+  const trendData = financialMode === "simplified"
+    ? simplifiedYearTrendData
+    : (activeResolution === "month" ? monthlyTrendData : weeklyTrendData);
 
   // Smooth Bezier path generator for SVG plotline
   const generateSmoothPath = (pts: { x: number; y: number }[]) => {
@@ -4835,7 +4910,13 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                   </span>
                 </div>
                 <p className="text-ui text-slate-500 ">
-                  {(() => {
+                  {financialMode === "simplified"
+                    ? t(
+                        `Showing pure monthly values for ${tableYear} directly from the simplified overview table without forecast.`,
+                        `Zobrazenie čistých mesačných hodnôt za rok ${tableYear} priamo zo zjednodušenej prehľadovej tabuľky bez prognózy.`,
+                        `A ${tableYear}. évi tiszta havi értékek megjelenítése közvetlenül az egyszerűsített áttekintő táblázatból előrejelzés nélkül.`
+                      )
+                    : (() => {
                     // What the line traces, and — only while a forecast horizon is
                     // chosen — the extra clause that says it runs forward.
                     const monthly = activeResolution === "month";
@@ -4859,130 +4940,191 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
 
               {/* Controls: Mode Switcher, Horizon, and Resolution */}
               <div className="flex flex-wrap items-center gap-3">
-                {/* Resolution Pill: Weeks vs. Months */}
-                <div className="bg-slate-100  p-1 rounded-2xl flex items-center gap-1 border border-slate-200/80 ">
-                  <span className="pl-2 pr-1 type-overline text-slate-400  flex items-center gap-1">
-                    <Calendar className="h-3.5 w-3.5" />
-                    {t("Resolution", "Rozlíšenie", "Felbontás")}
-                  </span>
-                  <button
-                    type="button"
-                    onClick={() => handleSetTrendResolution("week")}
-                    aria-pressed={activeResolution === "week"}
-                    className={`px-3 py-1.5 rounded-xl text-ui font-bold transition-all cursor-pointer ${
-                      activeResolution === "week"
-                        ? "bg-white  text-indigo-600  shadow-sm border border-slate-200/80 "
-                        : "text-slate-600  hover:text-slate-900 "
-                    }`}
-                  >
-                    {t("Weeks", "Týždne", "Hetek")}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSetTrendResolution("month")}
-                    aria-pressed={activeResolution === "month"}
-                    className={`px-3 py-1.5 rounded-xl text-ui font-bold transition-all cursor-pointer ${
-                      activeResolution === "month"
-                        ? "bg-white  text-indigo-600  shadow-sm border border-slate-200/80 "
-                        : "text-slate-600  hover:text-slate-900 "
-                    }`}
-                  >
-                    {t("Months", "Mesiace", "Hónapok")}
-                  </button>
-                </div>
+                {financialMode === "simplified" ? (
+                  <>
+                    {/* Year Selector for Simplified Mode */}
+                    <div className="flex items-center bg-slate-100 p-1 rounded-2xl border border-slate-200/80">
+                      <span className="pl-2 pr-1 type-overline text-slate-400 flex items-center gap-1">
+                        <Calendar className="h-3.5 w-3.5" />
+                        {t("Year", "Rok", "Év")}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setTableYear(tableYear - 1)}
+                        className="p-1 hover:bg-white rounded-xl text-slate-600 hover:text-slate-900 transition-all cursor-pointer shadow-2xs"
+                        title={t("Previous year", "Predchádzajúci rok", "Előző év")}
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </button>
+                      <span className="px-2.5 text-ui font-extrabold text-slate-800 tabular-nums">
+                        {tableYear}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setTableYear(tableYear + 1)}
+                        className="p-1 hover:bg-white rounded-xl text-slate-600 hover:text-slate-900 transition-all cursor-pointer shadow-2xs"
+                        title={t("Next year", "Nasledujúci rok", "Következő év")}
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </button>
+                    </div>
 
-                {/* Mode Switcher Pill */}
-                <div className="bg-slate-100  p-1 rounded-2xl flex items-center gap-1 border border-slate-200/80 ">
-                  <button
-                    type="button"
-                    onClick={() => handleSetTrendMode("relative")}
-                    className={`px-3 py-1.5 rounded-xl text-ui font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                      trendMode === "relative"
-                        ? "bg-white  text-purple-600  shadow-sm border border-slate-200/80 "
-                        : "text-slate-600  hover:text-slate-900 "
-                    }`}
-                  >
-                    <BarChart3 className="h-3.5 w-3.5" />
-                    <span>{t("Relative Flow", "Relatívny tok", "Relatív folyam")}</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleSetTrendMode("cumulative")}
-                    className={`px-3 py-1.5 rounded-xl text-ui font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
-                      trendMode === "cumulative"
-                        ? "bg-white  text-emerald-600  shadow-sm border border-slate-200/80 "
-                        : "text-slate-600  hover:text-slate-900 "
-                    }`}
-                  >
-                    <Landmark className="h-3.5 w-3.5" />
-                    <span>{t("Cumulative Balance", "Stav na účte (Kumulatívny)", "Bankszámla egyenleg")}</span>
-                  </button>
-                </div>
+                    {/* Mode Switcher Pill */}
+                    <div className="bg-slate-100 p-1 rounded-2xl flex items-center gap-1 border border-slate-200/80">
+                      <button
+                        type="button"
+                        onClick={() => handleSetTrendMode("relative")}
+                        className={`px-3 py-1.5 rounded-xl text-ui font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                          trendMode === "relative"
+                            ? "bg-white text-purple-600 shadow-sm border border-slate-200/80"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        <BarChart3 className="h-3.5 w-3.5" />
+                        <span>{t("Relative Flow", "Relatívny tok", "Relatív folyam")}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSetTrendMode("cumulative")}
+                        className={`px-3 py-1.5 rounded-xl text-ui font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                          trendMode === "cumulative"
+                            ? "bg-white text-emerald-600 shadow-sm border border-slate-200/80"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        <Landmark className="h-3.5 w-3.5" />
+                        <span>{t("Cumulative Balance", "Stav na účte (Kumulatívny)", "Bankszámla egyenleg")}</span>
+                      </button>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    {/* Resolution Pill: Weeks vs. Months */}
+                    <div className="bg-slate-100 p-1 rounded-2xl flex items-center gap-1 border border-slate-200/80">
+                      <span className="pl-2 pr-1 type-overline text-slate-400 flex items-center gap-1">
+                        <Calendar className="h-3.5 w-3.5" />
+                        {t("Resolution", "Rozlíšenie", "Felbontás")}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleSetTrendResolution("week")}
+                        aria-pressed={activeResolution === "week"}
+                        className={`px-3 py-1.5 rounded-xl text-ui font-bold transition-all cursor-pointer ${
+                          activeResolution === "week"
+                            ? "bg-white text-indigo-600 shadow-sm border border-slate-200/80"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        {t("Weeks", "Týždne", "Hetek")}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSetTrendResolution("month")}
+                        aria-pressed={activeResolution === "month"}
+                        className={`px-3 py-1.5 rounded-xl text-ui font-bold transition-all cursor-pointer ${
+                          activeResolution === "month"
+                            ? "bg-white text-indigo-600 shadow-sm border border-slate-200/80"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        {t("Months", "Mesiace", "Hónapok")}
+                      </button>
+                    </div>
 
-                {/* History Pill: how far back the chart reaches */}
-                <div className="bg-slate-100  p-1 rounded-2xl flex items-center gap-1 border border-slate-200/80 ">
-                  <span className="pl-2 pr-1 type-overline text-slate-400  flex items-center gap-1">
-                    <History className="h-3.5 w-3.5" />
-                    {t("History", "História", "Előzmények")}
-                  </span>
-                  {HISTORY_SPANS.map((h) => (
-                    <button
-                      key={h.months}
-                      type="button"
-                      onClick={() => {
-                        setHoveredWeekIdx(null);
-                        setHistoryMonths(h.months);
-                      }}
-                      title={t(
-                        `Show ${h.months === 1 ? "1 month" : `${h.months} months`} back (${h.pastWeeks} past weeks)`,
-                        `Zobraziť ${h.months === 1 ? "1 mesiac" : skMonths(h.months)} dozadu (${h.pastWeeks} minulých týždňov)`,
-                        `${h.months} hónap visszamenőleg (${h.pastWeeks} múltbeli hét)`
-                      )}
-                      aria-pressed={historySpan.months === h.months}
-                      className={`px-3 py-1.5 rounded-xl text-ui font-bold transition-all cursor-pointer ${
-                        historySpan.months === h.months
-                          ? "bg-white  text-indigo-600  shadow-sm border border-slate-200/80 "
-                          : "text-slate-600  hover:text-slate-900 "
-                      }`}
-                    >
-                      {t(`${h.months}M`, `${h.months}M`, `${h.months}H`)}
-                    </button>
-                  ))}
-                </div>
+                    {/* Mode Switcher Pill */}
+                    <div className="bg-slate-100 p-1 rounded-2xl flex items-center gap-1 border border-slate-200/80">
+                      <button
+                        type="button"
+                        onClick={() => handleSetTrendMode("relative")}
+                        className={`px-3 py-1.5 rounded-xl text-ui font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                          trendMode === "relative"
+                            ? "bg-white text-purple-600 shadow-sm border border-slate-200/80"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        <BarChart3 className="h-3.5 w-3.5" />
+                        <span>{t("Relative Flow", "Relatívny tok", "Relatív folyam")}</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleSetTrendMode("cumulative")}
+                        className={`px-3 py-1.5 rounded-xl text-ui font-bold transition-all cursor-pointer flex items-center gap-1.5 ${
+                          trendMode === "cumulative"
+                            ? "bg-white text-emerald-600 shadow-sm border border-slate-200/80"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        <Landmark className="h-3.5 w-3.5" />
+                        <span>{t("Cumulative Balance", "Stav na účte (Kumulatívny)", "Bankszámla egyenleg")}</span>
+                      </button>
+                    </div>
 
-                {/* Forecast Horizon Pill: whether the projection runs, and how far forward */}
-                <div className="bg-slate-100  p-1 rounded-2xl flex items-center gap-1 border border-slate-200/80 ">
-                  <span className="pl-2 pr-1 type-overline text-slate-400  flex items-center gap-1">
-                    <CalendarDays className="h-3.5 w-3.5" />
-                    {t("Forecast horizon", "Horizont prognózy", "Előrejelzési időtáv")}
-                  </span>
-                  {PROJECTION_HORIZONS.map((h) => (
-                    <button
-                      key={h.months}
-                      type="button"
-                      onClick={() => handleSetProjectionMonths(h.months)}
-                      title={
-                        h.months === 0
-                          ? t("No forecast — history and the current period only", "Bez prognózy — iba história a aktuálne obdobie", "Nincs előrejelzés — csak a múlt és az aktuális időszak")
-                          : t(
-                              `Project ${h.months} months forward (${h.futureWeeks} future weeks)`,
-                              `Prognóza na ${skMonths(h.months)} dopredu (${h.futureWeeks} budúcich týždňov)`,
-                              `Előrejelzés ${h.months} hónapra előre (${h.futureWeeks} jövőbeli hét)`
-                            )
-                      }
-                      aria-pressed={projectionMonths === h.months}
-                      className={`px-3 py-1.5 rounded-xl text-ui font-bold transition-all cursor-pointer ${
-                        projectionMonths === h.months
-                          ? "bg-white  text-indigo-600  shadow-sm border border-slate-200/80 "
-                          : "text-slate-600  hover:text-slate-900 "
-                      }`}
-                    >
-                      {h.months === 0
-                        ? t("Off", "Vyp.", "Ki")
-                        : t(`${h.months}M`, `${h.months}M`, `${h.months}H`)}
-                    </button>
-                  ))}
-                </div>
+                    {/* History Pill: how far back the chart reaches */}
+                    <div className="bg-slate-100 p-1 rounded-2xl flex items-center gap-1 border border-slate-200/80">
+                      <span className="pl-2 pr-1 type-overline text-slate-400 flex items-center gap-1">
+                        <History className="h-3.5 w-3.5" />
+                        {t("History", "História", "Előzmények")}
+                      </span>
+                      {HISTORY_SPANS.map((h) => (
+                        <button
+                          key={h.months}
+                          type="button"
+                          onClick={() => {
+                            setHoveredWeekIdx(null);
+                            setHistoryMonths(h.months);
+                          }}
+                          title={t(
+                            `Show ${h.months === 1 ? "1 month" : `${h.months} months`} back (${h.pastWeeks} past weeks)`,
+                            `Zobraziť ${h.months === 1 ? "1 mesiac" : skMonths(h.months)} dozadu (${h.pastWeeks} minulých týždňov)`,
+                            `${h.months} hónap visszamenőleg (${h.pastWeeks} múltbeli hét)`
+                          )}
+                          aria-pressed={historySpan.months === h.months}
+                          className={`px-3 py-1.5 rounded-xl text-ui font-bold transition-all cursor-pointer ${
+                            historySpan.months === h.months
+                              ? "bg-white text-indigo-600 shadow-sm border border-slate-200/80"
+                              : "text-slate-600 hover:text-slate-900"
+                          }`}
+                        >
+                          {t(`${h.months}M`, `${h.months}M`, `${h.months}H`)}
+                        </button>
+                      ))}
+                    </div>
+
+                    {/* Forecast Horizon Pill: whether the projection runs, and how far forward */}
+                    <div className="bg-slate-100 p-1 rounded-2xl flex items-center gap-1 border border-slate-200/80">
+                      <span className="pl-2 pr-1 type-overline text-slate-400 flex items-center gap-1">
+                        <CalendarDays className="h-3.5 w-3.5" />
+                        {t("Forecast horizon", "Horizont prognózy", "Előrejelzési időtáv")}
+                      </span>
+                      {PROJECTION_HORIZONS.map((h) => (
+                        <button
+                          key={h.months}
+                          type="button"
+                          onClick={() => handleSetProjectionMonths(h.months)}
+                          title={
+                            h.months === 0
+                              ? t("No forecast — history and the current period only", "Bez prognózy — iba história a aktuálne obdobie", "Nincs előrejelzés — csak a múlt és az aktuális időszak")
+                              : t(
+                                  `Project ${h.months} months forward (${h.futureWeeks} future weeks)`,
+                                  `Prognóza na ${skMonths(h.months)} dopredu (${h.futureWeeks} budúcich týždňov)`,
+                                  `Előrejelzés ${h.months} hónapra előre (${h.futureWeeks} jövőbeli hét)`
+                                )
+                          }
+                          aria-pressed={projectionMonths === h.months}
+                          className={`px-3 py-1.5 rounded-xl text-ui font-bold transition-all cursor-pointer ${
+                            projectionMonths === h.months
+                              ? "bg-white text-indigo-600 shadow-sm border border-slate-200/80"
+                              : "text-slate-600 hover:text-slate-900"
+                          }`}
+                        >
+                          {h.months === 0
+                            ? t("Off", "Vyp.", "Ki")
+                            : t(`${h.months}M`, `${h.months}M`, `${h.months}H`)}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
@@ -5005,7 +5147,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
               let minChartWidth: number;
               let barWidth: number;
 
-              if (activeResolution === "month") {
+              if (activeResolution === "month" || financialMode === "simplified") {
                 svgWidth = Math.max(baseSvgWidth, startX + N * 70 + 35);
                 const availableWidth = svgWidth - startX - 35;
                 stepX = availableWidth / N;
@@ -5021,7 +5163,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                 minChartWidth = Math.min(svgWidth, naturalWidth);
               }
 
-              const labelStride = activeResolution === "month" ? 1 : (stepX >= 34 ? 1 : 2);
+              const labelStride = (activeResolution === "month" || financialMode === "simplified") ? 1 : (stepX >= 34 ? 1 : 2);
               const showDateSubLabel = true;
 
               // Target value based on active mode
@@ -5292,7 +5434,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                       b.isCurrent ? "fill-indigo-600 font-bold" : "fill-slate-400"
                                     }`}
                                   >
-                                    {activeResolution === "month" ? b.year : b.dateRangeLabel.split(" - ")[0]}
+                                    {activeResolution === "month" || financialMode === "simplified" ? b.year : b.dateRangeLabel.split(" - ")[0]}
                                   </text>
                                 )}
                               </>
@@ -5306,7 +5448,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                   fill="#6366f1"
                                   textFill="#ffffff"
                                   height={16}
-                                  label={activeResolution === "month" ? t("THIS MO", "TENTO M.", "EZ A HÓ") : t("TODAY", "DNES", "MA")}
+                                  label={activeResolution === "month" || financialMode === "simplified" ? t("THIS MO", "TENTO M.", "EZ A HÓ") : t("TODAY", "DNES", "MA")}
                                 />
                               </g>
                             )}
@@ -5463,14 +5605,14 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                           </span>
                           <span className="text-ui text-slate-500 font-semibold">
                             {activeHoveredBucket.isCurrent
-                              ? (activeResolution === "month"
+                              ? (activeResolution === "month" || financialMode === "simplified"
                                   ? t("Current Month (Reference)", "Aktuálny mesiac (Referenčný)", "Aktuális hónap (Referencia)")
                                   : t("Current Week (Reference)", "Aktuálny týždeň (Referenčný)", "Aktuális hét (Referencia)"))
                               : activeHoveredBucket.isFuture
                               ? (activeResolution === "month"
                                   ? t("🔮 Future Projected Month", "🔮 Budúci projektovaný mesiac", "🔮 Jövőbeli tervezett hónap")
                                   : t("🔮 Future Projected Week", "🔮 Budúci projektovaný týždeň", "🔮 Jövőbeli tervezett hét"))
-                              : (activeResolution === "month"
+                              : (activeResolution === "month" || financialMode === "simplified"
                                   ? t("Historical Month", "História (mesiac)", "Múltbéli hónap")
                                   : t("Historical Week", "História", "Múltbéli hét"))}
                           </span>
@@ -5483,7 +5625,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                         </div>
                         <div className="text-ui text-slate-500">
                           {activeHoveredBucket.items.length}{" "}
-                          {activeResolution === "month"
+                          {financialMode === "simplified"
+                            ? t("budget category item(s)", "rozpočtových položiek", "költségvetési tétel")
+                            : activeResolution === "month"
                             ? t("financial movement(s) in this month", "finančných pohybov v tomto mesiaci", "pénzügyi tétel ebben a hónapban")
                             : t("financial movement(s) in this week", "finančných pohybov v tomto týždni", "pénzügyi tétel ezen a héten")}
                         </div>
@@ -5511,7 +5655,7 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                           <span className="type-overline text-purple-600">
                             {activeHoveredBucket.isFuture
                               ? (activeResolution === "month" ? t("Monthly Net Rev", "Mesačný zisk", "Havi nettó") : t("Weekly Net Rev", "Týždenný zisk", "Heti nettó"))
-                              : (activeResolution === "month" ? t("Monthly Net", "Mesačná zmena", "Havi egyenleg") : t("Weekly Net", "Týždenná zmena", "Heti egyenleg"))}
+                              : (activeResolution === "month" || financialMode === "simplified" ? t("Monthly Net", "Mesačná zmena", "Havi egyenleg") : t("Weekly Net", "Týždenná zmena", "Heti egyenleg"))}
                           </span>
                           <div className={`text-body font-bold ${activeHoveredBucket.netDifference >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
                             {activeHoveredBucket.netDifference >= 0 ? "+" : ""}{money(activeHoveredBucket.netDifference)}
@@ -5523,7 +5667,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                           <div>
                             <span className="type-overline text-emerald-700 flex items-center gap-1">
                               <Landmark className="h-3 w-3" />
-                              {t("Bank Balance on Account", "Stav na účte", "Bankszámla egyenleg")}
+                              {financialMode === "simplified"
+                                ? t("Cumulative Balance", "Kumulatívny zostatok", "Kumulált egyenleg")
+                                : t("Bank Balance on Account", "Stav na účte", "Bankszámla egyenleg")}
                             </span>
                             <div className={`text-title-sm font-bold ${activeHoveredBucket.cumulativeBalance >= 0 ? "text-emerald-600" : "text-rose-600"}`}>
                               {money(activeHoveredBucket.cumulativeBalance)}
@@ -5534,7 +5680,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                             type="button"
                             onClick={() => handleOpenCalibrator(activeHoveredBucket)}
                             className="p-1.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors cursor-pointer"
-                            title={t(`Calibrate Bank Balance for ${activeHoveredBucket.weekLabel}`, `Nastaviť zostatok pre ${activeHoveredBucket.weekLabel}`, `Egyenleg beállítása: ${activeHoveredBucket.weekLabel}`)}
+                            title={financialMode === "simplified"
+                              ? t("Edit in simplified overview table", "Upraviť v zjednodušenej tabuľke", "Szerkesztés az egyszerűsített táblázatban")
+                              : t(`Calibrate Bank Balance for ${activeHoveredBucket.weekLabel}`, `Nastaviť zostatok pre ${activeHoveredBucket.weekLabel}`, `Egyenleg beállítása: ${activeHoveredBucket.weekLabel}`)}
                           >
                             <Pencil className="h-3.5 w-3.5" />
                           </button>
@@ -5551,7 +5699,11 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                       className="flex items-center gap-2 text-ui font-bold text-indigo-600  hover:text-indigo-700 cursor-pointer"
                     >
                       <CalendarDays className="h-4 w-4" />
-                      {activeResolution === "month"
+                      {financialMode === "simplified"
+                        ? (isWeeklyTableOpen
+                            ? t("Hide Monthly Breakdown", "Skryť mesačnú tabuľku", "Havi lebontás elrejtése")
+                            : t(`Inspect Monthly Breakdown (12 Months of ${tableYear})`, `Zobraziť 12-mesačnú tabuľku (${tableYear})`, `12 havi lebontás megtekintése (${tableYear})`))
+                        : activeResolution === "month"
                         ? (isWeeklyTableOpen
                             ? projectionMonths === 0
                               ? t("Hide Monthly Breakdown", "Skryť mesačnú tabuľku", "Havi lebontás elrejtése")
@@ -5593,7 +5745,9 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                       {isWeeklyTableOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
                     </button>
                     <span className="text-caption text-slate-400">
-                      {projectionMonths === 0
+                      {financialMode === "simplified"
+                        ? t(`Year ${tableYear} • Pure overview table values`, `Rok ${tableYear} • Čisté hodnoty z tabuľky`, `${tableYear}. év • Tiszta táblázat értékek`)
+                        : projectionMonths === 0
                         ? t("Forecast off", "Prognóza vypnutá", "Előrejelzés kikapcsolva")
                         : activeResolution === "month"
                           ? t(
@@ -5615,14 +5769,14 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                       <table className="w-full text-left text-ui">
                         <thead className="bg-slate-50  type-overline text-slate-500  border-b border-slate-200 ">
                           <tr>
-                            <th className="py-3 px-4">{activeResolution === "month" ? t("Month / Period", "Mesiac / Obdobie", "Hónap / Időszak") : t("Week / Period", "Týždeň / Obdobie", "Hét / Időszak")}</th>
+                            <th className="py-3 px-4">{activeResolution === "month" || financialMode === "simplified" ? t("Month / Period", "Mesiac / Obdobie", "Hónap / Időszak") : t("Week / Period", "Týždeň / Obdobie", "Hét / Időszak")}</th>
                             <th className="py-3 px-4">{t("Type", "Typ", "Típus")}</th>
                             <th className="py-3 px-4 text-right">{t("Cumulative Income", "Príjmy", "Bevételek")}</th>
                             <th className="py-3 px-4 text-right">{t("Cumulative Expense", "Výdavky", "Kiadások")}</th>
-                            <th className="py-3 px-4 text-right">{activeResolution === "month" ? t("Monthly Net Flow", "Mesačný čistý tok", "Havi nettó folyam") : t("Weekly Net Flow", "Týždenný čistý tok", "Heti nettó folyam")}</th>
-                            <th className="py-3 px-4 text-right text-emerald-600 ">{t("🏦 Bank Account Balance", "🏦 Stav na účte", "🏦 Bankszámla egyenleg")}</th>
-                            <th className="py-3 px-4 text-center">{t("Calibration", "Nastavenie", "Kalibráció")}</th>
-                            <th className="py-3 px-4 text-center">{t("Movements", "Pohyby", "Tételek")}</th>
+                            <th className="py-3 px-4 text-right">{activeResolution === "month" || financialMode === "simplified" ? t("Monthly Net Flow", "Mesačný čistý tok", "Havi nettó folyam") : t("Weekly Net Flow", "Týždenný čistý tok", "Heti nettó folyam")}</th>
+                            <th className="py-3 px-4 text-right text-emerald-600 ">{financialMode === "simplified" ? t("🏦 Cumulative Balance", "🏦 Kumulatívny stav", "🏦 Kumulált egyenleg") : t("🏦 Bank Account Balance", "🏦 Stav na účte", "🏦 Bankszámla egyenleg")}</th>
+                            <th className="py-3 px-4 text-center">{financialMode === "simplified" ? t("Action", "Akcia", "Művelet") : t("Calibration", "Nastavenie", "Kalibráció")}</th>
+                            <th className="py-3 px-4 text-center">{financialMode === "simplified" ? t("Items", "Položky", "Tételek") : t("Movements", "Pohyby", "Tételek")}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100  font-medium">
@@ -5638,13 +5792,17 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                               }`}
                             >
                               <td className="py-2.5 px-4">
-                                <div className="font-bold text-slate-800 ">{w.weekLabel} {activeResolution === "month" ? w.year : ""}</div>
+                                <div className="font-bold text-slate-800 ">{w.weekLabel} {activeResolution === "month" || financialMode === "simplified" ? w.year : ""}</div>
                                 <div className="text-micro text-slate-400">{w.dateRangeLabel} ({w.year})</div>
                               </td>
                               <td className="py-2.5 px-4">
                                 {w.isCurrent ? (
                                   <span className="px-2 py-0.5 rounded-md bg-indigo-100  text-indigo-700  text-micro font-bold">
-                                    {activeResolution === "month" ? t("Current Month", "Tento mesiac", "Aktuális hónap") : t("Current Week", "Tento týždeň", "Aktuális hét")}
+                                    {activeResolution === "month" || financialMode === "simplified" ? t("Current Month", "Tento mesiac", "Aktuális hónap") : t("Current Week", "Tento týždeň", "Aktuális hét")}
+                                  </span>
+                                ) : financialMode === "simplified" ? (
+                                  <span className="px-2 py-0.5 rounded-md bg-slate-100  text-slate-600  text-micro">
+                                    {t("Month", "Mesiac", "Hónap")}
                                   </span>
                                 ) : w.isFuture ? (
                                   <span className="px-2 py-0.5 rounded-md bg-purple-100  text-purple-700  text-micro font-bold">
@@ -5676,7 +5834,17 @@ export const FinancialManagementView: React.FC<FinancialManagementViewProps> = (
                                 </div>
                               </td>
                               <td className="py-2.5 px-4 text-center">
-                                {canEdit && (
+                                {financialMode === "simplified" ? (
+                                  <button
+                                    type="button"
+                                    onClick={() => setActiveTab("table")}
+                                    className="px-2 py-1 bg-slate-100 hover:bg-indigo-50 text-slate-600 hover:text-indigo-600 rounded-lg text-micro font-bold border border-slate-200 transition-colors inline-flex items-center gap-1 cursor-pointer"
+                                    title={t("Edit in simplified overview table", "Upraviť v zjednodušenej tabuľke", "Szerkesztés az egyszerűsített táblázatban")}
+                                  >
+                                    <Pencil className="h-3 w-3" />
+                                    <span>{t("Edit", "Upraviť", "Szerkesztés")}</span>
+                                  </button>
+                                ) : canEdit && (
                                   <button
                                     type="button"
                                     onClick={() => handleOpenCalibrator(w)}

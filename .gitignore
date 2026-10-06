@@ -63,6 +63,12 @@ ccrm-license-private.json
 # publicly served from the docroot and leaked PII (see security audit).
 scratch/
 tempData/
+scratchbook/
+scratchbook.md
+*.scratchbook.*
+scripts/migrate_projektyerik_to_crm.php
+scripts/verify_migration.php
+
 
 # Editor directories and files
 .vscode/*

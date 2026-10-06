@@ -36,6 +36,7 @@ import { EntityHeader } from "../layout";
 import { formatNumber } from "../../utils/currency";
 import { SalaryCellDrawer } from "./SalaryCellDrawer";
 import { EmployeeTimesheetSummary, type TimesheetHoursData } from "./EmployeeTimesheetSummary";
+import { CustomSelect, type DropdownOption } from "../ui/CustomSelect";
 
 interface EmployeeDetailViewProps {
   employee: Employee;
@@ -418,24 +419,119 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
     resetEditFields();
   }, [employee, vacationTypes]);
 
-  // Fetch Toggl workspace users if credentials exist and card is in edit mode
-  const [togglUsers, setTogglUsers] = useState<Array<{ id: number; name: string; email: string }>>([]);
+  // Fetch Toggl workspace users whenever card is in edit mode
+  const [togglUsers, setTogglUsers] = useState<Array<{ id: number | string; name: string; email: string; active?: boolean }>>([]);
+  const [loadingTogglUsers, setLoadingTogglUsers] = useState<boolean>(false);
+  const [togglUsersError, setTogglUsersError] = useState<string | null>(null);
+  const [manualTogglInput, setManualTogglInput] = useState<boolean>(false);
+  const [showInactiveTogglUsers, setShowInactiveTogglUsers] = useState<boolean>(false);
+
+  const inactiveTogglUsersCount = useMemo(
+    () => togglUsers.filter((u) => u.active === false).length,
+    [togglUsers]
+  );
+
+  const togglSelectOptions = useMemo<DropdownOption[]>(() => {
+    const list: DropdownOption[] = [
+      {
+        value: "",
+        label: (
+          <span className="text-slate-400 font-normal">
+            {t("-- Not mapped / Unlinked --", "-- Bez prepojenia na Toggl --", "-- Nincs összerendelve --")}
+          </span>
+        ),
+        searchText: t("Not mapped unlinked none", "Bez prepojenia ziadne", "Nincs osszerendelve"),
+      },
+    ];
+
+    const currentIdStr = editTimeTrackingUserId ? String(editTimeTrackingUserId) : "";
+    if (currentIdStr && !togglUsers.some((u) => String(u.id) === currentIdStr)) {
+      list.push({
+        value: currentIdStr,
+        label: (
+          <span className="flex items-center gap-2 min-w-0">
+            <span className="font-semibold text-slate-800 truncate">
+              {editTimeTrackingUserName || `User #${currentIdStr}`}
+            </span>
+            <span className="shrink-0 text-micro px-1.5 py-0.5 rounded bg-amber-50 text-amber-700 font-normal">
+              {t("Current ID", "Aktuálne ID", "Jelenlegi ID")}
+            </span>
+          </span>
+        ),
+        searchText: `${editTimeTrackingUserName || ""} ${currentIdStr}`,
+      });
+    }
+
+    const filtered = togglUsers.filter((u) => {
+      if (showInactiveTogglUsers) return true;
+      return u.active !== false || String(u.id) === currentIdStr;
+    });
+
+    for (const u of filtered) {
+      const isInactive = u.active === false;
+      const displayName = u.name || u.email || `User #${u.id}`;
+      list.push({
+        value: String(u.id),
+        label: (
+          <span className="flex items-center justify-between gap-2 min-w-0 w-full">
+            <span className="flex items-center gap-1.5 min-w-0 truncate">
+              <span className="font-semibold text-slate-800 truncate">{displayName}</span>
+              {u.name && u.email && (
+                <span className="text-caption text-slate-400 font-normal truncate">
+                  ({u.email})
+                </span>
+              )}
+            </span>
+            {isInactive && (
+              <span className="shrink-0 text-micro px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 font-normal">
+                {t("Inactive", "Neaktívny", "Inaktív")}
+              </span>
+            )}
+          </span>
+        ),
+        searchText: `${displayName} ${u.email || ""} ${u.id} ${isInactive ? "inactive neaktivny inaktiv" : "active aktivny aktiv"}`,
+      });
+    }
+
+    return list;
+  }, [togglUsers, editTimeTrackingUserId, editTimeTrackingUserName, showInactiveTogglUsers, t]);
+
   useEffect(() => {
-    if (!isEditingCard || !hasTogglKey) return;
+    if (!isEditingCard) return;
     let isMounted = true;
+    setLoadingTogglUsers(true);
+    setTogglUsersError(null);
+
     fetch(`/api/time_tracking.php?action=fetch_workspace_users`, { credentials: "include" })
-      .then((res) => res.json())
+      .then((res) => res.json().catch(() => ({})))
       .then((data) => {
         if (!isMounted) return;
-        if (data.success && Array.isArray(data.data)) {
-          setTogglUsers(data.data);
+        const usersList = Array.isArray(data.data) ? data.data : (Array.isArray(data.users) ? data.users : []);
+        if (data.success && usersList.length > 0) {
+          const sorted = [...usersList].sort((a, b) => {
+            const aActive = a.active !== false;
+            const bActive = b.active !== false;
+            if (aActive !== bActive) return aActive ? -1 : 1;
+            const nameA = (a.name || a.email || "").toLowerCase();
+            const nameB = (b.name || b.email || "").toLowerCase();
+            return nameA.localeCompare(nameB);
+          });
+          setTogglUsers(sorted);
+        } else if (!data.success && (data.error || data.message)) {
+          setTogglUsersError(data.error || data.message);
         }
       })
-      .catch(() => {});
+      .catch((err) => {
+        if (isMounted) setTogglUsersError(err.message || "Failed to load Toggl users");
+      })
+      .finally(() => {
+        if (isMounted) setLoadingTogglUsers(false);
+      });
+
     return () => {
       isMounted = false;
     };
-  }, [isEditingCard, hasTogglKey]);
+  }, [isEditingCard]);
 
   const handleStartEdit = () => {
     setIsEditingCard(true);
@@ -933,14 +1029,55 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                       </div>
 
                       <div>
-                        <label className="type-overline text-slate-500 block mb-0.5">
-                          {t("Toggl User Link", "Prepojenie Toggl", "Toggl kapcsolat")}
-                        </label>
-                        {togglUsers.length > 0 ? (
-                          <select
+                        <div className="flex items-center justify-between mb-0.5">
+                          <label className="type-overline text-slate-500 block">
+                            {t("Toggl User Link", "Prepojenie Toggl", "Toggl kapcsolat")}
+                          </label>
+                          <div className="flex items-center gap-2.5">
+                            {togglUsers.length > 0 && inactiveTogglUsersCount > 0 && !manualTogglInput && (
+                              <button
+                                type="button"
+                                onClick={() => setShowInactiveTogglUsers((prev) => !prev)}
+                                className={`text-micro cursor-pointer transition-colors ${
+                                  showInactiveTogglUsers
+                                    ? "text-[#c29b62] font-semibold underline"
+                                    : "text-slate-400 hover:text-slate-600 underline"
+                                }`}
+                              >
+                                {showInactiveTogglUsers
+                                  ? t("Active only", "Len aktívni", "Csak aktívak")
+                                  : t(
+                                      `Show inactive (${inactiveTogglUsersCount})`,
+                                      `Zobraziť neaktívnych (${inactiveTogglUsersCount})`,
+                                      `Inaktívak (${inactiveTogglUsersCount})`
+                                    )}
+                              </button>
+                            )}
+                            {togglUsers.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setManualTogglInput((prev) => !prev)}
+                                className="text-micro text-slate-400 hover:text-slate-600 underline cursor-pointer"
+                              >
+                                {manualTogglInput
+                                  ? t("Select from list", "Vybrať zo zoznamu", "Kiválasztás listából")
+                                  : t("Manual ID", "Zadať ručne", "Kézi megadás")}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+
+                        {loadingTogglUsers && togglUsers.length === 0 ? (
+                          <div className="flex items-center gap-2 px-2.5 py-1.5 text-caption text-slate-400 bg-slate-50 border border-slate-200 rounded-xl">
+                            <Loader2 className="w-3.5 h-3.5 animate-spin text-[#c29b62]" />
+                            <span className="truncate">
+                              {t("Loading Toggl users...", "Načítavam používateľov z Toggl...", "Toggl felhasználók betöltése...")}
+                            </span>
+                          </div>
+                        ) : !manualTogglInput && togglUsers.length > 0 ? (
+                          <CustomSelect
                             value={editTimeTrackingUserId}
-                            onChange={(e) => {
-                              const val = e.target.value;
+                            onChange={(val) => {
                               setEditTimeTrackingUserId(val);
                               const found = togglUsers.find((u) => String(u.id) === val);
                               if (found) {
@@ -949,27 +1086,33 @@ export const EmployeeDetailView: React.FC<EmployeeDetailViewProps> = ({
                                 setEditTimeTrackingUserName("");
                               }
                             }}
-                            className="w-full px-2.5 py-1.5 text-ui bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none truncate"
-                          >
-                            <option value="">{t("Not mapped", "Neprepojené", "Nincs összerendelve")}</option>
-                            {togglUsers.map((u) => (
-                              <option key={u.id} value={String(u.id)}>
-                                {u.name || u.email}
-                              </option>
-                            ))}
-                          </select>
-                        ) : (
-                          <input
-                            type="text"
-                            value={editTimeTrackingUserName || editTimeTrackingUserId}
-                            onChange={(e) => {
-                              setEditTimeTrackingUserName(e.target.value);
-                              setEditTimeTrackingUserId(e.target.value);
-                            }}
-                            className="w-full px-2.5 py-1.5 text-ui bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none"
-                            placeholder={t("User ID or name", "ID alebo meno", "ID vagy név")}
+                            options={togglSelectOptions}
+                            searchable
+                            size="sm"
+                            className="bg-slate-50 border-slate-200"
+                            searchPlaceholder={t("Search user...", "Hľadať používateľa...", "Felhasználó keresése...")}
+                            placeholder={t("-- Not mapped / Unlinked --", "-- Bez prepojenia na Toggl --", "-- Nincs összerendelve --")}
                           />
+                        ) : (
+                          <div className="space-y-1">
+                            <input
+                              type="text"
+                              value={editTimeTrackingUserName || editTimeTrackingUserId}
+                              onChange={(e) => {
+                                setEditTimeTrackingUserName(e.target.value);
+                                setEditTimeTrackingUserId(e.target.value);
+                              }}
+                              className="w-full px-2.5 py-1.5 text-ui bg-slate-50 border border-slate-200 rounded-xl focus:border-[#c29b62] focus:outline-none font-mono"
+                              placeholder={t("User ID or name", "ID alebo meno", "ID vagy név")}
+                            />
+                            {togglUsersError && (
+                              <p className="text-micro text-amber-600 truncate" title={togglUsersError}>
+                                {togglUsersError}
+                              </p>
+                            )}
+                          </div>
                         )}
+
                       </div>
                     </div>
 

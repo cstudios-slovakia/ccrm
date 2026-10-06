@@ -604,6 +604,8 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     return topLevelStates.map((state) => {
       const stateLower = state.toLowerCase();
       const leadsInState = leads.filter((l) => {
+        if (l.archived) return false;
+        if (l.id === "unassigned-docs" || (l.id || "").startsWith("client-")) return false;
         const sKey = (l.status || "").toLowerCase();
         const parent = stateParents[sKey];
         const target = parent ? parent.toLowerCase() : sKey;
@@ -656,7 +658,7 @@ export const DynamicDashboardView: React.FC<DynamicDashboardViewProps> = ({
     let totalInvoicedValue = 0;
 
     return allStatuses.map((status) => {
-      const projectsInStatus = projects.filter((p) => p.status === status);
+      const projectsInStatus = projects.filter((p) => !p.archived && p.status === status);
       let statusInvoicableVal = 0;
       let statusTotalBudgetValue = 0;
       let statusTotalInvoicedValue = 0;

@@ -5,9 +5,11 @@ const GROUP_ORDER: LeadStageGroup[] = ["new", "in_progress", "closed"];
 
 const resolveGroup = (
   state: string,
-  leadStageGroups: Record<string, string>,
+  leadStageGroups: Record<string, string> = {},
 ): LeadStageGroup => {
-  const group = leadStageGroups[state.toLowerCase()];
+  const key = state.toLowerCase().trim();
+  if (key === "lost" || key === "rejected" || key === "accepted" || key === "won" || key === "client") return "closed";
+  const group = leadStageGroups[key];
   return group === "new" || group === "closed" ? group : "in_progress";
 };
 

@@ -284,6 +284,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       const stateLower = state.toLowerCase();
       const leadsInState = leads.filter((l) => {
         if (l.archived) return false;
+        if (l.id === "unassigned-docs" || (l.id || "").startsWith("client-")) return false;
         const sKey = (l.status || "").toLowerCase();
         const parent = leadStateParents[sKey];
         const target = parent ? parent.toLowerCase() : sKey;
@@ -333,7 +334,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
     let totalInvoicedValue = 0;
 
     return activeStatuses.map((status) => {
-      const projectsInStatus = projects.filter((p) => p.status === status);
+      const projectsInStatus = projects.filter((p) => !p.archived && p.status === status);
       let statusInvoicableVal = 0;
       let statusTotalBudgetValue = 0;
       let statusTotalInvoicedValue = 0;

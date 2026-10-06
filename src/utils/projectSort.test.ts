@@ -31,6 +31,16 @@ test("value sorts numerically and an empty value goes last in both directions", 
   assert.deepEqual(order(sortProjects(priced, { key: "value", direction: "desc" }, values)), ["c", "a", "b"]);
 });
 
+test("invoicable sorts numerically and an empty value goes last in both directions", () => {
+  const invoiced: Row[] = [
+    { id: "a", invoicable: 900 },
+    { id: "b", invoicable: null },
+    { id: "c", invoicable: 1200 },
+  ];
+  assert.deepEqual(order(sortProjects(invoiced, { key: "invoicable", direction: "asc" }, values)), ["a", "c", "b"]);
+  assert.deepEqual(order(sortProjects(invoiced, { key: "invoicable", direction: "desc" }, values)), ["c", "a", "b"]);
+});
+
 const values = (r: Row): ProjectSortValues => ({
   name: r.name ?? "",
   client: "",
@@ -40,6 +50,7 @@ const values = (r: Row): ProjectSortValues => ({
   deadline: r.deadline ?? null,
   progress: r.progress ?? null,
   value: r.value ?? null,
+  invoicable: r.invoicable ?? null,
   division: r.division ?? "",
   statusRank: r.statusRank ?? 0,
 });

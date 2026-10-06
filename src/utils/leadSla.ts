@@ -78,13 +78,20 @@ export const normalizeLeadStateSla = (raw: unknown): LeadStateSla => {
 /** True when this phase is terminal — a closed deal cannot "move on" in time. */
 export const isClosedLeadState = (
   state: string,
-  leadStageGroups: Record<string, string>,
-  leadStateParents: Record<string, string>,
+  leadStageGroups: Record<string, string> = {},
+  leadStateParents: Record<string, string> = {},
 ): boolean => {
-  const key = (state || "").toLowerCase();
+  const key = (state || "").toLowerCase().trim();
+  if (!key) return false;
+  if (key === "lost" || key === "rejected" || key === "accepted" || key === "won" || key === "client") return true;
   if (leadStageGroups[key] === "closed") return true;
   const parent = leadStateParents[key];
-  return !!parent && leadStageGroups[parent.toLowerCase()] === "closed";
+  if (parent) {
+    const parentKey = parent.toLowerCase().trim();
+    if (parentKey === "lost" || parentKey === "rejected" || parentKey === "accepted" || parentKey === "won" || parentKey === "client") return true;
+    if (leadStageGroups[parentKey] === "closed") return true;
+  }
+  return false;
 };
 
 const isClosedState = isClosedLeadState;
