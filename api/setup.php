@@ -417,6 +417,14 @@ try {
 
     $pdo->commit();
 
+    // The modular demo dataset (api/demo_seed/) runs after the commit, once the
+    // leads and users above exist: some modules create tables, and DDL would
+    // implicitly commit the transaction. Each module logs its own failure.
+    if ($installType === 'demo') {
+        require_once __DIR__ . '/demo_seed/index.php';
+        demo_seed_all($pdo);
+    }
+
     if (file_put_contents($configFile, $configContent) === false) {
         http_response_code(500);
         echo json_encode(['success' => false, 'message' => 'Failed to write config.php file. Check directory permissions.']);

@@ -45,6 +45,28 @@ try {
     $pdo->exec("DELETE FROM `tasks`;");
     $pdo->exec("DELETE FROM `financial_records`;");
 
+    // Everything the modular demo seeders wrote (api/demo_seed/) carries an id
+    // with the 'demo-' prefix. Match it on every string `id` column; join
+    // tables without an `id` are matched on their `*_id` columns instead, and
+    // the mail caches on `email_uid` (the demo mailbox uses 'demo-mail-<n>').
+    $demoCols = $pdo->query(
+        "SELECT `TABLE_NAME` AS t, `COLUMN_NAME` AS c FROM information_schema.COLUMNS
+          WHERE `TABLE_SCHEMA` = DATABASE()
+            AND `DATA_TYPE` IN ('varchar', 'char')
+            AND (`COLUMN_NAME` = 'id' OR `COLUMN_NAME` = 'email_uid' OR `COLUMN_NAME` LIKE '%\_id')"
+    )->fetchAll(PDO::FETCH_ASSOC);
+    $tablesWithId = [];
+    foreach ($demoCols as $col) {
+        if ($col['c'] === 'id') $tablesWithId[$col['t']] = true;
+    }
+    foreach ($demoCols as $col) {
+        $isIdCol = $col['c'] === 'id' || $col['c'] === 'email_uid';
+        if (!$isIdCol && isset($tablesWithId[$col['t']])) continue;
+        $t = str_replace('`', '', $col['t']);
+        $c = str_replace('`', '', $col['c']);
+        $pdo->exec("DELETE FROM `{$t}` WHERE `{$c}` LIKE 'demo-%'");
+    }
+
     // Wipe customizable lists if "Keep Configs" was false
     if (!$keepConfigs) {
         $pdo->exec("DELETE FROM `financial_categories`;");
@@ -92,6 +114,20 @@ try {
     
     $pdo->exec("SET FOREIGN_KEY_CHECKS = 1;");
     $pdo->commit();
+
+    // DROP TABLE commits implicitly in MySQL, so these run after the commit.
+    // SAI simulations live in per-simulation `sim<id>_*` tables; leaving demo
+    // mode removes them all, together with the demo mailbox store.
+    if ($pdo->query("SHOW TABLES LIKE 'swarm_simulations'")->rowCount() > 0) {
+        $prefixes = $pdo->query("SELECT `table_prefix` FROM `swarm_simulations`")->fetchAll(PDO::FETCH_COLUMN);
+        foreach ($prefixes as $prefix) {
+            $prefix = preg_replace('/[^a-zA-Z0-9_]/', '', (string)$prefix);
+            if ($prefix === '') continue;
+            $pdo->exec("DROP TABLE IF EXISTS `{$prefix}nodes`, `{$prefix}edges`, `{$prefix}agents`, `{$prefix}posts`");
+        }
+        $pdo->exec("DELETE FROM `swarm_simulations`");
+    }
+    $pdo->exec("DROP TABLE IF EXISTS `demo_mail_messages`");
 
     $response = ["success" => true, "message" => "Demo data successfully wiped out."];
     if ($generatedAdminPassword !== null) {
