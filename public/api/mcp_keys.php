@@ -34,6 +34,21 @@ try {
 
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 
+if ($method === 'GET' && !empty($_GET['all'])) {
+    if (!ccrm_is_admin($sessionUser)) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'error' => 'Forbidden']);
+        exit;
+    }
+    $all = $pdo->query(
+        "SELECT k.id, k.user_id, u.name AS user_name, u.email AS user_email, k.key_prefix, k.name, k.created_at, k.last_used_at
+         FROM mcp_keys k JOIN users u ON u.id = k.user_id
+         WHERE k.revoked_at IS NULL ORDER BY k.created_at DESC"
+    )->fetchAll(\PDO::FETCH_ASSOC);
+    echo json_encode(['success' => true, 'keys' => $all]);
+    exit;
+}
+
 if ($method === 'GET') {
     $stmt = $pdo->prepare(
         "SELECT id, key_prefix, name, created_at, last_used_at 
@@ -76,7 +91,7 @@ if ($method === 'POST') {
     $tokenBytes = random_bytes(32);
     $token = 'ccrm_mcp_' . bin2hex($tokenBytes);
     $keyHash = hash('sha256', $token);
-    $keyPrefix = 'ccrm_mcp_' . substr(bin2hex($tokenBytes), 0, 8) . '...' . substr(bin2hex($tokenBytes), -4);
+    $keyPrefix = 'ccrm_mcp_' . substr(bin2hex($tokenBytes), 0, 4) . '...' . substr(bin2hex($tokenBytes), -4);
     $keyId = 'mcpk_' . bin2hex(random_bytes(8));
 
     // Revoke any existing active keys for this user
@@ -103,9 +118,7 @@ if ($method === 'POST') {
     }
 
     // Audit log
-    if (function_exists('ccrm_log_audit')) {
-        ccrm_log_audit($pdo, $userId, (string)($sessionUser['email'] ?? ''), 'generate_mcp_key', 'Generated personal MCP API key (' . $keyPrefix . ')');
-    }
+    ccrm_audit_log($pdo, ['id' => $userId, 'email' => (string)($sessionUser['email'] ?? '')], 'generate_mcp_key', 'Generated personal MCP API key ' . $keyId . ' (' . $keyPrefix . ')');
 
     echo json_encode([
         'success' => true,
@@ -118,12 +131,21 @@ if ($method === 'POST') {
 }
 
 if ($method === 'DELETE') {
-    $revokeStmt = $pdo->prepare("UPDATE mcp_keys SET revoked_at = NOW() WHERE user_id = ? AND revoked_at IS NULL");
-    $revokeStmt->execute([$userId]);
-
-    if (function_exists('ccrm_log_audit')) {
-        ccrm_log_audit($pdo, $userId, (string)($sessionUser['email'] ?? ''), 'revoke_mcp_key', 'Revoked personal MCP API key');
+    $targetId = $userId;
+    $requested = trim((string)($_GET['user_id'] ?? ''));
+    if ($requested !== '' && $requested !== $userId) {
+        if (!ccrm_is_admin($sessionUser)) {
+            http_response_code(403);
+            echo json_encode(['success' => false, 'error' => 'Only an admin can revoke another user\'s key']);
+            exit;
+        }
+        $targetId = $requested;
     }
+
+    $revokeStmt = $pdo->prepare("UPDATE mcp_keys SET revoked_at = NOW() WHERE user_id = ? AND revoked_at IS NULL");
+    $revokeStmt->execute([$targetId]);
+
+    ccrm_audit_log($pdo, ['id' => $userId, 'email' => (string)($sessionUser['email'] ?? '')], 'revoke_mcp_key', $targetId === $userId ? 'Revoked personal MCP API key' : 'Revoked the MCP API key of user ' . $targetId);
 
     echo json_encode(['success' => true, 'message' => 'MCP key revoked successfully']);
     exit;

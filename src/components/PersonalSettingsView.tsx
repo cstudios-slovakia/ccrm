@@ -1290,7 +1290,7 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                       mcpServers: {
                         ccrm: {
                           command: "node",
-                          args: ["/Users/erik/Documents/vibe coding/crm/mcp-server/dist/index.js"],
+                          args: ["/path/to/ccrm-app/mcp-server/dist/index.js"],
                           env: {
                             CCRM_API_URL: `${origin}/api`,
                             CCRM_MCP_KEY: tokenPlaceholder
@@ -1351,22 +1351,23 @@ export const PersonalSettingsView: React.FC<PersonalSettingsViewProps> = ({
                   </div>
 
                   {(() => {
-                    const agentPrompt = `You have full access to CCRM via the \`ccrm\` MCP server tools.
-You are operating on behalf of ${currentUser.name} (${currentUser.email}, Role: ${currentUser.role || 'Admin'}).
+                    const agentPrompt = `You have access to CCRM via the \`ccrm\` MCP server tools.
+You are operating on behalf of ${currentUser.name} (${currentUser.email}, Role: ${currentUser.role || 'Admin'}). You can only use the tools and see the data that this role is allowed to; a tool that is not listed or that answers "Forbidden" is outside it.
 
 ### Available Capabilities:
 - Leads & Opportunities: Manage sales pipeline, stage transitions, deal values.
 - Clients & Contacts: View, create, update companies, addresses, and contacts.
 - Projects & Tasks: Manage Gantt milestones, tasks, statuses, assignments, and priorities.
-- Financials & Invoicing: View summaries, issue invoices, log expense items.
+- Financials & Invoicing: Finance overview, forecast, project billing and invoicable value; create draft invoices and planned expenses. Approving, settling and paying money is done in the app.
 - Warehouse & Stock: View inventory levels, movements, and stock locations.
 - Meetings & Comms: Schedule meetings, log internal notes, view communication threads.
-- Global Search: Search records across the entire CRM with \`search_entities\`.
+- Employees: Staff, vacations and (only with the salaries permission) payroll.
+- Global Search: Search the modules your role can see with \`search_entities\`.
 
 ### Strict Operational Rules:
 1. Always search or inspect existing records before creating duplicates.
-2. For financial actions (invoices, expenses), double check amounts, currencies, and client IDs.
-3. You CANNOT view or modify system-wide settings, application licenses, credentials, or raw DB tables.
+2. For financial actions (invoices, expenses), double check amounts, currencies, and client IDs. Lead stages, project statuses and task statuses must be ones configured in the workspace; a wrong value is rejected with the list of valid ones.
+3. You CANNOT view or modify application settings, licenses, credentials, or raw DB tables. The only setting reachable is the finance mode (admin only).
 4. All actions taken through your tools are logged and attributed to ${currentUser.name} in the system audit log.`;
 
                     return (
@@ -1398,7 +1399,7 @@ You are operating on behalf of ${currentUser.name} (${currentUser.email}, Role: 
                   </div>
                   <ul className="list-disc pl-5 space-y-1.5 text-caption leading-relaxed text-amber-900/90">
                     <li>{t("Active Persona:", "Aktívna identita:", "Aktív identitás:")} <strong>{currentUser.name}</strong> ({currentUser.email})</li>
-                    <li>{t("Security Boundary:", "Bezpečnostná hranica:", "Biztonsági határ:")} {t("Zero access to system settings, database credentials, or destructive reset commands.", "Nulový prístup k systémovým nastaveniam, heslám a deštruktívnym príkazom.", "Zéró hozzáférés a rendszerbeállításokhoz, jelszavakhoz vagy destruktív parancsokhoz.")}</li>
+                    <li>{t("Security Boundary:", "Bezpečnostná hranica:", "Biztonsági határ:")} {t("Limited to your role's permissions. No access to credentials, licenses or destructive commands; the only setting reachable is the finance mode (admin only).", "Obmedzené oprávneniami vašej roly. Žiadny prístup k heslám, licenciám ani deštruktívnym príkazom; jediné dostupné nastavenie je režim financií (len admin).", "A szerepköre jogosultságaira korlátozva. Nincs hozzáférés jelszavakhoz, licencekhez vagy destruktív parancsokhoz; az egyetlen elérhető beállítás a pénzügyi mód (csak admin).")}</li>
                     <li>{t("Audit Logged:", "Auditované:", "Auditálva:")} {t("Every write action (invoice creation, stage change, task assignment) is stamped with your user ID.", "Každý zápis je v audit logu označený vaším používateľským účtom.", "Minden művelet rögzítésre kerül az Ön felhasználói azonosítójával.")}</li>
                   </ul>
                 </div>
