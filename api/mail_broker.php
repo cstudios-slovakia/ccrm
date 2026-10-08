@@ -140,6 +140,15 @@ if (!$emailSettings) {
     exit;
 }
 
+// A demo install's seeded mailbox profile is answered from the demo store, never
+// over IMAP. Only that exact profile qualifies (see demo_mailbox.php), so a real
+// configured mailbox always takes the path below.
+require_once __DIR__ . '/demo_mailbox.php';
+if (ccrm_demo_mailbox_active($pdo, $emailSettings)) {
+    ccrm_demo_mailbox_handle($pdo, $action, $emailSettings, $userEmail);
+    exit;
+}
+
 // Perform action
 try {
     switch ($action) {

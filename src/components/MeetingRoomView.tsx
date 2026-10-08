@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { fetchWithTimeout } from "../utils/fetchWithTimeout";
 import { createPortal } from "react-dom";
-import { Search, Calendar, User, Users, Clock, CheckSquare, Plus, ArrowLeft, Filter, Sparkles, AlertCircle, ChevronDown, X, Archive, Settings, Mic, Play, Pause, Square, Volume2, Trash2, Lock, UserPlus } from "lucide-react";
+import { Search, Calendar, User, Users, Clock, CheckSquare, Plus, ArrowLeft, Filter, Sparkles, AlertCircle, ChevronDown, X, Archive, Settings, Mic, Play, Pause, Square, Volume2, Trash2, Lock, UserPlus, MicOff } from "lucide-react";
 import type { Lead, UserProfile, Task } from "../types";
 import { cn } from "../utils/cn";
 import { BlockEditor } from "./BlockEditor";
@@ -158,6 +158,11 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
   const [mediaRecorder, setMediaRecorder] = useState<MediaRecorder | null>(null);
   const [recordDuration, setRecordDuration] = useState(0);
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  // The stored recording failed to load (file deleted, or a demo meeting that
+  // only ever had a transcript). The bar then says so instead of offering a
+  // player that cannot play.
+  const [audioUnavailable, setAudioUnavailable] = useState(false);
+  useEffect(() => { setAudioUnavailable(false); }, [audioUrl]);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [isUploadingAudio, setIsUploadingAudio] = useState(false);
   const [uploadedAudioFile, setUploadedAudioFile] = useState<string | null>(null);
@@ -649,7 +654,30 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
     }
   };
 
+  // Compact stand-in for the player when there is nothing to play.
+  const renderNoAudioNotice = (meeting: MeetingNote) => {
+    const message = meeting.id.startsWith("demo-")
+      ? t("Demo recording – no audio. The transcript and AI notes are sample data.", "Ukážková nahrávka – bez zvuku. Prepis a AI poznámky sú vzorové dáta.", "Bemutató felvétel – hang nélkül. Az átirat és az AI-jegyzetek mintaadatok.")
+      : meeting.audioFile
+        ? t("The audio file is no longer available. The transcript and notes are kept.", "Zvukový súbor už nie je dostupný. Prepis a poznámky zostávajú.", "A hangfájl már nem érhető el. Az átirat és a jegyzetek megmaradnak.")
+        : t("No audio attached – transcript only.", "Bez zvukovej nahrávky – iba prepis.", "Nincs csatolt hangfelvétel – csak átirat.");
+    return (
+      <div className="w-full max-w-212.5 bg-white/70 backdrop-blur-md border border-slate-200 shadow-sm px-4 py-3 rounded-2xl mb-6 flex items-center gap-3 text-left">
+        <span className="h-7 w-7 rounded-full bg-slate-100 text-slate-500 flex items-center justify-center shrink-0">
+          <MicOff className="h-3.5 w-3.5" />
+        </span>
+        <p className="text-ui text-slate-600 min-w-0">{message}</p>
+      </div>
+    );
+  };
+
   const renderRecordingBar = () => {
+    if (viewState === "detail" && selectedMeeting) {
+      const nothingToPlay = selectedMeeting.audioFile ? audioUnavailable : !!selectedMeeting.transcription;
+      if (nothingToPlay && (recordingState === "none" || recordingState === "stopped")) {
+        return renderNoAudioNotice(selectedMeeting);
+      }
+    }
     if (recordingState === "none") return null;
 
     return (
@@ -717,7 +745,11 @@ export const MeetingRoomView: React.FC<MeetingRoomViewProps> = ({
               onEnded={() => setIsPlaying(false)}
               onError={() => {
                 setIsPlaying(false);
-                if (typeof (window as any).showToast === "function") {
+                // A saved meeting swaps the dead player for the notice above; a
+                // fresh recording that fails to load still needs the toast.
+                if (viewState === "detail") {
+                  setAudioUnavailable(true);
+                } else if (typeof (window as any).showToast === "function") {
                   (window as any).showToast(t("The recording could not be loaded.", "Nahrávku sa nepodarilo načítať.", "A felvételt nem sikerült betölteni."), "error");
                 }
               }}

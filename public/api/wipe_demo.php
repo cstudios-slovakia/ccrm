@@ -127,7 +127,8 @@ try {
         }
         $pdo->exec("DELETE FROM `swarm_simulations`");
     }
-    $pdo->exec("DROP TABLE IF EXISTS `demo_mail_messages`");
+    require_once __DIR__ . '/demo_mailbox.php';
+    ccrm_demo_mailbox_wipe($pdo);
 
     $response = ["success" => true, "message" => "Demo data successfully wiped out."];
     if ($generatedAdminPassword !== null) {

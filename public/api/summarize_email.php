@@ -84,7 +84,10 @@ if (empty($body) && $folder !== 'thread') {
     if ($metadataStr) {
         $metadata = json_decode($metadataStr, true);
         $emailSettings = ccrm_decrypt_email_settings($metadata['emailSettings'] ?? null);
-        if ($emailSettings && ($emailSettings['isValidated'] ?? false)) {
+        require_once __DIR__ . '/demo_mailbox.php';
+        if ($emailSettings && ccrm_demo_mailbox_active($pdo, $emailSettings)) {
+            $body = ccrm_demo_mailbox_body_text($pdo, strtolower((string)$emailSettings['imapUsername']), $folder, $emailUid);
+        } elseif ($emailSettings && ($emailSettings['isValidated'] ?? false)) {
             try {
                 $imapBody = ccrm_summary_body_from_mailbox($emailSettings, $folder, $emailUid);
                 if ($imapBody) {
