@@ -20,7 +20,7 @@ import type { ModuleAccess } from "../../utils/permissions";
 import {
   DEFAULT_MOCK_EMPLOYEES,
   generateDefaultMockSalaries,
-  DEFAULT_MOCK_VACATIONS,
+  generateDefaultMockVacations,
   DEFAULT_MOCK_SETTINGS
 } from "../../utils/mockEmployees";
 import { EmployeeListView } from "./EmployeeListView";
@@ -245,8 +245,10 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
   // Handle Seed Mock Data
   const handleSeedMockData = React.useCallback(() => {
     setEmployees(DEFAULT_MOCK_EMPLOYEES);
-    setSalaries(generateDefaultMockSalaries(new Date().getFullYear()));
-    setVacations(DEFAULT_MOCK_VACATIONS);
+    // Anchored to today so the calendar and salary matrix open on populated months
+    const now = new Date();
+    setSalaries(generateDefaultMockSalaries(now.getFullYear(), now));
+    setVacations(generateDefaultMockVacations(now));
     if (!employeeSettings || !employeeSettings.salaryTypes?.length) {
       setEmployeeSettings(DEFAULT_MOCK_SETTINGS);
     }

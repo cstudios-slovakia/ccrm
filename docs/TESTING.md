@@ -307,6 +307,44 @@ reads back a field, and after adding a column, a JSON blob or a dynamic table.
 It is outside `npm test` for the same reason as 5b: it needs Docker + MySQL.
 It cleans up every row and table it created, prefix `ccrm-del-probe-`.
 
+## 5d. The MCP probe: what can an AI key read and write?
+
+```bash
+npm run test:mcp        # needs `docker compose up` (containers crm + ccrm-db-1)
+```
+
+`scripts/probe-mcp/run.mjs` exercises the MCP gateway (`public/api/mcp*.php`) on
+real PHP and MySQL. It **never touches the dev data**: it clones the dev
+database into a scratch schema (`ccrm_mcp_probe`), serves a copy of
+`public/api` from `/var/www/html/mcpprobe` in the dev web container, seeds
+four users (Admin and three roles with nothing / view / edit on every module)
+and their keys, and drops the schema and the directory when it finishes.
+
+Three groups of checks, about 130 in all:
+
+1. **Authorization** — which tools each role sees in `tools/list` and may call
+   (`-32003` otherwise), that every tool in the source is in the permission
+   table, field stripping (`pin`, salaries) without `employees.salaries`,
+   `tasks.view_all`, revoked keys, keys older than a password reset, no
+   wildcard CORS, no SQL in error messages, and a source scan proving no MCP
+   file contains `DELETE FROM`, `TRUNCATE` or `DROP TABLE`.
+2. **Parity** — the PHP finance maths against the TypeScript originals on one
+   fixture (`scripts/probe-mcp/fixture.mjs`): the overview table
+   (`aggregateOverviewTable`, recurring rules included), project billing
+   (`projectBilling`, `resolveProjectValue` incl. money attributes), the
+   cash-flow forecast (`projectFutureMovements`) and the simplified-table
+   equation evaluator. If you change one side of a ported formula, this fails
+   until you change the other.
+3. **Write paths** — invoices (numbering, net/VAT maths, ledger link, no
+   orphan on failure), stock (weighted average cost, no overselling), payroll
+   (ledger mirror, paid periods are final), leads (stage guard, history),
+   projects (configured statuses, finish date), tasks, vacations.
+
+Run it after any change to `public/api/mcp*.php`, and when a formula it ports
+changes (`financialOverviewTable.ts`, `recurringExpenses.ts`,
+`futureMovements.ts`, `projectBilling.ts`, `equationEvaluator.ts`). It is
+outside `npm test` for the same reason as 5b and 5c: it needs Docker + MySQL.
+
 ---
 
 ## 6. When to run what
@@ -318,6 +356,7 @@ It cleans up every row and table it created, prefix `ccrm-del-probe-`.
 | Touched navigation, the sidebar or the header | `npm run test:qa:nav` |
 | Touched licensing (`api/license*.php`, the token format) | `php scripts/test/license-verification.php` |
 | Touched how `sync.php`/`api/*.php` stores or reads back a field | `npm run test:persistence` — GET-after-POST against the local Docker backend (see 5c) |
+| Touched the MCP gateway (`public/api/mcp*.php`) or a formula it ports | `npm run test:mcp` — roles, field stripping, TS↔PHP parity and write paths on a scratch database (see 5d) |
 | **Finished a feature or a fix** | **`npm run test:qa`** (scoped automatically) |
 | Several sessions share this checkout | `node scripts/qa/run-qa.mjs --files <your files>` — the automatic diff would scope to everyone's changes |
 | Another run is live (`Waiting:` printed) | nothing — it queues and starts when the other run ends |

@@ -40,6 +40,7 @@ use craft\fields\BaseRelationField;
 use craft\fields\Matrix;
 use craft\helpers\App;
 use craft\helpers\Assets as AssetsHelper;
+use craft\helpers\FileHelper;
 use craft\models\EntryType;
 use craft\models\Section;
 use craft\web\Controller;
@@ -397,6 +398,16 @@ class ApiController extends Controller
     /* ----------------------------------------------------------------- state */
 
     public function actionState(): Response
+    {
+        try {
+            return $this->stateResponse();
+        } catch (\Throwable $e) {
+            Craft::error('ccrm-news state failed: ' . $e->getMessage(), __METHOD__);
+            return $this->fail('exception', 500, ['message' => $e->getMessage(), 'at' => basename($e->getFile()) . ':' . $e->getLine()]);
+        }
+    }
+
+    private function stateResponse(): Response
     {
         $file = Craft::$app->getPath()->getStoragePath() . '/ccrm-news/state.json';
         $request = Craft::$app->getRequest();
