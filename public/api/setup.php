@@ -421,6 +421,9 @@ try {
     // leads and users above exist: some modules create tables, and DDL would
     // implicitly commit the transaction. Each module logs its own failure.
     if ($installType === 'demo') {
+        // Sample staff, salaries and leave: the schema pass above ran before
+        // DEMO_MODE existed, so it seeded nothing. Pure DML, own transaction.
+        ccrm_seed_default_employees($pdo);
         require_once __DIR__ . '/demo_seed/index.php';
         demo_seed_all($pdo);
     }

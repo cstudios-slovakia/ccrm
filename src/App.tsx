@@ -2971,6 +2971,7 @@ ${log.payload || ''}
           employeeSettings={employeeSettings}
           setEmployeeSettings={updateEmployeeSettingsAndSync}
           financialCategories={financialCategories}
+          isDemoMode={isDemoMode}
         />
       );
     }
@@ -3577,6 +3578,7 @@ ${log.payload || ''}
             employeeSettings={employeeSettings}
             setEmployeeSettings={updateEmployeeSettingsAndSync}
             financialCategories={financialCategories}
+            isDemoMode={isDemoMode}
           />
         );
       default:

@@ -2130,7 +2130,7 @@ if (!function_exists('ccrm_schema_statements')) {
 
     /**
      * Seeds sample employees, salaries, and vacation records into empty employee tables
-     * for demo installations.
+     * — demo installations only. A real installation starts with no staff.
      */
     function ccrm_seed_default_employees(PDO $pdo): void {
         // All-or-nothing: the seed only runs while `employees` is empty, so a
@@ -2140,6 +2140,9 @@ if (!function_exists('ccrm_schema_statements')) {
         try {
             $hasTable = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees'")->fetchColumn();
             if ($hasTable === 0) return;
+
+            $demoMode = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'DEMO_MODE'");
+            if (!$demoMode || $demoMode->fetchColumn() !== 'true') return;
 
             $count = (int)$pdo->query("SELECT COUNT(*) FROM `employees`")->fetchColumn();
             if ($count > 0) return;
