@@ -624,7 +624,9 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
                     }
 
                     // Managers
-                    $mgrStmt = $pdo->prepare("SELECT u.`name` FROM `project_managers` pm JOIN `users` u ON pm.`user_id` = u.`id` WHERE pm.`project_id` = ?");
+                    // `user_id` holds whatever the client sent: a user's NAME from the
+                    // Projects UI (and the demo seed), an id from realtime_session.php.
+                    $mgrStmt = $pdo->prepare("SELECT COALESCE(u.`name`, pm.`user_id`) FROM `project_managers` pm LEFT JOIN `users` u ON pm.`user_id` = u.`id` WHERE pm.`project_id` = ?");
                     $mgrStmt->execute([$pr['id']]);
                     $managers = $mgrStmt->fetchAll(PDO::FETCH_COLUMN);
 

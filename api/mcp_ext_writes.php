@@ -285,6 +285,7 @@ function mcp_do_list_clients(\PDO $pdo, array $args): array {
             if (strpos($hay, $term) === false) continue;
         }
         unset($p['_leads']);
+        $p['url'] = mcp_client_url($pdo, (string)$p['name']);
         $out[] = $p;
     }
     $sort = in_array($args['sort_by'] ?? '', ['name', 'created_at', 'value'], true) ? $args['sort_by'] : 'name';
@@ -693,7 +694,7 @@ function mcp_do_record_vacation(\PDO $pdo, array $user, array $args): array {
     $typeIds = array_column($defaults['vacationTypes'], 'id');
     $typeId = (string)($args['vacation_type_id'] ?? 'annual');
     if (!in_array($typeId, $typeIds, true)) throw new \InvalidArgumentException("Unknown vacation_type_id '{$typeId}'. Configured types: " . implode(', ', $typeIds) . '.');
-    $status = mcp_enum($args, 'status', ['requested', 'approved', 'rejected', 'taken'], 'requested');
+    $status = mcp_enum($args, 'status', ['pending', 'approved', 'rejected'], 'pending');
 
     $ov = $pdo->prepare("SELECT id, start_date, end_date FROM employee_vacations WHERE employee_id = ? AND status <> 'rejected' AND start_date <= ? AND end_date >= ? LIMIT 1");
     $ov->execute([$empId, $end, $start]);
@@ -705,7 +706,7 @@ function mcp_do_record_vacation(\PDO $pdo, array $user, array $args): array {
     $pdo->prepare(
         "INSERT INTO employee_vacations (id, employee_id, vacation_type_id, start_date, end_date, days_count, status, note, approved_by)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)"
-    )->execute([$id, $empId, $typeId, $start, $end, $days, $status, $args['note'] ?? null, in_array($status, ['approved', 'taken'], true) ? ($user['name'] ?: $user['email']) : null]);
+    )->execute([$id, $empId, $typeId, $start, $end, $days, $status, $args['note'] ?? null, $status === 'approved' ? ($user['name'] ?: $user['email']) : null]);
     mcp_audit($pdo, $user, 'record_vacation', "Logged vacation {$id} for employee {$empId} ({$start} - {$end})");
     return ['id' => $id, 'success' => true, 'status' => $status, 'days_count' => $days];
 }

@@ -328,6 +328,7 @@ function mcp_ext_ops_execute(\PDO $pdo, array $user, string $tool, array $args) 
             $ph = implode(',', array_fill(0, count($leadIds), '?'));
             $out = $found;
             unset($out['_leads']);
+            $out['url'] = mcp_client_url($pdo, (string)$found['name']);
             $out['leads'] = array_map(fn($l) => ['id' => $l['id'], 'status' => $l['status'], 'value' => mcp_round2($l['value']), 'owner' => $l['owner'], 'created_at' => $l['created_at'], 'archived' => (int)$l['archived'] === 1], $found['_leads']);
             if (mcp_can('tasks')) {
                 [$openSql, $openParams] = mcp_open_task_sql($pdo);

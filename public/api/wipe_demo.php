@@ -1,6 +1,7 @@
 <?php
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/schema.php';
+require_once __DIR__ . '/demo_seed/helpers.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
@@ -44,6 +45,39 @@ try {
     $pdo->exec("DELETE FROM `task_assignees`;");
     $pdo->exec("DELETE FROM `tasks`;");
     $pdo->exec("DELETE FROM `financial_records`;");
+
+    // Everything the modular demo seeders wrote (api/demo_seed/) carries an id
+    // with the 'demo-' prefix. Match it on every string `id` column; join
+    // tables without an `id` are matched on their `*_id` columns instead, and
+    // the mail caches on `email_uid` (the demo mailbox uses 'demo-mail-<n>').
+    // The per-type project tables of a demo project type are dropped after the
+    // commit (DROP is DDL); their rows go with the prefix delete below.
+    $demoProjectTypeIds = [];
+    if ($pdo->query("SHOW TABLES LIKE 'project_types'")->rowCount() > 0) {
+        $demoProjectTypeIds = $pdo->query("SELECT `id` FROM `project_types` WHERE `id` LIKE 'demo-%'")->fetchAll(PDO::FETCH_COLUMN);
+    }
+    // The sample staff (ccrm_seed_default_employees) predates the 'demo-' id scheme:
+    // employees emp-1..emp-4, their salaries 'sal-emp-*' and leave 'vac-demo-*'.
+    // Remove exactly those, plus the expense records sync auto-created for the
+    // salaries ('fr-sal-sal-emp-*'). Employees added by hand are left alone.
+    $tableExists = static fn(string $t): bool => $pdo->query("SHOW TABLES LIKE " . $pdo->quote($t))->rowCount() > 0;
+    if ($tableExists('financial_records')) {
+        $pdo->exec("DELETE FROM `financial_records` WHERE `id` LIKE 'fr-sal-sal-emp-%'");
+    }
+    if ($tableExists('employee_salaries')) {
+        $pdo->exec("DELETE FROM `employee_salaries` WHERE `id` LIKE 'sal-emp-%' OR `employee_id` IN ('emp-1', 'emp-2', 'emp-3', 'emp-4')");
+    }
+    if ($tableExists('employee_vacations')) {
+        $pdo->exec("DELETE FROM `employee_vacations` WHERE `id` LIKE 'vac-demo-%' OR `employee_id` IN ('emp-1', 'emp-2', 'emp-3', 'emp-4')");
+    }
+    if ($tableExists('employees')) {
+        $pdo->exec("DELETE FROM `employees` WHERE `id` IN ('emp-1', 'emp-2', 'emp-3', 'emp-4')");
+    }
+
+    // Any remaining salary row must not keep pointing at the demo expense
+    // records deleted below.
+    $pdo->exec("UPDATE `employee_salaries` SET `financial_record_id` = NULL WHERE `financial_record_id` LIKE 'demo-%'");
+    demo_wipe_by_prefix($pdo, ['demo-']);
 
     // Wipe customizable lists if "Keep Configs" was false
     if (!$keepConfigs) {
@@ -92,6 +126,28 @@ try {
     
     $pdo->exec("SET FOREIGN_KEY_CHECKS = 1;");
     $pdo->commit();
+
+    // DROP TABLE commits implicitly in MySQL, so these run after the commit.
+    // Per-type project tables (proj_data_/proj_timeline_/proj_gantt_<typeid>) of
+    // the demo project type; same id -> suffix rule as sync.php.
+    foreach ($demoProjectTypeIds as $typeId) {
+        $safe = preg_replace('/[^a-z0-9_]/', '', strtolower((string)$typeId));
+        if ($safe === '') continue;
+        $pdo->exec("DROP TABLE IF EXISTS `proj_data_{$safe}`, `proj_timeline_{$safe}`, `proj_gantt_{$safe}`");
+    }
+    // SAI simulations live in per-simulation `sim<id>_*` tables; leaving demo
+    // mode removes them all, together with the demo mailbox store.
+    if ($pdo->query("SHOW TABLES LIKE 'swarm_simulations'")->rowCount() > 0) {
+        $prefixes = $pdo->query("SELECT `table_prefix` FROM `swarm_simulations`")->fetchAll(PDO::FETCH_COLUMN);
+        foreach ($prefixes as $prefix) {
+            $prefix = preg_replace('/[^a-zA-Z0-9_]/', '', (string)$prefix);
+            if ($prefix === '') continue;
+            $pdo->exec("DROP TABLE IF EXISTS `{$prefix}nodes`, `{$prefix}edges`, `{$prefix}agents`, `{$prefix}posts`");
+        }
+        $pdo->exec("DELETE FROM `swarm_simulations`");
+    }
+    require_once __DIR__ . '/demo_mailbox.php';
+    ccrm_demo_mailbox_wipe($pdo);
 
     $response = ["success" => true, "message" => "Demo data successfully wiped out."];
     if ($generatedAdminPassword !== null) {

@@ -882,7 +882,7 @@ if (!function_exists('ccrm_schema_statements')) {
               `start_date` DATE NOT NULL,
               `end_date` DATE NOT NULL,
               `days_count` DECIMAL(5, 1) NOT NULL DEFAULT 1.0,
-              `status` ENUM('requested', 'approved', 'rejected', 'taken') NOT NULL DEFAULT 'approved',
+              `status` ENUM('requested', 'approved', 'rejected', 'taken', 'pending') NOT NULL DEFAULT 'approved',
               `note` TEXT NULL,
               `approved_by` VARCHAR(100) NULL,
               `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -1246,8 +1246,36 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_migrate_quantity_precision($pdo);
         ccrm_backfill_task_completion_attribution($pdo);
         ccrm_seed_default_financial_categories($pdo);
+        // The ENUM must be widened before anything inserts a 'pending' vacation.
+        ccrm_migrate_vacation_status_pending($pdo);
         ccrm_seed_default_employees($pdo);
+        ccrm_repair_demo_employee_vacations($pdo);
         ccrm_migrate_user_role_varchar($pdo);
+    }
+
+    /**
+     * `employee_vacations`.`status` never accepted 'pending', yet the client
+     * (VacationRequestModal, EmployeeDetailView, mockEmployees.ts) uses it for a
+     * request waiting for approval. Saving one failed with "Data truncated for
+     * column 'status'", and the demo vacation seed died at its first pending row,
+     * leaving most employees without any leave. Widen the ENUM; idempotent.
+     */
+    function ccrm_migrate_vacation_status_pending(PDO $pdo): void {
+        try {
+            $columnType = $pdo->query(
+                "SELECT COLUMN_TYPE FROM information_schema.COLUMNS
+                 WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employee_vacations' AND COLUMN_NAME = 'status'"
+            )->fetchColumn();
+            if (!is_string($columnType) || strpos($columnType, "'pending'") !== false) {
+                return; // table not provisioned yet, or already migrated.
+            }
+            $pdo->exec(
+                "ALTER TABLE `employee_vacations` MODIFY COLUMN `status`
+                 ENUM('requested', 'approved', 'rejected', 'taken', 'pending') NOT NULL DEFAULT 'approved'"
+            );
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] vacation status migration skipped: ' . $e->getMessage());
+        }
     }
 
     /**
@@ -1494,7 +1522,7 @@ if (!function_exists('ccrm_schema_statements')) {
                   `start_date` DATE NOT NULL,
                   `end_date` DATE NOT NULL,
                   `days_count` DECIMAL(5, 1) NOT NULL DEFAULT 1.0,
-                  `status` ENUM('requested', 'approved', 'rejected', 'taken') NOT NULL DEFAULT 'approved',
+                  `status` ENUM('requested', 'approved', 'rejected', 'taken', 'pending') NOT NULL DEFAULT 'approved',
                   `note` TEXT NULL,
                   `approved_by` VARCHAR(100) NULL,
                   `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -2102,15 +2130,27 @@ if (!function_exists('ccrm_schema_statements')) {
 
     /**
      * Seeds sample employees, salaries, and vacation records into empty employee tables
-     * for demo installations.
+     * — demo installations only. A real installation starts with no staff.
      */
     function ccrm_seed_default_employees(PDO $pdo): void {
+        // All-or-nothing: the seed only runs while `employees` is empty, so a
+        // half-written seed (employees in, vacations failed) would never be retried.
+        // Pure DML, so a transaction is safe here; skip it if the caller opened one.
+        $ownTransaction = false;
         try {
             $hasTable = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'employees'")->fetchColumn();
             if ($hasTable === 0) return;
 
+            $demoMode = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'DEMO_MODE'");
+            if (!$demoMode || $demoMode->fetchColumn() !== 'true') return;
+
             $count = (int)$pdo->query("SELECT COUNT(*) FROM `employees`")->fetchColumn();
             if ($count > 0) return;
+
+            if (!$pdo->inTransaction()) {
+                $pdo->beginTransaction();
+                $ownTransaction = true;
+            }
 
             // 1. Insert employees
             $insEmp = $pdo->prepare("INSERT INTO `employees` (`id`, `name`, `pin`, `email`, `phone`, `address_street`, `address_city`, `address_zip`, `address_country`, `salary_type`, `salary_amount`, `salary_due_day`, `vacation_allowances_json`, `time_tracking_provider`, `time_tracking_user_id`, `time_tracking_user_name`, `auto_expense`, `expense_category_id`, `is_active`, `notes`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
@@ -2138,8 +2178,65 @@ if (!function_exists('ccrm_schema_statements')) {
             foreach (ccrm_demo_employee_vacations($now) as $row) {
                 $insVac->execute($row);
             }
+
+            if ($ownTransaction) $pdo->commit();
         } catch (\Throwable $e) {
+            if ($ownTransaction && $pdo->inTransaction()) $pdo->rollBack();
             error_log('[ccrm schema] employees seed skipped: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * One-time repair for demo installs that already hit the 'pending' ENUM bug:
+     * the seed inserted the employees, all salaries and the vacations that came
+     * before the first 'pending' one, then died. `employees` was no longer empty,
+     * so the seed never retried and those installs keep a calendar with a handful
+     * of leave records.
+     *
+     * Deliberately narrow, because it deletes rows. It acts only when ALL hold:
+     *  - DEMO_MODE is 'true' (never a real installation);
+     *  - the four seeded employees exist;
+     *  - every vacation row is a seeded `vac-demo-N` row nobody has edited
+     *    (updated_at = created_at) — a user's own or touched leave is never replaced;
+     *  - none of them is 'pending' (a healthy seed always contains some).
+     * Salaries and employees were written completely by the failed run, so only
+     * vacations are rebuilt. Runs in one transaction and is idempotent: once the
+     * pending rows exist the signature no longer matches.
+     */
+    function ccrm_repair_demo_employee_vacations(PDO $pdo): void {
+        $ownTransaction = false;
+        try {
+            $hasTables = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME IN ('employees', 'employee_vacations', 'system_settings')")->fetchColumn();
+            if ($hasTables < 3) return;
+
+            $demoMode = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'DEMO_MODE'")->fetchColumn();
+            if ($demoMode !== 'true') return;
+
+            $seeded = (int)$pdo->query("SELECT COUNT(*) FROM `employees` WHERE `id` IN ('emp-1', 'emp-2', 'emp-3', 'emp-4')")->fetchColumn();
+            if ($seeded < 4) return;
+
+            $total = (int)$pdo->query("SELECT COUNT(*) FROM `employee_vacations`")->fetchColumn();
+            if ($total === 0) return;
+            $untouchedSeed = (int)$pdo->query(
+                "SELECT COUNT(*) FROM `employee_vacations`
+                 WHERE `id` REGEXP '^vac-demo-[0-9]+$' AND `updated_at` = `created_at` AND `status` <> 'pending'"
+            )->fetchColumn();
+            if ($untouchedSeed !== $total) return;
+
+            if (!$pdo->inTransaction()) {
+                $pdo->beginTransaction();
+                $ownTransaction = true;
+            }
+            $pdo->exec("DELETE FROM `employee_vacations` WHERE `id` REGEXP '^vac-demo-[0-9]+$'");
+            $insVac = $pdo->prepare("INSERT INTO `employee_vacations` (`id`, `employee_id`, `vacation_type_id`, `start_date`, `end_date`, `days_count`, `status`, `note`, `approved_by`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            foreach (ccrm_demo_employee_vacations(new \DateTimeImmutable('now')) as $row) {
+                $insVac->execute($row);
+            }
+            if ($ownTransaction) $pdo->commit();
+            error_log('[ccrm schema] demo vacations repaired after the pending-status seed failure');
+        } catch (\Throwable $e) {
+            if ($ownTransaction && $pdo->inTransaction()) $pdo->rollBack();
+            error_log('[ccrm schema] demo vacation repair skipped: ' . $e->getMessage());
         }
     }
 

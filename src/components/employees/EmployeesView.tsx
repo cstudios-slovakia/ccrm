@@ -46,6 +46,8 @@ interface EmployeesViewProps {
   employeeSettings?: EmployeeSettings | null;
   setEmployeeSettings: (settings: EmployeeSettings | ((prev: EmployeeSettings) => EmployeeSettings)) => void;
   financialCategories: FinancialCategory[];
+  /** Sample staff is demo data: only a demo install may load or auto-seed it. */
+  isDemoMode?: boolean;
 }
 
 // Helper to resolve an employee by ID, case-insensitive ID, name, or name slug
@@ -176,7 +178,8 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
   setVacations,
   employeeSettings,
   setEmployeeSettings,
-  financialCategories = []
+  financialCategories = [],
+  isDemoMode = false
 }) => {
   // Navigation state derived from URL hash
   const initialUrlState = useMemo(() => parseEmployeesUrlState(employees), []);
@@ -254,14 +257,15 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
     }
   }, [setEmployees, setSalaries, setVacations, setEmployeeSettings, employeeSettings]);
 
-  // Auto-seed on mount if employees array is empty so the module immediately displays rich data
+  // Demo installs only: auto-seed on mount if the employees array is empty so the
+  // module immediately displays rich data. A real install starts empty.
   const initialCheckRef = React.useRef(false);
   React.useEffect(() => {
-    if (!initialCheckRef.current && employees.length === 0) {
+    if (isDemoMode && !initialCheckRef.current && employees.length === 0) {
       initialCheckRef.current = true;
       handleSeedMockData();
     }
-  }, [employees.length, handleSeedMockData]);
+  }, [isDemoMode, employees.length, handleSeedMockData]);
 
   // Handle Save Employee (create or update)
   const handleSaveEmployee = (emp: Employee) => {
@@ -348,7 +352,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
           actions={
             currentView === "list" ? (
               <>
-                {employees.length === 0 && (
+                {isDemoMode && employees.length === 0 && (
                   <button
                     type="button"
                     onClick={handleSeedMockData}
@@ -399,7 +403,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
 
           {/* Quick Toolbar (Demo Seed if empty) */}
           <div className="flex items-center gap-2">
-            {employees.length === 0 && (
+            {isDemoMode && employees.length === 0 && (
               <button
                 type="button"
                 onClick={handleSeedMockData}
@@ -427,7 +431,7 @@ export const EmployeesView: React.FC<EmployeesViewProps> = ({
             onDeleteEmployee={handleDeleteEmployee}
             onOpenSettings={() => navigateToTab("settings")}
             onOpenMatrix={() => navigateToTab("matrix")}
-            onSeedMockData={handleSeedMockData}
+            onSeedMockData={isDemoMode ? handleSeedMockData : undefined}
             systemLanguage={systemLanguage}
             systemCurrency={systemCurrency}
           />
