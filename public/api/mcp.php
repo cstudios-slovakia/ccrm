@@ -1268,7 +1268,7 @@ function mcp_core_tool_definitions(): array {
                 'type' => 'object',
                 'properties' => [
                     'employee_id' => ['type' => 'string', 'description' => 'Filter by employee ID'],
-                    'status' => ['type' => 'string', 'enum' => ['requested', 'approved', 'rejected', 'taken']],
+                    'status' => ['type' => 'string', 'enum' => ['pending', 'approved', 'rejected']],
                     'year' => ['type' => 'integer', 'description' => 'Filter by year']
                 ]
             ]
@@ -1284,7 +1284,7 @@ function mcp_core_tool_definitions(): array {
                     'start_date' => ['type' => 'string', 'description' => 'Start date (YYYY-MM-DD)'],
                     'end_date' => ['type' => 'string', 'description' => 'End date (YYYY-MM-DD)'],
                     'days_count' => ['type' => 'number', 'description' => 'Total business days'],
-                    'status' => ['type' => 'string', 'enum' => ['requested', 'approved', 'rejected', 'taken'], 'description' => 'Status (default requested)'],
+                    'status' => ['type' => 'string', 'enum' => ['pending', 'approved', 'rejected'], 'description' => 'Status (default pending)'],
                     'note' => ['type' => 'string', 'description' => 'Note or reason']
                 ],
                 'required' => ['employee_id', 'start_date', 'end_date']
