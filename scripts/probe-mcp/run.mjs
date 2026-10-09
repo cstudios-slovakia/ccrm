@@ -45,7 +45,7 @@ const docker = (...args) => run('docker', args);
 
 const sql = (q, db = SCRATCH_DB) => {
   try {
-    return docker('exec', '-i', DB, 'mysql', '-uroot', `-p${ROOT_PW}`, '--batch', '--raw', db, '-e', q);
+    return docker('exec', '-i', DB, 'mysql', '-uroot', `-p${ROOT_PW}`, '--default-character-set=utf8mb4', '--batch', '--raw', db, '-e', q);
   } catch (e) {
     const msg = String(e.stderr || e.message).split('\n').filter((l) => !l.includes('Using a password')).slice(0, 2).join(' | ');
     throw new Error('SQL failed: ' + msg);
@@ -489,12 +489,128 @@ async function writeChecks() {
   await call(A, 'set_financial_mode', { mode: 'connected' });
 }
 
+// ----------------------------------------------------------------------------- 4. client & project intelligence
+async function intelChecks() {
+  section('client and project intelligence');
+  const A = TOKENS.admin;
+  // One client split over a pipeline lead and its client-* record (the shape the Clients register groups by
+  // name), a project paired with the lead, one only named for the client, and one whose name merely starts alike.
+  const events = Array.from({ length: 6 }, (_, i) => `('pv-ev${i}','pv-lead','note','2026-0${i + 1}-05 10:00:00','Note ${i}','Body ${i}')`).join(',');
+  sql(`SET FOREIGN_KEY_CHECKS=0;
+       REPLACE INTO system_settings (\`key\`, \`value\`) VALUES ('INVOICING_INTEGRATIONS', '{}');
+       DELETE FROM timeline_events WHERE lead_id IN ('pv-lead','client-9000000001','client-9000000002','pv-kav');
+       DELETE FROM leads WHERE id IN ('pv-lead','client-9000000001','client-9000000002','pv-kav');
+       INSERT INTO leads (id,name,status,owner,value,email,company_id,tax_id,interest_note,created_at) VALUES ('pv-lead','Villatesta','offer sent','Erik',8000,'info@villatesta.sk','51999123','2120999123','Rekonštrukcia vily Pribylina77','2026-01-02');
+       INSERT INTO leads (id,name,status,owner,value,contact_person,created_at) VALUES ('client-9000000001','Villatesta','accepted','Erik',0,'Ignác Probenák','2026-02-01');
+       INSERT INTO leads (id,name,status,owner,value,created_at) VALUES ('client-9000000002','Villa Rosa','accepted','Erik',0,'2026-02-01');
+       INSERT INTO leads (id,name,status,owner,value,created_at) VALUES ('pv-kav','Kávička Bar','new','Erik',0,'2026-02-01');
+       INSERT INTO timeline_events (id,lead_id,type,timestamp,title,content) VALUES ${events};
+       DELETE FROM projects WHERE id IN ('pv1','pv2','pv3');
+       INSERT INTO projects (id,project_type_id,name,lead_id,client_id,status,value) VALUES
+         ('pv1','pt-parity','Web','pv-lead',NULL,'active',6000),
+         ('pv2','pt-parity','Villatesta – e-shop',NULL,NULL,'completed',1500),
+         ('pv3','pt-parity','Villatestament',NULL,NULL,'active',900);
+       DELETE FROM financial_records WHERE id LIKE 'pvf%' OR id = 'fr-inv-pv-inv';
+       INSERT INTO financial_records (id,type,subtype,title,amount_planned,amount_real,currency,status,issue_date,due_date,paid_date,project_id,invoice_number) VALUES
+         ('pvf1','income','invoice','Splátka 1',2000,2000,'EUR','paid','2026-01-10','2026-01-15','2026-01-20','pv1','2026001'),
+         ('pvf2','income','invoice','Splátka 2',2000,0,'EUR','pending','2020-01-10','2020-02-01',NULL,'pv1','2026002'),
+         ('pvf3','income','regular','Splátka 3',2000,0,'EUR','planned','2031-06-01','2031-06-30',NULL,'pv1',NULL),
+         ('fr-inv-pv-inv','income','invoice','FA-2026-900 — Villatesta',1210,1210,'EUR','paid','2026-03-01','2026-03-15','2026-03-10',NULL,'FA-2026-900');
+       DELETE FROM invoices_offers WHERE id = 'pv-inv';
+       INSERT INTO invoices_offers (id,document_number,type,lead_id,client_id,client_name,title,subject,subtotal,vat_amount,total_price,status,issued_at,due_date) VALUES
+         ('pv-inv','FA-2026-900','invoice','client-9000000001','client-9000000001','Villatesta','Záloha','Záloha',1000,210,1210,'sent','2026-03-01','2026-03-15');
+       CREATE TABLE IF NOT EXISTS proj_gantt_ptparity (id VARCHAR(50) PRIMARY KEY, project_id VARCHAR(50) NOT NULL, title VARCHAR(255) NOT NULL, contact_id VARCHAR(50) NULL, start_date DATE NULL, end_date DATE NULL, progress INT NOT NULL DEFAULT 0, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);
+       DELETE FROM proj_gantt_ptparity WHERE project_id = 'pv1';
+       INSERT INTO proj_gantt_ptparity (id,project_id,title,start_date,end_date,progress) VALUES ('pvg1','pv1','Design phase','2026-01-01','2026-02-01',100),('pvg2','pv1','Build','2026-02-01','2031-03-01',40);
+       SET FOREIGN_KEY_CHECKS=1;`);
+  const ids = (rs) => (rs || []).map((r) => r.id).sort().join();
+
+  // 1. search
+  let s = await call(A, 'search_entities', { query: 'villa testa' });
+  check('search: "villa testa" finds the Villatesta records (every word, any field)', ids(s.leads_and_clients) === 'client-9000000001,pv-lead', JSON.stringify(s.leads_and_clients));
+  s = await call(A, 'search_entities', { query: 'VILLATESTA' });
+  check('search: case-insensitive', ids(s.leads_and_clients) === 'client-9000000001,pv-lead', JSON.stringify(s.leads_and_clients));
+  s = await call(A, 'search_entities', { query: 'kavicka bar', entity_types: ['leads', 'clients'] });
+  check('search: accent-insensitive ("kavicka bar" finds "Kávička Bar")', ids(s.leads_and_clients) === 'pv-kav', JSON.stringify(s));
+  s = await call(A, 'search_entities', { query: 'kavickabar', entity_types: ['leads'] });
+  check('search: a name run together finds the spaced name ("kavickabar")', ids(s.leads_and_clients) === 'pv-kav', JSON.stringify(s));
+  s = await call(A, 'search_entities', { query: 'villa bar', entity_types: ['leads', 'clients'] });
+  check('search: words are ANDed ("villa bar" matches neither)', (s.leads_and_clients || []).length === 0, JSON.stringify(s));
+  for (const [q, want] of [['51999123', 'pv-lead'], ['2120999123', 'pv-lead'], ['Probenák', 'client-9000000001'], ['pribylina77', 'pv-lead'], ['villatesta.sk', 'pv-lead']]) {
+    s = await call(A, 'search_entities', { query: q, entity_types: ['leads', 'clients'] });
+    check(`search: "${q}" finds ${want} (IČO / DIČ / contact person / notes / email)`, ids(s.leads_and_clients) === want, JSON.stringify(s.leads_and_clients));
+  }
+  s = await call(A, 'search_entities', { query: 'villatesta', entity_types: ['clients'] });
+  check('search: entity_types=clients returns only client records', ids(s.leads_and_clients) === 'client-9000000001', JSON.stringify(s.leads_and_clients));
+  const cRow = s.leads_and_clients?.[0];
+  check('search: client rows carry kind and a #client- url', cRow?.kind === 'client' && /#client-Villatesta$/.test(cRow?.url || ''), JSON.stringify(cRow));
+  s = await call(A, 'search_entities', { query: 'villatesta', entity_types: ['projects'] });
+  check('search: projects match their client\'s name and their own, with a url', ['pv1', 'pv2', 'pv3'].every((id) => s.projects?.some((p) => p.id === id)) && s.projects.every((p) => /#projects\//.test(p.url)), JSON.stringify(s.projects));
+
+  // 2. get_client resolves the whole client
+  const gc = await call(A, 'get_client', { id: 'client-9000000001' });
+  check('get_client: projects of every record with the name, plus name-only ones (not "Villatestament")', ids(gc.projects) === 'pv1,pv2', JSON.stringify(gc.projects));
+  check('get_client: projects say how they are linked', gc.projects?.find((p) => p.id === 'pv1')?.linked_by === 'lead_id' && gc.projects?.find((p) => p.id === 'pv2')?.linked_by === 'name_match', JSON.stringify(gc.projects));
+  check('get_client: invoices with payment status', gc.invoices?.some((d) => d.document_number === 'FA-2026-900' && d.payment_status === 'paid'), JSON.stringify(gc.invoices));
+  check('get_client: url to the client page', /#client-Villatesta$/.test(gc.url || '') && gc.kind === 'client', JSON.stringify({ url: gc.url, kind: gc.kind }));
+  const gl = await call(A, 'get_client', { id: 'pv-lead' });
+  check('get_client by the lead record finds the same projects', ids(gl.projects) === 'pv1,pv2', JSON.stringify(gl.projects));
+
+  // 3. get_project: client and financials
+  const gp = await call(A, 'get_project', { id: 'pv1' });
+  check('get_project: client resolved through the paired lead to the client record', gp.client?.id === 'client-9000000001' && gp.client?.linked_by === 'lead_id' && gp.client?.company_id === '51999123', JSON.stringify(gp.client));
+  check('get_project: url', /#projects\/pv1$/.test(gp.url || ''), gp.url);
+  const f = gp.financials || {};
+  check('get_project: financials (value 6000, invoiced 6000, paid 2000, outstanding 4000, billable 0, planned 2000)',
+    f.contract_value === 6000 && f.invoiced_total === 6000 && f.paid_total === 2000 && f.outstanding_invoiced === 4000 && f.remaining_billable === 0 && f.planned_not_issued === 2000, JSON.stringify(f));
+  check('get_project: installment schedule with payment status', f.installment_based === true && (f.installments || []).map((i) => `${i.id}:${i.payment_status}`).join() === 'pvf2:overdue,pvf1:paid,pvf3:planned', JSON.stringify(f.installments));
+  const gp2 = await call(A, 'get_project', { id: 'pv2' });
+  check('get_project: an unlinked project finds its client by name', gp2.client?.id === 'client-9000000001' && gp2.client?.linked_by === 'name_match', JSON.stringify(gp2.client));
+  check('get_project: a name that only starts alike is not linked', (await call(A, 'get_project', { id: 'pv3' })).client === null, '');
+
+  // 4. milestones
+  const ms = await call(A, 'create_milestone', { project_id: 'pv1', title: 'Go-live', deadline: '2031-05-01' });
+  let lm = await call(A, 'list_milestones', { project_id: 'pv1' });
+  check('list_milestones: Gantt rows and milestone tasks', ['pvg1', 'pvg2', ms.id].every((id) => lm.milestones?.some((m) => m.id === id)) && lm.milestones.find((m) => m.id === 'pvg1').done === true && lm.milestones.find((m) => m.id === ms.id).source === 'task', JSON.stringify(lm));
+  lm = await call(A, 'list_milestones', { project_id: 'pv1', open_only: true });
+  check('list_milestones: open_only leaves out finished ones', !lm.milestones?.some((m) => m.id === 'pvg1') && lm.milestones?.some((m) => m.id === 'pvg2'), JSON.stringify(lm.milestones));
+  lm = await call(TOKENS.editor, 'list_milestones', { project_id: 'pv1' });
+  check('list_milestones: milestone tasks follow task visibility', Array.isArray(lm.milestones) && !lm.milestones.some((m) => m.source === 'task'), JSON.stringify(lm.milestones));
+  check('list_milestones: unknown project', isErr(await call(A, 'list_milestones', { project_id: 'nope' }), /not found/), '');
+
+  // 5. invoices of a client
+  const ci = await call(A, 'get_client_invoices', { identifier: 'Villatesta' });
+  const nums = (ci.invoices || []).map((i) => `${i.document_number}:${i.payment_status}`).sort().join();
+  check('get_client_invoices: Invoicing documents and ledger invoices/installments of the client\'s projects', nums === '2026001:paid,2026002:overdue,FA-2026-900:paid,null:planned', nums);
+  check('get_client_invoices: totals (invoiced 5210, paid 3210, overdue 2000; plans excluded)', ci.totals?.invoiced === 5210 && ci.totals?.paid === 3210 && ci.totals?.overdue === 2000, JSON.stringify(ci.totals));
+  check('get_client_invoices: SuperFaktúra skipped when the integration is off', ci.superfaktura?.enabled === false, JSON.stringify(ci.superfaktura));
+  const od = await call(A, 'get_client_invoices', { identifier: 'client-9000000001', payment_status: 'overdue' });
+  check('get_client_invoices: payment_status filter', (od.invoices || []).map((i) => i.document_number).join() === '2026002', JSON.stringify(od.invoices));
+
+  // 6. dossier
+  const d1 = await call(A, 'get_client_dossier', { identifier: '51 999 123' });
+  const d2 = await call(A, 'get_client_dossier', { identifier: 'villa testa' });
+  check('get_client_dossier: found by IČO and by name, as the same client', d1.profile?.id === 'client-9000000001' && d2.profile?.id === 'client-9000000001', JSON.stringify([d1.profile?.id, d2.profile?.id, d1.__error, d2.__error]));
+  check('get_client_dossier: profile carries IČO, DIČ, contacts, owner, notes', d1.profile?.company_id === '51999123' && d1.profile?.tax_id === '2120999123' && d1.profile?.contacts?.length === 2 && d1.profile?.owner === 'Erik' && /Pribylina77/.test(d1.profile?.interest_note || ''), JSON.stringify(d1.profile));
+  check('get_client_dossier: active and past projects', ids(d1.projects?.active) === 'pv1' && ids(d1.projects?.past) === 'pv2', JSON.stringify(d1.projects));
+  check('get_client_dossier: financial summary over the projects (7500 contracted, 2000 paid)', d1.financial_summary?.contract_value === 7500 && d1.financial_summary?.paid_total === 2000 && d1.financial_summary?.invoices?.paid === 1210, JSON.stringify(d1.financial_summary));
+  check('get_client_dossier: open milestones and open tasks', d1.open_milestones?.some((m) => m.id === 'pvg2') && !d1.open_milestones?.some((m) => m.id === 'pvg1') && d1.open_tasks?.some((t) => t.id === ms.id), JSON.stringify([d1.open_milestones, d1.open_tasks]).slice(0, 300));
+  check('get_client_dossier: last 5 timeline entries', d1.latest_timeline?.length === 5 && d1.latest_timeline[0].id === 'pv-ev5', JSON.stringify(d1.latest_timeline?.map((e) => e.id)));
+  check('get_client_dossier: several clients matching a name is an error that lists them', isErr(await call(A, 'get_client_dossier', { identifier: 'villa' }), /Several clients match/), '');
+  check('get_client_dossier: nothing matching is an error', isErr(await call(A, 'get_client_dossier', { identifier: 'zzzz nothing' }), /No client or lead matches/), '');
+
+  // 7. urls on list rows
+  check('list_projects rows carry a url', (await call(A, 'list_projects', { search: 'Villatesta' })).every?.((p) => /#projects\//.test(p.url)), '');
+  check('list_clients rows carry a url', (await call(A, 'list_clients', { search: 'Villatesta' })).some?.((c) => /#client-Villatesta$/.test(c.url)), '');
+}
+
 // ----------------------------------------------------------------------------- main
 try {
   setup();
   await authorizationChecks();
   await parityChecks();
   await writeChecks();
+  await intelChecks();
 } catch (e) {
   failures++;
   console.log('\nPROBE ERROR: ' + (e && e.stack ? e.stack : e));

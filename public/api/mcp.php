@@ -31,6 +31,7 @@ require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/mcp_ext.php';
 require_once __DIR__ . '/mcp_ext_ops.php';
 require_once __DIR__ . '/mcp_ext_writes.php';
+require_once __DIR__ . '/mcp_ext_intel.php';
 
 try {
     $pdo = function_exists('get_db_connection') ? get_db_connection() : ccrm_auth_pdo();
@@ -167,6 +168,7 @@ function mcp_tool_permissions(): array {
     // Part B tools (mcp_ext.php).
     $map += mcp_ext_fin_permissions();
     $map += mcp_ext_ops_permissions();
+    $map += mcp_ext_intel_permissions();
     return $map;
 }
 
@@ -449,7 +451,7 @@ switch ($rpcMethod) {
 // TOOL DEFINITIONS (core tools; the finance, operations and automation tools live in mcp_ext*.php)
 // ============================================================================
 function mcp_get_tool_definitions(): array {
-    return array_merge(mcp_core_tool_definitions(), mcp_ext_fin_tool_definitions(), mcp_ext_ops_tool_definitions());
+    return array_merge(mcp_core_tool_definitions(), mcp_ext_fin_tool_definitions(), mcp_ext_ops_tool_definitions(), mcp_ext_intel_tool_definitions());
 }
 
 function mcp_core_tool_definitions(): array {
@@ -568,7 +570,7 @@ function mcp_core_tool_definitions(): array {
         ],
         [
             'name' => 'get_client',
-            'description' => 'Get client details including linked projects, invoices, and timeline history.',
+            'description' => 'Get a client record with the projects and invoicing documents of the whole client: every record sharing its name (as the Clients register shows it), plus unlinked projects named for it (linked_by = name_match). Projects carry the resolved contract value, status group, deadline and url; documents carry payment status. For one-call context use get_client_dossier.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -766,7 +768,7 @@ function mcp_core_tool_definitions(): array {
         ],
         [
             'name' => 'get_project',
-            'description' => 'Retrieve project details, budget, milestones, and linked tasks.',
+            'description' => 'Retrieve project details with its client (from client_id, else the paired lead, else the client the project is named for — see client.linked_by), contract value, a financials block (contract value, invoiced, paid, outstanding, remaining billable, and the installment schedule: every income movement with due date, amount, invoice number and payment status), milestones, linked tasks and a url.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -1133,16 +1135,17 @@ function mcp_core_tool_definitions(): array {
         // DOMAIN 9: Cross-Entity Global Search
         [
             'name' => 'search_entities',
-            'description' => 'Search across leads, clients, tasks, projects, invoices, and warehouse catalog with a single keyword query.',
+            'description' => 'Search leads, clients, tasks, projects, invoices and the warehouse catalog. Every word of the query must match (case- and accent-insensitive), each in any searched field; the query run together also matches names written without spaces ("villa testa" and "villatesta" both find "Villatesta"). Leads/clients are searched by name, email, phone, IČO, DIČ, IČ DPH, contact person, notes, city and website; projects by their own and their client\'s name. Lead/client and project rows carry a `url` into the web app.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
-                    'query' => ['type' => 'string', 'description' => 'Search term or query string'],
+                    'query' => ['type' => 'string', 'description' => 'Search words'],
                     'entity_types' => [
                         'type' => 'array',
                         'items' => ['type' => 'string'],
                         'description' => 'Optional filter: leads, clients, tasks, projects, invoices, warehouse'
-                    ]
+                    ],
+                    'limit' => ['type' => 'integer', 'description' => 'Rows per section (default 15, max 50)']
                 ],
                 'required' => ['query']
             ]
@@ -1339,15 +1342,15 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $limit = min(max(1, (int)($args['limit'] ?? 25)), 100);
             $offset = max(0, (int)($args['offset'] ?? 0));
 
-            $sql = "SELECT id, name, city, client_type, status, source, owner, division, value, rating, phone, email, contact_person, created_at 
-                    FROM leads 
-                    WHERE " . implode(' AND ', $where) . " 
-                    ORDER BY created_at DESC 
+            $sql = "SELECT id, name, city, client_type, status, source, owner, division, value, adjustment, rating, phone, email, contact_person, created_at
+                    FROM leads
+                    WHERE " . implode(' AND ', $where) . "
+                    ORDER BY created_at DESC
                     LIMIT $limit OFFSET $offset";
 
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
-            return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            return array_map(fn($l) => $l + ['url' => mcp_record_url($pdo, $l)], $stmt->fetchAll(\PDO::FETCH_ASSOC));
 
         case 'get_lead':
             $stmt = $pdo->prepare("SELECT * FROM leads WHERE id = ?");
@@ -1361,6 +1364,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $evStmt = $pdo->prepare("SELECT id, type, timestamp, title, content, amount, author FROM timeline_events WHERE lead_id = ? AND hidden = 0" . (mcp_can('email') ? '' : " AND type <> 'email'") . " ORDER BY timestamp DESC LIMIT 20");
             $evStmt->execute([$args['id']]);
             $lead['timeline_events'] = $evStmt->fetchAll(\PDO::FETCH_ASSOC);
+            $lead['url'] = mcp_record_url($pdo, $lead);
 
             return $lead;
 
@@ -1507,26 +1511,28 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             return mcp_do_list_clients($pdo, $args);
 
         case 'get_client':
-            $id = $args['id'];
-            $stmt = $pdo->prepare("SELECT * FROM leads WHERE id = ?");
-            $stmt->execute([$id]);
-            $client = $stmt->fetch(\PDO::FETCH_ASSOC);
-            if (!$client) {
+            // A client is every record with its name (the Clients register groups them); projects and
+            // invoices hang off whichever record they were paired with, so all of them are searched.
+            $id = mcp_require_string($args, 'id');
+            $scope = mcp_client_scope($pdo, $id);
+            if (!$scope) {
                 throw new \Exception("Client not found with ID: " . $id);
             }
+            $client = $scope['record'];
+            $client['kind'] = $scope['is_client'] ? 'client' : 'lead';
+            $client['url'] = mcp_scope_url($pdo, $scope);
+            $client['record_ids'] = $scope['ids'];
 
             // Linked projects (only for callers who can see the projects module)
             if (mcp_can('projects')) {
-                $prStmt = $pdo->prepare("SELECT id, name, status, budget, deadline FROM projects WHERE client_id = ? OR lead_id = ?");
-                $prStmt->execute([$id, $id]);
-                $client['projects'] = $prStmt->fetchAll(\PDO::FETCH_ASSOC);
+                $ctx = mcp_projects_ctx();
+                $groups = mcp_project_status_groups($pdo);
+                $client['projects'] = array_map(fn($p) => mcp_project_row($pdo, $p, $ctx, $groups), mcp_scope_projects($pdo, $scope));
             }
 
             // Linked invoices (only for callers who can see the invoices module)
             if (mcp_can('invoices')) {
-                $invStmt = $pdo->prepare("SELECT id, document_number, title, total_price, currency, status, issued_at FROM invoices_offers WHERE client_id = ? OR lead_id = ? ORDER BY issued_at DESC LIMIT 15");
-                $invStmt->execute([$id, $id]);
-                $client['invoices'] = $invStmt->fetchAll(\PDO::FETCH_ASSOC);
+                $client['invoices'] = mcp_scope_invoice_docs($pdo, $scope, true, 50);
             }
 
             return $client;
@@ -1759,7 +1765,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
-            return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            return array_map(fn($p) => $p + ['url' => mcp_project_url($pdo, (string)$p['id'])], $stmt->fetchAll(\PDO::FETCH_ASSOC));
 
         case 'get_project':
             $stmt = $pdo->prepare("SELECT * FROM projects WHERE id = ?");
@@ -1768,6 +1774,18 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             if (!$proj) {
                 throw new \Exception("Project not found with ID: " . $args['id']);
             }
+            $proj['url'] = mcp_project_url($pdo, (string)$proj['id']);
+
+            // The client: client_id, else the paired lead, else the client the project is named for.
+            $owner = mcp_project_client($pdo, $proj);
+            $proj['client'] = $owner ? mcp_client_summary($pdo, $owner['scope'], $owner['linked_by']) : null;
+
+            $ctx = mcp_projects_ctx();
+            $proj['contract_value'] = mcp_project_value($pdo, $proj, $ctx);
+            if (mcp_can('financial')) {
+                $proj['financials'] = mcp_project_financials($pdo, $proj, $ctx);
+            }
+            $proj['milestones'] = mcp_project_milestones($pdo, $user, $proj);
 
             // Linked tasks (only for callers who can see the tasks module, scoped by tasks.view_all)
             if (mcp_can('tasks')) {
@@ -2288,68 +2306,8 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
         // --- 9. Cross-Entity Global Search ---
         case 'search_entities':
-            $term = '%' . trim($args['query']) . '%';
-            $filterTypes = is_array($args['entity_types'] ?? null) ? $args['entity_types'] : ['leads', 'clients', 'tasks', 'projects', 'invoices', 'warehouse'];
-
-            $results = [];
-
-            if ((in_array('leads', $filterTypes) && mcp_can('leads')) || (in_array('clients', $filterTypes) && mcp_can('clients'))) {
-                $stmt = $pdo->prepare(
-                    "SELECT id, name, email, phone, city, status, client_type, value 
-                     FROM leads 
-                     WHERE (name LIKE ? OR email LIKE ? OR phone LIKE ? OR company_id LIKE ?) AND archived = 0 
-                     LIMIT 10"
-                );
-                $stmt->execute([$term, $term, $term, $term]);
-                $results['leads_and_clients'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            }
-
-            if (in_array('tasks', $filterTypes) && mcp_can('tasks')) {
-                [$scopeSql, $scopeParams] = mcp_task_scope($user);
-                $stmt = $pdo->prepare(
-                    "SELECT id, title, priority, deadline, status, owner, related_project_id
-                     FROM tasks
-                     WHERE (title LIKE ? OR description LIKE ?) AND archived = 0 " . ($scopeSql !== '' ? " AND $scopeSql " : '') . "
-                     LIMIT 10"
-                );
-                $stmt->execute(array_merge([$term, $term], $scopeParams));
-                $results['tasks'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            }
-
-            if (in_array('projects', $filterTypes) && mcp_can('projects')) {
-                $stmt = $pdo->prepare(
-                    "SELECT id, name, status, budget, deadline 
-                     FROM projects 
-                     WHERE name LIKE ? 
-                     LIMIT 10"
-                );
-                $stmt->execute([$term]);
-                $results['projects'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            }
-
-            if (in_array('invoices', $filterTypes) && mcp_can('invoices')) {
-                $stmt = $pdo->prepare(
-                    "SELECT id, document_number, client_name, title, total_price, currency, status 
-                     FROM invoices_offers 
-                     WHERE document_number LIKE ? OR client_name LIKE ? OR title LIKE ? 
-                     LIMIT 10"
-                );
-                $stmt->execute([$term, $term, $term]);
-                $results['invoices'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            }
-
-            if (in_array('warehouse', $filterTypes) && mcp_can('warehouse')) {
-                $stmt = $pdo->prepare(
-                    "SELECT id, sku, name, category, default_sell_price 
-                     FROM warehouse_items 
-                     WHERE name LIKE ? OR sku LIKE ? OR barcode LIKE ? 
-                     LIMIT 10"
-                );
-                $stmt->execute([$term, $term, $term]);
-                $results['warehouse_items'] = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            }
-
-            return $results;
+            // Each section is gated by its module inside (mcp_ext_intel.php).
+            return mcp_search_entities($pdo, $user, $args);
 
         // --- 10. Team Directory (Read-Only) ---
         case 'list_team_members':
@@ -2555,6 +2513,8 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $extResult = mcp_ext_fin_execute($pdo, $user, $tool, $args);
             if ($extResult !== MCP_NOT_MINE) return $extResult;
             $extResult = mcp_ext_ops_execute($pdo, $user, $tool, $args);
+            if ($extResult !== MCP_NOT_MINE) return $extResult;
+            $extResult = mcp_ext_intel_execute($pdo, $user, $tool, $args);
             if ($extResult !== MCP_NOT_MINE) return $extResult;
             throw new \Exception("Unrecognized tool name: " . htmlspecialchars($tool));
     }

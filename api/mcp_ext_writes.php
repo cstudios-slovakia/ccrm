@@ -285,6 +285,7 @@ function mcp_do_list_clients(\PDO $pdo, array $args): array {
             if (strpos($hay, $term) === false) continue;
         }
         unset($p['_leads']);
+        $p['url'] = mcp_client_url($pdo, (string)$p['name']);
         $out[] = $p;
     }
     $sort = in_array($args['sort_by'] ?? '', ['name', 'created_at', 'value'], true) ? $args['sort_by'] : 'name';
