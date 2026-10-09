@@ -82,4 +82,35 @@ if (!function_exists('demo_d')) {
     function demo_id(string $module, int $n): string {
         return 'demo-' . $module . '-' . $n;
     }
+
+    /**
+     * Delete every row whose id starts with one of $prefixes (e.g. ['demo-']).
+     * Matches each string `id` column; join tables without an `id` are matched on
+     * their `*_id` columns instead, and the mail caches on `email_uid`.
+     *
+     * Plain DELETEs, so it joins a caller's transaction. It does not touch
+     * FOREIGN_KEY_CHECKS: a caller that needs unordered deletes sets it.
+     */
+    function demo_wipe_by_prefix(PDO $pdo, array $prefixes): void {
+        $cols = $pdo->query(
+            "SELECT `TABLE_NAME` AS t, `COLUMN_NAME` AS c FROM information_schema.COLUMNS
+              WHERE `TABLE_SCHEMA` = DATABASE()
+                AND `DATA_TYPE` IN ('varchar', 'char')
+                AND (`COLUMN_NAME` = 'id' OR `COLUMN_NAME` = 'email_uid' OR `COLUMN_NAME` LIKE '%\_id')"
+        )->fetchAll(PDO::FETCH_ASSOC);
+        $tablesWithId = [];
+        foreach ($cols as $col) {
+            if ($col['c'] === 'id') $tablesWithId[$col['t']] = true;
+        }
+        foreach ($cols as $col) {
+            $isIdCol = $col['c'] === 'id' || $col['c'] === 'email_uid';
+            if (!$isIdCol && isset($tablesWithId[$col['t']])) continue;
+            $t = str_replace('`', '', $col['t']);
+            $c = str_replace('`', '', $col['c']);
+            $stmt = $pdo->prepare("DELETE FROM `{$t}` WHERE `{$c}` LIKE ?");
+            foreach ($prefixes as $prefix) {
+                $stmt->execute([$prefix . '%']);
+            }
+        }
+    }
 }
