@@ -1030,6 +1030,7 @@ export interface CompanyBillingSettings {
   // here must match the Settings → Invoicing form that writes them.
   defaultPaymentDueDays: number;
   defaultVatRate: number;
+  vatRates?: number[]; // Configured VAT rates for orders & invoices (defaults to [23, 19, 10, 5, 0])
   defaultWarrantyText: string;
   defaultDurationText: string;
   defaultStartDateText?: string;

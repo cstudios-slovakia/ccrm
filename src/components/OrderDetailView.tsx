@@ -46,7 +46,8 @@ import type {
   WarehouseMovement,
   InvoiceOffer,
   UserProfile,
-  PermissionValue
+  PermissionValue,
+  CompanyBillingSettings
 } from "../types";
 import type { Language } from "../utils/translations";
 import { EntityHeader } from "./layout";
@@ -58,6 +59,7 @@ import {
   formatCarrierTrackingUrl,
   type OrderStatusDef
 } from "../utils/orders";
+import { getAvailableVatRates, getDefaultVatRate } from "../utils/vat";
 
 export interface OrderDetailViewProps {
   order: Order;
@@ -77,6 +79,7 @@ export interface OrderDetailViewProps {
   canEdit: boolean;
   canDelete?: boolean;
   onOpenClient?: (clientId: string) => void;
+  companyBillingSettings?: CompanyBillingSettings | null;
 }
 
 export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
@@ -95,10 +98,20 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
   userLanguage,
   canEdit,
   canDelete,
-  onOpenClient
+  onOpenClient,
+  companyBillingSettings
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
+
+  const availableVatRates = useMemo(
+    () => getAvailableVatRates(companyBillingSettings),
+    [companyBillingSettings]
+  );
+  const defaultVatRate = useMemo(
+    () => getDefaultVatRate(companyBillingSettings),
+    [companyBillingSettings]
+  );
 
   const isNew = !order.createdAt && !order.updatedAt;
   const [formData, setFormData] = useState<Order>(() => JSON.parse(JSON.stringify(order)));
@@ -272,7 +285,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
       unit: preset?.unit || "ks",
       unitPrice: preset?.unitPrice !== undefined ? preset.unitPrice : 0,
       discountPercent: preset?.discountPercent || 0,
-      taxRate: preset?.taxRate !== undefined ? preset.taxRate : 20,
+      taxRate: preset?.taxRate !== undefined ? preset.taxRate : defaultVatRate,
       totalNetAmount: 0,
       totalGrossAmount: 0,
       fulfilledQuantity: 0,
@@ -1374,7 +1387,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                                 name: wh.name,
                                 unit: wh.unit || "ks",
                                 unitPrice: wh.defaultSellPrice || 0,
-                                taxRate: 20
+                                taxRate: defaultVatRate
                               });
                             }}
                             className="w-full px-4 py-2.5 hover:bg-indigo-50/70 flex items-center justify-between gap-3 text-left transition-colors cursor-pointer group"
@@ -1420,7 +1433,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                                 unit: "serv",
                                 unitPrice: srv.unitPrice,
                                 serviceCode: srv.serviceCode,
-                                taxRate: 20
+                                taxRate: defaultVatRate
                               });
                             }}
                             className="w-full px-4 py-2.5 hover:bg-purple-50/70 flex items-center justify-between gap-3 text-left transition-colors cursor-pointer group"
@@ -1491,7 +1504,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                       unit: "serv",
                       unitPrice: srv.unitPrice,
                       serviceCode: srv.serviceCode,
-                      taxRate: 20
+                      taxRate: defaultVatRate
                     });
                   }}
                   className="px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 text-micro font-semibold text-slate-700 hover:text-indigo-700 transition-colors flex items-center gap-1"
@@ -1590,13 +1603,15 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                           <span>DPH:</span>
                           <select
                             value={item.taxRate}
-                            onChange={e => handleItemChange(idx, { taxRate: parseFloat(e.target.value) || 20 })}
+                            onChange={e => handleItemChange(idx, { taxRate: parseFloat(e.target.value) || 0 })}
                             className="bg-transparent text-micro font-semibold text-slate-600 focus:outline-none cursor-pointer"
                           >
-                            <option value={20}>20%</option>
-                            <option value={10}>10%</option>
-                            <option value={5}>5%</option>
-                            <option value={0}>0%</option>
+                            {!availableVatRates.includes(item.taxRate) && (
+                              <option key={item.taxRate} value={item.taxRate}>{item.taxRate}%</option>
+                            )}
+                            {availableVatRates.map(rate => (
+                              <option key={rate} value={rate}>{rate}%</option>
+                            ))}
                           </select>
                         </div>
                       </div>
@@ -1655,7 +1670,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                 <span className="font-mono font-bold text-slate-800">{money(formData.totalNetAmount)}</span>
               </div>
               <div className="flex items-center justify-between">
-                <span>{t("Calculated VAT (20%)", "DPH celkom", "ÁFA összesen")}:</span>
+                <span>{t("Total VAT", "DPH celkom", "ÁFA összesen")}:</span>
                 <span className="font-mono font-bold text-slate-800">{money(formData.totalTaxAmount)}</span>
               </div>
 

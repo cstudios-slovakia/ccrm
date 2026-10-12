@@ -3396,6 +3396,7 @@ ${log.payload || ''}
             userLanguage={userLanguage}
             currentUser={activeUser}
             getPermission={getPermission}
+            companyBillingSettings={companyBillingSettings}
             onOpenClient={(clientId) => {
               const cl = leads.find(l => l.id === clientId);
               if (cl) {

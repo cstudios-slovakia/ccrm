@@ -4,9 +4,10 @@ import {
   Settings, Save, Database, Trash2, ShieldAlert, Sliders,
   Globe, Plus, X, Tag, Share2, Users, ShieldCheck, Lock,
   Eye, Pencil, Minus, GripVertical, ArrowLeft, Activity, Clock, CheckSquare, Check,
-  Menu, ArrowUp, FolderOpen, Search, FileText, Building2, Sparkles
+  Menu, ArrowUp, FolderOpen, Search, FileText, Building2, Sparkles, Percent, RotateCcw
 } from "lucide-react";
 import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, Project, ProjectType, FinancialCategory, FinancialRecord, FinancialOperatingMode, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, CustomDashboard } from "../types";
+import { DEFAULT_VAT_RATES, DEFAULT_STANDARD_VAT_RATE, getAvailableVatRates, sanitizeVatRates } from "../utils/vat";
 import { leadAssignmentPanel, resolveAssignmentPool, type LeadAssignmentPanel } from "../utils/leadAssignment";
 import { normalizeSlaDays, type LeadStateSla } from "../utils/leadSla";
 import { listIdFor, nextListId, type ListIds } from "../utils/listIds";
@@ -1331,7 +1332,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     swift: "",
     bankName: "",
     defaultPaymentDueDays: 14,
-    defaultVatRate: 20,
+    defaultVatRate: DEFAULT_STANDARD_VAT_RATE,
+    vatRates: [...DEFAULT_VAT_RATES],
     defaultWarrantyText: "",
     defaultDurationText: "",
     defaultStartDateText: "",
@@ -1345,16 +1347,73 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     ]
   });
 
-  const [billingForm, setBillingForm] = React.useState<CompanyBillingSettings>(() => ({
-    ...emptyBilling(),
-    ...(companyBillingSettings || {})
-  }));
+  const [billingForm, setBillingForm] = React.useState<CompanyBillingSettings>(() => {
+    const base = emptyBilling();
+    const loaded = companyBillingSettings || {};
+    return {
+      ...base,
+      ...loaded,
+      defaultVatRate: loaded.defaultVatRate !== undefined ? loaded.defaultVatRate : base.defaultVatRate,
+      vatRates: loaded.vatRates && loaded.vatRates.length > 0 ? loaded.vatRates : base.vatRates
+    };
+  });
 
   React.useEffect(() => {
     if (companyBillingSettings) {
-      setBillingForm(prev => ({ ...prev, ...companyBillingSettings }));
+      setBillingForm(prev => ({
+        ...prev,
+        ...companyBillingSettings,
+        defaultVatRate: companyBillingSettings.defaultVatRate !== undefined ? companyBillingSettings.defaultVatRate : (prev.defaultVatRate ?? DEFAULT_STANDARD_VAT_RATE),
+        vatRates: companyBillingSettings.vatRates && companyBillingSettings.vatRates.length > 0
+          ? companyBillingSettings.vatRates
+          : (prev.vatRates && prev.vatRates.length > 0 ? prev.vatRates : [...DEFAULT_VAT_RATES])
+      }));
     }
   }, [companyBillingSettings]);
+
+  // VAT rates management in billing settings
+  const [newVatRateInput, setNewVatRateInput] = React.useState<string>("");
+  const activeVatRates = React.useMemo(
+    () => getAvailableVatRates(billingForm),
+    [billingForm.vatRates]
+  );
+
+  const handleAddVatRate = () => {
+    const parsed = parseFloat(newVatRateInput.replace(",", "."));
+    if (isNaN(parsed) || parsed < 0 || parsed > 100) return;
+    const currentRates = getAvailableVatRates(billingForm);
+    const updated = sanitizeVatRates([...currentRates, parsed]);
+    setBillingForm(prev => ({
+      ...prev,
+      vatRates: updated
+    }));
+    setNewVatRateInput("");
+  };
+
+  const handleRemoveVatRate = (rateToRemove: number) => {
+    const currentRates = getAvailableVatRates(billingForm);
+    if (currentRates.length <= 1) return;
+    const updated = currentRates.filter(r => r !== rateToRemove);
+    setBillingForm(prev => {
+      let nextDefault = prev.defaultVatRate;
+      if (nextDefault === rateToRemove) {
+        nextDefault = updated.includes(DEFAULT_STANDARD_VAT_RATE) ? DEFAULT_STANDARD_VAT_RATE : updated[0];
+      }
+      return {
+        ...prev,
+        vatRates: updated,
+        defaultVatRate: nextDefault
+      };
+    });
+  };
+
+  const handleResetVatRates = () => {
+    setBillingForm(prev => ({
+      ...prev,
+      vatRates: [...DEFAULT_VAT_RATES],
+      defaultVatRate: DEFAULT_STANDARD_VAT_RATE
+    }));
+  };
 
   // ------------------------------------------------------- company registry
   // The billing identity is filled from the same public registers as the client
@@ -3656,27 +3715,152 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 {/* Remaining document defaults. Every field here pre-fills a new
                     document in the Invoicing wizard, so leaving one blank simply
                     means that block is omitted from the printed document. */}
-                <div className="grid grid-cols-1 ws-sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="type-overline text-slate-600 block mb-1">
-                      {t("Default VAT Rate (%)", "Predvolená sadzba DPH (%)", "Alapértelmezett ÁFA (%)")}
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="any"
-                      value={billingForm.defaultVatRate ?? 20}
-                      onChange={e =>
-                        setBillingForm(prev => ({
-                          ...prev,
-                          defaultVatRate: Math.min(100, Math.max(0, parseFloat(e.target.value) || 0))
-                        }))
-                      }
-                      className="w-full p-2.5 bg-white border border-slate-200 rounded-xl text-ui font-bold"
-                    />
+                {/* VAT Rates & Defaults Configuration */}
+                <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-4">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="p-1 rounded-md bg-indigo-50 text-indigo-600 border border-indigo-100">
+                          <Percent className="size-3.5" />
+                        </span>
+                        <h4 className="text-ui font-bold text-slate-800">
+                          {t("VAT Rates & Defaults", "Sadzby DPH a predvolená hodnota", "ÁFA kulcsok és alapértelmezett érték")}
+                        </h4>
+                      </div>
+                      <p className="text-micro text-slate-500 mt-1">
+                        {t(
+                          "Configure available VAT rates for orders and invoices. The default rate will be pre-selected on newly added items.",
+                          "Nastavte dostupné sadzby DPH pre objednávky a faktúry. Predvolená sadzba sa automaticky zvolí pri nových položkách.",
+                          "Állítsa be a megrendelések és számlák ÁFA kulcsait. Az alapértelmezett kulcs automatikusan beállításra kerül az új tételeknél."
+                        )}
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={handleResetVatRates}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 text-micro font-medium text-slate-600 hover:text-slate-800 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg shadow-2xs transition-colors cursor-pointer"
+                      title={t("Reset to default rates (23%, 19%, 10%, 5%, 0%)", "Obnoviť predvolené sadzby (23%, 19%, 10%, 5%, 0%)", "Alapértelmezett kulcsok visszaállítása (23%, 19%, 10%, 5%, 0%)")}
+                    >
+                      <RotateCcw className="size-3 text-slate-400" />
+                      <span>{t("Reset to defaults (23, 19, 10, 5, 0)", "Obnoviť predvolené (23, 19, 10, 5, 0)", "Alapértelmezés (23, 19, 10, 5, 0)")}</span>
+                    </button>
                   </div>
 
+                  {/* Active VAT rates pills */}
+                  <div className="space-y-1.5">
+                    <label className="type-overline text-slate-500 block">
+                      {t("Active VAT Rates", "Aktívne sadzby DPH", "Aktív ÁFA kulcsok")}
+                    </label>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {activeVatRates.map(rate => {
+                        const isDefault = Number(billingForm.defaultVatRate) === rate;
+                        return (
+                          <div
+                            key={rate}
+                            className={cn(
+                              "inline-flex items-center gap-2 px-3 py-1.5 rounded-xl border text-ui font-mono font-bold transition-all shadow-2xs",
+                              isDefault
+                                ? "bg-indigo-50 border-indigo-300 text-indigo-700 ring-2 ring-indigo-200"
+                                : "bg-white border-slate-200 text-slate-700 hover:border-slate-300"
+                            )}
+                          >
+                            <span>{rate}%</span>
+                            {isDefault ? (
+                              <span className="px-1.5 py-0.5 rounded-md bg-indigo-600 text-white text-micro font-sans font-semibold tracking-wide uppercase">
+                                {t("Default", "Predvolená", "Alapértelmezett")}
+                              </span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => setBillingForm(prev => ({ ...prev, defaultVatRate: rate }))}
+                                className="text-micro font-sans font-medium text-slate-400 hover:text-indigo-600 transition-colors cursor-pointer"
+                                title={t("Set as default", "Nastaviť ako predvolenú", "Beállítás alapértelmezettként")}
+                              >
+                                {t("Set default", "Zvoliť", "Kiválaszt")}
+                              </button>
+                            )}
+
+                            {activeVatRates.length > 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveVatRate(rate)}
+                                className="p-0.5 rounded hover:bg-rose-50 text-slate-400 hover:text-rose-600 transition-colors cursor-pointer"
+                                title={t("Remove VAT rate", "Odstrániť sadzbu", "ÁFA kulcs törlése")}
+                              >
+                                <X className="size-3.5" />
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Add rate & Default rate picker in 2 columns */}
+                  <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3 pt-2 border-t border-slate-200/60">
+                    <div>
+                      <label className="type-overline text-slate-500 block mb-1">
+                        {t("Add Custom VAT Rate", "Pridať ďalšiu sadzbu DPH", "Új ÁFA kulcs hozzáadása")}
+                      </label>
+                      <div className="flex items-center gap-2">
+                        <div className="relative flex-1">
+                          <input
+                            type="number"
+                            min="0"
+                            max="100"
+                            step="any"
+                            value={newVatRateInput}
+                            onChange={e => setNewVatRateInput(e.target.value)}
+                            onKeyDown={e => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                handleAddVatRate();
+                              }
+                            }}
+                            placeholder="e.g. 21"
+                            className="w-full pr-8 pl-3 py-2 bg-white border border-slate-200 rounded-xl text-ui font-mono focus:border-indigo-500 focus:outline-none"
+                          />
+                          <span className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-ui font-mono font-bold pointer-events-none">
+                            %
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={handleAddVatRate}
+                          className="px-3 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-ui font-medium inline-flex items-center gap-1.5 transition-colors cursor-pointer shadow-2xs"
+                        >
+                          <Plus className="size-3.5" />
+                          <span>{t("Add", "Pridať", "Hozzáadás")}</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="type-overline text-slate-500 block mb-1">
+                        {t("Default VAT Rate", "Predvolená sadzba DPH", "Alapértelmezett ÁFA kulcs")}
+                      </label>
+                      <select
+                        value={billingForm.defaultVatRate ?? DEFAULT_STANDARD_VAT_RATE}
+                        onChange={e =>
+                          setBillingForm(prev => ({
+                            ...prev,
+                            defaultVatRate: parseFloat(e.target.value) || 0
+                          }))
+                        }
+                        className="w-full p-2 bg-white border border-slate-200 rounded-xl text-ui font-mono font-bold text-slate-800 focus:border-indigo-500 focus:outline-none"
+                      >
+                        {activeVatRates.map(r => (
+                          <option key={r} value={r}>
+                            {r}% {r === DEFAULT_STANDARD_VAT_RATE ? t("(Standard)", "(Základná)", "(Normál)") : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-3">
                   <div>
                     <label className="type-overline text-slate-600 block mb-1">
                       {t("Default Project Duration", "Predvolená dĺžka realizácie", "Alapértelmezett időtartam")}

@@ -44,7 +44,8 @@ import type {
   InvoiceOffer,
   InvoiceOfferItem,
   UserProfile,
-  PermissionValue
+  PermissionValue,
+  CompanyBillingSettings
 } from "../types";
 import type { Language } from "../utils/translations";
 import { useOrderStatuses } from "../hooks/useOrderStatuses";
@@ -58,6 +59,7 @@ import {
   type OrderStatusDef,
 } from "../utils/orders";
 import { OrderDetailView } from "./OrderDetailView";
+import { getDefaultVatRate } from "../utils/vat";
 
 export interface OrdersViewProps {
   orders: Order[];
@@ -74,6 +76,7 @@ export interface OrdersViewProps {
   currentUser?: UserProfile | null;
   getPermission: (key: string) => PermissionValue;
   onOpenClient?: (clientId: string) => void;
+  companyBillingSettings?: CompanyBillingSettings | null;
 }
 
 export const OrdersView: React.FC<OrdersViewProps> = ({
@@ -90,7 +93,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   userLanguage,
   currentUser,
   getPermission,
-  onOpenClient
+  onOpenClient,
+  companyBillingSettings
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
@@ -218,7 +222,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       quantity: i.quantity,
       unit: i.unit || "ks",
       unitPrice: i.unitPrice,
-      vatRate: i.taxRate || 20,
+      vatRate: i.taxRate !== undefined ? i.taxRate : getDefaultVatRate(companyBillingSettings),
       discountPct: i.discountPercent || 0,
       totalPrice: i.totalGrossAmount
     }));
@@ -439,6 +443,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         canEdit={canEdit}
         canDelete={canDelete}
         onOpenClient={onOpenClient}
+        companyBillingSettings={companyBillingSettings}
       />
     );
   }
