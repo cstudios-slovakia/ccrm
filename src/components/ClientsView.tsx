@@ -5099,7 +5099,16 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                           >
                             <div className="space-y-1">
                               <div className="flex items-center gap-2">
-                                <span className="font-mono font-bold text-caption text-slate-900">{order.orderNumber}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    window.location.hash = `orders/${encodeURIComponent(order.id)}`;
+                                  }}
+                                  className="font-mono font-bold text-caption text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer transition-colors text-left"
+                                  title={t("Open order", "Otvoriť objednávku", "Rendelés megnyitása")}
+                                >
+                                  {order.orderNumber}
+                                </button>
                                 <span className="text-micro text-slate-400 font-mono">{order.orderDate}</span>
                                 <span
                                   className="inline-flex items-center px-2 py-0.5 rounded-full text-micro font-bold"

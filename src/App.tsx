@@ -3380,7 +3380,10 @@ ${log.payload || ''}
             }}
           />
         );
-      case "orders":
+      case "orders": {
+        const subOrderId = (activeRoute.startsWith("orders/") && activeRoute.length > "orders/".length)
+          ? decodeURIComponent(activeRoute.slice("orders/".length))
+          : undefined;
         return (
           <OrdersView
             orders={orders}
@@ -3397,6 +3400,7 @@ ${log.payload || ''}
             currentUser={activeUser}
             getPermission={getPermission}
             companyBillingSettings={companyBillingSettings}
+            initialSelectedOrderId={subOrderId}
             onOpenClient={(clientId) => {
               const cl = leads.find(l => l.id === clientId);
               if (cl) {
@@ -3406,6 +3410,7 @@ ${log.payload || ''}
             }}
           />
         );
+      }
       case "files":
         return (
           <FilesView

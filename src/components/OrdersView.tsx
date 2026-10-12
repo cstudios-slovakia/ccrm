@@ -78,6 +78,7 @@ export interface OrdersViewProps {
   getPermission: (key: string) => PermissionValue;
   onOpenClient?: (clientId: string) => void;
   companyBillingSettings?: CompanyBillingSettings | null;
+  initialSelectedOrderId?: string;
 }
 
 export const OrdersView: React.FC<OrdersViewProps> = ({
@@ -95,7 +96,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   currentUser,
   getPermission,
   onOpenClient,
-  companyBillingSettings
+  companyBillingSettings,
+  initialSelectedOrderId
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
@@ -112,6 +114,18 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
   // Active editing or creating order (separate full-page view)
   const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+
+  // Auto-open order if requested via deep link / initialSelectedOrderId
+  useEffect(() => {
+    if (initialSelectedOrderId && orders.length > 0) {
+      const match = orders.find(
+        o => o.id === initialSelectedOrderId || o.orderNumber === initialSelectedOrderId
+      );
+      if (match) {
+        setEditingOrder(JSON.parse(JSON.stringify(match)));
+      }
+    }
+  }, [initialSelectedOrderId, orders]);
 
   // Copy tracking number helper
   const handleCopyTracking = (tracking: string, id: string) => {
@@ -429,7 +443,12 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       <OrderDetailView
         order={editingOrder}
         onSave={handleSaveOrder}
-        onClose={() => setEditingOrder(null)}
+        onClose={() => {
+          setEditingOrder(null);
+          if (window.location.hash.startsWith("#orders/")) {
+            window.location.hash = "orders";
+          }
+        }}
         onDelete={handleDeleteOrder}
         onConvertGuest={handleConvertGuest}
         onFulfillWarehouse={handleFulfillWarehouse}
@@ -631,14 +650,24 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
               >
                 {/* 1. Order Info & Customer */}
                 <div className="flex items-start gap-3.5 min-w-65">
-                  <div className="h-10 w-10 rounded-xl bg-slate-100 flex items-center justify-center shrink-0 text-slate-600 font-mono text-micro font-bold border border-slate-200">
+                  <button
+                    type="button"
+                    onClick={() => handleOpenEdit(order)}
+                    className="h-10 w-10 rounded-xl bg-slate-100 hover:bg-indigo-50 flex items-center justify-center shrink-0 text-slate-600 hover:text-indigo-600 font-mono text-micro font-bold border border-slate-200 hover:border-indigo-200 transition-colors cursor-pointer"
+                    title={t("Open order", "Otvoriť objednávku", "Rendelés megnyitása")}
+                  >
                     <ShoppingCart className="h-4.5 w-4.5 text-indigo-600" />
-                  </div>
+                  </button>
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-mono font-bold text-ui text-slate-900">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEdit(order)}
+                        className="font-mono font-bold text-ui text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer transition-colors text-left"
+                        title={t("Open order", "Otvoriť objednávku", "Rendelés megnyitása")}
+                      >
                         {order.orderNumber}
-                      </span>
+                      </button>
                       <span className="text-micro text-slate-400 font-mono">
                         {order.orderDate}
                       </span>
