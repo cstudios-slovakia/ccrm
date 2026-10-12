@@ -572,7 +572,7 @@ function mcp_core_tool_definitions(): array {
         ],
         [
             'name' => 'get_client',
-            'description' => 'Get a client record with the projects and invoicing documents of the whole client: every record sharing its name (as the Clients register shows it), plus unlinked projects named for it (linked_by = name_match). Projects carry the resolved contract value, status group, deadline and url; documents carry payment status. For one-call context use get_client_dossier.',
+            'description' => 'Get a client record with the projects and invoicing documents of the whole client: every record sharing its name (as the Clients register shows it), plus unlinked projects named for it (linked_by = name_match). Projects carry the resolved contract value, status group, invoice date (invoice_date), deadline (completion_deadline) and url; documents carry payment status. For one-call context use get_client_dossier.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -756,7 +756,7 @@ function mcp_core_tool_definitions(): array {
         // DOMAIN 4: Projects & Gantt Roadmaps
         [
             'name' => 'list_projects',
-            'description' => 'List and filter delivery projects with contract value, budget, rating, deadline, delay reason and finish date.',
+            'description' => 'List and filter delivery projects with contract value, budget, rating, invoice date (invoice_date), deadline (completion_deadline), delay reason and finish date, plus project_type (name and the has_invoice_date / has_deadline switches: a null date on a type without the switch is not applicable rather than missing).',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -770,7 +770,7 @@ function mcp_core_tool_definitions(): array {
         ],
         [
             'name' => 'get_project',
-            'description' => 'Retrieve project details with its client (from client_id, else the paired lead, else the client the project is named for — see client.linked_by), contract value, a financials block (contract value, invoiced, paid, outstanding, remaining billable, and the installment schedule: every income movement with due date, amount, invoice number and payment status), milestones, linked tasks and a url.',
+            'description' => 'Retrieve project details (incl. start_date, invoice_date, completion_deadline = the Deadline, delay_reason, finished_at; project_type tells whether its type uses the invoice date and the deadline) with its client (from client_id, else the paired lead, else the client the project is named for — see client.linked_by), contract value, a financials block (contract value, invoiced, paid, outstanding, remaining billable, and the installment schedule: every income movement with due date, amount, invoice number and payment status), milestones, linked tasks and a url.',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -791,7 +791,8 @@ function mcp_core_tool_definitions(): array {
                     'value' => ['type' => 'number', 'description' => 'Contract value to be invoiced'],
                     'project_type_id' => ['type' => 'string', 'description' => 'Project type (default: the first one)'],
                     'start_date' => ['type' => 'string', 'description' => 'Start date (YYYY-MM-DD)'],
-                    'deadline' => ['type' => 'string', 'description' => 'Deadline date (YYYY-MM-DD)'],
+                    'invoice_date' => ['type' => 'string', 'description' => 'Invoice date (YYYY-MM-DD) - the "Invoice date" field in the app'],
+                    'completion_deadline' => ['type' => 'string', 'description' => 'Deadline (YYYY-MM-DD) - the "Deadline" field in the app'],
                     'status' => ['type' => 'string', 'description' => 'A configured project status (default: the first of the "new" group)']
                 ],
                 'required' => ['name']
@@ -813,7 +814,8 @@ function mcp_core_tool_definitions(): array {
                     'division' => ['type' => 'string', 'description' => 'Division'],
                     'archived' => ['type' => 'boolean', 'description' => 'Archive / restore'],
                     'start_date' => ['type' => 'string', 'description' => 'Start date (YYYY-MM-DD)'],
-                    'deadline' => ['type' => 'string', 'description' => 'Deadline (YYYY-MM-DD)']
+                    'invoice_date' => ['type' => 'string', 'description' => 'Invoice date (YYYY-MM-DD) - the "Invoice date" field in the app'],
+                    'completion_deadline' => ['type' => 'string', 'description' => 'Deadline (YYYY-MM-DD) - the "Deadline" field in the app']
                 ],
                 'required' => ['id']
             ]
@@ -1169,7 +1171,7 @@ function mcp_core_tool_definitions(): array {
         // DOMAIN 11: Employees, Salaries & Vacations
         [
             'name' => 'list_employees',
-            'description' => 'List company employees with compensation rates, contact details, and vacation allowances.',
+            'description' => 'List company employees with compensation rates, contact details, vacation allowances and the app login they are linked to (user_id; null when none).',
             'inputSchema' => [
                 'type' => 'object',
                 'properties' => [
@@ -1778,7 +1780,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
             $limit = min(max(1, (int)($args['limit'] ?? 50)), 100);
 
-            $sql = "SELECT p.id, p.name, p.status, p.division, p.rating, p.value, p.budget, p.deadline, p.delay_reason, p.start_date, p.finished_at, p.lead_id, p.client_id, l.name as client_name, p.archived, p.created_at
+            $sql = "SELECT p.id, p.name, p.status, p.division, p.rating, p.value, p.budget, p.invoice_date, p.completion_deadline, p.delay_reason, p.start_date, p.finished_at, p.project_type_id, p.lead_id, p.client_id, l.name as client_name, p.archived, p.created_at
                     FROM projects p
                     LEFT JOIN leads l ON l.id = COALESCE(p.lead_id, p.client_id)
                     WHERE " . implode(' AND ', $where) . "
@@ -1787,7 +1789,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
-            return array_map(fn($p) => $p + ['url' => mcp_project_url($pdo, (string)$p['id'])], $stmt->fetchAll(\PDO::FETCH_ASSOC));
+            return array_map(fn($p) => $p + ['project_type' => mcp_project_type_info($pdo, $p['project_type_id']), 'url' => mcp_project_url($pdo, (string)$p['id'])], $stmt->fetchAll(\PDO::FETCH_ASSOC));
 
         case 'get_project':
             $stmt = $pdo->prepare("SELECT * FROM projects WHERE id = ?");
@@ -1797,6 +1799,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
                 throw new \Exception("Project not found with ID: " . $args['id']);
             }
             $proj['url'] = mcp_project_url($pdo, (string)$proj['id']);
+            $proj['project_type'] = mcp_project_type_info($pdo, $proj['project_type_id'] ?? null);
 
             // The client: client_id, else the paired lead, else the client the project is named for.
             $owner = mcp_project_client($pdo, $proj);
@@ -2378,7 +2381,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             if (!isset($args['active_only']) || !empty($args['active_only'])) {
                 $where[] = "is_active = 1";
             }
-            $stmt = $pdo->prepare("SELECT id, name, pin, email, phone, address_street, address_city, address_zip, address_country, salary_type, salary_amount, salary_due_day, vacation_allowances_json, time_tracking_user_name, auto_expense, is_active FROM employees WHERE " . implode(' AND ', $where) . " ORDER BY name ASC LIMIT 200");
+            $stmt = $pdo->prepare("SELECT id, name, user_id, pin, email, phone, address_street, address_city, address_zip, address_country, salary_type, salary_amount, salary_due_day, vacation_allowances_json, time_tracking_user_name, auto_expense, is_active FROM employees WHERE " . implode(' AND ', $where) . " ORDER BY name ASC LIMIT 200");
             $stmt->execute($params);
             $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
             return array_map('mcp_project_employee', $rows);

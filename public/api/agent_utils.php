@@ -578,8 +578,8 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
                     $totalBudget += (float)($pr['budget'] ?? 0);
                     $st = $pr['status'] ?? 'active';
                     if ($st === 'active' || $st === 'in_progress') $activeCount++;
-                    if (!empty($pr['deadline']) && !$projectClosed($st)) {
-                        if (strtotime($pr['deadline']) < strtotime($todayDate)) {
+                    if (!empty($pr['completion_deadline']) && !$projectClosed($st)) {
+                        if (strtotime($pr['completion_deadline']) < strtotime($todayDate)) {
                             $overdueProjCount++;
                         }
                     }
@@ -595,7 +595,8 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
                     $projSummary .= "  * " . ($pr['name'] ?: 'Untitled Project') . " [" . strtoupper($pr['status'] ?? 'ACTIVE') . "]";
                     if (!empty($pr['client_name'])) $projSummary .= " (Client: " . $pr['client_name'] . ")";
                     if (!empty($pr['budget'])) $projSummary .= " (Budget: €" . number_format((float)$pr['budget'], 2) . ")";
-                    if (!empty($pr['deadline'])) $projSummary .= " (Deadline: " . substr($pr['deadline'], 0, 10) . ")";
+                    if (!empty($pr['completion_deadline'])) $projSummary .= " (Deadline: " . substr($pr['completion_deadline'], 0, 10) . ")";
+                    if (!empty($pr['invoice_date'])) $projSummary .= " (Invoice date: " . substr($pr['invoice_date'], 0, 10) . ")";
                     $projSummary .= "\n";
                 }
 
@@ -623,9 +624,9 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
                     $score += $calc_token_score($pr['type_name'] ?? '', $meaningful_tokens_clean);
                     $score += $calc_token_score($pr['delay_reason'] ?? '', $meaningful_tokens_clean);
 
-                    $deadlineStr = !empty($pr['deadline']) ? substr($pr['deadline'], 0, 10) : 'None';
+                    $deadlineStr = !empty($pr['completion_deadline']) ? substr($pr['completion_deadline'], 0, 10) : 'None';
                     $dlStatus = "";
-                    if (!empty($pr['deadline']) && !$projectClosed($pr['status'] ?? '')) {
+                    if (!empty($pr['completion_deadline']) && !$projectClosed($pr['status'] ?? '')) {
                         $diff = (int)round((strtotime($deadlineStr) - strtotime($todayDate)) / 86400);
                         if ($diff < 0) {
                             $dlStatus = " [PO TERMÍNE / OVERDUE by " . abs($diff) . " days]";
@@ -651,7 +652,8 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
                     if (!empty($pr['type_name'])) $block .= "- Type: " . $pr['type_name'] . "\n";
                     if (!empty($pr['client_name'])) $block .= "- Associated Client: " . $pr['client_name'] . "\n";
                     if (!empty($pr['budget'])) $block .= "- Budget: €" . number_format((float)$pr['budget'], 2) . " EUR\n";
-                    if (!empty($pr['deadline'])) $block .= "- Deadline: " . $deadlineStr . $dlStatus . "\n";
+                    if (!empty($pr['completion_deadline'])) $block .= "- Deadline: " . $deadlineStr . $dlStatus . "\n";
+                    if (!empty($pr['invoice_date'])) $block .= "- Invoice date: " . substr($pr['invoice_date'], 0, 10) . "\n";
                     if (!empty($pr['delay_reason'])) $block .= "- Delay Reason / Impediments: " . $pr['delay_reason'] . "\n";
                     if (!empty($managers)) $block .= "- Assigned Managers: " . implode(", ", $managers) . "\n";
 
@@ -1333,7 +1335,7 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
     // =========================================================================
     if ($allow('employees')) try {
         if ($pdo->query("SHOW TABLES LIKE 'employees'")->rowCount() > 0) {
-            $empStmt = $pdo->query("SELECT `id`, `name`, `email`, `phone`, `salary_type`, `salary_amount`, `salary_due_day`, `time_tracking_user_name`, `is_active`, `vacation_allowances_json` FROM `employees` WHERE `is_active` = 1 LIMIT 50");
+            $empStmt = $pdo->query("SELECT e.`id`, e.`name`, e.`email`, e.`phone`, e.`salary_type`, e.`salary_amount`, e.`salary_due_day`, e.`time_tracking_user_name`, e.`is_active`, e.`vacation_allowances_json`, u.`name` AS `linked_user_name` FROM `employees` e LEFT JOIN `users` u ON u.`id` = e.`user_id` WHERE e.`is_active` = 1 LIMIT 50");
             $employeesAll = $empStmt->fetchAll(PDO::FETCH_ASSOC);
             if (!empty($employeesAll)) {
                 // The same field groups the sync GET projects: the roster for anyone with
@@ -1347,6 +1349,9 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
                     $hrBlock .= "- Employee: " . $emp['name'] . " | Contact: " . ($emp['email'] ?: 'N/A') . ($hrPersonal ? " (" . ($emp['phone'] ?: 'N/A') . ")" : "") . "\n";
                     if ($hrPay) {
                         $hrBlock .= "  Rate: €" . number_format((float)$emp['salary_amount'], 2) . " / " . $emp['salary_type'] . " | Salary due day: " . ($emp['salary_due_day'] ? $emp['salary_due_day'] . 'th' : 'Company default') . "\n";
+                    }
+                    if (!empty($emp['linked_user_name'])) {
+                        $hrBlock .= "  App login: " . $emp['linked_user_name'] . "\n";
                     }
                     if (!empty($emp['time_tracking_user_name'])) {
                         $hrBlock .= "  Time tracker (Toggl): " . $emp['time_tracking_user_name'] . "\n";

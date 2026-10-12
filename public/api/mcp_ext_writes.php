@@ -93,8 +93,9 @@ function mcp_create_project_row(\PDO $pdo, array $a): string {
     $budget = mcp_number($a, 'budget', false, 0);
     $value = mcp_number($a, 'value', false, 0);
     $start = mcp_optional_date($a, 'start_date') ?? mcp_today();
-    $deadline = mcp_optional_date($a, 'deadline');
-    if ($deadline !== null && $deadline < $start) throw new \InvalidArgumentException("'deadline' cannot be before 'start_date'.");
+    $invoiceDate = mcp_optional_date($a, 'invoice_date');
+    $completionDeadline = mcp_optional_date($a, 'completion_deadline');
+    if ($completionDeadline !== null && $completionDeadline < $start) throw new \InvalidArgumentException("'completion_deadline' cannot be before 'start_date'.");
 
     if (!empty($a['project_type_id'])) {
         mcp_row_exists($pdo, 'project_types', (string)$a['project_type_id'], 'Project type');
@@ -106,15 +107,15 @@ function mcp_create_project_row(\PDO $pdo, array $a): string {
 
     $id = 'proj_' . bin2hex(random_bytes(8));
     $pdo->prepare(
-        "INSERT INTO projects (id, project_type_id, name, lead_id, client_id, budget, value, start_date, deadline, status, finished_at, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())"
-    )->execute([$id, $typeId, $name, $clientId, $clientId, $budget, $value, $start, $deadline, $status, mcp_finished_at_for_status($pdo, $status, null)]);
+        "INSERT INTO projects (id, project_type_id, name, lead_id, client_id, budget, value, start_date, invoice_date, completion_deadline, status, finished_at, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())"
+    )->execute([$id, $typeId, $name, $clientId, $clientId, $budget, $value, $start, $invoiceDate, $completionDeadline, $status, mcp_finished_at_for_status($pdo, $status, null)]);
     return $id;
 }
 
 function mcp_do_update_project(\PDO $pdo, array $user, array $args): array {
     $id = mcp_require_string($args, 'id');
-    $cur = $pdo->prepare("SELECT status, finished_at, start_date, deadline FROM projects WHERE id = ?");
+    $cur = $pdo->prepare("SELECT status, finished_at, start_date, completion_deadline FROM projects WHERE id = ?");
     $cur->execute([$id]);
     $row = $cur->fetch(\PDO::FETCH_ASSOC);
     if (!$row) throw new \Exception("Project not found with ID: {$id}");
@@ -135,12 +136,12 @@ function mcp_do_update_project(\PDO $pdo, array $user, array $args): array {
     foreach (['budget', 'value'] as $f) {
         if (array_key_exists($f, $args)) $add($f, $args[$f] === null || $args[$f] === '' ? null : mcp_number($args, $f, true, 0));
     }
-    foreach (['start_date', 'deadline'] as $f) {
+    foreach (['start_date', 'invoice_date', 'completion_deadline'] as $f) {
         if (array_key_exists($f, $args)) $add($f, $args[$f] === null || $args[$f] === '' ? null : mcp_require_date($args, $f));
     }
     $start = array_key_exists('start_date', $args) ? ($args['start_date'] ?: null) : $row['start_date'];
-    $deadline = array_key_exists('deadline', $args) ? ($args['deadline'] ?: null) : $row['deadline'];
-    if ($start && $deadline && $deadline < $start) throw new \InvalidArgumentException("'deadline' cannot be before 'start_date'.");
+    $deadline = array_key_exists('completion_deadline', $args) ? ($args['completion_deadline'] ?: null) : $row['completion_deadline'];
+    if ($start && $deadline && $deadline < $start) throw new \InvalidArgumentException("'completion_deadline' cannot be before 'start_date'.");
     if (array_key_exists('delay_reason', $args)) {
         $r = trim((string)$args['delay_reason']);
         if (mb_strlen($r) > 500) throw new \InvalidArgumentException("'delay_reason' is limited to 500 characters.");
@@ -157,7 +158,7 @@ function mcp_do_update_project(\PDO $pdo, array $user, array $args): array {
     $params[] = $id;
     $pdo->prepare("UPDATE projects SET " . implode(', ', $sets) . " WHERE id = ?")->execute($params);
     mcp_audit($pdo, $user, 'project_update', "Updated project $id");
-    return ['success' => true, 'id' => $id, 'updated_fields' => array_values(array_intersect(array_keys($args), ['name', 'status', 'budget', 'value', 'start_date', 'deadline', 'delay_reason', 'rating', 'division', 'archived']))];
+    return ['success' => true, 'id' => $id, 'updated_fields' => array_values(array_intersect(array_keys($args), ['name', 'status', 'budget', 'value', 'start_date', 'invoice_date', 'completion_deadline', 'delay_reason', 'rating', 'division', 'archived']))];
 }
 
 // ---------------------------------------------------------------------------
