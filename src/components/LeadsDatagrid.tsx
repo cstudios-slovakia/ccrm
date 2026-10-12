@@ -4,9 +4,14 @@ import { useUserPref } from "../utils/userPrefs";
 import { canArchiveTask, resolveAssigneeName, type TaskAccess } from "../utils/taskSelectors";
 import { liftAccent } from "../utils/accentColor";
 import { isOutgoingMail, mergeLeadTimeline, withTimelineEvent } from "../utils/mailTimeline";
-import { useConfirmDialog } from "./ui/ConfirmDialog";
+import { HoldToConfirmButton } from "./ui/HoldToConfirm";
+import { archiveLeadsWithUndo, deleteLeadsWithUndo } from "../utils/leadActions";
+import { deleteTasksWithUndo } from "../utils/taskActions";
+import { runUndoable } from "../utils/undoable";
+import { singleMessage, undoLabel } from "../utils/undoMessages";
 import { createPortal } from "react-dom";
 import { FavoriteHeartButton } from "./ui/FavoriteHeartButton";
+import { useFavorites } from "../utils/favorites";
 import {
     Users,
     MapPin,
@@ -63,6 +68,7 @@ import {
     AlarmClock,
     AlertTriangle,
     Building2,
+    Heart,
 } from "lucide-react";
 import { VoiceTaskActionBar } from "./VoiceTaskActionBar";
 import { EntityTasksPanel } from "./EntityTasksPanel";
@@ -1319,23 +1325,27 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         setRecordingState("stopped");
     };
 
+    // The recording leaves the event being logged at once; Undo puts the exact
+    // previous player state back. The uploaded file itself is never touched.
     const removeAudioFile = () => {
-        if (
-            confirm(
-                t(
-                    "Are you sure you want to remove this recording?",
-                    "Naozaj chcete odstrániť túto nahrávku?",
-                    "Biztosan eltávolítja ezt a felvételt?",
-                ),
-            )
-        ) {
-            if (audioRef.current) {
-                audioRef.current.pause();
-            }
-            setAudioUrl(null);
-            setUploadedAudioFile(null);
-            setRecordingState("none");
-        }
+        const before = { url: audioUrl, file: uploadedAudioFile, state: recordingState };
+        runUndoable({
+            message: singleMessage(systemLanguage, "recording", "delete", ""),
+            undoLabel: undoLabel(systemLanguage),
+            apply: () => {
+                if (audioRef.current) {
+                    audioRef.current.pause();
+                }
+                setAudioUrl(null);
+                setUploadedAudioFile(null);
+                setRecordingState("none");
+            },
+            revert: () => {
+                setAudioUrl(before.url);
+                setUploadedAudioFile(before.file);
+                setRecordingState(before.state);
+            },
+        });
     };
 
     const formatDuration = (sec: number): string => {
@@ -1574,6 +1584,9 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     // "5".."1" = that exact star count, "min4"/"min3" = that many stars and up.
     const [selectedRating, setSelectedRating] = useState("all");
     const [selectedArchiveFilter, setSelectedArchiveFilter] = useState<"active" | "archived" | "all">("active");
+    // Favorites state & hook
+    const { isFavorite } = useFavorites();
+    const [filterFavoritesOnly, setFilterFavoritesOnly] = useState(false);
 
     // Multi-selection & Bulk action toolbar state
     const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
@@ -1968,7 +1981,13 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         undefined,
     );
 
-    const [activeDetailTab, setActiveDetailTab] = useState<"timeline" | "tasks">("timeline");
+    const [leadDefaultTab, setLeadDefaultTab] = useUserPref("leadDefaultTab");
+    const pinnedDetailTab: "timeline" | "tasks" = leadDefaultTab === "tasks" ? "tasks" : "timeline";
+    const [activeDetailTab, setActiveDetailTab] = useState<"timeline" | "tasks">(pinnedDetailTab);
+    // A different lead opens on the pinned tab, not on whichever the last one was left on.
+    useEffect(() => {
+        setActiveDetailTab(pinnedDetailTab);
+    }, [activeLead?.id]);
     // Inline edit of a gate task in the lead's "Pipeline gate & tasks" card.
     const [editingGateTaskId, setEditingGateTaskId] = useState<string | null>(null);
     const [gateTaskDraft, setGateTaskDraft] = useState({ title: "", deadline: "", deadlineTime: "", isLocking: false });
@@ -2272,8 +2291,6 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
     const [logDocumentFiles, setLogDocumentFiles] = useState<File[]>([]);
     const [isUploadingDocuments, setIsUploadingDocuments] = useState(false);
 
-    // In-app confirmation for deletes (replaces window.confirm).
-    const [confirmAction, confirmDialog] = useConfirmDialog();
     // Inline edit/delete of an already-logged timeline event
     const [editingEventId, setEditingEventId] = useState<string | null>(null);
     const [editingEventDraft, setEditingEventDraft] = useState("");
@@ -2369,9 +2386,6 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     // Task ids with a delete request in flight, so a double click cannot fire two
     // deletes for the same row.
-    const [deletingTaskIds, setDeletingTaskIds] = useState<Set<string>>(
-        new Set(),
-    );
 
     // A task is only ever visible through its assignee list, so an assignee that
     // is not a registered user drops it out of every calendar and task bucket in
@@ -3566,108 +3580,91 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         </div>
     );
 
-    const handleDeleteTimelineEvent = async (eventId: string) => {
+    const handleDeleteTimelineEvent = (eventId: string) => {
         if (!canDelete || !activeLead) return;
         const target = activeLeadTimeline.find((e) => e.id === eventId);
         if (!target) return;
-        const ok = await confirmAction({
-            title: t(
-                "Delete this event from the lead history?",
-                "Odstrániť túto udalosť z histórie leadu?",
-                "Törli ezt az eseményt a lead előzményeiből?",
-            ),
-            confirmLabel: t("Delete", "Odstrániť", "Törlés"),
-            cancelLabel: t("Cancel", "Zrušiť", "Mégse"),
-            danger: true,
-        });
-        if (!ok) return;
+        const leadId = activeLead.id;
         // An imported mail cannot just be dropped: sync.php never deletes mail
         // rows by omission, and the next mailbox read would file it again. It is
         // flagged `hidden` instead, which both honour. The message itself stays
         // in the mailbox.
         const isMailEntry = eventId.startsWith("email-");
-        setLeads((prev) =>
-            prev.map((l) =>
-                l.id === activeLead.id
-                    ? {
-                          ...l,
-                          timeline: isMailEntry
-                              ? withTimelineEvent(l.timeline || [], target, {
-                                    hidden: true,
-                                })
-                              : (l.timeline || []).filter(
-                                    (e) => e.id !== eventId,
-                                ),
-                      }
-                    : l,
-            ),
-        );
-        // The stored row is left out of the next server read, so the live copy
-        // fetched before the delete must not stand in for it meanwhile.
-        if (isMailEntry) {
-            setLeadEmails((prev) => prev.filter((e) => e.id !== eventId));
-        }
-        if (editingEventId === eventId) handleCancelEditEvent();
-        (window as any).showToast?.(
-            t(
-                "Event deleted.",
-                "Udalosť bola odstránená.",
-                "Az esemény törölve.",
-            ),
-        );
+        const storedTimeline = activeLead.timeline || [];
+        const storedIndex = storedTimeline.findIndex((e) => e.id === eventId);
+        const storedEvent = storedIndex >= 0 ? storedTimeline[storedIndex] : null;
+        const removedLiveMail = isMailEntry ? leadEmails.filter((e) => e.id === eventId) : [];
+        runUndoable({
+            message: singleMessage(systemLanguage, "event", "delete", target.title),
+            undoLabel: undoLabel(systemLanguage),
+            apply: () => {
+                setLeads((prev) =>
+                    prev.map((l) =>
+                        l.id === leadId
+                            ? {
+                                  ...l,
+                                  timeline: isMailEntry
+                                      ? withTimelineEvent(l.timeline || [], target, {
+                                            hidden: true,
+                                        })
+                                      : (l.timeline || []).filter(
+                                            (e) => e.id !== eventId,
+                                        ),
+                              }
+                            : l,
+                    ),
+                );
+                // The stored row is left out of the next server read, so the live copy
+                // fetched before the delete must not stand in for it meanwhile.
+                if (isMailEntry) {
+                    setLeadEmails((prev) => prev.filter((e) => e.id !== eventId));
+                }
+                if (editingEventId === eventId) handleCancelEditEvent();
+            },
+            revert: () => {
+                setLeads((prev) =>
+                    prev.map((l) => {
+                        if (l.id !== leadId) return l;
+                        const current = l.timeline || [];
+                        if (isMailEntry) {
+                            // Back to exactly what was stored: the flag removed, or the
+                            // entry gone again when it only existed as a live copy.
+                            return {
+                                ...l,
+                                timeline: storedEvent
+                                    ? current.map((e) => (e.id === eventId ? storedEvent : e))
+                                    : current.filter((e) => e.id !== eventId),
+                            };
+                        }
+                        if (current.some((e) => e.id === eventId) || !storedEvent) return l;
+                        const next = [...current];
+                        next.splice(Math.min(storedIndex, next.length), 0, storedEvent);
+                        return { ...l, timeline: next };
+                    }),
+                );
+                if (removedLiveMail.length) {
+                    setLeadEmails((prev) => [...removedLiveMail.filter((m) => !prev.some((e) => e.id === m.id)), ...prev]);
+                }
+            },
+        });
     };
 
     // Deleting a task is a server call, not a state edit: sync.php deliberately
     // never infers a task deletion from an omitted snapshot (permission checks
     // live in api/task.php), so dropping the row from local state alone left it
     // in the database and the next poll or reload brought it straight back.
-    const handleDeleteGateTask = async (task: Task) => {
-        if (!canDelete || deletingTaskIds.has(task.id)) return;
-        const confirmed = window.confirm(
-            t(
-                `Permanently delete "${task.title}"? This cannot be undone.`,
-                `Natrvalo odstrániť úlohu "${task.title}"? Túto akciu nemožno vrátiť späť.`,
-                `Véglegesen törli a(z) "${task.title}" feladatot? Ez nem vonható vissza.`,
-            ),
-        );
-        if (!confirmed) return;
-
-        setDeletingTaskIds((prev) => new Set(prev).add(task.id));
-        try {
-            const response = await fetch("/api/task.php", {
-                method: "DELETE",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ id: task.id }),
-            });
-            const result = await response.json().catch(() => ({}));
-            // 404 means the row is already gone — a task created moments ago whose
-            // sync has not landed yet, or one deleted from another screen. Either
-            // way the user's intent is satisfied, so drop it locally instead of
-            // reporting a failure they cannot act on.
-            if (!response.ok && response.status !== 404) {
-                throw new Error(result.message || "Task deletion failed.");
-            }
-            setTasks((prev) => prev.filter((item) => item.id !== task.id));
-            (window as any).showToast?.(
-                t("Task deleted", "Úloha odstránená", "Feladat törölve"),
-            );
-        } catch (error: any) {
-            console.error("Task deletion failed", error);
-            (window as any).showToast?.(
-                error?.message ||
-                    t(
-                        "Task was not deleted. Please try again.",
-                        "Úloha nebola odstránená. Skúste to znova.",
-                        "A feladat nem lett törölve. Próbálja újra.",
-                    ),
-            );
-        } finally {
-            setDeletingTaskIds((prev) => {
-                const next = new Set(prev);
-                next.delete(task.id);
-                return next;
-            });
-        }
+    const handleDeleteGateTask = (task: Task) => {
+        if (!canDelete) return;
+        // 404 means the row is already gone — a task created moments ago whose
+        // sync has not landed yet, or one deleted from another screen. Either
+        // way the user's intent is satisfied.
+        deleteTasksWithUndo({
+            allTasks: tasks,
+            targets: [task],
+            setTasks,
+            lang: systemLanguage,
+            tolerateMissing: true,
+        });
     };
 
     const handleAddInlineLockingTask = (e: React.FormEvent) => {
@@ -3839,28 +3836,22 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         setEditingRowId(null);
     };
 
-    // Delete lead — resolves true when the user confirmed and it was removed.
-    // An in-app dialog, not window.confirm(): the native one blocks the page and
-    // hangs automated browser clients until the tab is closed by hand.
-    const handleDeleteLead = async (id: string, name: string): Promise<boolean> => {
+    // Delete lead — resolves true once it was removed. The hold on the button is
+    // the confirmation; the server delete waits for the Undo window (leadActions).
+    const handleDeleteLead = async (id: string, _name: string): Promise<boolean> => {
         if (!canDelete) return false;
-        if (
-            await confirmAction({
-                title: t(
-                    `Are you sure you want to delete the lead for "${name}"?`,
-                    `Naozaj chcete vymazať lead pre "${name}"?`,
-                    `Biztosan törölni szeretné a(z) "${name}" leadet?`,
-                ),
-                confirmLabel: t("Delete", "Odstrániť", "Törlés"),
-                cancelLabel: t("Cancel", "Zrušiť", "Mégse"),
-                danger: true,
-            })
-        ) {
-            setLeads((prev) => prev.filter((l) => l.id !== id));
-            if (editingRowId === id) setEditingRowId(null);
-            return true;
-        }
-        return false;
+        const target = leads.find((l) => l.id === id);
+        if (!target) return false;
+        deleteLeadsWithUndo({
+            allLeads: leads,
+            targets: [target],
+            setLeads,
+            lang: systemLanguage,
+            onApplied: () => {
+                if (editingRowId === id) setEditingRowId(null);
+            },
+        });
+        return true;
     };
 
     /**
@@ -4129,6 +4120,10 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     (lead.city || "").toLowerCase() ===
                         selectedCity.toLowerCase();
 
+                if (filterFavoritesOnly && !isFavorite(lead.id)) {
+                    return false;
+                }
+
                 // Rating is optional on a lead, so an unrated one counts as 0
                 // and only matches the explicit "not rated" option. The rules
                 // live in utils/rating.ts — the projects list offers the same
@@ -4327,6 +4322,19 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     const handleBulkArchive = useCallback((archived: boolean) => {
         if (selectedLeadIds.size === 0) return;
+        if (archived) {
+            // Archiving is held and undoable; restoring (below) is a plain click.
+            archiveLeadsWithUndo({
+                targets: leads.filter(lead => selectedLeadIds.has(lead.id)),
+                setLeads,
+                lang: systemLanguage,
+                onApplied: () => {
+                    setSelectedLeadIds(new Set());
+                    setActiveBulkMenu(null);
+                },
+            });
+            return;
+        }
         setLeads(prev => prev.map(lead => {
             if (selectedLeadIds.has(lead.id)) {
                 return {
@@ -4339,7 +4347,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
         }));
         setSelectedLeadIds(new Set());
         setActiveBulkMenu(null);
-    }, [selectedLeadIds, setLeads]);
+    }, [selectedLeadIds, setLeads, leads, systemLanguage]);
 
     const renderBulkActionToolbar = () => {
         if (selectedLeadIds.size === 0) return null;
@@ -4440,15 +4448,16 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
                     {/* Archive / Restore button */}
                     {hasActiveSelected && (
-                        <button
-                            type="button"
-                            onClick={() => handleBulkArchive(true)}
-                            className="flex items-center gap-1.5 px-3 py-1.5 text-ui font-semibold rounded-xl border border-amber-700/60 bg-amber-950/40 hover:bg-amber-900/60 text-amber-200 transition-colors cursor-pointer"
+                        <HoldToConfirmButton
+                            tone="archive"
+                            lang={systemLanguage}
+                            what={t("selected leads", "vybrané leady", "kijelölt leadek")}
+                            onConfirm={() => handleBulkArchive(true)}
+                            className="flex items-center gap-1.5 px-3 py-1.5 text-ui font-semibold rounded-xl border border-amber-700/60 bg-amber-950/40 hover:bg-amber-900/60 text-amber-200 transition-colors"
                             title={t("Archive selected leads", "Archivovať vybrané leady", "Kijelölt leadek archiválása")}
-                        >
-                            <Archive className="w-3.5 h-3.5 text-amber-400" />
-                            <span className="hidden sm:inline">{t("Archive", "Archivovať", "Archiválás")}</span>
-                        </button>
+                            icon={<Archive className="w-3.5 h-3.5 text-amber-400" />}
+                        ><span className="hidden sm:inline">{t("Archive", "Archivovať", "Archiválás")}</span>
+                        </HoldToConfirmButton>
                     )}
                     {hasArchivedSelected && (
                         <button
@@ -4972,7 +4981,6 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
         return (
             <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
-                {confirmDialog}
                 {/* Entity header: back · avatar · title, status and meta beneath, actions at the right. */}
                 <EntityHeader
                   onBack={() => {
@@ -5099,8 +5107,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                     </div>
 
                     {canDelete && (
-                        <button
-                            onClick={async () => {
+                        <HoldToConfirmButton
+                            tone="danger"
+                            lang={systemLanguage}
+                            what={activeLead.name}
+                            onConfirm={async () => {
                                 if (
                                     await handleDeleteLead(
                                         activeLead.id,
@@ -5110,20 +5121,15 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                     window.location.hash = "leads";
                                 }
                             }}
-                            className="h-11 w-11 shrink-0 rounded-xl bg-white border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 active:scale-95 transition-all flex items-center justify-center shadow-sm cursor-pointer"
+                            className="h-11 w-11 shrink-0 rounded-xl bg-white border border-slate-200 text-slate-400 hover:text-rose-600 hover:border-rose-200 hover:bg-rose-50 active:scale-95 transition-all flex items-center justify-center shadow-sm"
                             title={t(
-                                "Delete Lead",
-                                "Odstrániť lead",
-                                "Lead törlése",
-                            )}
-                            aria-label={t(
                                 "Delete Lead",
                                 "Odstrániť lead",
                                 "Lead törlése",
                             )}
                         >
                             <Trash2 className="h-4 w-4" />
-                        </button>
+                        </HoldToConfirmButton>
                     )}
                   </>}
                 />
@@ -6784,20 +6790,18 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                     )}
 
                                                     {/* Inline Delete Button */}
-                                                    <button
-                                                        type="button"
-                                                        onClick={() =>
+                                                    <HoldToConfirmButton
+                                                        tone="danger"
+                                                        lang={systemLanguage}
+                                                        what={task.title}
+                                                        onConfirm={() =>
                                                             handleDeleteGateTask(
                                                                 task,
-                                                            )
-                                                        }
-                                                        disabled={deletingTaskIds.has(
-                                                            task.id,
-                                                        )}
+                                                            )}
                                                         className="text-slate-400 hover:text-rose-600 transition-colors p-1 disabled:opacity-40 disabled:cursor-not-allowed"
                                                     >
                                                         <Trash2 className="h-3.5 w-3.5" />
-                                                    </button>
+                                                    </HoldToConfirmButton>
                                                     </div>
                                                 </div>
                                             );
@@ -6966,6 +6970,12 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                             <Tabs
                               value={activeDetailTab}
                               onChange={setActiveDetailTab}
+                              defaultPin={{
+                                value: leadDefaultTab,
+                                onChange: setLeadDefaultTab,
+                                setLabel: t("Open leads on this tab", "Otvárať leady na tejto karte", "Leadek megnyitása ezen a lapon"),
+                                clearLabel: t("Default tab — click to unpin", "Predvolená karta — kliknutím zrušíte", "Alapértelmezett lap — kattintson a feloldáshoz"),
+                              }}
                               items={[
                                 { key: "timeline", icon: <Clock className="h-4.5 w-4.5 stroke-[2.5]" />, label: <>{" "}
                                     {getTranslation(systemLanguage, "common.history_timeline")}</> },
@@ -7819,12 +7829,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                         >
                                                                             <PencilLine className="h-3.5 w-3.5" />
                                                                         </button>
-                                                                        <button
-                                                                            type="button"
-                                                                            onClick={(
-                                                                                e,
-                                                                            ) => {
-                                                                                e.stopPropagation();
+                                                                        <HoldToConfirmButton
+                                                                            tone="danger"
+                                                                            lang={systemLanguage}
+                                                                            what={event.title}
+                                                                            onConfirm={() => {
                                                                                 handleDeleteTimelineEvent(
                                                                                     event.id,
                                                                                 );
@@ -7837,7 +7846,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                             )}
                                                                         >
                                                                             <Trash2 className="h-3.5 w-3.5" />
-                                                                        </button>
+                                                                        </HoldToConfirmButton>
                                                                     </div>
                                                                 )}
                                                             </div>
@@ -8268,12 +8277,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                             >
                                                                                 <PencilLine className="h-3.5 w-3.5" />
                                                                             </button>
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={(
-                                                                                    e,
-                                                                                ) => {
-                                                                                    e.stopPropagation();
+                                                                            <HoldToConfirmButton
+                                                                                tone="danger"
+                                                                                lang={systemLanguage}
+                                                                                what={event.title}
+                                                                                onConfirm={() => {
                                                                                     handleDeleteTimelineEvent(
                                                                                         event.id,
                                                                                     );
@@ -8286,7 +8294,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                 )}
                                                                             >
                                                                                 <Trash2 className="h-3.5 w-3.5" />
-                                                                            </button>
+                                                                            </HoldToConfirmButton>
                                                                         </div>
                                                                     )}
                                                                 </div>
@@ -8323,12 +8331,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                             >
                                                                                 <PencilLine className="h-3.5 w-3.5" />
                                                                             </button>
-                                                                            <button
-                                                                                type="button"
-                                                                                onClick={(
-                                                                                    e,
-                                                                                ) => {
-                                                                                    e.stopPropagation();
+                                                                            <HoldToConfirmButton
+                                                                                tone="danger"
+                                                                                lang={systemLanguage}
+                                                                                what={event.title}
+                                                                                onConfirm={() => {
                                                                                     handleDeleteTimelineEvent(
                                                                                         event.id,
                                                                                     );
@@ -8341,7 +8348,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                 )}
                                                                             >
                                                                                 <Trash2 className="h-3.5 w-3.5" />
-                                                                            </button>
+                                                                            </HoldToConfirmButton>
                                                                         </div>
                                                                     )}
                                                                 </div>
@@ -9004,7 +9011,6 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
 
     return (
         <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
-            {confirmDialog}
             {/* 0. Title header */}
             <PageHeader
               icon={<Layers className="h-6 w-6 text-blue-600" />}
@@ -9249,6 +9255,35 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                 : systemLanguage === "hu"
                                   ? "Kompakt"
                                   : "Compact"}
+                        </button>
+
+                        {/* Favorites Only Filter Toggle */}
+                        <button
+                            type="button"
+                            onClick={() => setFilterFavoritesOnly((prev) => !prev)}
+                            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl border text-ui font-bold transition-all shadow-xs cursor-pointer select-none ${
+                                filterFavoritesOnly
+                                    ? "bg-rose-50 border-rose-300 text-rose-600 shadow-rose-100/50"
+                                    : "bg-white border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-200/50"
+                            }`}
+                            title={
+                                filterFavoritesOnly
+                                    ? (systemLanguage === "sk" ? "Zobraziť všetky leady" : systemLanguage === "hu" ? "Összes lead mutatása" : "Show all leads")
+                                    : (systemLanguage === "sk" ? "Filtrovať iba obľúbené" : systemLanguage === "hu" ? "Csak kedvencek" : "Filter favorites only")
+                            }
+                        >
+                            <Heart
+                                className={`h-3.5 w-3.5 ${
+                                    filterFavoritesOnly ? "fill-rose-500 text-rose-500" : "text-slate-400"
+                                }`}
+                            />
+                            <span>
+                                {systemLanguage === "sk"
+                                    ? "Obľúbené"
+                                    : systemLanguage === "hu"
+                                      ? "Kedvencek"
+                                      : "Favorites"}
+                            </span>
                         </button>
 
                         {/* Ordering Selector */}
@@ -10650,15 +10685,18 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                                 >
                                                                                                     <Edit3 className="h-3.5 w-3.5" />
                                                                                                 </button>
-                                                                                                <button
-                                                                                                    onClick={() => {
+                                                                                                <HoldToConfirmButton
+                                                                                                    tone="danger"
+                                                                                                    lang={systemLanguage}
+                                                                                                    what={lead.name}
+                                                                                                    onConfirm={() => {
                                                                                                         handleDeleteLead(lead.id, lead.name);
                                                                                                     }}
                                                                                                     className="h-6 w-6 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 flex items-center justify-center transition-colors"
                                                                                                     title={t("Delete Lead", "Odstrániť lead", "Lead törlése")}
                                                                                                 >
                                                                                                     <Trash2 className="h-3.5 w-3.5" />
-                                                                                                </button>
+                                                                                                </HoldToConfirmButton>
                                                                                             </div>
                                                                                         </div>
 
@@ -10821,6 +10859,17 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                     />
                                                                                 ) : (
                                                                                     <div className="flex items-center gap-2.5 w-full">
+                                                                                        <FavoriteHeartButton
+                                                                                            entityId={lead.id}
+                                                                                            type="lead"
+                                                                                            title={lead.name}
+                                                                                            subtitle={lead.city || lead.status || undefined}
+                                                                                            color={leadColor}
+                                                                                            icon="UserCheck"
+                                                                                            url={`#leads/${lead.id}`}
+                                                                                            size="xs"
+                                                                                            systemLanguage={systemLanguage}
+                                                                                        />
                                                                                         <div
                                                                                             className={`rounded-lg bg-blue-100 text-blue-700 font-heading font-bold flex items-center justify-center shrink-0 shadow-inner ${
                                                                                                 compactMode
@@ -11419,11 +11468,11 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                             <Edit3 className="h-3.5 w-3.5" />
                                                                                         </button>
 
-                                                                                        <button
-                                                                                            onClick={(
-                                                                                                e,
-                                                                                            ) => {
-                                                                                                e.stopPropagation();
+                                                                                        <HoldToConfirmButton
+                                                                                            tone="danger"
+                                                                                            lang={systemLanguage}
+                                                                                            what={lead.name}
+                                                                                            onConfirm={() => {
                                                                                                 handleDeleteLead(
                                                                                                     lead.id,
                                                                                                     lead.name,
@@ -11437,7 +11486,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                             )}
                                                                                         >
                                                                                             <Trash2 className="h-3.5 w-3.5" />
-                                                                                        </button>
+                                                                                        </HoldToConfirmButton>
                                                                                     </div>
                                                                                 )}
                                                                             </td>
@@ -12018,17 +12067,17 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                 >
                                                                                     <Edit3 className="h-3 w-3" />
                                                                                 </button>
-                                                                                <button
-                                                                                    onClick={(
-                                                                                        e,
-                                                                                    ) => {
-                                                                                        e.stopPropagation();
+                                                                                <HoldToConfirmButton
+                                                                                    tone="danger"
+                                                                                    lang={systemLanguage}
+                                                                                    what={lead.name}
+                                                                                    onConfirm={() => {
                                                                                         handleDeleteLead(
                                                                                             lead.id,
                                                                                             lead.name,
                                                                                         );
                                                                                     }}
-                                                                                    className="p-1 rounded bg-slate-50 hover:bg-rose-50 text-slate-400 hover:text-rose-600 border border-slate-200/50 cursor-pointer"
+                                                                                    className="p-1 rounded bg-slate-50 hover:bg-rose-50 text-slate-400 hover:text-rose-600 border border-slate-200/50"
                                                                                     title={t(
                                                                                         "Delete Lead",
                                                                                         "Odstrániť lead",
@@ -12036,7 +12085,7 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                                                                                     )}
                                                                                 >
                                                                                     <Trash2 className="h-3 w-3" />
-                                                                                </button>
+                                                                                </HoldToConfirmButton>
                                                                             </div>
                                                                         </div>
 

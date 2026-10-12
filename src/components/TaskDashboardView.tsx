@@ -29,6 +29,7 @@ import {
     Search,
     ArrowUpDown,
     Hash,
+    UserCheck,
 } from "lucide-react";
 import type { Task, UserProfile, Lead, Project } from "../types";
 import type { Language } from "../utils/translations";
@@ -42,7 +43,8 @@ import { TaskPillText, extractTagsFromText, type MentionEntity } from "./TaskPil
 import { projectDisplayName } from "../utils/projects";
 import { isClientRecord, recordHref } from "../utils/clientRecord";
 import { taskPriorityLabel, taskStateLabel } from "../utils/taskLabels";
-import { requestTaskDeletion } from "../utils/taskApi";
+import { archiveTasksWithUndo, deleteTasksWithUndo } from "../utils/taskActions";
+import { HoldToConfirmButton } from "./ui/HoldToConfirm";
 import { isTaskOverdue as isTaskOverdueShared } from "../utils/projectTasks";
 import { nowLocalStamp } from "../utils/localTime";
 import {
@@ -532,6 +534,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const [clientFilter, setClientFilter] = useState("");
     const [projectFilter, setProjectFilter] = useState("");
     const [assigneeFilter, setAssigneeFilter] = useState("all");
+    const [assignerFilter, setAssignerFilter] = useState("all");
     const [tagFilter, setTagFilter] = useState<string | null>(null);
     // My Tasks only: Global Tasks and Done & Archived have a date-range picker
     // for this. A due-date click there fills the picker instead.
@@ -544,6 +547,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         if (projectFilter && String(task.relatedProjectId ?? "") !== projectFilter)
             return false;
         if (assigneeFilter !== "all" && !task.assignedUsers?.includes(assigneeFilter))
+            return false;
+        if (assignerFilter !== "all" && (task.createdBy || "") !== assignerFilter)
             return false;
         if (tagFilter) {
             const target = tagFilter.toLowerCase();
@@ -791,7 +796,6 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     // Edit Task Drawer State
     const [editingTask, setEditingTask] = useState<Task | null>(null);
-    const [deletingTaskIds, setDeletingTaskIds] = useState<Set<string>>(new Set());
 
     // Multi-select & Bulk Actions State
     const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
@@ -919,6 +923,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         setProjectFilter((prev) => (prev === projectId ? "" : projectId));
     const handleAssigneeClick = (name: string) =>
         setAssigneeFilter((prev) => (prev === name ? "all" : name));
+    const handleAssignerClick = (name: string) =>
+        setAssignerFilter((prev) => (prev === name ? "all" : name));
     // A due-date click filters to that one day, wherever the section keeps its
     // date filter: the range picker on Global Tasks and Done & Archived, a
     // plain day chip on My Tasks. Clicking the active day clears it.
@@ -1285,22 +1291,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
     const handleArchiveTask = (task: Task) => {
         if (!mayArchiveTask(task)) return;
-        setTasks((prev) =>
-            prev.map((t) =>
-                t.id === task.id ? { ...t, archived: true } : t,
-            ),
-        );
-        if (typeof (window as any).showToast === "function") {
-            // Name the consequence: archiving takes the task out of every
-            // calendar and list at once, and users were reading it as a delete.
-            (window as any).showToast(
-                t(
-                    "Task archived — hidden from the calendar. Find it under Archived tasks.",
-                    "Úloha archivovaná — zmizne z kalendára. Nájdete ju medzi archivovanými úlohami.",
-                    "Feladat archiválva — eltűnik a naptárból. Az archivált feladatok között találja meg.",
-                ),
-            );
-        }
+        archiveTasksWithUndo({ targets: [task], setTasks, lang: systemLanguage });
     };
 
     const handleUnarchiveTask = (task: Task) => {
@@ -1321,43 +1312,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         }
     };
 
-    const handleDeleteTask = async (task: Task) => {
-        if (!mayDeleteTask(task) || deletingTaskIds.has(task.id)) return;
-        const confirmed = window.confirm(
-            t(
-                `Permanently delete "${task.title}"? This cannot be undone.`,
-                `Natrvalo odstrániť úlohu "${task.title}"? Túto akciu nemožno vrátiť späť.`,
-                `Véglegesen törli a(z) "${task.title}" feladatot? Ez nem vonható vissza.`,
-            ),
-        );
-        if (!confirmed) return;
-        setDeletingTaskIds((prev) => new Set(prev).add(task.id));
-        try {
-            await requestTaskDeletion(task.id);
-            setTasks((prev) => prev.filter((item) => item.id !== task.id));
-            if (typeof (window as any).showToast === "function") {
-                (window as any).showToast(
-                    t("Task deleted", "Úloha odstránená", "Feladat törölve"),
-                );
-            }
-        } catch (error) {
-            console.error("Task deletion failed", error);
-            if (typeof (window as any).showToast === "function") {
-                (window as any).showToast(
-                    t(
-                        "Task was not deleted. Please try again.",
-                        "Úloha nebola odstránená. Skúste to znova.",
-                        "A feladat nem lett törölve. Próbálja újra.",
-                    ),
-                );
-            }
-        } finally {
-            setDeletingTaskIds((prev) => {
-                const next = new Set(prev);
-                next.delete(task.id);
-                return next;
-            });
-        }
+    const handleDeleteTask = (task: Task) => {
+        if (!mayDeleteTask(task)) return;
+        deleteTasksWithUndo({ allTasks: tasks, targets: [task], setTasks, lang: systemLanguage });
     };
 
     // --- Bulk Selection & Operations ---
@@ -1629,43 +1586,22 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     };
 
     const handleBulkArchive = () => {
-        let modifiedCount = 0;
-        let skippedCount = 0;
+        const selectedActive = tasks.filter((t) => selectedTaskIds.has(t.id) && !t.archived);
+        const targets = selectedActive.filter((t) => mayArchiveTask(t));
+        const skippedCount = selectedActive.length - targets.length;
 
-        setTasks((prev) =>
-            prev.map((t) => {
-                if (selectedTaskIds.has(t.id) && !t.archived) {
-                    if (mayArchiveTask(t)) {
-                        modifiedCount++;
-                        return { ...t, archived: true };
-                    } else {
-                        skippedCount++;
-                    }
-                }
-                return t;
-            })
-        );
-        handleClearSelection();
-
-        if (typeof (window as any).showToast === "function") {
-            if (modifiedCount > 0) {
-                (window as any).showToast(
-                    t(
-                        `${modifiedCount} tasks archived`,
-                        `${modifiedCount} úloh archivovaných`,
-                        `${modifiedCount} feladat archiválva`
-                    )
-                );
-            } else if (skippedCount > 0) {
-                (window as any).showToast(
-                    t(
-                        "No tasks could be archived due to permissions.",
-                        "Žiadne úlohy nebolo možné archivovať z dôvodu oprávnení.",
-                        "A jogosultságok miatt egyetlen feladat sem archiválható."
-                    )
-                );
-            }
+        if (targets.length > 0) {
+            archiveTasksWithUndo({ targets, setTasks, lang: systemLanguage });
+        } else if (skippedCount > 0 && typeof (window as any).showToast === "function") {
+            (window as any).showToast(
+                t(
+                    "No tasks could be archived due to permissions.",
+                    "Žiadne úlohy nebolo možné archivovať z dôvodu oprávnení.",
+                    "A jogosultságok miatt egyetlen feladat sem archiválható."
+                )
+            );
         }
+        handleClearSelection();
     };
 
     const handleBulkRestore = () => {
@@ -1714,7 +1650,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         }
     };
 
-    const handleBulkDelete = async () => {
+    const handleBulkDelete = () => {
         const deletableTasks = tasks.filter(
             (t) => selectedTaskIds.has(t.id) && mayDeleteTask(t)
         );
@@ -1731,52 +1667,19 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             return;
         }
 
-        const count = deletableTasks.length;
-        const confirmed = window.confirm(
-            t(
-                `Permanently delete ${count} selected task${count > 1 ? "s" : ""}? This cannot be undone.`,
-                `Natrvalo odstrániť ${count} vybraných úloh? Túto akciu nemožno vrátiť späť.`,
-                `Véglegesen törli a(z) ${count} kiválasztott feladatot? Ez nem vonható vissza.`
-            )
-        );
-        if (!confirmed) return;
-
         const idsToDelete = new Set(deletableTasks.map((t) => t.id));
-        setDeletingTaskIds((prev) => new Set([...prev, ...idsToDelete]));
-
-        try {
-            await Promise.all(
-                deletableTasks.map((t) =>
-                    requestTaskDeletion(t.id).catch((err) => {
-                        console.error(`Failed to delete task ${t.id}`, err);
-                        return null;
-                    })
-                )
-            );
-
-            setTasks((prev) => prev.filter((item) => !idsToDelete.has(item.id)));
-            setSelectedTaskIds((prev) => {
-                const next = new Set(prev);
-                idsToDelete.forEach((id) => next.delete(id));
-                return next;
-            });
-
-            if (typeof (window as any).showToast === "function") {
-                (window as any).showToast(
-                    t(
-                        `${count} tasks deleted`,
-                        `${count} úloh odstránených`,
-                        `${count} feladat törölve`
-                    )
-                );
-            }
-        } finally {
-            setDeletingTaskIds((prev) => {
-                const next = new Set(prev);
-                idsToDelete.forEach((id) => next.delete(id));
-                return next;
-            });
-        }
+        deleteTasksWithUndo({
+            allTasks: tasks,
+            targets: deletableTasks,
+            setTasks,
+            lang: systemLanguage,
+            onApplied: () =>
+                setSelectedTaskIds((prev) => {
+                    const next = new Set(prev);
+                    idsToDelete.forEach((id) => next.delete(id));
+                    return next;
+                }),
+        });
     };
 
     const renderBulkActionToolbar = () => {
@@ -2020,15 +1923,17 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                     {/* Archive / Restore Button */}
                     {hasActiveSelected && (
-                        <button
-                            type="button"
-                            onClick={handleBulkArchive}
+                        <HoldToConfirmButton
+                            tone="archive"
+                            lang={systemLanguage}
+                            onConfirm={handleBulkArchive}
+                            what={t("selected tasks", "vybrané úlohy", "kiválasztott feladatok")}
                             title={t("Archive selected tasks", "Archivovať vybrané úlohy", "Kiválasztott feladatok archiválása")}
-                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-amber-900/40 text-amber-300 hover:text-amber-100 text-ui font-bold transition-colors border border-slate-700/50 hover:border-amber-700/50 cursor-pointer"
+                            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-amber-900/40 text-amber-300 hover:text-amber-100 text-ui font-bold transition-colors border border-slate-700/50 hover:border-amber-700/50"
+                            icon={<ArchiveIcon className="h-3.5 w-3.5 text-amber-400" />}
                         >
-                            <ArchiveIcon className="h-3.5 w-3.5 text-amber-400" />
-                            <span>{t("Archive", "Archivovať", "Archiválás")}</span>
-                        </button>
+                            {t("Archive", "Archivovať", "Archiválás")}
+                        </HoldToConfirmButton>
                     )}
                     {hasArchivedSelected && (
                         <button
@@ -2043,15 +1948,17 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     )}
 
                     {/* Delete Button */}
-                    <button
-                        type="button"
-                        onClick={handleBulkDelete}
+                    <HoldToConfirmButton
+                        tone="danger"
+                        lang={systemLanguage}
+                        onConfirm={handleBulkDelete}
+                        what={t("selected tasks", "vybrané úlohy", "kiválasztott feladatok")}
                         title={t("Delete selected tasks", "Odstrániť vybrané úlohy", "Kiválasztott feladatok törlése")}
-                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 hover:text-rose-100 text-ui font-bold transition-colors border border-rose-800/60 cursor-pointer ml-1"
+                        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-rose-950/40 hover:bg-rose-900/60 text-rose-300 hover:text-rose-100 text-ui font-bold transition-colors border border-rose-800/60 ml-1"
+                        icon={<Trash2 className="h-3.5 w-3.5 text-rose-400" />}
                     >
-                        <Trash2 className="h-3.5 w-3.5 text-rose-400" />
                         <span className="hidden sm:inline">{t("Delete", "Vymazať", "Törlés")}</span>
-                    </button>
+                    </HoldToConfirmButton>
                 </div>
             </div>,
             document.body
@@ -2535,6 +2442,90 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         );
     };
 
+    // The attributes below — project, assignee, due date — filter the section on
+    // click, like a tag does. The class a filter-firing chip shares: a pointer,
+    // a press effect, and a ring while its filter is the one in force.
+    const filterChipClass = (active: boolean) =>
+        `cursor-pointer active:scale-95 transition-all focus-visible:outline-2 focus-visible:outline-offset-2 ${
+            active ? "ring-2 ring-indigo-400" : "hover:brightness-95"
+        }`;
+    const filterByTitle = (label: string, active: boolean) =>
+        active
+            ? t(`Clear filter: ${label}`, `Zrušiť filter: ${label}`, `Szűrő törlése: ${label}`)
+            : t(`Filter by ${label}`, `Filtrovať podľa: ${label}`, `Szűrés erre: ${label}`);
+
+    const renderProjectBadge = (task: Task, className: string) => {
+        const name = projectNameFor(task);
+        if (!name || !task.relatedProjectId) return null;
+        const id = String(task.relatedProjectId);
+        const active = projectFilter === id;
+        return (
+            <button
+                type="button"
+                data-testid="task-project-filter-chip"
+                aria-pressed={active}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    handleProjectClick(id);
+                }}
+                title={filterByTitle(name, active)}
+                className={`${className} ${filterChipClass(active)}`}
+            >
+                <FolderKanban className="h-2.5 w-2.5 shrink-0" />
+                <span className="truncate">{name}</span>
+            </button>
+        );
+    };
+
+    // One chip per assignee, so a task with several can be narrowed to any one.
+    const renderAssigneeChips = (task: Task, className: string) =>
+        (task.assignedUsers || []).filter(Boolean).map((name) => {
+            const active = assigneeFilter === name;
+            return (
+                <button
+                    key={name}
+                    type="button"
+                    data-testid="task-assignee-filter-chip"
+                    aria-pressed={active}
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        handleAssigneeClick(name);
+                    }}
+                    title={filterByTitle(name, active)}
+                    className={`${className} ${filterChipClass(active)}`}
+                >
+                    <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 shrink-0" />
+                    <span className="truncate">{name}</span>
+                </button>
+            );
+        });
+
+    // A due date as a button: filters to that day. `children` is the label, so
+    // each list keeps the wording it already had ("Due: …", "date · time").
+    const renderDayChip = (
+        dateStr: string,
+        className: string,
+        children: React.ReactNode,
+    ) => {
+        if (!dateStr) return <span className={className}>{children}</span>;
+        const active = isDayActive(dateStr);
+        return (
+            <button
+                type="button"
+                data-testid="task-day-filter-chip"
+                aria-pressed={active}
+                onClick={(e) => {
+                    e.stopPropagation();
+                    handleDayClick(dateStr);
+                }}
+                title={filterByTitle(formatTaskDate(dateStr), active)}
+                className={`${className} ${filterChipClass(active)}`}
+            >
+                {children}
+            </button>
+        );
+    };
+
     const renderPriorityIcon = (priority: Task["priority"], className: string = "h-3.5 w-3.5") => {
         if (priority === "high") {
             return (
@@ -2670,11 +2661,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                         {/* Mobile-only Quick Action Buttons placed at top right next to status */}
                         <div className="flex ws-sm:hidden items-center gap-0.5 shrink-0">
-                            <button
-                                onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleArchiveTask(task);
-                                }}
+                            <HoldToConfirmButton
+                                tone="archive"
+                                lang={systemLanguage}
+                                what={task.title}
+                                onConfirm={() => handleArchiveTask(task)}
                                 className="p-1 hover:bg-slate-100 active:scale-95 rounded-md text-slate-400 hover:text-slate-600 transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-35"
                                 disabled={!mayArchiveTask(task)}
                                 title={
@@ -2688,7 +2679,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 }
                             >
                                 <ArchiveIcon className="h-3.5 w-3.5" />
-                            </button>
+                            </HoldToConfirmButton>
                             <button
                                 onClick={(e) => {
                                     e.stopPropagation();
@@ -2755,30 +2746,51 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             </span>
                         )}
 
-                        {renderLeadBadge(task, "max-w-35")}
-
-                        {projectNameFor(task) && (
-                            <span className="font-bold text-purple-700 flex items-center gap-1 bg-purple-50 px-1.5 py-0.5 rounded-md truncate max-w-35 shrink-0 border border-purple-100">
-                                <FolderKanban className="h-2.5 w-2.5 shrink-0 text-purple-500" />
-                                <span className="truncate">{projectNameFor(task)}</span>
-                            </span>
+                        {task.createdBy && task.createdBy !== myName && (
+                            <button
+                                type="button"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAssignerClick(task.createdBy!);
+                                }}
+                                title={t(
+                                    `Assigned by ${task.createdBy}. Click to filter.`,
+                                    `Zadal ${task.createdBy}. Kliknutím filtrujte.`,
+                                    `Megbízó: ${task.createdBy}. Kattintson a szűréshez.`
+                                )}
+                                className={`font-bold text-micro px-1.5 py-0.5 rounded border cursor-pointer shrink-0 transition-colors flex items-center gap-1 ${
+                                    assignerFilter === task.createdBy
+                                        ? "bg-amber-100 text-amber-800 border-amber-300 ring-1 ring-amber-400"
+                                        : "bg-amber-50/80 text-amber-700 border-amber-200/80 hover:bg-amber-100"
+                                }`}
+                            >
+                                <UserCheck className="w-2.5 h-2.5 text-amber-600" />
+                                <span>{t("From:", "Zadal:", "Megbízó:")} {task.createdBy}</span>
+                            </button>
                         )}
 
-                        <span className="inline-flex items-center gap-1 bg-indigo-50/80 px-2 py-0.5 rounded-md border border-indigo-100/70 text-indigo-700 font-bold tabular-nums">
-                            <Clock className="h-2.5 w-2.5 shrink-0 text-indigo-500" />
-                            <span>
-                                {formatTaskDate(task.deadline)} ·{" "}
-                                {formatTimeDisplay(task.deadlineTime || "23:59")}
-                            </span>
-                        </span>
+                        {renderLeadBadge(task, "max-w-35")}
 
-                        {task.assignedUsers && task.assignedUsers.length > 0 && (
-                            <span className="font-bold text-slate-600 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md truncate max-w-30 border border-slate-200">
-                                <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 shrink-0" />
-                                <span className="truncate">
-                                    {task.assignedUsers.join(", ")}
+                        {renderProjectBadge(
+                            task,
+                            "font-bold text-purple-700 flex items-center gap-1 bg-purple-50 px-1.5 py-0.5 rounded-md truncate max-w-35 shrink-0 border border-purple-100",
+                        )}
+
+                        {renderDayChip(
+                            task.deadline,
+                            "inline-flex items-center gap-1 bg-indigo-50/80 px-2 py-0.5 rounded-md border border-indigo-100/70 text-indigo-700 font-bold tabular-nums",
+                            <>
+                                <Clock className="h-2.5 w-2.5 shrink-0 text-indigo-500" />
+                                <span>
+                                    {formatTaskDate(task.deadline)} ·{" "}
+                                    {formatTimeDisplay(task.deadlineTime || "23:59")}
                                 </span>
-                            </span>
+                            </>,
+                        )}
+
+                        {renderAssigneeChips(
+                            task,
+                            "font-bold text-slate-600 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md truncate max-w-30 border border-slate-200",
                         )}
 
                         {task.description && (
@@ -2817,11 +2829,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                 {/* Desktop-only right side quick action buttons */}
                 <div className="hidden ws-sm:flex items-center gap-0.5 shrink-0 pt-0.5">
-                    <button
-                        onClick={(e) => {
-                            e.stopPropagation();
-                            handleArchiveTask(task);
-                        }}
+                    <HoldToConfirmButton
+                        tone="archive"
+                        lang={systemLanguage}
+                        what={task.title}
+                        onConfirm={() => handleArchiveTask(task)}
                         className="p-1 hover:bg-slate-100 active:scale-95 rounded-md text-slate-400 hover:text-slate-600 transition-all cursor-pointer disabled:cursor-not-allowed disabled:opacity-35"
                         disabled={!mayArchiveTask(task)}
                         title={
@@ -2835,7 +2847,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         }
                     >
                         <ArchiveIcon className="h-3.5 w-3.5" />
-                    </button>
+                    </HoldToConfirmButton>
                     <button
                         onClick={(e) => {
                             e.stopPropagation();
@@ -2917,11 +2929,13 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 />
                             </span>
                             {renderLeadBadge(task, "max-w-35")}
-                            {projectNameFor(task) && (
-                                <span className="text-micro font-bold text-purple-700 flex items-center gap-0.5 bg-purple-50 px-1.5 py-0.5 rounded-md truncate max-w-35">
-                                    <FolderKanban className="h-2.5 w-2.5 shrink-0" />
-                                    <span className="truncate">{projectNameFor(task)}</span>
-                                </span>
+                            {renderProjectBadge(
+                                task,
+                                "text-micro font-bold text-purple-700 flex items-center gap-0.5 bg-purple-50 px-1.5 py-0.5 rounded-md truncate max-w-35",
+                            )}
+                            {renderAssigneeChips(
+                                task,
+                                "text-micro font-bold text-indigo-600 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-30",
                             )}
                         </div>
                         {task.description && (
@@ -2940,19 +2954,29 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                 <div className="flex items-center gap-4 shrink-0 justify-between ws-sm:justify-end">
                     <div className="text-right space-y-0.5">
                         <div className="text-micro font-bold text-slate-600">
-                            <span
-                                className={`font-extrabold ${isEstimatedCompleter(task) ? "text-slate-500 italic" : "text-slate-800"}`}
+                            <button
+                                type="button"
+                                data-testid="task-completed-by-filter-chip"
+                                aria-pressed={archiveUserFilter === (task.completedBy || unknownCompletedBy)}
+                                onClick={() => {
+                                    const who = task.completedBy || unknownCompletedBy;
+                                    setArchiveUserFilter((prev) => (prev === who ? "all" : who));
+                                }}
+                                className={`font-extrabold hover:text-indigo-600 ${isEstimatedCompleter(task) ? "text-slate-500 italic" : "text-slate-800"} ${filterChipClass(archiveUserFilter === (task.completedBy || unknownCompletedBy))}`}
                                 title={
                                     isEstimatedCompleter(
                                         task,
                                     )
                                         ? estimatedCompleterHint
-                                        : undefined
+                                        : filterByTitle(
+                                              task.completedBy || unknownCompletedBy,
+                                              archiveUserFilter === (task.completedBy || unknownCompletedBy),
+                                          )
                                 }
                             >
                                 {task.completedBy ||
                                     unknownCompletedBy}
-                            </span>
+                            </button>
                             <span className="text-slate-400 font-bold ml-1">
                                 @{" "}
                                 {task.completedAt
@@ -2962,23 +2986,35 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         </div>
                         <div>
                             {isOverdue ? (
-                                <span className="px-1.5 py-0.5 rounded bg-rose-50 border border-rose-200 type-overline text-rose-600">
+                                <button
+                                    type="button"
+                                    data-testid="task-timing-filter-chip"
+                                    onClick={() => setArchiveTimingFilter((prev) => (prev === "overdue" ? "all" : "overdue"))}
+                                    title={filterByTitle(t("Overdue", "Omeškané", "Lejárt"), archiveTimingFilter === "overdue")}
+                                    className={`px-1.5 py-0.5 rounded bg-rose-50 border border-rose-200 type-overline text-rose-600 ${filterChipClass(archiveTimingFilter === "overdue")}`}
+                                >
                                     ⚠️{" "}
                                     {t(
                                         `Overdue by ${overdueDays}d`,
                                         `Zmeškané o ${overdueDays}d`,
                                         `${overdueDays}d késés`,
                                     )}
-                                </span>
+                                </button>
                             ) : (
-                                <span className="px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 type-overline text-emerald-600">
+                                <button
+                                    type="button"
+                                    data-testid="task-timing-filter-chip"
+                                    onClick={() => setArchiveTimingFilter((prev) => (prev === "on_time" ? "all" : "on_time"))}
+                                    title={filterByTitle(t("On time", "Načas", "Időben"), archiveTimingFilter === "on_time")}
+                                    className={`px-1.5 py-0.5 rounded bg-emerald-50 border border-emerald-200 type-overline text-emerald-600 ${filterChipClass(archiveTimingFilter === "on_time")}`}
+                                >
                                     ✓{" "}
                                     {t(
                                         "On time",
                                         "Načas",
                                         "Időben",
                                     )}
-                                </span>
+                                </button>
                             )}
                         </div>
                     </div>
@@ -3004,21 +3040,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                             )}
                         </button>
                         {mayDeleteTask(task) && (
-                            <button
-                                onClick={() =>
-                                    handleDeleteTask(
-                                        task,
-                                    )
-                                }
+                            <HoldToConfirmButton
+                                tone="danger"
+                                lang={systemLanguage}
+                                what={task.title}
+                                onConfirm={() => handleDeleteTask(task)}
                                 title={t(
                                     "Delete permanently",
                                     "Natrvalo odstrániť",
                                     "Végleges törlés",
                                 )}
-                                className="px-2 py-1.5 border border-rose-200 hover:bg-rose-50 text-rose-600 rounded-lg type-overline shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+                                className="px-2 py-1.5 border border-rose-200 hover:bg-rose-50 text-rose-600 rounded-lg type-overline shadow-sm transition-all active:scale-95 flex items-center gap-1"
                             >
                                 <Trash2 className="h-3 w-3 stroke-[2.5]" />
-                            </button>
+                            </HoldToConfirmButton>
                         )}
                     </div>
                 </div>
@@ -3075,19 +3110,24 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                     knownEntities={mentionEntities}
                                 />
                             </span>
-                            {task.assignedUsers &&
-                                task.assignedUsers.length > 0 && (
-                                    <span className="text-micro font-bold text-indigo-600 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-30">
-                                        <span className="h-1 w-1 rounded-full bg-indigo-500 shrink-0" />
-                                        <span className="truncate">
-                                            {task.assignedUsers.join(", ")}
-                                        </span>
-                                    </span>
-                                )}
+                            {renderProjectBadge(
+                                task,
+                                "text-micro font-bold text-purple-700 flex items-center gap-0.5 bg-purple-50 px-1.5 py-0.5 rounded-md truncate max-w-35",
+                            )}
+                            {renderAssigneeChips(
+                                task,
+                                "text-micro font-bold text-indigo-600 flex items-center gap-1 bg-indigo-50 px-1.5 py-0.5 rounded-md truncate max-w-30",
+                            )}
                         </div>
-                        <div className="text-micro font-bold text-slate-400 mt-0.5">
-                            {t("Due", "Termín", "Határidő")}
-                            : {formatTaskDate(task.deadline)}
+                        <div className="mt-0.5">
+                            {renderDayChip(
+                                task.deadline,
+                                "text-micro font-bold text-slate-400 hover:text-indigo-600",
+                                <>
+                                    {t("Due", "Termín", "Határidő")}
+                                    : {formatTaskDate(task.deadline)}
+                                </>,
+                            )}
                         </div>
                     </div>
                 </div>
@@ -3110,17 +3150,20 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         )}
                     </button>
                     {mayDeleteTask(task) && (
-                        <button
-                            onClick={() => handleDeleteTask(task)}
+                        <HoldToConfirmButton
+                            tone="danger"
+                            lang={systemLanguage}
+                            what={task.title}
+                            onConfirm={() => handleDeleteTask(task)}
                             title={t(
                                 "Delete permanently",
                                 "Natrvalo odstrániť",
                                 "Végleges törlés",
                             )}
-                            className="px-2 py-1.5 border border-rose-200 hover:bg-rose-50 text-rose-600 rounded-lg type-overline shadow-sm transition-all active:scale-95 flex items-center gap-1 cursor-pointer"
+                            className="px-2 py-1.5 border border-rose-200 hover:bg-rose-50 text-rose-600 rounded-lg type-overline shadow-sm transition-all active:scale-95 flex items-center gap-1"
                         >
                             <Trash2 className="h-3 w-3 stroke-[2.5]" />
-                        </button>
+                        </HoldToConfirmButton>
                     )}
                 </div>
             </div>
@@ -3414,6 +3457,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
 
                         {renderClientFilter("min-w-[16rem]")}
 
+                        {renderProjectFilter()}
+
                         {/* Project Manager Filter — only meaningful on the
                             team-wide board; a restricted role already sees
                             nothing but its own work. */}
@@ -3482,6 +3527,8 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     </div>
                 </div>
 
+                {renderActiveFilterChips({ className: "shrink-0 -mt-2" })}
+
                 {/* SPLIT VIEW — the same time buckets as My Calendar on the
                     left, the team's workload stacked one member per row on the
                     right. Below lg the two stack into a single column. */}
@@ -3496,6 +3543,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                 days={closedTasksDays}
                                 onChangeDays={handleClosedTasksDaysChange}
                                 t={t}
+                                leading={renderTaskAttrFilters({ assignee: false, assigner: true })}
                             />
                             {renderTaskBucket({
                                 tone: "rose",
@@ -3732,6 +3780,196 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         );
     };
 
+    // Same idea as the client filter: only projects that have a task are offered.
+    const renderProjectFilter = (className = "") => {
+        const withTasks = new Set(
+            tasks.map((task) => String(task.relatedProjectId ?? "")).filter(Boolean),
+        );
+        if (projectFilter) withTasks.add(projectFilter);
+        const options = projects
+            .filter((p) => withTasks.has(String(p.id)))
+            .map((p) => ({
+                value: String(p.id),
+                label: projectDisplayName(p, leads, t("Untitled project", "Projekt bez názvu", "Névtelen projekt")),
+            }))
+            .sort((a, b) => a.label.localeCompare(b.label));
+        if (options.length === 0) return null;
+        return (
+            <div className={`flex items-center gap-1.5 text-ui font-bold ${className}`} data-testid="task-project-filter">
+                <span className="text-slate-500 shrink-0">
+                    {t("Project:", "Projekt:", "Projekt:")}
+                </span>
+                <div className="min-w-0 w-56">
+                    <CustomSelect
+                        value={projectFilter || "all"}
+                        onChange={(v) => setProjectFilter(v === "all" ? "" : v)}
+                        size="sm"
+                        options={[
+                            { value: "all", label: t("All projects", "Všetky projekty", "Minden projekt") },
+                            ...options,
+                        ]}
+                    />
+                </div>
+            </div>
+        );
+    };
+
+    // Global Tasks has its own "Project Manager" select for the same filter.
+    const renderAssigneeFilter = (className = "") => (
+        <div className={`flex items-center gap-1.5 text-ui font-bold ${className}`} data-testid="task-assignee-filter">
+            <span className="text-slate-500 shrink-0">
+                {t("Assignee:", "Priradené:", "Felelős:")}
+            </span>
+            <div className="min-w-0 w-48">
+                <CustomSelect
+                    value={assigneeFilter}
+                    onChange={(v) => setAssigneeFilter(v)}
+                    size="sm"
+                    options={[
+                        { value: "all", label: t("Everyone", "Všetci", "Mindenki") },
+                        ...allUsersList.map((uName) => ({ value: uName, label: uName })),
+                    ]}
+                />
+            </div>
+        </div>
+    );
+
+    const renderAssignerFilter = (className = "") => {
+        const creatorsInTasks = Array.from(
+            new Set(tasks.map((t) => t.createdBy).filter(Boolean) as string[])
+        );
+        const combinedAssigners = Array.from(
+            new Set([...creatorsInTasks, ...allUsersList])
+        ).sort((a, b) => a.localeCompare(b));
+
+        return (
+            <div className={`flex items-center gap-1.5 text-ui font-bold ${className}`} data-testid="task-assigner-filter">
+                <span className="text-slate-500 shrink-0">
+                    {t("Assigner:", "Zadal:", "Megbízó:")}
+                </span>
+                <div className="min-w-0 w-48">
+                    <CustomSelect
+                        value={assignerFilter}
+                        onChange={(v) => setAssignerFilter(v)}
+                        size="sm"
+                        options={[
+                            { value: "all", label: t("Everyone", "Všetci", "Mindenki") },
+                            ...combinedAssigners.map((uName) => ({ value: uName, label: uName })),
+                        ]}
+                    />
+                </div>
+            </div>
+        );
+    };
+
+    // Client / lead, project and (outside Global Tasks) assignee and assigner, in one row.
+    const renderTaskAttrFilters = (opts: { assignee: boolean; assigner?: boolean; clientClassName?: string }) => (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2 min-w-0">
+            {renderClientFilter(opts.clientClassName ?? "max-w-xs")}
+            {renderProjectFilter()}
+            {opts.assignee && renderAssigneeFilter()}
+            {opts.assigner && renderAssignerFilter()}
+        </div>
+    );
+
+    // The filters in force, each removable — shown in all three sections so a
+    // filter fired by a click in one place is never hidden from view. The date
+    // is not here for Global Tasks / Done & Archived: their date picker shows it.
+    const renderActiveFilterChips = (opts: { showDay?: boolean; className?: string } = {}) => {
+        const chips: { key: string; label: string; tone: string; icon: React.ReactNode; onClear: () => void }[] = [];
+        if (projectFilter) {
+            const project = projects.find((p) => String(p.id) === projectFilter);
+            chips.push({
+                key: "project",
+                label: `${t("Project", "Projekt", "Projekt")}: ${
+                    project
+                        ? projectDisplayName(project, leads, t("Untitled project", "Projekt bez názvu", "Névtelen projekt"))
+                        : projectFilter
+                }`,
+                tone: "bg-purple-50 border-purple-200 text-purple-700",
+                icon: <FolderKanban className="w-3.5 h-3.5" />,
+                onClear: () => setProjectFilter(""),
+            });
+        }
+        if (assigneeFilter !== "all") {
+            chips.push({
+                key: "assignee",
+                label: `${t("Assignee", "Priradené", "Felelős")}: ${assigneeFilter}`,
+                tone: "bg-indigo-50 border-indigo-200 text-indigo-700",
+                icon: <Users className="w-3.5 h-3.5" />,
+                onClear: () => setAssigneeFilter("all"),
+            });
+        }
+        if (assignerFilter !== "all") {
+            chips.push({
+                key: "assigner",
+                label: `${t("Assigner", "Zadal", "Megbízó")}: ${assignerFilter}`,
+                tone: "bg-amber-50 border-amber-200 text-amber-700",
+                icon: <UserCheck className="w-3.5 h-3.5" />,
+                onClear: () => setAssignerFilter("all"),
+            });
+        }
+        if (tagFilter) {
+            chips.push({
+                key: "tag",
+                label: `${t("Tag filter:", "Filter tagu:", "Címke szűrő:")} #${tagFilter}`,
+                tone: "bg-[#ff5d00]/10 border-[#ff5d00]/30 text-[#ff5d00]",
+                icon: <Hash className="w-3.5 h-3.5" />,
+                onClear: () => setTagFilter(null),
+            });
+        }
+        if (opts.showDay && myDayFilter) {
+            chips.push({
+                key: "day",
+                label: `${t("Due", "Termín", "Határidő")}: ${formatTaskDate(myDayFilter)}`,
+                tone: "bg-indigo-50 border-indigo-200 text-indigo-700",
+                icon: <CalendarIcon className="w-3.5 h-3.5" />,
+                onClear: () => setMyDayFilter(""),
+            });
+        }
+        if (chips.length === 0) return null;
+        return (
+            <div
+                data-testid="task-active-filters"
+                className={`flex flex-wrap items-center gap-2 ${opts.className ?? ""}`}
+            >
+                {chips.map((chip) => (
+                    <span
+                        key={chip.key}
+                        data-testid={`task-active-filter-${chip.key}`}
+                        className={`flex items-center gap-2 px-3 py-1.5 border rounded-xl text-ui font-bold ${chip.tone}`}
+                    >
+                        {chip.icon}
+                        <span>{chip.label}</span>
+                        <button
+                            type="button"
+                            onClick={chip.onClear}
+                            className="ml-1 hover:text-red-600 active:scale-90 transition-all cursor-pointer"
+                            title={t("Clear this filter", "Zrušiť tento filter", "Szűrő törlése")}
+                        >
+                            <X className="w-3.5 h-3.5" />
+                        </button>
+                    </span>
+                ))}
+                {chips.length > 1 && (
+                    <button
+                        type="button"
+                        onClick={() => {
+                            setProjectFilter("");
+                            setAssigneeFilter("all");
+                            setAssignerFilter("all");
+                            setTagFilter(null);
+                            if (opts.showDay) setMyDayFilter("");
+                        }}
+                        className="px-2 py-1 text-ui font-bold text-slate-500 hover:text-red-600 underline-offset-2 hover:underline cursor-pointer transition-colors"
+                    >
+                        {t("Clear all", "Zrušiť všetky", "Összes törlése")}
+                    </button>
+                )}
+            </div>
+        );
+    };
+
     // The left task list column for My Calendar.
     // If isCentered is true (when calendarScope === "hide"), it expands with max-w-3xl on mobile and max-w-5xl on desktop.
     const renderMyTaskListColumn = (isCentered: boolean = false) => (
@@ -3791,8 +4029,12 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     days={closedTasksDays}
                     onChangeDays={handleClosedTasksDaysChange}
                     t={t}
-                    leading={renderClientFilter("max-w-xs")}
+                    leading={renderTaskAttrFilters({ assignee: true, assigner: true })}
                 />
+                {renderActiveFilterChips({
+                    showDay: true,
+                    className: "px-4 py-2 border-b border-slate-100",
+                })}
 
                 {/* Overdue / Missed — always visible */}
                 {renderTaskBucket({
@@ -4527,7 +4769,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                     <div className="grid grid-cols-1 ws-sm:grid-cols-5 gap-4 pb-4 border-b border-slate-100 mb-4 shrink-0 text-micro font-bold">
                         {/* Client / Lead */}
                         <div className="ws-sm:col-span-5 empty:hidden">
-                            {renderClientFilter("max-w-md")}
+                            {renderTaskAttrFilters({ assignee: true, assigner: true, clientClassName: "max-w-md" })}
                         </div>
                         {/* Search */}
                         <div className="space-y-1">
@@ -4652,22 +4894,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                         </div>
                     </div>
 
-                    {archiveTagFilter && (
-                        <div className="flex items-center gap-2 mb-4 px-3 py-1.5 bg-[#ff5d00]/10 border border-[#ff5d00]/30 rounded-xl text-ui font-bold text-[#ff5d00] w-fit">
-                            <Hash className="w-3.5 h-3.5" />
-                            <span>
-                                {t("Tag filter:", "Filter tagu:", "Címke szűrő:")} #{archiveTagFilter}
-                            </span>
-                            <button
-                                type="button"
-                                onClick={() => setArchiveTagFilter(null)}
-                                className="ml-1 hover:text-red-600 transition-colors cursor-pointer"
-                                title={t("Clear tag filter", "Zrušiť filter tagu", "Címke szűrő törlése")}
-                            >
-                                <X className="w-3.5 h-3.5" />
-                            </button>
-                        </div>
-                    )}
+                    {renderActiveFilterChips({ className: "mb-4" })}
 
                     {archiveView === "calendar" ? (
                         <div className="h-140 ws-lg:h-[calc(100vh-22rem)] ws-lg:min-h-130 flex flex-col rounded-3xl border border-slate-200 overflow-hidden bg-white">
@@ -4714,7 +4941,11 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
                                                           "Bez termínu",
                                                           "Nincs határidő",
                                                       )
-                                                    : formatTaskDate(group.date)}
+                                                    : renderDayChip(
+                                                          group.date,
+                                                          "hover:text-indigo-600",
+                                                          formatTaskDate(group.date),
+                                                      )}
                                             </div>
                                             <div className="space-y-2 pl-3">
                                                 {group.tasks.map(renderArchivedTaskRow)}

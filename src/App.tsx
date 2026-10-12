@@ -46,6 +46,11 @@ import { FeralGradientBackground } from "./components/FeralGradientBackground";
 import { OrganicNodeDatabaseLoader } from "./components/OrganicNodeDatabaseLoader";
 import { getStoredTheme, getStoredThemeMode, isThemeMode, startThemeWatcher, type Appearance, type ThemeMode } from "./utils/theme";
 import { startViewSizeWatcher } from "./utils/viewSize";
+import { baselineOf, diffRecords, type RecordBaseline } from "./utils/syncDiff";
+import { parseUnifiedEntryKey, pendingDeletionIds, pendingDeletionKeys, pendingDeletionRecords, unifiedEntryKey, withoutPendingDeletions } from "./utils/pendingDeletions";
+import { createUndoQueue } from "./utils/undoQueue";
+import { asLang, restoredMessage } from "./utils/undoMessages";
+import { UndoToast } from "./components/ui/UndoToast";
 import { hasPersistentStorage } from "./utils/safeStorage";
 import { LicenseBanner } from "./components/LicenseBanner";
 import { fetchLicenseState } from "./utils/licenseApi";
@@ -75,6 +80,8 @@ import {
 } from "./utils/financialTrend";
 import { flushPendingSaves } from "./utils/pendingSaves";
 import { updatePwaManifest } from "./utils/pwaManifest";
+import { HoldToConfirmButton } from "./components/ui/HoldToConfirm";
+import { clearErrorLogsWithUndo } from "./utils/errorLogs";
 
 /**
  * Routes whose whole purpose depends on OpenAI. Visiting one without a
@@ -220,75 +227,6 @@ const computePushSig = (p: {
   computeSettingsSig(p.settings),
 ]);
 
-// --- Delta sync (protocol v2) -------------------------------------------------
-// Baseline of what the server is known to hold, as id → serialised record, so a
-// push can carry just the records that actually changed plus the ids that went
-// away. Under v1 every save re-uploaded the entire dataset; on a real install
-// that is megabytes per keystroke-level edit and it is the reason a settings
-// save took ~15s on a normal office uplink.
-
-type RecordBaseline = Map<string, string>;
-
-// Serialising every record on every push would be O(dataset) main-thread work.
-// React state updates rebuild the array but leave untouched items as the SAME
-// object, so caching by identity makes the diff cost track the edit, not the
-// dataset. WeakMap so dropped records are collected with their entry.
-const recordHashCache = new WeakMap<object, string>();
-
-const hashRecord = (record: any): string => {
-  if (record === null || typeof record !== "object") return JSON.stringify(record);
-  const cached = recordHashCache.get(record);
-  if (cached !== undefined) return cached;
-  const hash = JSON.stringify(record);
-  recordHashCache.set(record, hash);
-  return hash;
-};
-
-const baselineOf = (records: any[] | undefined): RecordBaseline => {
-  const out: RecordBaseline = new Map();
-  for (const r of records ?? []) {
-    if (r && r.id != null) out.set(String(r.id), hashRecord(r));
-  }
-  return out;
-};
-
-/**
- * Records that differ from the baseline, and ids the baseline had but the current
- * list does not. A missing baseline means "we have never confirmed anything with
- * the server", so everything is treated as changed and nothing as deleted — the
- * safe direction, since inventing deletions is how data disappears.
- */
-const diffRecords = (
-  records: any[] | undefined,
-  baseline: RecordBaseline | undefined
-): { changed: any[]; deletedIds: string[]; next: RecordBaseline } => {
-  const list = records ?? [];
-  const next = baselineOf(list);
-  if (!baseline) {
-    return { changed: list, deletedIds: [], next };
-  }
-  const changed: any[] = [];
-  for (const r of list) {
-    if (!r) continue;
-    // A record with no id cannot be held in the baseline (which is keyed by id),
-    // so there is no way to tell whether it changed — it must always be sent.
-    // Skipping it, as this used to, silently dropped whole collections: user rows
-    // carry no id, so every profile edit (name, password, mailbox credentials, a
-    // newly added user) was diffed down to an empty array and never reached the
-    // server, while the UI happily showed it as saved until the next reload.
-    if (r.id == null) {
-      changed.push(r);
-      continue;
-    }
-    const id = String(r.id);
-    if (baseline.get(id) !== next.get(id)) changed.push(r);
-  }
-  const deletedIds: string[] = [];
-  for (const id of baseline.keys()) {
-    if (!next.has(id)) deletedIds.push(id);
-  }
-  return { changed, deletedIds, next };
-};
 
 function App() {
   const activePushesRef = useRef(0);
@@ -439,6 +377,11 @@ function App() {
       return queryRaw ? `${route}?${queryRaw}` : route;
     }
     const validTabs = ["dashboard", "overview", "leads", "clients", "invoices", "tasks", "files", "personal-settings", "email", "rag_ai", "sai", "automation", "meetings", "projects", "updates", "warehouse", "financial", "employees", ...(SOCIAL_MEDIA_ENABLED ? ["social_media"] : [])];
+    if (typeof window !== "undefined" && (window.location.search.includes("embed=tasks") || window.location.search.includes("embed=true"))) {
+      if (!hashLower || hashLower === "" || hashLower === "dashboard") {
+        return "tasks";
+      }
+    }
     if (!validTabs.includes(resolvedBase)) return "dashboard";
     const route = resolvedBase + subPath;
     return queryRaw ? `${route}?${queryRaw}` : route;
@@ -467,6 +410,20 @@ function App() {
     action?: { label: string; onClick: () => void };
   };
   const [toast, setToast] = useState<ToastPayload | null>(null);
+  // The Undo toast has its own slot: an ordinary toast raised a moment later (a
+  // save confirmation, an error) must not replace it and take the Undo button away.
+  const [undoToast, setUndoToast] = useState<{
+    actionId: string;
+    message: string;
+    undoLabel: string;
+    durationMs: number;
+  } | null>(null);
+  const undoQueueRef = useRef(createUndoQueue());
+  // Set while the page is going away, so the final push is sent with keepalive.
+  const unloadingRef = useRef(false);
+  const flushSyncRef = useRef<() => void>(() => {});
+  // Set while the finance ledger still holds the movement of an invoice deleted under an open undo window.
+  const ledgerStaleRef = useRef(false);
   const [previewFile, setPreviewFile] = useState<{ url: string; name: string } | null>(null);
   const toastIdRef = useRef(0);
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -542,7 +499,70 @@ function App() {
       }
       displayToast(next);
     };
+
+    // Archive/delete with Undo. Shown immediately (never held back behind a save —
+    // the delay would eat the undo window) and settled exactly once: Undo runs
+    // onUndo; expiry, ×, a newer undo toast, pagehide and logout run onCommit.
+    window.showUndoToast = (opts: UndoToastOptions) => {
+      const queue = undoQueueRef.current;
+      const actionId = queue.register({
+        onUndo: () => {
+          opts.onUndo();
+          const stored = window.localStorage?.getItem("crm_language");
+          displayToast({
+            id: ++toastIdRef.current,
+            message: restoredMessage(stored === "en" || stored === "hu" ? stored : "sk"),
+            variant: "info",
+          });
+        },
+        onCommit: opts.onCommit,
+      });
+      // register() has just committed whatever was pending before this action.
+      setUndoToast({ actionId, message: opts.message, undoLabel: opts.undoLabel, durationMs: opts.durationMs ?? 6000 });
+    };
+    window.ccrmFlushSync = () => flushSyncRef.current();
+    return () => {
+      delete window.showUndoToast;
+      delete window.ccrmFlushSync;
+    };
   }, []);
+
+  // A shown archive/delete must never be dropped: when the page is hidden or
+  // closed, every pending action is committed and the push is flushed (with
+  // keepalive, so the request outlives the page).
+  useEffect(() => {
+    const commitAll = (unloading: boolean) => {
+      if (unloading) unloadingRef.current = true;
+      if (undoQueueRef.current.commitAll() > 0) setUndoToast(null);
+    };
+    const onPageHide = () => commitAll(true);
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") commitAll(false);
+      else unloadingRef.current = false;
+    };
+    window.addEventListener("pagehide", onPageHide);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", onPageHide);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
+
+  // Ctrl/Cmd+Z undoes the visible archive/delete — but never while the user is
+  // typing, where it means "undo my text".
+  useEffect(() => {
+    if (!undoToast) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.shiftKey || e.altKey || e.key.toLowerCase() !== "z") return;
+      const el = document.activeElement as HTMLElement | null;
+      const tag = el?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || el?.isContentEditable) return;
+      e.preventDefault();
+      if (undoQueueRef.current.undo(undoToast.actionId)) setUndoToast(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undoToast]);
   const [systemName, setSystemName] = useState(() => {
     const stored = typeof window !== 'undefined' ? localStorage.getItem("crm_system_name") : null;
     return stored || "CCRM";
@@ -871,22 +891,10 @@ function App() {
     }
   };
 
-  const clearErrorLogs = async () => {
-    if (!confirm(t("Are you sure you want to clear all error logs?", "Naozaj chcete vymazať všetky chybové záznamy?", "Biztosan törli az összes hibanaplót?"))) {
-      return;
-    }
-    try {
-      const response = await fetch("/api/error_logs.php", { method: "DELETE" });
-      const data = await response.json();
-      if (data.success) {
-        setErrorLogs([]);
-        if (typeof (window as any).showToast === "function") {
-          (window as any).showToast(t("Error logs cleared.", "Chybové záznamy boli vymazané.", "A hibanaplók törölve."));
-        }
-      }
-    } catch (e) {
-      console.error("Failed to clear error logs", e);
-    }
+  // The hold on the button is the confirmation; the logs are deleted on the server
+  // when the undo window closes (utils/errorLogs).
+  const clearErrorLogs = () => {
+    clearErrorLogsWithUndo({ logs: errorLogs, setLogs: setErrorLogs, lang: asLang(userLanguage) });
   };
 
   const handleCopyLogDetails = (log: any) => {
@@ -1275,7 +1283,7 @@ ${log.payload || ''}
     if (serverProtocolRef.current >= 2) {
       const deleted: Record<string, unknown> = {};
       const narrow = (key: string, records: any[]) => {
-        const { changed, deletedIds, next } = diffRecords(records, syncedRecordsRef.current[key]);
+        const { changed, deletedIds, next } = diffRecords(records, syncedRecordsRef.current[key], pendingDeletionIds(key));
         payload[key] = changed;
         if (deletedIds.length) deleted[key] = deletedIds;
         pendingBaselines[key] = next;
@@ -1308,7 +1316,7 @@ ${log.payload || ''}
       const ueDeleted: Record<string, string[]> = {};
       const ueChanged: Record<string, any[]> = {};
       for (const [ueId, rows] of Object.entries(liveUnifiedEntriesData ?? {})) {
-        const { changed, deletedIds, next } = diffRecords(rows as any[], ueSyncedRecordsRef.current[ueId]);
+        const { changed, deletedIds, next } = diffRecords(rows as any[], ueSyncedRecordsRef.current[ueId], pendingDeletionIds(unifiedEntryKey(ueId)));
         ueChanged[ueId] = changed;
         if (deletedIds.length) ueDeleted[ueId] = deletedIds;
         pendingUeBaselines[ueId] = next;
@@ -1318,13 +1326,36 @@ ${log.payload || ''}
 
       payload.syncProtocol = 2;
       if (Object.keys(deleted).length) payload.deleted = deleted;
+    } else {
+      // Under protocol v1 a record missing from the payload means "delete it", so a
+      // deletion the user can still undo has to be put back into the snapshot.
+      for (const key of pendingDeletionKeys()) {
+        const held = pendingDeletionRecords(key) as any[];
+        const entryId = parseUnifiedEntryKey(key);
+        if (entryId !== null) {
+          const rows = payload.unifiedEntriesData?.[entryId];
+          if (!Array.isArray(rows)) continue;
+          const present = new Set(rows.map((r: any) => String(r?.id)));
+          payload.unifiedEntriesData = {
+            ...payload.unifiedEntriesData,
+            [entryId]: [...rows, ...held.filter((r) => !present.has(String(r?.id)))],
+          };
+        } else if (Array.isArray(payload[key])) {
+          const present = new Set(payload[key].map((r: any) => String(r?.id)));
+          payload[key] = [...payload[key], ...held.filter((r) => !present.has(String(r?.id)))];
+        }
+      }
     }
 
     try {
+      const body = JSON.stringify(payload);
       const res = await fetch("/sync.php", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload)
+        body,
+        // The page is closing: let the request outlive it. Browsers cap keepalive
+        // bodies at 64 KB, which a delta push (ids + changed records) stays well under.
+        keepalive: unloadingRef.current && body.length < 60000
       });
       if (res.status === 401) {
         setCurrentUser(null);
@@ -1533,6 +1564,23 @@ ${log.payload || ''}
     };
     pushChainRef.current = pushChainRef.current.then(doPush, doPush);
     return pushChainRef.current;
+  };
+  flushSyncRef.current = () => {
+    // Invoices deleted under an open undo window kept their ledger movement; now
+    // that the window has closed, let the ledger catch up (this also pushes).
+    if (ledgerStaleRef.current && pendingDeletionIds("invoicesOffers").size === 0) {
+      updateInvoicesOffersAndSync(invoicesOffersRef.current);
+      return;
+    }
+    void pushStateToServer();
+  };
+
+  // Settles every pending archive/delete and waits for the push that carries it.
+  // Logging out kills the session, so anything still held back for Undo has to
+  // reach the server first.
+  const commitPendingUndos = async () => {
+    if (undoQueueRef.current.commitAll() > 0) setUndoToast(null);
+    try { await pushChainRef.current; } catch { /* the push reports its own failure */ }
   };
 
   const updateUnifiedEntriesAndSync = (
@@ -1756,7 +1804,14 @@ ${log.payload || ''}
     invoicesOffersRef.current = next;
     setInvoicesOffers(next);
     const prevRecords = financialRecordsRef.current;
-    const nextRecords = reconcileInvoiceMovements(prev, next, prevRecords);
+    // An invoice whose deletion can still be undone keeps its ledger movement: the
+    // movement is derived from the invoice, but may carry a category or project
+    // the user set, which re-deriving it on Undo would lose. It is cleaned up
+    // once the undo window has closed (see ledgerStaleRef in flushSyncRef).
+    const heldInvoices = (pendingDeletionRecords("invoicesOffers") as InvoiceOffer[])
+      .filter((inv) => !next.some((o) => o.id === inv.id));
+    ledgerStaleRef.current = heldInvoices.length > 0;
+    const nextRecords = reconcileInvoiceMovements(prev, heldInvoices.length ? [...next, ...heldInvoices] : next, prevRecords);
     if (nextRecords !== prevRecords) {
       financialRecordsRef.current = nextRecords;
       setFinancialRecords(nextRecords);
@@ -2239,8 +2294,12 @@ ${log.payload || ''}
     window.addEventListener("hashchange", handleHashChange);
 
     if (!window.location.hash) {
-      // On initial app load with no explicit route, open the user's chosen default landing page
-      window.location.hash = getDefaultPageForUser(currentUser) || "dashboard";
+      if (typeof window !== "undefined" && (window.location.search.includes("embed=tasks") || window.location.search.includes("embed=true"))) {
+        window.location.hash = "tasks?embed=tasks";
+      } else {
+        // On initial app load with no explicit route, open the user's chosen default landing page
+        window.location.hash = getDefaultPageForUser(currentUser) || "dashboard";
+      }
     }
 
     return () => window.removeEventListener("hashchange", handleHashChange);
@@ -2289,7 +2348,12 @@ ${log.payload || ''}
     const sameOr = <T,>(next: T) => (prev: T): T =>
       JSON.stringify(prev) === JSON.stringify(next) ? prev : next;
 
-    const applyServerData = (data: any) => {
+    const applyServerData = (rawData: any) => {
+      // The server still holds records the user just deleted and can undo; applying
+      // its answer as-is would bring them back on screen for the undo window.
+      // `rawData` stays untouched for the delta baseline below, which must keep
+      // knowing the server has them.
+      const data = withoutPendingDeletions(rawData);
       setIsInstalled(true);
       setIsDemoMode(data.demoMode === true);
       // Not a real read: with DEMO_MODE on, an unauthenticated GET answers 200
@@ -2572,29 +2636,29 @@ ${log.payload || ''}
       // response, a rejected conflict, a record the server skipped — the next full
       // pull restores an accurate picture of what the server actually holds.
       syncedRecordsRef.current = {
-        leads: baselineOf(data.leads ?? leadsRef.current),
-        tasks: baselineOf(data.tasks ?? tasksRef.current),
-        users: baselineOf(data.users ?? usersRef.current),
-        meetingNotes: baselineOf(data.meetingNotes ?? meetingNotesRef.current),
-        customDashboards: baselineOf(data.customDashboards ?? customDashboardsRef.current),
-        projectTypes: baselineOf(data.projectTypes ?? projectTypesRef.current),
-        projects: baselineOf(data.projects ?? projectsRef.current),
-        warehouses: baselineOf(data.warehouses ?? warehousesRef.current),
-        suppliers: baselineOf(data.suppliers ?? suppliersRef.current),
-        warehouseItems: baselineOf(data.warehouseItems ?? warehouseItemsRef.current),
-        warehouseStock: baselineOf(data.warehouseStock ?? warehouseStockRef.current),
-        warehouseBatches: baselineOf(data.warehouseBatches ?? warehouseBatchesRef.current),
-        warehouseMovements: baselineOf(data.warehouseMovements ?? warehouseMovementsRef.current),
-        financialCategories: baselineOf(data.financialCategories ?? financialCategoriesRef.current),
-        financialRecords: baselineOf(data.financialRecords ?? financialRecordsRef.current),
-        invoicesOffers: baselineOf(data.invoicesOffers ?? invoicesOffersRef.current),
-        aiCustomTemplates: baselineOf(data.aiCustomTemplates ?? aiCustomTemplatesRef.current),
-        clientCategories: baselineOf(data.clientCategories ?? clientCategoriesRef.current),
-        employees: baselineOf(data.employees ?? employeesRef.current),
-        employeeSalaries: baselineOf(data.employeeSalaries ?? employeeSalariesRef.current),
-        employeeVacations: baselineOf(data.employeeVacations ?? employeeVacationsRef.current),
+        leads: baselineOf(rawData.leads ?? leadsRef.current),
+        tasks: baselineOf(rawData.tasks ?? tasksRef.current),
+        users: baselineOf(rawData.users ?? usersRef.current),
+        meetingNotes: baselineOf(rawData.meetingNotes ?? meetingNotesRef.current),
+        customDashboards: baselineOf(rawData.customDashboards ?? customDashboardsRef.current),
+        projectTypes: baselineOf(rawData.projectTypes ?? projectTypesRef.current),
+        projects: baselineOf(rawData.projects ?? projectsRef.current),
+        warehouses: baselineOf(rawData.warehouses ?? warehousesRef.current),
+        suppliers: baselineOf(rawData.suppliers ?? suppliersRef.current),
+        warehouseItems: baselineOf(rawData.warehouseItems ?? warehouseItemsRef.current),
+        warehouseStock: baselineOf(rawData.warehouseStock ?? warehouseStockRef.current),
+        warehouseBatches: baselineOf(rawData.warehouseBatches ?? warehouseBatchesRef.current),
+        warehouseMovements: baselineOf(rawData.warehouseMovements ?? warehouseMovementsRef.current),
+        financialCategories: baselineOf(rawData.financialCategories ?? financialCategoriesRef.current),
+        financialRecords: baselineOf(rawData.financialRecords ?? financialRecordsRef.current),
+        invoicesOffers: baselineOf(rawData.invoicesOffers ?? invoicesOffersRef.current),
+        aiCustomTemplates: baselineOf(rawData.aiCustomTemplates ?? aiCustomTemplatesRef.current),
+        clientCategories: baselineOf(rawData.clientCategories ?? clientCategoriesRef.current),
+        employees: baselineOf(rawData.employees ?? employeesRef.current),
+        employeeSalaries: baselineOf(rawData.employeeSalaries ?? employeeSalariesRef.current),
+        employeeVacations: baselineOf(rawData.employeeVacations ?? employeeVacationsRef.current),
       };
-      const ueData = data.unifiedEntriesData ?? unifiedEntriesDataRef.current ?? {};
+      const ueData = rawData.unifiedEntriesData ?? unifiedEntriesDataRef.current ?? {};
       const nextUeBaselines: Record<string, RecordBaseline> = {};
       for (const [ueId, rows] of Object.entries(ueData)) {
         nextUeBaselines[ueId] = baselineOf(rows as any[]);
@@ -2780,6 +2844,23 @@ ${log.payload || ''}
     (route === "rag_ai" && !isVectorDbConfigured(integrationsConfig)) ||
     (route === "email" && !isPersonalMailboxConfigured(currentUser || users[0]));
 
+  // Embedded Tasks Mode (used by Chrome Extension popup and side panel)
+  const isEmbeddedTasks = useMemo(() => {
+    try {
+      if (typeof window === "undefined") return false;
+      const searchParams = new URLSearchParams(window.location.search);
+      const hashParams = parseAppHash(window.location.hash || activeTab).params;
+      return (
+        searchParams.get("embed") === "tasks" ||
+        searchParams.get("embed") === "true" ||
+        hashParams.get("embed") === "tasks" ||
+        hashParams.get("embed") === "true"
+      );
+    } catch {
+      return false;
+    }
+  }, [activeTab]);
+
   // View router
   const renderWorkspaceView = () => {
     // Raw currency code (or "" for "auto, follow region") — passed down so each
@@ -2796,6 +2877,26 @@ ${log.payload || ''}
       activityLog: [],
       metadata_json: "{}"
     };
+
+    if (isEmbeddedTasks) {
+      return (
+        <TaskDashboardView 
+          tasks={tasks}
+          setTasks={updateTasksAndSync}
+          leads={leads}
+          projects={projects}
+          users={users}
+          systemLanguage={userLanguage}
+          currentUser={activeUser}
+          taskStates={taskStates}
+          taskStateColors={taskStateColors}
+          taskAccess={taskAccess}
+          mailConfigured={isSystemMailConfigured(integrationsConfig)}
+          leadStageGroups={leadStageGroups}
+          leadStateParents={leadStateParents}
+        />
+      );
+    }
 
     const { route: activeRoute } = parseAppHash(activeTab);
 
@@ -2816,7 +2917,7 @@ ${log.payload || ''}
           roleName={currentUser?.role}
           hasKnownRole={access.hasKnownRole}
           onLogout={() => {
-            fetch("/api/logout.php", { method: "POST" })
+            commitPendingUndos().then(() => fetch("/api/logout.php", { method: "POST" }))
               .finally(() => {
                 setCurrentUser(null);
                 window.location.href = "/";
@@ -3735,36 +3836,107 @@ ${log.payload || ''}
 
       {/* Blurred application background layout if not logged in */}
       <div className={`flex flex-1 overflow-hidden transition-all duration-500 relative z-10 ${!currentUser ? "filter blur-md pointer-events-none select-none" : ""}`}>
-        {/* Sidebar navigation with role-gated settings visibility */}
-        <Sidebar 
-          activeTab={activeTab} 
-          setActiveTab={(tab) => { 
-            if (!access.canOpenRoute(tab)) return;
-            window.location.hash = tab; 
-          }} 
-          systemName={systemName}
-          showSettings={access.hasSettingsAccess}
-          canOpenRoute={access.canOpenRoute}
-          onLogout={() => {
-            fetch("/api/logout.php", { method: "POST" })
-              .finally(() => {
-                setCurrentUser(null);
-                window.location.href = "/";
-              });
-          }}
-          systemLanguage={userLanguage}
-          showRagAi={access.can("rag_ai")}
-          currentUser={currentUser}
-          roles={roles}
-          canEditNav={access.can("nav_edit")}
-          onSaveUserLayout={handleSaveUserLayout}
-          unifiedEntries={unifiedEntries}
-          customDashboards={customDashboards}
-          onSaveCustomDashboards={updateCustomDashboardsAndSync}
-          defaultPage={getDefaultPageForUser(currentUser) || "dashboard"}
-          onSaveDefaultPage={handleSaveDefaultPage}
-          disabledModules={integrationsConfig?.disabledModules || []}
-        />
+        {isEmbeddedTasks ? (
+          <div className="flex-1 flex flex-col min-w-0 h-full bg-slate-50/60 overflow-hidden">
+            {/* Minimal extension header bar */}
+            <header className="h-10 px-3 bg-white/95 backdrop-blur-md border-b border-slate-200/80 flex items-center justify-between shrink-0 select-none z-20">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-indigo-600 animate-pulse" />
+                <span className="font-heading font-extrabold text-body text-slate-900 tracking-tight flex items-center gap-1.5">
+                  <span>CCRM</span>
+                  <span className="text-micro font-bold uppercase px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-700 border border-indigo-200/60">
+                    Tasks
+                  </span>
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                {currentUser && (
+                  <span className="text-caption font-semibold text-slate-600 flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                    {currentUser.name}
+                  </span>
+                )}
+                {taskAccess.create && (
+                  <button
+                    type="button"
+                    onClick={() => setQuickTaskOpen(true)}
+                    className="px-2 py-0.5 rounded-lg text-micro font-bold bg-indigo-600 text-white hover:bg-indigo-700 transition-colors flex items-center gap-1 shadow-2xs cursor-pointer"
+                  >
+                    <Plus className="w-3 h-3" />
+                    <span>{t("New Task", "Nová úloha", "Új feladat")}</span>
+                  </button>
+                )}
+                <a
+                  href="/#tasks"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-2 py-0.5 rounded-lg text-micro font-bold text-slate-600 hover:text-indigo-600 hover:bg-slate-100 transition-colors flex items-center gap-1 border border-slate-200"
+                  title={t("Open full CCRM", "Otvoriť plné CCRM", "Teljes CCRM megnyitása")}
+                >
+                  <ArrowUpRight className="w-3 h-3" />
+                  <span>{t("Open App", "Otvoriť aplikáciu", "Alkalmazás")}</span>
+                </a>
+              </div>
+            </header>
+
+            {quickTaskOpen && taskAccess.create && (
+              <QuickTaskModal
+                tasks={tasks}
+                leads={leads}
+                projects={projects}
+                users={users}
+                taskStates={taskStates}
+                systemLanguage={userLanguage}
+                currentUserName={displayUser.name}
+                mailConfigured={isSystemMailConfigured(integrationsConfig)}
+                leadStageGroups={leadStageGroups}
+                leadStateParents={leadStateParents}
+                onCreate={(created) => updateTasksAndSync((prev) => [...created, ...prev])}
+                onClose={() => setQuickTaskOpen(false)}
+              />
+            )}
+
+            {/* Embedded Workspace main */}
+            <main className="workspace flex-1 overflow-y-auto [scrollbar-gutter:stable] relative flex flex-col p-2 ws-sm:p-3">
+              <ErrorBoundary contained resetKey="embedded-tasks">
+                <Suspense fallback={<div className="w-full flex items-center justify-center py-24"><RefreshCw className="w-6 h-6 text-indigo-400 animate-spin" /></div>}>
+                  {renderWorkspaceView()}
+                </Suspense>
+              </ErrorBoundary>
+            </main>
+          </div>
+        ) : (
+          <>
+            {/* Sidebar navigation with role-gated settings visibility */}
+            <Sidebar 
+              activeTab={activeTab} 
+              setActiveTab={(tab) => { 
+                if (!access.canOpenRoute(tab)) return;
+                window.location.hash = tab; 
+              }} 
+              systemName={systemName}
+              showSettings={access.hasSettingsAccess}
+              canOpenRoute={access.canOpenRoute}
+              onLogout={() => {
+                commitPendingUndos().then(() => fetch("/api/logout.php", { method: "POST" }))
+                  .finally(() => {
+                    setCurrentUser(null);
+                    window.location.href = "/";
+                  });
+              }}
+              systemLanguage={userLanguage}
+              showRagAi={access.can("rag_ai")}
+              currentUser={currentUser}
+              roles={roles}
+              canEditNav={access.can("nav_edit")}
+              onSaveUserLayout={handleSaveUserLayout}
+              unifiedEntries={unifiedEntries}
+              customDashboards={customDashboards}
+              onSaveCustomDashboards={updateCustomDashboardsAndSync}
+              defaultPage={getDefaultPageForUser(currentUser) || "dashboard"}
+              onSaveDefaultPage={handleSaveDefaultPage}
+              disabledModules={integrationsConfig?.disabledModules || []}
+            />
         
         {/* Workspace Area - Add pb-20 on mobile viewports so that the bottom navigation bar never overlaps content */}
         <div className="flex-1 flex flex-col min-w-0 pb-20 lg:pb-0">
@@ -3773,7 +3945,7 @@ ${log.payload || ''}
             systemName={systemName}
             currentUser={displayUser}
             onLogout={() => {
-              fetch("/api/logout.php", { method: "POST" })
+              commitPendingUndos().then(() => fetch("/api/logout.php", { method: "POST" }))
                 .finally(() => {
                   setCurrentUser(null);
                   window.location.href = "/";
@@ -3921,9 +4093,11 @@ ${log.payload || ''}
             </footer>
           </main>
         </div>
+        </>
+        )}
 
         {/* Global Executive Copilot Sidebar (contracts workspace side-by-side on desktop) */}
-        {currentUser && isCopilotOpen && (
+        {currentUser && !isEmbeddedTasks && isCopilotOpen && (
           <CopilotSidebar
             isOpen={isCopilotOpen}
             onClose={() => setIsCopilotOpen(false)}
@@ -3935,7 +4109,7 @@ ${log.payload || ''}
       </div>
 
       {/* Global Floating Copilot Orb (Draggable to any of the 4 corners) */}
-      {currentUser && (
+      {currentUser && !isEmbeddedTasks && (
         <FloatingCopilotOrb
           isOpen={isCopilotOpen}
           onOpen={() => setIsCopilotOpen(true)}
@@ -3969,8 +4143,29 @@ ${log.payload || ''}
             </span>
           </div>
         )}
+        {undoToast && (
+          <UndoToast
+            key={undoToast.actionId}
+            message={undoToast.message}
+            undoLabel={undoToast.undoLabel}
+            closeLabel={t("Close", "Zavrieť", "Bezárás")}
+            durationMs={undoToast.durationMs}
+            onUndo={() => {
+              undoQueueRef.current.undo(undoToast.actionId);
+              setUndoToast(null);
+            }}
+            onClose={() => {
+              undoQueueRef.current.commit(undoToast.actionId);
+              setUndoToast(null);
+            }}
+            onExpire={() => {
+              undoQueueRef.current.commit(undoToast.actionId);
+              setUndoToast((curr) => (curr?.actionId === undoToast.actionId ? null : curr));
+            }}
+          />
+        )}
         {toast && (
-          <div className="pointer-events-auto animate-in slide-in-from-bottom duration-300">
+          <div role="status" aria-live="polite" className="pointer-events-auto animate-in slide-in-from-bottom duration-300">
             <div className={`bg-slate-900 text-white px-5 py-3.5 rounded-2xl shadow-2xl flex items-center gap-4 text-ui font-bold border ${
               toast.variant === "error" ? "border-rose-500/70" : toast.variant === "warning" ? "border-amber-500/70" : "border-slate-800"
             }`}>
@@ -4070,14 +4265,16 @@ ${log.payload || ''}
               >
                 <RefreshCw className={`h-3.5 w-3.5 ${isLoadingLogs ? 'animate-spin' : ''}`} />
               </button>
-              <button
-                type="button"
-                onClick={clearErrorLogs}
-                className="p-1.5 hover:bg-red-50 text-red-600 hover:text-red-800 rounded-xl transition-all cursor-pointer"
-                title={t("Clear All", "Vymazať všetko", "Összes törlése")}
+              <HoldToConfirmButton
+                  tone="danger"
+                  lang={asLang(userLanguage)}
+                  what={t("error logs", "chybové záznamy", "hibanaplók")}
+                  onConfirm={clearErrorLogs}
+                  className="p-1.5 hover:bg-red-50 text-red-600 hover:text-red-800 rounded-xl transition-all"
+                  title={t("Clear All", "Vymazať všetko", "Összes törlése")}
               >
                 <Trash2 className="h-3.5 w-3.5" />
-              </button>
+              </HoldToConfirmButton>
             </div>
           </div>
 
