@@ -88,6 +88,25 @@ export interface UserPrefs {
    */
   projectsVisibleStatuses: string[] | null;
   /**
+   * Projects screen, "Active Projects Budget Breakdown" panel: the figure with
+   * its status pills ("detail") or the figure alone ("summary"). Loosely typed
+   * on read — the panel treats anything but "summary" as detail. Replaces the
+   * `ccrm_projects_equation_stats_expanded` localStorage flag, which was dropped
+   * rather than migrated: it only ever said "open" or "closed", and open is the
+   * default.
+   */
+  projectsEquationView: "detail" | "summary";
+  /** Same panel: show how many projects each status and the total hold. */
+  projectsEquationCounts: boolean;
+  /**
+   * Same panel: status keys the user switched off, so they stay out of the
+   * total on the next visit. Keys of statuses that no longer exist are ignored.
+   * Replaces `ccrm_projects_equation_stats_disabled` (dropped, not migrated: it
+   * was per browser, and a total should not silently shrink on the first load
+   * after an upgrade).
+   */
+  projectsEquationExcluded: string[];
+  /**
    * Finance trend chart: weekly net cash flow, or the running bank balance.
    *
    * Only the *choice of curve* is per user. The manual weekly anchors the
@@ -183,6 +202,9 @@ export const DEFAULT_USER_PREFS: UserPrefs = {
   seenUpdateId: null,
   licenseNoticeSuppressed: null,
   aiKeyBannerDismissed: false,
+  projectsEquationView: "detail",
+  projectsEquationCounts: true,
+  projectsEquationExcluded: [],
   ragDefaultAgent: null,
   sidebarPinned: false,
   sidebarCompactness: "comfortable",

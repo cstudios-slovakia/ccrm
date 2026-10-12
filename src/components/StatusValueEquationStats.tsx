@@ -1,19 +1,21 @@
 import React, { useState, useMemo, useEffect } from "react";
+import { createPortal } from "react-dom";
 import {
-  ChevronDown,
   Calculator,
   RotateCcw,
   XCircle,
-  Eye,
-  EyeOff,
+  Equal,
+  Hash,
   Info,
   Search,
   X,
   ExternalLink,
 } from "lucide-react";
 import { formatMoney } from "../utils/currency";
-import { readableOn } from "../utils/accentColor";
+import { deepenForWhite } from "../utils/accentColor";
+import { cn } from "../utils/cn";
 import type { Language } from "../utils/translations";
+import { BigNumber, CardFooter, SegmentBar, SegmentedToggle, WidgetCard } from "./dashboard/widgetKit";
 
 export interface StatusStatDetailRow {
   id: string;
@@ -40,17 +42,41 @@ export interface StatusStatItem {
   rows?: StatusStatDetailRow[];
 }
 
+type ThemeColor = "blue" | "purple" | "indigo" | "emerald" | "amber" | "yellow" | "cyan";
+
+export type StatusEquationView = "detail" | "summary";
+
 export interface StatusValueEquationStatsProps {
   items: StatusStatItem[];
   currency?: string | null;
   language: Language;
+  /** The card's heading (drawn as the dashboard's small uppercase title). */
   title?: string;
+  /** Shown as the heading's tooltip — the card has no room for a caption line. */
   subtitle?: string;
   unitLabel?: string;
+  /**
+   * Keeps the view and the left-out statuses in localStorage under this key.
+   * Leave it off and pass the controlled props below to keep them somewhere
+   * else (the Projects screen keeps them in the user's preferences).
+   */
   storageKey?: string;
+  /** Detail is the default view when nothing has been stored. */
   defaultExpanded?: boolean;
-  themeColor?: "blue" | "purple" | "indigo" | "emerald" | "amber" | "yellow" | "cyan";
+  /** Colours the section chip in the card's title row. */
+  themeColor?: ThemeColor;
+  /** @deprecated The total is no longer a coloured block, so there is nothing left to colour. */
   totalColor?: "blue" | "purple" | "indigo" | "emerald" | "green" | "amber" | "yellow" | "cyan";
+
+  /** Controlled view. With `onViewChange` the caller owns it; otherwise it is kept here. */
+  view?: StatusEquationView;
+  onViewChange?: (view: StatusEquationView) => void;
+  /** Controlled "how many records" switch. The toggle is only drawn when `onShowCountsChange` is given. */
+  showCounts?: boolean;
+  onShowCountsChange?: (show: boolean) => void;
+  /** Controlled list of status keys left out of the total. */
+  excludedKeys?: string[];
+  onExcludedKeysChange?: (keys: string[]) => void;
 }
 
 interface DrawerData {
@@ -63,6 +89,33 @@ interface DrawerData {
   rows: StatusStatDetailRow[];
 }
 
+/** The section chip's colour, taken from the screen's `themeColor`. */
+const ACCENTS: Record<ThemeColor, string> = {
+  blue: "#2563eb",
+  purple: "#7c3aed",
+  indigo: "#4f46e5",
+  emerald: "#059669",
+  amber: "#d97706",
+  yellow: "#ca8a04",
+  cyan: "#0891b2",
+};
+
+const readStored = (key: string): string | null => {
+  try {
+    return localStorage.getItem(key);
+  } catch {
+    return null;
+  }
+};
+
+const writeStored = (key: string, value: string) => {
+  try {
+    localStorage.setItem(key, value);
+  } catch {
+    // ignore storage errors
+  }
+};
+
 export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> = ({
   items,
   currency,
@@ -73,38 +126,61 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
   storageKey,
   defaultExpanded = true,
   themeColor = "blue",
-  totalColor,
+  view: controlledView,
+  onViewChange,
+  showCounts: controlledShowCounts,
+  onShowCountsChange,
+  excludedKeys,
+  onExcludedKeysChange,
 }) => {
   const resolvedCurrency = currency || "EUR";
 
-  // Read initial expanded state from localStorage if available
-  const [isExpanded, setIsExpanded] = useState<boolean>(() => {
+  // Uncontrolled fallbacks. They only matter when the caller does not own the
+  // value, and they only touch localStorage when a storageKey was given.
+  const [localExpanded, setLocalExpanded] = useState<boolean>(() => {
     if (storageKey) {
-      try {
-        const saved = localStorage.getItem(`${storageKey}_expanded`);
-        if (saved !== null) return saved === "true";
-      } catch {
-        // ignore storage errors
-      }
+      const saved = readStored(`${storageKey}_expanded`);
+      if (saved !== null) return saved === "true";
     }
     return defaultExpanded;
   });
 
-  // Read initial disabled keys from localStorage if available
-  const [disabledKeys, setDisabledKeys] = useState<Set<string>>(() => {
+  const [localDisabled, setLocalDisabled] = useState<Set<string>>(() => {
     if (storageKey) {
       try {
-        const saved = localStorage.getItem(`${storageKey}_disabled`);
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) return new Set(parsed);
-        }
+        const saved = readStored(`${storageKey}_disabled`);
+        const parsed = saved ? JSON.parse(saved) : null;
+        if (Array.isArray(parsed)) return new Set(parsed);
       } catch {
         // ignore storage errors
       }
     }
     return new Set();
   });
+
+  const [localShowCounts, setLocalShowCounts] = useState(true);
+
+  const view: StatusEquationView = controlledView ?? (localExpanded ? "detail" : "summary");
+  const showCounts = controlledShowCounts ?? localShowCounts;
+  const disabledKeys = useMemo(
+    () => (excludedKeys ? new Set(excludedKeys) : localDisabled),
+    [excludedKeys, localDisabled]
+  );
+
+  const setView = (next: StatusEquationView) => {
+    if (onViewChange) onViewChange(next);
+    else setLocalExpanded(next === "detail");
+  };
+
+  const setDisabled = (next: Set<string>) => {
+    if (onExcludedKeysChange) onExcludedKeysChange(Array.from(next));
+    else setLocalDisabled(next);
+  };
+
+  const setShowCounts = (next: boolean) => {
+    if (onShowCountsChange) onShowCountsChange(next);
+    else setLocalShowCounts(next);
+  };
 
   // Slideout drawer state
   const [drawerData, setDrawerData] = useState<DrawerData | null>(null);
@@ -125,50 +201,28 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
     };
   }, [drawerData]);
 
-  // Persist expanded state
+  // Persist the uncontrolled state
   useEffect(() => {
-    if (storageKey) {
-      try {
-        localStorage.setItem(`${storageKey}_expanded`, String(isExpanded));
-      } catch {
-        // ignore storage errors
-      }
+    if (storageKey && controlledView === undefined) {
+      writeStored(`${storageKey}_expanded`, String(localExpanded));
     }
-  }, [isExpanded, storageKey]);
+  }, [localExpanded, storageKey, controlledView]);
 
-  // Persist disabled keys
   useEffect(() => {
-    if (storageKey) {
-      try {
-        localStorage.setItem(
-          `${storageKey}_disabled`,
-          JSON.stringify(Array.from(disabledKeys))
-        );
-      } catch {
-        // ignore storage errors
-      }
+    if (storageKey && !excludedKeys) {
+      writeStored(`${storageKey}_disabled`, JSON.stringify(Array.from(localDisabled)));
     }
-  }, [disabledKeys, storageKey]);
+  }, [localDisabled, storageKey, excludedKeys]);
 
   const toggleStatus = (key: string) => {
-    setDisabledKeys((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) {
-        next.delete(key);
-      } else {
-        next.add(key);
-      }
-      return next;
-    });
+    const next = new Set(disabledKeys);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    setDisabled(next);
   };
 
-  const enableAll = () => {
-    setDisabledKeys(new Set());
-  };
-
-  const disableAll = () => {
-    setDisabledKeys(new Set(items.map((i) => i.key)));
-  };
+  const enableAll = () => setDisabled(new Set());
+  const disableAll = () => setDisabled(new Set(items.map((i) => i.key)));
 
   const enabledItems = useMemo(
     () => items.filter((item) => !disabledKeys.has(item.key)),
@@ -214,389 +268,214 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
     "Interaktívny súčet hodnôt na fakturovanie s možnosťou detailnej inšpekcie položiek",
     "Interaktív számlázható értékösszesítő részletes tételes áttekintéssel"
   );
-  const resolvedUnitLabel =
-    unitLabel || t("items", "položiek", "tétel");
-
-  const themeClasses = {
-    blue: {
-      border: "border-blue-100/90",
-      bg: "bg-gradient-to-r from-blue-50/50 via-white/80 to-indigo-50/40",
-      iconBg: "bg-blue-600 text-white shadow-blue-600/20",
-      pillBorder: "border-blue-200",
-      totalBg: "bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-lg shadow-blue-600/25",
-      totalBadgeBg: "bg-white/20 text-white",
-      toggleActive: "text-blue-600 hover:bg-blue-50",
-    },
-    purple: {
-      border: "border-purple-100/90",
-      bg: "bg-gradient-to-r from-purple-50/50 via-white/80 to-indigo-50/40",
-      iconBg: "bg-purple-600 text-white shadow-purple-600/20",
-      pillBorder: "border-purple-200",
-      totalBg: "bg-gradient-to-br from-purple-600 to-indigo-700 text-white shadow-lg shadow-purple-600/25",
-      totalBadgeBg: "bg-white/20 text-white",
-      toggleActive: "text-purple-600 hover:bg-purple-50",
-    },
-    indigo: {
-      border: "border-indigo-100/90",
-      bg: "bg-gradient-to-r from-indigo-50/50 via-white/80 to-blue-50/40",
-      iconBg: "bg-indigo-600 text-white shadow-indigo-600/20",
-      pillBorder: "border-indigo-200",
-      totalBg: "bg-gradient-to-br from-indigo-600 to-purple-700 text-white shadow-lg shadow-indigo-600/25",
-      totalBadgeBg: "bg-white/20 text-white",
-      toggleActive: "text-indigo-600 hover:bg-indigo-50",
-    },
-    emerald: {
-      border: "border-emerald-100/90",
-      bg: "bg-gradient-to-r from-emerald-50/50 via-white/80 to-teal-50/40",
-      iconBg: "bg-emerald-600 text-white shadow-emerald-600/20",
-      pillBorder: "border-emerald-200",
-      totalBg: "bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-lg shadow-emerald-600/25",
-      totalBadgeBg: "bg-white/20 text-white",
-      toggleActive: "text-emerald-600 hover:bg-emerald-50",
-    },
-    amber: {
-      border: "border-amber-100/90",
-      bg: "bg-gradient-to-r from-amber-50/50 via-white/80 to-yellow-50/40",
-      iconBg: "bg-amber-600 text-white shadow-amber-600/20",
-      pillBorder: "border-amber-200",
-      totalBg: "bg-gradient-to-br from-amber-500 to-yellow-500 text-white shadow-lg shadow-amber-500/25",
-      totalBadgeBg: "bg-white/20 text-white",
-      toggleActive: "text-amber-600 hover:bg-amber-50",
-    },
-    yellow: {
-      border: "border-yellow-100/90",
-      bg: "bg-gradient-to-r from-yellow-50/50 via-white/80 to-amber-50/40",
-      iconBg: "bg-amber-500 text-white shadow-amber-500/20",
-      pillBorder: "border-yellow-200",
-      totalBg: "bg-gradient-to-br from-amber-500 to-yellow-500 text-white shadow-lg shadow-amber-500/25",
-      totalBadgeBg: "bg-white/20 text-white",
-      toggleActive: "text-amber-600 hover:bg-amber-50",
-    },
-    cyan: {
-      border: "border-cyan-100/90",
-      bg: "bg-gradient-to-r from-cyan-50/50 via-white/80 to-blue-50/40",
-      iconBg: "bg-cyan-600 text-white shadow-cyan-600/20",
-      pillBorder: "border-cyan-200",
-      totalBg: "bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/25",
-      totalBadgeBg: "bg-white/20 text-white",
-      toggleActive: "text-cyan-600 hover:bg-cyan-50",
-    },
-  }[themeColor];
-
-  const totalClasses = {
-    blue: {
-      totalBg: "bg-gradient-to-br from-blue-600 to-indigo-700 text-white shadow-lg shadow-blue-600/25",
-      totalBadgeBg: "bg-white/20 text-white",
-    },
-    purple: {
-      totalBg: "bg-gradient-to-br from-purple-600 to-indigo-700 text-white shadow-lg shadow-purple-600/25",
-      totalBadgeBg: "bg-white/20 text-white",
-    },
-    indigo: {
-      totalBg: "bg-gradient-to-br from-indigo-600 to-purple-700 text-white shadow-lg shadow-indigo-600/25",
-      totalBadgeBg: "bg-white/20 text-white",
-    },
-    emerald: {
-      totalBg: "bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-lg shadow-emerald-600/25",
-      totalBadgeBg: "bg-white/20 text-white",
-    },
-    green: {
-      totalBg: "bg-gradient-to-br from-emerald-600 to-teal-700 text-white shadow-lg shadow-emerald-600/25",
-      totalBadgeBg: "bg-white/20 text-white",
-    },
-    amber: {
-      totalBg: "bg-gradient-to-br from-amber-500 to-yellow-500 text-white shadow-lg shadow-amber-500/25",
-      totalBadgeBg: "bg-white/20 text-white",
-    },
-    yellow: {
-      totalBg: "bg-gradient-to-br from-amber-500 to-yellow-500 text-white shadow-lg shadow-amber-500/25",
-      totalBadgeBg: "bg-white/20 text-white",
-    },
-    cyan: {
-      totalBg: "bg-gradient-to-br from-cyan-500 to-blue-600 text-white shadow-lg shadow-cyan-500/25",
-      totalBadgeBg: "bg-white/20 text-white",
-    },
-  }[totalColor || themeColor];
+  const resolvedUnitLabel = unitLabel || t("items", "položiek", "tétel");
 
   if (items.length === 0) {
     return null;
   }
 
-  const hasDisabled = disabledKeys.size > 0;
+  const money = (value: number) =>
+    formatMoney(value, resolvedCurrency, language, { minimumFractionDigits: 0, maximumFractionDigits: 2 });
+
+  const hasDisabled = items.some((item) => disabledKeys.has(item.key));
+
+  const ghostButton =
+    "flex items-center gap-1 h-7 px-2 rounded-lg text-ui font-bold whitespace-nowrap transition-colors cursor-pointer";
+
+  const openDrawer = (item: StatusStatItem) => {
+    setDrawerSearch("");
+    setDrawerData({
+      itemName: item.name,
+      itemColor: item.color || "#3b82f6",
+      itemValue: item.value,
+      itemCount: item.count,
+      totalBudget: item.totalBudget,
+      invoiced: item.invoiced,
+      rows: item.rows || [],
+    });
+  };
+
+  /* ------------------------------------------------------------ status pill
+     The same pill as the dashboard widget: the administrator's status colour as
+     the fill, deepened until a white label reads on it, a dashed outline when
+     the status is left out of the total. */
+  const statusPill = (item: StatusStatItem) => {
+    const on = !disabledKeys.has(item.key);
+    const fill = deepenForWhite(item.color || "#3b82f6");
+    const toggle = () => toggleStatus(item.key);
+    return (
+      <div
+        role="button"
+        tabIndex={0}
+        aria-pressed={on}
+        data-status-key={item.key}
+        onClick={toggle}
+        onKeyDown={(e) => {
+          if (e.target !== e.currentTarget) return;
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            toggle();
+          }
+        }}
+        title={`${item.name}: ${money(item.value)} (${item.count}) — ${
+          on
+            ? t("Click to leave out", "Kliknutím vylúčite", "Kattintson a kizáráshoz")
+            : t("Click to count", "Kliknutím zahrniete", "Kattintson a beszámításhoz")
+        }`}
+        className={cn(
+          "inline-flex items-center gap-2 h-8 pl-2.5 pr-1 rounded-lg border whitespace-nowrap transition-colors cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40",
+          on
+            ? "text-white hover:brightness-110"
+            : "bg-white border-dashed border-slate-300 text-slate-500 hover:text-slate-700"
+        )}
+        style={on ? { backgroundColor: fill, borderColor: fill } : undefined}
+      >
+        <span className={cn("type-overline", !on && "line-through")}>{item.name}</span>
+        <span className={cn("text-ui font-bold tabular-nums", !on && "line-through")}>{money(item.value)}</span>
+        {showCounts && (
+          <span
+            className={cn(
+              "text-caption font-bold px-1.5 rounded-md",
+              on ? "bg-black/20" : "bg-slate-100 text-slate-500"
+            )}
+          >
+            {item.count}
+          </span>
+        )}
+        <button
+          type="button"
+          aria-label={t(
+            "Inspect calculated leads / projects",
+            "Zobraziť zoznam kalkulovaných obchodov/projektov",
+            "Kalkulált tételek részletes megtekintése"
+          )}
+          onClick={(e) => {
+            e.stopPropagation();
+            openDrawer(item);
+          }}
+          className={cn(
+            "flex items-center justify-center w-6 h-6 rounded-md transition-colors cursor-pointer",
+            on ? "hover:bg-black/20" : "hover:bg-slate-100"
+          )}
+        >
+          <Info className="h-3.5 w-3.5" strokeWidth={2.25} />
+        </button>
+      </div>
+    );
+  };
+
+  const cardActions = (
+    <>
+      {hasDisabled && (
+        <button
+          type="button"
+          onClick={enableAll}
+          className={cn(ghostButton, "text-indigo-600 hover:bg-indigo-50")}
+        >
+          <RotateCcw className="h-3.5 w-3.5" strokeWidth={2.25} />
+          {t("Select all", "Vybrať všetko", "Összes kijelölése")}
+        </button>
+      )}
+      {onShowCountsChange && (
+        <button
+          type="button"
+          aria-pressed={showCounts}
+          onClick={() => setShowCounts(!showCounts)}
+          title={
+            showCounts
+              ? t("Hide record counts", "Skryť počty záznamov", "Darabszámok elrejtése")
+              : t("Show record counts", "Zobraziť počty záznamov", "Darabszámok megjelenítése")
+          }
+          className={cn(
+            ghostButton,
+            showCounts
+              ? "text-indigo-600 bg-indigo-50 hover:bg-indigo-100"
+              : "text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+          )}
+        >
+          <Hash className="h-3.5 w-3.5" strokeWidth={2.25} />
+          {t("Counts", "Počty", "Darabszám")}
+        </button>
+      )}
+      <SegmentedToggle
+        value={view}
+        onChange={(next) => setView(next as StatusEquationView)}
+        options={[
+          { value: "detail", label: t("Detail", "Detail", "Részletes") },
+          { value: "summary", label: t("Summary", "Prehľad", "Összegzés") },
+        ]}
+      />
+    </>
+  );
 
   return (
     <>
-      <div
-        className={`glass-panel rounded-[26px] border ${themeClasses.border} ${themeClasses.bg} shadow-glass transition-all duration-300 overflow-hidden select-none`}
-      >
-        {/* Header bar / Expand toggle */}
-        <div
-          onClick={() => setIsExpanded((prev) => !prev)}
-          className="px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 cursor-pointer hover:bg-white/40 transition-colors"
+      <div data-status-equation>
+        <WidgetCard
+          icon={Calculator}
+          accent={ACCENTS[themeColor]}
+          title={title || defaultTitle}
+          actions={cardActions}
+          className="select-none"
         >
-          <div className="flex items-center gap-3 min-w-0">
-            <div
-              className={`h-9 w-9 rounded-2xl ${themeClasses.iconBg} flex items-center justify-center shadow-md shrink-0`}
-            >
-              <Calculator className="h-4.5 w-4.5 stroke-[2.5]" />
-            </div>
-            <div className="flex flex-col min-w-0">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-ui font-heading font-bold text-slate-800">
-                  {title || defaultTitle}
-                </span>
-                <span className="px-2 py-0.5 rounded-full type-overline bg-white border border-slate-200/80 text-slate-600 shadow-2xs">
-                  {items.length}{" "}
-                  {t("active statuses", "aktívnych stavov", "aktív állapot")}
-                </span>
-              </div>
-              <span className="text-micro font-semibold text-slate-400 mt-0.5 truncate max-w-md hidden ws-sm:block">
-                {subtitle || defaultSubtitle}
+          <div className="flex flex-col gap-3" title={subtitle || defaultSubtitle}>
+            <div className="flex items-baseline gap-2 flex-wrap">
+              <BigNumber>{money(totalValue)}</BigNumber>
+              <span className="text-ui font-semibold text-slate-500">
+                {t("invoicable in total", "na fakturovanie spolu", "számlázható összesen")}
+                {showCounts && ` · ${totalCount} ${resolvedUnitLabel}`}
+                {hasDisabled &&
+                  ` · ${enabledItems.length} ${t("of", "zo", "/")} ${items.length} ${t("statuses", "stavov", "állapot")}`}
               </span>
             </div>
+            <SegmentBar
+              thickness={12}
+              segments={enabledItems.map((item) => ({
+                key: item.key,
+                value: Number(item.value) || 0,
+                color: item.color || "#3b82f6",
+                label: `${item.name}: ${money(item.value)}`,
+              }))}
+            />
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
-            {/* Collapsed mini-teaser sum */}
-            {!isExpanded && (
-              <div className="flex items-center gap-2 px-3 py-1.5 rounded-xl bg-white/90 border border-slate-200/80 shadow-2xs">
-                <span className="type-overline text-slate-400">
-                  {t("Total:", "Spolu:", "Összesen:")}
-                </span>
-                <span className="text-ui font-bold text-slate-800 tabular-nums">
-                  {formatMoney(totalValue, resolvedCurrency, language, {
-                    minimumFractionDigits: 0,
-                    maximumFractionDigits: 2,
-                  })}
-                </span>
-                <span className="text-micro font-extrabold text-slate-400 bg-slate-100 px-1.5 py-0.5 rounded-md">
-                  {totalCount}
-                </span>
-              </div>
-            )}
-
-            {/* Quick toggle button */}
-            <button
-              type="button"
-              className="h-8 px-2.5 rounded-xl bg-white border border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50 transition-all type-overline flex items-center gap-1 shadow-2xs cursor-pointer"
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsExpanded((prev) => !prev);
-              }}
-            >
-              <span>{isExpanded ? t("Collapse", "Zbaliť", "Összecsukás") : t("Expand", "Rozbaliť", "Kibontás")}</span>
-              <ChevronDown
-                className={`h-3.5 w-3.5 stroke-[2.5] transition-transform duration-200 ${
-                  isExpanded ? "rotate-180" : ""
-                }`}
-              />
-            </button>
-          </div>
-        </div>
-
-        {/* Expanded Equation Section */}
-        {isExpanded && (
-          <div className="px-5 pb-5 pt-1 space-y-3 animate-in fade-in slide-in-from-top-2 duration-200 border-t border-slate-100/80">
-            {/* Quick Controls Bar if some are disabled */}
-            <div className="flex items-center justify-between gap-2 pt-1 text-micro font-bold text-slate-500">
-              <span className="text-micro font-semibold text-slate-400">
-                ({t("click Eye icon or badge to include/exclude; click (i) to inspect calculated items", "kliknutím na Oko/odznak zahrniete/vylúčite; kliknutím na (i) zobrazíte položky", "Kattintson a Szemre/jelvényre a ki/bekapcsoláshoz; kattintson az (i)-re a tételekhez")})
-              </span>
-              <div className="flex items-center gap-2 ml-auto">
-                {hasDisabled && (
-                  <button
-                    type="button"
-                    onClick={enableAll}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 text-indigo-600 hover:text-indigo-700 type-overline transition-colors shadow-2xs cursor-pointer"
-                    title={t("Enable all statuses", "Zapnúť všetky stavy", "Összes bekapcsolása")}
-                  >
-                    <RotateCcw className="h-3 w-3 stroke-[2.5]" />
-                    <span>{t("Enable All", "Zapnúť všetky", "Mind bekapcsolása")}</span>
-                  </button>
-                )}
-                {!hasDisabled && items.length > 1 && (
-                  <button
-                    type="button"
-                    onClick={disableAll}
-                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-white/80 border border-slate-200 hover:bg-slate-50 text-slate-500 hover:text-slate-700 type-overline transition-colors shadow-2xs cursor-pointer"
-                    title={t("Disable all statuses", "Vypnúť všetky stavy", "Összes kikapcsolása")}
-                  >
-                    <XCircle className="h-3 w-3 stroke-[2]" />
-                    <span>{t("Mute All", "Stlmiť všetky", "Mind elnémítása")}</span>
-                  </button>
-                )}
-              </div>
-            </div>
-
-            {/* Equation Formula: <status1> + <status2> + ... = total */}
-            <div className="p-3.5 bg-white/90 backdrop-blur-md rounded-2xl border border-slate-200/90 shadow-sm flex flex-wrap items-center gap-2 ws-sm:gap-2.5">
-              {items.map((item, index) => {
-                const isDisabled = disabledKeys.has(item.key);
-                const isEnabled = !isDisabled;
-                const customColor = item.color || "#3b82f6";
-                const textColor = isEnabled ? readableOn(customColor) : undefined;
-                const isLightFg = textColor === "#ffffff";
-
-                return (
+          {view === "detail" && (
+            <>
+              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2 border-t border-slate-100 pt-3.5">
+                {items.map((item, index) => (
                   <React.Fragment key={item.key}>
-                    {index > 0 && (
-                      <div className="flex items-center justify-center h-8 w-5 text-slate-300 font-bold text-body select-none shrink-0">
-                        +
-                      </div>
-                    )}
-
-                    <div
-                      onClick={() => toggleStatus(item.key)}
-                      title={
-                        isDisabled
-                          ? t(
-                              `Click to include ${item.name} in total`,
-                              `Kliknutím zahrniete ${item.name} do súčtu`,
-                              `Kattintson a(z) ${item.name} hozzáadásához a végösszeghez`
-                            )
-                          : t(
-                              `Click to exclude ${item.name} from total`,
-                              `Kliknutím vylúčite ${item.name} zo súčtu`,
-                              `Kattintson a(z) ${item.name} kizárásához a végösszegből`
-                            )
-                      }
-                      className={`group relative flex items-center gap-2 px-3 py-1.5 rounded-xl text-ui font-bold transition-all duration-150 cursor-pointer active:scale-98 ${
-                        isDisabled
-                          ? "bg-slate-100/90 border border-slate-200 text-slate-400 opacity-50 hover:opacity-75 shadow-2xs line-through"
-                          : "shadow-sm hover:shadow-md hover:brightness-105 border border-transparent"
-                      }`}
-                      style={
-                        isEnabled
-                          ? {
-                              backgroundColor: customColor,
-                              color: textColor,
-                              borderColor: customColor,
-                              boxShadow: `0 4px 12px -2px ${customColor}45`,
-                            }
-                          : undefined
-                      }
-                    >
-                      {/* 1. Show/Hide Eye Icon */}
-                      <span
-                        className="flex items-center justify-center p-0.5 rounded-md hover:bg-black/15 transition-colors shrink-0"
-                        title={
-                          isEnabled
-                            ? t("Click to hide / exclude", "Kliknutím skryjete / vylúčite", "Kattintson az elrejtéshez")
-                            : t("Click to show / include", "Kliknutím zobrazíte / zahrniete", "Kattintson a megjelenítéshez")
-                        }
-                      >
-                        {isEnabled ? (
-                          <Eye className="h-3.5 w-3.5 stroke-[2.5]" />
-                        ) : (
-                          <EyeOff className="h-3.5 w-3.5 stroke-[2.5]" />
-                        )}
-                      </span>
-
-                      {/* Status Name */}
-                      <span
-                        className="type-overline truncate"
-                        style={
-                          isEnabled
-                            ? {
-                                color: isLightFg
-                                  ? "rgba(255, 255, 255, 0.95)"
-                                  : "rgba(11, 18, 32, 0.9)",
-                              }
-                            : undefined
-                        }
-                      >
-                        {item.name}
-                      </span>
-
-                      {/* Monetary Value (Invoicable) */}
-                      <span
-                        className="font-mono font-bold tabular-nums text-ui ml-0.5"
-                        style={isEnabled ? { color: textColor } : undefined}
-                      >
-                        {formatMoney(item.value || 0, resolvedCurrency, language, {
-                          minimumFractionDigits: 0,
-                          maximumFractionDigits: 2,
-                        })}
-                      </span>
-
-                      {/* Count Badge */}
-                      <span
-                        className={`px-1.5 py-0.5 rounded-md text-micro font-extrabold tabular-nums leading-none transition-colors ${
-                          isDisabled
-                            ? "bg-slate-200 text-slate-400"
-                            : isLightFg
-                              ? "bg-white/25 text-white"
-                              : "bg-black/15 text-slate-950"
-                        }`}
-                        style={isEnabled ? { color: textColor } : undefined}
-                      >
-                        {item.count}
-                      </span>
-
-                      {/* 2. Info Icon Button (Opens Right Slideout) */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setDrawerSearch("");
-                          setDrawerData({
-                            itemName: item.name,
-                            itemColor: customColor,
-                            itemValue: item.value,
-                            itemCount: item.count,
-                            totalBudget: item.totalBudget,
-                            invoiced: item.invoiced,
-                            rows: item.rows || [],
-                          });
-                        }}
-                        className="ml-0.5 flex items-center justify-center h-5 w-5 rounded-full hover:bg-black/25 active:scale-90 transition-all cursor-pointer shrink-0"
-                        title={t(
-                          "Inspect calculated leads / projects",
-                          "Zobraziť zoznam kalkulovaných obchodov/projektov",
-                          "Kalkulált tételek részletes megtekintése"
-                        )}
-                      >
-                        <Info className="h-3.5 w-3.5 stroke-[2.5]" />
-                      </button>
-                    </div>
+                    {index > 0 && <span className="text-ui font-bold text-slate-300">+</span>}
+                    {statusPill(item)}
                   </React.Fragment>
-                );
-              })}
-
-              {/* Equals Sign */}
-              <div className="flex items-center justify-center h-8 w-6 text-slate-700 font-bold text-title-sm select-none shrink-0 px-0.5">
-                =
+                ))}
               </div>
 
-              {/* Total Pill */}
-              <div
-                className={`flex items-center gap-2.5 px-4 py-2 rounded-xl ${totalClasses.totalBg} transition-all duration-200 shrink-0`}
-              >
-                <div className="flex flex-col">
-                  <span className="type-overline leading-none text-white/80">
-                    {t("Total Invoicable", "Spolu na fakturáciu", "Összes számlázható")}
+              <CardFooter>
+                <span className="flex items-center gap-1.5 flex-wrap text-ui font-semibold text-slate-500 min-w-0">
+                  <span className="whitespace-nowrap">
+                    {enabledItems.length} {t("of", "zo", "/")} {items.length} {t("statuses", "stavov", "állapot")}
                   </span>
-                  <span className="font-mono font-bold text-body tabular-nums leading-tight tracking-tight mt-0.5">
-                    {formatMoney(totalValue, resolvedCurrency, language, {
-                      minimumFractionDigits: 0,
-                      maximumFractionDigits: 2,
-                    })}
-                  </span>
-                </div>
-
-                <div
-                  className={`px-2 py-0.5 rounded-lg ${totalClasses.totalBadgeBg} type-overline leading-none ml-1`}
+                  <Equal className="h-3 w-3 text-slate-400 shrink-0" strokeWidth={3} />
+                  <span className="font-bold text-slate-700 tabular-nums whitespace-nowrap">{money(totalValue)}</span>
+                </span>
+                <button
+                  type="button"
+                  onClick={disableAll}
+                  className={cn(ghostButton, "text-slate-500 hover:text-slate-700 hover:bg-slate-100 shrink-0")}
                 >
-                  {totalCount} {resolvedUnitLabel}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+                  <XCircle className="h-3.5 w-3.5" strokeWidth={2.25} />
+                  {t("Clear all", "Zrušiť všetko", "Minden törlése")}
+                </button>
+              </CardFooter>
+            </>
+          )}
+        </WidgetCard>
       </div>
 
-      {/* Right Slideout Drawer for Inspected Items */}
-      {drawerData && (
+      {/* Right Slideout Drawer for Inspected Items. Portalled: the card sits in a
+          transformed, animated ancestor that would otherwise become the containing
+          block of this fixed overlay. */}
+      {drawerData && createPortal(
         <div
           className="fixed inset-0 bg-slate-900/40 backdrop-blur-xs z-[9999] flex justify-end animate-fade-in"
           onClick={() => setDrawerData(null)}
@@ -610,7 +489,7 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
               <div className="flex items-center gap-3 min-w-0">
                 <div
                   className="h-10 w-10 rounded-2xl flex items-center justify-center text-white shadow-md shrink-0 font-heading font-bold text-body"
-                  style={{ backgroundColor: drawerData.itemColor }}
+                  style={{ backgroundColor: deepenForWhite(drawerData.itemColor) }}
                 >
                   {drawerData.itemCount}
                 </div>
@@ -618,7 +497,7 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
                   <div className="flex items-center gap-2">
                     <span
                       className="px-2 py-0.5 rounded-full type-overline text-white shadow-2xs"
-                      style={{ backgroundColor: drawerData.itemColor }}
+                      style={{ backgroundColor: deepenForWhite(drawerData.itemColor) }}
                     >
                       {drawerData.itemName}
                     </span>
@@ -854,7 +733,8 @@ export const StatusValueEquationStats: React.FC<StatusValueEquationStatsProps> =
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </>
   );

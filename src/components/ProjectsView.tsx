@@ -264,6 +264,16 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
   /* How the list is ordered. The table's column headers and the sort menu in the
      filter bar write the same DB-backed preference, so cards and table agree and
      the choice follows the user to their next device. */
+  /* The "Active Projects Budget Breakdown" panel's own adjustments — detail or
+     summary, whether to show counts, and the statuses left out of the total —
+     live in the same DB-backed preferences. Which statuses are "active" at all is
+     not one of them: that comes from the project status settings. */
+  const [storedEquationView, setEquationView] = useUserPref("projectsEquationView");
+  const [equationCounts, setEquationCounts] = useUserPref("projectsEquationCounts");
+  const [storedEquationExcluded, setEquationExcluded] = useUserPref("projectsEquationExcluded");
+  const equationView = storedEquationView === "summary" ? "summary" : "detail";
+  const equationExcluded = Array.isArray(storedEquationExcluded) ? storedEquationExcluded : [];
+
   const [storedSort, setStoredSort] = useUserPref("projectsSort");
   const sort = normalizeProjectSort(storedSort);
   /* The structure — the order dragged into place — rides along in the same
@@ -1686,28 +1696,17 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
             items={activeProjectStatusItems}
             currency={defaultCurrency}
             language={userLanguage}
-            title={
-              userLanguage === "sk"
-                ? "Prehľad rozpočtov aktívnych fáz"
-                : userLanguage === "hu"
-                  ? "Aktív fázisok összegének összesítése"
-                  : "Active Projects Budget Breakdown"
-            }
-            subtitle={
-              userLanguage === "sk"
-                ? "Kliknutím na stav ho zahrniete alebo vylúčite zo súčtu"
-                : userLanguage === "hu"
-                  ? "Kattintson egy állapotra a végösszegből való kizáráshoz/hozzáadáshoz"
-                  : "Click any status pill to toggle its inclusion in the equation total"
-            }
-            unitLabel={
-              userLanguage === "sk"
-                ? "projektov"
-                : userLanguage === "hu"
-                  ? "projekt"
-                  : "projects"
-            }
-            storageKey="ccrm_projects_equation_stats"
+            title={t(
+              "Active Projects Budget Breakdown",
+              "Prehľad rozpočtov aktívnych fáz",
+              "Aktív fázisok összegének összesítése",
+            )}
+            subtitle={t(
+              "Click any status pill to toggle its inclusion in the equation total",
+              "Kliknutím na stav ho zahrniete alebo vylúčite zo súčtu",
+              "Kattintson egy állapotra a végösszegből való kizáráshoz/hozzáadáshoz",
+            )}
+            unitLabel={t("projects", "projektov", "projekt")}
             themeColor="purple"
           />
 
@@ -1755,6 +1754,12 @@ export const ProjectsView: React.FC<ProjectsViewProps> = ({
                           "Zobrazené všetky stavy. Kliknutím zobrazíte iba aktívne.",
                           "Minden állapot látható. Kattintson csak az aktívak megjelenítéséhez.",
                         )
+            view={equationView}
+            onViewChange={setEquationView}
+            showCounts={equationCounts !== false}
+            onShowCountsChange={setEquationCounts}
+            excludedKeys={equationExcluded}
+            onExcludedKeysChange={setEquationExcluded}
                       : t(
                           "Click to show all statuses (including closed).",
                           "Kliknutím zobrazíte všetky stavy (vrátane uzavretých).",

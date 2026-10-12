@@ -9040,7 +9040,6 @@ export const LeadsDatagrid: React.FC<LeadsDatagridProps> = ({
                 }
                 storageKey="ccrm_leads_equation_stats"
                 themeColor="blue"
-                totalColor="emerald"
             />
 
             {/* 1. Sleek Minimalist Stage Counter Statistics Strip */}
