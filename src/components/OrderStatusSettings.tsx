@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from "react";
-import { GripVertical, Plus, ShoppingCart, Tag, X, CheckCircle2 } from "lucide-react";
+import { GripVertical, Plus, ShoppingCart, X, CheckCircle2 } from "lucide-react";
 import type { Order } from "../types";
 import type { Language } from "../utils/translations";
 import {
@@ -24,8 +24,6 @@ interface OrderStatusSettingsProps {
 }
 
 type Row = { type: "divider"; group: OrderStatusGroup } | { type: "status"; def: OrderStatusDef };
-
-const isOpenGroup = (g: OrderStatusGroup) => g === "new" || g === "processing" || g === "shipped";
 
 export const OrderStatusSettings: React.FC<OrderStatusSettingsProps> = ({
   statuses,
@@ -305,7 +303,7 @@ export const OrderStatusSettings: React.FC<OrderStatusSettingsProps> = ({
                   </td>
                   <td className="py-2.5 px-4">
                     <ColorPicker
-                      color={def.color}
+                      value={def.color}
                       onChange={(c) => handleColor(def.key, c)}
                       disabled={!canEdit}
                       title={label}
@@ -315,9 +313,12 @@ export const OrderStatusSettings: React.FC<OrderStatusSettingsProps> = ({
                     {canEdit ? (
                       <InlineRenameName
                         value={label}
-                        onSave={(val) => handleRename(def.key, val)}
-                        userLanguage={userLanguage}
-                      />
+                        canEdit={canEdit}
+                        onCommit={(val: string) => handleRename(def.key, val)}
+                        renameTitle={label}
+                      >
+                        {label}
+                      </InlineRenameName>
                     ) : (
                       label
                     )}

@@ -18,19 +18,12 @@ import {
   CreditCard,
   MapPin,
   Clock,
-  ChevronDown,
   AlertCircle,
   X,
-  TrendingUp,
-  ArrowRight
+  TrendingUp
 } from "lucide-react";
 import type {
   Order,
-  OrderItem,
-  OrderItemType,
-  OrderType,
-  CustomerType,
-  OrderPaymentStatus,
   Lead,
   WarehouseItem,
   Warehouse,
@@ -48,11 +41,9 @@ import { useOrderStatuses } from "../hooks/useOrderStatuses";
 import {
   orderStatusLabel,
   orderStatusColor,
-  calculateOrderItemTotals,
   calculateOrderTotals,
   generateOrderNumber,
   defaultOrderStatus,
-  type OrderStatusDef,
 } from "../utils/orders";
 import { OrderDetailView } from "./OrderDetailView";
 import { getDefaultVatRate } from "../utils/vat";
@@ -94,9 +85,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   warehouseItems = [],
   warehouses = [],
   setWarehouseMovements,
-  invoicesOffers = [],
+  invoicesOffers: _invoicesOffers = [],
   setInvoicesOffers,
-  financialRecords = [],
+  financialRecords: _financialRecords = [],
   setFinancialRecords,
   onAddTimelineEvent,
   systemCurrency,
@@ -164,17 +155,23 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
           const newLead: Lead = {
             id: data.client_id,
             name: order.billing?.name || order.guest?.company || order.guest?.name || t("New Client", "Nový klient", "Új ügyfél"),
-            company: order.billing?.name || order.guest?.company || order.guest?.name || t("New Client", "Nový klient", "Új ügyfél"),
             contactPerson: order.guest?.name || "",
             email: order.guest?.email || "",
             phone: order.guest?.phone || "",
-            ico: order.billing?.ico || order.guest?.ico || "",
-            dic: order.billing?.dic || order.guest?.dic || "",
-            icDph: order.billing?.icDph || order.guest?.icDph || "",
-            street: order.billing?.street || order.delivery?.street || "",
+            clientType: "business",
+            source: "manual",
+            owner: currentUser?.name || "",
+            value: 0,
+            companyId: order.billing?.ico || order.guest?.ico || "",
+            taxId: order.billing?.dic || order.guest?.dic || "",
+            vatId: order.billing?.icDph || order.guest?.icDph || "",
+            address: {
+              street: order.billing?.street || order.delivery?.street || "",
+              city: order.billing?.city || order.delivery?.city || "",
+              postalCode: order.billing?.zip || order.delivery?.zip || "",
+              country: order.billing?.country || order.delivery?.country || "SK"
+            },
             city: order.billing?.city || order.delivery?.city || "",
-            postalCode: order.billing?.zip || order.delivery?.zip || "",
-            country: order.billing?.country || order.delivery?.country || "SK",
             status: "Zákazník",
             createdAt: new Date().toISOString()
           };
@@ -269,11 +266,11 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
     // Resolve attached client
     let targetLead = order.clientId ? leads.find(l => l.id === order.clientId) : null;
     if (!targetLead && order.billing?.ico) {
-      targetLead = leads.find(l => l.ico && l.ico === order.billing?.ico) || null;
+      targetLead = leads.find(l => l.companyId && l.companyId === order.billing?.ico) || null;
     }
-    if (!targetLead && order.billing?.email) {
+    if (!targetLead && order.guest?.email) {
       targetLead = leads.find(
-        l => l.email && l.email.toLowerCase() === order.billing?.email?.toLowerCase()
+        l => l.email && l.email.toLowerCase() === order.guest?.email?.toLowerCase()
       ) || null;
     }
     if (!targetLead && order.billing?.name) {
@@ -312,24 +309,21 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       mode: "default",
       status: order.paymentStatus === "paid" ? "invoiced" : "sent",
       clientId: targetClientId,
-      leadId: targetClientId || undefined,
+      leadId: targetClientId || "",
       clientName,
-      clientIco: order.billing?.ico || order.guest?.ico || targetLead?.ico || undefined,
-      clientDic: order.billing?.dic || order.guest?.dic || targetLead?.dic || undefined,
-      clientIcDph: order.billing?.icDph || order.guest?.icDph || targetLead?.icDph || undefined,
-      clientStreet: order.billing?.street || order.delivery?.street || targetLead?.street || undefined,
+      clientIco: order.billing?.ico || order.guest?.ico || targetLead?.companyId || undefined,
+      clientDic: order.billing?.dic || order.guest?.dic || targetLead?.taxId || undefined,
+      clientIcdph: order.billing?.icDph || order.guest?.icDph || targetLead?.vatId || undefined,
+      clientStreet: order.billing?.street || order.delivery?.street || targetLead?.address?.street || undefined,
       clientCity: order.billing?.city || order.delivery?.city || targetLead?.city || undefined,
-      clientZip: order.billing?.zip || order.delivery?.zip || targetLead?.postalCode || undefined,
+      clientPostalCode: order.billing?.zip || order.delivery?.zip || targetLead?.address?.postalCode || undefined,
       clientCountry: order.billing?.country || order.delivery?.country || "SK",
       currency: order.currency || systemCurrency || "EUR",
       subtotal: order.totalNetAmount,
       vatAmount: order.totalTaxAmount,
       totalPrice: order.totalGrossAmount,
       issuedAt: order.orderDate || todayLocal(),
-      issueDate: order.orderDate || todayLocal(),
       dueDate: order.requestedDeliveryDate || todayLocalPlusDays(14),
-      paymentMethod: order.paymentMethod === "Dobierka" ? "cod" : "bank_transfer",
-      variableSymbol: order.paymentReference || order.orderNumber.replace(/[^0-9]/g, ""),
       items: invItems,
       uspCards: [],
       createdBy: currentUser?.name || null,
@@ -392,9 +386,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         timestamp: nowLocalStamp(),
         title: `${t("Invoice", "Faktúra", "Számla")} ${newInvoiceNumber}`,
         content: t(
-          `Invoice ${newInvoiceNumber} issued from order ${order.orderNumber} for ${formatMoney(order.totalGrossAmount, order.currency)}.`,
-          `Faktúra ${newInvoiceNumber} vystavená z objednávky ${order.orderNumber} v sume ${formatMoney(order.totalGrossAmount, order.currency)}.`,
-          `A(z) ${newInvoiceNumber} számla kiállítva a(z) ${order.orderNumber} rendelésből ${formatMoney(order.totalGrossAmount, order.currency)} összegben.`
+          `Invoice ${newInvoiceNumber} issued from order ${order.orderNumber} for ${formatMoney(order.totalGrossAmount, order.currency, userLanguage)}.`,
+          `Faktúra ${newInvoiceNumber} vystavená z objednávky ${order.orderNumber} v sume ${formatMoney(order.totalGrossAmount, order.currency, userLanguage)}.`,
+          `A(z) ${newInvoiceNumber} számla kiállítva a(z) ${order.orderNumber} rendelésből ${formatMoney(order.totalGrossAmount, order.currency, userLanguage)} összegben.`
         ),
         amount: order.totalGrossAmount,
         author: currentUser?.name || "CCRM"

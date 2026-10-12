@@ -8,8 +8,8 @@ import {
 } from "lucide-react";
 import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, Project, ProjectType, FinancialCategory, FinancialRecord, FinancialOperatingMode, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, CustomDashboard } from "../types";
 import { DEFAULT_VAT_RATES, DEFAULT_STANDARD_VAT_RATE, getAvailableVatRates, sanitizeVatRates } from "../utils/vat";
-import { DEFAULT_SHIPPING_METHODS, getAvailableShippingMethods } from "../utils/shipping";
-import { DEFAULT_PAYMENT_METHODS, DEFAULT_STANDARD_PAYMENT_METHOD, getAvailablePaymentMethods, getDefaultPaymentMethod } from "../utils/payment";
+import { DEFAULT_SHIPPING_METHODS } from "../utils/shipping";
+import { DEFAULT_PAYMENT_METHODS, DEFAULT_STANDARD_PAYMENT_METHOD } from "../utils/payment";
 import { leadAssignmentPanel, resolveAssignmentPool, type LeadAssignmentPanel } from "../utils/leadAssignment";
 import { normalizeSlaDays, type LeadStateSla } from "../utils/leadSla";
 import { listIdFor, nextListId, type ListIds } from "../utils/listIds";
@@ -1084,7 +1084,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // Role creation states
   const [newRoleName, setNewRoleName] = React.useState("");
 
-  const [activeSubTab, setActiveSubTab] = React.useState<"branding" | "modules" | "license" | "invoicing" | "finance" | "managers" | "rbac" | "states" | "sources" | "danger" | "ads" | "social" | "api" | "email" | "ai" | "unified" | "errors" | "projects">((initialSubTab as any) || "branding");
+  const [activeSubTab, setActiveSubTab] = React.useState<"branding" | "modules" | "license" | "invoicing" | "finance" | "managers" | "rbac" | "states" | "sources" | "danger" | "ads" | "social" | "api" | "email" | "ai" | "unified" | "errors" | "projects" | "orders">((initialSubTab as any) || "branding");
 
   // Zernio Social Media Integration State
   const [zernioApiKey, setZernioApiKey] = React.useState<string>(integrationsConfig?.zernioApiKey || "");
@@ -1356,7 +1356,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const [billingForm, setBillingForm] = React.useState<CompanyBillingSettings>(() => {
     const base = emptyBilling();
-    const loaded = companyBillingSettings || {};
+    const loaded: Partial<CompanyBillingSettings> = companyBillingSettings || {};
     return {
       ...base,
       ...loaded,

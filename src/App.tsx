@@ -3030,6 +3030,14 @@ ${log.payload || ''}
           leads={leads}
           setLeads={updateLeadsAndSync}
           orders={orders}
+          setOrders={updateOrdersAndSync}
+          orderAccess={access.module("orders")}
+          companyBillingSettings={companyBillingSettings}
+          warehouseItems={warehouseItems}
+          warehouses={warehouses}
+          setWarehouseMovements={updateWarehouseMovementsAndSync}
+          invoicesOffers={invoicesOffers}
+          setInvoicesOffers={updateInvoicesOffersAndSync}
           projectManagers={projectManagers}
           projectManagerColors={projectManagerColors}
           leadSources={leadSources}
@@ -3298,6 +3306,14 @@ ${log.payload || ''}
           <ClientsView
             leads={leads}
             orders={orders}
+            setOrders={updateOrdersAndSync}
+            orderAccess={access.module("orders")}
+            companyBillingSettings={companyBillingSettings}
+            warehouseItems={warehouseItems}
+            warehouses={warehouses}
+            setWarehouseMovements={updateWarehouseMovementsAndSync}
+            invoicesOffers={invoicesOffers}
+            setInvoicesOffers={updateInvoicesOffersAndSync}
             access={access.module("clients")}
             financeAccess={access.module("financial")}
             taskAccess={taskAccess}
@@ -3783,14 +3799,14 @@ ${log.payload || ''}
             pendingPushRef.current = false;
             setTimeout(() => {
               pushStateToServer(
-                // 22 positional "next…" slots precede the options object. Keep this
+                // 23 positional "next…" slots precede the options object. Keep this
                 // padding in step with the pushStateToServer signature: when the
-                // invoices/AI-template slots were added the options object silently
-                // slid into `nextInvoicesOffers`, corrupting the replayed payload.
+                // invoices/AI-template/orders slots were added the options object silently
+                // slid into payload arguments, corrupting the replayed payload.
                 undefined, undefined, undefined, undefined, undefined, undefined,
                 undefined, undefined, undefined, undefined, undefined,
                 undefined, undefined, undefined, undefined, undefined, undefined,
-                undefined, undefined, undefined, undefined, undefined,
+                undefined, undefined, undefined, undefined, undefined, undefined,
                 { showIndicator: false }
               );
             }, 0);

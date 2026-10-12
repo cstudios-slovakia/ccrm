@@ -8,11 +8,15 @@ import {
   X, FolderOpen, Download, Trash2, SlidersHorizontal,
   CornerDownLeft, CornerLeftDown, Loader2, Brain,
   ChevronLeft, ChevronRight, Milestone, Coins, Archive, ArchiveRestore, Settings,
-  AlertTriangle, CheckSquare, ShoppingCart, FileCheck
+  AlertTriangle, CheckSquare, ShoppingCart, FileCheck, ExternalLink
 } from "lucide-react";
-import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus, ClientCategory, UserProfile, Project, Order } from "../types";
+import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus, ClientCategory, UserProfile, Project, Order, WarehouseItem, Warehouse, WarehouseMovement, InvoiceOffer, InvoiceOfferItem, CompanyBillingSettings } from "../types";
 import { useOrderStatuses } from "../hooks/useOrderStatuses";
-import { orderStatusColor, orderStatusLabel } from "../utils/orders";
+import { orderStatusColor, orderStatusLabel, generateOrderNumber, calculateOrderTotals, defaultOrderStatus } from "../utils/orders";
+import { OrderDetailView } from "./OrderDetailView";
+import { getDefaultPaymentMethod } from "../utils/payment";
+import { getAvailableShippingMethods } from "../utils/shipping";
+import { getDefaultVatRate } from "../utils/vat";
 import { FULL_MODULE_ACCESS } from "../utils/permissions";
 import type { ModuleAccess } from "../utils/permissions";
 import { ClientCategoryBadge, ClientCategoryManager, ClientCategorySelect } from "./ClientCategories";
@@ -45,7 +49,7 @@ import { resolveCurrencySymbol, formatMoney } from "../utils/currency";
 import { resolveAssigneeName, type TaskAccess } from "../utils/taskSelectors";
 import { isDoneTaskState } from "../utils/projectTasks";
 import { isSystemMailConfigured } from "../utils/taskReminders";
-import { todayLocal, nowLocalStamp, formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
+import { todayLocal, todayLocalPlusDays, nowLocalStamp, formatDateLocalized, formatTimestampLocalized } from "../utils/localTime";
 import { chartTheme, useAppearance } from "../utils/theme";
 import { chartFonts, useViewSize } from "../utils/viewSize";
 import { mergeFinancialRecord, derivePaidDate, FINANCIAL_STATUS_OPTIONS } from "../utils/financialRecordMerge";
@@ -82,7 +86,14 @@ interface ClientsViewProps {
   financialRecords?: FinancialRecord[];
   setFinancialRecords?: React.Dispatch<React.SetStateAction<FinancialRecord[]>>;
   orders?: Order[];
-  setOrders?: React.Dispatch<React.SetStateAction<Order[]>>;
+  setOrders?: (orders: Order[] | ((prev: Order[]) => Order[])) => void;
+  orderAccess?: ModuleAccess;
+  companyBillingSettings?: CompanyBillingSettings | null;
+  warehouseItems?: WarehouseItem[];
+  warehouses?: Warehouse[];
+  setWarehouseMovements?: (movements: WarehouseMovement[] | ((prev: WarehouseMovement[]) => WarehouseMovement[])) => void;
+  invoicesOffers?: InvoiceOffer[];
+  setInvoicesOffers?: (invoices: InvoiceOffer[] | ((prev: InvoiceOffer[]) => InvoiceOffer[])) => void;
   financialCategories?: FinancialCategory[];
   setFinancialCategories?: React.Dispatch<React.SetStateAction<FinancialCategory[]>>;
   /** Customer categories (the Categories panel of the client register). */
@@ -431,6 +442,13 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   setFinancialRecords,
   orders = [],
   setOrders,
+  orderAccess,
+  companyBillingSettings,
+  warehouseItems = [],
+  warehouses = [],
+  setWarehouseMovements,
+  invoicesOffers: _invoicesOffers = [],
+  setInvoicesOffers,
   financialCategories = [],
   clientCategories = [],
   setClientCategories,
@@ -448,6 +466,8 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
   // open to a role that cannot edit, whatever the delete toggle says.
   const canEdit = access.edit;
   const canDelete = canEdit && access.delete;
+  const canEditOrders = orderAccess ? orderAccess.edit : canEdit;
+  const canDeleteOrders = orderAccess ? (orderAccess.edit && orderAccess.delete) : canDelete;
   // The invoice panel writes financialRecords, which the server gates on the
   // `financial` module, not `clients` — so it needs its own edit/delete
   // answer rather than inheriting canEdit/canDelete above.
@@ -1556,10 +1576,331 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
     return orders.filter((o) =>
       (primaryId && o.clientId === primaryId) ||
       (o.clientId && leadIds.includes(o.clientId)) ||
-      (o.customerType === "client" && o.clientId === activeClient.id) ||
       (o.billing?.name && activeClient.name && o.billing.name.toLowerCase() === activeClient.name.toLowerCase())
     );
   }, [orders, activeClient]);
+
+  const [editingOrder, setEditingOrder] = useState<Order | null>(null);
+
+  const handleOpenCreateOrder = () => {
+    if (!activeClient) return;
+    const matchedLead = leads.find(l => l.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase()) 
+      || activeClient.associatedLeads?.[0];
+    const targetLeadId = matchedLead?.id || activeClient.associatedLeads?.[0]?.id || "";
+
+    const recipientName = activeClient.contactPerson || matchedLead?.contactPerson || activeClient.name || "";
+    const billingName = activeClient.name || matchedLead?.name || "";
+    const street = activeClient.street || matchedLead?.address?.street || "";
+    const city = activeClient.city || matchedLead?.city || matchedLead?.address?.city || "";
+    const zip = activeClient.postalCode || matchedLead?.address?.postalCode || "";
+    const country = activeClient.country || matchedLead?.address?.country || "SK";
+    const phone = activeClient.phone || matchedLead?.phone || "";
+    const ico = activeClient.companyId || matchedLead?.companyId || (matchedLead as any)?.ico || "";
+    const dic = activeClient.taxId || matchedLead?.taxId || (matchedLead as any)?.dic || "";
+    const icDph = activeClient.vatId || matchedLead?.vatId || (matchedLead as any)?.icDph || "";
+
+    const availableShipping = getAvailableShippingMethods(companyBillingSettings);
+    const defaultShipping = availableShipping[0] || "Kuriér";
+    const defaultPayment = getDefaultPaymentMethod(companyBillingSettings);
+
+    const newOrd: Order = {
+      id: `ord_${Date.now()}`,
+      orderNumber: generateOrderNumber("OBJ", (orders?.length || 0) + 1),
+      type: "sales",
+      status: defaultOrderStatus(orderStatuses),
+      customerType: "client",
+      clientId: targetLeadId || null,
+      delivery: {
+        recipient: recipientName,
+        street,
+        city,
+        zip,
+        country,
+        phone
+      },
+      billing: {
+        name: billingName,
+        street,
+        city,
+        zip,
+        country,
+        ico,
+        dic,
+        icDph
+      },
+      shippingMethod: defaultShipping,
+      paymentMethod: defaultPayment,
+      paymentStatus: "unpaid",
+      currency: currencyCode || "EUR",
+      itemsNetAmount: 0,
+      servicesNetAmount: 0,
+      totalNetAmount: 0,
+      totalTaxAmount: 0,
+      totalGrossAmount: 0,
+      orderDate: todayLocal(),
+      items: []
+    };
+
+    setActiveDetailTab("orders");
+    setEditingOrder(newOrd);
+  };
+
+  const handleOpenEditOrder = (order: Order) => {
+    setEditingOrder(JSON.parse(JSON.stringify(order)));
+  };
+
+  const handleSaveOrder = async (orderToSave: Order) => {
+    const totals = calculateOrderTotals(orderToSave.items || []);
+    const completeOrder: Order = {
+      ...orderToSave,
+      ...totals
+    };
+
+    const isNew = !orders?.some(o => o.id === completeOrder.id);
+
+    setOrders?.(prev => {
+      const exists = prev.some(o => o.id === completeOrder.id);
+      if (exists) return prev.map(o => (o.id === completeOrder.id ? completeOrder : o));
+      return [completeOrder, ...prev];
+    });
+
+    if (isNew && activeClient) {
+      const newEvent: TimelineEvent = {
+        id: `event_ord_${Date.now()}`,
+        type: "note",
+        timestamp: nowLocalStamp(),
+        title: t(
+          `Order created: ${completeOrder.orderNumber}`,
+          `Vytvorená nová objednávka: ${completeOrder.orderNumber}`,
+          `Új rendelés létrehozva: ${completeOrder.orderNumber}`
+        ),
+        content: `${t("Total amount", "Celková suma", "Végösszeg")}: ${formatMoney(completeOrder.totalGrossAmount, completeOrder.currency || currencyCode || "EUR", systemLanguage)} (${(completeOrder.items || []).length} ${t("items", "položiek", "tétel")})`,
+        author: propCurrentUser?.name || "System"
+      };
+
+      setLeads(prev => prev.map(lead => {
+        if (lead.name.trim().toLowerCase() === activeClient.name.trim().toLowerCase()) {
+          const currentTimeline = lead.timeline || [];
+          return {
+            ...lead,
+            timeline: [newEvent, ...currentTimeline]
+          };
+        }
+        return lead;
+      }));
+    }
+
+    setEditingOrder(null);
+
+    try {
+      await fetch("/api/orders.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(completeOrder)
+      });
+      const toast = (window as unknown as { showToast?: (m: string) => void }).showToast;
+      toast?.(t("Order saved successfully!", "Objednávka bola úspešne uložená!", "A rendelés sikeresen elmentve!"));
+    } catch (e) {
+      console.error("Failed to save order to backend", e);
+    }
+  };
+
+  const handleDeleteOrder = async (orderToDelete: Order) => {
+    if (!window.confirm(t(
+      `Are you sure you want to delete order ${orderToDelete.orderNumber}?`,
+      `Naozaj chcete vymazať objednávku ${orderToDelete.orderNumber}?`,
+      `Biztosan törölni szeretné a(z) ${orderToDelete.orderNumber} számú rendelést?`
+    ))) {
+      return;
+    }
+
+    setOrders?.(prev => prev.filter(o => o.id !== orderToDelete.id));
+    setEditingOrder(null);
+
+    try {
+      await fetch(`/api/orders.php?id=${encodeURIComponent(orderToDelete.id)}`, {
+        method: "DELETE"
+      });
+      const toast = (window as unknown as { showToast?: (m: string) => void }).showToast;
+      toast?.(t("Order deleted successfully", "Objednávka bola úspešne vymazaná", "A rendelés sikeresen törölve"));
+    } catch (e) {
+      console.error("Failed to delete order from backend", e);
+    }
+  };
+
+  const handleFulfillWarehouse = (order: Order) => {
+    if (!canEditOrders || !setWarehouseMovements) return;
+    const physicalItems = (order.items || []).filter(i => i.itemType === "product" && i.quantity > 0);
+    if (physicalItems.length === 0) {
+      alert(t("This order contains no physical products to fulfill.", "Táto objednávka neobsahuje žiadne fyzické produkty na vyskladnenie.", "Ez a rendelés nem tartalmaz fizikai termékeket."));
+      return;
+    }
+
+    if (!confirm(t(`Create warehouse delivery note (výdajka) for ${physicalItems.length} products?`, `Vystaviť výdajku zo skladu pre ${physicalItems.length} produktov?`, `Kiállítja a raktári kiadási bizonylatot ${physicalItems.length} termékre?`))) return;
+
+    const warehouseId = order.warehouseId || (warehouses?.[0]?.id ?? "wh-default");
+    const newMovement: WarehouseMovement = {
+      id: `mov_${Date.now()}`,
+      documentNumber: `VYD-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000) + 1000)}`,
+      type: "outward",
+      status: "confirmed",
+      warehouseId,
+      leadId: order.clientId || undefined,
+      totalCostValue: 0,
+      totalSellValue: order.itemsNetAmount,
+      totalProfitValue: 0,
+      createdBy: propCurrentUser?.name || "System",
+      note: `${t("Order fulfillment", "Vyskladnenie k objednávke", "Rendelés teljesítése")}: ${order.orderNumber}`,
+      issuedAt: new Date().toISOString().split("T")[0],
+      createdAt: new Date().toISOString(),
+      items: physicalItems.map(item => ({
+        id: `mov_item_${Date.now()}_${Math.random()}`,
+        itemId: item.itemId || item.id,
+        quantity: item.quantity,
+        unitPurchasePrice: 0,
+        unitSellPrice: item.unitPrice,
+        totalPrice: item.totalNetAmount,
+        note: item.name
+      }))
+    };
+
+    setWarehouseMovements(prev => [newMovement, ...prev]);
+    const toast = (window as unknown as { showToast?: (m: string) => void }).showToast;
+    toast?.(t(`Delivery note ${newMovement.documentNumber} created!`, `Výdajka ${newMovement.documentNumber} bola úspešne vytvorená!`, `A(z) ${newMovement.documentNumber} kiadási bizonylat elkészült!`));
+  };
+
+  const handleCreateInvoice = async (order: Order) => {
+    if (!canEditOrders || !setInvoicesOffers) return;
+
+    if (order.invoiceNumber) {
+      const reconfirm = confirm(
+        t(
+          `Invoice ${order.invoiceNumber} was already created for order ${order.orderNumber}. Do you want to re-issue / create a new invoice?`,
+          `K objednávke ${order.orderNumber} už bola vytvorená faktúra ${order.invoiceNumber}. Želáte si vystaviť novú faktúru?`,
+          `A(z) ${order.orderNumber} rendeléshez már kiállították a(z) ${order.invoiceNumber} számlát. Új számlát kíván kiállítani?`
+        )
+      );
+      if (!reconfirm) return;
+    } else {
+      if (
+        !confirm(
+          t(
+            `Create invoice from order ${order.orderNumber}?`,
+            `Vystaviť faktúru z objednávky ${order.orderNumber}?`,
+            `Számla kiállítása a(z) ${order.orderNumber} rendelésből?`
+          )
+        )
+      ) {
+        return;
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+    const newInvoiceId = `inv_${Date.now()}`;
+    const newInvoiceNumber = `FA-${new Date().getFullYear()}-${String(
+      Math.floor(Math.random() * 9000) + 1000
+    )}`;
+
+    let targetLead = order.clientId ? leads.find(l => l.id === order.clientId) : null;
+    if (!targetLead && order.billing?.ico) {
+      targetLead = leads.find(l => l.companyId && l.companyId === order.billing?.ico) || null;
+    }
+    if (!targetLead && order.guest?.email) {
+      targetLead = leads.find(
+        l => l.email && l.email.toLowerCase() === order.guest?.email?.toLowerCase()
+      ) || null;
+    }
+    if (!targetLead && order.billing?.name) {
+      targetLead = leads.find(
+        l => l.name && l.name.toLowerCase() === order.billing?.name?.toLowerCase()
+      ) || null;
+    }
+
+    const targetClientId = targetLead?.id || order.clientId || null;
+    const clientName =
+      targetLead?.name ||
+      order.billing?.name ||
+      order.guest?.company ||
+      order.guest?.name ||
+      "";
+
+    const invItems: InvoiceOfferItem[] = (order.items || []).map(i => ({
+      id: `inv_item_${Date.now()}_${Math.random()}`,
+      warehouseItemId: i.itemId || null,
+      sku: i.sku || null,
+      name: i.name + (i.variantTitle ? ` (${i.variantTitle})` : ""),
+      quantity: i.quantity,
+      unit: i.unit || "ks",
+      unitPrice: i.unitPrice,
+      vatRate: i.taxRate !== undefined ? i.taxRate : getDefaultVatRate(companyBillingSettings),
+      discountPct: i.discountPercent || 0,
+      totalPrice: i.totalGrossAmount
+    }));
+
+    const newInvoice: InvoiceOffer = {
+      id: newInvoiceId,
+      documentNumber: newInvoiceNumber,
+      title: `${t("Invoice", "Faktúra", "Számla")} ${newInvoiceNumber} — ${order.orderNumber}`,
+      subject: `${t("Order", "Objednávka", "Rendelés")} ${order.orderNumber}`,
+      type: "invoice",
+      mode: "default",
+      status: order.paymentStatus === "paid" ? "invoiced" : "sent",
+      clientId: targetClientId,
+      leadId: targetClientId || "",
+      clientName,
+      clientIco: order.billing?.ico || order.guest?.ico || targetLead?.companyId || undefined,
+      clientDic: order.billing?.dic || order.guest?.dic || targetLead?.taxId || undefined,
+      clientIcdph: order.billing?.icDph || order.guest?.icDph || targetLead?.vatId || undefined,
+      clientStreet: order.billing?.street || order.delivery?.street || targetLead?.address?.street || undefined,
+      clientCity: order.billing?.city || order.delivery?.city || targetLead?.city || undefined,
+      clientPostalCode: order.billing?.zip || order.delivery?.zip || targetLead?.address?.postalCode || undefined,
+      clientCountry: order.billing?.country || order.delivery?.country || "SK",
+      currency: order.currency || currencyCode || "EUR",
+      subtotal: order.totalNetAmount,
+      vatAmount: order.totalTaxAmount,
+      totalPrice: order.totalGrossAmount,
+      issuedAt: order.orderDate || todayLocal(),
+      dueDate: order.requestedDeliveryDate || todayLocalPlusDays(14),
+      items: invItems,
+      uspCards: [],
+      createdBy: propCurrentUser?.name || null,
+      createdAt: nowIso,
+      updatedAt: nowIso
+    };
+
+    setInvoicesOffers?.(prev => [newInvoice, ...prev]);
+
+    const updatedOrder: Order = {
+      ...order,
+      clientId: targetClientId || order.clientId,
+      customerType: targetClientId ? "client" : order.customerType,
+      invoiceId: newInvoiceId,
+      invoiceNumber: newInvoiceNumber,
+      invoiceIssuedAt: nowIso,
+      updatedAt: nowIso
+    };
+
+    setOrders?.(prev => prev.map(o => (o.id === updatedOrder.id ? updatedOrder : o)));
+    setEditingOrder(updatedOrder);
+
+    try {
+      await fetch("/api/orders.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updatedOrder)
+      });
+      const toast = (window as unknown as { showToast?: (m: string) => void }).showToast;
+      toast?.(
+        t(
+          `Invoice ${newInvoiceNumber} created for order!`,
+          `Faktúra ${newInvoiceNumber} bola úspešne vystavená!`,
+          `A(z) ${newInvoiceNumber} számla sikeresen kiállítva!`
+        )
+      );
+    } catch (e) {
+      console.error("Failed to update order with invoice", e);
+    }
+  };
 
   const handleOpenClientInvoiceModal = (inv?: FinancialRecord) => {
     if (!canEdit) return;
@@ -2951,6 +3292,33 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
       );
     }
 
+    if (editingOrder !== null) {
+      return (
+        <OrderDetailView
+          order={editingOrder}
+          onSave={handleSaveOrder}
+          onClose={() => setEditingOrder(null)}
+          onDelete={handleDeleteOrder}
+          onFulfillWarehouse={handleFulfillWarehouse}
+          onCreateInvoice={handleCreateInvoice}
+          leads={leads}
+          setLeads={setLeads}
+          warehouseItems={warehouseItems}
+          warehouses={warehouses}
+          orderStatuses={orderStatuses}
+          systemCurrency={currencyCode || "EUR"}
+          userLanguage={systemLanguage}
+          canEdit={canEditOrders}
+          canDelete={canDeleteOrders}
+          onOpenClient={() => {
+            setEditingOrder(null);
+          }}
+          backLabel={t("Back to Client", "Späť na klienta", "Vissza az ügyfélhez")}
+          companyBillingSettings={companyBillingSettings}
+        />
+      );
+    }
+
     return (
       <div className="space-y-6 select-none animate-fade-in text-slate-800 pb-16 relative">
         {/* Entity header: back · avatar · title, badges and meta beneath, actions at the right */}
@@ -2992,6 +3360,17 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                       </span>
           }
           actions={<>
+          {canEditOrders && (
+            <button
+              type="button"
+              onClick={handleOpenCreateOrder}
+              className="h-9 px-3 rounded-xl border border-indigo-200 bg-indigo-50/80 hover:bg-indigo-100 text-indigo-700 transition-all text-ui font-semibold flex items-center gap-1.5 shadow-xs active:scale-95 cursor-pointer"
+              title={t("Place new order for this client", "Vystaviť novú objednávku pre tohto klienta", "Új rendelés feladása")}
+            >
+              <ShoppingCart className="h-4 w-4 stroke-[2.5]" />
+              <span>{t("New order", "Nová objednávka", "Új rendelés")}</span>
+            </button>
+          )}
           <button
             type="button"
             onClick={() => setClientArchived(activeClient.name, !activeClient.archived)}
@@ -5091,11 +5470,42 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         {t("History of all commercial and e-shop orders placed by this client.", "História všetkých obchodných a e-shopových objednávok tohto klienta.", "Az ügyfél összes rendelése.")}
                       </p>
                     </div>
+
+                    {canEditOrders && (
+                      <button
+                        type="button"
+                        onClick={handleOpenCreateOrder}
+                        className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl text-ui font-bold transition-all flex items-center gap-1.5 shadow-md shadow-indigo-500/20 active:scale-95 cursor-pointer shrink-0"
+                      >
+                        <Plus className="h-4 w-4" />
+                        <span>{t("New Order", "Nová objednávka", "Új rendelés")}</span>
+                      </button>
+                    )}
                   </div>
 
                   {clientOrders.length === 0 ? (
-                    <div className="p-8 text-center bg-slate-50/60 rounded-2xl border border-dashed border-slate-200 text-slate-400 text-caption">
-                      {t("This client has no recorded orders yet.", "Tento klient zatiaľ nemá žiadne zaznamenané objednávky.", "Ennek az ügyfélnek még nincsenek rendelései.")}
+                    <div className="p-8 text-center bg-slate-50/60 rounded-2xl border border-dashed border-slate-200 text-slate-400 text-caption space-y-3">
+                      <div className="w-12 h-12 mx-auto rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-500">
+                        <ShoppingCart className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <p className="font-semibold text-slate-600">
+                          {t("This client has no recorded orders yet.", "Tento klient zatiaľ nemá žiadne zaznamenané objednávky.", "Ennek az ügyfélnek még nincsenek rendelései.")}
+                        </p>
+                        <p className="text-micro text-slate-400 mt-0.5">
+                          {t("Create a commercial or e-shop order for this client directly.", "Vytvorte obchodnú alebo e-shopovú objednávku priamo pre tohto klienta.", "Hozzon létre rendelést közvetlenül ehhez az ügyfélhez.")}
+                        </p>
+                      </div>
+                      {canEditOrders && (
+                        <button
+                          type="button"
+                          onClick={handleOpenCreateOrder}
+                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-caption font-bold transition-all inline-flex items-center gap-1.5 shadow-sm active:scale-95 cursor-pointer"
+                        >
+                          <Plus className="h-4 w-4" />
+                          <span>{t("Place Order", "Vystaviť objednávku", "Rendelés leadása")}</span>
+                        </button>
+                      )}
                     </div>
                   ) : (
                     <div className="space-y-2.5">
@@ -5105,17 +5515,15 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                         return (
                           <div
                             key={order.id}
-                            className="p-3.5 rounded-2xl bg-white border border-slate-200/80 shadow-xs hover:shadow-sm transition-all flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3"
+                            className="p-3.5 rounded-2xl bg-white border border-slate-200/80 shadow-xs hover:shadow-sm hover:border-indigo-200 transition-all flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3 group"
                           >
                             <div className="space-y-1">
                               <div className="flex items-center gap-2">
                                 <button
                                   type="button"
-                                  onClick={() => {
-                                    window.location.hash = `orders/${encodeURIComponent(order.id)}`;
-                                  }}
+                                  onClick={() => handleOpenEditOrder(order)}
                                   className="font-mono font-bold text-caption text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer transition-colors text-left"
-                                  title={t("Open order", "Otvoriť objednávku", "Rendelés megnyitása")}
+                                  title={t("Open and edit order", "Otvoriť a upraviť objednávku", "Rendelés megnyitása és szerkesztése")}
                                 >
                                   {order.orderNumber}
                                 </button>
@@ -5144,25 +5552,48 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                               </div>
                             </div>
 
-                            <div className="text-right">
-                              <div className="font-mono font-bold text-ui text-slate-900">
-                                {order.totalGrossAmount.toFixed(2)} {order.currency || currencyCode || "EUR"}
-                              </div>
-                              <div className="flex items-center justify-end gap-1.5 mt-1 flex-wrap">
-                                {order.invoiceNumber && (
-                                  <span
-                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-micro font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60 font-mono"
-                                    title={t("Invoice created", "Faktúra vystavená", "Számla kiállítva")}
-                                  >
-                                    <FileCheck className="w-3 h-3 text-emerald-600" />
-                                    {order.invoiceNumber}
+                            <div className="flex items-center gap-4 justify-between ws-sm:justify-end">
+                              <div className="text-right">
+                                <div className="font-mono font-bold text-ui text-slate-900">
+                                  {order.totalGrossAmount.toFixed(2)} {order.currency || currencyCode || "EUR"}
+                                </div>
+                                <div className="flex items-center justify-end gap-1.5 mt-1 flex-wrap">
+                                  {order.invoiceNumber && (
+                                    <span
+                                      className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-micro font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60 font-mono"
+                                      title={t("Invoice created", "Faktúra vystavená", "Számla kiállítva")}
+                                    >
+                                      <FileCheck className="w-3 h-3 text-emerald-600" />
+                                      {order.invoiceNumber}
+                                    </span>
+                                  )}
+                                  <span className={`inline-block px-1.5 py-0.5 rounded text-micro font-bold ${
+                                    order.paymentStatus === "paid" ? "text-emerald-700 bg-emerald-50" : "text-amber-700 bg-amber-50"
+                                  }`}>
+                                    {order.paymentStatus === "paid" ? t("Paid", "Zaplatené", "Fizetve") : t("Unpaid", "Nezaplatené", "Fizetetlen")}
                                   </span>
-                                )}
-                                <span className={`inline-block px-1.5 py-0.5 rounded text-micro font-bold ${
-                                  order.paymentStatus === "paid" ? "text-emerald-700 bg-emerald-50" : "text-amber-700 bg-amber-50"
-                                }`}>
-                                  {order.paymentStatus === "paid" ? t("Paid", "Zaplatené", "Fizetve") : t("Unpaid", "Nezaplatené", "Fizetetlen")}
-                                </span>
+                                </div>
+                              </div>
+
+                              <div className="flex items-center gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenEditOrder(order)}
+                                  className="p-2 rounded-xl text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 transition-all cursor-pointer"
+                                  title={t("Edit order", "Upraviť objednávku", "Rendelés szerkesztése")}
+                                >
+                                  <PencilLine className="w-4 h-4" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    window.location.hash = `orders/${encodeURIComponent(order.id)}`;
+                                  }}
+                                  className="p-2 rounded-xl text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-all cursor-pointer"
+                                  title={t("Open in Orders view", "Otvoriť v sekcii Objednávky", "Megnyitás a Rendelések nézetben")}
+                                >
+                                  <ExternalLink className="w-4 h-4" />
+                                </button>
                               </div>
                             </div>
                           </div>

@@ -3,7 +3,6 @@ import {
   ShoppingCart,
   Search,
   Plus,
-  Package,
   FileText,
   UserCheck,
   User,
@@ -22,15 +21,10 @@ import {
   Mail,
   AlertCircle,
   X,
-  Layers,
-  Wrench,
   Coins,
   PackageCheck,
   Save,
-  ArrowLeft,
   ShoppingBag,
-  Boxes,
-  HelpCircle,
   RotateCcw,
   FileCheck
 } from "lucide-react";
@@ -38,16 +32,10 @@ import type {
   Order,
   OrderItem,
   OrderItemType,
-  OrderType,
-  CustomerType,
   OrderPaymentStatus,
   Lead,
   WarehouseItem,
   Warehouse,
-  WarehouseMovement,
-  InvoiceOffer,
-  UserProfile,
-  PermissionValue,
   CompanyBillingSettings
 } from "../types";
 import type { Language } from "../utils/translations";
@@ -84,6 +72,7 @@ export interface OrderDetailViewProps {
   canDelete?: boolean;
   onOpenClient?: (clientId: string) => void;
   companyBillingSettings?: CompanyBillingSettings | null;
+  backLabel?: string;
 }
 
 export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
@@ -103,7 +92,8 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
   canEdit,
   canDelete,
   onOpenClient,
-  companyBillingSettings
+  companyBillingSettings,
+  backLabel
 }) => {
   const t = (en: string, sk: string, hu: string) =>
     userLanguage === "sk" ? sk : userLanguage === "hu" ? hu : en;
@@ -231,9 +221,8 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
     return leads
       .filter(l =>
         l.name.toLowerCase().includes(q) ||
-        (l.company && l.company.toLowerCase().includes(q)) ||
         (l.email && l.email.toLowerCase().includes(q)) ||
-        (l.ico && l.ico.includes(q)) ||
+        (l.companyId && l.companyId.includes(q)) ||
         (l.city && l.city.toLowerCase().includes(q))
       )
       .slice(0, 15);
@@ -315,22 +304,22 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
       delivery: {
         ...prev.delivery,
         recipient: client.contactPerson || client.name,
-        street: client.street || prev.delivery?.street,
-        city: client.city || prev.delivery?.city,
-        zip: client.postalCode || prev.delivery?.zip,
-        country: client.country || prev.delivery?.country || "SK",
+        street: client.address?.street || prev.delivery?.street,
+        city: client.city || client.address?.city || prev.delivery?.city,
+        zip: client.address?.postalCode || prev.delivery?.zip,
+        country: client.address?.country || prev.delivery?.country || "SK",
         phone: client.phone || prev.delivery?.phone
       },
       billing: {
         ...prev.billing,
-        name: client.company || client.name,
-        street: client.street || prev.billing?.street,
-        city: client.city || prev.billing?.city,
-        zip: client.postalCode || prev.billing?.zip,
-        country: client.country || prev.billing?.country || "SK",
-        ico: client.ico || prev.billing?.ico,
-        dic: client.dic || prev.billing?.dic,
-        icDph: client.icDph || prev.billing?.icDph
+        name: client.name,
+        street: client.address?.street || prev.billing?.street,
+        city: client.city || client.address?.city || prev.billing?.city,
+        zip: client.address?.postalCode || prev.billing?.zip,
+        country: client.address?.country || prev.billing?.country || "SK",
+        ico: client.companyId || prev.billing?.ico,
+        dic: client.taxId || prev.billing?.dic,
+        icDph: client.vatId || prev.billing?.icDph
       }
     }));
     setIsClientSearchOpen(false);
@@ -464,7 +453,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
       {/* 1. TOP ENTITY HEADER (Standardized with Leads and Projects) */}
       <EntityHeader
         onBack={onClose}
-        backLabel={t("Back to Orders", "Späť na objednávky", "Vissza a rendelésekhez")}
+        backLabel={backLabel || t("Back to Orders", "Späť na objednávky", "Vissza a rendelésekhez")}
         avatar={
           <div className="size-12 rounded-2xl bg-gradient-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center font-bold text-title shadow-md shrink-0">
             <ShoppingCart className="size-6 text-white" />
@@ -704,7 +693,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                       onFocus={() => setIsClientSearchOpen(true)}
                       placeholder={
                         selectedClient
-                          ? selectedClient.company || selectedClient.name
+                          ? selectedClient.name
                           : t("Search client by name, company, email, IČO…", "Hľadať klienta podľa mena, firmy, IČO…", "Ügyfél keresése név, cég, adószám alapján…")
                       }
                       className="w-full pl-10 pr-9 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 placeholder:text-slate-400 focus:outline-none focus:bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all font-medium"
@@ -747,12 +736,12 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                           >
                             <div className="min-w-0">
                               <p className="text-ui font-bold text-slate-800 truncate">
-                                {c.company || c.name}
+                                {c.name}
                               </p>
                               <p className="text-micro text-slate-500 truncate">
                                 {c.contactPerson && `${c.contactPerson} • `}
                                 {c.city && `${c.city} • `}
-                                {c.ico && `IČO: ${c.ico}`}
+                                {c.companyId && `IČO: ${c.companyId}`}
                               </p>
                             </div>
                             {formData.clientId === c.id && (
@@ -801,11 +790,11 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
 
                     <div className="flex items-center gap-3">
                       <div className="size-10 rounded-xl bg-gradient-to-br from-emerald-500 to-emerald-600 text-white flex items-center justify-center font-bold text-ui shadow-xs shrink-0">
-                        {getInitials(selectedClient.company || selectedClient.name)}
+                        {getInitials(selectedClient.name)}
                       </div>
                       <div className="min-w-0">
                         <h4 className="text-body font-bold text-slate-900 truncate">
-                          {selectedClient.company || selectedClient.name}
+                          {selectedClient.name}
                         </h4>
                         {selectedClient.contactPerson && (
                           <p className="text-micro font-semibold text-emerald-800">
@@ -828,9 +817,9 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                           <span>{selectedClient.phone}</span>
                         </div>
                       )}
-                      {selectedClient.ico && (
+                      {selectedClient.companyId && (
                         <div className="text-emerald-800">
-                          <span className="text-emerald-600 font-bold">IČO:</span> {selectedClient.ico}
+                          <span className="text-emerald-600 font-bold">IČO:</span> {selectedClient.companyId}
                         </div>
                       )}
                       {selectedClient.city && (
@@ -1158,9 +1147,9 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                       >
                         {copiedTracking ? <Check className="size-3.5 text-emerald-600" /> : <Copy className="size-3.5" />}
                       </button>
-                      {formatCarrierTrackingUrl(formData.shippingMethod, formData.shippingTrackingNumber) && (
+                      {formatCarrierTrackingUrl(formData.shippingMethod || undefined, formData.shippingTrackingNumber || undefined) && (
                         <a
-                          href={formatCarrierTrackingUrl(formData.shippingMethod, formData.shippingTrackingNumber) || "#"}
+                          href={formatCarrierTrackingUrl(formData.shippingMethod || undefined, formData.shippingTrackingNumber || undefined) || "#"}
                           target="_blank"
                           rel="noreferrer"
                           className="p-1.5 text-blue-600 hover:text-blue-800 rounded-lg hover:bg-blue-50 transition-colors"
@@ -1495,8 +1484,8 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                 </label>
                 <textarea
                   rows={2}
-                  value={formData.internalNotes || ""}
-                  onChange={e => setFormData({ ...formData, internalNotes: e.target.value })}
+                  value={formData.notes || ""}
+                  onChange={e => setFormData({ ...formData, notes: e.target.value })}
                   placeholder={t("Private internal notes for team…", "Interné informácie pre tím…", "Belső feljegyzés a csapatnak…")}
                   className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 font-medium"
                 />
@@ -1764,7 +1753,7 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                   </div>
 
                   {/* Rows */}
-                  {formData.items.map((item, idx) => (
+                  {(formData.items || []).map((item, idx) => (
                     <div key={item.id || idx} className="p-3.5 hover:bg-slate-50/80 transition-colors grid grid-cols-12 gap-2 items-center">
                       {/* Name & Type */}
                       <div className="col-span-5 space-y-1">
