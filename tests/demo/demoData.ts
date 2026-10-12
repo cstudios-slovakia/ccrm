@@ -1988,6 +1988,13 @@ export const COMPANY_BILLING = {
     'Slovenská pošta',
     'Osobný odber',
   ],
+  paymentMethods: [
+    'Prevod na účet',
+    'Dobierka',
+    'Platobná karta',
+    'Hotovosť',
+  ],
+  defaultPaymentMethod: 'Prevod na účet',
   defaultWarrantyText: '10 rokov na hydroizoláciu, 5 rokov na klampiarske prvky',
   defaultDurationText: '3–4 týždne',
   defaultStartDateText: 'Do 6 týždňov od podpisu',

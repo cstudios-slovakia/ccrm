@@ -61,6 +61,7 @@ import {
 } from "../utils/orders";
 import { getAvailableVatRates, getDefaultVatRate } from "../utils/vat";
 import { getAvailableShippingMethods } from "../utils/shipping";
+import { getAvailablePaymentMethods, getDefaultPaymentMethod } from "../utils/payment";
 
 export interface OrderDetailViewProps {
   order: Order;
@@ -117,9 +118,23 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
     () => getAvailableShippingMethods(companyBillingSettings),
     [companyBillingSettings]
   );
+  const availablePaymentMethods = useMemo(
+    () => getAvailablePaymentMethods(companyBillingSettings),
+    [companyBillingSettings]
+  );
+  const defaultPaymentMethod = useMemo(
+    () => getDefaultPaymentMethod(companyBillingSettings),
+    [companyBillingSettings]
+  );
 
   const isNew = !order.createdAt && !order.updatedAt;
-  const [formData, setFormData] = useState<Order>(() => JSON.parse(JSON.stringify(order)));
+  const [formData, setFormData] = useState<Order>(() => {
+    const copy = JSON.parse(JSON.stringify(order));
+    if (!copy.createdAt && !copy.updatedAt && !copy.paymentMethod) {
+      copy.paymentMethod = getDefaultPaymentMethod(companyBillingSettings);
+    }
+    return copy;
+  });
 
   const displayedShippingMethods = useMemo(() => {
     const current = formData.shippingMethod?.trim();
@@ -128,6 +143,22 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
     }
     return availableShippingMethods;
   }, [formData.shippingMethod, availableShippingMethods]);
+
+  const displayedPaymentMethods = useMemo(() => {
+    const current = formData.paymentMethod?.trim();
+    if (current && !availablePaymentMethods.includes(current)) {
+      return [current, ...availablePaymentMethods];
+    }
+    return availablePaymentMethods;
+  }, [formData.paymentMethod, availablePaymentMethods]);
+
+  const paymentMethodLabel = (method: string) => {
+    if (method === "Prevod na účet") return t("Bank Wire Transfer", "Prevod na účet", "Banki átutalás");
+    if (method === "Dobierka") return t("Cash on Delivery (COD)", "Dobierka", "Utánvét");
+    if (method === "Platobná karta") return t("Credit / Debit Card", "Platobná karta", "Bankkártya");
+    if (method === "Hotovosť") return t("Cash", "Hotovosť", "Készpénz");
+    return method;
+  };
 
   const [isSaving, setIsSaving] = useState(false);
   const [copiedTracking, setCopiedTracking] = useState(false);
@@ -1241,14 +1272,15 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                   {t("Payment Method", "Spôsob platby", "Fizetési mód")}
                 </label>
                 <select
-                  value={formData.paymentMethod || "Prevod na účet"}
+                  value={formData.paymentMethod || defaultPaymentMethod}
                   onChange={e => setFormData({ ...formData, paymentMethod: e.target.value })}
-                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  className="w-full px-3.5 py-2 bg-slate-50 border border-slate-200 rounded-xl text-ui text-slate-800 font-semibold focus:bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer"
                 >
-                  <option value="Prevod na účet">{t("Bank Wire Transfer", "Prevod na účet", "Banki átutalás")}</option>
-                  <option value="Dobierka">{t("Cash on Delivery (COD)", "Dobierka", "Utánvét")}</option>
-                  <option value="Platobná karta">{t("Credit / Debit Card", "Platobná karta", "Bankkártya")}</option>
-                  <option value="Hotovosť">{t("Cash", "Hotovosť", "Készpénz")}</option>
+                  {displayedPaymentMethods.map(m => (
+                    <option key={m} value={m}>
+                      {paymentMethodLabel(m)}
+                    </option>
+                  ))}
                 </select>
               </div>
 

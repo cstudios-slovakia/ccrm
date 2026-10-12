@@ -9,6 +9,7 @@ import {
 import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, Project, ProjectType, FinancialCategory, FinancialRecord, FinancialOperatingMode, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, CustomDashboard } from "../types";
 import { DEFAULT_VAT_RATES, DEFAULT_STANDARD_VAT_RATE, getAvailableVatRates, sanitizeVatRates } from "../utils/vat";
 import { DEFAULT_SHIPPING_METHODS, getAvailableShippingMethods } from "../utils/shipping";
+import { DEFAULT_PAYMENT_METHODS, DEFAULT_STANDARD_PAYMENT_METHOD, getAvailablePaymentMethods, getDefaultPaymentMethod } from "../utils/payment";
 import { leadAssignmentPanel, resolveAssignmentPool, type LeadAssignmentPanel } from "../utils/leadAssignment";
 import { normalizeSlaDays, type LeadStateSla } from "../utils/leadSla";
 import { listIdFor, nextListId, type ListIds } from "../utils/listIds";
@@ -18,6 +19,7 @@ import { ProjectSettings } from "./ProjectSettings";
 import { ProjectStatusSettings } from "./ProjectStatusSettings";
 import { OrderStatusSettings } from "./OrderStatusSettings";
 import { ShippingMethodSettings } from "./ShippingMethodSettings";
+import { PaymentMethodSettings } from "./PaymentMethodSettings";
 import { FinanceSettings } from "./FinanceSettings";
 import type { ProjectStatusDef } from "../utils/projects";
 import type { OrderStatusDef } from "../utils/orders";
@@ -1337,6 +1339,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     defaultVatRate: DEFAULT_STANDARD_VAT_RATE,
     vatRates: [...DEFAULT_VAT_RATES],
     shippingMethods: [...DEFAULT_SHIPPING_METHODS],
+    paymentMethods: [...DEFAULT_PAYMENT_METHODS],
+    defaultPaymentMethod: DEFAULT_STANDARD_PAYMENT_METHOD,
     defaultWarrantyText: "",
     defaultDurationText: "",
     defaultStartDateText: "",
@@ -1358,7 +1362,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       ...loaded,
       defaultVatRate: loaded.defaultVatRate !== undefined ? loaded.defaultVatRate : base.defaultVatRate,
       vatRates: loaded.vatRates && loaded.vatRates.length > 0 ? loaded.vatRates : base.vatRates,
-      shippingMethods: loaded.shippingMethods && loaded.shippingMethods.length > 0 ? loaded.shippingMethods : base.shippingMethods
+      shippingMethods: loaded.shippingMethods && loaded.shippingMethods.length > 0 ? loaded.shippingMethods : base.shippingMethods,
+      paymentMethods: loaded.paymentMethods && loaded.paymentMethods.length > 0 ? loaded.paymentMethods : base.paymentMethods,
+      defaultPaymentMethod: loaded.defaultPaymentMethod || base.defaultPaymentMethod
     };
   });
 
@@ -1373,7 +1379,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           : (prev.vatRates && prev.vatRates.length > 0 ? prev.vatRates : [...DEFAULT_VAT_RATES]),
         shippingMethods: companyBillingSettings.shippingMethods && companyBillingSettings.shippingMethods.length > 0
           ? companyBillingSettings.shippingMethods
-          : (prev.shippingMethods && prev.shippingMethods.length > 0 ? prev.shippingMethods : [...DEFAULT_SHIPPING_METHODS])
+          : (prev.shippingMethods && prev.shippingMethods.length > 0 ? prev.shippingMethods : [...DEFAULT_SHIPPING_METHODS]),
+        paymentMethods: companyBillingSettings.paymentMethods && companyBillingSettings.paymentMethods.length > 0
+          ? companyBillingSettings.paymentMethods
+          : (prev.paymentMethods && prev.paymentMethods.length > 0 ? prev.paymentMethods : [...DEFAULT_PAYMENT_METHODS]),
+        defaultPaymentMethod: companyBillingSettings.defaultPaymentMethod || prev.defaultPaymentMethod || DEFAULT_STANDARD_PAYMENT_METHOD
       }));
     }
   }, [companyBillingSettings]);
@@ -4274,6 +4284,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             )}
 
             <ShippingMethodSettings
+              companyBillingSettings={companyBillingSettings}
+              setCompanyBillingSettings={setCompanyBillingSettings}
+              userLanguage={userLanguage}
+              canEdit={getPermission("general_config") === "edit"}
+            />
+
+            <PaymentMethodSettings
               companyBillingSettings={companyBillingSettings}
               setCompanyBillingSettings={setCompanyBillingSettings}
               userLanguage={userLanguage}

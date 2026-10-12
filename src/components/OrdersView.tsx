@@ -60,6 +60,7 @@ import {
 } from "../utils/orders";
 import { OrderDetailView } from "./OrderDetailView";
 import { getDefaultVatRate } from "../utils/vat";
+import { getDefaultPaymentMethod } from "../utils/payment";
 
 export interface OrdersViewProps {
   orders: Order[];
@@ -373,7 +374,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
         zip: "",
         country: "SK"
       },
-      paymentMethod: "Prevod na účet",
+      paymentMethod: getDefaultPaymentMethod(companyBillingSettings),
       paymentStatus: "unpaid",
       currency: systemCurrency || "EUR",
       itemsNetAmount: 0,
