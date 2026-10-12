@@ -38,6 +38,22 @@ try {
     $pdo->exec("SET FOREIGN_KEY_CHECKS = 0;");
 
     // Clear transactional tables
+    $pdo->exec("DELETE FROM `order_items`;");
+    $pdo->exec("DELETE FROM `orders`;");
+    $pdo->exec("DELETE FROM `invoice_offer_items`;");
+    $pdo->exec("DELETE FROM `invoices_offers`;");
+    $pdo->exec("DELETE FROM `warehouse_movement_items`;");
+    $pdo->exec("DELETE FROM `warehouse_movements`;");
+    $pdo->exec("DELETE FROM `warehouse_batches`;");
+    $pdo->exec("DELETE FROM `warehouse_stock`;");
+    $pdo->exec("DELETE FROM `warehouse_items`;");
+    $pdo->exec("DELETE FROM `warehouses`;");
+    $pdo->exec("DELETE FROM `suppliers`;");
+    $pdo->exec("DELETE FROM `project_managers`;");
+    $pdo->exec("DELETE FROM `projects`;");
+    $pdo->exec("DELETE FROM `employee_vacations`;");
+    $pdo->exec("DELETE FROM `employee_salaries`;");
+    $pdo->exec("DELETE FROM `employees`;");
     $pdo->exec("DELETE FROM `timeline_events`;");
     $pdo->exec("DELETE FROM `lead_categories`;");
     $pdo->exec("DELETE FROM `leads`;");
@@ -50,6 +66,9 @@ try {
         $pdo->exec("DELETE FROM `financial_categories`;");
         if ($pdo->query("SHOW TABLES LIKE 'client_categories'")->rowCount() > 0) {
             $pdo->exec("DELETE FROM `client_categories`;");
+        }
+        if ($pdo->query("SHOW TABLES LIKE 'project_types'")->rowCount() > 0) {
+            $pdo->exec("DELETE FROM `project_types`;");
         }
         // Preserve the language the CRM was installed in BEFORE dropping the
         // settings, so the reset re-seeds the pipeline labels in that language

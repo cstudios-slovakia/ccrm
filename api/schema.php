@@ -1337,6 +1337,9 @@ if (!function_exists('ccrm_schema_statements')) {
         ccrm_seed_default_employees($pdo);
         ccrm_migrate_user_role_varchar($pdo);
         ccrm_migrate_orders($pdo);
+        ccrm_seed_default_warehouses_and_items($pdo);
+        ccrm_seed_default_orders($pdo);
+        ccrm_seed_default_invoices_and_projects($pdo);
     }
 
     /**
@@ -2201,6 +2204,1077 @@ if (!function_exists('ccrm_schema_statements')) {
             }
         } catch (\Throwable $e) {
             error_log('[ccrm schema] employees seed skipped: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Seeds demo warehouses, suppliers, warehouse items, initial stock, batches, and movements.
+     */
+    function ccrm_seed_default_warehouses_and_items(PDO $pdo, string $systemLanguage = 'sk'): void {
+        try {
+            $hasTable = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'warehouses'")->fetchColumn();
+            if ($hasTable === 0) return;
+
+            $demoMode = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'DEMO_MODE'");
+            if (!$demoMode || $demoMode->fetchColumn() !== 'true') return;
+
+            $count = (int)$pdo->query("SELECT COUNT(*) FROM `warehouses`")->fetchColumn();
+            if ($count > 0) return;
+
+            if (!in_array($systemLanguage, ['en', 'sk', 'hu'], true)) {
+                $systemLanguage = 'sk';
+                $stmtLang = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'SYSTEM_LANGUAGE'");
+                if ($stmtLang && ($val = $stmtLang->fetchColumn()) !== false) {
+                    if (in_array($val, ['en', 'sk', 'hu'], true)) {
+                        $systemLanguage = $val;
+                    }
+                }
+            }
+
+            // 1. Warehouses
+            $whTexts = [
+                'sk' => [
+                    'wh1_name' => 'Hlavný sklad Bratislava',
+                    'wh2_name' => 'Výrobný sklad Trnava',
+                ],
+                'en' => [
+                    'wh1_name' => 'Main Warehouse Bratislava',
+                    'wh2_name' => 'Production Warehouse Trnava',
+                ],
+                'hu' => [
+                    'wh1_name' => 'Fő raktár Pozsony',
+                    'wh2_name' => 'Gyártási raktár Nagyszombat',
+                ],
+            ];
+            $tWh = $whTexts[$systemLanguage] ?? $whTexts['sk'];
+
+            $warehouses = [
+                ['wh-1', $tWh['wh1_name'], 'WH-BA-01', 'Vajnorská 142, 831 04 Bratislava', 'u-' . md5('alex@crm.com'), 1],
+                ['wh-2', $tWh['wh2_name'], 'WH-TT-01', 'Zavarská 11, 917 01 Trnava', 'u-' . md5('sam@crm.com'), 0],
+            ];
+            $insWh = $pdo->prepare("INSERT INTO `warehouses` (`id`, `name`, `code`, `address`, `manager_user_id`, `is_default`) VALUES (?, ?, ?, ?, ?, ?)");
+            foreach ($warehouses as $w) {
+                $insWh->execute($w);
+            }
+
+            // 2. Suppliers
+            $suppliers = [
+                [
+                    'sup-1',
+                    'Laminam Slovakia s.r.o.',
+                    '48123456',
+                    '2120123456',
+                    'SK2120123456',
+                    'Prievozská 4D',
+                    'Bratislava',
+                    '821 09',
+                    'Slovakia',
+                    'objednavky@laminam.sk',
+                    '+421 905 111 222',
+                    'https://laminam.sk',
+                    'SK8902000000001234567890',
+                    'SUBA SK BX',
+                    14,
+                    'Oficiálny distribútor veľkoformátových keramických a quartzových dosiek.',
+                    json_encode([
+                        ['name' => 'Peter Kováč', 'position' => 'Obchodný riaditeľ', 'phone' => '+421 905 111 222', 'email' => 'kovac@laminam.sk'],
+                        ['name' => 'Lucia Vargová', 'position' => 'Zákaznícky servis', 'phone' => '+421 905 111 223', 'email' => 'vargova@laminam.sk']
+                    ])
+                ],
+                [
+                    'sup-2',
+                    'Stone Import Verona S.r.l.',
+                    'IT0987654321',
+                    'IT0987654321',
+                    'IT0987654321',
+                    'Via del Marmo 45',
+                    'Verona',
+                    '37135',
+                    'Italy',
+                    'export@stoneverona.it',
+                    '+39 045 889 900',
+                    'https://stoneverona.it',
+                    'IT60X0542811101000000123456',
+                    'UNCRITM1VER',
+                    30,
+                    'Dodávateľ prírodného mramoru, žuly a kvarcitu priamo z talianskych lomov.',
+                    json_encode([
+                        ['name' => 'Marco Rossi', 'position' => 'Export Area Manager', 'phone' => '+39 340 123 4567', 'email' => 'm.rossi@stoneverona.it']
+                    ])
+                ],
+                [
+                    'sup-3',
+                    'Mapei Slovensko s.r.o.',
+                    '35890123',
+                    '2021890123',
+                    'SK2021890123',
+                    'Nádražná 39',
+                    'Ivanka pri Dunaji',
+                    '900 28',
+                    'Slovakia',
+                    'predaj@mapei.sk',
+                    '+421 2 4020 4511',
+                    'https://mapei.sk',
+                    'SK1211000000002621234567',
+                    'TATR SK BX',
+                    14,
+                    'Špičková stavebná chémia, lepidlá triedy S1/S2 a škárovacie hmoty.',
+                    json_encode([
+                        ['name' => 'Ing. Ján Novotný', 'position' => 'Technický zástupca', 'phone' => '+421 911 333 444', 'email' => 'j.novotny@mapei.sk']
+                    ])
+                ]
+            ];
+            $insSup = $pdo->prepare("INSERT INTO `suppliers` (`id`, `name`, `company_id`, `tax_id`, `vat_id`, `street`, `city`, `postal_code`, `country`, `email`, `phone`, `website`, `iban`, `swift`, `payment_due_days`, `notes`, `contacts_json`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            foreach ($suppliers as $s) {
+                $insSup->execute($s);
+            }
+
+            // 3. Warehouse Items
+            $itemTexts = [
+                'sk' => [
+                    'it1_name' => 'Calacatta Gold Quartz doska 20mm',
+                    'it1_desc' => 'Prémiový technický kameň so zlatistým žilkovaním, lesklý povrch, formát 3200x1600mm.',
+                    'it1_cat'  => 'Veľkoformátové dosky',
+                    'it1_unit' => 'm²',
+                    'it2_name' => 'Nero Marquina mramor doska 30mm',
+                    'it2_desc' => 'Čierny španielsky mramor s výraznými bielymi žilami, leštený.',
+                    'it2_cat'  => 'Prírodný kameň',
+                    'it2_unit' => 'm²',
+                    'it3_name' => 'Patagonia Quartzite doska 20mm',
+                    'it3_desc' => 'Exkluzívny translucentný brazílsky kvarcit s kryštálmi živca a kremeňa.',
+                    'it3_cat'  => 'Prírodný kameň',
+                    'it3_unit' => 'm²',
+                    'it4_name' => 'Keraflex Maxi S1 cementové lepidlo 25kg',
+                    'it4_desc' => 'Deformovateľné cementové lepidlo so zníženým vertikálnym sklzom a predĺženou dobou zavädnutia na kamenné dosky.',
+                    'it4_cat'  => 'Stavebná chémia',
+                    'it4_unit' => 'balenie',
+                    'it5_name' => 'Tenax Ager impregnácia a zvýrazňovač farby 1L',
+                    'it5_desc' => 'Vysokoúčinná impregnácia s mokrým efektom pre zvýraznenie štruktúry lešteného a matného kameňa.',
+                    'it5_cat'  => 'Ošetrenie a údržba',
+                    'it5_unit' => 'ks',
+                ],
+                'en' => [
+                    'it1_name' => 'Calacatta Gold Quartz Slab 20mm',
+                    'it1_desc' => 'Premium engineered quartz with golden veining, polished finish, format 3200x1600mm.',
+                    'it1_cat'  => 'Large Format Slabs',
+                    'it1_unit' => 'm²',
+                    'it2_name' => 'Nero Marquina Marble Slab 30mm',
+                    'it2_desc' => 'Black Spanish marble with distinct white veining, polished.',
+                    'it2_cat'  => 'Natural Stone',
+                    'it2_unit' => 'm²',
+                    'it3_name' => 'Patagonia Quartzite Slab 20mm',
+                    'it3_desc' => 'Exclusive translucent Brazilian quartzite with feldspar and quartz crystals.',
+                    'it3_cat'  => 'Natural Stone',
+                    'it3_unit' => 'm²',
+                    'it4_name' => 'Keraflex Maxi S1 Cement Adhesive 25kg',
+                    'it4_desc' => 'Deformable cementitious adhesive with no vertical slip and extended open time for stone slabs.',
+                    'it4_cat'  => 'Building Chemicals',
+                    'it4_unit' => 'pack',
+                    'it5_name' => 'Tenax Ager Stone Enhancer & Sealer 1L',
+                    'it5_desc' => 'High performance wet-look colour enhancer and sealer for polished and honed stones.',
+                    'it5_cat'  => 'Care & Maintenance',
+                    'it5_unit' => 'pcs',
+                ],
+                'hu' => [
+                    'it1_name' => 'Calacatta Gold Quartz lap 20mm',
+                    'it1_desc' => 'Prémium műkő arany erezettel, polírozott felülettel, 3200x1600mm méretben.',
+                    'it1_cat'  => 'Nagyméretű lapok',
+                    'it1_unit' => 'm²',
+                    'it2_name' => 'Nero Marquina márványlap 30mm',
+                    'it2_desc' => 'Fekete spanyol márvány markáns fehér erezettel, polírozva.',
+                    'it2_cat'  => 'Természetes kő',
+                    'it2_unit' => 'm²',
+                    'it3_name' => 'Patagonia Kvarcit lap 20mm',
+                    'it3_desc' => 'Exkluzív áttetsző brazil kvarcit földpát és kvarc kristályokkal.',
+                    'it3_cat'  => 'Természetes kő',
+                    'it3_unit' => 'm²',
+                    'it4_name' => 'Keraflex Maxi S1 cementkötésű ragasztó 25kg',
+                    'it4_desc' => 'Alakváltozásra képes, lecsúszásmentes, nyújtott nyitott idejű cementkötésű ragasztó kőlapokhoz.',
+                    'it4_cat'  => 'Építési vegyi anyagok',
+                    'it4_unit' => 'csomag',
+                    'it5_name' => 'Tenax Ager színélénkítő kőimpregnáló 1L',
+                    'it5_desc' => 'Nagy hatékonyságú színélénkítő nedves hatású impregnáló polírozott és matt kövekhez.',
+                    'it5_cat'  => 'Ápolás és karbantartás',
+                    'it5_unit' => 'db',
+                ],
+            ];
+            $tIt = $itemTexts[$systemLanguage] ?? $itemTexts['sk'];
+
+            $items = [
+                ['item-1', 'SKU-CQ-01', '858800123401', $tIt['it1_name'], $tIt['it1_desc'], $tIt['it1_cat'], $tIt['it1_unit'], 20.00, 80.00, 'A-01-RACK', 0, 'https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=300&h=300&fit=crop', 185.00, 95.0000, 95.00],
+                ['item-2', 'SKU-NM-02', '858800123402', $tIt['it2_name'], $tIt['it2_desc'], $tIt['it2_cat'], $tIt['it2_unit'], 15.00, 50.00, 'A-03-RACK', 0, 'https://images.unsplash.com/photo-1590381105924-c72589b9ef3f?w=300&h=300&fit=crop', 210.00, 110.0000, 110.00],
+                ['item-3', 'SKU-PQ-03', '858800123403', $tIt['it3_name'], $tIt['it3_desc'], $tIt['it3_cat'], $tIt['it3_unit'], 10.00, 30.00, 'A-05-RACK', 0, 'https://images.unsplash.com/photo-1618221195710-dd6b41faaea6?w=300&h=300&fit=crop', 340.00, 190.0000, 190.00],
+                ['item-4', 'SKU-MAP-04', '858800123404', $tIt['it4_name'], $tIt['it4_desc'], $tIt['it4_cat'], $tIt['it4_unit'], 30.00, 100.00, 'CHEM-PAL-02', 1, 'https://images.unsplash.com/photo-1581092160607-ee22621dd758?w=300&h=300&fit=crop', 24.50, 14.2000, 14.20],
+                ['item-5', 'SKU-TNX-05', '858800123405', $tIt['it5_name'], $tIt['it5_desc'], $tIt['it5_cat'], $tIt['it5_unit'], 10.00, 40.00, 'CHEM-SHELF-01', 1, 'https://images.unsplash.com/photo-1584308666744-24d5c474f2ae?w=300&h=300&fit=crop', 42.00, 22.8000, 22.80]
+            ];
+            $insItem = $pdo->prepare("INSERT INTO `warehouse_items` (`id`, `sku`, `barcode`, `name`, `description`, `category`, `unit`, `min_stock`, `optimal_stock`, `default_location`, `has_expiration`, `image_url`, `default_sell_price`, `avg_purchase_price`, `last_purchase_price`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            foreach ($items as $it) {
+                $insItem->execute($it);
+            }
+
+            // 4. Stock
+            $stock = [
+                ['wh-1', 'item-1', 45.00, 12.00, 'A-01-RACK'],
+                ['wh-1', 'item-2', 28.00, 0.00, 'A-03-RACK'],
+                ['wh-1', 'item-4', 65.00, 10.00, 'CHEM-PAL-02'],
+                ['wh-1', 'item-5', 18.00, 0.00, 'CHEM-SHELF-01'],
+                ['wh-2', 'item-3', 16.00, 0.00, 'TT-RACK-01'],
+                ['wh-2', 'item-4', 20.00, 0.00, 'TT-CHEM-01']
+            ];
+            $insStock = $pdo->prepare("INSERT INTO `warehouse_stock` (`warehouse_id`, `item_id`, `quantity`, `reserved_quantity`, `location`) VALUES (?, ?, ?, ?, ?)");
+            foreach ($stock as $st) {
+                $insStock->execute($st);
+            }
+
+            // 5. Batches
+            $batches = [
+                ['bat-1', 'item-4', 'wh-1', 'BAT-2026-001', '2026-11-30', 40.00, 40.00, 14.20],
+                ['bat-2', 'item-4', 'wh-1', 'BAT-2025-089', '2026-09-05', 30.00, 25.00, 13.80],
+                ['bat-3', 'item-5', 'wh-1', 'BAT-2026-TX1', '2027-06-15', 20.00, 18.00, 22.80]
+            ];
+            $insBatch = $pdo->prepare("INSERT INTO `warehouse_batches` (`id`, `item_id`, `warehouse_id`, `batch_number`, `expiration_date`, `initial_quantity`, `current_quantity`, `purchase_price`) VALUES (?, ?, ?, ?, ?, ?, ?, ?)");
+            foreach ($batches as $b) {
+                $insBatch->execute($b);
+            }
+
+            // 6. Movements
+            $movements = [
+                [
+                    'mov-1', 'PRI-2026-0001', 'inward', 'confirmed', 'wh-1', null, 'sup-1', null,
+                    4275.00, 8325.00, 4050.00, 'Alex',
+                    'Príjem dodávky Calacatta Gold dosiek od Laminam SK.',
+                    'dodaci_list_laminam_001.pdf', null, '2026-05-02 09:30:00',
+                    [
+                        ['mvi-1', 'item-1', null, 45.00, 95.00, 185.00, 4275.00, null, 'Dosky v bezchybnom stave, opticky skontrolované.']
+                    ]
+                ],
+                [
+                    'mov-2', 'PRI-2026-0002', 'inward', 'confirmed', 'wh-1', null, 'sup-3', null,
+                    923.00, 1592.50, 669.50, 'Alex',
+                    'Príjem palety Keraflex Maxi S1 z Mapei.',
+                    'dl_mapei_9812.pdf', null, '2026-05-04 14:15:00',
+                    [
+                        ['mvi-2', 'item-4', 'bat-1', 65.00, 14.20, 24.50, 923.00, '2026-11-30', 'Paleta 1/1, šarža BAT-2026-001.']
+                    ]
+                ],
+                [
+                    'mov-3', 'VYD-2026-0001', 'outward', 'confirmed', 'wh-1', null, null, 'lead-1',
+                    1140.00, 2220.00, 1080.00, 'Alex',
+                    'Výdaj materiálu na zákazku kuchynskej dosky pre klienta Ján Novák.',
+                    null, null, '2026-05-16 11:00:00',
+                    [
+                        ['mvi-3', 'item-1', null, 12.00, 95.00, 185.00, 2220.00, null, 'Vydané do výroby na CNC opracovanie.']
+                    ]
+                ]
+            ];
+
+            $insMov = $pdo->prepare("INSERT INTO `warehouse_movements` (`id`, `document_number`, `type`, `status`, `warehouse_id`, `target_warehouse_id`, `supplier_id`, `lead_id`, `total_cost_value`, `total_sell_value`, `total_profit_value`, `created_by`, `note`, `file_name`, `file_path`, `issued_at`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+            $insMovItem = $pdo->prepare("INSERT INTO `warehouse_movement_items` (`id`, `movement_id`, `item_id`, `batch_id`, `quantity`, `unit_purchase_price`, `unit_sell_price`, `total_price`, `expiration_date`, `note`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+
+            foreach ($movements as $m) {
+                $itemsList = array_pop($m);
+                $insMov->execute($m);
+                foreach ($itemsList as $it) {
+                    $insMovItem->execute([$it[0], $m[0], $it[1], $it[2], $it[3], $it[4], $it[5], $it[6], $it[7], $it[8]]);
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] warehouse seed skipped: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Seeds demo sales orders and line items for demo installations.
+     */
+    function ccrm_seed_default_orders(PDO $pdo, string $systemLanguage = 'sk'): void {
+        try {
+            $hasTable = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'orders'")->fetchColumn();
+            if ($hasTable === 0) return;
+
+            $demoMode = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'DEMO_MODE'");
+            if (!$demoMode || $demoMode->fetchColumn() !== 'true') return;
+
+            $count = (int)$pdo->query("SELECT COUNT(*) FROM `orders`")->fetchColumn();
+            if ($count > 0) return;
+
+            if (!in_array($systemLanguage, ['en', 'sk', 'hu'], true)) {
+                $systemLanguage = 'sk';
+                $stmtLang = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'SYSTEM_LANGUAGE'");
+                if ($stmtLang && ($val = $stmtLang->fetchColumn()) !== false) {
+                    if (in_array($val, ['en', 'sk', 'hu'], true)) {
+                        $systemLanguage = $val;
+                    }
+                }
+            }
+
+            $orderTexts = [
+                'sk' => [
+                    's1_name' => 'Kuriérska preprava DPD',
+                    's2_name' => 'SPS Kuriér na adresu',
+                    's3_name' => 'Packeta Z-Box výdajné miesto',
+                    's4_name' => 'Dobierka príplatok',
+                    's5_name' => 'GLS Špeciálna paletová preprava',
+                    'it1_name' => 'Calacatta Gold Quartz doska 20mm',
+                    'it2_name' => 'Nero Marquina mramor doska 30mm',
+                    'it4_name' => 'Keraflex Maxi S1 cementové lepidlo 25kg',
+                    'it5_name' => 'Tenax Ager impregnácia a zvýrazňovač farby 1L',
+                    'unit_pack' => 'balenie',
+                    'unit_pcs' => 'ks',
+                    'unit_srv' => 'služba',
+                    'ord1_note' => 'Prosím doručiť pred 16:00, zvonček Novák.',
+                    'ord2_note' => 'Nechať na recepcii v prípade neprítomnosti.',
+                    'ord3_note' => 'Výdajné miesto Z-Box Nitra Mlyny.',
+                    'ord4_note' => 'Dodanie s hydraulickým čelom na stavbu.',
+                ],
+                'en' => [
+                    's1_name' => 'DPD Express Courier',
+                    's2_name' => 'SPS Courier to Address',
+                    's3_name' => 'Packeta Z-Box Pick-up Point',
+                    's4_name' => 'Cash on Delivery Surcharge',
+                    's5_name' => 'GLS Freight Pallet Transport',
+                    'it1_name' => 'Calacatta Gold Quartz Slab 20mm',
+                    'it2_name' => 'Nero Marquina Marble Slab 30mm',
+                    'it4_name' => 'Keraflex Maxi S1 Cement Adhesive 25kg',
+                    'it5_name' => 'Tenax Ager Stone Enhancer & Sealer 1L',
+                    'unit_pack' => 'pack',
+                    'unit_pcs' => 'pcs',
+                    'unit_srv' => 'service',
+                    'ord1_note' => 'Please deliver before 16:00, ring bell Novák.',
+                    'ord2_note' => 'Leave at reception if absent.',
+                    'ord3_note' => 'Pick-up location Z-Box Nitra Mlyny.',
+                    'ord4_note' => 'Delivery with hydraulic tail lift to site.',
+                ],
+                'hu' => [
+                    's1_name' => 'DPD futárszolgálat',
+                    's2_name' => 'SPS futár házhozszállítás',
+                    's3_name' => 'Packeta Z-Box csomagpont',
+                    's4_name' => 'Utánvét kezelési díj',
+                    's5_name' => 'GLS Speciális raklapos szállítás',
+                    'it1_name' => 'Calacatta Gold Quartz lap 20mm',
+                    'it2_name' => 'Nero Marquina márványlap 30mm',
+                    'it4_name' => 'Keraflex Maxi S1 cementkötésű ragasztó 25kg',
+                    'it5_name' => 'Tenax Ager színélénkítő kőimpregnáló 1L',
+                    'unit_pack' => 'csomag',
+                    'unit_pcs' => 'db',
+                    'unit_srv' => 'szolgáltatás',
+                    'ord1_note' => 'Kérjük 16:00 előtt szállítani, Novák csengő.',
+                    'ord2_note' => 'Távollét esetén a recepción hagyni.',
+                    'ord3_note' => 'Z-Box átvevőhely Nyitra Mlyny.',
+                    'ord4_note' => 'Szállítás emelőhátfalas teherautóval a helyszínre.',
+                ],
+            ];
+            $t = $orderTexts[$systemLanguage] ?? $orderTexts['sk'];
+
+            $orders = [
+                // 1. Order 1 - Client Ján Novák (delivered, paid)
+                [
+                    'id' => 'ord-demo-1',
+                    'order_number' => 'OBJ-2026-0001',
+                    'type' => 'sales',
+                    'status' => 'delivered',
+                    'customer_type' => 'client',
+                    'client_id' => 'lead-1',
+                    'supplier_id' => null,
+                    'guest_name' => null,
+                    'guest_email' => null,
+                    'guest_phone' => null,
+                    'guest_company' => null,
+                    'guest_ico' => null,
+                    'guest_dic' => null,
+                    'guest_ic_dph' => null,
+                    'delivery_recipient' => 'Ing. Ján Novák',
+                    'delivery_street' => 'Mlynské Nivy 42',
+                    'delivery_city' => 'Bratislava',
+                    'delivery_zip' => '821 09',
+                    'delivery_country' => 'SK',
+                    'delivery_phone' => '+421 905 123 456',
+                    'delivery_notes' => $t['ord1_note'],
+                    'shipping_method' => 'dpd',
+                    'shipping_pickup_point_id' => null,
+                    'shipping_tracking_number' => '1029384756',
+                    'billing_name' => 'Ján Novák s.r.o.',
+                    'billing_street' => 'Mlynské Nivy 42',
+                    'billing_city' => 'Bratislava',
+                    'billing_zip' => '821 09',
+                    'billing_country' => 'SK',
+                    'billing_ico' => '36123456',
+                    'billing_dic' => '2021234567',
+                    'billing_ic_dph' => 'SK2021234567',
+                    'payment_method' => 'bank_transfer',
+                    'payment_status' => 'paid',
+                    'paid_at' => '2026-05-16 14:20:00',
+                    'payment_reference' => 'OBJ-2026-0001',
+                    'currency' => 'EUR',
+                    'items_net_amount' => 468.00,
+                    'services_net_amount' => 15.00,
+                    'total_net_amount' => 483.00,
+                    'total_tax_amount' => 96.60,
+                    'total_gross_amount' => 579.60,
+                    'order_date' => '2026-05-15',
+                    'requested_delivery_date' => '2026-05-18',
+                    'confirmed_delivery_date' => '2026-05-18',
+                    'warehouse_id' => 'wh-1',
+                    'notes' => 'Kompletne vybavená objednávka dosiek a lepidla.',
+                    'customer_note' => null,
+                    'created_by' => 'Sam',
+                    'items' => [
+                        [
+                            'id' => 'oi-demo-1',
+                            'item_type' => 'product',
+                            'item_id' => 'item-1',
+                            'sku' => 'SKU-CQ-01',
+                            'ean' => '858800123401',
+                            'name' => $t['it1_name'],
+                            'variant_title' => '20mm',
+                            'quantity' => 2.00,
+                            'unit' => 'm²',
+                            'unit_price' => 185.0000,
+                            'discount_percent' => 0.00,
+                            'tax_rate' => 20.00,
+                            'total_net_amount' => 370.00,
+                            'total_gross_amount' => 444.00,
+                            'fulfilled_quantity' => 2.00,
+                            'service_code' => null,
+                            'notes' => null,
+                            'sort_order' => 1,
+                        ],
+                        [
+                            'id' => 'oi-demo-2',
+                            'item_type' => 'product',
+                            'item_id' => 'item-4',
+                            'sku' => 'SKU-MAP-04',
+                            'ean' => '858800123404',
+                            'name' => $t['it4_name'],
+                            'variant_title' => '25kg',
+                            'quantity' => 4.00,
+                            'unit' => $t['unit_pack'],
+                            'unit_price' => 24.5000,
+                            'discount_percent' => 0.00,
+                            'tax_rate' => 20.00,
+                            'total_net_amount' => 98.00,
+                            'total_gross_amount' => 117.60,
+                            'fulfilled_quantity' => 4.00,
+                            'service_code' => null,
+                            'notes' => null,
+                            'sort_order' => 2,
+                        ],
+                        [
+                            'id' => 'oi-demo-3',
+                            'item_type' => 'service',
+                            'item_id' => null,
+                            'sku' => 'SRV-DPD',
+                            'ean' => null,
+                            'name' => $t['s1_name'],
+                            'variant_title' => null,
+                            'quantity' => 1.00,
+                            'unit' => $t['unit_srv'],
+                            'unit_price' => 15.0000,
+                            'discount_percent' => 0.00,
+                            'tax_rate' => 20.00,
+                            'total_net_amount' => 15.00,
+                            'total_gross_amount' => 18.00,
+                            'fulfilled_quantity' => 1.00,
+                            'service_code' => 'SHIPPING-DPD',
+                            'notes' => 'Expresná kuriérska služba DPD s poistením',
+                            'sort_order' => 3,
+                        ]
+                    ]
+                ],
+
+                // 2. Order 2 - Client Martina Kováčová (processing, paid)
+                [
+                    'id' => 'ord-demo-2',
+                    'order_number' => 'OBJ-2026-0002',
+                    'type' => 'sales',
+                    'status' => 'processing',
+                    'customer_type' => 'client',
+                    'client_id' => 'lead-2',
+                    'supplier_id' => null,
+                    'guest_name' => null,
+                    'guest_email' => null,
+                    'guest_phone' => null,
+                    'guest_company' => null,
+                    'guest_ico' => null,
+                    'guest_dic' => null,
+                    'guest_ic_dph' => null,
+                    'delivery_recipient' => 'Martina Kováčová',
+                    'delivery_street' => 'Kukučínova 15',
+                    'delivery_city' => 'Trnava',
+                    'delivery_zip' => '917 01',
+                    'delivery_country' => 'SK',
+                    'delivery_phone' => '+421 911 987 654',
+                    'delivery_notes' => $t['ord2_note'],
+                    'shipping_method' => 'sps',
+                    'shipping_pickup_point_id' => null,
+                    'shipping_tracking_number' => 'SPS8829104',
+                    'billing_name' => 'Martina Kováčová',
+                    'billing_street' => 'Kukučínova 15',
+                    'billing_city' => 'Trnava',
+                    'billing_zip' => '917 01',
+                    'billing_country' => 'SK',
+                    'billing_ico' => null,
+                    'billing_dic' => null,
+                    'billing_ic_dph' => null,
+                    'payment_method' => 'card',
+                    'payment_status' => 'paid',
+                    'paid_at' => '2026-05-18 10:15:00',
+                    'payment_reference' => 'CARD-984210',
+                    'currency' => 'EUR',
+                    'items_net_amount' => 133.00,
+                    'services_net_amount' => 6.50,
+                    'total_net_amount' => 139.50,
+                    'total_tax_amount' => 27.90,
+                    'total_gross_amount' => 167.40,
+                    'order_date' => '2026-05-18',
+                    'requested_delivery_date' => '2026-05-21',
+                    'confirmed_delivery_date' => '2026-05-21',
+                    'warehouse_id' => 'wh-1',
+                    'notes' => 'Pripravené na balenie v sklade.',
+                    'customer_note' => null,
+                    'created_by' => 'Jordan',
+                    'items' => [
+                        [
+                            'id' => 'oi-demo-4',
+                            'item_type' => 'product',
+                            'item_id' => 'item-5',
+                            'sku' => 'SKU-TNX-05',
+                            'ean' => '858800123405',
+                            'name' => $t['it5_name'],
+                            'variant_title' => '1L',
+                            'quantity' => 2.00,
+                            'unit' => $t['unit_pcs'],
+                            'unit_price' => 42.0000,
+                            'discount_percent' => 0.00,
+                            'tax_rate' => 20.00,
+                            'total_net_amount' => 84.00,
+                            'total_gross_amount' => 100.80,
+                            'fulfilled_quantity' => 0.00,
+                            'service_code' => null,
+                            'notes' => null,
+                            'sort_order' => 1,
+                        ],
+                        [
+                            'id' => 'oi-demo-5',
+                            'item_type' => 'product',
+                            'item_id' => 'item-4',
+                            'sku' => 'SKU-MAP-04',
+                            'ean' => '858800123404',
+                            'name' => $t['it4_name'],
+                            'variant_title' => '25kg',
+                            'quantity' => 2.00,
+                            'unit' => $t['unit_pack'],
+                            'unit_price' => 24.5000,
+                            'discount_percent' => 0.00,
+                            'tax_rate' => 20.00,
+                            'total_net_amount' => 49.00,
+                            'total_gross_amount' => 58.80,
+                            'fulfilled_quantity' => 0.00,
+                            'service_code' => null,
+                            'notes' => null,
+                            'sort_order' => 2,
+                        ],
+                        [
+                            'id' => 'oi-demo-6',
+                            'item_type' => 'service',
+                            'item_id' => null,
+                            'sku' => 'SRV-SPS',
+                            'ean' => null,
+                            'name' => $t['s2_name'],
+                            'variant_title' => null,
+                            'quantity' => 1.00,
+                            'unit' => $t['unit_srv'],
+                            'unit_price' => 6.5000,
+                            'discount_percent' => 0.00,
+                            'tax_rate' => 20.00,
+                            'total_net_amount' => 6.50,
+                            'total_gross_amount' => 7.80,
+                            'fulfilled_quantity' => 0.00,
+                            'service_code' => 'SHIPPING-SPS',
+                            'notes' => 'Doručenie SPS kuriérom priamo domov',
+                            'sort_order' => 3,
+                        ]
+                    ]
+                ],
+
+                // 3. Order 3 - Guest Peter Horváth (new, unpaid COD)
+                [
+                    'id' => 'ord-demo-3',
+                    'order_number' => 'OBJ-2026-0003',
+                    'type' => 'sales',
+                    'status' => 'new',
+                    'customer_type' => 'guest',
+                    'client_id' => null,
+                    'supplier_id' => null,
+                    'guest_name' => 'Peter Horváth',
+                    'guest_email' => 'peter.horvath@example.com',
+                    'guest_phone' => '+421 903 777 888',
+                    'guest_company' => null,
+                    'guest_ico' => null,
+                    'guest_dic' => null,
+                    'guest_ic_dph' => null,
+                    'delivery_recipient' => 'Peter Horváth',
+                    'delivery_street' => 'Hviezdoslavova 8',
+                    'delivery_city' => 'Nitra',
+                    'delivery_zip' => '949 01',
+                    'delivery_country' => 'SK',
+                    'delivery_phone' => '+421 903 777 888',
+                    'delivery_notes' => $t['ord3_note'],
+                    'shipping_method' => 'packeta',
+                    'shipping_pickup_point_id' => 'SK-19402',
+                    'shipping_tracking_number' => 'Z92817345',
+                    'billing_name' => 'Peter Horváth',
+                    'billing_street' => 'Hviezdoslavova 8',
+                    'billing_city' => 'Nitra',
+                    'billing_zip' => '949 01',
+                    'billing_country' => 'SK',
+                    'billing_ico' => null,
+                    'billing_dic' => null,
+                    'billing_ic_dph' => null,
+                    'payment_method' => 'cod',
+                    'payment_status' => 'unpaid',
+                    'paid_at' => null,
+                    'payment_reference' => null,
+                    'currency' => 'EUR',
+                    'items_net_amount' => 42.00,
+                    'services_net_amount' => 5.40,
+                    'total_net_amount' => 47.40,
+                    'total_tax_amount' => 9.48,
+                    'total_gross_amount' => 56.88,
+                    'order_date' => '2026-05-20',
+                    'requested_delivery_date' => '2026-05-22',
+                    'confirmed_delivery_date' => null,
+                    'warehouse_id' => 'wh-1',
+                    'notes' => 'E-shop nákup bez registrácie na dobierku do Z-Boxu.',
+                    'customer_note' => 'Prosím poslať SMS s kódom hneď po uložení.',
+                    'created_by' => 'E-shop Web',
+                    'items' => [
+                        [
+                            'id' => 'oi-demo-7',
+                            'item_type' => 'product',
+                            'item_id' => 'item-5',
+                            'sku' => 'SKU-TNX-05',
+                            'ean' => '858800123405',
+                            'name' => $t['it5_name'],
+                            'variant_title' => '1L',
+                            'quantity' => 1.00,
+                            'unit' => $t['unit_pcs'],
+                            'unit_price' => 42.0000,
+                            'discount_percent' => 0.00,
+                            'tax_rate' => 20.00,
+                            'total_net_amount' => 42.00,
+                            'total_gross_amount' => 50.40,
+                            'fulfilled_quantity' => 0.00,
+                            'service_code' => null,
+                            'notes' => null,
+                            'sort_order' => 1,
+                        ],
+                        [
+                            'id' => 'oi-demo-8',
+                            'item_type' => 'service',
+                            'item_id' => null,
+                            'sku' => 'SRV-PACKETA',
+                            'ean' => null,
+                            'name' => $t['s3_name'],
+                            'variant_title' => null,
+                            'quantity' => 1.00,
+                            'unit' => $t['unit_srv'],
+                            'unit_price' => 3.9000,
+                            'discount_percent' => 0.00,
+                            'tax_rate' => 20.00,
+                            'total_net_amount' => 3.90,
+                            'total_gross_amount' => 4.68,
+                            'fulfilled_quantity' => 0.00,
+                            'service_code' => 'SHIPPING-PACKETA',
+                            'notes' => 'Packeta výdajné miesto / Z-Box',
+                            'sort_order' => 2,
+                        ],
+                        [
+                            'id' => 'oi-demo-9',
+                            'item_type' => 'service',
+                            'item_id' => null,
+                            'sku' => 'SRV-COD',
+                            'ean' => null,
+                            'name' => $t['s4_name'],
+                            'variant_title' => null,
+                            'quantity' => 1.00,
+                            'unit' => $t['unit_srv'],
+                            'unit_price' => 1.5000,
+                            'discount_percent' => 0.00,
+                            'tax_rate' => 20.00,
+                            'total_net_amount' => 1.50,
+                            'total_gross_amount' => 1.80,
+                            'fulfilled_quantity' => 0.00,
+                            'service_code' => 'COD-FEE',
+                            'notes' => 'Platba pri prevzatí balíka',
+                            'sort_order' => 3,
+                        ]
+                    ]
+                ],
+
+                // 4. Order 4 - Client Thomas Müller (shipped, paid)
+                [
+                    'id' => 'ord-demo-4',
+                    'order_number' => 'OBJ-2026-0004',
+                    'type' => 'sales',
+                    'status' => 'shipped',
+                    'customer_type' => 'client',
+                    'client_id' => 'lead-3',
+                    'supplier_id' => null,
+                    'guest_name' => null,
+                    'guest_email' => null,
+                    'guest_phone' => null,
+                    'guest_company' => null,
+                    'guest_ico' => null,
+                    'guest_dic' => null,
+                    'guest_ic_dph' => null,
+                    'delivery_recipient' => 'Thomas Müller',
+                    'delivery_street' => 'Hauptstrasse 102',
+                    'delivery_city' => 'Košice',
+                    'delivery_zip' => '040 01',
+                    'delivery_country' => 'SK',
+                    'delivery_phone' => '+49 172 888 999',
+                    'delivery_notes' => $t['ord4_note'],
+                    'shipping_method' => 'gls',
+                    'shipping_pickup_point_id' => null,
+                    'shipping_tracking_number' => 'GLS987654321SK',
+                    'billing_name' => 'Thomas Müller GmbH',
+                    'billing_street' => 'Hauptstrasse 102',
+                    'billing_city' => 'Košice',
+                    'billing_zip' => '040 01',
+                    'billing_country' => 'SK',
+                    'billing_ico' => 'DE98765432',
+                    'billing_dic' => '115/908/332',
+                    'billing_ic_dph' => null,
+                    'payment_method' => 'bank_transfer',
+                    'payment_status' => 'paid',
+                    'paid_at' => '2026-05-12 11:00:00',
+                    'payment_reference' => 'OBJ-2026-0004',
+                    'currency' => 'EUR',
+                    'items_net_amount' => 1050.00,
+                    'services_net_amount' => 85.00,
+                    'total_net_amount' => 1135.00,
+                    'total_tax_amount' => 227.00,
+                    'total_gross_amount' => 1362.00,
+                    'order_date' => '2026-05-11',
+                    'requested_delivery_date' => '2026-05-15',
+                    'confirmed_delivery_date' => '2026-05-15',
+                    'warehouse_id' => 'wh-1',
+                    'notes' => 'Paletová zásielka mramorových platní na pobočku.',
+                    'customer_note' => null,
+                    'created_by' => 'Alex',
+                    'items' => [
+                        [
+                            'id' => 'oi-demo-10',
+                            'item_type' => 'product',
+                            'item_id' => 'item-2',
+                            'sku' => 'SKU-NM-02',
+                            'ean' => '858800123402',
+                            'name' => $t['it2_name'],
+                            'variant_title' => '30mm leštený',
+                            'quantity' => 5.00,
+                            'unit' => 'm²',
+                            'unit_price' => 210.0000,
+                            'discount_percent' => 0.00,
+                            'tax_rate' => 20.00,
+                            'total_net_amount' => 1050.00,
+                            'total_gross_amount' => 1260.00,
+                            'fulfilled_quantity' => 5.00,
+                            'service_code' => null,
+                            'notes' => 'Zabalené na A-stojane drevenej palety.',
+                            'sort_order' => 1,
+                        ],
+                        [
+                            'id' => 'oi-demo-11',
+                            'item_type' => 'service',
+                            'item_id' => null,
+                            'sku' => 'SRV-GLS-PAL',
+                            'ean' => null,
+                            'name' => $t['s5_name'],
+                            'variant_title' => null,
+                            'quantity' => 1.00,
+                            'unit' => $t['unit_srv'],
+                            'unit_price' => 85.0000,
+                            'discount_percent' => 0.00,
+                            'tax_rate' => 20.00,
+                            'total_net_amount' => 85.00,
+                            'total_gross_amount' => 102.00,
+                            'fulfilled_quantity' => 1.00,
+                            'service_code' => 'SHIPPING-CARGO',
+                            'notes' => 'Paletová preprava nadrozmerného nákladu.',
+                            'sort_order' => 2,
+                        ]
+                    ]
+                ]
+            ];
+
+            $insOrd = $pdo->prepare("INSERT INTO `orders` (
+                `id`, `order_number`, `type`, `status`, `customer_type`, `client_id`, `supplier_id`,
+                `guest_name`, `guest_email`, `guest_phone`, `guest_company`, `guest_ico`, `guest_dic`, `guest_ic_dph`,
+                `delivery_recipient`, `delivery_street`, `delivery_city`, `delivery_zip`, `delivery_country`, `delivery_phone`, `delivery_notes`,
+                `shipping_method`, `shipping_pickup_point_id`, `shipping_tracking_number`,
+                `billing_name`, `billing_street`, `billing_city`, `billing_zip`, `billing_country`, `billing_ico`, `billing_dic`, `billing_ic_dph`,
+                `payment_method`, `payment_status`, `paid_at`, `payment_reference`, `currency`,
+                `items_net_amount`, `services_net_amount`, `total_net_amount`, `total_tax_amount`, `total_gross_amount`,
+                `order_date`, `requested_delivery_date`, `confirmed_delivery_date`, `warehouse_id`, `notes`, `customer_note`, `created_by`
+            ) VALUES (
+                ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?
+            )");
+
+            $insOi = $pdo->prepare("INSERT INTO `order_items` (
+                `id`, `order_id`, `item_type`, `item_id`, `sku`, `ean`, `name`, `variant_title`,
+                `quantity`, `unit`, `unit_price`, `discount_percent`, `tax_rate`,
+                `total_net_amount`, `total_gross_amount`, `fulfilled_quantity`, `service_code`, `notes`, `sort_order`
+            ) VALUES (
+                ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?
+            )");
+
+            foreach ($orders as $ord) {
+                $items = $ord['items'];
+                unset($ord['items']);
+                $insOrd->execute([
+                    $ord['id'],
+                    $ord['order_number'],
+                    $ord['type'],
+                    $ord['status'],
+                    $ord['customer_type'],
+                    $ord['client_id'] ?? null,
+                    $ord['supplier_id'] ?? null,
+                    $ord['guest_name'] ?? null,
+                    $ord['guest_email'] ?? null,
+                    $ord['guest_phone'] ?? null,
+                    $ord['guest_company'] ?? null,
+                    $ord['guest_ico'] ?? null,
+                    $ord['guest_dic'] ?? null,
+                    $ord['guest_ic_dph'] ?? null,
+                    $ord['delivery_recipient'] ?? null,
+                    $ord['delivery_street'] ?? null,
+                    $ord['delivery_city'] ?? null,
+                    $ord['delivery_zip'] ?? null,
+                    $ord['delivery_country'] ?? 'SK',
+                    $ord['delivery_phone'] ?? null,
+                    $ord['delivery_notes'] ?? null,
+                    $ord['shipping_method'] ?? null,
+                    $ord['shipping_pickup_point_id'] ?? null,
+                    $ord['shipping_tracking_number'] ?? null,
+                    $ord['billing_name'] ?? null,
+                    $ord['billing_street'] ?? null,
+                    $ord['billing_city'] ?? null,
+                    $ord['billing_zip'] ?? null,
+                    $ord['billing_country'] ?? 'SK',
+                    $ord['billing_ico'] ?? null,
+                    $ord['billing_dic'] ?? null,
+                    $ord['billing_ic_dph'] ?? null,
+                    $ord['payment_method'] ?? null,
+                    $ord['payment_status'] ?? 'unpaid',
+                    $ord['paid_at'] ?? null,
+                    $ord['payment_reference'] ?? null,
+                    $ord['currency'] ?? 'EUR',
+                    $ord['items_net_amount'] ?? 0.00,
+                    $ord['services_net_amount'] ?? 0.00,
+                    $ord['total_net_amount'] ?? 0.00,
+                    $ord['total_tax_amount'] ?? 0.00,
+                    $ord['total_gross_amount'] ?? 0.00,
+                    $ord['order_date'],
+                    $ord['requested_delivery_date'] ?? null,
+                    $ord['confirmed_delivery_date'] ?? null,
+                    $ord['warehouse_id'] ?? null,
+                    $ord['notes'] ?? null,
+                    $ord['customer_note'] ?? null,
+                    $ord['created_by'] ?? null,
+                ]);
+
+                foreach ($items as $oi) {
+                    $insOi->execute([
+                        $oi['id'],
+                        $ord['id'],
+                        $oi['item_type'],
+                        $oi['item_id'] ?? null,
+                        $oi['sku'] ?? null,
+                        $oi['ean'] ?? null,
+                        $oi['name'],
+                        $oi['variant_title'] ?? null,
+                        $oi['quantity'],
+                        $oi['unit'],
+                        $oi['unit_price'],
+                        $oi['discount_percent'] ?? 0.00,
+                        $oi['tax_rate'] ?? 20.00,
+                        $oi['total_net_amount'],
+                        $oi['total_gross_amount'],
+                        $oi['fulfilled_quantity'] ?? 0.00,
+                        $oi['service_code'] ?? null,
+                        $oi['notes'] ?? null,
+                        $oi['sort_order'] ?? 0,
+                    ]);
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] orders seed skipped: ' . $e->getMessage());
+        }
+    }
+
+    /**
+     * Seeds demo project types, projects, and invoices/offers for demo installations.
+     */
+    function ccrm_seed_default_invoices_and_projects(PDO $pdo, string $systemLanguage = 'sk'): void {
+        try {
+            $demoMode = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'DEMO_MODE'");
+            if (!$demoMode || $demoMode->fetchColumn() !== 'true') return;
+
+            if (!in_array($systemLanguage, ['en', 'sk', 'hu'], true)) {
+                $systemLanguage = 'sk';
+                $stmtLang = $pdo->query("SELECT `value` FROM `system_settings` WHERE `key` = 'SYSTEM_LANGUAGE'");
+                if ($stmtLang && ($val = $stmtLang->fetchColumn()) !== false) {
+                    if (in_array($val, ['en', 'sk', 'hu'], true)) {
+                        $systemLanguage = $val;
+                    }
+                }
+            }
+
+            $projTexts = [
+                'sk' => [
+                    'pt_name' => 'Zákazková kamenná výroba',
+                    'pt_desc' => 'Výroba a montáž kamenných kuchynských dosiek, obkladov a schodov.',
+                    'pr1_name' => 'Vila Slavín - Kamenné obklady fasády a interiéru',
+                    'pr2_name' => 'Kuchyňa Trnava - Calacatta Quartz doska a zástena',
+                    'off_title' => 'Cenová ponuka - Kuchynská doska Calacatta Quartz',
+                    'off_subject' => 'Dodávka a opracovanie kamennej kuchynskej dosky s podstavným drezom',
+                    'off_greet' => 'Vážený pán Novák, ďakujeme za prejavenú dôveru a záujem o naše služby.',
+                    'off_item2' => 'Opracovanie výrezu pre podstavný drez vrátane leštenia hrán',
+                    'off_item3' => 'Odborná montáž, lepenie spojov a zameranie Proliner',
+                    'inv_title' => 'Faktúra - Calacatta Quartz kuchynská doska',
+                    'inv_subject' => 'Fakturácia dodávky kamennej dosky podľa objednávky OBJ-2026-0001',
+                    'inv_item1' => 'Calacatta Gold Quartz doska 20mm',
+                    'inv_item2' => 'Keraflex Maxi S1 cementové lepidlo 25kg',
+                    'inv_item3' => 'Kuriérska preprava DPD',
+                    'unit_pack' => 'balenie',
+                    'unit_srv' => 'služba',
+                ],
+                'en' => [
+                    'pt_name' => 'Custom Stone Fabrication',
+                    'pt_desc' => 'Bespoke manufacturing and installation of stone countertops, cladding and stairs.',
+                    'pr1_name' => 'Villa Slavín - Exterior & Interior Stone Cladding',
+                    'pr2_name' => 'Kitchen Trnava - Calacatta Quartz Worktop & Backsplash',
+                    'off_title' => 'Price Quote - Calacatta Quartz Kitchen Worktop',
+                    'off_subject' => 'Supply and fabrication of stone worktop with undermount sink',
+                    'off_greet' => 'Dear Mr. Novák, thank you for your confidence in our craftsmanship.',
+                    'off_item2' => 'Undermount sink cutout fabrication & edge polishing',
+                    'off_item3' => 'Professional installation, joint gluing & Proliner laser templating',
+                    'inv_title' => 'Invoice - Calacatta Quartz Kitchen Worktop',
+                    'inv_subject' => 'Invoicing delivery of stone worktop per order OBJ-2026-0001',
+                    'inv_item1' => 'Calacatta Gold Quartz Slab 20mm',
+                    'inv_item2' => 'Keraflex Maxi S1 Cement Adhesive 25kg',
+                    'inv_item3' => 'DPD Express Courier',
+                    'unit_pack' => 'pack',
+                    'unit_srv' => 'service',
+                ],
+                'hu' => [
+                    'pt_name' => 'Egyedi kőmegmunkálás',
+                    'pt_desc' => 'Kő konyhapultok, falburkolatok és lépcsők egyedi gyártása és beépítése.',
+                    'pr1_name' => 'Slavín Villa - Homlokzati és beltéri kőburkolat',
+                    'pr2_name' => 'Nagyszombat Konyha - Calacatta Quartz pult és hátfal',
+                    'off_title' => 'Árajánlat - Calacatta Quartz konyhapult',
+                    'off_subject' => 'Kő konyhapult szállítása és beépítése alulról épített mosogatóval',
+                    'off_greet' => 'Tisztelt Novák Úr, köszönjük megtisztelő bizalmát.',
+                    'off_item2' => 'Alulról beépített mosogató kivágása és élpolírozása',
+                    'off_item3' => 'Szakszerű beépítés, illesztések ragasztása és Proliner lézeres felmérés',
+                    'inv_title' => 'Számla - Calacatta Quartz konyhapult',
+                    'inv_subject' => 'Kőlap számlázása az OBJ-2026-0001 megrendelés alapján',
+                    'inv_item1' => 'Calacatta Gold Quartz lap 20mm',
+                    'inv_item2' => 'Keraflex Maxi S1 cementkötésű ragasztó 25kg',
+                    'inv_item3' => 'DPD futárszolgálat',
+                    'unit_pack' => 'csomag',
+                    'unit_srv' => 'szolgáltatás',
+                ],
+            ];
+            $t = $projTexts[$systemLanguage] ?? $projTexts['sk'];
+
+            // 1. Project Types
+            $hasPtTable = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'project_types'")->fetchColumn();
+            if ($hasPtTable > 0) {
+                $ptCount = (int)$pdo->query("SELECT COUNT(*) FROM `project_types`")->fetchColumn();
+                if ($ptCount === 0) {
+                    $insPt = $pdo->prepare("INSERT INTO `project_types` (`id`, `name`, `description`, `icon`, `color`, `attributes_json`, `has_timeline`, `has_gantt`, `has_deadline`, `deadline_warning_days`, `deadline_required`, `has_files`) VALUES (?, ?, ?, ?, ?, '[]', 1, 1, 1, 7, 0, 1)");
+                    $insPt->execute(['pt_luxury_stone', $t['pt_name'], $t['pt_desc'], 'Boxes', '#10b981']);
+                }
+            }
+
+            // 2. Projects
+            $hasProjTable = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'projects'")->fetchColumn();
+            if ($hasProjTable > 0) {
+                $projCount = (int)$pdo->query("SELECT COUNT(*) FROM `projects`")->fetchColumn();
+                if ($projCount === 0) {
+                    $insProj = $pdo->prepare("INSERT INTO `projects` (`id`, `project_type_id`, `name`, `lead_id`, `client_id`, `status`, `division`, `rating`, `deadline`, `start_date`, `budget`, `value`, `archived`) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)");
+                    $insProj->execute(['proj-vila-slavin', 'pt_luxury_stone', $t['pr1_name'], 'lead-1', 'lead-1', 'active', 'Cstudios', 5, '2026-08-30', '2026-05-15', 6500.00, 12500.00]);
+                    $insProj->execute(['proj-kuchyna-neolith', 'pt_luxury_stone', $t['pr2_name'], 'lead-2', 'lead-2', 'active', 'Cstudios', 4, '2026-07-15', '2026-05-18', 4200.00, 8400.00]);
+
+                    // Project Managers
+                    if ((int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'project_managers'")->fetchColumn() > 0) {
+                        $insPm = $pdo->prepare("INSERT INTO `project_managers` (`project_id`, `user_id`) VALUES (?, ?) ON DUPLICATE KEY UPDATE `user_id` = VALUES(`user_id`)");
+                        $insPm->execute(['proj-vila-slavin', 'u-' . md5('alex@crm.com')]);
+                        $insPm->execute(['proj-kuchyna-neolith', 'u-' . md5('sam@crm.com')]);
+                    }
+                }
+            }
+
+            // 3. Invoices & Offers
+            $hasIoTable = (int)$pdo->query("SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'invoices_offers'")->fetchColumn();
+            if ($hasIoTable > 0) {
+                $ioCount = (int)$pdo->query("SELECT COUNT(*) FROM `invoices_offers`")->fetchColumn();
+                if ($ioCount === 0) {
+                    $insIo = $pdo->prepare("INSERT INTO `invoices_offers` (
+                        `id`, `document_number`, `type`, `mode`, `lead_id`, `client_id`, `client_name`, `client_email`, `client_phone`,
+                        `client_street`, `client_city`, `client_postal_code`, `client_country`, `client_ico`, `client_dic`, `client_icdph`,
+                        `title`, `subject`, `location`, `greeting_note`, `subtotal`, `vat_amount`, `total_price`, `currency`,
+                        `status`, `status_changed_at`, `issued_at`, `valid_until`, `due_date`, `created_by`
+                    ) VALUES (
+                        ?, ?, ?, 'default', ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?, ?, ?,
+                        ?, ?, ?, ?, ?, ?, ?, 'EUR',
+                        ?, ?, ?, ?, ?, ?
+                    )");
+
+                    $insIoi = $pdo->prepare("INSERT INTO `invoice_offer_items` (
+                        `id`, `invoice_offer_id`, `warehouse_item_id`, `sku`, `name`, `description`, `quantity`, `unit`, `unit_price`, `vat_rate`, `discount_pct`, `total_price`
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+
+                    // Offer 1: Price Offer for Ján Novák
+                    $insIo->execute([
+                        'off-demo-1', 'CP-2026-0001', 'price_offer', 'lead-1', 'lead-1', 'Ján Novák', 'novak@example.com', '+421 905 123 456',
+                        'Mlynské Nivy 42', 'Bratislava', '821 09', 'Slovakia', '36123456', '2021234567', 'SK2021234567',
+                        $t['off_title'], $t['off_subject'], 'Bratislava', $t['off_greet'],
+                        3450.00, 690.00, 4140.00,
+                        'approved', '2026-05-18', '2026-05-16', '2026-06-16', null, 'Sam'
+                    ]);
+
+                    $insIoi->execute(['ioi-demo-1', 'off-demo-1', 'item-1', 'SKU-CQ-01', $t['inv_item1'], 'Prémiová kremenná kompozitná platňa hrúbky 20mm', 2.0000, 'm²', 185.0000, 20.00, 0.00, 444.00]);
+                    $insIoi->execute(['ioi-demo-2', 'off-demo-1', null, 'SRV-CUT-SINK', $t['off_item2'], 'CNC rezanie vodným lúčom a ručné brúsenie/leštenie hrany', 1.0000, 'ks', 280.0000, 20.00, 0.00, 336.00]);
+                    $insIoi->execute(['ioi-demo-3', 'off-demo-1', null, 'SRV-INSTALL', $t['off_item3'], 'Zameranie, doprava, vynáška, osadenie a chemické kotvenie', 1.0000, 'komplet', 450.0000, 20.00, 0.00, 540.00]);
+
+                    // Invoice 1: Invoice for Ján Novák (OBJ-2026-0001)
+                    $insIo->execute([
+                        'inv-demo-1', 'FA-2026-0001', 'invoice', 'lead-1', 'lead-1', 'Ján Novák', 'novak@example.com', '+421 905 123 456',
+                        'Mlynské Nivy 42', 'Bratislava', '821 09', 'Slovakia', '36123456', '2021234567', 'SK2021234567',
+                        $t['inv_title'], $t['inv_subject'], 'Bratislava', null,
+                        483.00, 96.60, 579.60,
+                        'sent', '2026-05-22', '2026-05-22', null, '2026-06-05', 'Sam'
+                    ]);
+
+                    $insIoi->execute(['ioi-demo-4', 'inv-demo-1', 'item-1', 'SKU-CQ-01', $t['inv_item1'], null, 2.0000, 'm²', 185.0000, 20.00, 0.00, 444.00]);
+                    $insIoi->execute(['ioi-demo-5', 'inv-demo-1', 'item-4', 'SKU-MAP-04', $t['inv_item2'], null, 4.0000, $t['unit_pack'], 24.5000, 20.00, 0.00, 117.60]);
+                    $insIoi->execute(['ioi-demo-6', 'inv-demo-1', null, 'SRV-DPD', $t['inv_item3'], null, 1.0000, $t['unit_srv'], 15.0000, 20.00, 0.00, 18.00]);
+                }
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm schema] invoices and projects seed skipped: ' . $e->getMessage());
         }
     }
 
