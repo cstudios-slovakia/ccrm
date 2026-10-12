@@ -1,1 +1,0 @@
-import{Jn as e,Ms as t,Ns as n,Xn as r,Yn as i}from"./index-BWWla9y5.js";var a=n(t(),1);function o(){!i.current&&e();let[t]=(0,a.useState)(r.current);return t}export{o as t};
