@@ -1,5 +1,7 @@
 import React, { useState, useMemo, useCallback } from "react";
 import { createPortal } from "react-dom";
+import { useReadScope } from "../hooks/useReadScope";
+import { referenceLeadName, referenceProjectName } from "../utils/readScope";
 import {
     CheckSquare,
     Calendar as CalendarIcon,
@@ -578,6 +580,9 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
     const t = (en: string, sk: string, hu: string) => {
         if (systemLanguage === "sk") return sk;
         if (systemLanguage === "hu") return hu;
+    // Names of leads/projects this role may not open but whose tasks it can see.
+    const readScope = useReadScope();
+
         return en;
     };
 
@@ -631,7 +636,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
         const project = projects.find((p) => p.id === task.relatedProjectId);
         return project
             ? projectDisplayName(project, leads, t("Untitled project", "Projekt bez názvu", "Névtelen projekt"))
-            : "";
+            : referenceProjectName(readScope, task.relatedProjectId) ?? "";
     };
 
     // Locale used to render dates in the region format configured in Settings.
@@ -2419,7 +2424,7 @@ export const TaskDashboardView: React.FC<TaskDashboardViewProps> = ({
             return (
                 <span className={`text-micro font-bold text-slate-500 flex items-center gap-1 bg-slate-100 px-1.5 py-0.5 rounded-md truncate ${maxWidth}`}>
                     <Briefcase className="h-2.5 w-2.5 shrink-0" />
-                    <span className="truncate">Lead</span>
+                    <span className="truncate">{referenceLeadName(readScope, task.relatedLeadId) ?? "Lead"}</span>
                 </span>
             );
         }

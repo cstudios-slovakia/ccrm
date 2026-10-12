@@ -47,6 +47,8 @@ import { OrganicNodeDatabaseLoader } from "./components/OrganicNodeDatabaseLoade
 import { getStoredTheme, getStoredThemeMode, isThemeMode, startThemeWatcher, type Appearance, type ThemeMode } from "./utils/theme";
 import { startViewSizeWatcher } from "./utils/viewSize";
 import { baselineOf, diffRecords, type RecordBaseline } from "./utils/syncDiff";
+import { EMPTY_READ_SCOPE, parseReadScope, sameReadScope, type ReadScope } from "./utils/readScope";
+import { ReadScopeContext } from "./hooks/useReadScope";
 import { parseUnifiedEntryKey, pendingDeletionIds, pendingDeletionKeys, pendingDeletionRecords, unifiedEntryKey, withoutPendingDeletions } from "./utils/pendingDeletions";
 import { createUndoQueue } from "./utils/undoQueue";
 import { asLang, restoredMessage } from "./utils/undoMessages";
@@ -655,6 +657,8 @@ function App() {
   const [employeeSalaries, setEmployeeSalaries] = useState<EmployeeSalary[]>([]);
   const [employeeVacations, setEmployeeVacations] = useState<EmployeeVacation[]>([]);
   const [employeeSettings, setEmployeeSettings] = useState<EmployeeSettings | null>(null);
+  // What the server withheld from this session (sync.php `readScope`).
+  const [readScope, setReadScope] = useState<ReadScope>(EMPTY_READ_SCOPE);
 
   // Initial states set to empty / defaults without localStorage or mockData loaders
   const [leads, setLeads] = useState<Lead[]>([]);
@@ -2389,6 +2393,13 @@ ${log.payload || ''}
       if (data.serverTime != null && String(data.serverTime).trim() !== "" && String(data.serverTime) !== "[object Object]") {
         baseSyncedAtRef.current = String(data.serverTime);
       }
+      // A collection the server withheld arrives as [] (never omitted), so the
+      // state and delta baseline below already settle on "empty" and nothing
+      // restricted is pushed back. This only records which empties are withheld.
+      {
+        const incomingScope = parseReadScope(data.readScope);
+        setReadScope((prev) => (sameReadScope(prev, incomingScope) ? prev : incomingScope));
+      }
       if (data.leads && Array.isArray(data.leads)) {
         setLeads((prev) => JSON.stringify(prev) === JSON.stringify(data.leads) ? prev : data.leads);
       }
@@ -3817,6 +3828,7 @@ ${log.payload || ''}
 
   return (
     <UserPrefsContext.Provider value={userPrefsApi}>
+    <ReadScopeContext.Provider value={readScope}>
     <ProjectStatusesProvider value={projectStatuses}>
     {/* One "new lead / client" form for every picker in the app — see QuickAddClient. */}
     <QuickAddClientProvider
@@ -4400,6 +4412,7 @@ ${log.payload || ''}
     </div>
     </QuickAddClientProvider>
     </ProjectStatusesProvider>
+    </ReadScopeContext.Provider>
     </UserPrefsContext.Provider>
   );
 }

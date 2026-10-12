@@ -13,6 +13,7 @@
 require_once __DIR__ . '/api/auth.php';
 require_once __DIR__ . '/api/schema.php';
 require_once __DIR__ . '/api/task_reminders.php';
+require_once __DIR__ . '/api/read_scope.php';
 
 header('Content-Type: application/json');
 header('Cache-Control: no-store, no-cache, must-revalidate, max-age=0');
@@ -735,6 +736,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $sessionEmailStmt->execute([$sessionUser['id']]);
     $sessionEmail = (string)($sessionEmailStmt->fetchColumn() ?: ($sessionUser['email'] ?? ''));
 
+    // Resolve caller read scope and permissions
+    $scope = ccrm_read_scope($pdo, $sessionUser);
+
     // Lightweight probe: the SPA polls this every few seconds to learn whether
     // anything changed. It returns only the current data version (one cheap
     // settings query — no leads/tasks/timeline reads, no multi-MB payload), so
@@ -754,196 +758,226 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     // grouped by lead_id, instead of running two queries per lead. With ~1k
     // leads the old per-lead approach issued ~2k round-trips per GET (~1.1s);
     // this collapses it to 3 queries total.
-    $catsByLead = [];
-    $catBulk = $pdo->query("SELECT `lead_id`, `category_name` FROM `lead_categories`");
-    while ($c = $catBulk->fetch()) {
-        $catsByLead[$c['lead_id']][] = $c['category_name'];
-    }
+    $canLeads = ccrm_can($scope, 'leads');
+    $canClients = ccrm_can($scope, 'clients');
+    $canEmail = ccrm_can($scope, 'email');
 
-    $timelineByLead = [];
-    $teBulk = $pdo->query("SELECT * FROM `timeline_events` ORDER BY `timestamp` ASC");
-    while ($te = $teBulk->fetch()) {
-        // A mail entry the user removed from the timeline. Kept only as a
-        // tombstone so the mailbox importer does not file it again.
-        if (!empty($te['hidden'])) {
-            continue;
-        }
-        $event = [
-            'id' => $te['id'],
-            'type' => $te['type'],
-            'timestamp' => date('Y-m-d H:i', strtotime($te['timestamp'])),
-            'title' => $te['title'],
-            'content' => $te['content']
-        ];
-        // Offers always carry their amount. Any other entry that stored one
-        // (the warehouse's goods-issue note logs the sale total) keeps it too:
-        // it used to be written and never read back, so the figure was gone
-        // after the first reload.
-        if ($te['type'] === 'offer') {
-            $event['amount'] = floatval($te['amount']);
-        } elseif ($te['amount'] !== null && floatval($te['amount']) != 0.0) {
-            $event['amount'] = floatval($te['amount']);
-        }
-        // Offers and the business-document types (order, proforma invoice,
-        // advance receipt, invoice, delivery note) all carry paperwork.
-        if (in_array($te['type'], ccrm_document_event_types(), true)) {
-            $event['fileName'] = $te['file_name'];
-            $event['fileSize'] = $te['file_size'];
-            $event['fileType'] = $te['file_type'];
-            $attachments = (isset($te['attachments_json']) && $te['attachments_json'] !== '' && $te['attachments_json'] !== null)
-                ? json_decode($te['attachments_json'], true)
-                : null;
-            if (is_array($attachments) && $attachments) {
-                $event['attachments'] = $attachments;
-            }
-        }
-        if ($te['type'] === 'appointment') {
-            $event['extraTime'] = $te['extra_time'];
-        }
-        // Mail-derived events render an Incoming/Outgoing badge instead of the
-        // usual type badge, and the direction decides which IMAP folder the body
-        // is fetched from when the card is opened.
-        if ($te['type'] === 'email') {
-            $event['isOutgoing'] = !empty($te['is_outgoing']);
-        }
-        // Who produced the entry. Absent on anything nobody triggered in the CRM
-        // (incoming mail, public-form inquiries) and on everything written before
-        // the column existed — those render without a name rather than guessing one.
-        if (isset($te['author']) && $te['author'] !== '' && $te['author'] !== null) {
-            $event['author'] = $te['author'];
-        }
-        // A voice note recorded onto the entry, plus its transcript. Only note
-        // events ever carry them, so they are left out entirely rather than sent
-        // as nulls the client would have to filter out again.
-        if (isset($te['audio_file']) && $te['audio_file'] !== '' && $te['audio_file'] !== null) {
-            $event['audioFile'] = $te['audio_file'];
-        }
-        if (isset($te['transcription']) && $te['transcription'] !== '' && $te['transcription'] !== null) {
-            $event['transcription'] = $te['transcription'];
-        }
-        $timelineByLead[$te['lead_id']][] = $event;
-    }
-
-    $leadsStmt = $pdo->query("SELECT * FROM `leads` ORDER BY `created_at` DESC");
     $leads = [];
-    while ($row = $leadsStmt->fetch()) {
-        $leadId = $row['id'];
-        $categories = $catsByLead[$leadId] ?? [];
-        $timeline = $timelineByLead[$leadId] ?? [];
+    if ($canLeads || $canClients) {
+        $catsByLead = [];
+        $catBulk = $pdo->query("SELECT `lead_id`, `category_name` FROM `lead_categories`");
+        while ($c = $catBulk->fetch()) {
+            $catsByLead[$c['lead_id']][] = $c['category_name'];
+        }
 
-        $leads[] = [
-            'id' => $row['id'],
-            'name' => $row['name'],
-            'city' => $row['city'],
-            'clientType' => $row['client_type'],
-            'status' => $row['status'],
-            'source' => $row['source'],
-            // Reported by the web form through api/pipeline.php and shown
-            // read-only in the app, so it is deliberately absent from the
-            // upsert below: a client's copy can never blank it out.
-            'trafficOrigin' => $row['traffic_origin'] ?? '',
-            'trafficOriginDetail' => $row['traffic_origin_detail'] ?? '',
-            'owner' => $row['owner'],
-            'division' => $row['division'] ?? null,
-            'value' => floatval($row['value']),
-            'adjustment' => floatval($row['adjustment'] ?? 0),
-            'rating' => intval($row['rating']),
-            'phone' => $row['phone'] ?? '',
-            'email' => $row['email'] ?? '',
-            'companyId' => $row['company_id'] ?? '',
-            'taxId' => $row['tax_id'] ?? '',
-            'vatId' => $row['vat_id'] ?? '',
-            'vatValidationResult' => isset($row['vat_validation_result']) && !empty($row['vat_validation_result']) ? json_decode($row['vat_validation_result'], true) : null,
-            'contactPerson' => $row['contact_person'] ?? '',
-            'website' => $row['website'] ?? '',
-            'address' => [
-                'street' => $row['street'] ?? '',
-                'city' => $row['city'] ?? '',
-                'postalCode' => $row['postal_code'] ?? '',
-                'country' => $row['country'] ?? 'Slovakia'
-            ],
-            'createdAt' => $row['created_at'],
-            'categories' => $categories,
-            'timeline' => $timeline,
-            'aiSummary' => $row['ai_summary'] ?? '',
-            'aiSummaryFingerprint' => $row['ai_summary_fingerprint'] ?? '',
-            'interestNote' => $row['interest_note'] ?? '',
-            'referralLeadId' => $row['referral_lead_id'] ?? '',
-            'establishmentDate' => $row['establishment_date'] ?? '',
-            'legalForm' => $row['legal_form'] ?? '',
-            'skNace' => $row['sk_nace'] ?? '',
-            'organizationSize' => $row['organization_size'] ?? '',
-            'ownershipType' => $row['ownership_type'] ?? '',
-            'dataSource' => $row['data_source'] ?? '',
-            'dissolutionDate' => $row['dissolution_date'] ?? '',
-            'region' => $row['region'] ?? '',
-            'district' => $row['district'] ?? '',
-            'financialSummary' => $row['financial_summary'] ?? '',
-            'clientCategoryId' => $row['client_category_id'] ?? null,
-            'archived' => intval($row['archived'] ?? 0) === 1,
-            'followUps' => (isset($row['follow_ups']) && $row['follow_ups'] !== '' && $row['follow_ups'] !== null) ? json_decode($row['follow_ups'], true) : (object)[]
-        ];
+        $timelineByLead = [];
+        $teBulk = $pdo->query("SELECT * FROM `timeline_events` ORDER BY `timestamp` ASC");
+        while ($te = $teBulk->fetch()) {
+            // A mail entry the user removed from the timeline. Kept only as a
+            // tombstone so the mailbox importer does not file it again.
+            if (!empty($te['hidden'])) {
+                continue;
+            }
+            if ($te['type'] === 'email' && !$canEmail) {
+                continue;
+            }
+            $event = [
+                'id' => $te['id'],
+                'type' => $te['type'],
+                'timestamp' => date('Y-m-d H:i', strtotime($te['timestamp'])),
+                'title' => $te['title'],
+                'content' => $te['content']
+            ];
+            // Offers always carry their amount. Any other entry that stored one
+            // (the warehouse's goods-issue note logs the sale total) keeps it too:
+            // it used to be written and never read back, so the figure was gone
+            // after the first reload.
+            if ($te['type'] === 'offer') {
+                $event['amount'] = floatval($te['amount']);
+            } elseif ($te['amount'] !== null && floatval($te['amount']) != 0.0) {
+                $event['amount'] = floatval($te['amount']);
+            }
+            // Offers and the business-document types (order, proforma invoice,
+            // advance receipt, invoice, delivery note) all carry paperwork.
+            if (in_array($te['type'], ccrm_document_event_types(), true)) {
+                $event['fileName'] = $te['file_name'];
+                $event['fileSize'] = $te['file_size'];
+                $event['fileType'] = $te['file_type'];
+                $attachments = (isset($te['attachments_json']) && $te['attachments_json'] !== '' && $te['attachments_json'] !== null)
+                    ? json_decode($te['attachments_json'], true)
+                    : null;
+                if (is_array($attachments) && $attachments) {
+                    $event['attachments'] = $attachments;
+                }
+            }
+            if ($te['type'] === 'appointment') {
+                $event['extraTime'] = $te['extra_time'];
+            }
+            // Mail-derived events render an Incoming/Outgoing badge instead of the
+            // usual type badge, and the direction decides which IMAP folder the body
+            // is fetched from when the card is opened.
+            if ($te['type'] === 'email') {
+                $event['isOutgoing'] = !empty($te['is_outgoing']);
+            }
+            // Who produced the entry. Absent on anything nobody triggered in the CRM
+            // (incoming mail, public-form inquiries) and on everything written before
+            // the column existed — those render without a name rather than guessing one.
+            if (isset($te['author']) && $te['author'] !== '' && $te['author'] !== null) {
+                $event['author'] = $te['author'];
+            }
+            // A voice note recorded onto the entry, plus its transcript. Only note
+            // events ever carry them, so they are left out entirely rather than sent
+            // as nulls the client would have to filter out again.
+            if (isset($te['audio_file']) && $te['audio_file'] !== '' && $te['audio_file'] !== null) {
+                $event['audioFile'] = $te['audio_file'];
+            }
+            if (isset($te['transcription']) && $te['transcription'] !== '' && $te['transcription'] !== null) {
+                $event['transcription'] = $te['transcription'];
+            }
+            $timelineByLead[$te['lead_id']][] = $event;
+        }
+
+        $leadsStmt = $pdo->query("SELECT * FROM `leads` ORDER BY `created_at` DESC");
+        while ($row = $leadsStmt->fetch()) {
+            $isClient = ccrm_is_client_record($row);
+            if (!$canLeads && !$isClient) {
+                continue;
+            }
+            if (!$canClients && $isClient) {
+                continue;
+            }
+
+            $leadId = $row['id'];
+            $categories = $catsByLead[$leadId] ?? [];
+            $timeline = $timelineByLead[$leadId] ?? [];
+
+            $leads[] = [
+                'id' => $row['id'],
+                'name' => $row['name'],
+                'city' => $row['city'],
+                'clientType' => $row['client_type'],
+                'status' => $row['status'],
+                'source' => $row['source'],
+                // Reported by the web form through api/pipeline.php and shown
+                // read-only in the app, so it is deliberately absent from the
+                // upsert below: a client's copy can never blank it out.
+                'trafficOrigin' => $row['traffic_origin'] ?? '',
+                'trafficOriginDetail' => $row['traffic_origin_detail'] ?? '',
+                'owner' => $row['owner'],
+                'division' => $row['division'] ?? null,
+                'value' => floatval($row['value']),
+                'adjustment' => floatval($row['adjustment'] ?? 0),
+                'rating' => intval($row['rating']),
+                'phone' => $row['phone'] ?? '',
+                'email' => $row['email'] ?? '',
+                'companyId' => $row['company_id'] ?? '',
+                'taxId' => $row['tax_id'] ?? '',
+                'vatId' => $row['vat_id'] ?? '',
+                'vatValidationResult' => isset($row['vat_validation_result']) && !empty($row['vat_validation_result']) ? json_decode($row['vat_validation_result'], true) : null,
+                'contactPerson' => $row['contact_person'] ?? '',
+                'website' => $row['website'] ?? '',
+                'address' => [
+                    'street' => $row['street'] ?? '',
+                    'city' => $row['city'] ?? '',
+                    'postalCode' => $row['postal_code'] ?? '',
+                    'country' => $row['country'] ?? 'Slovakia'
+                ],
+                'createdAt' => $row['created_at'],
+                'categories' => $categories,
+                'timeline' => $timeline,
+                'aiSummary' => $row['ai_summary'] ?? '',
+                'aiSummaryFingerprint' => $row['ai_summary_fingerprint'] ?? '',
+                'interestNote' => $row['interest_note'] ?? '',
+                'referralLeadId' => $row['referral_lead_id'] ?? '',
+                'establishmentDate' => $row['establishment_date'] ?? '',
+                'legalForm' => $row['legal_form'] ?? '',
+                'skNace' => $row['sk_nace'] ?? '',
+                'organizationSize' => $row['organization_size'] ?? '',
+                'ownershipType' => $row['ownership_type'] ?? '',
+                'dataSource' => $row['data_source'] ?? '',
+                'dissolutionDate' => $row['dissolution_date'] ?? '',
+                'region' => $row['region'] ?? '',
+                'district' => $row['district'] ?? '',
+                'financialSummary' => $row['financial_summary'] ?? '',
+                'clientCategoryId' => $row['client_category_id'] ?? null,
+                'archived' => intval($row['archived'] ?? 0) === 1,
+                'followUps' => (isset($row['follow_ups']) && $row['follow_ups'] !== '' && $row['follow_ups'] !== null) ? json_decode($row['follow_ups'], true) : (object)[]
+            ];
+        }
     }
 
     // 3.2. Fetch Tasks (assignees and tags pre-fetched in one query, grouped by task_id)
-    $assigneesByTask = [];
-    $assBulk = $pdo->query("SELECT `task_id`, `user_name` FROM `task_assignees`");
-    while ($a = $assBulk->fetch()) {
-        $assigneesByTask[$a['task_id']][] = $a['user_name'];
-    }
+    $canTasks = ccrm_can($scope, 'tasks');
+    $canTasksViewAll = ccrm_can($scope, 'tasks.view_all');
 
-    $tagsByTask = [];
-    try {
-        $tagsBulk = $pdo->query("SELECT `task_id`, `tag_name` FROM `task_tags`");
-        while ($tg = $tagsBulk->fetch()) {
-            $tagsByTask[$tg['task_id']][] = $tg['tag_name'];
-        }
-    } catch (\Throwable $e) {}
-
-    $allKnownTags = [];
-    try {
-        $allTagsStmt = $pdo->query("SELECT `name` FROM `tags` ORDER BY `name` ASC");
-        while ($tRow = $allTagsStmt->fetch()) {
-            $allKnownTags[] = $tRow['name'];
-        }
-    } catch (\Throwable $e) {}
-
-    $tasksStmt = $pdo->query("SELECT * FROM `tasks` ORDER BY `created_at` DESC");
     $tasks = [];
-    while ($row = $tasksStmt->fetch()) {
-        $taskId = $row['id'];
-        $assignedUsers = $assigneesByTask[$taskId] ?? [];
+    $allKnownTags = [];
+    if ($canTasks) {
+        $assigneesByTask = [];
+        $assBulk = $pdo->query("SELECT `task_id`, `user_name` FROM `task_assignees`");
+        while ($a = $assBulk->fetch()) {
+            $assigneesByTask[$a['task_id']][] = $a['user_name'];
+        }
 
-        $tasks[] = [
-            'id' => $taskId,
-            'title' => $row['title'],
-            'description' => $row['description'] ?? '',
-            'priority' => $row['priority'],
-            'startDate' => $row['start_date'] ?? null,
-            'deadline' => $row['deadline'],
-            'deadlineTime' => $row['deadline_time'] ?? null,
-            'status' => $row['status'],
-            'owner' => $row['owner'],
-            'createdBy' => $row['created_by'] ?? null,
-            'createdAt' => $row['created_at'] ?? null,
-            'relatedLeadId' => $row['related_lead_id'] ?? null,
-            'relatedProjectId' => $row['related_project_id'] ?? null,
-            'isLocking' => intval($row['is_locking']) === 1,
-            'archived' => intval($row['archived'] ?? 0) === 1,
-            'completedBy' => $row['completed_by'] ?? null,
-            'completedAt' => $row['completed_at'] ?? null,
-            'emailReminders' => ccrm_decode_task_reminders($row['email_reminders_json'] ?? null),
-            'assignedUsers' => $assignedUsers,
-            'tags' => $tagsByTask[$taskId] ?? []
-        ];
+        $tagsByTask = [];
+        try {
+            $tagsBulk = $pdo->query("SELECT `task_id`, `tag_name` FROM `task_tags`");
+            while ($tg = $tagsBulk->fetch()) {
+                $tagsByTask[$tg['task_id']][] = $tg['tag_name'];
+            }
+        } catch (\Throwable $e) {}
+
+        try {
+            $allTagsStmt = $pdo->query("SELECT `name` FROM `tags` ORDER BY `name` ASC");
+            while ($tRow = $allTagsStmt->fetch()) {
+                $allKnownTags[] = $tRow['name'];
+            }
+        } catch (\Throwable $e) {}
+
+        $tasksStmt = $pdo->query("SELECT * FROM `tasks` ORDER BY `created_at` DESC");
+        while ($row = $tasksStmt->fetch()) {
+            $taskId = $row['id'];
+            $assignedUsers = $assigneesByTask[$taskId] ?? [];
+
+            $taskItem = [
+                'id' => $taskId,
+                'title' => $row['title'],
+                'description' => $row['description'] ?? '',
+                'priority' => $row['priority'],
+                'startDate' => $row['start_date'] ?? null,
+                'deadline' => $row['deadline'],
+                'deadlineTime' => $row['deadline_time'] ?? null,
+                'status' => $row['status'],
+                'owner' => $row['owner'],
+                'createdBy' => $row['created_by'] ?? null,
+                'createdAt' => $row['created_at'] ?? null,
+                'relatedLeadId' => $row['related_lead_id'] ?? null,
+                'relatedProjectId' => $row['related_project_id'] ?? null,
+                'isLocking' => intval($row['is_locking']) === 1,
+                'archived' => intval($row['archived'] ?? 0) === 1,
+                'completedBy' => $row['completed_by'] ?? null,
+                'completedAt' => $row['completed_at'] ?? null,
+                'emailReminders' => ccrm_decode_task_reminders($row['email_reminders_json'] ?? null),
+                'assignedUsers' => $assignedUsers,
+                'tags' => $tagsByTask[$taskId] ?? []
+            ];
+
+            if ($canTasksViewAll || ccrm_can_view_task($taskItem, $scope)) {
+                $tasks[] = $taskItem;
+            }
+        }
     }
 
     // 3.3. Fetch Users
     // SECURITY: password hashes are never exposed to clients. Authentication is
     // performed server-side by api/login.php.
+    $canPmManagers = ccrm_can($scope, 'pm_managers');
     $usersStmt = $pdo->query("SELECT * FROM `users` ORDER BY `name` ASC");
     $users = [];
     while ($row = $usersStmt->fetch()) {
+        $isSelf = ($row['id'] === $scope['sessionUserId']);
+        $fullUser = (!empty($scope['isAdmin']) || $canPmManagers || $isSelf);
+
         $users[] = [
             // Sent so the client's delta sync can track user rows like every other
             // collection (it keys its baseline by id). Not a secret: the id is a
@@ -956,13 +990,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'avatar' => $row['avatar'] ?? null,
             // Stored inside metadata_json by the users write below; it used to be
             // a hardcoded [] here, so every entry vanished on the next reload.
-            'activityLog' => (function ($raw) {
+            'activityLog' => $fullUser ? (function ($raw) {
                 $m = is_string($raw) && $raw !== '' ? json_decode($raw, true) : null;
                 return (is_array($m) && isset($m['activityLog']) && is_array($m['activityLog'])) ? array_values($m['activityLog']) : [];
-            })($row['metadata_json'] ?? null),
+            })($row['metadata_json'] ?? null) : [],
             // SECURITY: mask per-user email passwords (IMAP/SMTP) inside the
             // metadata blob so one user cannot read another's mailbox password.
-            'metadata_json' => ccrm_mask_user_metadata($row['metadata_json'])
+            'metadata_json' => $fullUser ? ccrm_mask_user_metadata($row['metadata_json']) : null
         ];
     }
 
@@ -976,6 +1010,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $roles = isset($settings['ROLES_RBAC']) ? json_decode($settings['ROLES_RBAC'], true) : null;
     if (!is_array($roles) || empty($roles)) {
         $roles = ccrm_fallback_roles();
+    }
+    if (empty($scope['isAdmin']) && !$canPmManagers) {
+        $myRoleName = strtolower(trim($scope['roleName']));
+        $roles = array_values(array_filter($roles, function ($r) use ($myRoleName) {
+            return is_array($r) && strtolower(trim($r['name'] ?? '')) === $myRoleName;
+        }));
     }
 
     // Reconstruct settings from system_settings DB table. Anything not stored yet
@@ -1063,341 +1103,356 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
     // Fetch Meeting Notes (meeting_tasks pre-fetched in one query, grouped by meeting_id)
     $meetingNotes = [];
-    try {
-        $tasksByMeeting = [];
-        $mtBulk = $pdo->query("SELECT * FROM `meeting_tasks`");
-        while ($tr = $mtBulk->fetch()) {
-            $tasksByMeeting[$tr['meeting_id']][] = [
-                'id' => $tr['id'],
-                'title' => $tr['title'],
-                'description' => $tr['description'] ?? '',
-                'startDate' => $tr['start_date'] ?? null,
-                'assignedUser' => $tr['assigned_user'] ?? '',
-                'dueDate' => $tr['due_date'] ?? '',
-                'priority' => $tr['priority'],
-                'status' => $tr['status']
-            ];
-        }
-
-        $meetingsStmt = $pdo->query("SELECT * FROM `meeting_notes` ORDER BY `date` DESC, `created_at` DESC");
-        while ($row = $meetingsStmt->fetch()) {
-            $meetingId = $row['id'];
-            $automatedTasks = $tasksByMeeting[$meetingId] ?? [];
-
-            $aiSummary = json_decode($row['ai_summary_json'] ?? '{}', true);
-            if (!isset($aiSummary['summary'])) {
-                $aiSummary = [
-                    'summary' => $aiSummary['summary'] ?? '',
-                    'actionItems' => $aiSummary['actionItems'] ?? [],
-                    'sentiment' => $aiSummary['sentiment'] ?? 'neutral',
-                    'topics' => $aiSummary['topics'] ?? []
+    if (ccrm_can($scope, 'meetings')) {
+        try {
+            $tasksByMeeting = [];
+            $mtBulk = $pdo->query("SELECT * FROM `meeting_tasks`");
+            while ($tr = $mtBulk->fetch()) {
+                $tasksByMeeting[$tr['meeting_id']][] = [
+                    'id' => $tr['id'],
+                    'title' => $tr['title'],
+                    'description' => $tr['description'] ?? '',
+                    'startDate' => $tr['start_date'] ?? null,
+                    'assignedUser' => $tr['assigned_user'] ?? '',
+                    'dueDate' => $tr['due_date'] ?? '',
+                    'priority' => $tr['priority'],
+                    'status' => $tr['status']
                 ];
             }
 
-            $meetingNotes[] = [
-                'id' => $meetingId,
-                'title' => $row['title'],
-                'date' => $row['date'],
-                'leadId' => $row['lead_id'] ?? '',
-                'leadName' => $row['lead_name'] ?? '',
-                'duration' => (int)$row['duration'],
-                'notes' => $row['notes'] ?? '[]',
-                'aiSummary' => $aiSummary,
-                'summaryGenerated' => (int)$row['summary_generated'] === 1,
-                'attachedLeads' => json_decode($row['attached_leads_json'] ?? '[]', true),
-                'attachedClients' => json_decode($row['attached_clients_json'] ?? '[]', true),
-                'attachedUsers' => json_decode($row['attached_users_json'] ?? '[]', true),
-                'automatedTasks' => $automatedTasks,
-                'archived' => isset($row['archived']) && (int)$row['archived'] === 1,
-                'audioFile' => $row['audio_file'] ?? null,
-                'transcription' => $row['transcription'] ?? null,
-                'automatedNotes' => $row['automated_notes'] ?? null
-            ];
+            $meetingsStmt = $pdo->query("SELECT * FROM `meeting_notes` ORDER BY `date` DESC, `created_at` DESC");
+            while ($row = $meetingsStmt->fetch()) {
+                $meetingId = $row['id'];
+                $automatedTasks = $tasksByMeeting[$meetingId] ?? [];
+
+                $aiSummary = json_decode($row['ai_summary_json'] ?? '{}', true);
+                if (!isset($aiSummary['summary'])) {
+                    $aiSummary = [
+                        'summary' => $aiSummary['summary'] ?? '',
+                        'actionItems' => $aiSummary['actionItems'] ?? [],
+                        'sentiment' => $aiSummary['sentiment'] ?? 'neutral',
+                        'topics' => $aiSummary['topics'] ?? []
+                    ];
+                }
+
+                $meetingNotes[] = [
+                    'id' => $meetingId,
+                    'title' => $row['title'],
+                    'date' => $row['date'],
+                    'leadId' => $row['lead_id'] ?? '',
+                    'leadName' => $row['lead_name'] ?? '',
+                    'duration' => (int)$row['duration'],
+                    'notes' => $row['notes'] ?? '[]',
+                    'aiSummary' => $aiSummary,
+                    'summaryGenerated' => (int)$row['summary_generated'] === 1,
+                    'attachedLeads' => json_decode($row['attached_leads_json'] ?? '[]', true),
+                    'attachedClients' => json_decode($row['attached_clients_json'] ?? '[]', true),
+                    'attachedUsers' => json_decode($row['attached_users_json'] ?? '[]', true),
+                    'automatedTasks' => $automatedTasks,
+                    'archived' => isset($row['archived']) && (int)$row['archived'] === 1,
+                    'audioFile' => $row['audio_file'] ?? null,
+                    'transcription' => $row['transcription'] ?? null,
+                    'automatedNotes' => $row['automated_notes'] ?? null
+                ];
+            }
+        } catch (\Exception $e) {
+            // Fallback
         }
-    } catch (\Exception $e) {
-        // Fallback
     }
 
     // 3.5. Fetch Unified Universal Entries configurations & rows
     $unifiedEntries = [];
-    $unifiedEntriesData = [];
-    try {
-        // Check if unified_entries table exists first (if database has not been initialized/migrated yet)
-        $chkRegistry = $pdo->query("SHOW TABLES LIKE 'unified_entries'")->rowCount() > 0;
-        if ($chkRegistry) {
-            $ueStmt = $pdo->query("SELECT * FROM `unified_entries` ORDER BY `created_at` ASC");
-            while ($row = $ueStmt->fetch()) {
-                $ueId = $row['id'];
-                $modules = json_decode($row['modules_json'] ?? '[]', true);
-                $folderModules = json_decode($row['folder_modules_json'] ?? '[]', true);
-                $unifiedEntries[] = [
-                    'id' => $ueId,
-                    'name' => $row['name'],
-                    'entryName' => $row['entry_name'] ?? 'Entry',
-                    'folderName' => $row['folder_name'] ?? 'Folder',
-                    'icon' => $row['icon'],
-                    'color' => $row['color'],
-                    'modules' => $modules,
-                    'folderModules' => $folderModules,
-                    'foldersEnabled' => (int)$row['folders_enabled'] === 1,
-                    'showFolderSummary' => isset($row['show_folder_summary']) ? ((int)$row['show_folder_summary'] === 1) : false,
-                    'warningDays' => isset($row['warning_days']) ? (int)$row['warning_days'] : 0,
-                    'archived' => (int)$row['archived'] === 1
-                ];
+    $unifiedEntriesData = (object)[];
+    if (ccrm_can($scope, 'unified_entries')) {
+        $unifiedEntriesData = [];
+        try {
+            // Check if unified_entries table exists first (if database has not been initialized/migrated yet)
+            $chkRegistry = $pdo->query("SHOW TABLES LIKE 'unified_entries'")->rowCount() > 0;
+            if ($chkRegistry) {
+                $ueStmt = $pdo->query("SELECT * FROM `unified_entries` ORDER BY `created_at` ASC");
+                while ($row = $ueStmt->fetch()) {
+                    $ueId = $row['id'];
+                    $modules = json_decode($row['modules_json'] ?? '[]', true);
+                    $folderModules = json_decode($row['folder_modules_json'] ?? '[]', true);
+                    $unifiedEntries[] = [
+                        'id' => $ueId,
+                        'name' => $row['name'],
+                        'entryName' => $row['entry_name'] ?? 'Entry',
+                        'folderName' => $row['folder_name'] ?? 'Folder',
+                        'icon' => $row['icon'],
+                        'color' => $row['color'],
+                        'modules' => $modules,
+                        'folderModules' => $folderModules,
+                        'foldersEnabled' => (int)$row['folders_enabled'] === 1,
+                        'showFolderSummary' => isset($row['show_folder_summary']) ? ((int)$row['show_folder_summary'] === 1) : false,
+                        'warningDays' => isset($row['warning_days']) ? (int)$row['warning_days'] : 0,
+                        'archived' => (int)$row['archived'] === 1
+                    ];
 
-                $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($ueId));
-                $tableName = "ue_" . $safeId;
-                
-                $chkTable = $pdo->query("SHOW TABLES LIKE '{$tableName}'")->rowCount() > 0;
-                if ($chkTable) {
-                    $rowsStmt = $pdo->query("SELECT * FROM `{$tableName}` ORDER BY `created_at` ASC");
-                    $ueRows = [];
-                    while ($r = $rowsStmt->fetch()) {
-                        $rowItem = [
-                            'id' => $r['id'],
-                            'parentId' => $r['parent_id'],
-                            'isFolder' => (int)$r['is_folder'] === 1
-                        ];
-                        if (isset($r['title'])) {
-                            $rowItem['title'] = $r['title'];
+                    $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($ueId));
+                    $tableName = "ue_" . $safeId;
+                    
+                    $chkTable = $pdo->query("SHOW TABLES LIKE '{$tableName}'")->rowCount() > 0;
+                    if ($chkTable) {
+                        $rowsStmt = $pdo->query("SELECT * FROM `{$tableName}` ORDER BY `created_at` ASC");
+                        $ueRows = [];
+                        while ($r = $rowsStmt->fetch()) {
+                            $rowItem = [
+                                'id' => $r['id'],
+                                'parentId' => $r['parent_id'],
+                                'isFolder' => (int)$r['is_folder'] === 1
+                            ];
+                            if (isset($r['title'])) {
+                                $rowItem['title'] = $r['title'];
+                            }
+                            if (isset($r['due_date'])) {
+                                $rowItem['dueDate'] = $r['due_date'];
+                            }
+                            if (isset($r['file_name'])) {
+                                $rowItem['fileName'] = $r['file_name'];
+                                $rowItem['fileSize'] = $r['file_size'];
+                                $rowItem['fileType'] = $r['file_type'];
+                                $rowItem['filePath'] = $r['file_path'];
+                            }
+                            if (isset($r['client_id'])) {
+                                $rowItem['clientId'] = $r['client_id'];
+                            }
+                            if (isset($r['lead_id'])) {
+                                $rowItem['leadId'] = $r['lead_id'];
+                            }
+                            if (isset($r['number_value'])) {
+                                $rowItem['numberValue'] = (float)$r['number_value'];
+                            }
+                            if (isset($r['money_amount'])) {
+                                $rowItem['moneyAmount'] = (float)$r['money_amount'];
+                            }
+                            // The currency is written whenever the money module is on,
+                            // amount or not; a row saved as "USD, amount to be filled
+                            // in" must not fall back to the default currency on reload.
+                            if (isset($r['money_currency']) && $r['money_currency'] !== '') {
+                                $rowItem['moneyCurrency'] = $r['money_currency'];
+                            }
+                            if (isset($r['warning_days'])) {
+                                $rowItem['warningDays'] = (int)$r['warning_days'];
+                            }
+                            if (isset($r['icon'])) {
+                                $rowItem['icon'] = $r['icon'];
+                            }
+                            $ueRows[] = $rowItem;
                         }
-                        if (isset($r['due_date'])) {
-                            $rowItem['dueDate'] = $r['due_date'];
-                        }
-                        if (isset($r['file_name'])) {
-                            $rowItem['fileName'] = $r['file_name'];
-                            $rowItem['fileSize'] = $r['file_size'];
-                            $rowItem['fileType'] = $r['file_type'];
-                            $rowItem['filePath'] = $r['file_path'];
-                        }
-                        if (isset($r['client_id'])) {
-                            $rowItem['clientId'] = $r['client_id'];
-                        }
-                        if (isset($r['lead_id'])) {
-                            $rowItem['leadId'] = $r['lead_id'];
-                        }
-                        if (isset($r['number_value'])) {
-                            $rowItem['numberValue'] = (float)$r['number_value'];
-                        }
-                        if (isset($r['money_amount'])) {
-                            $rowItem['moneyAmount'] = (float)$r['money_amount'];
-                        }
-                        // The currency is written whenever the money module is on,
-                        // amount or not; a row saved as "USD, amount to be filled
-                        // in" must not fall back to the default currency on reload.
-                        if (isset($r['money_currency']) && $r['money_currency'] !== '') {
-                            $rowItem['moneyCurrency'] = $r['money_currency'];
-                        }
-                        if (isset($r['warning_days'])) {
-                            $rowItem['warningDays'] = (int)$r['warning_days'];
-                        }
-                        if (isset($r['icon'])) {
-                            $rowItem['icon'] = $r['icon'];
-                        }
-                        $ueRows[] = $rowItem;
+                        $unifiedEntriesData[$ueId] = $ueRows;
+                    } else {
+                        $unifiedEntriesData[$ueId] = [];
                     }
-                    $unifiedEntriesData[$ueId] = $ueRows;
-                } else {
-        $unifiedEntriesData[$ueId] = [];
                 }
             }
+        } catch (\Exception $e) {
+            // Fallback
         }
-    } catch (\Exception $e) {
-        // Fallback
     }
 
     // 3.6. Fetch Custom Dynamic Dashboards
     $customDashboards = [];
-    try {
-        $dashStmt = $pdo->query("SELECT * FROM `custom_dashboards` ORDER BY `created_at` ASC");
-        while ($row = $dashStmt->fetch()) {
-            $customDashboards[] = [
-                'id' => $row['id'],
-                'name' => $row['name'],
-                'icon' => $row['icon'],
-                'color' => $row['color'],
-                'prompts' => json_decode($row['prompts_json'] ?? '[]', true),
-                'layout' => json_decode($row['layout_json'] ?? '{}', true),
-                'activeModel' => $row['active_model'],
-                'archived' => (int)$row['archived'] === 1
-            ];
+    $canDashboard = ccrm_can($scope, 'dashboard');
+    $canCustomDash = ccrm_can($scope, 'dashboard.custom');
+    if ($canCustomDash || $canDashboard) {
+        try {
+            $dashStmt = $pdo->query("SELECT * FROM `custom_dashboards` ORDER BY `created_at` ASC");
+            while ($row = $dashStmt->fetch()) {
+                if (!$canCustomDash && ($row['id'] !== '__home__')) {
+                    continue;
+                }
+                $customDashboards[] = [
+                    'id' => $row['id'],
+                    'name' => $row['name'],
+                    'icon' => $row['icon'],
+                    'color' => $row['color'],
+                    'prompts' => json_decode($row['prompts_json'] ?? '[]', true),
+                    'layout' => json_decode($row['layout_json'] ?? '{}', true),
+                    'activeModel' => $row['active_model'],
+                    'archived' => (int)$row['archived'] === 1
+                ];
+            }
+        } catch (\Exception $e) {
+            // Table doesn't exist yet or other query error
         }
-    } catch (\Exception $e) {
-        // Table doesn't exist yet or other query error
     }
 
     // 3.7. Fetch Project Types & Projects
+    $canProjects = ccrm_can($scope, 'projects');
     $projectTypes = [];
     $projects = [];
-    try {
-        $ptStmt = $pdo->query("SELECT * FROM `project_types` ORDER BY `created_at` ASC");
-        while ($row = $ptStmt->fetch(PDO::FETCH_ASSOC)) {
-            $projectTypes[] = [
-                'id' => $row['id'],
-                'name' => $row['name'],
-                'description' => $row['description'] ?? '',
-                'icon' => $row['icon'],
-                'color' => $row['color'],
-                'attributes' => json_decode($row['attributes_json'] ?? '[]', true),
-                'hasTimeline' => (int)$row['has_timeline'] === 1,
-                'hasGantt' => (int)$row['has_gantt'] === 1,
-                'hasDeadline' => (int)($row['has_deadline'] ?? 0) === 1,
-                'hasInvoiceDate' => (int)($row['has_invoice_date'] ?? 0) === 1,
-                'deadlineWarningDays' => (int)($row['deadline_warning_days'] ?? 0),
-                'deadlineRequired' => (int)($row['deadline_required'] ?? 0) === 1,
-                'hasFiles' => (int)($row['has_files'] ?? 0) === 1,
-                'fileFields' => json_decode($row['file_fields_json'] ?? '[]', true) ?: [],
-                // How the projects list is laid out for this type. An empty
-                // array means "never arranged", which the client reads as the
-                // default set of columns.
-                'listColumns' => json_decode($row['list_columns_json'] ?? '[]', true) ?: [],
-                'timelineEventTypes' => json_decode($row['timeline_event_types_json'] ?? '[]', true),
-                'timelineAttributes' => json_decode($row['timeline_attributes_json'] ?? '[]', true)
-            ];
-        }
-
-        // Column -> attribute id, per type, for reading proj_data_/proj_timeline_
-        // rows back under the ids the client knows. See ccrm_attr_id_for_column().
-        $attrIdByColumn = [];
-        $tlAttrIdByColumn = [];
-        foreach ($projectTypes as $ptItem) {
-            $map = [];
-            $defs = array_merge(
-                is_array($ptItem['attributes']) ? $ptItem['attributes'] : [],
-                is_array($ptItem['fileFields']) ? $ptItem['fileFields'] : []
-            );
-            foreach ($defs as $attrDef) {
-                if (!is_array($attrDef) || !isset($attrDef['id'])) continue;
-                $map[ccrm_attr_column((string)$attrDef['id'])] = (string)$attrDef['id'];
+    if ($canProjects) {
+        try {
+            $ptStmt = $pdo->query("SELECT * FROM `project_types` ORDER BY `created_at` ASC");
+            while ($row = $ptStmt->fetch(PDO::FETCH_ASSOC)) {
+                $projectTypes[] = [
+                    'id' => $row['id'],
+                    'name' => $row['name'],
+                    'description' => $row['description'] ?? '',
+                    'icon' => $row['icon'],
+                    'color' => $row['color'],
+                    'attributes' => json_decode($row['attributes_json'] ?? '[]', true),
+                    'hasTimeline' => (int)$row['has_timeline'] === 1,
+                    'hasGantt' => (int)$row['has_gantt'] === 1,
+                    'hasDeadline' => (int)($row['has_deadline'] ?? 0) === 1,
+                    'hasInvoiceDate' => (int)($row['has_invoice_date'] ?? 0) === 1,
+                    'deadlineWarningDays' => (int)($row['deadline_warning_days'] ?? 0),
+                    'deadlineRequired' => (int)($row['deadline_required'] ?? 0) === 1,
+                    'hasFiles' => (int)($row['has_files'] ?? 0) === 1,
+                    'fileFields' => json_decode($row['file_fields_json'] ?? '[]', true) ?: [],
+                    // How the projects list is laid out for this type. An empty
+                    // array means "never arranged", which the client reads as the
+                    // default set of columns.
+                    'listColumns' => json_decode($row['list_columns_json'] ?? '[]', true) ?: [],
+                    'timelineEventTypes' => json_decode($row['timeline_event_types_json'] ?? '[]', true),
+                    'timelineAttributes' => json_decode($row['timeline_attributes_json'] ?? '[]', true)
+                ];
             }
-            $attrIdByColumn[$ptItem['id']] = $map;
 
-            // Timeline attributes live under each event type (the writer below
-            // adds a column per timelineEventTypes[].attributes[]); the flat
-            // timelineAttributes list is the older shape and is read too.
-            $tlDefs = is_array($ptItem['timelineAttributes']) ? $ptItem['timelineAttributes'] : [];
-            foreach ((is_array($ptItem['timelineEventTypes']) ? $ptItem['timelineEventTypes'] : []) as $evType) {
-                if (is_array($evType) && is_array($evType['attributes'] ?? null)) {
-                    $tlDefs = array_merge($tlDefs, $evType['attributes']);
+            // Column -> attribute id, per type, for reading proj_data_/proj_timeline_
+            // rows back under the ids the client knows. See ccrm_attr_id_for_column().
+            $attrIdByColumn = [];
+            $tlAttrIdByColumn = [];
+            foreach ($projectTypes as $ptItem) {
+                $map = [];
+                $defs = array_merge(
+                    is_array($ptItem['attributes']) ? $ptItem['attributes'] : [],
+                    is_array($ptItem['fileFields']) ? $ptItem['fileFields'] : []
+                );
+                foreach ($defs as $attrDef) {
+                    if (!is_array($attrDef) || !isset($attrDef['id'])) continue;
+                    $map[ccrm_attr_column((string)$attrDef['id'])] = (string)$attrDef['id'];
                 }
-            }
-            $tlMap = [];
-            foreach ($tlDefs as $attrDef) {
-                if (!is_array($attrDef) || !isset($attrDef['id'])) continue;
-                $tlMap[ccrm_attr_column((string)$attrDef['id'])] = (string)$attrDef['id'];
-            }
-            $tlAttrIdByColumn[$ptItem['id']] = $tlMap;
-        }
+                $attrIdByColumn[$ptItem['id']] = $map;
 
-        // Fetch managers
-        $managersByProject = [];
-        $mgrStmt = $pdo->query("SELECT `project_id`, `user_id` FROM `project_managers`");
-        while ($mgr = $mgrStmt->fetch(PDO::FETCH_ASSOC)) {
-            $managersByProject[$mgr['project_id']][] = $mgr['user_id'];
-        }
-
-        $projStmt = $pdo->query("SELECT * FROM `projects` ORDER BY `created_at` DESC, `id` DESC");
-        while ($pRow = $projStmt->fetch(PDO::FETCH_ASSOC)) {
-            $projId = $pRow['id'];
-            $ptId = $pRow['project_type_id'];
-            $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($ptId));
-            
-            $projectItem = [
-                'id' => $projId,
-                'projectTypeId' => $ptId,
-                'name' => $pRow['name'] ?? '',
-                'leadId' => $pRow['lead_id'] ?? null,
-                'clientId' => $pRow['client_id'] ?? null,
-                'status' => $pRow['status'],
-                'division' => $pRow['division'] ?? null,
-                // Star priority. NULL in the column means nobody ever rated this
-                // project; the client draws 0 and 'never rated' the same way, so
-                // both travel as 0 rather than as a null it would have to guard.
-                'rating' => isset($pRow['rating']) ? (int)$pRow['rating'] : 0,
-                'invoiceDate' => $pRow['invoice_date'] ?? null,
-                'completionDeadline' => $pRow['completion_deadline'] ?? null,
-                'delayReason' => $pRow['delay_reason'] ?? null,
-                'startDate' => $pRow['start_date'] ?? null,
-                'finishedAt' => $pRow['finished_at'] ?? null,
-                'createdAt' => $pRow['created_at'] ?? null,
-                'budget' => isset($pRow['budget']) ? (float)$pRow['budget'] : null,
-                'value' => isset($pRow['value']) ? (float)$pRow['value'] : null,
-                'customFileFields' => json_decode($pRow['custom_files_json'] ?? '[]', true) ?: [],
-                'archived' => isset($pRow['archived']) && (int)$pRow['archived'] === 1,
-                'managers' => $managersByProject[$projId] ?? [],
-                'data' => [],
-                'timeline' => [],
-                'gantt' => []
-            ];
-
-            // Fetch dynamic data
-            $dataTable = "proj_data_" . $safeId;
-            $chkData = $pdo->query("SHOW TABLES LIKE '{$dataTable}'")->rowCount() > 0;
-            if ($chkData) {
-                $dStmt = $pdo->prepare("SELECT * FROM `{$dataTable}` WHERE `project_id` = ?");
-                $dStmt->execute([$projId]);
-                $dRow = $dStmt->fetch(PDO::FETCH_ASSOC);
-                if ($dRow) {
-                    $parsedData = [];
-                    $idByCol = $attrIdByColumn[$ptId] ?? [];
-                    foreach ($dRow as $col => $val) {
-                        if (str_starts_with($col, 'attr_')) {
-                            $parsedData[ccrm_attr_id_for_column($idByCol, $col)] = ccrm_decode_attr_value($val);
-                        }
+                // Timeline attributes live under each event type (the writer below
+                // adds a column per timelineEventTypes[].attributes[]); the flat
+                // timelineAttributes list is the older shape and is read too.
+                $tlDefs = is_array($ptItem['timelineAttributes']) ? $ptItem['timelineAttributes'] : [];
+                foreach ((is_array($ptItem['timelineEventTypes']) ? $ptItem['timelineEventTypes'] : []) as $evType) {
+                    if (is_array($evType) && is_array($evType['attributes'] ?? null)) {
+                        $tlDefs = array_merge($tlDefs, $evType['attributes']);
                     }
-                    $projectItem['data'] = $parsedData;
                 }
+                $tlMap = [];
+                foreach ($tlDefs as $attrDef) {
+                    if (!is_array($attrDef) || !isset($attrDef['id'])) continue;
+                    $tlMap[ccrm_attr_column((string)$attrDef['id'])] = (string)$attrDef['id'];
+                }
+                $tlAttrIdByColumn[$ptItem['id']] = $tlMap;
             }
 
-             // Fetch timeline
-             $timelineTable = "proj_timeline_" . $safeId;
-             $chkTimeline = $pdo->query("SHOW TABLES LIKE '{$timelineTable}'")->rowCount() > 0;
-             if ($chkTimeline) {
-                 $tStmt = $pdo->prepare("SELECT * FROM `{$timelineTable}` WHERE `project_id` = ? ORDER BY `timestamp` ASC");
-                 $tStmt->execute([$projId]);
-                 while ($tRow = $tStmt->fetch(PDO::FETCH_ASSOC)) {
-                     $parsedTeData = [];
-                     $tlIdByCol = $tlAttrIdByColumn[$ptId] ?? [];
-                     foreach ($tRow as $col => $val) {
-                         if (str_starts_with($col, 'attr_')) {
-                             $parsedTeData[ccrm_attr_id_for_column($tlIdByCol, $col)] = ccrm_decode_attr_value($val);
+            // Fetch managers
+            $managersByProject = [];
+            $mgrStmt = $pdo->query("SELECT `project_id`, `user_id` FROM `project_managers`");
+            while ($mgr = $mgrStmt->fetch(PDO::FETCH_ASSOC)) {
+                $managersByProject[$mgr['project_id']][] = $mgr['user_id'];
+            }
+
+            $projStmt = $pdo->query("SELECT * FROM `projects` ORDER BY `created_at` DESC, `id` DESC");
+            while ($pRow = $projStmt->fetch(PDO::FETCH_ASSOC)) {
+                $projId = $pRow['id'];
+                $ptId = $pRow['project_type_id'];
+                $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($ptId));
+                
+                $projectItem = [
+                    'id' => $projId,
+                    'projectTypeId' => $ptId,
+                    'name' => $pRow['name'] ?? '',
+                    'leadId' => $pRow['lead_id'] ?? null,
+                    'clientId' => $pRow['client_id'] ?? null,
+                    'status' => $pRow['status'],
+                    'division' => $pRow['division'] ?? null,
+                    // Star priority. NULL in the column means nobody ever rated this
+                    // project; the client draws 0 and 'never rated' the same way, so
+                    // both travel as 0 rather than as a null it would have to guard.
+                    'rating' => isset($pRow['rating']) ? (int)$pRow['rating'] : 0,
+                    'invoiceDate' => $pRow['invoice_date'] ?? null,
+                    'completionDeadline' => $pRow['completion_deadline'] ?? null,
+                    'delayReason' => $pRow['delay_reason'] ?? null,
+                    'startDate' => $pRow['start_date'] ?? null,
+                    'finishedAt' => $pRow['finished_at'] ?? null,
+                    'createdAt' => $pRow['created_at'] ?? null,
+                    'budget' => isset($pRow['budget']) ? (float)$pRow['budget'] : null,
+                    'value' => isset($pRow['value']) ? (float)$pRow['value'] : null,
+                    'customFileFields' => json_decode($pRow['custom_files_json'] ?? '[]', true) ?: [],
+                    'archived' => isset($pRow['archived']) && (int)$pRow['archived'] === 1,
+                    'managers' => $managersByProject[$projId] ?? [],
+                    'data' => [],
+                    'timeline' => [],
+                    'gantt' => []
+                ];
+
+                // Fetch dynamic data
+                $dataTable = "proj_data_" . $safeId;
+                $chkData = $pdo->query("SHOW TABLES LIKE '{$dataTable}'")->rowCount() > 0;
+                if ($chkData) {
+                    $dStmt = $pdo->prepare("SELECT * FROM `{$dataTable}` WHERE `project_id` = ?");
+                    $dStmt->execute([$projId]);
+                    $dRow = $dStmt->fetch(PDO::FETCH_ASSOC);
+                    if ($dRow) {
+                        $parsedData = [];
+                        $idByCol = $attrIdByColumn[$ptId] ?? [];
+                        foreach ($dRow as $col => $val) {
+                            if (str_starts_with($col, 'attr_')) {
+                                $parsedData[ccrm_attr_id_for_column($idByCol, $col)] = ccrm_decode_attr_value($val);
+                            }
+                        }
+                        $projectItem['data'] = $parsedData;
+                    }
+                }
+
+                 // Fetch timeline
+                 $timelineTable = "proj_timeline_" . $safeId;
+                 $chkTimeline = $pdo->query("SHOW TABLES LIKE '{$timelineTable}'")->rowCount() > 0;
+                 if ($chkTimeline) {
+                     $tStmt = $pdo->prepare("SELECT * FROM `{$timelineTable}` WHERE `project_id` = ? ORDER BY `timestamp` ASC");
+                     $tStmt->execute([$projId]);
+                     while ($tRow = $tStmt->fetch(PDO::FETCH_ASSOC)) {
+                         $parsedTeData = [];
+                         $tlIdByCol = $tlAttrIdByColumn[$ptId] ?? [];
+                         foreach ($tRow as $col => $val) {
+                             if (str_starts_with($col, 'attr_')) {
+                                 $parsedTeData[ccrm_attr_id_for_column($tlIdByCol, $col)] = ccrm_decode_attr_value($val);
+                             }
                          }
+                         $projectItem['timeline'][] = [
+                             'id' => $tRow['id'],
+                             'type' => $tRow['type'],
+                             'eventType' => $tRow['event_type'] ?? null,
+                             'timestamp' => $tRow['timestamp'],
+                             'title' => $tRow['title'],
+                             'content' => $tRow['content'],
+                             'data' => $parsedTeData
+                         ];
                      }
-                     $projectItem['timeline'][] = [
-                         'id' => $tRow['id'],
-                         'type' => $tRow['type'],
-                         'eventType' => $tRow['event_type'] ?? null,
-                         'timestamp' => $tRow['timestamp'],
-                         'title' => $tRow['title'],
-                         'content' => $tRow['content'],
-                         'data' => $parsedTeData
-                     ];
                  }
-             }
 
-            // Fetch gantt
-            $ganttTable = "proj_gantt_" . $safeId;
-            $chkGantt = $pdo->query("SHOW TABLES LIKE '{$ganttTable}'")->rowCount() > 0;
-            if ($chkGantt) {
-                $gStmt = $pdo->prepare("SELECT * FROM `{$ganttTable}` WHERE `project_id` = ?");
-                $gStmt->execute([$projId]);
-                while ($gRow = $gStmt->fetch(PDO::FETCH_ASSOC)) {
-                    $projectItem['gantt'][] = [
-                        'id' => $gRow['id'],
-                        'title' => $gRow['title'],
-                        'contactId' => $gRow['contact_id'],
-                        'startDate' => $gRow['start_date'],
-                        'endDate' => $gRow['end_date'],
-                        'progress' => (int)$gRow['progress']
-                    ];
+                // Fetch gantt
+                $ganttTable = "proj_gantt_" . $safeId;
+                $chkGantt = $pdo->query("SHOW TABLES LIKE '{$ganttTable}'")->rowCount() > 0;
+                if ($chkGantt) {
+                    $gStmt = $pdo->prepare("SELECT * FROM `{$ganttTable}` WHERE `project_id` = ?");
+                    $gStmt->execute([$projId]);
+                    while ($gRow = $gStmt->fetch(PDO::FETCH_ASSOC)) {
+                        $projectItem['gantt'][] = [
+                            'id' => $gRow['id'],
+                            'title' => $gRow['title'],
+                            'contactId' => $gRow['contact_id'],
+                            'startDate' => $gRow['start_date'],
+                            'endDate' => $gRow['end_date'],
+                            'progress' => (int)$gRow['progress']
+                        ];
+                    }
                 }
+
+                $projects[] = $projectItem;
             }
 
-            $projects[] = $projectItem;
+        } catch (\Exception $e) {
+            // Fallback if tables don't exist
         }
-
-    } catch (\Exception $e) {
-        // Fallback if tables don't exist
     }
 
     // 3.7. Fetch Warehouse Data (Warehouses, Suppliers, Items, Stock, Batches, Movements)
@@ -1408,153 +1463,155 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $warehouseBatches = [];
     $warehouseMovements = [];
 
-    try {
-        if ($pdo->query("SHOW TABLES LIKE 'warehouses'")->rowCount() > 0) {
-            $whStmt = $pdo->query("SELECT * FROM `warehouses` ORDER BY `name` ASC");
-            while ($row = $whStmt->fetch()) {
-                $warehouses[] = [
-                    'id' => $row['id'],
-                    'name' => $row['name'],
-                    'code' => $row['code'],
-                    'address' => $row['address'],
-                    'managerUserId' => $row['manager_user_id'],
-                    'isDefault' => (int)$row['is_default'] === 1,
-                    'createdAt' => $row['created_at'],
-                ];
-            }
-        }
-
-        if ($pdo->query("SHOW TABLES LIKE 'suppliers'")->rowCount() > 0) {
-            $supStmt = $pdo->query("SELECT * FROM `suppliers` ORDER BY `name` ASC");
-            while ($row = $supStmt->fetch()) {
-                $suppliers[] = [
-                    'id' => $row['id'],
-                    'name' => $row['name'],
-                    'companyId' => $row['company_id'],
-                    'taxId' => $row['tax_id'],
-                    'vatId' => $row['vat_id'],
-                    'street' => $row['street'],
-                    'city' => $row['city'],
-                    'postalCode' => $row['postal_code'],
-                    'country' => $row['country'] ?? 'Slovakia',
-                    'email' => $row['email'],
-                    'phone' => $row['phone'],
-                    'website' => $row['website'],
-                    'iban' => $row['iban'],
-                    'swift' => $row['swift'],
-                    'paymentDueDays' => (int)($row['payment_due_days'] ?? 14),
-                    'notes' => $row['notes'],
-                    'contacts' => json_decode($row['contacts_json'] ?? '[]', true) ?: [],
-                    'createdAt' => $row['created_at'],
-                ];
-            }
-        }
-
-        if ($pdo->query("SHOW TABLES LIKE 'warehouse_items'")->rowCount() > 0) {
-            $itemStmt = $pdo->query("SELECT * FROM `warehouse_items` ORDER BY `name` ASC");
-            while ($row = $itemStmt->fetch()) {
-                $warehouseItems[] = [
-                    'id' => $row['id'],
-                    'sku' => $row['sku'],
-                    'barcode' => $row['barcode'],
-                    'name' => $row['name'],
-                    'description' => $row['description'],
-                    'category' => $row['category'],
-                    'unit' => $row['unit'] ?? 'ks',
-                    'minStock' => (float)($row['min_stock'] ?? 0),
-                    'optimalStock' => (float)($row['optimal_stock'] ?? 0),
-                    'defaultLocation' => $row['default_location'],
-                    'hasExpiration' => (int)$row['has_expiration'] === 1,
-                    'imageUrl' => $row['image_url'],
-                    'defaultSellPrice' => (float)($row['default_sell_price'] ?? 0),
-                    'avgPurchasePrice' => (float)($row['avg_purchase_price'] ?? 0),
-                    'lastPurchasePrice' => (float)($row['last_purchase_price'] ?? 0),
-                    'createdAt' => $row['created_at'],
-                ];
-            }
-        }
-
-        if ($pdo->query("SHOW TABLES LIKE 'warehouse_stock'")->rowCount() > 0) {
-            $stockStmt = $pdo->query("SELECT * FROM `warehouse_stock`");
-            while ($row = $stockStmt->fetch()) {
-                $warehouseStock[] = [
-                    'warehouseId' => $row['warehouse_id'],
-                    'itemId' => $row['item_id'],
-                    'quantity' => (float)($row['quantity'] ?? 0),
-                    'reservedQuantity' => (float)($row['reserved_quantity'] ?? 0),
-                    'location' => $row['location'],
-                ];
-            }
-        }
-
-        if ($pdo->query("SHOW TABLES LIKE 'warehouse_batches'")->rowCount() > 0) {
-            $batchStmt = $pdo->query("SELECT * FROM `warehouse_batches` ORDER BY `expiration_date` ASC");
-            while ($row = $batchStmt->fetch()) {
-                $warehouseBatches[] = [
-                    'id' => $row['id'],
-                    'itemId' => $row['item_id'],
-                    'warehouseId' => $row['warehouse_id'],
-                    'batchNumber' => $row['batch_number'],
-                    'expirationDate' => $row['expiration_date'],
-                    'initialQuantity' => (float)($row['initial_quantity'] ?? 0),
-                    'currentQuantity' => (float)($row['current_quantity'] ?? 0),
-                    'purchasePrice' => (float)($row['purchase_price'] ?? 0),
-                    'createdAt' => $row['created_at'],
-                ];
-            }
-        }
-
-        if ($pdo->query("SHOW TABLES LIKE 'warehouse_movements'")->rowCount() > 0) {
-            $movStmt = $pdo->query("SELECT * FROM `warehouse_movements` ORDER BY `issued_at` DESC, `created_at` DESC");
-            $movementsMap = [];
-            while ($row = $movStmt->fetch()) {
-                $movId = $row['id'];
-                $movementsMap[$movId] = [
-                    'id' => $movId,
-                    'documentNumber' => $row['document_number'],
-                    'type' => $row['type'],
-                    'status' => $row['status'],
-                    'warehouseId' => $row['warehouse_id'],
-                    'targetWarehouseId' => $row['target_warehouse_id'],
-                    'supplierId' => $row['supplier_id'],
-                    'leadId' => $row['lead_id'],
-                    'totalCostValue' => (float)($row['total_cost_value'] ?? 0),
-                    'totalSellValue' => (float)($row['total_sell_value'] ?? 0),
-                    'totalProfitValue' => (float)($row['total_profit_value'] ?? 0),
-                    'createdBy' => $row['created_by'],
-                    'note' => $row['note'],
-                    'fileName' => $row['file_name'],
-                    'filePath' => $row['file_path'],
-                    'issuedAt' => $row['issued_at'],
-                    'createdAt' => $row['created_at'],
-                    'items' => [],
-                ];
-            }
-
-            if (!empty($movementsMap) && $pdo->query("SHOW TABLES LIKE 'warehouse_movement_items'")->rowCount() > 0) {
-                $itemsStmt = $pdo->query("SELECT * FROM `warehouse_movement_items` ORDER BY `id` ASC");
-                while ($itemRow = $itemsStmt->fetch()) {
-                    $mId = $itemRow['movement_id'];
-                    if (isset($movementsMap[$mId])) {
-                        $movementsMap[$mId]['items'][] = [
-                            'id' => $itemRow['id'],
-                            'movementId' => $mId,
-                            'itemId' => $itemRow['item_id'],
-                            'batchId' => $itemRow['batch_id'],
-                            'quantity' => (float)($itemRow['quantity'] ?? 0),
-                            'unitPurchasePrice' => (float)($itemRow['unit_purchase_price'] ?? 0),
-                            'unitSellPrice' => (float)($itemRow['unit_sell_price'] ?? 0),
-                            'totalPrice' => (float)($itemRow['total_price'] ?? 0),
-                            'expirationDate' => $itemRow['expiration_date'],
-                            'note' => $itemRow['note'],
-                        ];
-                    }
+    if (ccrm_can($scope, 'warehouse')) {
+        try {
+            if ($pdo->query("SHOW TABLES LIKE 'warehouses'")->rowCount() > 0) {
+                $whStmt = $pdo->query("SELECT * FROM `warehouses` ORDER BY `name` ASC");
+                while ($row = $whStmt->fetch()) {
+                    $warehouses[] = [
+                        'id' => $row['id'],
+                        'name' => $row['name'],
+                        'code' => $row['code'],
+                        'address' => $row['address'],
+                        'managerUserId' => $row['manager_user_id'],
+                        'isDefault' => (int)$row['is_default'] === 1,
+                        'createdAt' => $row['created_at'],
+                    ];
                 }
             }
-            $warehouseMovements = array_values($movementsMap);
+
+            if ($pdo->query("SHOW TABLES LIKE 'suppliers'")->rowCount() > 0) {
+                $supStmt = $pdo->query("SELECT * FROM `suppliers` ORDER BY `name` ASC");
+                while ($row = $supStmt->fetch()) {
+                    $suppliers[] = [
+                        'id' => $row['id'],
+                        'name' => $row['name'],
+                        'companyId' => $row['company_id'],
+                        'taxId' => $row['tax_id'],
+                        'vatId' => $row['vat_id'],
+                        'street' => $row['street'],
+                        'city' => $row['city'],
+                        'postalCode' => $row['postal_code'],
+                        'country' => $row['country'] ?? 'Slovakia',
+                        'email' => $row['email'],
+                        'phone' => $row['phone'],
+                        'website' => $row['website'],
+                        'iban' => $row['iban'],
+                        'swift' => $row['swift'],
+                        'paymentDueDays' => (int)($row['payment_due_days'] ?? 14),
+                        'notes' => $row['notes'],
+                        'contacts' => json_decode($row['contacts_json'] ?? '[]', true) ?: [],
+                        'createdAt' => $row['created_at'],
+                    ];
+                }
+            }
+
+            if ($pdo->query("SHOW TABLES LIKE 'warehouse_items'")->rowCount() > 0) {
+                $itemStmt = $pdo->query("SELECT * FROM `warehouse_items` ORDER BY `name` ASC");
+                while ($row = $itemStmt->fetch()) {
+                    $warehouseItems[] = [
+                        'id' => $row['id'],
+                        'sku' => $row['sku'],
+                        'barcode' => $row['barcode'],
+                        'name' => $row['name'],
+                        'description' => $row['description'],
+                        'category' => $row['category'],
+                        'unit' => $row['unit'] ?? 'ks',
+                        'minStock' => (float)($row['min_stock'] ?? 0),
+                        'optimalStock' => (float)($row['optimal_stock'] ?? 0),
+                        'defaultLocation' => $row['default_location'],
+                        'hasExpiration' => (int)$row['has_expiration'] === 1,
+                        'imageUrl' => $row['image_url'],
+                        'defaultSellPrice' => (float)($row['default_sell_price'] ?? 0),
+                        'avgPurchasePrice' => (float)($row['avg_purchase_price'] ?? 0),
+                        'lastPurchasePrice' => (float)($row['last_purchase_price'] ?? 0),
+                        'createdAt' => $row['created_at'],
+                    ];
+                }
+            }
+
+            if ($pdo->query("SHOW TABLES LIKE 'warehouse_stock'")->rowCount() > 0) {
+                $stockStmt = $pdo->query("SELECT * FROM `warehouse_stock`");
+                while ($row = $stockStmt->fetch()) {
+                    $warehouseStock[] = [
+                        'warehouseId' => $row['warehouse_id'],
+                        'itemId' => $row['item_id'],
+                        'quantity' => (float)($row['quantity'] ?? 0),
+                        'reservedQuantity' => (float)($row['reserved_quantity'] ?? 0),
+                        'location' => $row['location'],
+                    ];
+                }
+            }
+
+            if ($pdo->query("SHOW TABLES LIKE 'warehouse_batches'")->rowCount() > 0) {
+                $batchStmt = $pdo->query("SELECT * FROM `warehouse_batches` ORDER BY `expiration_date` ASC");
+                while ($row = $batchStmt->fetch()) {
+                    $warehouseBatches[] = [
+                        'id' => $row['id'],
+                        'itemId' => $row['item_id'],
+                        'warehouseId' => $row['warehouse_id'],
+                        'batchNumber' => $row['batch_number'],
+                        'expirationDate' => $row['expiration_date'],
+                        'initialQuantity' => (float)($row['initial_quantity'] ?? 0),
+                        'currentQuantity' => (float)($row['current_quantity'] ?? 0),
+                        'purchasePrice' => (float)($row['purchase_price'] ?? 0),
+                        'createdAt' => $row['created_at'],
+                    ];
+                }
+            }
+
+            if ($pdo->query("SHOW TABLES LIKE 'warehouse_movements'")->rowCount() > 0) {
+                $movStmt = $pdo->query("SELECT * FROM `warehouse_movements` ORDER BY `issued_at` DESC, `created_at` DESC");
+                $movementsMap = [];
+                while ($row = $movStmt->fetch()) {
+                    $movId = $row['id'];
+                    $movementsMap[$movId] = [
+                        'id' => $movId,
+                        'documentNumber' => $row['document_number'],
+                        'type' => $row['type'],
+                        'status' => $row['status'],
+                        'warehouseId' => $row['warehouse_id'],
+                        'targetWarehouseId' => $row['target_warehouse_id'],
+                        'supplierId' => $row['supplier_id'],
+                        'leadId' => $row['lead_id'],
+                        'totalCostValue' => (float)($row['total_cost_value'] ?? 0),
+                        'totalSellValue' => (float)($row['total_sell_value'] ?? 0),
+                        'totalProfitValue' => (float)($row['total_profit_value'] ?? 0),
+                        'createdBy' => $row['created_by'],
+                        'note' => $row['note'],
+                        'fileName' => $row['file_name'],
+                        'filePath' => $row['file_path'],
+                        'issuedAt' => $row['issued_at'],
+                        'createdAt' => $row['created_at'],
+                        'items' => [],
+                    ];
+                }
+
+                if (!empty($movementsMap) && $pdo->query("SHOW TABLES LIKE 'warehouse_movement_items'")->rowCount() > 0) {
+                    $itemsStmt = $pdo->query("SELECT * FROM `warehouse_movement_items` ORDER BY `id` ASC");
+                    while ($itemRow = $itemsStmt->fetch()) {
+                        $mId = $itemRow['movement_id'];
+                        if (isset($movementsMap[$mId])) {
+                            $movementsMap[$mId]['items'][] = [
+                                'id' => $itemRow['id'],
+                                'movementId' => $mId,
+                                'itemId' => $itemRow['item_id'],
+                                'batchId' => $itemRow['batch_id'],
+                                'quantity' => (float)($itemRow['quantity'] ?? 0),
+                                'unitPurchasePrice' => (float)($itemRow['unit_purchase_price'] ?? 0),
+                                'unitSellPrice' => (float)($itemRow['unit_sell_price'] ?? 0),
+                                'totalPrice' => (float)($itemRow['total_price'] ?? 0),
+                                'expirationDate' => $itemRow['expiration_date'],
+                                'note' => $itemRow['note'],
+                            ];
+                        }
+                    }
+                }
+                $warehouseMovements = array_values($movementsMap);
+            }
+        } catch (\Throwable $e) {
+            error_log('[ccrm sync] warehouse fetch error: ' . $e->getMessage());
         }
-    } catch (\Throwable $e) {
-        error_log('[ccrm sync] warehouse fetch error: ' . $e->getMessage());
     }
 
     // 3.8. Fetch Financial Categories and Records, Invoices & Price Offers
@@ -1564,7 +1621,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $invoicesOffers = [];
     $aiCustomTemplates = [];
     try {
-        if ($pdo->query("SHOW TABLES LIKE 'financial_categories'")->rowCount() > 0) {
+        if ((ccrm_can($scope, 'financial') || ccrm_can($scope, 'employees.salaries')) && $pdo->query("SHOW TABLES LIKE 'financial_categories'")->rowCount() > 0) {
             $fcStmt = $pdo->query("SELECT * FROM `financial_categories` ORDER BY `level` ASC, `sort_order` ASC, `name` ASC");
             while ($row = $fcStmt->fetch()) {
                 $financialCategories[] = [
@@ -1584,7 +1641,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
 
         // Customer categories (Clients → Categories): the finance tree's shape
         // without the income/expense type.
-        if ($pdo->query("SHOW TABLES LIKE 'client_categories'")->rowCount() > 0) {
+        if ((ccrm_can($scope, 'clients') || ccrm_can($scope, 'leads')) && $pdo->query("SHOW TABLES LIKE 'client_categories'")->rowCount() > 0) {
             $ccStmt = $pdo->query("SELECT * FROM `client_categories` ORDER BY `level` ASC, `sort_order` ASC, `name` ASC");
             while ($row = $ccStmt->fetch()) {
                 $clientCategories[] = [
@@ -1601,15 +1658,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             }
         }
 
-        if ($pdo->query("SHOW TABLES LIKE 'financial_records'")->rowCount() > 0) {
+        if (ccrm_can($scope, 'financial') && $pdo->query("SHOW TABLES LIKE 'financial_records'")->rowCount() > 0) {
+            $canSeeSalaries = ccrm_can($scope, 'employees.salaries');
             $frStmt = $pdo->query("SELECT * FROM `financial_records` ORDER BY `issue_date` DESC, `created_at` DESC");
             while ($row = $frStmt->fetch()) {
+                $title = $row['title'];
+                $description = $row['description'];
+                $isSalaryRow = (($row['subtype'] ?? '') === 'salary' || str_starts_with((string)$row['id'], 'fr-sal-'));
+                if ($isSalaryRow && !$canSeeSalaries) {
+                    $period = '';
+                    if (preg_match('/\(([^)]+)\)/', (string)$title, $pm)) {
+                        $period = $pm[1];
+                    } elseif (!empty($row['issue_date'])) {
+                        $period = substr($row['issue_date'], 0, 7);
+                    } else {
+                        $period = 'Payroll';
+                    }
+                    $title = "Payroll ({$period})";
+                    $description = "Payroll ({$period})";
+                }
+
                 $financialRecords[] = [
                     'id' => $row['id'],
                     'type' => $row['type'],
                     'subtype' => $row['subtype'] ?? 'regular',
-                    'title' => $row['title'],
-                    'description' => $row['description'],
+                    'title' => $title,
+                    'description' => $description,
                     'categoryId' => $row['category_id'],
                     'categoryPath' => $row['category_path'],
                     'amountPlanned' => (float)($row['amount_planned'] ?? 0),
@@ -1641,7 +1715,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 ];
             }
         }
-        if ($pdo->query("SHOW TABLES LIKE 'invoices_offers'")->rowCount() > 0) {
+
+        if (ccrm_can($scope, 'invoices') && $pdo->query("SHOW TABLES LIKE 'invoices_offers'")->rowCount() > 0) {
             $ioStmt = $pdo->query("SELECT * FROM `invoices_offers` ORDER BY `issued_at` DESC, `created_at` DESC");
             $allItemsStmt = $pdo->query("SELECT * FROM `invoice_offer_items`");
             $itemsByIo = [];
@@ -1718,7 +1793,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             }
         }
 
-        if ($pdo->query("SHOW TABLES LIKE 'ai_custom_templates'")->rowCount() > 0) {
+        if ((ccrm_can($scope, 'invoices') || ccrm_can($scope, 'general_config')) && $pdo->query("SHOW TABLES LIKE 'ai_custom_templates'")->rowCount() > 0) {
             $actStmt = $pdo->query("SELECT * FROM `ai_custom_templates` ORDER BY `created_at` DESC");
             while ($row = $actStmt->fetch()) {
                 $aiCustomTemplates[] = [
@@ -1745,10 +1820,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $employeeVacations = [];
     $employeeSettings = null;
     try {
-        if ($pdo->query("SHOW TABLES LIKE 'employees'")->rowCount() > 0) {
+        if (ccrm_can($scope, 'employees') && $pdo->query("SHOW TABLES LIKE 'employees'")->rowCount() > 0) {
             $empStmt = $pdo->query("SELECT * FROM `employees` ORDER BY `name` ASC");
             while ($row = $empStmt->fetch()) {
-                $employees[] = [
+                $rawEmp = [
                     'id' => $row['id'],
                     'name' => $row['name'],
                     'pin' => $row['pin'],
@@ -1769,13 +1844,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                     'expenseCategoryId' => $row['expense_category_id'],
                     'files' => !empty($row['files_json']) ? json_decode($row['files_json'], true) : [],
                     'isActive' => (int)($row['is_active'] ?? 1) === 1,
+                    'userId' => $row['user_id'] ?? null,
                     'notes' => $row['notes'],
                     'createdAt' => $row['created_at'],
                     'updatedAt' => $row['updated_at'],
                 ];
+                $projected = ccrm_project_employee_row($rawEmp, $scope);
+                if ($projected !== null) {
+                    $employees[] = $projected;
+                }
             }
         }
-        if ($pdo->query("SHOW TABLES LIKE 'employee_salaries'")->rowCount() > 0) {
+        if (ccrm_can($scope, 'employees') && ccrm_can($scope, 'employees.salaries') && $pdo->query("SHOW TABLES LIKE 'employee_salaries'")->rowCount() > 0) {
             $salStmt = $pdo->query("SELECT * FROM `employee_salaries` ORDER BY `year` DESC, `period_number` DESC");
             while ($row = $salStmt->fetch()) {
                 $employeeSalaries[] = [
@@ -1799,7 +1879,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
                 ];
             }
         }
-        if ($pdo->query("SHOW TABLES LIKE 'employee_vacations'")->rowCount() > 0) {
+        if (ccrm_can($scope, 'employees') && ccrm_can($scope, 'employees.vacations') && $pdo->query("SHOW TABLES LIKE 'employee_vacations'")->rowCount() > 0) {
             $vacStmt = $pdo->query("SELECT * FROM `employee_vacations` ORDER BY `start_date` DESC");
             while ($row = $vacStmt->fetch()) {
                 $employeeVacations[] = [
@@ -1818,11 +1898,183 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             }
         }
         if (isset($settings['EMPLOYEE_SETTINGS'])) {
-            $employeeSettings = json_decode($settings['EMPLOYEE_SETTINGS'], true);
+            $rawEmpSettings = json_decode($settings['EMPLOYEE_SETTINGS'], true);
+            $employeeSettings = ccrm_project_employee_settings($rawEmpSettings, $scope);
         }
     } catch (\Throwable $e) {
         error_log('[ccrm sync] employees fetch error: ' . $e->getMessage());
     }
+
+    // Construct readScope metadata for the client
+    $restricted = [];
+    $rowScoped = [];
+
+    if (!ccrm_can($scope, 'leads') && !ccrm_can($scope, 'clients')) {
+        $restricted[] = 'leads';
+    } elseif (!ccrm_can($scope, 'leads') || !ccrm_can($scope, 'clients')) {
+        $rowScoped[] = 'leads';
+    }
+
+    if (!ccrm_can($scope, 'tasks')) {
+        $restricted[] = 'tasks';
+        $restricted[] = 'allTags';
+    } elseif (empty($scope['isAdmin']) && !ccrm_can($scope, 'tasks.view_all')) {
+        $rowScoped[] = 'tasks';
+    }
+
+    if (!ccrm_can($scope, 'meetings')) {
+        $restricted[] = 'meetingNotes';
+    }
+
+    if (!ccrm_can($scope, 'unified_entries')) {
+        $restricted[] = 'unifiedEntries';
+        $restricted[] = 'unifiedEntriesData';
+    }
+
+    if (!ccrm_can($scope, 'projects')) {
+        $restricted[] = 'projects';
+        $restricted[] = 'projectTypes';
+    }
+
+    if (!ccrm_can($scope, 'warehouse')) {
+        $restricted[] = 'warehouses';
+        $restricted[] = 'suppliers';
+        $restricted[] = 'warehouseItems';
+        $restricted[] = 'warehouseStock';
+        $restricted[] = 'warehouseBatches';
+        $restricted[] = 'warehouseMovements';
+    }
+
+    if (!ccrm_can($scope, 'financial')) {
+        $restricted[] = 'financialRecords';
+        $restricted[] = 'financialTrend';
+        $restricted[] = 'financialMode';
+        $restricted[] = 'financialSimplifiedTable';
+    } elseif (!ccrm_can($scope, 'employees.salaries')) {
+        $rowScoped[] = 'financialRecords';
+    }
+
+    if (!ccrm_can($scope, 'financial') && !ccrm_can($scope, 'employees.salaries')) {
+        $restricted[] = 'financialCategories';
+    }
+
+    if (!ccrm_can($scope, 'clients') && !ccrm_can($scope, 'leads')) {
+        $restricted[] = 'clientCategories';
+    }
+
+    if (!ccrm_can($scope, 'invoices')) {
+        $restricted[] = 'invoicesOffers';
+    }
+
+    if (!ccrm_can($scope, 'invoices') && !ccrm_can($scope, 'general_config')) {
+        $restricted[] = 'aiCustomTemplates';
+    }
+
+    if (!ccrm_can($scope, 'employees')) {
+        $restricted[] = 'employees';
+        $restricted[] = 'employeeSalaries';
+        $restricted[] = 'employeeVacations';
+        if ($employeeSettings === null) {
+            $restricted[] = 'employeeSettings';
+        }
+    } else {
+        if (!ccrm_can($scope, 'employees.personal') || !ccrm_can($scope, 'employees.salaries') || !ccrm_can($scope, 'employees.vacations') || !ccrm_can($scope, 'employees.files')) {
+            $rowScoped[] = 'employees';
+        }
+        if (!ccrm_can($scope, 'employees.salaries')) {
+            $restricted[] = 'employeeSalaries';
+        }
+        if (!ccrm_can($scope, 'employees.vacations')) {
+            $restricted[] = 'employeeVacations';
+        }
+    }
+
+    if (empty($scope['isAdmin']) && !ccrm_can($scope, 'pm_managers')) {
+        $rowScoped[] = 'users';
+        $rowScoped[] = 'roles';
+    }
+
+    // Resolve referenceNames for referenced leads and projects that the caller cannot see
+    $refLeadIds = [];
+    $refProjectIds = [];
+
+    $visibleLeadIds = [];
+    foreach ($leads as $l) {
+        if (!empty($l['id'])) $visibleLeadIds[(string)$l['id']] = true;
+    }
+
+    $visibleProjectIds = [];
+    foreach ($projects as $p) {
+        if (!empty($p['id'])) $visibleProjectIds[(string)$p['id']] = true;
+    }
+
+    foreach ($tasks as $t) {
+        if (!empty($t['relatedLeadId']) && !isset($visibleLeadIds[(string)$t['relatedLeadId']])) {
+            $refLeadIds[(string)$t['relatedLeadId']] = true;
+        }
+        if (!empty($t['clientId']) && !isset($visibleLeadIds[(string)$t['clientId']])) {
+            $refLeadIds[(string)$t['clientId']] = true;
+        }
+        if (!empty($t['relatedProjectId']) && !isset($visibleProjectIds[(string)$t['relatedProjectId']])) {
+            $refProjectIds[(string)$t['relatedProjectId']] = true;
+        }
+        if (!empty($t['projectId']) && !isset($visibleProjectIds[(string)$t['projectId']])) {
+            $refProjectIds[(string)$t['projectId']] = true;
+        }
+    }
+
+    foreach ($projects as $p) {
+        $leadId = (string)($p['leadId'] ?? $p['client'] ?? '');
+        if ($leadId !== '' && !isset($visibleLeadIds[$leadId])) {
+            $refLeadIds[$leadId] = true;
+        }
+    }
+
+    foreach ($invoicesOffers as $io) {
+        if (!empty($io['leadId']) && !isset($visibleLeadIds[(string)$io['leadId']])) {
+            $refLeadIds[(string)$io['leadId']] = true;
+        }
+    }
+
+    foreach ($financialRecords as $fr) {
+        if (!empty($fr['projectId']) && !isset($visibleProjectIds[(string)$fr['projectId']])) {
+            $refProjectIds[(string)$fr['projectId']] = true;
+        }
+        if (!empty($fr['clientId']) && !isset($visibleLeadIds[(string)$fr['clientId']])) {
+            $refLeadIds[(string)$fr['clientId']] = true;
+        }
+    }
+
+    $refLeads = [];
+    if (!empty($refLeadIds)) {
+        $placeholders = implode(',', array_fill(0, count($refLeadIds), '?'));
+        $refStmt = $pdo->prepare("SELECT `id`, `name` FROM `leads` WHERE `id` IN ($placeholders)");
+        $refStmt->execute(array_keys($refLeadIds));
+        while ($r = $refStmt->fetch(\PDO::FETCH_ASSOC)) {
+            $name = trim((string)($r['name'] ?? ''));
+            $refLeads[$r['id']] = $name !== '' ? $name : 'Unknown';
+        }
+    }
+
+    $refProjects = [];
+    if (!empty($refProjectIds)) {
+        $placeholders = implode(',', array_fill(0, count($refProjectIds), '?'));
+        $refStmt = $pdo->prepare("SELECT `id`, `name` FROM `projects` WHERE `id` IN ($placeholders)");
+        $refStmt->execute(array_keys($refProjectIds));
+        while ($r = $refStmt->fetch(\PDO::FETCH_ASSOC)) {
+            $title = trim((string)($r['name'] ?? ''));
+            $refProjects[$r['id']] = $title !== '' ? $title : 'Unknown';
+        }
+    }
+
+    $readScope = [
+        'restricted' => array_values(array_unique($restricted)),
+        'rowScoped' => array_values(array_unique($rowScoped)),
+        'referenceNames' => [
+            'leads' => !empty($refLeads) ? (object)$refLeads : (object)[],
+            'projects' => !empty($refProjects) ? (object)$refProjects : (object)[],
+        ],
+    ];
 
     // DB clock at read time. The client echoes this back as baseSyncedAt on the
     // next POST so the server can tell "the user deleted this" apart from "the
@@ -1899,9 +2151,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         // ones. They used to live in each browser's localStorage, which meant
         // the person who reconciled a week against the bank statement saw one
         // projection and every colleague saw another.
-        'financialTrend' => ccrm_normalize_financial_trend($settings['FINANCIAL_TREND'] ?? null),
-        'financialMode' => $settings['FINANCIAL_MODE'] ?? 'connected',
-        'financialSimplifiedTable' => json_decode($settings['FINANCIAL_SIMPLIFIED_TABLE'] ?? '{}', true) ?: (object)[],
+        'financialTrend' => ccrm_can($scope, 'financial') ? ccrm_normalize_financial_trend($settings['FINANCIAL_TREND'] ?? null) : (object)[],
+        'financialMode' => ccrm_can($scope, 'financial') ? ($settings['FINANCIAL_MODE'] ?? 'connected') : 'connected',
+        'financialSimplifiedTable' => ccrm_can($scope, 'financial') ? (json_decode($settings['FINANCIAL_SIMPLIFIED_TABLE'] ?? '{}', true) ?: (object)[]) : (object)[],
         'settings' => [
             'systemName' => $settings['SYSTEM_NAME'] ?? 'CCRM',
             'systemLanguage' => $settings['SYSTEM_LANGUAGE'] ?? 'sk',
@@ -1929,10 +2181,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'taskStateColors' => $taskStateColors,
             'projectStatuses' => $projectStatuses,
             'integrationsConfig' => $integrationsConfig,
-            'companyBillingSettings' => isset($settings['COMPANY_BILLING_SETTINGS']) ? json_decode($settings['COMPANY_BILLING_SETTINGS'], true) : null,
-            'invoicingIntegrations' => $invoicingIntegrations,
+            'companyBillingSettings' => (ccrm_can($scope, 'invoices') || ccrm_can($scope, 'financial') || ccrm_can($scope, 'general_config')) && isset($settings['COMPANY_BILLING_SETTINGS']) ? json_decode($settings['COMPANY_BILLING_SETTINGS'], true) : null,
+            'invoicingIntegrations' => (ccrm_can($scope, 'invoices') || ccrm_can($scope, 'financial') || ccrm_can($scope, 'general_config')) ? $invoicingIntegrations : (object)[],
             'customLabels' => isset($settings['CUSTOM_LABELS']) ? json_decode($settings['CUSTOM_LABELS'], true) : (object)[]
-        ]
+        ],
+        'readScope' => $readScope
     ]);
     exit;
 }
