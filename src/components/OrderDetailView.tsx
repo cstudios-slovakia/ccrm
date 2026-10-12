@@ -60,6 +60,7 @@ import {
   type OrderStatusDef
 } from "../utils/orders";
 import { getAvailableVatRates, getDefaultVatRate } from "../utils/vat";
+import { getAvailableShippingMethods } from "../utils/shipping";
 
 export interface OrderDetailViewProps {
   order: Order;
@@ -112,9 +113,22 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
     () => getDefaultVatRate(companyBillingSettings),
     [companyBillingSettings]
   );
+  const availableShippingMethods = useMemo(
+    () => getAvailableShippingMethods(companyBillingSettings),
+    [companyBillingSettings]
+  );
 
   const isNew = !order.createdAt && !order.updatedAt;
   const [formData, setFormData] = useState<Order>(() => JSON.parse(JSON.stringify(order)));
+
+  const displayedShippingMethods = useMemo(() => {
+    const current = formData.shippingMethod?.trim();
+    if (current && !availableShippingMethods.includes(current)) {
+      return [current, ...availableShippingMethods];
+    }
+    return availableShippingMethods;
+  }, [formData.shippingMethod, availableShippingMethods]);
+
   const [isSaving, setIsSaving] = useState(false);
   const [copiedTracking, setCopiedTracking] = useState(false);
 
@@ -1018,21 +1032,20 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                   {t("Shipping Carrier / Method", "Spôsob dopravy", "Szállítási mód")}
                 </label>
                 <div className="grid grid-cols-2 ws-sm:grid-cols-3 gap-2">
-                  {[
-                    "DPD Kuriér",
-                    "Packeta / Zásielkovňa",
-                    "GLS Expres",
-                    "Slovenská pošta",
-                    "Osobný odber"
-                  ].map(m => (
+                  {displayedShippingMethods.map(m => (
                     <button
                       key={m}
                       type="button"
-                      onClick={() => setFormData({ ...formData, shippingMethod: m })}
+                      onClick={() =>
+                        setFormData({
+                          ...formData,
+                          shippingMethod: formData.shippingMethod === m ? "" : m
+                        })
+                      }
                       className={`px-3 py-2 rounded-xl text-micro font-bold border transition-all text-center ${
                         formData.shippingMethod === m
                           ? "bg-blue-50 border-blue-400 text-blue-800 shadow-xs"
-                          : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100"
+                          : "bg-slate-50 border-slate-200 text-slate-600 hover:bg-slate-100 cursor-pointer"
                       }`}
                     >
                       {m}

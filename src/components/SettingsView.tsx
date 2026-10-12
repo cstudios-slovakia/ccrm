@@ -8,6 +8,7 @@ import {
 } from "lucide-react";
 import type { UserProfile, RolePermission, UnifiedEntryRegistry, UnifiedEntryRow, Lead, Task, Project, ProjectType, FinancialCategory, FinancialRecord, FinancialOperatingMode, CompanyBillingSettings, ExternalInvoicingConfig, AiCustomTemplate, LeadAssignmentSettings, ProjectAutoCreateSettings, CustomDashboard } from "../types";
 import { DEFAULT_VAT_RATES, DEFAULT_STANDARD_VAT_RATE, getAvailableVatRates, sanitizeVatRates } from "../utils/vat";
+import { DEFAULT_SHIPPING_METHODS, getAvailableShippingMethods } from "../utils/shipping";
 import { leadAssignmentPanel, resolveAssignmentPool, type LeadAssignmentPanel } from "../utils/leadAssignment";
 import { normalizeSlaDays, type LeadStateSla } from "../utils/leadSla";
 import { listIdFor, nextListId, type ListIds } from "../utils/listIds";
@@ -16,6 +17,7 @@ import type { Language } from "../utils/translations";
 import { ProjectSettings } from "./ProjectSettings";
 import { ProjectStatusSettings } from "./ProjectStatusSettings";
 import { OrderStatusSettings } from "./OrderStatusSettings";
+import { ShippingMethodSettings } from "./ShippingMethodSettings";
 import { FinanceSettings } from "./FinanceSettings";
 import type { ProjectStatusDef } from "../utils/projects";
 import type { OrderStatusDef } from "../utils/orders";
@@ -1334,6 +1336,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     defaultPaymentDueDays: 14,
     defaultVatRate: DEFAULT_STANDARD_VAT_RATE,
     vatRates: [...DEFAULT_VAT_RATES],
+    shippingMethods: [...DEFAULT_SHIPPING_METHODS],
     defaultWarrantyText: "",
     defaultDurationText: "",
     defaultStartDateText: "",
@@ -1354,7 +1357,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       ...base,
       ...loaded,
       defaultVatRate: loaded.defaultVatRate !== undefined ? loaded.defaultVatRate : base.defaultVatRate,
-      vatRates: loaded.vatRates && loaded.vatRates.length > 0 ? loaded.vatRates : base.vatRates
+      vatRates: loaded.vatRates && loaded.vatRates.length > 0 ? loaded.vatRates : base.vatRates,
+      shippingMethods: loaded.shippingMethods && loaded.shippingMethods.length > 0 ? loaded.shippingMethods : base.shippingMethods
     };
   });
 
@@ -1366,7 +1370,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         defaultVatRate: companyBillingSettings.defaultVatRate !== undefined ? companyBillingSettings.defaultVatRate : (prev.defaultVatRate ?? DEFAULT_STANDARD_VAT_RATE),
         vatRates: companyBillingSettings.vatRates && companyBillingSettings.vatRates.length > 0
           ? companyBillingSettings.vatRates
-          : (prev.vatRates && prev.vatRates.length > 0 ? prev.vatRates : [...DEFAULT_VAT_RATES])
+          : (prev.vatRates && prev.vatRates.length > 0 ? prev.vatRates : [...DEFAULT_VAT_RATES]),
+        shippingMethods: companyBillingSettings.shippingMethods && companyBillingSettings.shippingMethods.length > 0
+          ? companyBillingSettings.shippingMethods
+          : (prev.shippingMethods && prev.shippingMethods.length > 0 ? prev.shippingMethods : [...DEFAULT_SHIPPING_METHODS])
       }));
     }
   }, [companyBillingSettings]);
@@ -4265,6 +4272,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 canEdit={getPermission("general_config") === "edit"}
               />
             )}
+
+            <ShippingMethodSettings
+              companyBillingSettings={companyBillingSettings}
+              setCompanyBillingSettings={setCompanyBillingSettings}
+              userLanguage={userLanguage}
+              canEdit={getPermission("general_config") === "edit"}
+            />
           </div>
         )}
 

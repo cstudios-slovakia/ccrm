@@ -1031,6 +1031,7 @@ export interface CompanyBillingSettings {
   defaultPaymentDueDays: number;
   defaultVatRate: number;
   vatRates?: number[]; // Configured VAT rates for orders & invoices (defaults to [23, 19, 10, 5, 0])
+  shippingMethods?: string[]; // Configured shipping methods for orders (e.g. DPD, Packeta, GLS, etc.)
   defaultWarrantyText: string;
   defaultDurationText: string;
   defaultStartDateText?: string;

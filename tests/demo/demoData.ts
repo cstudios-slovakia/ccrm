@@ -1981,6 +1981,13 @@ export const COMPANY_BILLING = {
   defaultPaymentDueDays: 14,
   defaultVatRate: 23,
   vatRates: [23, 19, 10, 5, 0],
+  shippingMethods: [
+    'DPD Kuriér',
+    'Packeta / Zásielkovňa',
+    'GLS Expres',
+    'Slovenská pošta',
+    'Osobný odber',
+  ],
   defaultWarrantyText: '10 rokov na hydroizoláciu, 5 rokov na klampiarske prvky',
   defaultDurationText: '3–4 týždne',
   defaultStartDateText: 'Do 6 týždňov od podpisu',
