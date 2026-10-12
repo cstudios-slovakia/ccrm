@@ -929,6 +929,9 @@ if (!function_exists('ccrm_schema_statements')) {
               `payment_status` ENUM('unpaid', 'paid', 'partially_paid', 'refunded') NOT NULL DEFAULT 'unpaid',
               `paid_at` DATETIME NULL,
               `payment_reference` VARCHAR(100) NULL,
+              `invoice_id` VARCHAR(50) NULL,
+              `invoice_number` VARCHAR(100) NULL,
+              `invoice_issued_at` DATETIME NULL,
               `currency` VARCHAR(10) NOT NULL DEFAULT 'EUR',
               `items_net_amount` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
               `services_net_amount` DECIMAL(15,2) NOT NULL DEFAULT 0.00,
@@ -1048,6 +1051,15 @@ if (!function_exists('ccrm_schema_statements')) {
         }
         if (!ccrm_column_exists($pdo, 'leads', 'ai_summary')) {
             $pdo->exec("ALTER TABLE `leads` ADD COLUMN `ai_summary` TEXT NULL AFTER `country`");
+        }
+        if (!ccrm_column_exists($pdo, 'orders', 'invoice_id')) {
+            $pdo->exec("ALTER TABLE `orders` ADD COLUMN `invoice_id` VARCHAR(50) NULL AFTER `payment_reference`");
+        }
+        if (!ccrm_column_exists($pdo, 'orders', 'invoice_number')) {
+            $pdo->exec("ALTER TABLE `orders` ADD COLUMN `invoice_number` VARCHAR(100) NULL AFTER `invoice_id`");
+        }
+        if (!ccrm_column_exists($pdo, 'orders', 'invoice_issued_at')) {
+            $pdo->exec("ALTER TABLE `orders` ADD COLUMN `invoice_issued_at` DATETIME NULL AFTER `invoice_number`");
         }
         if (!ccrm_column_exists($pdo, 'leads', 'ai_summary_fingerprint')) {
             $pdo->exec("ALTER TABLE `leads` ADD COLUMN `ai_summary_fingerprint` TEXT NULL AFTER `ai_summary`");

@@ -31,7 +31,8 @@ import {
   ShoppingBag,
   Boxes,
   HelpCircle,
-  RotateCcw
+  RotateCcw,
+  FileCheck
 } from "lucide-react";
 import type {
   Order,
@@ -62,6 +63,7 @@ import {
 import { getAvailableVatRates, getDefaultVatRate } from "../utils/vat";
 import { getAvailableShippingMethods } from "../utils/shipping";
 import { getAvailablePaymentMethods, getDefaultPaymentMethod } from "../utils/payment";
+import { formatDateLocalized } from "../utils/localTime";
 
 export interface OrderDetailViewProps {
   order: Order;
@@ -135,6 +137,22 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
     }
     return copy;
   });
+
+  // Keep formData in sync when order invoice details change
+  useEffect(() => {
+    if (
+      order.invoiceNumber !== formData.invoiceNumber ||
+      order.invoiceId !== formData.invoiceId ||
+      order.invoiceIssuedAt !== formData.invoiceIssuedAt
+    ) {
+      setFormData(prev => ({
+        ...prev,
+        invoiceId: order.invoiceId,
+        invoiceNumber: order.invoiceNumber,
+        invoiceIssuedAt: order.invoiceIssuedAt
+      }));
+    }
+  }, [order.invoiceNumber, order.invoiceId, order.invoiceIssuedAt]);
 
   const displayedShippingMethods = useMemo(() => {
     const current = formData.shippingMethod?.trim();
@@ -521,6 +539,21 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                 : t("Unpaid", "Neuhradené", "Fizetetlen")}
             </span>
 
+            {/* Invoice Status Badge */}
+            {formData.invoiceNumber && (
+              <span
+                className="px-2.5 py-0.5 rounded-full text-micro font-bold bg-emerald-50 text-emerald-700 border border-emerald-200/80 flex items-center gap-1 font-mono"
+                title={t(
+                  `Invoice issued: ${formData.invoiceNumber}`,
+                  `Faktúra vystavená: ${formData.invoiceNumber}`,
+                  `Számla kiállítva: ${formData.invoiceNumber}`
+                )}
+              >
+                <FileCheck className="size-3 text-emerald-600" />
+                {formData.invoiceNumber}
+              </span>
+            )}
+
             {/* Order Date */}
             <span className="text-slate-500 text-ui font-medium flex items-center gap-1">
               <Calendar className="size-3.5 text-slate-400" />
@@ -548,11 +581,29 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
               <button
                 type="button"
                 onClick={() => onCreateInvoice(formData)}
-                className="h-11 px-3.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50/50 text-ui font-semibold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
-                title={t("Issue Invoice / Proforma", "Vystaviť faktúru", "Számla kiállítása")}
+                className={`h-11 px-3.5 rounded-xl border text-ui font-semibold flex items-center gap-1.5 transition-all shadow-sm cursor-pointer ${
+                  formData.invoiceNumber
+                    ? "bg-emerald-50/80 border-emerald-300 text-emerald-800 hover:bg-emerald-100"
+                    : "bg-white border-slate-200 text-slate-700 hover:text-emerald-700 hover:border-emerald-300 hover:bg-emerald-50/50"
+                }`}
+                title={
+                  formData.invoiceNumber
+                    ? t(
+                        `Invoice created: ${formData.invoiceNumber}`,
+                        `Faktúra vystavená: ${formData.invoiceNumber}`,
+                        `Számla kiállítva: ${formData.invoiceNumber}`
+                      )
+                    : t("Issue Invoice / Proforma", "Vystaviť faktúru", "Számla kiállítása")
+                }
               >
-                <FileText className="size-4 text-emerald-600" />
-                <span className="hidden ws-sm:inline">{t("Invoice", "Faktúra", "Számla")}</span>
+                {formData.invoiceNumber ? (
+                  <FileCheck className="size-4 text-emerald-600" />
+                ) : (
+                  <FileText className="size-4 text-emerald-600" />
+                )}
+                <span className="hidden ws-sm:inline">
+                  {formData.invoiceNumber || t("Invoice", "Faktúra", "Számla")}
+                </span>
               </button>
             )}
 
@@ -1342,6 +1393,88 @@ export const OrderDetailView: React.FC<OrderDetailViewProps> = ({
                   </select>
                 </div>
               )}
+
+              {/* Invoice status sub-card */}
+              <div className="ws-sm:col-span-2 p-4 rounded-2xl bg-slate-50/80 border border-slate-200/80 flex flex-col ws-sm:flex-row ws-sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div
+                    className={`p-2 rounded-xl shrink-0 ${
+                      formData.invoiceNumber
+                        ? "bg-emerald-100 text-emerald-700"
+                        : "bg-slate-200 text-slate-500"
+                    }`}
+                  >
+                    {formData.invoiceNumber ? (
+                      <FileCheck className="size-4.5" />
+                    ) : (
+                      <FileText className="size-4.5" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="text-caption font-bold text-slate-900 flex items-center gap-2">
+                      <span>{t("Invoice", "Faktúra", "Számla")}</span>
+                      {formData.invoiceNumber ? (
+                        <span className="font-mono text-emerald-700 font-bold">
+                          {formData.invoiceNumber}
+                        </span>
+                      ) : (
+                        <span className="text-micro px-2 py-0.5 rounded-full bg-slate-200 text-slate-600 font-medium">
+                          {t("Not created", "Nevystavená", "Nincs kiállítva")}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-micro text-slate-500 mt-0.5">
+                      {formData.invoiceNumber ? (
+                        <>
+                          {t("Issued", "Vystavená", "Kiállítva")}:{" "}
+                          <span className="font-mono text-slate-700 font-medium">
+                            {formatDateLocalized(
+                              formData.invoiceIssuedAt || formData.orderDate,
+                              userLanguage
+                            )}
+                          </span>
+                        </>
+                      ) : (
+                        t(
+                          "Invoice has not been issued from this order yet.",
+                          "K tejto objednávke zatiaľ nebola vystavená faktúra.",
+                          "Ehhez a rendeléshez még nem állítottak ki számlát."
+                        )
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {!isNew && onCreateInvoice && (
+                  <button
+                    type="button"
+                    onClick={() => onCreateInvoice(formData)}
+                    className={`px-3.5 py-1.5 rounded-xl text-caption font-bold transition-all shadow-xs flex items-center gap-1.5 self-start ws-sm:self-auto cursor-pointer ${
+                      formData.invoiceNumber
+                        ? "bg-white border border-slate-200 text-slate-700 hover:bg-slate-100 hover:text-emerald-700"
+                        : "bg-emerald-600 hover:bg-emerald-700 text-white"
+                    }`}
+                  >
+                    {formData.invoiceNumber ? (
+                      <>
+                        <FileCheck className="size-3.5 text-emerald-600" />
+                        <span>
+                          {t(
+                            "Re-issue / Create New",
+                            "Pre-vystaviť / Nová faktúra",
+                            "Újra kiállítás"
+                          )}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <FileText className="size-3.5" />
+                        <span>{t("Issue Invoice", "Vystaviť faktúru", "Számla kiállítása")}</span>
+                      </>
+                    )}
+                  </button>
+                )}
+              </div>
 
               <div className="ws-sm:col-span-2 space-y-1">
                 <label className="type-overline text-slate-500 block">

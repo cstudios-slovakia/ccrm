@@ -8,7 +8,7 @@ import {
   X, FolderOpen, Download, Trash2, SlidersHorizontal,
   CornerDownLeft, CornerLeftDown, Loader2, Brain,
   ChevronLeft, ChevronRight, Milestone, Coins, Archive, ArchiveRestore, Settings,
-  AlertTriangle, CheckSquare, ShoppingCart
+  AlertTriangle, CheckSquare, ShoppingCart, FileCheck
 } from "lucide-react";
 import type { Lead, TimelineEvent, Task, FinancialRecord, FinancialCategory, FinancialStatus, ClientCategory, UserProfile, Project, Order } from "../types";
 import { useOrderStatuses } from "../hooks/useOrderStatuses";
@@ -5138,11 +5138,22 @@ export const ClientsView: React.FC<ClientsViewProps> = ({
                               <div className="font-mono font-bold text-ui text-slate-900">
                                 {order.totalGrossAmount.toFixed(2)} {order.currency || currencyCode || "EUR"}
                               </div>
-                              <span className={`inline-block px-1.5 py-0.5 rounded text-micro font-bold ${
-                                order.paymentStatus === "paid" ? "text-emerald-700 bg-emerald-50" : "text-amber-700 bg-amber-50"
-                              }`}>
-                                {order.paymentStatus === "paid" ? t("Paid", "Zaplatené", "Fizetve") : t("Unpaid", "Nezaplatené", "Fizetetlen")}
-                              </span>
+                              <div className="flex items-center justify-end gap-1.5 mt-1 flex-wrap">
+                                {order.invoiceNumber && (
+                                  <span
+                                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-micro font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60 font-mono"
+                                    title={t("Invoice created", "Faktúra vystavená", "Számla kiállítva")}
+                                  >
+                                    <FileCheck className="w-3 h-3 text-emerald-600" />
+                                    {order.invoiceNumber}
+                                  </span>
+                                )}
+                                <span className={`inline-block px-1.5 py-0.5 rounded text-micro font-bold ${
+                                  order.paymentStatus === "paid" ? "text-emerald-700 bg-emerald-50" : "text-amber-700 bg-amber-50"
+                                }`}>
+                                  {order.paymentStatus === "paid" ? t("Paid", "Zaplatené", "Fizetve") : t("Unpaid", "Nezaplatené", "Fizetetlen")}
+                                </span>
+                              </div>
                             </div>
                           </div>
                         );

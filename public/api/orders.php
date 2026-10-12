@@ -199,6 +199,7 @@ switch ($method) {
                     `shipping_method`, `shipping_pickup_point_id`, `shipping_tracking_number`,
                     `billing_name`, `billing_street`, `billing_city`, `billing_zip`, `billing_country`, `billing_ico`, `billing_dic`, `billing_ic_dph`,
                     `payment_method`, `payment_status`, `paid_at`, `payment_reference`,
+                    `invoice_id`, `invoice_number`, `invoice_issued_at`,
                     `currency`, `items_net_amount`, `services_net_amount`, `total_net_amount`, `total_tax_amount`, `total_gross_amount`,
                     `order_date`, `requested_delivery_date`, `confirmed_delivery_date`, `warehouse_id`, `notes`, `customer_note`, `created_by`
                 ) VALUES (
@@ -208,6 +209,7 @@ switch ($method) {
                     ?, ?, ?,
                     ?, ?, ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?,
+                    ?, ?, ?,
                     ?, ?, ?, ?, ?, ?,
                     ?, ?, ?, ?, ?, ?, ?
                 )
@@ -247,6 +249,9 @@ switch ($method) {
                     `payment_status` = VALUES(`payment_status`),
                     `paid_at` = VALUES(`paid_at`),
                     `payment_reference` = VALUES(`payment_reference`),
+                    `invoice_id` = VALUES(`invoice_id`),
+                    `invoice_number` = VALUES(`invoice_number`),
+                    `invoice_issued_at` = VALUES(`invoice_issued_at`),
                     `currency` = VALUES(`currency`),
                     `items_net_amount` = VALUES(`items_net_amount`),
                     `services_net_amount` = VALUES(`services_net_amount`),
@@ -297,6 +302,9 @@ switch ($method) {
                 $input['payment_status'] ?? 'unpaid',
                 $input['paid_at'] ?? null,
                 $input['payment_reference'] ?? null,
+                $input['invoice_id'] ?? $input['invoiceId'] ?? null,
+                $input['invoice_number'] ?? $input['invoiceNumber'] ?? null,
+                $input['invoice_issued_at'] ?? $input['invoiceIssuedAt'] ?? null,
                 $input['currency'] ?? 'EUR',
                 $input['items_net_amount'] ?? 0.00,
                 $input['services_net_amount'] ?? 0.00,

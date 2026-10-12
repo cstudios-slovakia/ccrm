@@ -1308,6 +1308,9 @@ export interface Order {
   paymentStatus: OrderPaymentStatus;
   paidAt?: string | null;
   paymentReference?: string | null;
+  invoiceId?: string | null;
+  invoiceNumber?: string | null;
+  invoiceIssuedAt?: string | null;
 
   // Financial Totals
   currency: string;

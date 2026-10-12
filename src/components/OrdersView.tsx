@@ -6,6 +6,7 @@ import {
   Sliders,
   Package,
   FileText,
+  FileCheck,
   UserCheck,
   User,
   Truck,
@@ -36,6 +37,8 @@ import type {
   WarehouseMovement,
   InvoiceOffer,
   InvoiceOfferItem,
+  FinancialRecord,
+  TimelineEvent,
   UserProfile,
   PermissionValue,
   CompanyBillingSettings
@@ -55,7 +58,8 @@ import { OrderDetailView } from "./OrderDetailView";
 import { getDefaultVatRate } from "../utils/vat";
 import { getDefaultPaymentMethod } from "../utils/payment";
 import { formatMoney } from "../utils/currency";
-import { formatDateLocalized } from "../utils/localTime";
+import { formatDateLocalized, todayLocal, todayLocalPlusDays, nowLocalStamp } from "../utils/localTime";
+import { invoiceMovementId } from "../utils/invoiceFinanceBridge";
 import { PageHeader, StatGrid, StatTile, Tabs, EmptyState } from "./layout";
 import { CustomSelect } from "./ui/CustomSelect";
 
@@ -69,6 +73,9 @@ export interface OrdersViewProps {
   setWarehouseMovements?: React.Dispatch<React.SetStateAction<WarehouseMovement[]>>;
   invoicesOffers?: InvoiceOffer[];
   setInvoicesOffers?: React.Dispatch<React.SetStateAction<InvoiceOffer[]>>;
+  financialRecords?: FinancialRecord[];
+  setFinancialRecords?: (recs: FinancialRecord[] | ((prev: FinancialRecord[]) => FinancialRecord[])) => void;
+  onAddTimelineEvent?: (leadId: string, event: TimelineEvent) => void;
   systemCurrency: string;
   userLanguage: Language;
   currentUser?: UserProfile | null;
@@ -89,6 +96,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   setWarehouseMovements,
   invoicesOffers = [],
   setInvoicesOffers,
+  financialRecords = [],
+  setFinancialRecords,
+  onAddTimelineEvent,
   systemCurrency,
   userLanguage,
   currentUser,
@@ -224,9 +234,61 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   };
 
   // Convert order into invoice
-  const handleCreateInvoice = (order: Order) => {
+  const handleCreateInvoice = async (order: Order) => {
     if (!canEdit || !setInvoicesOffers) return;
-    if (!confirm(t(`Create invoice from order ${order.orderNumber}?`, `Vystaviť faktúru z objednávky ${order.orderNumber}?`, `Számla kiállítása a(z) ${order.orderNumber} rendelésből?`))) return;
+
+    if (order.invoiceNumber) {
+      const reconfirm = confirm(
+        t(
+          `Invoice ${order.invoiceNumber} was already created for order ${order.orderNumber}. Do you want to re-issue / create a new invoice?`,
+          `K objednávke ${order.orderNumber} už bola vytvorená faktúra ${order.invoiceNumber}. Želáte si vystaviť novú faktúru?`,
+          `A(z) ${order.orderNumber} rendeléshez már kiállították a(z) ${order.invoiceNumber} számlát. Új számlát kíván kiállítani?`
+        )
+      );
+      if (!reconfirm) return;
+    } else {
+      if (
+        !confirm(
+          t(
+            `Create invoice from order ${order.orderNumber}?`,
+            `Vystaviť faktúru z objednávky ${order.orderNumber}?`,
+            `Számla kiállítása a(z) ${order.orderNumber} rendelésből?`
+          )
+        )
+      ) {
+        return;
+      }
+    }
+
+    const nowIso = new Date().toISOString();
+    const newInvoiceId = `inv_${Date.now()}`;
+    const newInvoiceNumber = `FA-${new Date().getFullYear()}-${String(
+      Math.floor(Math.random() * 9000) + 1000
+    )}`;
+
+    // Resolve attached client
+    let targetLead = order.clientId ? leads.find(l => l.id === order.clientId) : null;
+    if (!targetLead && order.billing?.ico) {
+      targetLead = leads.find(l => l.ico && l.ico === order.billing?.ico) || null;
+    }
+    if (!targetLead && order.billing?.email) {
+      targetLead = leads.find(
+        l => l.email && l.email.toLowerCase() === order.billing?.email?.toLowerCase()
+      ) || null;
+    }
+    if (!targetLead && order.billing?.name) {
+      targetLead = leads.find(
+        l => l.name && l.name.toLowerCase() === order.billing?.name?.toLowerCase()
+      ) || null;
+    }
+
+    const targetClientId = targetLead?.id || order.clientId || null;
+    const clientName =
+      targetLead?.name ||
+      order.billing?.name ||
+      order.guest?.company ||
+      order.guest?.name ||
+      "";
 
     const invItems: InvoiceOfferItem[] = (order.items || []).map(i => ({
       id: `inv_item_${Date.now()}_${Math.random()}`,
@@ -241,40 +303,124 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
       totalPrice: i.totalGrossAmount
     }));
 
-    const clientName = order.customerType === "client"
-      ? (leads.find(l => l.id === order.clientId)?.name || order.billing?.name || "")
-      : (order.billing?.name || order.guest?.company || order.guest?.name || "");
-
     const newInvoice: InvoiceOffer = {
-      id: `inv_${Date.now()}`,
-      documentNumber: `FA-${new Date().getFullYear()}-${String(Math.floor(Math.random() * 9000) + 1000)}`,
+      id: newInvoiceId,
+      documentNumber: newInvoiceNumber,
+      title: `${t("Invoice", "Faktúra", "Számla")} ${newInvoiceNumber} — ${order.orderNumber}`,
+      subject: `${t("Order", "Objednávka", "Rendelés")} ${order.orderNumber}`,
       type: "invoice",
       mode: "default",
       status: order.paymentStatus === "paid" ? "invoiced" : "sent",
-      leadId: order.clientId || undefined,
+      clientId: targetClientId,
+      leadId: targetClientId || undefined,
       clientName,
-      clientIco: order.billing?.ico || order.guest?.ico || undefined,
-      clientDic: order.billing?.dic || order.guest?.dic || undefined,
-      clientIcDph: order.billing?.icDph || order.guest?.icDph || undefined,
-      clientStreet: order.billing?.street || order.delivery?.street || undefined,
-      clientCity: order.billing?.city || order.delivery?.city || undefined,
-      clientZip: order.billing?.zip || order.delivery?.zip || undefined,
+      clientIco: order.billing?.ico || order.guest?.ico || targetLead?.ico || undefined,
+      clientDic: order.billing?.dic || order.guest?.dic || targetLead?.dic || undefined,
+      clientIcDph: order.billing?.icDph || order.guest?.icDph || targetLead?.icDph || undefined,
+      clientStreet: order.billing?.street || order.delivery?.street || targetLead?.street || undefined,
+      clientCity: order.billing?.city || order.delivery?.city || targetLead?.city || undefined,
+      clientZip: order.billing?.zip || order.delivery?.zip || targetLead?.postalCode || undefined,
       clientCountry: order.billing?.country || order.delivery?.country || "SK",
       currency: order.currency || systemCurrency || "EUR",
-      totalNet: order.totalNetAmount,
-      totalTax: order.totalTaxAmount,
-      totalGross: order.totalGrossAmount,
-      issueDate: order.orderDate || new Date().toISOString().split("T")[0],
-      dueDate: order.requestedDeliveryDate || new Date(Date.now() + 14 * 86400000).toISOString().split("T")[0],
+      subtotal: order.totalNetAmount,
+      vatAmount: order.totalTaxAmount,
+      totalPrice: order.totalGrossAmount,
+      issuedAt: order.orderDate || todayLocal(),
+      issueDate: order.orderDate || todayLocal(),
+      dueDate: order.requestedDeliveryDate || todayLocalPlusDays(14),
       paymentMethod: order.paymentMethod === "Dobierka" ? "cod" : "bank_transfer",
       variableSymbol: order.paymentReference || order.orderNumber.replace(/[^0-9]/g, ""),
       items: invItems,
-      createdAt: new Date().toISOString()
+      uspCards: [],
+      createdBy: currentUser?.name || null,
+      createdAt: nowIso,
+      updatedAt: nowIso
     };
 
+    // 1. Add invoice to invoicesOffers (automatically bridges to financialRecords ledger in App.tsx)
     setInvoicesOffers(prev => [newInvoice, ...prev]);
+
+    // 2. If order was already paid, ensure financial record is marked paid
+    if (order.paymentStatus === "paid" && setFinancialRecords) {
+      const recId = invoiceMovementId(newInvoiceId);
+      setFinancialRecords(prev =>
+        prev.map(r =>
+          r.id === recId
+            ? {
+                ...r,
+                status: "paid",
+                amountReal: order.totalGrossAmount,
+                paidDate: order.paidAt || order.orderDate || todayLocal()
+              }
+            : r
+        )
+      );
+    }
+
+    // 3. Mark the order as invoiced
+    const updatedOrder: Order = {
+      ...order,
+      clientId: targetClientId || order.clientId,
+      customerType: targetClientId ? "client" : order.customerType,
+      invoiceId: newInvoiceId,
+      invoiceNumber: newInvoiceNumber,
+      invoiceIssuedAt: nowIso,
+      updatedAt: nowIso
+    };
+
+    setOrders(prev => prev.map(o => (o.id === order.id ? updatedOrder : o)));
+    if (editingOrder && editingOrder.id === order.id) {
+      setEditingOrder(updatedOrder);
+    }
+
+    // Persist order update to server
+    try {
+      await fetch("/api/orders.php", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updatedOrder)
+      });
+    } catch (e) {
+      console.error("Failed to sync updated order to /api/orders.php", e);
+    }
+
+    // 4. If a client is attached, add timeline event to client
+    if (targetClientId) {
+      const timelineEvent: TimelineEvent = {
+        id: "ev-" + Math.random().toString(36).slice(2, 11),
+        type: "invoice",
+        timestamp: nowLocalStamp(),
+        title: `${t("Invoice", "Faktúra", "Számla")} ${newInvoiceNumber}`,
+        content: t(
+          `Invoice ${newInvoiceNumber} issued from order ${order.orderNumber} for ${formatMoney(order.totalGrossAmount, order.currency)}.`,
+          `Faktúra ${newInvoiceNumber} vystavená z objednávky ${order.orderNumber} v sume ${formatMoney(order.totalGrossAmount, order.currency)}.`,
+          `A(z) ${newInvoiceNumber} számla kiállítva a(z) ${order.orderNumber} rendelésből ${formatMoney(order.totalGrossAmount, order.currency)} összegben.`
+        ),
+        amount: order.totalGrossAmount,
+        author: currentUser?.name || "CCRM"
+      };
+
+      if (onAddTimelineEvent) {
+        onAddTimelineEvent(targetClientId, timelineEvent);
+      } else if (setLeads) {
+        setLeads(prev =>
+          prev.map(l =>
+            l.id === targetClientId
+              ? { ...l, timeline: [timelineEvent, ...(l.timeline || [])] }
+              : l
+          )
+        );
+      }
+    }
+
     const toast = (window as unknown as { showToast?: (m: string) => void }).showToast;
-    toast?.(t(`Invoice ${newInvoice.documentNumber} created!`, `Faktúra ${newInvoice.documentNumber} bola úspešne vytvorená!`, `A(z) ${newInvoice.documentNumber} számla elkészült!`));
+    toast?.(
+      t(
+        `Invoice ${newInvoice.documentNumber} created and linked!`,
+        `Faktúra ${newInvoice.documentNumber} bola úspešne vystavená a priradená!`,
+        `A(z) ${newInvoice.documentNumber} számla sikeresen kiállítva és hozzárendelve!`
+      )
+    );
   };
 
   // Delete order
@@ -794,7 +940,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
 
                       {/* 5. Payment */}
                       <td className="p-4 align-top">
-                        <div>
+                        <div className="flex items-center gap-1.5 flex-wrap">
                           {order.paymentStatus === "paid" ? (
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
                               <Check className="h-3 w-3" />
@@ -804,6 +950,15 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-bold bg-amber-50 text-amber-700 border border-amber-200">
                               <Clock className="h-3 w-3" />
                               {t("Unpaid", "K úhrade", "Fizetésre vár")}
+                            </span>
+                          )}
+                          {order.invoiceNumber && (
+                            <span
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/80 font-mono"
+                              title={t("Invoice created", "Faktúra vystavená", "Számla kiállítva")}
+                            >
+                              <FileCheck className="h-3 w-3 text-emerald-600" />
+                              {order.invoiceNumber}
                             </span>
                           )}
                         </div>
@@ -866,10 +1021,18 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
                             type="button"
                             onClick={() => handleCreateInvoice(order)}
                             disabled={!canEdit}
-                            className="p-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-                            title={t("Issue invoice", "Vystaviť faktúru", "Számla kiállítása")}
+                            className={`p-2 rounded-xl transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed ${
+                              order.invoiceNumber
+                                ? "text-emerald-700 bg-emerald-50/80 hover:bg-emerald-100 border border-emerald-200/70 shadow-xs"
+                                : "text-slate-500 hover:text-emerald-600 hover:bg-emerald-50"
+                            }`}
+                            title={
+                              order.invoiceNumber
+                                ? t(`Invoice created: ${order.invoiceNumber}`, `Faktúra vystavená: ${order.invoiceNumber}`, `Számla kiállítva: ${order.invoiceNumber}`)
+                                : t("Issue invoice", "Vystaviť faktúru", "Számla kiállítása")
+                            }
                           >
-                            <FileText className="h-4 w-4" />
+                            {order.invoiceNumber ? <FileCheck className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
                           </button>
 
                           <button

@@ -3395,6 +3395,20 @@ ${log.payload || ''}
             setWarehouseMovements={updateWarehouseMovementsAndSync}
             invoicesOffers={invoicesOffers}
             setInvoicesOffers={updateInvoicesOffersAndSync}
+            financialRecords={financialRecords}
+            setFinancialRecords={updateFinancialRecordsAndSync}
+            onAddTimelineEvent={(leadId, event) => {
+              setLeads(prev => prev.map(l => {
+                if (l.id === leadId) {
+                  return {
+                    ...l,
+                    timeline: [event, ...(l.timeline || [])]
+                  };
+                }
+                return l;
+              }));
+              pushStateToServer();
+            }}
             systemCurrency={currencyCode}
             userLanguage={userLanguage}
             currentUser={activeUser}
