@@ -10,7 +10,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 }
 
 // SECURITY: Authenticated users only
-ccrm_require_auth();
+$sessionUser = ccrm_require_auth();
 
 require_once __DIR__ . '/agent_utils.php';
 
@@ -43,6 +43,33 @@ $input = file_get_contents('php://input');
 $payload = json_decode($input, true) ?: [];
 
 $action = $payload['action'] ?? 'create_session';
+
+// The voice assistant is part of the AI assistant: it needs rag_ai, and what it reads is
+// limited to what the caller's role may read (see the `scope` option of the context
+// builder). Its tools WRITE, so each one also needs the edit right of the module it
+// writes to — the assistant must never do what the app would refuse.
+$ccrmVoiceScope = ccrm_require_perm($pdo, $sessionUser, 'rag_ai', 'view');
+$ccrmVoiceWrites = [
+    'create_task' => ['tasks', 'edit'],
+    'create_lead' => ['leads', 'edit'],
+    'create_project' => ['projects', 'edit'],
+    'update_project' => ['projects', 'edit'],
+    'add_project_task' => ['tasks', 'edit'],
+    'add_project_financial' => ['financial', 'edit'],
+    'add_project_milestone' => ['projects', 'edit'],
+    'delete_project' => ['projects', 'delete'],
+];
+if (isset($ccrmVoiceWrites[$action])) {
+    [$needModule, $needLevel] = $ccrmVoiceWrites[$action];
+    $allowed = $needLevel === 'delete'
+        ? !empty(ccrm_perm_module($ccrmVoiceScope['permissions'] ?? [], $needModule)['delete'])
+        : ccrm_can($ccrmVoiceScope, $needModule, 'edit');
+    if (!$allowed) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'Forbidden']);
+        exit;
+    }
+}
 
 // 2.1. WebRTC SDP Exchange Proxy Action (bypasses browser CORS & preflight blocks)
 if ($action === 'exchange_sdp') {
@@ -101,7 +128,7 @@ if ($action === 'query_rag') {
     }
 
     try {
-        $ragData = build_comprehensive_crm_rag_context($pdo, $chatDb, $query, $systemLanguage, $agentId, ['limit' => 20]);
+        $ragData = build_comprehensive_crm_rag_context($pdo, $chatDb, $query, $systemLanguage, $agentId, ['limit' => 20, 'scope' => $ccrmVoiceScope]);
         $resultText = !empty($ragData['raw_context']) ? $ragData['raw_context'] : $ragData['sanitized_context'];
         if (empty(trim($resultText))) {
             $resultText = "No specific CRM records found matching query: " . $query;
@@ -326,9 +353,18 @@ if ($action === 'add_client_note') {
     $sessionUser = $_SESSION['user'] ?? [];
     $creator = $sessionUser['name'] ?? explode('@', $sessionUser['email'] ?? 'Erik')[0] ?? 'Erik';
 
-    $stmt = $pdo->prepare("SELECT `id`, `name` FROM `leads` WHERE `name` LIKE ? LIMIT 1");
+    // First match the caller may both see and edit (a lead needs leads, a client needs
+    // clients), so a note can never be filed on a record the app would not open for them.
+    $stmt = $pdo->prepare("SELECT `id`, `name`, `adjustment` FROM `leads` WHERE `name` LIKE ? LIMIT 25");
     $stmt->execute(['%' . $clientName . '%']);
-    $lead = $stmt->fetch(PDO::FETCH_ASSOC);
+    $lead = null;
+    foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $candidate) {
+        $candidateKey = ccrm_is_client_record($candidate) ? 'clients' : 'leads';
+        if (ccrm_lead_row_visible($candidate, $ccrmVoiceScope) && ccrm_can_edit($ccrmVoiceScope, $candidateKey)) {
+            $lead = $candidate;
+            break;
+        }
+    }
 
     if (!$lead) {
         echo json_encode(['success' => false, 'message' => "Client '{$clientName}' not found in CRM."]);
@@ -727,7 +763,7 @@ if (empty($skillInstructions)) {
 
 // 4. Gather live CRM context across all 16 domains via comprehensive RAG engine
 try {
-    $ragData = build_comprehensive_crm_rag_context($pdo, $chatDb, '', $systemLanguage, $agentId, ['limit' => 32]);
+    $ragData = build_comprehensive_crm_rag_context($pdo, $chatDb, '', $systemLanguage, $agentId, ['limit' => 32, 'scope' => $ccrmVoiceScope]);
     $crmContext = !empty($ragData['raw_context']) ? $ragData['raw_context'] : $ragData['sanitized_context'];
 } catch (\Exception $e) {
     $crmContext = "";

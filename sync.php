@@ -133,6 +133,203 @@ function ccrm_attr_column(string $attrId): string {
 }
 
 /**
+ * Creates the dynamic tables of one project type — proj_data_<id>,
+ * proj_timeline_<id>, proj_gantt_<id> — and adds a column for every attribute
+ * the type defines. Idempotent. `$prune` also drops the columns of attributes
+ * the type no longer has; the self-heal in ccrm_heal_project_type_tables()
+ * passes false, because it rebuilds the type from the stored row and must
+ * never delete a column on that evidence alone.
+ *
+ * Runs DDL, which MySQL commits implicitly: call it outside a transaction.
+ */
+function ccrm_ensure_project_type_tables(PDO $pdo, $ragPdo, array $pt, bool $prune = true): void {
+    $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($pt['id']));
+    $dataTable = "proj_data_" . $safeId;
+    $timelineTable = "proj_timeline_" . $safeId;
+    $ganttTable = "proj_gantt_" . $safeId;
+
+    // Create Data Table
+    $createData = "CREATE TABLE IF NOT EXISTS `{$dataTable}` (
+        `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+        `project_id` VARCHAR(50) NOT NULL,
+        `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
+    $pdo->exec($createData);
+    // The RAG mirror has no `projects` table, so drop the FK — with the
+    // comma before it, or the statement ends in ", )" and never parses.
+    if ($ragPdo) try { $ragPdo->exec(preg_replace('/,\s*FOREIGN KEY \(`project_id`\) REFERENCES `projects` \(`id`\) ON DELETE CASCADE/', '', $createData)); } catch(\Exception $e) {}
+
+    // Add or Remove Columns for Data Table
+    // The built-in "Files" attribute keeps each document slot's uploads
+    // in a column of its own, exactly like a "files" attribute. The
+    // columns stay while the switch is off, so turning it off hides the
+    // files instead of deleting them; only removing a slot drops one.
+    $attributes = array_merge(
+        is_array($pt['attributes'] ?? null) ? $pt['attributes'] : [],
+        is_array($pt['fileFields'] ?? null) ? $pt['fileFields'] : []
+    );
+    $currentColsStmt = $pdo->query("SHOW COLUMNS FROM `{$dataTable}`");
+    $existingCols = [];
+    while($col = $currentColsStmt->fetch(PDO::FETCH_ASSOC)) {
+        $existingCols[] = $col['Field'];
+    }
+    $expectedCols = ['id', 'project_id', 'created_at', 'updated_at'];
+
+    foreach ($attributes as $attr) {
+        $colName = ccrm_attr_column($attr['id']);
+        $expectedCols[] = $colName;
+        if (!in_array($colName, $existingCols)) {
+            $addCol = "ALTER TABLE `{$dataTable}` ADD COLUMN `{$colName}` LONGTEXT NULL";
+            $pdo->exec($addCol);
+            if ($ragPdo) try { $ragPdo->exec($addCol); } catch(\Exception $e) {}
+        }
+    }
+
+    // A client older than the Files attribute sends no fileFields at all.
+    // Its silence must not read as "every slot was removed", which would
+    // drop the columns and every file uploaded into them.
+    $keepFileCols = !$prune || !array_key_exists('fileFields', $pt);
+    // The same rule for the attribute list itself: a record that does
+    // not carry `attributes` at all (a partial writer, an older build)
+    // says nothing about which columns to keep, so none are dropped.
+    $keepAttrCols = !$prune || !array_key_exists('attributes', $pt);
+    foreach ($existingCols as $col) {
+        if ($keepFileCols && str_starts_with($col, 'attr_file_')) continue;
+        if ($keepAttrCols && !str_starts_with($col, 'attr_file_')) continue;
+        if (str_starts_with($col, 'attr_') && !in_array($col, $expectedCols)) {
+            $dropCol = "ALTER TABLE `{$dataTable}` DROP COLUMN `{$col}`";
+            $pdo->exec($dropCol);
+            if ($ragPdo) try { $ragPdo->exec($dropCol); } catch(\Exception $e) {}
+        }
+    }
+
+    // Create Timeline Table
+    $createTimeline = "CREATE TABLE IF NOT EXISTS `{$timelineTable}` (
+        `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+        `project_id` VARCHAR(50) NOT NULL,
+        `type` VARCHAR(50) NOT NULL DEFAULT 'note',
+        `event_type` VARCHAR(50) NULL,
+        `timestamp` DATETIME NOT NULL,
+        `title` VARCHAR(255) NOT NULL,
+        `content` TEXT NULL,
+        FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
+    $pdo->exec($createTimeline);
+    if ($ragPdo) try { $ragPdo->exec(preg_replace('/,\s*FOREIGN KEY \(`project_id`\) REFERENCES `projects` \(`id`\) ON DELETE CASCADE/', '', $createTimeline)); } catch(\Exception $e) {}
+
+    // Add event_type if missing in existing table
+    if (!ccrm_column_exists($pdo, $timelineTable, 'event_type')) {
+        $addEvType = "ALTER TABLE `{$timelineTable}` ADD COLUMN `event_type` VARCHAR(50) NULL";
+        $pdo->exec($addEvType);
+        if ($ragPdo) try { $ragPdo->exec($addEvType); } catch(\Exception $e) {}
+    }
+
+    // Add or Remove Columns for Timeline Table
+    $timelineAttributes = [];
+    if (isset($pt['timelineEventTypes']) && is_array($pt['timelineEventTypes'])) {
+        foreach ($pt['timelineEventTypes'] as $et) {
+            if (isset($et['attributes']) && is_array($et['attributes'])) {
+                foreach ($et['attributes'] as $attr) {
+                    $timelineAttributes[] = $attr;
+                }
+            }
+        }
+    }
+
+    $currentTcolsStmt = $pdo->query("SHOW COLUMNS FROM `{$timelineTable}`");
+    $existingTcols = [];
+    while($col = $currentTcolsStmt->fetch(PDO::FETCH_ASSOC)) {
+        $existingTcols[] = $col['Field'];
+    }
+    $expectedTcols = ['id', 'project_id', 'type', 'event_type', 'timestamp', 'title', 'content'];
+
+    foreach ($timelineAttributes as $attr) {
+        $colName = ccrm_attr_column($attr['id']);
+        $expectedTcols[] = $colName;
+        if (!in_array($colName, $existingTcols)) {
+            $addCol = "ALTER TABLE `{$timelineTable}` ADD COLUMN `{$colName}` LONGTEXT NULL";
+            $pdo->exec($addCol);
+            if ($ragPdo) try { $ragPdo->exec($addCol); } catch(\Exception $e) {}
+        }
+    }
+
+    // A record without `timelineEventTypes` says nothing about which
+    // columns to keep (see $keepAttrCols above) — drop none.
+    $keepTimelineCols = !$prune || !array_key_exists('timelineEventTypes', $pt);
+    foreach ($existingTcols as $col) {
+        if ($keepTimelineCols) break;
+        if (str_starts_with($col, 'attr_') && !in_array($col, $expectedTcols)) {
+            $dropCol = "ALTER TABLE `{$timelineTable}` DROP COLUMN `{$col}`";
+            $pdo->exec($dropCol);
+            if ($ragPdo) try { $ragPdo->exec($dropCol); } catch(\Exception $e) {}
+        }
+    }
+
+    // Create Gantt Table
+    $createGantt = "CREATE TABLE IF NOT EXISTS `{$ganttTable}` (
+        `id` VARCHAR(50) NOT NULL PRIMARY KEY,
+        `project_id` VARCHAR(50) NOT NULL,
+        `title` VARCHAR(255) NOT NULL,
+        `contact_id` VARCHAR(50) NULL,
+        `start_date` DATE NULL,
+        `end_date` DATE NULL,
+        `progress` INT NOT NULL DEFAULT 0,
+        FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
+    $pdo->exec($createGantt);
+    if ($ragPdo) try { $ragPdo->exec(preg_replace('/,\s*FOREIGN KEY \(`project_id`\) REFERENCES `projects` \(`id`\) ON DELETE CASCADE/', '', $createGantt)); } catch(\Exception $e) {}
+}
+
+/**
+ * Makes sure every project type that a pushed project points at has its
+ * dynamic tables. The tables are normally created when the client pushes the
+ * type (`projectTypes`), but a type can reach project_types without that — a
+ * seeder, an import, a restore — and under the delta protocol a type that has
+ * not changed is never pushed again. Its projects then lose every timeline
+ * event, Gantt row and custom attribute: each write throws into a catch that
+ * only logs, while the UI keeps showing the edit until the next reload.
+ *
+ * @param array<int,mixed> $projects   the projects of the push
+ * @param string[]         $skipTypeIds types the same push already created tables for
+ */
+function ccrm_heal_project_type_tables(PDO $pdo, array $projects, array $skipTypeIds = [], $ragPdo = null): void {
+    $wanted = [];
+    foreach ($projects as $p) {
+        if (is_array($p) && isset($p['projectTypeId']) && is_string($p['projectTypeId']) && $p['projectTypeId'] !== '') {
+            $wanted[$p['projectTypeId']] = true;
+        }
+    }
+    $tableExists = $pdo->prepare("SELECT COUNT(*) FROM information_schema.tables WHERE table_schema = DATABASE() AND table_name = ?");
+    $typeRow = $pdo->prepare("SELECT * FROM `project_types` WHERE `id` = ?");
+    foreach (array_keys($wanted) as $typeId) {
+        if (in_array($typeId, $skipTypeIds, true)) continue;
+        $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($typeId));
+        if ($safeId === '') continue;
+        $missing = false;
+        foreach (['proj_data_', 'proj_timeline_', 'proj_gantt_'] as $prefix) {
+            $tableExists->execute([$prefix . $safeId]);
+            if ((int)$tableExists->fetchColumn() === 0) { $missing = true; break; }
+        }
+        if (!$missing) continue;
+        $typeRow->execute([$typeId]);
+        $row = $typeRow->fetch(PDO::FETCH_ASSOC);
+        if (!$row) continue; // not a type we know: nothing to build the tables from
+        try {
+            ccrm_ensure_project_type_tables($pdo, $ragPdo, [
+                'id' => $row['id'],
+                'attributes' => json_decode($row['attributes_json'] ?? '[]', true) ?: [],
+                'fileFields' => json_decode($row['file_fields_json'] ?? '[]', true) ?: [],
+                'timelineEventTypes' => json_decode($row['timeline_event_types_json'] ?? '[]', true) ?: [],
+            ], false);
+        } catch (Throwable $e) {
+            if (function_exists('ccrm_log_exception')) { ccrm_log_exception($e); }
+        }
+    }
+}
+
+/**
  * The attribute id a proj_data_/proj_timeline_ column belongs to, resolved
  * against the type's own attribute list (built by the reader below).
  *
@@ -1664,18 +1861,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             while ($row = $frStmt->fetch()) {
                 $title = $row['title'];
                 $description = $row['description'];
-                $isSalaryRow = (($row['subtype'] ?? '') === 'salary' || str_starts_with((string)$row['id'], 'fr-sal-'));
-                if ($isSalaryRow && !$canSeeSalaries) {
-                    $period = '';
-                    if (preg_match('/\(([^)]+)\)/', (string)$title, $pm)) {
-                        $period = $pm[1];
-                    } elseif (!empty($row['issue_date'])) {
-                        $period = substr($row['issue_date'], 0, 7);
-                    } else {
-                        $period = 'Payroll';
-                    }
-                    $title = "Payroll ({$period})";
-                    $description = "Payroll ({$period})";
+                if (!$canSeeSalaries && ccrm_is_salary_finance_row($row)) {
+                    $anon = ccrm_anonymise_salary_finance_row($row);
+                    $title = $anon['title'];
+                    $description = $anon['description'];
                 }
 
                 $financialRecords[] = [
@@ -2462,144 +2651,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             foreach ($payload['projectTypes'] as $pt) {
                 if (!isset($pt['id'])) continue;
-                $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($pt['id']));
-                $dataTable = "proj_data_" . $safeId;
-                $timelineTable = "proj_timeline_" . $safeId;
-                $ganttTable = "proj_gantt_" . $safeId;
-
-                // Create Data Table
-                $createData = "CREATE TABLE IF NOT EXISTS `{$dataTable}` (
-                    `id` VARCHAR(50) NOT NULL PRIMARY KEY,
-                    `project_id` VARCHAR(50) NOT NULL,
-                    `created_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    `updated_at` TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
-                $pdo->exec($createData);
-                // The RAG mirror has no `projects` table, so drop the FK — with the
-                // comma before it, or the statement ends in ", )" and never parses.
-                if ($ragPdo) try { $ragPdo->exec(preg_replace('/,\s*FOREIGN KEY \(`project_id`\) REFERENCES `projects` \(`id`\) ON DELETE CASCADE/', '', $createData)); } catch(\Exception $e) {}
-
-                // Add or Remove Columns for Data Table
-                // The built-in "Files" attribute keeps each document slot's uploads
-                // in a column of its own, exactly like a "files" attribute. The
-                // columns stay while the switch is off, so turning it off hides the
-                // files instead of deleting them; only removing a slot drops one.
-                $attributes = array_merge(
-                    is_array($pt['attributes'] ?? null) ? $pt['attributes'] : [],
-                    is_array($pt['fileFields'] ?? null) ? $pt['fileFields'] : []
-                );
-                $currentColsStmt = $pdo->query("SHOW COLUMNS FROM `{$dataTable}`");
-                $existingCols = [];
-                while($col = $currentColsStmt->fetch(PDO::FETCH_ASSOC)) {
-                    $existingCols[] = $col['Field'];
-                }
-                $expectedCols = ['id', 'project_id', 'created_at', 'updated_at'];
-
-                foreach ($attributes as $attr) {
-                    $colName = ccrm_attr_column($attr['id']);
-                    $expectedCols[] = $colName;
-                    if (!in_array($colName, $existingCols)) {
-                        $addCol = "ALTER TABLE `{$dataTable}` ADD COLUMN `{$colName}` LONGTEXT NULL";
-                        $pdo->exec($addCol);
-                        if ($ragPdo) try { $ragPdo->exec($addCol); } catch(\Exception $e) {}
-                    }
-                }
-
-                // A client older than the Files attribute sends no fileFields at all.
-                // Its silence must not read as "every slot was removed", which would
-                // drop the columns and every file uploaded into them.
-                $keepFileCols = !array_key_exists('fileFields', $pt);
-                // The same rule for the attribute list itself: a record that does
-                // not carry `attributes` at all (a partial writer, an older build)
-                // says nothing about which columns to keep, so none are dropped.
-                $keepAttrCols = !array_key_exists('attributes', $pt);
-                foreach ($existingCols as $col) {
-                    if ($keepFileCols && str_starts_with($col, 'attr_file_')) continue;
-                    if ($keepAttrCols && !str_starts_with($col, 'attr_file_')) continue;
-                    if (str_starts_with($col, 'attr_') && !in_array($col, $expectedCols)) {
-                        $dropCol = "ALTER TABLE `{$dataTable}` DROP COLUMN `{$col}`";
-                        $pdo->exec($dropCol);
-                        if ($ragPdo) try { $ragPdo->exec($dropCol); } catch(\Exception $e) {}
-                    }
-                }
-
-                // Create Timeline Table
-                $createTimeline = "CREATE TABLE IF NOT EXISTS `{$timelineTable}` (
-                    `id` VARCHAR(50) NOT NULL PRIMARY KEY,
-                    `project_id` VARCHAR(50) NOT NULL,
-                    `type` VARCHAR(50) NOT NULL DEFAULT 'note',
-                    `event_type` VARCHAR(50) NULL,
-                    `timestamp` DATETIME NOT NULL,
-                    `title` VARCHAR(255) NOT NULL,
-                    `content` TEXT NULL,
-                    FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
-                $pdo->exec($createTimeline);
-                if ($ragPdo) try { $ragPdo->exec(preg_replace('/,\s*FOREIGN KEY \(`project_id`\) REFERENCES `projects` \(`id`\) ON DELETE CASCADE/', '', $createTimeline)); } catch(\Exception $e) {}
-
-                // Add event_type if missing in existing table
-                if (!ccrm_column_exists($pdo, $timelineTable, 'event_type')) {
-                    $addEvType = "ALTER TABLE `{$timelineTable}` ADD COLUMN `event_type` VARCHAR(50) NULL";
-                    $pdo->exec($addEvType);
-                    if ($ragPdo) try { $ragPdo->exec($addEvType); } catch(\Exception $e) {}
-                }
-
-                // Add or Remove Columns for Timeline Table
-                $timelineAttributes = [];
-                if (isset($pt['timelineEventTypes']) && is_array($pt['timelineEventTypes'])) {
-                    foreach ($pt['timelineEventTypes'] as $et) {
-                        if (isset($et['attributes']) && is_array($et['attributes'])) {
-                            foreach ($et['attributes'] as $attr) {
-                                $timelineAttributes[] = $attr;
-                            }
-                        }
-                    }
-                }
-
-                $currentTcolsStmt = $pdo->query("SHOW COLUMNS FROM `{$timelineTable}`");
-                $existingTcols = [];
-                while($col = $currentTcolsStmt->fetch(PDO::FETCH_ASSOC)) {
-                    $existingTcols[] = $col['Field'];
-                }
-                $expectedTcols = ['id', 'project_id', 'type', 'event_type', 'timestamp', 'title', 'content'];
-
-                foreach ($timelineAttributes as $attr) {
-                    $colName = ccrm_attr_column($attr['id']);
-                    $expectedTcols[] = $colName;
-                    if (!in_array($colName, $existingTcols)) {
-                        $addCol = "ALTER TABLE `{$timelineTable}` ADD COLUMN `{$colName}` LONGTEXT NULL";
-                        $pdo->exec($addCol);
-                        if ($ragPdo) try { $ragPdo->exec($addCol); } catch(\Exception $e) {}
-                    }
-                }
-
-                // A record without `timelineEventTypes` says nothing about which
-                // columns to keep (see $keepAttrCols above) — drop none.
-                $keepTimelineCols = !array_key_exists('timelineEventTypes', $pt);
-                foreach ($existingTcols as $col) {
-                    if ($keepTimelineCols) break;
-                    if (str_starts_with($col, 'attr_') && !in_array($col, $expectedTcols)) {
-                        $dropCol = "ALTER TABLE `{$timelineTable}` DROP COLUMN `{$col}`";
-                        $pdo->exec($dropCol);
-                        if ($ragPdo) try { $ragPdo->exec($dropCol); } catch(\Exception $e) {}
-                    }
-                }
-
-                // Create Gantt Table
-                $createGantt = "CREATE TABLE IF NOT EXISTS `{$ganttTable}` (
-                    `id` VARCHAR(50) NOT NULL PRIMARY KEY,
-                    `project_id` VARCHAR(50) NOT NULL,
-                    `title` VARCHAR(255) NOT NULL,
-                    `contact_id` VARCHAR(50) NULL,
-                    `start_date` DATE NULL,
-                    `end_date` DATE NULL,
-                    `progress` INT NOT NULL DEFAULT 0,
-                    FOREIGN KEY (`project_id`) REFERENCES `projects` (`id`) ON DELETE CASCADE
-                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;";
-                $pdo->exec($createGantt);
-                if ($ragPdo) try { $ragPdo->exec(preg_replace('/,\s*FOREIGN KEY \(`project_id`\) REFERENCES `projects` \(`id`\) ON DELETE CASCADE/', '', $createGantt)); } catch(\Exception $e) {}
+                ccrm_ensure_project_type_tables($pdo, $ragPdo, $pt);
             }
+        }
+
+        // A project can point at a type whose tables were never made (see
+        // ccrm_heal_project_type_tables). This is DDL, so it has to run before
+        // beginTransaction() below, which it would otherwise commit.
+        if (isset($payload['projects']) && is_array($payload['projects']) && !$ccrm_skip_writes('projects', 'projects')) {
+            $pushedTypeIds = [];
+            foreach (is_array($payload['projectTypes'] ?? null) ? $payload['projectTypes'] : [] as $pushedType) {
+                if (is_array($pushedType) && isset($pushedType['id'])) $pushedTypeIds[] = $pushedType['id'];
+            }
+            ccrm_heal_project_type_tables($pdo, $payload['projects'], $pushedTypeIds, $ragPdo ?? null);
         }
 
         $pdo->beginTransaction();

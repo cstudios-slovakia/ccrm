@@ -130,6 +130,35 @@ function ccrm_require_perm(\PDO $pdo, array $sessionUser, string $key, string $l
 }
 
 /**
+ * Endpoint gate for scripts that have no database handle of their own yet: resolves the
+ * caller's scope and stops with 403 unless they hold ANY of the given keys at `$level`.
+ * Returns the scope for finer checks.
+ *
+ * @param string[] $keys
+ */
+function ccrm_gate_any(array $sessionUser, array $keys, string $level = 'view'): array {
+    $pdo = ccrm_auth_pdo();
+    if ($pdo === null) {
+        http_response_code(503);
+        echo json_encode(['success' => false, 'message' => 'Database connection failed.']);
+        exit;
+    }
+    $scope = ccrm_read_scope($pdo, $sessionUser);
+    foreach ($keys as $key) {
+        if (ccrm_can($scope, $key, $level)) {
+            return $scope;
+        }
+    }
+    http_response_code(403);
+    echo json_encode(['success' => false, 'message' => 'Forbidden']);
+    exit;
+}
+
+function ccrm_gate(array $sessionUser, string $key, string $level = 'view'): array {
+    return ccrm_gate_any($sessionUser, [$key], $level);
+}
+
+/**
  * Lead vs Client record classifier.
  * A record is a client if its id starts with 'client-' OR adjustment > 0.
  */
@@ -319,6 +348,72 @@ function ccrm_project_employee_settings(?array $settings, array $scope): ?array 
     }
 
     return null;
+}
+
+/**
+ * SQL condition limiting a `leads` query to the rows the caller is sent (leads vs clients,
+ * the same classifier as ccrm_is_client_record). Empty string when nothing is excluded.
+ * `$alias` is the table alias, without a dot.
+ */
+function ccrm_lead_scope_sql(?array $scope, string $alias = ''): string {
+    if ($scope === null || (ccrm_can($scope, 'leads') && ccrm_can($scope, 'clients'))) {
+        return '';
+    }
+    $p = $alias === '' ? '' : "`{$alias}`.";
+    $isClient = "({$p}`id` LIKE 'client-%' OR IFNULL({$p}`adjustment`, 0) > 0)";
+    if (ccrm_can($scope, 'clients')) {
+        return $isClient;
+    }
+    if (ccrm_can($scope, 'leads')) {
+        return "NOT {$isClient}";
+    }
+    return '0 = 1';
+}
+
+/**
+ * SQL condition limiting a `tasks` query to the tasks the caller sees (see
+ * ccrm_can_view_task: owner, creator or assignee, by name or e-mail), plus its bind
+ * values. Empty condition when the caller sees every task.
+ *
+ * @return array{0:string,1:array<int,string>}
+ */
+function ccrm_task_scope_sql(?array $scope, string $alias = 't'): array {
+    if ($scope === null || !empty($scope['isAdmin']) || ccrm_can($scope, 'tasks.view_all')) {
+        return ['', []];
+    }
+    $names = array_values(array_filter([
+        trim((string)($scope['sessionUserName'] ?? '')),
+        trim((string)($scope['sessionUserEmail'] ?? '')),
+    ], fn($v) => $v !== ''));
+    if (!$names) {
+        return ['0 = 1', []];
+    }
+    $in = implode(',', array_fill(0, count($names), '?'));
+    $sql = "(`{$alias}`.`owner` IN ({$in}) OR `{$alias}`.`created_by` IN ({$in}) OR EXISTS (SELECT 1 FROM `task_assignees` `ta_s` WHERE `ta_s`.`task_id` = `{$alias}`.`id` AND `ta_s`.`user_name` IN ({$in})))";
+    return [$sql, array_merge($names, $names, $names)];
+}
+
+/** A finance row that records an employee's pay (auto-expense of a payroll run). */
+function ccrm_is_salary_finance_row(array $row): bool {
+    return (($row['subtype'] ?? '') === 'salary') || str_starts_with((string)($row['id'] ?? ''), 'fr-sal-');
+}
+
+/**
+ * The same row without the employee's name: "Salary: Alice (2026-01)" becomes
+ * "Payroll (2026-01)". The amount stays, because finance totals need it.
+ */
+function ccrm_anonymise_salary_finance_row(array $row): array {
+    $title = (string)($row['title'] ?? '');
+    if (preg_match('/\(([^)]+)\)/', $title, $pm)) {
+        $period = $pm[1];
+    } elseif (!empty($row['issue_date'])) {
+        $period = substr((string)$row['issue_date'], 0, 7);
+    } else {
+        $period = 'Payroll';
+    }
+    $row['title'] = "Payroll ({$period})";
+    $row['description'] = "Payroll ({$period})";
+    return $row;
 }
 
 /**

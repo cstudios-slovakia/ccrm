@@ -8,6 +8,7 @@
 
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/time_tracking_lib.php';
+require_once __DIR__ . '/read_scope.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('GET, POST, OPTIONS');
@@ -16,7 +17,7 @@ if (php_sapi_name() !== 'cli') {
     if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
         exit;
     }
-    ccrm_require_auth();
+    $sessionUser = ccrm_require_auth();
 }
 
 $configFile = dirname(__DIR__) . '/config.php';
@@ -58,6 +59,22 @@ if (empty($data['action'])) {
 }
 
 $action = trim((string)$data['action']);
+
+// Who may use which action. Probing the integration with keys is settings work; the user
+// list for the employee mapping dropdown is employee-editing work; the hours of an employee
+// are HR data. A person reads their OWN hours through api/my_employment.php, which resolves
+// the time-tracking user from their linked record instead of taking one from the request.
+if (isset($sessionUser)) {
+    if ($action === 'test_connection') {
+        ccrm_gate($sessionUser, 'general_config', 'edit');
+    } elseif ($action === 'fetch_workspace_users') {
+        ccrm_gate_any($sessionUser, ['general_config', 'employees'], 'edit');
+    } elseif ($action === 'fetch_employee_hours') {
+        ccrm_gate($sessionUser, 'employees', 'view');
+    } else {
+        ccrm_gate_any($sessionUser, ['general_config', 'employees'], 'edit');
+    }
+}
 
 
 $settings = ccrm_time_tracking_stored_settings($pdo);

@@ -567,6 +567,120 @@ async function main() {
     check('W8: detaching a document deletes its file after the commit',
       detach.data?.success === true && docker('exec', WEB, 'sh', '-c', `test -f ${SCRATCH_DIR}/uploads/${cKey} && echo yes || echo no`).trim() === 'no');
 
+    // ===================================================== other endpoints (R5)
+    section('R5: AI assistant, search, dashboards, time tracking, summaries');
+    const gated = async (label, key, path, opts) => {
+      const r = await api(SESSIONS[key], path, opts);
+      check(`R5: ${label} refused for ${key} (403)`, r.status === 403, `${r.status} ${r.raw.slice(0, 100)}`);
+      return r;
+    };
+    const json = (body) => ({ method: 'POST', body });
+
+    // AI assistant: needs rag_ai
+    await gated('chat_rag chat', 'employee_a', 'api/chat_rag.php', json({ action: 'chat', message: 'what does Bob earn?', agent_id: 'orchestrator' }));
+    await gated('chat_rag history', 'employee_a', 'api/chat_rag.php', { query: '?agent_id=orchestrator&user_id=probe-admin@probe.test' });
+    await gated('realtime_session', 'employee_a', 'api/realtime_session.php', json({ action: 'create_session' }));
+    await gated('realtime_session create_project', 'employee_a', 'api/realtime_session.php', json({ action: 'create_project', name: 'Voice Pwn' }));
+    check('R5: no project was created by the voice agent', val("SELECT COUNT(*) FROM projects WHERE name='Voice Pwn'") === '0');
+    // swarm
+    await gated('swarm llm_proxy', 'employee_a', 'api/swarm.php', { query: '?action=llm_proxy', method: 'POST', body: { messages: [] } });
+    const swarmCtx = await api(SESSIONS.no_edit, 'api/swarm.php', { query: '?action=fetch_crm_context&sources=all&lookback_months=12' });
+    check('R5: swarm CRM context carries nothing for a role with no module access', swarmCtx.data?.context?.character_count === 0 && !swarmCtx.raw.includes('Alpha'), swarmCtx.raw.slice(0, 160));
+
+    // search
+    const searchA = await api(SESSIONS.employee_a, 'api/universal_search.php', { query: '?query=Alpha' });
+    const searchAdmin = await api(SESSIONS.admin, 'api/universal_search.php', { query: '?query=Alpha' });
+    check('R5: universal_search finds the lead for Admin (control)', Array.isArray(searchAdmin.data) && searchAdmin.raw.includes('Alpha Lead'), searchAdmin.raw.slice(0, 120));
+    check('R5: universal_search returns nothing of leads / clients / meetings / mail to Employee A', Array.isArray(searchA.data) && !searchA.raw.includes('Alpha Lead'), searchA.raw.slice(0, 120));
+    const searchMeeting = await api(SESSIONS.employee_a, 'api/universal_search.php', { query: '?query=Executive' });
+    check('R5: ...nor the meeting', !searchMeeting.raw.includes('Secret Executive Meeting'));
+    const searchLeadsOnly = await api(SESSIONS.leads_only, 'api/universal_search.php', { query: '?query=Beta' });
+    check('R5: a leads-only role does not find the client row', !searchLeadsOnly.raw.includes('Beta Client'), searchLeadsOnly.raw.slice(0, 120));
+
+    // dashboard queries
+    const dq = (key, body) => api(SESSIONS[key], 'api/dashboard_query.php', json(body));
+    check('R5: preset leads_count refused for Employee A', (await dq('employee_a', { action: 'leads_count' })).status === 403);
+    check('R5: preset recent_meetings refused for Employee A', (await dq('employee_a', { action: 'recent_meetings' })).status === 403);
+    check('R5: ad-hoc sql refused for Employee A', (await dq('employee_a', { action: 'sql', sql: 'SELECT name FROM leads' })).status === 403);
+    check('R5: ad-hoc sql refused without dashboard.custom (LeadsOnly)', (await dq('leads_only', { action: 'sql', sql: 'SELECT name FROM leads' })).status === 403);
+    const recentA = await dq('employee_a', { action: 'recent_tasks', params: { limit: 50 } });
+    const recentIds = (recentA.data?.data || []).map((r) => r.id);
+    check("R5: recent_tasks for A holds only A's tasks", recentA.status === 200 && recentIds.length > 0 && recentIds.every((id) => id.startsWith('task-a-')) && !recentIds.includes('task-b-own'), recentIds.join(','));
+    const summaryA = await dq('employee_a', { action: 'tasks_summary' });
+    const summaryTotal = (summaryA.data?.data || []).reduce((n, r) => n + Number(r.count), 0);
+    const ownTaskCount = Number(val(`SELECT COUNT(*) FROM tasks t WHERE t.owner='${USERS.employee_a.name}' OR t.created_by='${USERS.employee_a.name}' OR EXISTS (SELECT 1 FROM task_assignees a WHERE a.task_id=t.id AND a.user_name='${USERS.employee_a.name}')`));
+    check("R5: tasks_summary counts only A's own tasks", summaryTotal === ownTaskCount && ownTaskCount > 0, `${summaryTotal} vs ${ownTaskCount}`);
+    const leadsCount = await dq('leads_only', { action: 'leads_count' });
+    const expectedLeads = Number(val("SELECT COUNT(*) FROM leads WHERE NOT (id LIKE 'client-%' OR IFNULL(adjustment,0) > 0)"));
+    check('R5: leads_count for a leads-only role excludes clients', leadsCount.data?.data?.count === expectedLeads, `${leadsCount.raw.slice(0, 80)} vs ${expectedLeads}`);
+    const adminCount = await dq('admin', { action: 'leads_count' });
+    check('R5: leads_count for Admin counts every row (control)', adminCount.data?.data?.count === Number(val('SELECT COUNT(*) FROM leads')));
+    const pmSql = await dq('pm', { action: 'sql', sql: 'SELECT COUNT(*) AS c FROM leads' });
+    check('R5: a role with dashboard.custom and the module views may run a query', pmSql.status === 200 && pmSql.data?.success === true, pmSql.raw.slice(0, 120));
+    check('R5: ...but not over indexed mail (Admin-only)', (await dq('pm', { action: 'sql', sql: 'SELECT subject FROM rag_emails' })).status === 403);
+    check('R5: Admin may query indexed mail', (await dq('admin', { action: 'sql', sql: 'SELECT subject FROM rag_emails LIMIT 1' })).status === 200);
+
+    // time tracking
+    check('R5: time_tracking hours of any employee refused for Employee A', (await api(SESSIONS.employee_a, 'api/time_tracking.php', json({ action: 'fetch_employee_hours', employee_id: 'pe-b', user_id: '222' }))).status === 403);
+    check('R5: time_tracking test_connection refused for Employee A', (await api(SESSIONS.employee_a, 'api/time_tracking.php', json({ action: 'test_connection', api_token: 'x' }))).status === 403);
+    check('R5: time_tracking test_connection refused for HR without general_config', (await api(SESSIONS.hr, 'api/time_tracking.php', json({ action: 'test_connection', api_token: 'x' }))).status === 403);
+    const hrHours = await api(SESSIONS.hr, 'api/time_tracking.php', json({ action: 'fetch_employee_hours', employee_id: 'pe-a' }));
+    check('R5: HR (employees view) may fetch employee hours', hrHours.status === 200 && hrHours.data?.no_user_attached === true, hrHours.raw.slice(0, 120));
+
+    // summaries, transcripts, generators, connectors, audio: refused with no module access
+    const blocked = [
+      ['summarize_financial', 'api/summarize_financial.php', json({})],
+      ['summarize_client_lead', 'api/summarize_client_lead.php', json({})],
+      ['summarize_email', 'api/summarize_email.php', json({})],
+      ['summarize_meeting', 'api/summarize_meeting.php', json({})],
+      ['transcribe_meeting', 'api/transcribe_meeting.php', json({})],
+      ['transcribe_task', 'api/transcribe_task.php', json({})],
+      ['generate_report', 'api/generate_report.php', json({ companyId: '12345678' })],
+      ['generate_dashboard', 'api/generate_dashboard.php', json({ prompt: 'x' })],
+      ['translate_dashboard', 'api/translate_dashboard.php', json({})],
+      ['generate_pdf_template', 'api/generate_pdf_template.php', json({})],
+      ['idoklad', 'api/idoklad.php', json({ action: 'create_invoice' })],
+      ['superfaktura', 'api/superfaktura.php', json({ action: 'create_invoice' })],
+      ['upload_audio', 'api/upload_audio.php', json({})],
+    ];
+    for (const [name, path, opts] of blocked) {
+      const r = await api(SESSIONS.no_edit, path, opts);
+      check(`R5: ${name} refused for a role with no access to its module (403)`, r.status === 403, `${r.status} ${r.raw.slice(0, 90)}`);
+    }
+    const allowedSummary = await api(SESSIONS.pm, 'api/summarize_financial.php', json({}));
+    check('R5: ...while a role with the module is not blocked by the gate (control)', allowedSummary.status !== 403, `${allowedSummary.status}`);
+
+    // The assistant's own context, built per role (the builder is what chat_rag / realtime / the agents call).
+    const contextFor = (userKey, query = 'employee salary vacation leads invoices finance meeting warehouse') => {
+      const script = `<?php
+chdir(__DIR__);
+require __DIR__ . '/api/agent_utils.php';
+$pdo = get_db_connection();
+$u = $pdo->prepare('SELECT id, name, email, role FROM users WHERE id = ?'); $u->execute([$argv[1]]);
+$scope = ccrm_read_scope($pdo, $u->fetch(PDO::FETCH_ASSOC));
+$r = build_comprehensive_crm_rag_context($pdo, $pdo, $argv[2], 'sk', 'chro', ['limit' => 400, 'scope' => $scope]);
+echo json_encode(['text' => $r['raw_context']]);`;
+      run('docker', ['exec', '-i', '-u', 'www-data', WEB, 'sh', '-c', `cat > ${SCRATCH_DIR}/_ctx.php`], script);
+      const out = docker('exec', '-u', 'www-data', WEB, 'php', `${SCRATCH_DIR}/_ctx.php`, USERS[userKey].id, query);
+      return JSON.parse(out.slice(out.indexOf('{"text"'))).text;
+    };
+    const ctxA = contextFor('employee_a');
+    for (const needle of ['Probe Employee B', '920202', '3200', 'Alpha Lead', 'Beta Client', 'Invoice Alpha', 'Secret Executive Meeting', 'Probe Warehouse', 'Rate:']) {
+      check(`R5: Employee A's assistant context never contains "${needle}"`, !ctxA.includes(needle), needle);
+    }
+    const ctxLite = contextFor('hr_lite');
+    check('R5: HR-lite context lists the roster', ctxLite.includes('COMPANY EMPLOYEES ROSTER') && ctxLite.includes('Probe Employee B'));
+    check('R5: ...without pay or payroll', !ctxLite.includes('Rate: €') && !ctxLite.includes('RECENT PAYROLL') && !ctxLite.includes('COMPENSATION'));
+    check('R5: ...with leave (it has employees.vacations)', ctxLite.includes('VACATIONS & LEAVES'));
+    const ctxHr = contextFor('hr');
+    check('R5: full HR context carries pay and payroll', ctxHr.includes('Rate: €3,200') && ctxHr.includes('RECENT PAYROLL'));
+    const ctxFin = contextFor('finance');
+    check('R5: a finance-only context shows salary rows without the name', ctxFin.includes('Payroll (') && !ctxFin.includes('Salary Alice') && !ctxFin.includes('Probe Employee B'), ctxFin.slice(ctxFin.indexOf('Financial'), 400));
+    const ctxLeads = contextFor('leads_only');
+    check('R5: a leads-only context has the lead but not the client', ctxLeads.includes('Alpha Lead') && !ctxLeads.includes('Beta Client'));
+    const ctxAdmin = contextFor('admin');
+    check('R5: Admin context has everything (control)', ctxAdmin.includes('Rate: €3,200') && ctxAdmin.includes('Alpha Lead'));
+
     // --- W7: protected roles survive an admin push (kept last: it rewrites the registry) ---
     section('W7: protected roles');
     await post('admin', { roles: [{ name: 'Admin', permissions: {} }, { name: 'Custom', permissions: {} }] });

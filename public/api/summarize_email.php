@@ -3,6 +3,7 @@
  * AI Email Summarization Endpoint.
  */
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/read_scope.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
@@ -15,6 +16,7 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 // SECURITY: Authenticated users only
 $sessionUser = ccrm_require_auth();
+ccrm_gate($sessionUser, 'email');
 $userEmail = $sessionUser['email'] ?? '';
 
 if (empty($userEmail)) {

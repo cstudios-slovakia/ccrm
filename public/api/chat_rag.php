@@ -4,8 +4,10 @@ require_once __DIR__ . '/auth.php';
 header('Content-Type: application/json');
 ccrm_send_cors('GET, POST, OPTIONS');
 
-// SECURITY: the assistant queries internal data — authenticated users only.
-ccrm_require_auth();
+// SECURITY: the assistant queries internal data — authenticated users only, and only
+// with the RAG assistant permission (rag_ai). What it may read is then limited to what
+// the caller's role may read in the app (see the `scope` option of the context builder).
+$sessionUser = ccrm_require_auth();
 
 require_once __DIR__ . '/agent_utils.php';
 
@@ -16,6 +18,21 @@ try {
     echo json_encode(['success' => false, 'message' => 'Database connection failed.']);
     exit;
 }
+
+$scope = ccrm_require_perm($pdo, $sessionUser, 'rag_ai', 'view');
+
+// A chat history belongs to the signed-in user. The client names it by e-mail; anything
+// else in the request (another person's address) is replaced by the session's own, so
+// the endpoint cannot be used to read a colleague's conversations. 'default_user' is the
+// shared legacy history and stays as it was.
+$ccrmOwnChatId = static function ($requested) use ($scope): string {
+    $mine = (string)($scope['sessionUserEmail'] ?? '');
+    $requested = (string)$requested;
+    if ($requested === '' || $requested === 'default_user') {
+        return 'default_user';
+    }
+    return $mine !== '' ? $mine : 'default_user';
+};
 
 // 1. Fetch integrations config to get OpenAI API key and RAG database parameters
 $stmt = $pdo->prepare("SELECT `value` FROM `system_settings` WHERE `key` = 'INTEGRATIONS_CONFIG'");
@@ -37,7 +54,7 @@ if ($chatDb) {
 // 2. Handle GET Request: Fetch chat history, agent list, or episodic decisions
 if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     $action = $_GET['action'] ?? 'chat_history';
-    $userId = !empty($_GET['user_id']) ? $_GET['user_id'] : 'default_user';
+    $userId = $ccrmOwnChatId($_GET['user_id'] ?? '');
 
     if ($action === 'get_agents') {
         $agents = [];
@@ -93,8 +110,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $payload = json_decode($input, true);
     
     $action = $payload['action'] ?? 'chat';
-    $userId = !empty($payload['user_id']) ? $payload['user_id'] : 'default_user';
+    $userId = $ccrmOwnChatId($payload['user_id'] ?? '');
     $agentId = $payload['agent_id'] ?? 'orchestrator';
+
+    // Changing the shared agent roster is the assistant's edit level.
+    if (in_array($action, ['create_agent', 'edit_agent', 'delete_agent'], true) && !ccrm_can_edit($scope, 'rag_ai')) {
+        http_response_code(403);
+        echo json_encode(['success' => false, 'message' => 'Forbidden']);
+        exit;
+    }
 
     // 3.0. Episodic Decisions Actions
     if ($action === 'get_decisions') {
@@ -260,7 +284,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
         
         // Execute RAG + OpenAI run for this agent
-        $reply = execute_autonomous_run($pdo, $chatDb, $agent, $openAiKey);
+        $reply = execute_autonomous_run($pdo, $chatDb, $agent, $openAiKey, $scope);
         
         // Save to chat history
         try {
@@ -301,7 +325,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $roleCategory = $agentId;
     }
 
-    $ragData = build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery, 'sk', $roleCategory, ['limit' => 28]);
+    $ragData = build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery, 'sk', $roleCategory, ['limit' => 28, 'scope' => $scope]);
     $sanitized_context = $ragData['sanitized_context'];
     $to_placeholder = $ragData['to_placeholder'];
     $to_real = $ragData['to_real'];

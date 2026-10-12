@@ -10,12 +10,13 @@
  */
 
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/read_scope.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('GET, POST, OPTIONS');
 
 // All Swarm operations require authenticated user session
-ccrm_require_auth();
+$sessionUser = ccrm_require_auth();
 
 // Include autoloader / classes
 require_once __DIR__ . '/Swarm/SwarmManager.php';
@@ -84,6 +85,8 @@ $action = $_GET['action'] ?? ($_POST['action'] ?? 'list');
 // ACTION: LLM PROXY (Secure browser -> CCRM -> OpenAI gateway)
 // ─────────────────────────────────────────────────────────────
 if ($action === 'llm_proxy') {
+    // The proxy spends the workspace's AI credit: it needs the AI assistant permission.
+    ccrm_gate($sessionUser, 'rag_ai');
     $creds = get_server_llm_credentials($pdo);
     if (empty($creds['apiKey'])) {
         http_response_code(400);
@@ -202,6 +205,38 @@ if ($action === 'fetch_crm_context') {
     $lookbackMonths = isset($_GET['lookback_months']) ? (int)$_GET['lookback_months'] : 12;
     $sourcesRaw = $_GET['sources'] ?? '';
     $sources = !empty($sourcesRaw) ? explode(',', $sourcesRaw) : [];
+    // Each source slug reads one module's data. The caller gets only the sources whose module
+    // they may read ('all' / '*' expands to exactly those), so the simulation context can
+    // never carry what the app would not show them.
+    $ccrmSourceModules = [
+        'active_leads' => ['leads'],
+        'existing_clients' => ['clients'],
+        'projects' => ['projects'],
+        'lost_deal_objections' => ['leads', 'clients'],
+        'competitor_intel' => ['leads', 'clients'],
+        'meeting_notes' => ['meetings'],
+        'client_emails' => ['email'],
+        'files' => ['files'],
+        'products' => ['warehouse'],
+        'financials' => ['financial'],
+        'social_media_posts' => ['social_media'],
+        'unified_entries' => ['unified_entries'],
+    ];
+    $ccrmPdo = ccrm_auth_pdo();
+    $ccrmScope = $ccrmPdo !== null ? ccrm_read_scope($ccrmPdo, $sessionUser) : ['isAdmin' => false, 'permissions' => []];
+    $wantedSources = (in_array('*', $sources, true) || in_array('all', $sources, true)) ? array_keys($ccrmSourceModules) : $sources;
+    $sources = [];
+    foreach ($wantedSources as $slug) {
+        foreach ($ccrmSourceModules[$slug] ?? [] as $moduleKey) {
+            if (ccrm_can($ccrmScope, $moduleKey)) {
+                $sources[] = $slug;
+                break;
+            }
+        }
+    }
+    if (!$sources && !empty($sourcesRaw)) {
+        $sources = ['none'];
+    }
     $bundle = $contextExtractor->extractContext($lookbackMonths, 60000, $sources);
     echo json_encode(['success' => true, 'context' => $bundle]);
     exit;

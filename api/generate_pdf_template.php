@@ -5,6 +5,7 @@
  * while enforcing that all required fields from the default template are preserved.
  */
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/read_scope.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
@@ -15,7 +16,9 @@ if (php_sapi_name() !== 'cli') {
         echo json_encode(['success' => false, 'message' => 'Method Not Allowed']);
         exit;
     }
-    ccrm_require_auth();
+    $sessionUser = ccrm_require_auth();
+    // PDF templates belong to the invoicing module (and to general settings).
+    ccrm_gate_any($sessionUser, ['invoices', 'general_config'], 'edit');
 }
 
 $configFile = dirname(__DIR__) . '/config.php';

@@ -4,6 +4,7 @@
  * Transcribes audio via OpenAI Whisper and parses structured CRM task(s) via OpenAI GPT.
  */
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/read_scope.php';
 
 header('Content-Type: application/json');
 ccrm_send_cors('POST, OPTIONS');
@@ -16,6 +17,8 @@ if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
 
 // SECURITY: Authenticated users only
 $sessionUser = ccrm_require_auth();
+// A transcribed task is a task about to be created.
+ccrm_gate($sessionUser, 'tasks', 'edit');
 
 $configFile = dirname(__DIR__) . '/config.php';
 if (!file_exists($configFile)) {

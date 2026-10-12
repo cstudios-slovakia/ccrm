@@ -2,6 +2,7 @@
 // Agent Utilities for CCMR RAG
 $configFile = dirname(__DIR__) . '/config.php';
 require_once $configFile;
+require_once __DIR__ . '/read_scope.php';
 
 function get_rag_db_connection($config) {
     $vectorDb = $config['vectorDb'] ?? 'none';
@@ -212,6 +213,15 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
         ];
     }
 
+    // The caller's read scope (ccrm_read_scope). Every module block below is built only
+    // when the caller may read that module, so the assistant can never be used to read what
+    // the app would not show. No scope means a system run (the scheduled agents), which has
+    // no user to limit it to.
+    $scope = $options['scope'] ?? null;
+    $allow = function (string $key) use ($scope): bool {
+        return $scope === null || ccrm_can($scope, $key);
+    };
+
     list($to_placeholder, $to_real) = get_sanitization_maps($pdo);
 
     // Accent and diacritic stripping helper
@@ -400,9 +410,14 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
     // =========================================================================
     // 1. PIPELINE & LEADS / CLIENTS
     // =========================================================================
-    try {
-        $leads_stmt = $pdo->query("SELECT `id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `value`, `contact_person`, `financial_summary`, `company_id`, `tax_id`, `vat_id`, `ai_summary`, `interest_note`, `country` FROM `leads` LIMIT 150");
+    if ($allow('leads') || $allow('clients')) try {
+        $leads_stmt = $pdo->query("SELECT `id`, `name`, `city`, `client_type`, `status`, `source`, `owner`, `value`, `contact_person`, `financial_summary`, `company_id`, `tax_id`, `vat_id`, `ai_summary`, `interest_note`, `country`, `adjustment` FROM `leads` LIMIT 150");
         $leads_all = $leads_stmt->fetchAll(PDO::FETCH_ASSOC);
+        if ($scope !== null) {
+            $leads_all = array_values(array_filter($leads_all, function ($row) use ($scope) {
+                return ccrm_lead_row_visible($row, $scope);
+            }));
+        }
 
         if (!empty($leads_all)) {
             $totalLeads = count($leads_all);
@@ -487,7 +502,7 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
                     $score += $calc_token_score($cat, $meaningful_tokens_clean);
                 }
 
-                $events_stmt = $pdo->prepare("SELECT `type`, `title`, `content`, `amount`, `file_name` FROM `timeline_events` WHERE `lead_id` = ? ORDER BY `timestamp` DESC LIMIT 10");
+                $events_stmt = $pdo->prepare("SELECT `type`, `title`, `content`, `amount`, `file_name` FROM `timeline_events` WHERE `lead_id` = ?" . ($allow('email') ? '' : " AND `type` <> 'email'") . " ORDER BY `timestamp` DESC LIMIT 10");
                 $events_stmt->execute([$lead_id]);
                 $events = $events_stmt->fetchAll(PDO::FETCH_ASSOC);
                 foreach ($events as $ev) {
@@ -530,7 +545,7 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
     // =========================================================================
     // 2. PROJECTS & MILESTONES (projects, project_types, project_managers)
     // =========================================================================
-    try {
+    if ($allow('projects')) try {
         $chkProj = $pdo->query("SHOW TABLES LIKE 'projects'")->rowCount() > 0;
         if ($chkProj) {
             $projStmt = $pdo->query("
@@ -653,7 +668,7 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
     // =========================================================================
     // 3. TASKS & KANBAN (tasks, task_assignees)
     // =========================================================================
-    try {
+    if ($allow('tasks') && $allow('tasks.view_all')) try {
         $tasks_stmt = $pdo->query("
             SELECT t.`id`, t.`title`, t.`description`, t.`status`, t.`priority`, t.`due_date`, t.`assigned_to`, l.`name` as `lead_name`, p.`name` as `project_name`
             FROM `tasks` t
@@ -747,7 +762,7 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
     // =========================================================================
     // 4. INVOICES & PRICE OFFERS (invoices_offers, invoice_offer_items)
     // =========================================================================
-    try {
+    if ($allow('invoices')) try {
         $chkInv = $pdo->query("SHOW TABLES LIKE 'invoices_offers'")->rowCount() > 0;
         if ($chkInv) {
             $invStmt = $pdo->query("
@@ -842,7 +857,7 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
     // =========================================================================
     // 5. FINANCIAL MANAGEMENT (financial_records, financial_categories)
     // =========================================================================
-    try {
+    if ($allow('financial')) try {
         $chkFin = $pdo->query("SHOW TABLES LIKE 'financial_records'")->rowCount() > 0;
         if ($chkFin) {
             $finStmt = $pdo->query("
@@ -853,6 +868,11 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
                 LIMIT 150
             ");
             $finRecords = $finStmt->fetchAll(PDO::FETCH_ASSOC);
+            if (!$allow('employees.salaries')) {
+                $finRecords = array_map(function ($row) {
+                    return ccrm_is_salary_finance_row($row) ? ccrm_anonymise_salary_finance_row($row) : $row;
+                }, $finRecords);
+            }
 
             if (!empty($finRecords)) {
                 $totalRealIncome = 0;
@@ -979,7 +999,7 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
     // =========================================================================
     // 6. WAREHOUSE & INVENTORY (warehouse_items, stock, movements, suppliers)
     // =========================================================================
-    try {
+    if ($allow('warehouse')) try {
         $chkWH = $pdo->query("SHOW TABLES LIKE 'warehouse_items'")->rowCount() > 0;
         if ($chkWH) {
             $products_stmt = $pdo->query("
@@ -1082,7 +1102,7 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
     // =========================================================================
     // 7. MEETINGS & TRANSCRIPTS (meeting_notes, meeting_tasks)
     // =========================================================================
-    try {
+    if ($allow('meetings')) try {
         $notes_stmt = $pdo->query("SELECT `id`, `title`, `date`, `notes`, `lead_name`, `ai_summary_json` FROM `meeting_notes` WHERE (`archived` = 0 OR `archived` IS NULL) ORDER BY `date` DESC LIMIT 40");
         $meeting_notes_all = $notes_stmt->fetchAll(PDO::FETCH_ASSOC);
         foreach ($meeting_notes_all as $mn) {
@@ -1138,7 +1158,7 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
     // =========================================================================
     // 8. UNIFIED CUSTOM REGISTRIES (unified_entries, ue_*)
     // =========================================================================
-    try {
+    if ($allow('unified_entries')) try {
         $registries = $pdo->query("SELECT `id`, `name`, `entry_name`, `folder_name` FROM `unified_entries` WHERE `archived` = 0")->fetchAll(PDO::FETCH_ASSOC);
         foreach ($registries as $reg) {
             $safeId = preg_replace('/[^a-z0-9_]/', '', strtolower($reg['id']));
@@ -1211,9 +1231,15 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
     // =========================================================================
     // 9. EMAIL CLIENT (rag_emails)
     // =========================================================================
-    try {
+    if ($allow('email')) try {
         $email_db = $chatDb ?: $pdo;
-        $emails_stmt = $email_db->query("SELECT `subject`, `sender`, `recipient`, `body`, `received_at` FROM `rag_emails` ORDER BY `received_at` DESC LIMIT 40");
+        // A mailbox is personal: for a user's own request only that user's indexed mail is read.
+        if ($scope !== null) {
+            $emails_stmt = $email_db->prepare("SELECT `subject`, `sender`, `recipient`, `body`, `received_at` FROM `rag_emails` WHERE `user_email` = ? ORDER BY `received_at` DESC LIMIT 40");
+            $emails_stmt->execute([(string)($scope['sessionUserEmail'] ?? '')]);
+        } else {
+            $emails_stmt = $email_db->query("SELECT `subject`, `sender`, `recipient`, `body`, `received_at` FROM `rag_emails` ORDER BY `received_at` DESC LIMIT 40");
+        }
         $rag_emails_all = $emails_stmt->fetchAll(PDO::FETCH_ASSOC);
         foreach ($rag_emails_all as $re) {
             $score = 0;
@@ -1264,7 +1290,7 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
     // =========================================================================
     // 11. WORKFLOWS & AUTOMATION (workflows)
     // =========================================================================
-    try {
+    if ($allow('automation')) try {
         $chkWf = $pdo->query("SHOW TABLES LIKE 'workflows'")->rowCount() > 0;
         if ($chkWf) {
             $wfStmt = $pdo->query("SELECT `name`, `description`, `trigger_type`, `is_active` FROM `workflows` WHERE `is_active` = 1 LIMIT 20");
@@ -1305,25 +1331,33 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
     // =========================================================================
     // 12b. EMPLOYEES, SALARIES & VACATIONS (employees, employee_salaries, employee_vacations)
     // =========================================================================
-    try {
+    if ($allow('employees')) try {
         if ($pdo->query("SHOW TABLES LIKE 'employees'")->rowCount() > 0) {
             $empStmt = $pdo->query("SELECT `id`, `name`, `email`, `phone`, `salary_type`, `salary_amount`, `salary_due_day`, `time_tracking_user_name`, `is_active`, `vacation_allowances_json` FROM `employees` WHERE `is_active` = 1 LIMIT 50");
             $employeesAll = $empStmt->fetchAll(PDO::FETCH_ASSOC);
             if (!empty($employeesAll)) {
-                $hrBlock = "=== COMPANY EMPLOYEES ROSTER & COMPENSATION ===\n";
+                // The same field groups the sync GET projects: the roster for anyone with
+                // employees access, then phone behind employees.personal, pay behind
+                // employees.salaries and leave behind employees.vacations.
+                $hrPersonal = $allow('employees.personal');
+                $hrPay = $allow('employees.salaries');
+                $hrLeave = $allow('employees.vacations');
+                $hrBlock = "=== COMPANY EMPLOYEES ROSTER" . ($hrPay ? " & COMPENSATION" : "") . " ===\n";
                 foreach ($employeesAll as $emp) {
-                    $hrBlock .= "- Employee: " . $emp['name'] . " | Contact: " . ($emp['email'] ?: 'N/A') . " (" . ($emp['phone'] ?: 'N/A') . ")\n";
-                    $hrBlock .= "  Rate: €" . number_format((float)$emp['salary_amount'], 2) . " / " . $emp['salary_type'] . " | Salary due day: " . ($emp['salary_due_day'] ? $emp['salary_due_day'] . 'th' : 'Company default') . "\n";
+                    $hrBlock .= "- Employee: " . $emp['name'] . " | Contact: " . ($emp['email'] ?: 'N/A') . ($hrPersonal ? " (" . ($emp['phone'] ?: 'N/A') . ")" : "") . "\n";
+                    if ($hrPay) {
+                        $hrBlock .= "  Rate: €" . number_format((float)$emp['salary_amount'], 2) . " / " . $emp['salary_type'] . " | Salary due day: " . ($emp['salary_due_day'] ? $emp['salary_due_day'] . 'th' : 'Company default') . "\n";
+                    }
                     if (!empty($emp['time_tracking_user_name'])) {
                         $hrBlock .= "  Time tracker (Toggl): " . $emp['time_tracking_user_name'] . "\n";
                     }
-                    if (!empty($emp['vacation_allowances_json'])) {
+                    if ($hrLeave && !empty($emp['vacation_allowances_json'])) {
                         $hrBlock .= "  Vacation allowances: " . $emp['vacation_allowances_json'] . "\n";
                     }
                 }
 
                 // Recent salaries summary
-                if ($pdo->query("SHOW TABLES LIKE 'employee_salaries'")->rowCount() > 0) {
+                if ($hrPay && $pdo->query("SHOW TABLES LIKE 'employee_salaries'")->rowCount() > 0) {
                     $salSummaryStmt = $pdo->query("
                         SELECT es.`period_key`, es.`total_salary`, es.`total_paid`, es.`status`, es.`payment_date`, es.`due_date`, e.`name` as `emp_name`
                         FROM `employee_salaries` es
@@ -1340,8 +1374,8 @@ function build_comprehensive_crm_rag_context($pdo, $chatDb, $userQuery = '', $sy
                     }
                 }
 
-                // Recent / upcoming vacations
-                if ($pdo->query("SHOW TABLES LIKE 'employee_vacations'")->rowCount() > 0) {
+                // Recent / upcoming vacations (sick leave is health data: only with employees.vacations)
+                if ($hrLeave && $pdo->query("SHOW TABLES LIKE 'employee_vacations'")->rowCount() > 0) {
                     $vacSummaryStmt = $pdo->query("
                         SELECT ev.`vacation_type_id`, ev.`start_date`, ev.`end_date`, ev.`days_count`, ev.`status`, e.`name` as `emp_name`
                         FROM `employee_vacations` ev
@@ -1420,9 +1454,10 @@ function get_crm_rag_context_text($pdo, $chatDb, $userQuery = '', $systemLanguag
 }
 
 // Core autonomous RAG run execution
-function execute_autonomous_run($pdo, $ragPdo, $agent, $openAiKey) {
+// $scope is the read scope of the user who triggered the run; the scheduled runs have no user and pass none.
+function execute_autonomous_run($pdo, $ragPdo, $agent, $openAiKey, ?array $scope = null) {
     $searchQuery = ($agent['position'] ?? '') . " " . ($agent['name'] ?? '');
-    $ragData = build_comprehensive_crm_rag_context($pdo, $ragPdo, $searchQuery, 'sk', $agent['roleCategory'] ?? 'orchestrator', ['limit' => 20]);
+    $ragData = build_comprehensive_crm_rag_context($pdo, $ragPdo, $searchQuery, 'sk', $agent['roleCategory'] ?? 'orchestrator', ['limit' => 20, 'scope' => $scope]);
     
     $sanitized_context = $ragData['sanitized_context'];
     $to_real = $ragData['to_real'];

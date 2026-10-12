@@ -28,6 +28,7 @@ if (file_exists($configFile)) {
 }
 
 require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/read_scope.php';
 require_once __DIR__ . '/mcp_ext.php';
 require_once __DIR__ . '/mcp_ext_ops.php';
 require_once __DIR__ . '/mcp_ext_writes.php';
@@ -163,7 +164,8 @@ function mcp_tool_permissions(): array {
         'create_employee' => $e('employees'), 'update_employee' => $e('employees'),
         'list_salaries' => $v('employees', 'employees.salaries'),
         'record_salary_payout' => ['edit' => ['employees'], 'view' => ['employees.salaries']],
-        'list_vacations' => $v('employees'), 'record_vacation' => $e('employees'),
+        'list_vacations' => $v('employees', 'employees.vacations'),
+        'record_vacation' => ['edit' => ['employees'], 'view' => ['employees.vacations']],
     ];
     // Part B tools (mcp_ext.php).
     $map += mcp_ext_fin_permissions();
@@ -1299,6 +1301,26 @@ function mcp_strip_keys(array $row, array $keys): array {
 }
 
 /**
+ * An employee row limited to the field groups the key owner may read, the same split the
+ * sync GET applies (ccrm_project_employee_row): personal data, pay, leave and documents
+ * each sit behind their own toggle on top of `employees`.
+ */
+function mcp_project_employee(array $row): array {
+    $groups = [
+        'employees.personal' => ['pin', 'phone', 'address_street', 'address_city', 'address_zip', 'address_country', 'notes'],
+        'employees.salaries' => ['salary_type', 'salary_amount', 'salary_due_day', 'auto_expense', 'expense_category_id'],
+        'employees.vacations' => ['vacation_allowances_json'],
+        'employees.files' => ['files_json'],
+    ];
+    foreach ($groups as $permission => $columns) {
+        if (!mcp_can($permission)) {
+            $row = mcp_strip_keys($row, $columns);
+        }
+    }
+    return $row;
+}
+
+/**
  * Without tasks.view_all a caller sees only tasks assigned to them, or that
  * they own or created (the app's canViewTask rule plus the creator follow-up).
  * Returns [sqlFragment, params] to AND onto a query on `tasks` (alias optional).
@@ -2072,7 +2094,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
             $limit = min(max(1, (int)($args['limit'] ?? 50)), 100);
 
-            $sql = "SELECT id, title, description, category_id, amount_planned, amount_real, currency, status, issue_date, due_date, paid_date, project_id, client_id, created_by 
+            $sql = "SELECT id, subtype, title, description, category_id, amount_planned, amount_real, currency, status, issue_date, due_date, paid_date, project_id, client_id, created_by 
                     FROM financial_records 
                     WHERE " . implode(' AND ', $where) . " 
                     ORDER BY issue_date DESC 
@@ -2080,7 +2102,11 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
 
             $stmt = $pdo->prepare($sql);
             $stmt->execute($params);
-            return $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            $expenseRows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
+            if (!mcp_can('employees.salaries')) {
+                $expenseRows = array_map(fn($r) => ccrm_is_salary_finance_row($r) ? ccrm_anonymise_salary_finance_row($r) : $r, $expenseRows);
+            }
+            return $expenseRows;
 
         case 'record_expense':
             return mcp_do_record_expense($pdo, $user, $args);
@@ -2339,9 +2365,15 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $where = ["1=1"];
             $params = [];
             if (!empty($args['search'])) {
-                $where[] = "(name LIKE ? OR email LIKE ? OR pin LIKE ? OR phone LIKE ?)";
                 $s = '%' . trim($args['search']) . '%';
-                $params = array_merge($params, [$s, $s, $s, $s]);
+                if (mcp_can('employees.personal')) {
+                    $where[] = "(name LIKE ? OR email LIKE ? OR pin LIKE ? OR phone LIKE ?)";
+                    $params = array_merge($params, [$s, $s, $s, $s]);
+                } else {
+                    // A search that matched on a PIN or phone would confirm one to someone who may not read it.
+                    $where[] = "(name LIKE ? OR email LIKE ?)";
+                    $params = array_merge($params, [$s, $s]);
+                }
             }
             if (!isset($args['active_only']) || !empty($args['active_only'])) {
                 $where[] = "is_active = 1";
@@ -2349,10 +2381,7 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $stmt = $pdo->prepare("SELECT id, name, pin, email, phone, address_street, address_city, address_zip, address_country, salary_type, salary_amount, salary_due_day, vacation_allowances_json, time_tracking_user_name, auto_expense, is_active FROM employees WHERE " . implode(' AND ', $where) . " ORDER BY name ASC LIMIT 200");
             $stmt->execute($params);
             $rows = $stmt->fetchAll(\PDO::FETCH_ASSOC);
-            if (!mcp_can('employees.salaries')) {
-                $rows = array_map(fn($r) => mcp_strip_keys($r, MCP_EMPLOYEE_SENSITIVE), $rows);
-            }
-            return $rows;
+            return array_map('mcp_project_employee', $rows);
 
         case 'get_employee':
             $stmt = $pdo->prepare("SELECT * FROM employees WHERE id = ? LIMIT 1");
@@ -2360,19 +2389,19 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $emp = $stmt->fetch(\PDO::FETCH_ASSOC);
             if (!$emp) throw new \Exception("Employee not found with ID: " . $args['id']);
             
-            // Salaries and personal id only for holders of employees.salaries
+            // Pay records only with employees.salaries, leave only with employees.vacations
             if (mcp_can('employees.salaries')) {
                 $salStmt = $pdo->prepare("SELECT * FROM employee_salaries WHERE employee_id = ? ORDER BY year DESC, period_number DESC LIMIT 12");
                 $salStmt->execute([$args['id']]);
                 $emp['salaries'] = $salStmt->fetchAll(\PDO::FETCH_ASSOC);
-            } else {
-                $emp = mcp_strip_keys($emp, MCP_EMPLOYEE_SENSITIVE);
             }
+            $emp = mcp_project_employee($emp);
 
-            // Fetch vacations
-            $vacStmt = $pdo->prepare("SELECT * FROM employee_vacations WHERE employee_id = ? ORDER BY start_date DESC LIMIT 20");
-            $vacStmt->execute([$args['id']]);
-            $emp['vacations'] = $vacStmt->fetchAll(\PDO::FETCH_ASSOC);
+            if (mcp_can('employees.vacations')) {
+                $vacStmt = $pdo->prepare("SELECT * FROM employee_vacations WHERE employee_id = ? ORDER BY start_date DESC LIMIT 20");
+                $vacStmt->execute([$args['id']]);
+                $emp['vacations'] = $vacStmt->fetchAll(\PDO::FETCH_ASSOC);
+            }
 
             return $emp;
 
@@ -2388,13 +2417,13 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $ins->execute([
                 $id,
                 $name,
-                mcp_can('employees.salaries') ? ($args['pin'] ?? null) : null,
+                mcp_can('employees.personal') ? ($args['pin'] ?? null) : null,
                 $args['email'] ?? null,
-                $args['phone'] ?? null,
-                $args['address_street'] ?? null,
-                $args['address_city'] ?? null,
-                $args['address_zip'] ?? null,
-                $args['address_country'] ?? 'Slovakia',
+                mcp_can('employees.personal') ? ($args['phone'] ?? null) : null,
+                mcp_can('employees.personal') ? ($args['address_street'] ?? null) : null,
+                mcp_can('employees.personal') ? ($args['address_city'] ?? null) : null,
+                mcp_can('employees.personal') ? ($args['address_zip'] ?? null) : null,
+                mcp_can('employees.personal') ? ($args['address_country'] ?? 'Slovakia') : 'Slovakia',
                 mcp_can('employees.salaries') ? ($args['salary_type'] ?? 'monthly') : 'monthly',
                 mcp_can('employees.salaries') ? (float)($args['salary_amount'] ?? 0) : 0.0,
                 (mcp_can('employees.salaries') && isset($args['salary_due_day'])) ? (int)$args['salary_due_day'] : null,
@@ -2409,11 +2438,18 @@ function mcp_execute_tool(\PDO $pdo, array $user, string $tool, array $args): mi
             $id = $args['id'];
             $fields = [];
             $params = [];
-            // Salary and personal-id fields are writable only with employees.salaries.
+            // Pay fields are writable only with employees.salaries, personal data only with employees.personal.
             if (!mcp_can('employees.salaries')) {
-                foreach (['pin', 'salary_type', 'salary_amount', 'salary_due_day', 'auto_expense'] as $f) {
+                foreach (['salary_type', 'salary_amount', 'salary_due_day', 'auto_expense'] as $f) {
                     if (isset($args[$f])) {
                         throw new \Exception("Field '{$f}' needs the employees.salaries permission.");
+                    }
+                }
+            }
+            if (!mcp_can('employees.personal')) {
+                foreach (['pin', 'phone', 'address_street', 'address_city', 'address_zip'] as $f) {
+                    if (isset($args[$f])) {
+                        throw new \Exception("Field '{$f}' needs the employees.personal permission.");
                     }
                 }
             }

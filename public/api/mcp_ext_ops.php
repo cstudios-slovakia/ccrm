@@ -283,7 +283,7 @@ function mcp_ext_ops_tool_definitions(): array {
         ],
         [
             'name' => 'list_files',
-            'description' => 'File metadata (names, types, dates; never the content) attached to a lead/client, a project, or an employee (employee files need the salaries permission).',
+            'description' => 'File metadata (names, types, dates; never the content) attached to a lead/client, a project, or an employee (employee files need the employees.files permission).',
             'inputSchema' => ['type' => 'object', 'properties' => ['source' => ['type' => 'string', 'enum' => ['lead', 'project', 'employee']], 'id' => $id('Record ID')], 'required' => ['source', 'id']],
         ],
     ];
@@ -299,7 +299,7 @@ function mcp_ext_ops_permissions(): array {
         'get_meeting' => $v('meetings'), 'list_meeting_tasks' => $v('meetings'),
         'get_warehouse_metrics' => $v('warehouse'), 'list_warehouses' => $v('warehouse'), 'list_suppliers' => $v('warehouse'),
         'list_stock_movements' => $v('warehouse'), 'list_batches' => $v('warehouse'),
-        'get_vacation_balance' => $v('employees'),
+        'get_vacation_balance' => $v('employees', 'employees.vacations'),
         'get_payroll_summary' => $v('employees', 'employees.salaries'),
         'list_workflows' => $v('automation'), 'get_workflow_runs' => $v('automation'),
         'list_unified_entries' => $v('unified_entries'), 'get_unified_entry_rows' => $v('unified_entries'),
@@ -664,7 +664,7 @@ function mcp_ext_ops_execute(\PDO $pdo, array $user, string $tool, array $args) 
                 if ($j === false) throw new \Exception("Project not found with ID: {$id}");
                 return mcp_file_slots(json_decode((string)$j, true));
             }
-            if (!mcp_can('employees') || !mcp_can('employees.salaries')) throw new \Exception('Employee files need the employees.salaries permission.');
+            if (!mcp_can('employees') || !mcp_can('employees.files')) throw new \Exception('Employee files need the employees.files permission.');
             $stmt = $pdo->prepare("SELECT files_json FROM employees WHERE id = ?");
             $stmt->execute([$id]);
             $j = $stmt->fetchColumn();
