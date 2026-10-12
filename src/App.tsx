@@ -3401,6 +3401,10 @@ ${log.payload || ''}
             getPermission={getPermission}
             companyBillingSettings={companyBillingSettings}
             initialSelectedOrderId={subOrderId}
+            onOpenSettings={() => {
+              window.location.hash = "settings/orders";
+              setActiveTab("settings/orders");
+            }}
             onOpenClient={(clientId) => {
               const cl = leads.find(l => l.id === clientId);
               if (cl) {

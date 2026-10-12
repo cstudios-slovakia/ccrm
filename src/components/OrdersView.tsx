@@ -1,9 +1,9 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import {
   ShoppingCart,
   Search,
   Plus,
-  Filter,
+  Sliders,
   Package,
   FileText,
   UserCheck,
@@ -14,20 +14,13 @@ import {
   Check,
   Edit2,
   Trash2,
-  Calendar,
   CreditCard,
   MapPin,
   Clock,
   ChevronDown,
-  Building,
-  Phone,
-  Mail,
   AlertCircle,
-  FileCheck,
   X,
-  Layers,
-  Wrench,
-  Coins,
+  TrendingUp,
   ArrowRight
 } from "lucide-react";
 import type {
@@ -61,6 +54,10 @@ import {
 import { OrderDetailView } from "./OrderDetailView";
 import { getDefaultVatRate } from "../utils/vat";
 import { getDefaultPaymentMethod } from "../utils/payment";
+import { formatMoney } from "../utils/currency";
+import { formatDateLocalized } from "../utils/localTime";
+import { PageHeader, StatGrid, StatTile, Tabs, EmptyState } from "./layout";
+import { CustomSelect } from "./ui/CustomSelect";
 
 export interface OrdersViewProps {
   orders: Order[];
@@ -77,6 +74,7 @@ export interface OrdersViewProps {
   currentUser?: UserProfile | null;
   getPermission: (key: string) => PermissionValue;
   onOpenClient?: (clientId: string) => void;
+  onOpenSettings?: () => void;
   companyBillingSettings?: CompanyBillingSettings | null;
   initialSelectedOrderId?: string;
 }
@@ -96,6 +94,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   currentUser,
   getPermission,
   onOpenClient,
+  onOpenSettings,
   companyBillingSettings,
   initialSelectedOrderId
 }) => {
@@ -348,21 +347,58 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   const stats = useMemo(() => {
     let totalRevenue = 0;
     let unpaidAmount = 0;
+    let unpaidCount = 0;
     let newCount = 0;
     let processingCount = 0;
+    let shippedCount = 0;
+    let deliveredCount = 0;
+    let cancelledCount = 0;
 
     orders.forEach(o => {
       totalRevenue += o.totalGrossAmount || 0;
       if (o.paymentStatus !== "paid") {
         unpaidAmount += o.totalGrossAmount || 0;
+        unpaidCount++;
       }
       const st = orderStatuses.find(s => s.key === o.status);
       if (st?.group === "new") newCount++;
-      if (st?.group === "processing") processingCount++;
+      else if (st?.group === "processing") processingCount++;
+      else if (st?.group === "shipped") shippedCount++;
+      else if (st?.group === "delivered") deliveredCount++;
+      else if (st?.group === "cancelled") cancelledCount++;
     });
 
-    return { totalRevenue, unpaidAmount, newCount, processingCount, totalCount: orders.length };
+    return {
+      totalRevenue,
+      unpaidAmount,
+      unpaidCount,
+      newCount,
+      processingCount,
+      shippedCount,
+      deliveredCount,
+      cancelledCount,
+      totalCount: orders.length
+    };
   }, [orders, orderStatuses]);
+
+  const money = (val: number, decimals = 2) =>
+    formatMoney(val || 0, systemCurrency, userLanguage, {
+      minimumFractionDigits: decimals,
+      maximumFractionDigits: decimals
+    });
+
+  const orderStatusOptions = useMemo(() => {
+    return orderStatuses.map(s => ({
+      value: s.key,
+      label: (
+        <span className="flex items-center gap-2">
+          <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: s.color }} />
+          <span>{orderStatusLabel(s.key, t, orderStatuses)}</span>
+        </span>
+      ),
+      searchText: orderStatusLabel(s.key, t, orderStatuses)
+    }));
+  }, [orderStatuses, userLanguage]);
 
   // Open modal for create
   const handleOpenCreate = () => {
@@ -469,375 +505,428 @@ export const OrdersView: React.FC<OrdersViewProps> = ({
   }
 
   return (
-    <div className="space-y-6 text-left">
-      {/* Top Banner / Metrics Overview */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div className="glass-panel p-5 rounded-3xl border border-white/60 bg-white/90 shadow-glass flex items-center justify-between">
-          <div>
-            <div className="text-micro font-bold text-slate-400 uppercase tracking-wider">
-              {t("Total Orders", "Všetky objednávky", "Összes rendelés")}
+    <div className="space-y-6 pb-16 font-sans animate-fade-in text-left">
+      {/* 1. SECTION HEADER & COMMAND BAR */}
+      <PageHeader
+        icon={<ShoppingCart className="h-6 w-6 text-indigo-600" />}
+        title={t("Orders & Fulfillment", "Objednávky a expedícia", "Rendelések és kiszolgálás")}
+        subtitle={t(
+          "Manage customer orders, track fulfillment stages, warehouse dispatching and payments.",
+          "Správa zákazníckych objednávok, sledovanie stavu expedície, vyskladňovania a platieb.",
+          "Vevői rendelések kezelése, teljesítés nyomon követése, raktári kiadás és fizetés."
+        )}
+        badge={
+          !canEdit ? (
+            <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 bg-amber-50 border border-amber-200 rounded-xl text-caption text-amber-800 font-medium">
+              <AlertCircle className="h-3.5 w-3.5 text-amber-600 shrink-0" />
+              <span>{t("Read-only access", "Iba na čítanie", "Csak olvasható")}</span>
             </div>
-            <div className="text-metric font-bold font-heading text-slate-900 mt-1">
-              {stats.totalCount}
-            </div>
-          </div>
-          <div className="h-11 w-11 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600">
-            <ShoppingCart className="h-5 w-5" />
-          </div>
-        </div>
-
-        <div className="glass-panel p-5 rounded-3xl border border-white/60 bg-white/90 shadow-glass flex items-center justify-between">
-          <div>
-            <div className="text-micro font-bold text-slate-400 uppercase tracking-wider">
-              {t("Awaiting Prep", "Nové & Pripravuje sa", "Új & Feldolgozás")}
-            </div>
-            <div className="text-metric font-bold font-heading text-sky-600 mt-1">
-              {stats.newCount + stats.processingCount}
-            </div>
-          </div>
-          <div className="h-11 w-11 rounded-2xl bg-sky-50 border border-sky-100 flex items-center justify-center text-sky-600">
-            <Package className="h-5 w-5" />
-          </div>
-        </div>
-
-        <div className="glass-panel p-5 rounded-3xl border border-white/60 bg-white/90 shadow-glass flex items-center justify-between">
-          <div>
-            <div className="text-micro font-bold text-slate-400 uppercase tracking-wider">
-              {t("Total Value", "Celkový obrat", "Összes forgalom")}
-            </div>
-            <div className="text-metric font-bold font-heading text-emerald-600 mt-1">
-              {stats.totalRevenue.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {systemCurrency}
-            </div>
-          </div>
-          <div className="h-11 w-11 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600">
-            <Coins className="h-5 w-5" />
-          </div>
-        </div>
-
-        <div className="glass-panel p-5 rounded-3xl border border-white/60 bg-white/90 shadow-glass flex items-center justify-between">
-          <div>
-            <div className="text-micro font-bold text-slate-400 uppercase tracking-wider">
-              {t("Unpaid Amount", "Nezaplatené", "Kifizetetlen")}
-            </div>
-            <div className="text-metric font-bold font-heading text-amber-600 mt-1">
-              {stats.unpaidAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {systemCurrency}
-            </div>
-          </div>
-          <div className="h-11 w-11 rounded-2xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-600">
-            <CreditCard className="h-5 w-5" />
-          </div>
-        </div>
-      </div>
-
-      {/* Main Control Toolbar */}
-      <div className="glass-panel p-4 rounded-3xl border border-white/60 bg-white/95 shadow-glass flex flex-col md:flex-row gap-4 items-center justify-between">
-        {/* Status Lifecycle Tabs */}
-        <div className="flex flex-wrap items-center gap-1.5 w-full md:w-auto">
-          {[
-            { id: "all", label: t("All", "Všetky", "Mind") },
-            { id: "new", label: t("New", "Nové", "Új") },
-            { id: "processing", label: t("Processing", "Príprava", "Feldolgozás") },
-            { id: "shipped", label: t("Shipped", "V preprave", "Úton") },
-            { id: "delivered", label: t("Delivered", "Doručené", "Kézbesítve") },
-            { id: "cancelled", label: t("Cancelled", "Storno", "Törölve") },
-          ].map(tab => {
-            const isActive = activeGroupFilter === tab.id;
-            return (
+          ) : undefined
+        }
+        actions={
+          <>
+            {onOpenSettings && (
               <button
-                key={tab.id}
                 type="button"
-                onClick={() => setActiveGroupFilter(tab.id)}
-                className={`px-3.5 py-1.5 rounded-xl text-ui font-semibold transition-all ${
-                  isActive
-                    ? "bg-indigo-600 text-white shadow-sm shadow-indigo-600/20"
-                    : "text-slate-600 hover:text-slate-900 hover:bg-slate-100/80"
-                }`}
+                onClick={onOpenSettings}
+                className="flex items-center gap-2 px-4 py-2.5 bg-white border border-slate-200 hover:border-indigo-300 text-slate-700 text-ui font-semibold rounded-2xl shadow-sm transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
               >
-                {tab.label}
+                <Sliders className="h-4 w-4 text-indigo-500" />
+                <span>{t("Order settings", "Nastavenia objednávok", "Rendelés beállítások")}</span>
               </button>
-            );
-          })}
-        </div>
+            )}
+            {canEdit && (
+              <button
+                type="button"
+                onClick={handleOpenCreate}
+                className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-ui font-semibold rounded-2xl shadow-md shadow-indigo-600/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+              >
+                <Plus className="h-4 w-4" />
+                <span>{t("New order", "Nová objednávka", "Új rendelés")}</span>
+              </button>
+            )}
+          </>
+        }
+      />
 
-        {/* Search & Actions */}
-        <div className="flex flex-wrap items-center gap-3 w-full md:w-auto justify-end">
-          <div className="relative min-w-55 flex-1 sm:flex-initial">
-            <Search className="h-4 w-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder={t("Search orders, customer, tracking...", "Hľadať objednávku, klienta, trasovanie...", "Keresés rendelésekben...")}
-              className="w-full pl-9 pr-3.5 py-1.5 text-ui bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-            />
-          </div>
+      {/* 2. KPI OVERVIEW STRIP */}
+      <StatGrid count={4}>
+        <StatTile
+          icon={<ShoppingCart className="h-6 w-6" />}
+          tone="bg-indigo-50 text-indigo-600"
+          label={t("Total orders", "Všetky objednávky", "Összes rendelés")}
+          value={String(stats.totalCount)}
+          delta={
+            stats.newCount > 0
+              ? t(`${stats.newCount} new orders`, `${stats.newCount} nových`, `${stats.newCount} új`)
+              : undefined
+          }
+        />
+        <StatTile
+          icon={<Package className="h-6 w-6" />}
+          tone="bg-sky-50 text-sky-600"
+          label={t("Awaiting prep", "Na vybavenie", "Feldolgozás alatt")}
+          value={String(stats.newCount + stats.processingCount)}
+          delta={t("new & in preparation", "nové a v príprave", "új és előkészítés alatt")}
+        />
+        <StatTile
+          icon={<TrendingUp className="h-6 w-6" />}
+          tone="bg-emerald-50 text-emerald-600"
+          label={t("Total volume", "Celkový obrat", "Összes forgalom")}
+          value={money(stats.totalRevenue, 0)}
+          delta={t("gross turnover", "obrat s DPH", "bruttó forgalom")}
+        />
+        <StatTile
+          icon={<CreditCard className="h-6 w-6" />}
+          tone="bg-amber-50 text-amber-600"
+          label={t("Unpaid amount", "Nezaplatené", "Kifizetetlen")}
+          value={money(stats.unpaidAmount, 0)}
+          delta={
+            stats.unpaidCount > 0
+              ? t(`${stats.unpaidCount} unpaid orders`, `${stats.unpaidCount} nezaplatených`, `${stats.unpaidCount} kifizetetlen`)
+              : t("all settled", "všetko uhradené", "minden rendezve")
+          }
+        />
+      </StatGrid>
 
-          {/* Customer filter */}
-          <select
-            value={customerTypeFilter}
-            onChange={e => setCustomerTypeFilter(e.target.value)}
-            className="px-2.5 py-1.5 text-ui bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none"
-          >
-            <option value="all">{t("All Customers", "Všetci zákazníci", "Minden vevő")}</option>
-            <option value="client">{t("Registered Clients", "Iba klienti CRM", "Csak CRM ügyfelek")}</option>
-            <option value="guest">{t("Guests Only", "Iba hostia (E-shop)", "Csak vendég vásárlók")}</option>
-          </select>
+      {/* 3. LIFECYCLE TABS */}
+      <Tabs
+        value={activeGroupFilter}
+        onChange={setActiveGroupFilter}
+        items={[
+          { key: "all", label: t("All orders", "Všetky objednávky", "Minden rendelés"), count: orders.length },
+          { key: "new", label: t("New", "Nové", "Új"), count: stats.newCount },
+          { key: "processing", label: t("Processing", "Príprava", "Feldolgozás"), count: stats.processingCount },
+          { key: "shipped", label: t("Shipped", "V preprave", "Úton"), count: stats.shippedCount },
+          { key: "delivered", label: t("Delivered", "Doručené", "Kézbesítve"), count: stats.deliveredCount },
+          { key: "cancelled", label: t("Cancelled", "Storno", "Törölve"), count: stats.cancelledCount }
+        ]}
+      />
 
-          {/* Payment filter */}
-          <select
-            value={paymentStatusFilter}
-            onChange={e => setPaymentStatusFilter(e.target.value)}
-            className="px-2.5 py-1.5 text-ui bg-slate-50 border border-slate-200 rounded-xl text-slate-700 focus:outline-none"
-          >
-            <option value="all">{t("All Payments", "Všetky platby", "Minden fizetés")}</option>
-            <option value="paid">{t("Paid", "Zaplatené", "Fizetve")}</option>
-            <option value="unpaid">{t("Unpaid", "Nezaplatené", "Fizetésre vár")}</option>
-          </select>
-
-          {canEdit && (
+      {/* 4. SEARCH & FILTERS BAR */}
+      <div className="bg-white p-3 ws-sm:p-4 rounded-3xl border border-slate-200/80 shadow-sm flex flex-col ws-xl:flex-row gap-2.5 ws-sm:gap-3 ws-xl:items-center ws-xl:justify-between">
+        <div className="relative w-full ws-xl:w-80">
+          <Search className="h-4 w-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+          <input
+            type="text"
+            placeholder={t("Search order, client, tracking or city…", "Hľadať objednávku, klienta, trasovanie alebo mesto…", "Rendelés, ügyfél, szám keresése…")}
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="w-full pl-10 pr-9 py-2.5 bg-slate-50 border border-slate-200 rounded-2xl text-ui text-slate-800 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/40 focus:border-indigo-400 transition-all"
+          />
+          {searchQuery && (
             <button
-              type="button"
-              onClick={handleOpenCreate}
-              className="inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-ui font-semibold shadow-sm transition-colors cursor-pointer"
+              onClick={() => setSearchQuery("")}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5 cursor-pointer"
+              title={t("Clear search", "Zmazať hľadanie", "Keresés törlése")}
             >
-              <Plus className="h-4 w-4" />
-              {t("New Order", "Nová objednávka", "Új rendelés")}
+              <X className="w-3.5 h-3.5" />
             </button>
           )}
+        </div>
+
+        <div className="grid grid-cols-1 ws-sm:grid-cols-2 gap-2 w-full ws-xl:w-auto">
+          <CustomSelect
+            size="sm"
+            value={customerTypeFilter}
+            onChange={setCustomerTypeFilter}
+            className="w-full"
+            options={[
+              { value: "all", label: t("All customers", "Všetci zákazníci", "Minden vevő") },
+              { value: "client", label: t("Registered clients only", "Iba klienti CRM", "Csak CRM ügyfelek") },
+              { value: "guest", label: t("Guests only (E-shop)", "Iba hostia (E-shop)", "Csak vendég vásárlók") }
+            ]}
+          />
+          <CustomSelect
+            size="sm"
+            value={paymentStatusFilter}
+            onChange={setPaymentStatusFilter}
+            className="w-full"
+            options={[
+              { value: "all", label: t("All payments", "Všetky platby", "Minden fizetés") },
+              { value: "paid", label: t("Paid only", "Iba zaplatené", "Csak fizetett") },
+              { value: "unpaid", label: t("Unpaid only", "Iba nezaplatené", "Csak kifizetetlen") }
+            ]}
+          />
         </div>
       </div>
 
-      {/* Orders List / Table */}
-      {filteredOrders.length === 0 ? (
-        <div className="glass-panel p-12 text-center rounded-3xl border border-white/60 bg-white/95 shadow-glass space-y-3">
-          <div className="h-14 w-14 rounded-3xl bg-slate-100 flex items-center justify-center mx-auto text-slate-400">
-            <ShoppingCart className="h-7 w-7" />
-          </div>
-          <h4 className="text-title-sm font-bold font-heading text-slate-800">
-            {t("No orders found", "Žiadne objednávky sa nenašli", "Nem található rendelés")}
-          </h4>
-          <p className="text-caption text-slate-500 max-w-sm mx-auto">
-            {t("Create a new commercial or e-shop order to begin tracking fulfillment, deliveries and payments.", "Vytvorte novú obchodnú alebo e-shopovú objednávku pre sledovanie prípravy, dopravy a platieb.", "Hozzon létre egy új rendelést a szállítás és a fizetés nyomon követéséhez.")}
-          </p>
-          {canEdit && (
-            <button
-              type="button"
-              onClick={handleOpenCreate}
-              className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-ui font-semibold"
-            >
-              <Plus className="h-4 w-4" />
-              {t("Create first order", "Vytvoriť prvú objednávku", "Első rendelés létrehozása")}
-            </button>
-          )}
+      {/* 5. ORDERS TABLE */}
+      <div className="bg-white rounded-3xl border border-slate-200/80 shadow-sm overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-ui border-collapse min-w-220">
+            <thead>
+              <tr className="bg-slate-50 text-slate-500 type-overline border-b border-slate-200">
+                <th className="p-4">{t("Order no.", "Číslo objednávky", "Rendelésszám")}</th>
+                <th className="p-4">{t("Customer", "Zákazník", "Ügyfél")}</th>
+                <th className="p-4">{t("Delivery & Tracking", "Doprava a trasovanie", "Szállítás és nyomon követés")}</th>
+                <th className="p-4">{t("Items", "Položky", "Tételek")}</th>
+                <th className="p-4">{t("Payment", "Platba", "Fizetés")}</th>
+                <th className="p-4 text-right">{t("Total gross", "Celkom s DPH", "Összesen")}</th>
+                <th className="p-4 text-center">{t("Status", "Stav", "Állapot")}</th>
+                <th className="p-4 text-right">{t("Actions", "Akcie", "Műveletek")}</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {filteredOrders.length > 0 ? (
+                filteredOrders.map(order => {
+                  const statusColor = orderStatusColor(order.status, orderStatuses);
+                  const statusName = orderStatusLabel(order.status, t, orderStatuses);
+                  const clientMatch = order.clientId ? leads.find(l => l.id === order.clientId) : null;
+                  const customerDisplayName = order.customerType === "client"
+                    ? (clientMatch?.name || order.billing?.name || t("Registered Client", "Registrovaný klient", "Regisztrált ügyfél"))
+                    : (order.guest?.name || order.guest?.company || order.billing?.name || t("Guest Customer", "Hosť", "Vendég vásárló"));
+
+                  const productCount = (order.items || []).filter(i => i.itemType === "product").length;
+                  const serviceCount = (order.items || []).filter(i => i.itemType === "service").length;
+                  const totalItemsCount = (order.items || []).reduce((acc, it) => acc + (it.quantity || 1), 0);
+
+                  return (
+                    <tr key={order.id} className="hover:bg-slate-50/80 transition-colors">
+                      {/* 1. Order no. & date */}
+                      <td className="p-4 align-top whitespace-nowrap">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit(order)}
+                            className="font-mono font-bold text-ui text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer transition-colors text-left"
+                            title={t("Open order detail", "Otvoriť detail objednávky", "Rendelés megnyitása")}
+                          >
+                            {order.orderNumber}
+                          </button>
+                        </div>
+                        <div className="text-caption text-slate-400 font-sans mt-0.5">
+                          {formatDateLocalized(order.orderDate, userLanguage)}
+                        </div>
+                      </td>
+
+                      {/* 2. Customer */}
+                      <td className="p-4 align-top">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-slate-900 truncate max-w-50" title={customerDisplayName}>
+                            {customerDisplayName}
+                          </span>
+                          {order.customerType === "client" && order.clientId && onOpenClient && (
+                            <button
+                              type="button"
+                              onClick={() => onOpenClient(order.clientId!)}
+                              className="text-slate-400 hover:text-indigo-600 p-0.5 rounded transition-colors cursor-pointer"
+                              title={t("View client in CRM", "Zobraziť klienta v CRM", "Ügyfél megtekintése")}
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1.5 mt-1">
+                          {order.customerType === "client" ? (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-micro font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <UserCheck className="h-3 w-3" />
+                              {t("Client", "Klient", "Ügyfél")}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-micro font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                              <User className="h-3 w-3" />
+                              {t("Guest", "Hosť", "Vendég")}
+                            </span>
+                          )}
+                          {order.customerType === "guest" && canEdit && (
+                            <button
+                              type="button"
+                              onClick={() => handleConvertGuest(order)}
+                              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-micro font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-colors cursor-pointer"
+                              title={t("Convert guest to CRM client", "Vytvoriť z hosťa klienta", "Vendégből ügyfél")}
+                            >
+                              <UserCheck className="h-3 w-3" />
+                              <span>{t("To client", "+ Do CRM", "+ Ügyfél")}</span>
+                            </button>
+                          )}
+                        </div>
+                        {order.delivery?.city && (
+                          <div className="text-caption text-slate-400 mt-1 flex items-center gap-1">
+                            <MapPin className="h-3 w-3 text-slate-400 shrink-0" />
+                            <span className="truncate max-w-45">{order.delivery.city}</span>
+                          </div>
+                        )}
+                      </td>
+
+                      {/* 3. Delivery & Tracking */}
+                      <td className="p-4 align-top">
+                        {order.shippingMethod ? (
+                          <div className="flex items-center gap-1.5 text-ui font-medium text-slate-700">
+                            <Truck className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                            <span>{order.shippingMethod}</span>
+                          </div>
+                        ) : (
+                          <span className="text-caption text-slate-400">—</span>
+                        )}
+                        {order.shippingTrackingNumber && (
+                          <div className="mt-1">
+                            <span className="inline-flex items-center gap-1 font-mono text-micro bg-slate-100 px-2 py-0.5 rounded-md text-slate-700 border border-slate-200">
+                              <span>{order.shippingTrackingNumber}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleCopyTracking(order.shippingTrackingNumber!, order.id)}
+                                className="hover:text-indigo-600 transition-colors p-0.5 cursor-pointer"
+                                title={t("Copy tracking number", "Kopírovať číslo zásielky", "Szám másolása")}
+                              >
+                                {copiedTrackingId === order.id ? (
+                                  <Check className="h-3 w-3 text-emerald-600" />
+                                ) : (
+                                  <Copy className="h-3 w-3" />
+                                )}
+                              </button>
+                            </span>
+                          </div>
+                        )}
+                      </td>
+
+                      {/* 4. Items */}
+                      <td className="p-4 align-top">
+                        <div className="font-semibold text-slate-800">
+                          {totalItemsCount} {t("pcs", "ks", "db")}
+                        </div>
+                        <div className="text-caption text-slate-400 flex items-center gap-1.5 mt-0.5">
+                          <span>{productCount} {t("prod.", "prod.", "term.")}</span>
+                          <span>•</span>
+                          <span>{serviceCount} {t("serv.", "služ.", "szolg.")}</span>
+                        </div>
+                      </td>
+
+                      {/* 5. Payment */}
+                      <td className="p-4 align-top">
+                        <div>
+                          {order.paymentStatus === "paid" ? (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                              <Check className="h-3 w-3" />
+                              {t("Paid", "Zaplatené", "Fizetve")}
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-micro font-bold bg-amber-50 text-amber-700 border border-amber-200">
+                              <Clock className="h-3 w-3" />
+                              {t("Unpaid", "K úhrade", "Fizetésre vár")}
+                            </span>
+                          )}
+                        </div>
+                        {order.paymentMethod && (
+                          <div className="text-caption text-slate-500 mt-1 flex items-center gap-1">
+                            <CreditCard className="h-3 w-3 text-slate-400 shrink-0" />
+                            <span className="truncate max-w-35">{order.paymentMethod}</span>
+                          </div>
+                        )}
+                      </td>
+
+                      {/* 6. Total gross */}
+                      <td className="p-4 align-top text-right whitespace-nowrap">
+                        <div className="font-mono font-bold text-slate-900">
+                          {money(order.totalGrossAmount)}
+                        </div>
+                        <div className="text-caption text-slate-400 font-sans mt-0.5">
+                          {money(order.totalNetAmount)} {t("excl. VAT", "bez DPH", "áfa nélkül")}
+                        </div>
+                      </td>
+
+                      {/* 7. Status */}
+                      <td className="p-4 align-top text-center whitespace-nowrap">
+                        {canEdit ? (
+                          <CustomSelect
+                            size="sm"
+                            align="right"
+                            value={order.status}
+                            onChange={next => handleChangeStatus(order, next)}
+                            options={orderStatusOptions}
+                            unstyled
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full type-overline border border-slate-200 bg-white hover:bg-slate-50 text-slate-800 shadow-sm cursor-pointer transition-all hover:brightness-95"
+                            style={{ borderLeftColor: statusColor, borderLeftWidth: "4px" }}
+                          />
+                        ) : (
+                          <span
+                            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full type-overline border border-slate-200 bg-white text-slate-800"
+                            style={{ borderLeftColor: statusColor, borderLeftWidth: "4px" }}
+                          >
+                            <span className="w-1.5 h-1.5 rounded-full shrink-0" style={{ backgroundColor: statusColor }} />
+                            {statusName}
+                          </span>
+                        )}
+                      </td>
+
+                      {/* 8. Actions */}
+                      <td className="p-4 align-top text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            type="button"
+                            onClick={() => handleFulfillWarehouse(order)}
+                            disabled={!canEdit}
+                            className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                            title={t("Fulfill with warehouse delivery note", "Vyskladniť výdajkou zo skladu", "Kiadás raktárból")}
+                          >
+                            <Package className="h-4 w-4" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleCreateInvoice(order)}
+                            disabled={!canEdit}
+                            className="p-2 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 rounded-xl transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                            title={t("Issue invoice", "Vystaviť faktúru", "Számla kiállítása")}
+                          >
+                            <FileText className="h-4 w-4" />
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => handleOpenEdit(order)}
+                            className="p-2 text-slate-500 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition-all cursor-pointer"
+                            title={t("Edit order", "Upraviť objednávku", "Rendelés szerkesztése")}
+                          >
+                            <Edit2 className="h-4 w-4" />
+                          </button>
+
+                          {canDelete && (
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteOrder(order)}
+                              className="p-2 text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl transition-all cursor-pointer"
+                              title={t("Delete order", "Zmazať objednávku", "Rendelés törlése")}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              ) : (
+                <tr>
+                  <td colSpan={8} className="p-12 text-center">
+                    <EmptyState
+                      icon={<ShoppingCart className="h-10 w-10 text-slate-300" />}
+                      title={t("No orders found", "Žiadne objednávky sa nenašli", "Nem található rendelés")}
+                      body={t(
+                        "Create a new commercial or e-shop order to begin tracking fulfillment, deliveries and payments.",
+                        "Vytvorte novú obchodnú alebo e-shopovú objednávku pre sledovanie prípravy, dopravy a platieb.",
+                        "Hozzon létre egy új rendelést a szállítás és a fizetés nyomon követéséhez."
+                      )}
+                      action={
+                        canEdit ? (
+                          <button
+                            type="button"
+                            onClick={handleOpenCreate}
+                            className="inline-flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-ui font-semibold rounded-2xl shadow-md shadow-indigo-600/20 transition-all cursor-pointer hover:scale-[1.02] active:scale-[0.98]"
+                          >
+                            <Plus className="h-4 w-4" />
+                            <span>{t("New order", "Nová objednávka", "Új rendelés")}</span>
+                          </button>
+                        ) : undefined
+                      }
+                    />
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
-      ) : (
-        <div className="space-y-3">
-          {filteredOrders.map(order => {
-            const statusColor = orderStatusColor(order.status, orderStatuses);
-            const statusName = orderStatusLabel(order.status, t, orderStatuses);
-            const clientMatch = order.clientId ? leads.find(l => l.id === order.clientId) : null;
-            const customerDisplayName = order.customerType === "client"
-              ? (clientMatch?.name || order.billing?.name || t("Registered Client", "Registrovaný klient", "Regisztrált ügyfél"))
-              : (order.guest?.name || order.guest?.company || order.billing?.name || t("Guest Customer", "Hosť", "Vendég vásárló"));
-
-            const productCount = (order.items || []).filter(i => i.itemType === "product").length;
-            const serviceCount = (order.items || []).filter(i => i.itemType === "service").length;
-
-            return (
-              <div
-                key={order.id}
-                className="glass-panel p-4.5 rounded-2xl border border-white/60 bg-white/95 shadow-glass hover:shadow-md transition-all flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between"
-              >
-                {/* 1. Order Info & Customer */}
-                <div className="flex items-start gap-3.5 min-w-65">
-                  <button
-                    type="button"
-                    onClick={() => handleOpenEdit(order)}
-                    className="h-10 w-10 rounded-xl bg-slate-100 hover:bg-indigo-50 flex items-center justify-center shrink-0 text-slate-600 hover:text-indigo-600 font-mono text-micro font-bold border border-slate-200 hover:border-indigo-200 transition-colors cursor-pointer"
-                    title={t("Open order", "Otvoriť objednávku", "Rendelés megnyitása")}
-                  >
-                    <ShoppingCart className="h-4.5 w-4.5 text-indigo-600" />
-                  </button>
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => handleOpenEdit(order)}
-                        className="font-mono font-bold text-ui text-indigo-600 hover:text-indigo-800 hover:underline cursor-pointer transition-colors text-left"
-                        title={t("Open order", "Otvoriť objednávku", "Rendelés megnyitása")}
-                      >
-                        {order.orderNumber}
-                      </button>
-                      <span className="text-micro text-slate-400 font-mono">
-                        {order.orderDate}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center gap-1.5 mt-0.5">
-                      {order.customerType === "client" ? (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-micro font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                          <UserCheck className="h-3 w-3" />
-                          {t("Client", "Klient", "Ügyfél")}
-                        </span>
-                      ) : (
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-micro font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                          <User className="h-3 w-3" />
-                          {t("Guest", "Hosť", "Vendég")}
-                        </span>
-                      )}
-
-                      <span className="text-ui font-semibold text-slate-800 truncate max-w-45">
-                        {customerDisplayName}
-                      </span>
-
-                      {order.customerType === "client" && order.clientId && onOpenClient && (
-                        <button
-                          type="button"
-                          onClick={() => onOpenClient(order.clientId!)}
-                          className="text-slate-400 hover:text-indigo-600 p-0.5 rounded transition-colors"
-                          title={t("View client detail", "Zobraziť detail klienta", "Ügyfél megtekintése")}
-                        >
-                          <ExternalLink className="h-3.5 w-3.5" />
-                        </button>
-                      )}
-
-                      {order.customerType === "guest" && canEdit && (
-                        <button
-                          type="button"
-                          onClick={() => handleConvertGuest(order)}
-                          className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-micro font-bold bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200 transition-colors ml-1"
-                          title={t("Convert guest to CRM client account", "Vytvoriť z hosťa klienta", "Vendégből ügyfél")}
-                        >
-                          <UserCheck className="h-3 w-3" />
-                          {t("To client", "+ Do CRM", "+ Ügyfél")}
-                        </button>
-                      )}
-                    </div>
-                  </div>
-                </div>
-
-                {/* 2. Delivery & Address Block */}
-                <div className="flex-1 min-w-50 text-caption space-y-0.5 text-slate-600">
-                  <div className="flex items-center gap-1.5 text-slate-800 font-medium">
-                    <MapPin className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                    <span className="truncate">
-                      {order.delivery?.city ? `${order.delivery.street || ""}, ${order.delivery.city}` : t("No address specified", "Bez dodacej adresy", "Nincs szállítási cím")}
-                    </span>
-                  </div>
-                  <div className="flex flex-wrap items-center gap-2 text-micro text-slate-500">
-                    {order.shippingMethod && (
-                      <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 font-medium">
-                        <Truck className="h-3 w-3" />
-                        {order.shippingMethod}
-                      </span>
-                    )}
-                    {order.shippingTrackingNumber && (
-                      <span className="inline-flex items-center gap-1 font-mono text-micro bg-slate-100 px-1.5 py-0.5 rounded text-slate-600 border border-slate-200">
-                        {order.shippingTrackingNumber}
-                        <button
-                          type="button"
-                          onClick={() => handleCopyTracking(order.shippingTrackingNumber!, order.id)}
-                          className="hover:text-indigo-600"
-                          title={t("Copy tracking number", "Kopírovať číslo zásielky", "Szám másolása")}
-                        >
-                          {copiedTrackingId === order.id ? <Check className="h-3 w-3 text-emerald-600" /> : <Copy className="h-3 w-3" />}
-                        </button>
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* 3. Items & Financial Totals */}
-                <div className="min-w-40 text-right">
-                  <div className="text-ui font-bold font-heading text-slate-900">
-                    {order.totalGrossAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {order.currency || systemCurrency}
-                  </div>
-                  <div className="text-micro text-slate-400 mt-0.5 flex items-center justify-end gap-1.5">
-                    <span>{productCount} {t("prod.", "prod.", "term.")}</span>
-                    <span>•</span>
-                    <span>{serviceCount} {t("serv.", "služ.", "szolg.")}</span>
-                  </div>
-                  <div className="mt-1">
-                    {order.paymentStatus === "paid" ? (
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-micro font-bold bg-emerald-50 text-emerald-700 border border-emerald-200">
-                        {t("Paid", "Zaplatené", "Fizetve")}
-                      </span>
-                    ) : (
-                      <span className="inline-flex items-center px-1.5 py-0.5 rounded-full text-micro font-bold bg-amber-50 text-amber-700 border border-amber-200">
-                        {t("Unpaid", "Čaká na platbu", "Fizetésre vár")}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* 4. Status Badge & Quick Change */}
-                <div className="min-w-38 flex items-center gap-1.5">
-                  <div className="relative w-full">
-                    <select
-                      value={order.status}
-                      onChange={e => handleChangeStatus(order, e.target.value)}
-                      disabled={!canEdit}
-                      className="w-full text-ui font-semibold py-1 px-2.5 rounded-xl border border-slate-200 bg-white shadow-sm focus:outline-none cursor-pointer pr-7 appearance-none"
-                      style={{ borderLeftColor: statusColor, borderLeftWidth: "4px" }}
-                    >
-                      {orderStatuses.map(s => (
-                        <option key={s.key} value={s.key}>
-                          {orderStatusLabel(s.key, t, orderStatuses)}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="h-3.5 w-3.5 absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
-                  </div>
-                </div>
-
-                {/* 5. Action Buttons */}
-                <div className="flex items-center gap-1 shrink-0">
-                  <button
-                    type="button"
-                    onClick={() => handleFulfillWarehouse(order)}
-                    disabled={!canEdit}
-                    className="p-1.5 rounded-lg text-slate-500 hover:text-indigo-600 hover:bg-slate-100 transition-colors"
-                    title={t("Fulfill with warehouse delivery note", "Vyskladniť výdajkou zo skladu", "Kiadás raktárból")}
-                  >
-                    <Package className="h-4 w-4" />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleCreateInvoice(order)}
-                    disabled={!canEdit}
-                    className="p-1.5 rounded-lg text-slate-500 hover:text-emerald-600 hover:bg-slate-100 transition-colors"
-                    title={t("Issue invoice", "Vystaviť faktúru", "Számla kiállítása")}
-                  >
-                    <FileText className="h-4 w-4" />
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => handleOpenEdit(order)}
-                    className="p-1.5 rounded-lg text-slate-500 hover:text-slate-900 hover:bg-slate-100 transition-colors"
-                    title={t("Edit order", "Upraviť objednávku", "Rendelés szerkesztése")}
-                  >
-                    <Edit2 className="h-4 w-4" />
-                  </button>
-
-                  {canDelete && (
-                    <button
-                      type="button"
-                      onClick={() => handleDeleteOrder(order)}
-                      className="p-1.5 rounded-lg text-slate-400 hover:text-rose-600 hover:bg-rose-50 transition-colors"
-                      title={t("Delete order", "Zmazať objednávku", "Rendelés törlése")}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-
+      </div>
     </div>
   );
 };
